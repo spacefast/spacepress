@@ -1563,6 +1563,70 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('the booted app\'s db() is back afterwards', \TypedPress\db()->schema()->hasCollection('profiles'), true);
 })();
 
+// ================================================================ self-referencing and cyclic cascades (#524)
+
+(static function () use ($wp): void {
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $open = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'anyone'], 'update' => ['role' => 'anyone'], 'delete' => ['role' => 'anyone']];
+    $before = [];
+    $after = [];
+    $schema = new \TypedPress\Schema([
+        'name' => 'cycles',
+        'collections' => [
+            'nodes' => [
+                'primaryKey' => 'id',
+                'editor' => false,
+                'access' => $open,
+                'hooks' => [
+                    'beforeDelete' => static function (array $row) use (&$before): void {
+                        $before[] = $row['id'];
+                    },
+                    'afterDelete' => static function (array $row) use (&$after): void {
+                        $after[] = $row['id'];
+                    },
+                ],
+                'columns' => [
+                    'id' => $id,
+                    'label' => ['type' => 'text', 'notNull' => true],
+                    'parentId' => ['type' => 'integer', 'references' => ['collection' => 'nodes', 'column' => 'id', 'onDelete' => 'cascade']],
+                ],
+            ],
+        ],
+    ]);
+    $wp->exec('CREATE TABLE {prefix}tp_nodes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `label` LONGTEXT NOT NULL, `parentId` BIGINT UNSIGNED NULL, PRIMARY KEY (`id`), CONSTRAINT `tp_nodes_parentId_fk` FOREIGN KEY (`parentId`) REFERENCES {prefix}tp_nodes (`id`) ON DELETE CASCADE) ENGINE=InnoDB');
+    $store = \TypedPress\Wp\CompositeStore::create($schema, $wp->connection());
+    $cycleDb = new \TypedPress\Db($store, $schema, \TypedPress\db()->media());
+    $viewer = new \TypedPress\Viewer(['id' => 1, 'name' => 'owner', 'role' => 'subscriber']);
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($cycleDb);
+    try {
+        // Self-referencing row: deleted once, hooks run once each, no hook_recursion.
+        $self = $cycleDb->insert('nodes', ['label' => 'self'], true)[0];
+        $cycleDb->update('nodes', ['parentId' => $self['id']], ['id' => $self['id']]);
+        $cycleDb->delete('nodes', ['id' => $self['id']], false, $viewer);
+        eq('self-referencing cascade deletes the row once and runs hooks once', [
+            $cycleDb->findMany('nodes'),
+            $before,
+            $after,
+        ], [[], [$self['id']], [$self['id']]]);
+
+        // Both roots of a two-row cycle are selected. The cascade must not repeat a root's hooks.
+        $before = [];
+        $after = [];
+        [$a, $b] = $cycleDb->insert('nodes', [['label' => 'a'], ['label' => 'b']], true);
+        $cycleDb->update('nodes', ['parentId' => $b['id']], ['id' => $a['id']]);
+        $cycleDb->update('nodes', ['parentId' => $a['id']], ['id' => $b['id']]);
+        $cycleDb->delete('nodes', ['id' => ['in' => [$a['id'], $b['id']]]], false, $viewer);
+        eq('two-row cascade cycle deletes both rows once and runs hooks once per row', [
+            $cycleDb->findMany('nodes'),
+            $before,
+            $after,
+        ], [[], [$a['id'], $b['id']], [$b['id'], $a['id']]]);
+    } finally {
+        \TypedPress\Db::setInstance($previous);
+    }
+})();
+
 // ================================================================ write errors don't reveal what the viewer can't read
 
 // A unique conflict or a dangling reference is an answer about stored rows. Writes may only get one

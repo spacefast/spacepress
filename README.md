@@ -9,7 +9,7 @@ works with Next.js, Astro, TanStack Start, or anything else that can call
 `fetch`.
 
 TypedPress is built on top of WordPress and runs alongside a traditional WordPress
-setup. It needs WordPress 7.2 (7.2-beta5 or later), PHP 8.2+ and a small set of plugins that
+setup. It needs WordPress 7.1 or later, PHP 8.2+ and a small set of plugins that
 `typedpress build` pins for you. One plugin installs TypedPress on any
 WordPress site, and `typedpress push` deploys your app to it.
 
@@ -135,10 +135,10 @@ Once the npm packages are published, `npm create typedpress@latest my-app` creat
 an app and installs a prebuilt compiler; the [installation guide](docs/installation.md)
 covers it, the standalone `typedpress` package and the release tooling. Until then,
 or to work on TypedPress itself, build the compiler from source
-with Rust 1.96 (the checkout pins it). Local development needs Node 22+ and
+with Rust 1.97 (the checkout pins it). Local development needs Node 22+ and
 npm; it needs neither Docker nor a host PHP installation. TypedPress automatically
 runs pinned [WordPress Studio CLI](https://github.com/Automattic/studio/tree/trunk/apps/cli)
-2.2.0 to provide WordPress 7.2-beta5, PHP 8.4 and SQLite Database Integration 3.1.3.
+2.2.0 to provide WordPress 7.1, PHP 8.4 and SQLite Database Integration 3.1.3.
 The first start downloads the local environment and required plugins.
 
 ```sh
@@ -154,9 +154,15 @@ the database, uploads and other installed plugins remain in
 `examples/pantry/.tp/dev/wordpress` for the next start. The login above is
 for disposable local development only, never production.
 
+Open pages reload when a rebuild changes the app, and a compile error is
+shown over the page until a save builds. That covers app pages, HTML files
+from `public/`, the login page and wp-admin, at whatever address the site is
+opened (`--url`, `--host`).
+
 `typedpress dev --detach` does the same in the background: it returns once the site
 is up, keeps rebuilding on save, and writes its output to
-`.tp/dev/dev.log`. A coding agent's shell gets that without the flag (the
+`.tp/dev/dev.log`. If the first build fails it prints the error and exits 1,
+with WordPress running and the watcher waiting for a fix. A coding agent's shell gets that without the flag (the
 output is not a terminal and `CLAUDECODE`, `CODEX_SANDBOX`, `AI_AGENT` or
 `AGENT` is set, outside CI); `--foreground` keeps the command attached.
 `typedpress dev status --json` reports the URL, the port and that process.
@@ -262,10 +268,10 @@ live collections with cache tags, and a webhook endpoint that purges or rebuilds
 
 | | Minimum |
 |---|---|
-| To build | Rust 1.96 (today; see [Status](#status)) |
+| To build | Rust 1.97 (today; see [Status](#status)) |
 | Local `typedpress dev` | Node 22+ and npm; Studio supplies WordPress, PHP and SQLite |
-| To run | WordPress 7.2-beta5 or later, PHP 8.2 with `mbstring`, `gd`, `fileinfo`, `openssl` and `sodium`, and MySQL 8.0, MariaDB 10.11 or SQLite through the [SQLite Database Integration](https://wordpress.org/plugins/sqlite-database-integration/) plugin 3.1.2 |
-| Required plugins | Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, and Polylang 3.9 only when the app uses `locales` |
+| To run | WordPress 7.1 or later, PHP 8.2 with `mbstring`, `gd`, `fileinfo`, `openssl` and `sodium`, and MySQL 8.0, MariaDB 10.11 or SQLite through the [SQLite Database Integration](https://wordpress.org/plugins/sqlite-database-integration/) plugin 3.1.2 |
+| Required plugins | Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1 |
 
 `typedpress build` downloads the required plugins at their pinned versions,
 verifies their checksums, and ships them next to yours. The runtime refuses to
@@ -320,8 +326,6 @@ boot on a site that misses any of them and names each one;
   anything out; uploads stay out.
 - **Markdown sync**: `typedpress sync` keeps `content/posts/*.md` and your records in
   step, with a three-way merge and conflict files.
-- **Localization** with Polylang: one row per locale, shared fields kept equal,
-  a generated `wpml-config.xml`.
 - **Migrations in**: `typedpress migrate config` imports EmDash, Payload or Sanity
   schemas, and `typedpress migrate-legacy` moves a site built with the
   [original Zero](docs/migrating-from-zero.md).
@@ -378,9 +382,9 @@ Hosting on [Spacefast](https://spacefast.com) is in progress; the
 
 | Example | Shows |
 |---|---|
-| [`examples/kitchen-sink`](examples/kitchen-sink) | the playground default: WordPress pages, events, users, custom fields, settings, media, translations, jobs and plugins |
+| [`examples/kitchen-sink`](examples/kitchen-sink) | Community Kitchen, a working app that exercises the public TypedPress API |
 | [`examples/pantry`](examples/pantry) | plain tables, hooks, actions, relations and a background job; the quick start |
-| [`examples/blog`](examples/blog) | the CMS tour: field access, sync, members and sign-in, image sizes and private files, jobs and webhooks, translations, with a browser page |
+| [`examples/blog`](examples/blog) | the CMS tour: field access, sync, members and sign-in, image sizes and private files, jobs and webhooks, with a browser page |
 | [`examples/site`](examples/site) | the publication that the system suite drives end to end |
 | [`examples/wp-plugins`](examples/wp-plugins) | pinning extra WordPress plugins from the config |
 

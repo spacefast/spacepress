@@ -2,6 +2,10 @@
 import type { LayoutProps } from "typedpress/app";
 import "./site.css";
 
+// Draws its own header and footer: the blank block template, so the theme's parts don't double them
+// (docs/pages.md "Block templates").
+export const template = "blank";
+
 export const metadata = {
   title: { default: "TypedPress", template: "%s · TypedPress" },
   description: "Describe your data and pages in TypeScript. TypedPress compiles them into a WordPress plugin.",
@@ -14,10 +18,10 @@ export default function Root({ children }: LayoutProps) {
         <a className="brand" href="/">TypedPress</a>
         <nav aria-label="Site">
           <a href="/">Guide</a>
-          <a href="/examples">Examples</a>
-          <a href="/docs">Docs</a>
-          <a href="/blog">Blog</a>
-          <a className="play" href="/play">Playground</a>
+          <a href="/examples/">Examples</a>
+          <a href="/docs/">Docs</a>
+          <a href="/blog/">Blog</a>
+          <a className="play" href="/play/">Playground</a>
         </nav>
       </header>
       {children}

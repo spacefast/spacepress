@@ -67,7 +67,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `name`, `slug`, `summary`, `description`, `brand`, `model`, `capacityGb`, `media`, `connector`, `condition`, `powerOnHours`, `price`, `stock`, `status`, `publishedAt`, `uid`, `locale`, `translations`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `name`, `slug`, `summary`, `description`, `brand`, `model`, `capacityGb`, `media`, `connector`, `condition`, `powerOnHours`, `price`, `stock`, `status`, `publishedAt`, `uid`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -90,12 +90,6 @@
             "in": "query",
             "description": "What to load with each row, comma-separated or as a JSON object: `orders`, `stockMovements`. A relation holds only rows the caller may read.",
             "schema": { "type": "string" }
-          },
-          {
-            "name": "locale",
-            "in": "query",
-            "description": "The rows of one locale, with each translation group's fallback where it has none; `*` for every row. Without it, the default locale.",
-            "schema": { "type": "string", "enum": ["en", "tr", "*"] }
           }
         ],
         "responses": {
@@ -191,12 +185,6 @@
             "in": "query",
             "description": "What to load with each row, comma-separated or as a JSON object: `orders`, `stockMovements`. A relation holds only rows the caller may read.",
             "schema": { "type": "string" }
-          },
-          {
-            "name": "locale",
-            "in": "query",
-            "description": "The rows of one locale, with each translation group's fallback where it has none; `*` for every row. Without it, the default locale.",
-            "schema": { "type": "string", "enum": ["en", "tr", "*"] }
           },
           {
             "name": "format",
@@ -1990,6 +1978,123 @@
                         "status": { "type": ["string"], "enum": ["placed", "shipped", "cancelled"] }
                       },
                       "required": ["code", "status"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/actions/pendingOrders": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.pendingOrders",
+        "summary": "Call pendingOrders",
+        "x-typedpress-access": "editor",
+        "description": "Runs the `pendingOrders` action with the input sent and returns its result.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": { "type": "object" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "rows": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": { "type": ["number", "null"] },
+                              "code": { "type": "string" },
+                              "buyer": { "type": "string" },
+                              "quantity": { "type": ["number", "null"] },
+                              "total": { "type": ["number", "null"] }
+                            },
+                            "required": ["id", "code", "buyer", "quantity", "total"]
+                          }
+                        }
+                      },
+                      "required": ["rows"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "get": {
+        "tags": ["Actions"],
+        "operationId": "actions.pendingOrders.read",
+        "summary": "Call pendingOrders with GET",
+        "x-typedpress-access": "editor",
+        "description": "Runs the read-only `pendingOrders` action. The input is `?input=<json>`; without it, the other query arguments are the input, as strings.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "input",
+            "in": "query",
+            "description": "The action's input, as JSON.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "rows": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": { "type": ["number", "null"] },
+                              "code": { "type": "string" },
+                              "buyer": { "type": "string" },
+                              "quantity": { "type": ["number", "null"] },
+                              "total": { "type": ["number", "null"] }
+                            },
+                            "required": ["id", "code", "buyer", "quantity", "total"]
+                          }
+                        }
+                      },
+                      "required": ["rows"]
                     }
                   },
                   "required": ["data"]
@@ -4369,8 +4474,6 @@
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "null"], "format": "date-time" },
           "uid": { "type": ["string", "null"] },
-          "locale": { "type": "string", "enum": ["en", "tr"] },
-          "translations": { "type": ["object", "array", "string", "number", "integer", "boolean", "null"] },
           "_rev": {
             "type": "string",
             "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
@@ -4405,9 +4508,7 @@
           "stock": { "type": "integer", "minimum": 0, "maximum": 10000 },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "integer", "null"] },
-          "uid": { "type": ["string", "null"] },
-          "locale": { "type": "string", "enum": ["en", "tr"] },
-          "translationOf": { "type": "integer" }
+          "uid": { "type": ["string", "null"] }
         },
         "required": ["name", "brand", "model", "capacityGb", "price"]
       },
@@ -4429,7 +4530,6 @@
           "stock": { "type": "integer", "minimum": 0, "maximum": 10000 },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "integer", "null"] },
-          "locale": { "type": "string", "enum": ["en", "tr"] },
           "_rev": {
             "type": "string",
             "description": "The `_rev` of your read: the write is refused with `409 stale_revision` if the row changed since."
@@ -4554,7 +4654,6 @@
           "status": { "$ref": "#/components/schemas/StringFilter" },
           "publishedAt": { "$ref": "#/components/schemas/StringFilter" },
           "uid": { "$ref": "#/components/schemas/StringFilter" },
-          "locale": { "$ref": "#/components/schemas/StringFilter" },
           "orders": { "type": "object", "description": "A filter on the related rows." },
           "stockMovements": { "type": "object", "description": "A filter on the related rows." },
           "AND": {

@@ -17,7 +17,7 @@ export function Run() {
         <li><Built /> Without the one plugin: <code>typedpress build</code> writes a set of plugin ZIP files that you upload or copy like any plugin. The runtime refuses to start on a site that misses a requirement and names each one.</li>
         <li><Built /> Static hosts: <code>typedpress export</code> writes plain files (section <Ref to="pages" />).</li>
         <li><Built /> <code>typedpress doctor --site &lt;url&gt;</code> checks a build and a running site.</li>
-        <li><Built /> In a browser, with nothing installed: the <a href="/play">playground</a> builds an app and runs it in WordPress.</li>
+        <li><Built /> In a browser, with nothing installed: the <a href="/play/">playground</a> builds an app and runs it in WordPress.</li>
       </ul>
     </>
   );

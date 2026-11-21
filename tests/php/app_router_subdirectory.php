@@ -29,16 +29,68 @@ $get = static function (string $path) use ($url): array {
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30]);
     $body = (string) curl_exec($ch);
     preg_match('#<h1[^>]*>(.*?)</h1>#s', $body, $h);
-    return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), html_entity_decode(trim(strip_tags($h[1] ?? '')), ENT_QUOTES)];
+    $location = curl_getinfo($ch, CURLINFO_REDIRECT_URL) ?: null;
+    return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), $location ?? html_entity_decode(trim(strip_tags($h[1] ?? '')), ENT_QUOTES)];
 };
+$renderLink = static function (array $props): DOMElement {
+    $html = new DOMDocument();
+    @$html->loadHTML(\TypedPress\Render\Markup::link($props, 'Link')->html());
+    return $html->getElementsByTagName('a')->item(0);
+};
+$links = [];
+foreach ([
+    'path' => '/notes/dawn-on-the-ridge?q=tea%20time#body',
+    'absolute' => "$url/notes/dawn-on-the-ridge?q=tea%20time#body",
+    'home' => $url,
+    'file' => '/logo.svg?size=2#image',
+    'reserved' => '/wp-login.php?redirect_to=%2Fnotes#login',
+    'external' => 'https://example.test/notes?q=tea#body',
+    'protocol relative' => '//example.test/notes',
+    'outside home' => substr($url, 0, -strlen('/blog')) . '/blogger/notes',
+    'fragment' => '#body',
+    'query' => '?q=tea#body',
+] as $name => $href) {
+    $a = $renderLink(['href' => $href, 'prefetch' => true]);
+    $links[$name] = ['href' => $a->getAttribute('href'), 'template' => $a->getAttribute('data-tp-template'), 'prefetch' => $a->getAttribute('data-wp-on--mouseenter')];
+}
+$authLinks = [];
+$target = '/notes/dawn-on-the-ridge?q=tea%20time&sort=new#body';
+foreach (['guest' => null, 'member' => 'subscriber'] as $role => $user) {
+    $site->actAs($user);
+    foreach ([
+        'protected path' => [$target, true],
+        'protected absolute' => [$url . $target, true],
+        'public path' => [$target, false],
+        'external' => ['https://example.test/notes?q=tea#body', true],
+    ] as $name => [$href, $requireAuth]) {
+        $a = $renderLink(['href' => $href, 'requireAuth' => $requireAuth, 'prefetch' => true]);
+        $authLinks[$role][$name] = [
+            $a->getAttribute('href'), $a->getAttribute('data-wp-on--click'),
+            $a->getAttribute('data-wp-on--mouseenter'), $a->hasAttribute('requireauth'),
+        ];
+    }
+}
+$site->actAs(null);
+$trailing = $GLOBALS['wp_rewrite']->use_trailing_slashes;
+$GLOBALS['wp_rewrite']->use_trailing_slashes = false;
+$html = new DOMDocument();
+@$html->loadHTML(\TypedPress\Render\Markup::link(['href' => '/notes/dawn-on-the-ridge/?q=tea#body'], 'Link')->html());
+$links['without slash'] = $html->getElementsByTagName('a')->item(0)->getAttribute('href');
+$GLOBALS['wp_rewrite']->use_trailing_slashes = $trailing;
 echo json_encode([
     'url' => $url,
     'link' => $link,
     'notes' => $get('/notes/'),
-    'note' => $get('/notes/dawn-on-the-ridge'),
-    'note slash' => $get('/notes/dawn-on-the-ridge/'),
-    'draft' => $get('/notes/notes-for-next-week'),
-    'missing' => $get('/notes/nope'),
-    'about' => $get('/about'),
+    'note' => $get('/notes/dawn-on-the-ridge/'),
+    // The bare spelling redirects to the one address, under the subdirectory too (#462).
+    'note bare' => $get('/notes/dawn-on-the-ridge'),
+    'draft' => $get('/notes/notes-for-next-week/'),
+    'missing' => $get('/notes/nope/'),
+    'about' => $get('/about/'),
+    'dotted' => $get('/release.v1/'),
+    'dotted bare' => $get('/release.v1'),
+    'links' => $links,
+    'auth links' => $authLinks,
+    'login for target' => wp_login_url("$url/notes/dawn-on-the-ridge/?q=tea%20time&sort=new#body"),
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

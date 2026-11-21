@@ -62,7 +62,6 @@ final class ContentPages
             add_action('init', [$self, 'store'], 2);
         }
         add_filter('page_link', [$self, 'link'], 10, 2);
-        add_filter('tp_post_purge_urls', [$self, 'purge'], 10, 2);
         add_action('template_redirect', [$self, 'canonical'], 0);
         // The route renders the twin; the stored Page is listed once, under the app's pages.
         add_filter('tp_markdown_twin', static fn (bool $has, \WP_Post $post): bool => $has && $self->routeOf($post->ID) === null, 10, 2);
@@ -278,6 +277,12 @@ final class ContentPages
         return $this->byPost[$post] ?? null;
     }
 
+    /** The real Page identity behind a content route, also needed by native block integrations. */
+    public static function pageId(string $route): ?int
+    {
+        return self::$instance?->post($route)?->ID;
+    }
+
     private function post(string $route): ?\WP_Post
     {
         $id = $this->state()['pages'][$route]['post'] ?? null;
@@ -361,7 +366,7 @@ final class ContentPages
         $post = self::$instance?->visible($route);
         if ($post !== null) {
             $out['title'] = $post->post_title;
-            $out['canonical'] ??= self::$instance->pages[$route]['path'];
+            $out['canonical'] ??= AppRouter::address(self::$instance->pages[$route]['path']);
             if ($post->post_excerpt !== '' && $post->post_password === '') {
                 $out['description'] = $post->post_excerpt;
             }
@@ -380,26 +385,10 @@ final class ContentPages
         return $route === null ? $link : $this->url($route);
     }
 
+    /** The route's one address (`/about/`, AppRouter::address), which the Page's permalink is. */
     private function url(string $route): string
     {
-        return home_url($this->pages[$route]['path']);
-    }
-
-    /**
-     * `tp_post_purge_urls`: an edit purges the route under both spellings a cache may hold
-     * (`/about` and `/about/`); the router answers both.
-     *
-     * @param list<string> $urls
-     * @return list<string>
-     */
-    public function purge(array $urls, \WP_Post $post): array
-    {
-        $route = $this->routeOf($post->ID);
-        if ($route !== null && $this->pages[$route]['path'] !== '/') {
-            $urls[] = trailingslashit($this->url($route));
-        }
-
-        return $urls;
+        return home_url(AppRouter::address($this->pages[$route]['path']));
     }
 
     /** template_redirect: WordPress's own address for the Page (its slug, `?page_id=`) goes to the route. */
@@ -417,8 +406,11 @@ final class ContentPages
         // serves that path, the path is that route's, whatever Page core resolved it to.
         $base = rtrim((string) wp_parse_url(home_url('/'), PHP_URL_PATH), '/');
         $path = $base !== '' && str_starts_with($have, $base) ? (substr($have, strlen($base)) ?: '/') : $have;
-        $routes = $this->plugin->schema->app()['routes'] ?? [];
-        if ($own === [] && rawurldecode($have) !== rawurldecode($want) && (AppRouter::match($routes, $path)['route']['page'] ?? null) !== null) {
+        if ($own === [] && \TypedPress\Commerce\Module::routePath($this->plugin, $path) !== $path) {
+            return;
+        }
+        $app = $this->plugin->schema->app();
+        if ($own === [] && rawurldecode($have) !== rawurldecode($want) && (AppRouter::match($app['routes'] ?? [], $path, $app['routeIndex'] ?? null)['route']['page'] ?? null) !== null) {
             return;
         }
         if (rawurldecode($have) === rawurldecode($want) && $own === []) {

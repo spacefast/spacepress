@@ -1,4 +1,4 @@
-// A small publication: authors write posts with rich fields in English and German, readers sign in
+// A small publication: authors write posts with rich fields, readers sign in
 // as members and leave comments that editors moderate through an action, and editors keep the site
 // settings. tests/system drives a whole user journey through this app on WordPress.
 import {
@@ -24,12 +24,10 @@ export const manuscripts = files({
     });
 
 export const posts = collection({
-  // Translated per locale. The other fields are shared by a post's translations, except each
-  // row's own slug, status and dates.
-  title: text().min(1).max(120).localized(),
+  title: text().min(1).max(120),
   slug: slug({ source: "title" }).optional(),
-  body: richText().localized().optional(),
-  dek: text({ multiline: true }).max(240).localized().optional(),
+  body: richText().optional(),
+  dek: text({ multiline: true }).max(240).optional(),
   cover: media({ accept: "image" }).optional(),
   // The author's draft manuscript: a private file, readable by its uploader and the desk.
   manuscript: file(manuscripts).optional(),
@@ -142,7 +140,7 @@ export const subscribeReader = job({
   agents: false,
   async handler({ email, postId }) {
     if (await db.query.subscribers.findFirst({ where: { email } })) return;
-    const post = postId == null ? null : await db.query.posts.findFirst({ where: { id: postId, status: "published" }, locale: "*" });
+    const post = postId == null ? null : await db.query.posts.findFirst({ where: { id: postId, status: "published" } });
     await db.insert(subscribers).values({ email, postId: post?.id ?? null });
   },
 });
@@ -204,7 +202,6 @@ export const frontPage = action({
 
 export default defineConfig({
   name: "site",
-  locales: { default: "en", all: ["en", "de"] },
   // A square `card` crop of every image for listings, centred on the image's focal point.
   media: { sizes: { card: { width: 120, height: 120, fit: "cover" } } },
   // Every new comment is POSTed, signed, to the moderation tool at SITE_HOOK_URL (retried on failure).

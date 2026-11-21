@@ -61,6 +61,15 @@ pub fn describe(schema: &Schema) -> Json {
 }
 
 fn kind(c: &Collection, snapshot: &Json) -> Json {
+    if let Some(resource) = &c.commerce {
+        let fields = c
+            .columns
+            .iter()
+            .filter(|(_, col)| !col.read_only)
+            .map(|(name, col)| (name.clone(), field(col, json!({ "woocommerce": name }))))
+            .collect::<Map<_, _>>();
+        return json!({ "in":"woocommerce", "resource":resource, "fields":fields });
+    }
     let place = if c.auth {
         "users"
     } else if c.editor {
@@ -80,7 +89,7 @@ fn kind(c: &Collection, snapshot: &Json) -> Json {
     let mut out = json!({ "in": place, "fields": fields });
     match place {
         "posts" => {
-            out["postType"] = format!("tp_{}", c.table).into();
+            out["postType"] = c.post_type().into();
             out["hierarchical"] = c.hierarchical.into();
             out["localized"] = c.localized.into();
         }
@@ -112,6 +121,8 @@ fn at(c: &Collection, place: &str, table: &str, name: &str, col: &Column) -> Jso
                 core("post_title")
             } else if c.content.as_deref() == Some(name) {
                 core("post_content")
+            } else if c.excerpt.as_deref() == Some(name) {
+                core("post_excerpt")
             } else if c.slug.as_deref() == Some(name) {
                 core("post_name")
             } else if col.system && c.hierarchical && name == "parent" {

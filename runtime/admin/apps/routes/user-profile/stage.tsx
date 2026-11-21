@@ -30,6 +30,7 @@ import {
 } from '../user/utils';
 import type { ExtendedUser, UserViewConfigData } from '../user/types';
 import { DeleteUserModal } from '../user/components/delete-user-modal';
+import { ApplicationPasswordsCard } from './application-passwords';
 import './style.scss';
 
 interface UserEditContentProps {
@@ -337,6 +338,7 @@ export function UserEditContent( {
 						form={ editForm }
 						onChange={ handleFieldChange }
 					/>
+					{ isSelfProfile && <ApplicationPasswordsCard /> }
 				</VStack>
 			</Grid>
 

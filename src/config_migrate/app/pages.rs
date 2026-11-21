@@ -102,6 +102,12 @@ pub(super) fn layout(text: &str, at: &str) -> Result<Option<String>, Failure> {
     if body.contains("ComponentChildren") || body.contains("preact") {
         return Err(fail(at, reason(text, "a 0.8 layout with Preact types")));
     }
+    // A 0.8 layout drew the whole page, so it keeps doing so: the blank block template, without the
+    // theme's header and footer around it (docs/pages.md "Block templates").
+    let body = format!(
+        "{}\n// The 0.8 layout draws the whole page: no theme header or footer around it.\nexport const template = \"blank\";\n",
+        body.trim_end()
+    );
     Ok(Some(relocate(&body, 0)))
 }
 
@@ -143,11 +149,14 @@ fn static_markup(text: &str, at: &str) -> Result<Vec<String>, Failure> {
                     !ss.is_empty()
                         && ss.iter().all(|s| matches!(s, ImportDeclarationSpecifier::ImportSpecifier(x) if x.import_kind == ImportOrExportKind::Type))
                 });
-            let local_data = source.starts_with("../shared/") || source.starts_with("./") && !source.ends_with(".tsx");
+            // A specifier with a lone UTF-16 surrogate names no file, so it isn't local data.
+            let local_data = source.is_some_and(|source| {
+                source.starts_with("../shared/") || source.starts_with("./") && !source.ends_with(".tsx")
+            });
             if !type_only && !local_data {
                 return Err(fail(at, reason(text, "a 0.8 page")));
             }
-            if !type_only {
+            if let (false, Some(source)) = (type_only, source) {
                 imports.push(source.to_string());
             }
         }
@@ -227,9 +236,9 @@ fn rewrite_imports(text: &str, map: impl Fn(&str) -> Option<String>) -> String {
             _ => None,
         })
         .filter_map(|source| {
-            let spec = source.value.as_str();
             let quote = &text[source.span.start as usize..source.span.start as usize + 1];
-            map(spec).map(|to| {
+            // A specifier with a lone UTF-16 surrogate names no file, so it is left as written.
+            source.value.as_str().and_then(&map).map(|to| {
                 (
                     source.span.start as usize,
                     source.span.end as usize,

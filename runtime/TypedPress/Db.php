@@ -140,6 +140,18 @@ final class Db
     }
 
     /**
+     * {@see transaction()} for work that usually only reads: on WordPress the transaction starts at
+     * the first write ({@see Wp\Connection::reading()}), so work that writes nothing sends the
+     * database neither START TRANSACTION nor COMMIT.
+     */
+    public function reading(callable $fn): mixed
+    {
+        $store = $this->store;
+
+        return $this->current(static fn () => $store instanceof Wp\CompositeStore ? $store->db->reading($fn) : $store->transaction($fn));
+    }
+
+    /**
      * Lazy scheduled promotion (§6.3) for every drafts collection. No hooks, no revisions.
      *
      * @return array<string, list<int|string>> collection => promoted pks (only non-empty)
@@ -194,8 +206,12 @@ final class Db
      */
     private function fetch(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?array &$decoded = null): array
     {
-        $decoded = $this->selectDecoded($collection, $opts, $ptr, $viewer, $partition, $guards, prune: true);
-        $rows = Extensions::read($decoded, $collection, $viewer);
+        $publishedOnly = false;
+        $decoded = $this->selectDecoded($collection, $opts, $ptr, $viewer, $partition, $guards, prune: true, publishedOnly: $publishedOnly);
+        // What a page render read (its purges): only a read that named its rows and found them all
+        // depends on those rows alone.
+        $named = Render\Reads::recording() ? $this->named($collection, $opts, $partition, $publishedOnly) : null;
+        $rows = Render\Reads::exact($collection, $named !== null && count($decoded) === $named, static fn (): array => Extensions::read($decoded, $collection, $viewer));
         if (isset($opts['with']) && $rows !== []) {
             $rows = $this->attach($collection, $rows, $opts['with'], $ptr . '/with', $viewer, $decoded);
         }
@@ -204,15 +220,78 @@ final class Db
     }
 
     /**
+     * How many rows a read names by a unique key, or null when it names none: `where` (or the key a
+     * relation joins on) holds the primary key, or a unique column, to one value or a list of them.
+     * Every other condition only narrows that set. A unique column counts only where one value is
+     * one row: not in a hierarchical kind (a slug per parent), and in a kind with drafts only for a
+     * read that sees published rows alone ({@see publishedOnly()}: drafts may share a value until
+     * one is published). A localized kind names none.
+     *
+     * A read that found exactly the rows it named answers differently only after a write to one of
+     * them: another row can take a found key's value only once the found row gave it up. A named
+     * row that is missing (or hidden from the viewer) can appear with a write to any row.
+     *
+     * @param ?array{string, list<mixed>} $partition
+     */
+    private function named(string $collection, array $opts, ?array $partition, bool $publishedOnly): ?int
+    {
+        // A localized read may answer with another row of the named row's translation group.
+        if ($this->localized($collection)) {
+            return null;
+        }
+        $spec = $this->schema->collection($collection);
+        $pk = (string) $spec['primaryKey'];
+        $unique = [];
+        if (!($spec['hierarchical'] ?? false)) {
+            foreach ($spec['columns'] as $name => $column) {
+                if (($column['unique'] ?? false) && (string) $name !== $pk) {
+                    $unique[(string) $name] = true;
+                }
+            }
+        }
+        $one = static fn (mixed $v): bool => is_int($v) || is_string($v) || (is_float($v) && floor($v) === $v);
+        $where = is_array($opts['where'] ?? null) ? $opts['where'] : [];
+        // A relation's rows are named by the key it joins on, when that is a key of theirs (the
+        // row a foreign key refers to); a parent's children are joined on a column that is not.
+        $by = array_intersect_key($partition !== null ? [$partition[0] => ['in' => $partition[1]]] : $where, [$pk => true] + $unique);
+        foreach ($by as $column => $value) {
+            if (is_array($value) && array_keys($value) === ['eq']) {
+                $value = $value['eq'];
+            }
+            $count = match (true) {
+                $one($value) => 1,
+                is_array($value) && array_keys($value) === ['in'] && is_array($value['in']) && array_is_list($value['in'])
+                    && array_filter($value['in'], static fn (mixed $v): bool => !$one($v)) === [] => count(array_unique(array_map(self::key(...), $value['in']))),
+                default => null,
+            };
+            if ($count !== null && ($column === $pk || !($spec['drafts'] ?? false) || $publishedOnly)) {
+                return $count;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether $viewer reads only the published rows of a kind with drafts under a shorthand read rule.
+     * WordPress's own posts: who reads a draft is core's answer, applied by the store's guards.
+     */
+    private function draftsHidden(array $spec, array $rule, Viewer $viewer): bool
+    {
+        return ($spec['drafts'] ?? false) && Access::isShorthand($rule) && !($spec['native'] ?? false)
+            && ($viewer->user === null || Schema::roleRank($viewer->user['role']) < Schema::roleRank('editor'));
+    }
+
+    /**
      * Select full storage rows without presentation transforms; write guards remain SQL filters.
      * $filterViewer confines a write selector's relation filters to rows that viewer may read.
      */
-    private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false): array
+    private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false, ?bool &$publishedOnly = null): array
     {
-        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune): array {
+        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, &$publishedOnly): array {
             $spec = $this->schema->hasCollection($collection) ? $this->schema->collection($collection) : null;
             $only = null;
-            $q = $this->compileRead($collection, $opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, $only);
+            $q = $this->compileRead($collection, $opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, $only, $publishedOnly);
             if ($partition !== null && $partition[1] === []) {
                 return [];
             }
@@ -314,9 +393,9 @@ final class Db
     }
 
     /** One read compiled: query extensions, option checks, the viewer's read guards. */
-    private function compileRead(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false, ?array &$only = null): array
+    private function compileRead(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false, ?array &$only = null, ?bool &$publishedOnly = null): array
     {
-        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, &$only): array {
+        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, &$only, &$publishedOnly): array {
             if (!$this->schema->hasCollection($collection)) {
                 throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
             }
@@ -329,7 +408,17 @@ final class Db
                 }
             }
             if ($viewer !== null) {
-                array_push($guards, ...$this->readGuards($collection, $viewer));
+                array_push($guards, ...$this->readGuards($collection, $viewer, forSelect: true));
+            }
+            if ($publishedOnly !== null && Render\Reads::recording() && ($spec['drafts'] ?? false)) {
+                // Reuse the applied read guard. Calling an authored rule again could produce a
+                // different filter or repeat its side effects.
+                foreach ([$opts['where'] ?? null, ...$guards] as $filter) {
+                    if (is_array($filter) && in_array($filter['status'] ?? null, ['published', ['eq' => 'published']], true)) {
+                        $publishedOnly = true;
+                        break;
+                    }
+                }
             }
             $filterViewer ??= $viewer;
             // `search`: the rows whose searchable fields this reader may read hold every word, as one
@@ -349,7 +438,7 @@ final class Db
             $only = $prune ? $this->selected($collection, $opts, $viewer, $partition) : null;
 
             return Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
-                $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer), $only);
+                $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer, forSelect: true), $only);
         });
     }
 
@@ -369,7 +458,7 @@ final class Db
     public function permits(string $collection, string $op, int|string $pk, Viewer $viewer, ?array $data = null): bool
     {
         try {
-            $guards = $op === 'read' ? $this->readGuards($collection, $viewer) : $this->writeGuards($collection, $op, $viewer, $data);
+            $guards = $op === 'read' ? $this->readGuards($collection, $viewer, forSelect: true) : $this->writeGuards($collection, $op, $viewer, $data);
         } catch (HttpError) {
             return false;
         }
@@ -380,26 +469,57 @@ final class Db
     /**
      * The primary keys $viewer's read or update rule (+ draft visibility for read) covers, or null when
      * it covers every row. Throws 401/403 when the rule denies. Rows as stored: no locale or other
-     * query extension narrows them.
+     * query extension narrows them. For integer primary keys a candidate narrows this first read
+     * and $remaining can read the complete set later under the same evaluated guards.
      *
+     * @param-out ?\Closure(): list<int|string> $remaining
      * @return ?list<int|string>
      */
-    public function permittedKeys(string $collection, string $op, Viewer $viewer): ?array
+    public function permittedKeys(string $collection, string $op, Viewer $viewer, ?int $candidate = null, ?\Closure &$remaining = null): ?array
     {
-        $guards = $op === 'read' ? $this->readGuards($collection, $viewer) : $this->writeGuards($collection, $op, $viewer, null);
+        $remaining = null;
+        $read = $this->preparePermittedKeys($collection, $op, $viewer);
+        return $read === null ? null : $read($candidate, $remaining);
+    }
 
-        return $guards === [] ? null : $this->keysMatching($collection, null, $guards);
+    /**
+     * Evaluate the rule now. A REST permission check validates its SQL filters, and only needs to
+     * know whether the rule refused. Its later item or list read can execute the same decision.
+     * Null means unrestricted; an outright refusal throws.
+     */
+    public function preparePermittedKeys(string $collection, string $op, Viewer $viewer, bool $validate = false): ?\Closure
+    {
+        $guards = $op === 'read' ? $this->readGuards($collection, $viewer, selectWhenRestricted: true) : $this->writeGuards($collection, $op, $viewer, null);
+        if ($guards === []) {
+            return null;
+        }
+        $spec = $this->schema->collection($collection);
+        $pk = $spec['primaryKey'];
+        $query = $validate ? $this->current(fn () => $this->keyQuery($collection, null, $guards)) : null;
+        $all = fn (): array => $this->keysMatching($collection, null, $guards, $query);
+
+        return function (?int $candidate, ?\Closure &$remaining) use ($collection, $guards, $pk, $spec, $all): array {
+            if ($candidate !== null && $spec['columns'][$pk]['type'] === 'integer') {
+                $remaining = $all;
+                return $this->keysMatching($collection, [$pk => $candidate], $guards);
+            }
+            return $all();
+        };
     }
 
     /** @return list<int|string> primary keys of rows matching $where and every guard, as stored */
-    private function keysMatching(string $collection, ?array $where, array $guards): array
+    private function keysMatching(string $collection, ?array $where, array $guards, ?array $query = null): array
     {
-        return $this->current(function () use ($collection, $where, $guards): array {
-            $pk = $this->schema->collection($collection)['primaryKey'];
-            $q = Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], null, '', $guards);
+        return $this->current(fn () => array_column(
+            $this->store->select($collection, $query ?? $this->keyQuery($collection, $where, $guards)),
+            $this->schema->collection($collection)['primaryKey'],
+        ));
+    }
 
-            return array_column($this->store->select($collection, $q), $pk);
-        });
+    private function keyQuery(string $collection, ?array $where, array $guards): array
+    {
+        $pk = $this->schema->collection($collection)['primaryKey'];
+        return Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], guards: $guards, only: [$pk => true]);
     }
 
     /**
@@ -415,7 +535,7 @@ final class Db
     }
 
     /** The read rule (+ draft visibility) as filters; throws 401/403 when the rule is false. */
-    private function readGuards(string $collection, Viewer $viewer): array
+    private function readGuards(string $collection, Viewer $viewer, bool $forSelect = false, bool $selectWhenRestricted = false): array
     {
         $spec = $this->schema->collection($collection);
         $rule = Access::collectionRules($spec)['read'];
@@ -424,12 +544,12 @@ final class Db
             throw Access::deny($viewer->user, "read $collection");
         }
         $guards = is_array($r) ? [$r] : [];
-        if (($spec['drafts'] ?? false) && Access::isShorthand($rule)
-            && ($viewer->user === null || Schema::roleRank($viewer->user['role']) < Schema::roleRank('editor'))) {
+        if ($this->draftsHidden($spec, $rule, $viewer)) {
             $guards[] = ['status' => 'published'];
         }
 
-        return [...$guards, ...$this->store->readGuards($collection, $viewer)];
+        // If the app already restricts the scope, the keys must go through SQL anyway.
+        return [...$guards, ...$this->store->readGuards($collection, $viewer, $forSelect || ($selectWhenRestricted && $guards !== []))];
     }
 
     /**
@@ -489,6 +609,11 @@ final class Db
         $childPk = $target['primaryKey'];
         $ids = array_values(array_unique(array_merge([], ...array_values($linked))));
         $values = array_map(static fn ($id) => Schema::encode($target['columns'][$childPk], $id, $childPk, ''), $ids);
+        // Read from the side that doesn't store the links: which rows are linked changes with a
+        // write to any row of the other kind, so a page render that read them listed that kind.
+        if ($from === 'target_id') {
+            Render\Reads::listed($rel['collection']);
+        }
         $children = $this->fetch($rel['collection'], $opts, $ptr, $viewer, [$childPk, $values], decoded: $childDecoded);
         $childKeys = array_map(static fn (array $row) => (int) $row[$childPk], $childDecoded);
         $byId = array_combine($childKeys, $this->project($children, $rel['collection'], $opts, $ptr));
@@ -1012,11 +1137,15 @@ final class Db
             return;
         }
         $seen[$at] = true;
-        foreach ($this->referencing($collection, $row) as [$child, $spec, $col, $def, $where]) {
+        // Every relationship to this kind, before any is skipped for a null key: whether a hidden key
+        // is null is itself what the viewer can't read.
+        foreach ($this->relationships($collection) as [, , , $def]) {
             if (FieldAccess::mayHide($parent['columns'][$def['references']['column']], $viewer) || FieldAccess::mayHide($def, $viewer)
                 || !Extensions::constraintReadsSafe()) {
                 throw self::hiddenReference();
             }
+        }
+        foreach ($this->referencing($collection, $row) as [$child, $spec, $col, $def, $where]) {
             $trusted = $this->countRows($child, $where, null);
             if ($trusted === 0) {
                 continue;
@@ -1106,15 +1235,31 @@ final class Db
     private function referencing(string $collection, array $row): array
     {
         $out = [];
+        foreach ($this->relationships($collection) as [$child, $spec, $col, $def]) {
+            $value = $row[$def['references']['column']] ?? null;
+            if ($value === null) {
+                continue;
+            }
+            // A many-ref's referencing rows are the owners of links to this row, filtered in SQL.
+            $out[] = [$child, $spec, $col, $def, [$col => $def['type'] === 'refList' ? ['has' => $value] : $value]];
+        }
+
+        return $out;
+    }
+
+    /**
+     * The columns of other kinds that reference $collection, whatever a row's keys hold.
+     *
+     * @return list<array{string, array, string, array}> child, its spec, column, column def
+     */
+    private function relationships(string $collection): array
+    {
+        $out = [];
         foreach ($this->schema->kinds() as $child => $spec) {
             foreach ($spec['columns'] as $col => $def) {
-                $ref = $def['references'] ?? null;
-                if ($ref === null || $ref['collection'] !== $collection || ($row[$ref['column']] ?? null) === null) {
-                    continue;
+                if (($def['references']['collection'] ?? null) === $collection) {
+                    $out[] = [(string) $child, $spec, (string) $col, $def];
                 }
-                $value = $row[$ref['column']];
-                // A many-ref's referencing rows are the owners of links to this row, filtered in SQL.
-                $out[] = [(string) $child, $spec, (string) $col, $def, [(string) $col => $def['type'] === 'refList' ? ['has' => $value] : $value]];
             }
         }
 
@@ -1126,7 +1271,7 @@ final class Db
     {
         $opts = ['where' => $where] + (($spec['localized'] ?? false) ? ['locale' => '*'] : []);
 
-        return $this->withTrashFor($child, fn () => $this->sqlVisibility($child, fn () => $this->findMany($child, $opts, $viewer)));
+        return $this->withTrashFor($child, fn () => $this->sqlVisibility($child, $where, fn () => $this->findMany($child, $opts, $viewer)));
     }
 
     /**
@@ -1141,7 +1286,7 @@ final class Db
         }
         $extra = $viewer !== null && ($this->schema->collection($collection)['localized'] ?? false) ? ['locale' => '*'] : [];
 
-        return $this->withTrashFor($collection, fn () => $this->sqlVisibility($collection, function () use ($collection, $where, $viewer, $extra, $store): int {
+        return $this->withTrashFor($collection, fn () => $this->sqlVisibility($collection, $where, function () use ($collection, $where, $viewer, $extra, $store): int {
             $q = $this->countQuery($collection, $where, $viewer, $extra);
 
             return (int) ($store->db->run($q['sql'], $q['params'])[0]['n'] ?? 0);
@@ -1155,12 +1300,20 @@ final class Db
         return $store instanceof Wp\CompositeStore && $store->isPostBacked($collection) ? $store->posts->withTrash($fn) : $fn();
     }
 
-    /** Run $fn with WordPress's password visibility decided in SQL only, failing closed ({@see Wp\WpPostStore::withSqlVisibility()}). */
-    private function sqlVisibility(string $collection, callable $fn): mixed
+    /**
+     * Run $fn with WordPress's password visibility decided in SQL only, failing closed, about the posts
+     * matching $where ({@see Wp\WpPostStore::withSqlVisibility()}): a post-password cookie is checked
+     * against those posts' passwords only, however many other protected posts the kind has.
+     */
+    private function sqlVisibility(string $collection, array $where, callable $fn): mixed
     {
         $store = $this->store;
+        if (!$store instanceof Wp\CompositeStore || !$store->isPostBacked($collection)) {
+            return $fn();
+        }
+        $scope = $this->current(fn () => $this->keyQuery($collection, $where, []));
 
-        return $store instanceof Wp\CompositeStore && $store->isPostBacked($collection) ? $store->posts->withSqlVisibility($fn) : $fn();
+        return $store->posts->withSqlVisibility($fn, [$collection => $scope]);
     }
 
     /** The one refusal for a delete that rows the viewer can't read, or can't write, may depend on. */
@@ -1681,6 +1834,25 @@ final class Db
         return $this->selectDecoded($collection, $opts, '', null)[0] ?? null;
     }
 
+    /** Stored rows for a page of WordPress post IDs, with the same decoding as editorRow(). */
+    public function editorRows(string $collection, array $ids): array
+    {
+        $pk = $this->schema->collection($collection)['primaryKey'];
+        $opts = ['where' => [$pk => ['in' => $ids]], 'limit' => count($ids) + 1];
+        $found = $this->selectDecoded($collection, $opts, '', null);
+        if (count($found) > count($ids)) {
+            return []; // Duplicate postmeta multiplied the joins. Fall back to the individual LIMIT 1 reads.
+        }
+        $rows = [];
+        foreach ($found as $row) {
+            $id = (int) $row[$pk];
+            // Non-unique WordPress postmeta can return several rows for one post. Let the normal
+            // LIMIT 1 query choose that item's row exactly as it would for an individual response.
+            $rows[$id] = array_key_exists($id, $rows) ? null : $row;
+        }
+        return $rows;
+    }
+
     /**
      * editorRow() for a row WordPress may hold in its trash: what a move into or out of the trash, and
      * a permanent delete from it, know of the row as stored. Every other read leaves the trash out.
@@ -1847,6 +2019,7 @@ final class Db
             if ($viewer !== null) {
                 Access::require(Access::globalRules($g)['read'], $viewer, 'read', null, "read $name");
             }
+            Render\Reads::global($name);
             $stored = $this->store->globalRead($name) ?? [];
             $out = [];
             foreach ($g['fields'] as $field => $f) {

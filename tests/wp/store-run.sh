@@ -115,7 +115,7 @@ receipt=$(initialize "$first")
 [[ $(json seed.notes.created <<< "$receipt") == 1 ]] || fail "the first build seeds one note: $receipt"
 [[ $(action "$first" | json data.build) == one ]] || fail "build one answers"
 [[ $(action "$first" | json data.notes) == 1 ]] || fail "build one reads the seeded note"
-[[ $(wp option get tp_identity_schema_version) == 3 && -n $(wp option get tp_identity_dummy_password_hash) ]] || fail "initialize installs identity's schema and password-check material"
+[[ $(wp option get tp_identity_schema_version) == 4 && -n $(wp option get tp_identity_dummy_password_hash) ]] || fail "initialize installs identity's schema and password-check material"
 [[ -n $(wp cron event list --hook=tp_identity_password_inventory --field=hook) ]] || fail "initialize schedules identity's password inventory"
 ok "initialize migrates, installs identity, seeds and marks build one ready"
 

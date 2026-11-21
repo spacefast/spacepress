@@ -36,8 +36,8 @@ export function Examples() {
       <p>Plants kept as Markdown files in git. Editors change the same plants in the WordPress editor. A separate Astro project builds the public site from them.</p>
       <Example name="garden" open="cms/tp/schema.ts" />
       <p className="cap">The Astro site above is a separate project with its own build, so it cannot be built here. Its TypedPress half can; that is what an Astro front end reads from.</p>
-      <h3>A blog in two languages</h3>
-      <p>Posts with translations, authors, moderated comments, member accounts, image sizes, private files and signed webhooks. One file.</p>
+      <h3>A blog</h3>
+      <p>Posts, authors, moderated comments, member accounts, image sizes, private files and signed webhooks. One file.</p>
       <tp-play example="blog" hint="Edit the blog and build it here. It opens in the WordPress editor." />
       <h3>A reading list in 94 lines</h3>
       <p>Books are WordPress posts, reads are a SQL table, and each reader sees only their own. It also serves one HTML route and uses two npm packages on the server.</p>

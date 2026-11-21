@@ -12,7 +12,26 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('docs-kind', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor']]);
+// Test-only must-use plugin: what WordPress's main query says a page is. `X-Test-Resolved` is what
+// WordPress resolved the URL to, before TypedPress's router runs; the HTML comment is what a plugin is
+// told while the page renders (an SEO or breadcrumb plugin, in the footer).
+$site = wpSite('docs-kind', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor'], 'muPlugins' => ['query' => <<<'PHP'
+    <?php
+    function tp_test_query(): string
+    {
+        $object = get_queried_object();
+        return (string) wp_json_encode([
+            'id' => get_queried_object_id(),
+            'type' => $object instanceof WP_Post ? $object->post_type : null,
+            'is_404' => is_404(),
+            'is_singular' => is_singular(),
+        ]);
+    }
+    add_action('template_redirect', static fn () => header('X-Test-Resolved: ' . tp_test_query()), PHP_INT_MIN);
+    add_action('wp_footer', static function (): void {
+        echo '<!-- wp-query ' . tp_test_query() . ' -->';
+    });
+    PHP]]);
 $out = [];
 $out['seed'] = \TypedPress\Sync\Seed::run(\TypedPress\Wp\Runtime::plugin(), $argv[2]);
 $site->startServer();
@@ -72,6 +91,23 @@ function doc(array $r): array
     ];
 }
 
+/** What WordPress itself says a response is: its main query, the body's classes, the headers a 404 gets. */
+function wordpress(array $r): array
+{
+    preg_match('#<!-- wp-query (.*?) -->#', $r['body'], $query);
+    preg_match('#<body class="([^"]*)"#', $r['body'], $body);
+    return [
+        'status' => $r['status'],
+        'query' => isset($query[1]) ? json_decode($query[1], true) : null,
+        'resolved' => isset($r['headers']['x-test-resolved'][0]) ? json_decode($r['headers']['x-test-resolved'][0], true) : null,
+        // The theme's own class (`wp-theme-…`) follows the WordPress version's default theme.
+        'body' => array_values(array_filter(explode(' ', $body[1] ?? ''), static fn (string $c): bool => !str_starts_with($c, 'wp-theme-'))),
+        'expires' => $r['headers']['expires'][0] ?? null,
+        'cache' => $r['headers']['cache-control'][0] ?? null,
+        'location' => $r['headers']['location'][0] ?? null,
+    ];
+}
+
 $cookie = static function (string $user) use ($site): string {
     $id = $site->userId($user);
     return 'Cookie: ' . LOGGED_IN_COOKIE . '=' . rawurlencode(wp_generate_auth_cookie($id, time() + 3600, 'logged_in'));
@@ -87,21 +123,84 @@ foreach ($rows as $row) {
 }
 $out['type hierarchical'] = is_post_type_hierarchical($type);
 
-$out['introduction'] = doc(fetch("$url/docs/introduction"));
-$out['install'] = doc(fetch("$url/docs/guides/install"));
-$out['space'] = doc(fetch("$url/docs/guides/deploy/space"));
-$out['reference'] = doc(fetch("$url/docs/reference"));
-$out['guides'] = doc(fetch("$url/docs/guides"));
+// A site built before the rule for `:path` was TypedPress's own: its stored rule hands the path to core's
+// `pagename`, and the recorded fingerprint is the patterns alone.
+$docRule = static fn (): string => (string) (maybe_unserialize($wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'rewrite_rules'"))['^docs/(.+?)/?$'] ?? '');
+$stale = static function (): void {
+    update_option('rewrite_rules', array_map(static fn (string $query): string => str_replace('tp_kind_path=', 'pagename=', $query), (array) get_option('rewrite_rules')));
+    update_option('tp_kind_urls', md5((string) json_encode(['/docs/:path'])), true);
+};
+$fresh = static function (): void {
+    foreach (['tp_kind_urls', 'rewrite_rules', 'alloptions', 'notoptions'] as $key) {
+        wp_cache_delete($key, 'options');
+    }
+};
+$doc = static fn (string $path): int => (int) get_page_by_path($path, OBJECT, $type)?->ID;
+// A managed build never flushes on a request: its deploy asks whether the stored rules are behind
+// (Runtime::rewritesBehind reads KindUrls::recorded) and rebuilds them once (Runtime::installRewrites).
+$stale();
+$out['stale site']['deploy'] = ['rule before' => $docRule(), 'recorded before' => \TypedPress\Wp\KindUrls::recorded(), 'rebuilt' => \TypedPress\Wp\Runtime::installRewrites()['rules']];
+$fresh();
+$out['stale site']['deploy'] += ['rule after' => $docRule(), 'recorded after' => \TypedPress\Wp\KindUrls::recorded()];
+// A plugin-installed site rebuilds on the first request, which is already answered from the new rule.
+$stale();
+$out['stale site']['request'] = ['rule before' => $docRule(), 'first request' => wordpress(fetch("$url/docs/guides/install/")) + ['expected id' => $doc('guides/install')]];
+$fresh();
+$out['stale site']['request'] += ['rule after' => $docRule(), 'recorded after' => \TypedPress\Wp\KindUrls::recorded()];
+
+// What the rest of WordPress sees at a doc's URL: the doc, as a singular item of its post type, nested
+// or at the top; a path with no item is the app's 404, and WordPress's too.
+foreach (['install' => 'guides/install', 'introduction' => 'introduction', 'space' => 'guides/deploy/space'] as $key => $path) {
+    $out['wordpress'][$key] = wordpress(fetch("$url/docs/$path/")) + ['expected id' => $doc($path)];
+}
+$out['wordpress']['missing'] = wordpress(fetch("$url/docs/no-such-doc/"));
+// The page's own `?page=2` (core's `<!--nextpage-->` var): still the doc to WordPress.
+$out['wordpress']['paged'] = wordpress(fetch("$url/docs/guides/install/?page=2")) + ['expected id' => $doc('guides/install')];
+$out['wordpress']['type'] = $type;
+// One address per page (#462): the bare spelling 301s to the one the permalink structure gives,
+// with its query string; that address, a `.md` twin, an API route and WordPress's own paths don't move.
+$moved = static function (string $path) use ($url): array {
+    $r = fetch("$url$path");
+    return [$r['status'], ($r['headers']['location'][0] ?? null) === null ? null : str_replace($url, '', $r['headers']['location'][0])];
+};
+$out['spellings'] = [
+    'bare' => $moved('/docs/introduction'),
+    'bare nested' => $moved('/docs/guides/deploy/space'),
+    'bare with query' => $moved('/docs/introduction?ref=nav&page=2'),
+    'bare section' => $moved('/docs'),
+    'canonical' => $moved('/docs/introduction/'),
+    'twin' => $moved('/docs/introduction.md'),
+    'api' => $moved('/__tp/api/v1/docs'),
+    'api slash' => $moved('/__tp/api/v1/docs/'),
+    'rest' => $moved('/wp-json/'),
+    'sitemap' => $moved('/wp-sitemap.xml'),
+    'missing' => $moved('/docs/no-such-doc'),
+];
+// Another case of a path is the same item: one URL per item, so it redirects to the item's own.
+$out['wordpress']['case'] = array_intersect_key(wordpress(fetch("$url/docs/Guides/Install")), ['status' => 1, 'location' => 1]);
+$out['wordpress']['case']['location'] = parse_url((string) $out['wordpress']['case']['location'], PHP_URL_PATH);
+// WordPress's sitemap lists the published items at the kind's URLs (sorted here: core lists by id).
+preg_match_all('#<loc>([^<]+)</loc>#', fetch("$url/wp-sitemap.xml")['body'], $index);
+preg_match_all('#<loc>([^<]+)</loc>#', fetch("$url/wp-sitemap-typedpress-docs-1.xml")['body'], $locs);
+$paths = array_map(static fn (string $u): ?string => parse_url($u, PHP_URL_PATH), $locs[1]);
+sort($paths);
+$out['sitemap'] = [array_map(static fn (string $u): ?string => parse_url($u, PHP_URL_PATH), $index[1]), $paths];
+
+$out['introduction'] = doc(fetch("$url/docs/introduction/"));
+$out['install'] = doc(fetch("$url/docs/guides/install/"));
+$out['space'] = doc(fetch("$url/docs/guides/deploy/space/"));
+$out['reference'] = doc(fetch("$url/docs/reference/"));
+$out['guides'] = doc(fetch("$url/docs/guides/"));
 // A draft is a 404 for visitors, and is in no visitor's tree or pager, an editor's included.
-$out['roadmap'] = fetch("$url/docs/guides/roadmap")['status'];
-$out['roadmap as editor'] = doc(fetch("$url/docs/guides/roadmap", [$cookie('chief')]));
-$out['install as editor'] = doc(fetch("$url/docs/guides/install", [$cookie('chief')]));
+$out['roadmap'] = fetch("$url/docs/guides/roadmap/")['status'];
+$out['roadmap as editor'] = doc(fetch("$url/docs/guides/roadmap/", [$cookie('chief')]));
+$out['install as editor'] = doc(fetch("$url/docs/guides/install/", [$cookie('chief')]));
 // A path that isn't the item's own: the wrong parent, a missing page, the slug alone.
-$out['wrong parent'] = fetch("$url/docs/reference/install")['status'];
-$out['missing'] = fetch("$url/docs/guides/nothing")['status'];
+$out['wrong parent'] = fetch("$url/docs/reference/install/")['status'];
+$out['missing'] = fetch("$url/docs/guides/nothing/")['status'];
 // The optional catch-all's empty match: no item, so not this page (the landing page is an app page).
-$out['landing'] = fetch("$url/docs")['status'];
-$out['slug alone'] = [fetch("$url/docs/install")['status'], fetch("$url/docs/install")['headers']['location'][0] ?? null];
+$out['landing'] = fetch("$url/docs/")['status'];
+$out['slug alone'] = [fetch("$url/docs/install/")['status'], fetch("$url/docs/install/")['headers']['location'][0] ?? null];
 // Its Markdown twin.
 $out['twin'] = [fetch("$url/docs/guides/install.md")['status'], fetch("$url/docs/guides/install.md")['body']];
 $out['twin draft'] = fetch("$url/docs/guides/roadmap.md")['status'];
@@ -115,33 +214,53 @@ $reference = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} 
 $guides = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'guides'", $type));
 wp_update_post(['ID' => $reference, 'post_parent' => $guides, 'menu_order' => 0]);
 wp_set_current_user(0);
-$out['moved'] = doc(fetch("$url/docs/guides/reference"));
-$out['moved old'] = [fetch("$url/docs/reference")['status']];
+$out['moved'] = doc(fetch("$url/docs/guides/reference/"));
+$out['moved old'] = [fetch("$url/docs/reference/")['status']];
 // A published page under a draft: unreachable like its parent, so not served at a path that names the draft.
 $roadmap = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'roadmap'", $type));
 wp_set_current_user($site->userId('chief'));
 $under = wp_insert_post(['post_type' => $type, 'post_status' => 'publish', 'post_title' => 'Later', 'post_name' => 'later', 'post_parent' => $roadmap]);
 wp_set_current_user(0);
-$out['under a draft'] = [fetch("$url/docs/guides/roadmap/later")['status'], fetch("$url/docs/guides/roadmap/later.md")['status']];
+$out['under a draft'] = [fetch("$url/docs/guides/roadmap/later/")['status'], fetch("$url/docs/guides/roadmap/later.md")['status']];
+// Nor does any other address of it redirect there: its bare spelling, another case, or `?name=`
+// with the wrong path (KindUrls::oldSlug). A redirect would tell the visitor it exists.
+$out['under a draft moved'] = [
+    fetch("$url/docs/guides/roadmap/later")['status'],
+    fetch("$url/docs/Guides/Roadmap/Later")['status'],
+    fetch("$url/docs/later?name=later")['status'],
+];
+// WordPress doesn't resolve it either, so a theme or plugin that renders what WordPress resolved shows nothing.
+$out['under a draft resolved'] = wordpress(fetch("$url/docs/guides/roadmap/later/"))['resolved'];
 wp_delete_post($under, true);
 // A WordPress Page with a doc's slug: the doc's URL is still the doc, not a redirect loop.
 $page = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Introduction', 'post_name' => 'introduction']);
-$out['page with a doc slug'] = [fetch("$url/docs/introduction")['status'], doc(fetch("$url/docs/introduction"))['h1']];
+$out['page with a doc slug'] = [fetch("$url/docs/introduction/")['status'], doc(fetch("$url/docs/introduction/"))['h1']];
+// Nor do Pages at a nested doc's whole path (`guides/install`): WordPress's queried object is the doc.
+$above = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Guides page', 'post_name' => 'guides']);
+$below = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Install page', 'post_name' => 'install', 'post_parent' => $above]);
+$out['pages at a doc path'] = [
+    'top' => wordpress(fetch("$url/docs/introduction/")) + ['expected id' => $doc('introduction')],
+    'nested' => wordpress(fetch("$url/docs/guides/install/")) + ['expected id' => $doc('guides/install'), 'h1' => doc(fetch("$url/docs/guides/install/"))['h1']],
+    // The Pages keep their own addresses.
+    'the page itself' => [fetch("$url/guides/install/")['status'], str_contains(fetch("$url/guides/install/")['body'], 'Install page')],
+];
+wp_delete_post($below, true);
+wp_delete_post($above, true);
 wp_delete_post($page, true);
 // A published page with a slug a sibling elsewhere has: both are served, each at its own path.
 wp_set_current_user($site->userId('chief'));
 $twin = wp_insert_post(['post_type' => $type, 'post_status' => 'publish', 'post_title' => 'Install again', 'post_name' => 'install', 'post_parent' => $reference]);
 wp_set_current_user(0);
 $out['same slug elsewhere'] = [
-    doc(fetch("$url/docs/guides/reference/install"))['h1'],
-    doc(fetch("$url/docs/guides/install"))['h1'],
+    doc(fetch("$url/docs/guides/reference/install/"))['h1'],
+    doc(fetch("$url/docs/guides/install/"))['h1'],
 ];
 // Headings beside a block whose markup changes per render (a gallery's per-request ids): the
 // table of contents and the page's anchors still agree.
 $intro = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'introduction'", $type));
 $wpdb->update($wpdb->posts, ['post_content' => get_post_field('post_content', $intro) . "\n\n<!-- wp:gallery {\"linkTo\":\"none\"} -->\n<figure class=\"wp-block-gallery has-nested-images columns-default is-cropped\"></figure>\n<!-- /wp:gallery -->"], ['ID' => $intro]);
 clean_post_cache($intro);
-$gallery = doc(fetch("$url/docs/introduction"));
+$gallery = doc(fetch("$url/docs/introduction/"));
 $out['headings beside a gallery'] = [$gallery['toc'], $gallery['anchors']];
 
 // Heading ids follow GitHub's rule: each case's id as github-slugger gives it. Prints the ones that differ.
@@ -160,7 +279,7 @@ $installPost = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts
 $stored = (string) get_post_field('post_content', $installPost);
 $out['blocks stored'] = array_values(array_map(static fn (array $b): array => [$b['blockName'], $b['attrs'], array_map(static fn (array $i): ?string => $i['blockName'], $b['innerBlocks'])], array_filter(parse_blocks($stored), static fn (array $b): bool => $b['blockName'] !== null)));
 $out['blocks registered'] = array_values(array_filter(array_keys(WP_Block_Type_Registry::get_instance()->get_all_registered()), static fn (string $n): bool => str_starts_with($n, 'docskind/')));
-$page = fetch("$url/docs/guides/install");
+$page = fetch("$url/docs/guides/install/");
 preg_match('#<aside class="callout callout-warning".*?</aside>#s', $page['body'], $callout);
 preg_match('#<span class="badge">.*?</span>#s', $page['body'], $badge);
 $out['blocks rendered'] = [$page['status'], preg_replace('/\s+/', ' ', $callout[0] ?? ''), $badge[0] ?? null];
@@ -192,7 +311,7 @@ $out['blocks fenced'] = \TypedPress\Sync\Markdown::toBlocks("```md\n<Callout typ
 
 // Code blocks (docs/decisions/2026-11-13-code-blocks.md): highlighted on the route, with titles,
 // marked lines and a tab group, no script; written back as the same fences.
-$setup = fetch("$url/docs/guides/setup");
+$setup = fetch("$url/docs/guides/setup/");
 $html = new DOMDocument();
 @$html->loadHTML('<?xml encoding="utf-8"?>' . $setup['body']);
 $x = new DOMXPath($html);

@@ -20,6 +20,8 @@ enum When {
     /// An example of the module's own kinds: only for a project that has no `table()` yet, so an
     /// author who moved or renamed the example doesn't get it back.
     NoTables,
+    NoStore,
+    Shop,
     /// Code that calls these tables: only when the project has them.
     Tables(&'static [&'static str]),
 }
@@ -28,8 +30,17 @@ struct File {
     /// Relative to the project root, with `/` separators.
     path: &'static str,
     content: &'static str,
+    /// For a project with `output: "static"`: text put in after the line that starts with the
+    /// first string, and the import names the second adds to the import from `typedpress/app`.
+    static_output: Option<StaticOutput>,
     what: &'static str,
     when: When,
+}
+
+struct StaticOutput {
+    after: &'static str,
+    insert: &'static str,
+    import: (&'static str, &'static str),
 }
 
 struct Module {
@@ -48,18 +59,21 @@ const MODULES: &[Module] = &[
             File {
                 path: "tp/tables.ts",
                 content: include_str!("add/db/tables.ts"),
+                static_output: None,
                 what: "two example tables, with a reference between them and access rules",
                 when: When::NoTables,
             },
             File {
                 path: "tables.client.ts",
                 content: include_str!("add/db/tables.client.ts"),
+                static_output: None,
                 what: "typed client calls for the example tables",
                 when: When::Tables(&["projects", "tasks"]),
             },
             File {
                 path: "tp/DATABASE.md",
                 content: include_str!("add/db/DATABASE.md"),
+                static_output: None,
                 what: "how tables, migrations and the deploy check work",
                 when: When::Always,
             },
@@ -77,24 +91,35 @@ const MODULES: &[Module] = &[
             File {
                 path: "tp/app/api/page.tsx",
                 content: include_str!("add/api-reference/page.tsx"),
+                static_output: None,
                 what: "/api: every operation, by tag",
                 when: When::Always,
             },
             File {
                 path: "tp/app/api/[tag]/[operation]/page.tsx",
                 content: include_str!("add/api-reference/operation.tsx"),
+                // A static site prebuilds every page, so the dynamic one lists its URLs. A site that
+                // renders per request gets none: `staticParams` would make the page prebuilt, which
+                // a guarded layout above /api refuses.
+                static_output: Some(StaticOutput {
+                    after: "import { ApiFields }",
+                    insert: include_str!("add/api-reference/static-params.tsx"),
+                    import: ("type PageProps }", "type PageProps, type StaticParams }"),
+                }),
                 what: "/api/<tag>/<operation>: parameters, body, responses and a request to copy",
                 when: When::Always,
             },
             File {
                 path: "tp/components/ApiFields.tsx",
                 content: include_str!("add/api-reference/ApiFields.tsx"),
+                static_output: None,
                 what: "the fields of a parameter list, body or response",
                 when: When::Always,
             },
             File {
                 path: "tp/API.md",
                 content: include_str!("add/api-reference/API.md"),
+                static_output: None,
                 what: "what the pages read and how to change them",
                 when: When::Always,
             },
@@ -102,6 +127,114 @@ const MODULES: &[Module] = &[
         next: &[
             "typedpress dev     serves the reference at /api",
             "typedpress build   keeps it in step with the schema: it reads tp/_generated/openapi.json",
+        ],
+    },
+    Module {
+        name: "shop",
+        summary: "WooCommerce products, native checkout, cart and editable storefront pages",
+        files: &[
+            File {
+                path: "tp/shop.ts",
+                content: include_str!("add/shop/shop.ts"),
+                static_output: None,
+                what: "store settings and commerce kinds",
+                when: When::NoStore,
+            },
+            File {
+                path: "tp/components/MiniCart.tsx",
+                content: include_str!("add/shop/MiniCart.tsx"),
+                static_output: None,
+                what: "browser-only cart count",
+                when: When::Shop,
+            },
+            File {
+                path: "tp/shop.css",
+                content: include_str!("add/shop/shop.css"),
+                static_output: None,
+                what: "storefront styles",
+                when: When::Shop,
+            },
+            File {
+                path: "public/shop.js",
+                content: include_str!("add/shop/shop.js"),
+                static_output: None,
+                what: "cart, quantities and shipping client",
+                when: When::Shop,
+            },
+            File {
+                path: "tp/app/(shop)/shop/page.tsx",
+                content: include_str!("add/shop/catalog.tsx"),
+                static_output: None,
+                what: "catalog page",
+                when: When::Shop,
+            },
+            File {
+                path: "tp/app/(shop)/shop/[...path]/page.tsx",
+                content: include_str!("add/shop/category.tsx"),
+                static_output: None,
+                what: "category page",
+                when: When::Shop,
+            },
+            File {
+                path: "tp/app/(shop)/products/[slug]/page.tsx",
+                content: include_str!("add/shop/product.tsx"),
+                static_output: None,
+                what: "product page",
+                when: When::Shop,
+            },
+            File {
+                path: "tp/app/(shop)/cart/page.tsx",
+                content: include_str!("add/shop/cart.tsx"),
+                static_output: None,
+                what: "cart page",
+                when: When::Shop,
+            },
+            File {
+                path: "tp/app/(shop)/checkout/page.md",
+                content: include_str!("add/shop/checkout.md"),
+                static_output: None,
+                what: "native Woo Checkout Block",
+                when: When::Shop,
+            },
+            File {
+                path: "content/products/ceramic-mug.md",
+                content: include_str!("add/shop/mug.md"),
+                static_output: None,
+                what: "physical sample product",
+                when: When::Shop,
+            },
+            File {
+                path: "content/products/field-guide.md",
+                content: include_str!("add/shop/guide.md"),
+                static_output: None,
+                what: "downloadable sample product",
+                when: When::Shop,
+            },
+            File {
+                path: "content/product-categories/home.md",
+                content: include_str!("add/shop/category.md"),
+                static_output: None,
+                what: "sample category",
+                when: When::Shop,
+            },
+            File {
+                path: "content/product-tags/handmade.md",
+                content: include_str!("add/shop/tag.md"),
+                static_output: None,
+                what: "sample tag",
+                when: When::Shop,
+            },
+            File {
+                path: "tp/app/(shop)/layout.tsx",
+                content: include_str!("add/shop/layout.tsx"),
+                static_output: None,
+                what: "storefront layout",
+                when: When::Shop,
+            },
+        ],
+        next: &[
+            "typedpress dev     starts the store with source products and native Woo checkout",
+            "typedpress sync    merges catalog edits between source and WooCommerce",
         ],
     },
 ];
@@ -134,14 +267,35 @@ fn table(schema: &Schema, key: Option<&str>) -> bool {
 }
 
 /// Why `file` doesn't belong in a project with this schema, or None when it does.
-fn skip(file: &File, schema: &Schema) -> Option<String> {
+fn skip(file: &File, schema: &Schema, project: &Path) -> Option<String> {
     match file.when {
         When::Always => None,
+        When::NoStore => schema
+            .store
+            .is_some()
+            .then(|| "the project already has a store".to_string()),
+        When::Shop => (!(project.join("tp/shop.ts").is_file()
+            && schema
+                .collections
+                .values()
+                .any(|c| c.commerce.as_deref() == Some("product") && c.key == "products")))
+        .then(|| "the project doesn't use the example tp/shop.ts products kind".to_string()),
         When::NoTables => table(schema, None).then(|| "the project already has tables".to_string()),
         When::Tables(names) => names
             .iter()
             .find(|name| !table(schema, Some(name)))
             .map(|name| format!("it calls the example table `{name}`, which the project doesn't have")),
+    }
+}
+
+fn with_static_output(content: &str, extra: &StaticOutput) -> String {
+    let content = content.replacen(extra.import.0, extra.import.1, 1);
+    let at = content
+        .find(extra.after)
+        .and_then(|i| content[i..].find('\n').map(|n| i + n + 1));
+    match at {
+        Some(at) => format!("{}{}{}", &content[..at], extra.insert, &content[at..]),
+        None => content,
     }
 }
 
@@ -228,7 +382,8 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
             report.push((file, "kept   ", "already there, not changed".to_string()));
             continue;
         }
-        if !matches!(file.when, When::Always) && compiled < created.files.len() {
+        let shop_files = matches!(file.when, When::Shop) && created.files.contains(&"tp/shop.ts");
+        if !shop_files && !matches!(file.when, When::Always) && compiled < created.files.len() {
             schema = match super::build::compile(&project) {
                 Ok(schema) => schema,
                 Err(problem) => {
@@ -241,11 +396,19 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
             };
             compiled = created.files.len();
         }
-        if let Some(why) = skip(file, &schema) {
+        if let Some(why) = if shop_files {
+            None
+        } else {
+            skip(file, &schema, &project)
+        } {
             report.push((file, "skipped", why));
             continue;
         }
-        if let Err(error) = created.file(&project, file.path, file.content) {
+        let content = match &file.static_output {
+            Some(extra) if schema.output == crate::schema::Output::Static => with_static_output(file.content, extra),
+            _ => file.content.to_string(),
+        };
+        if let Err(error) = created.file(&project, file.path, &content) {
             created.undo(&project);
             eprintln!("{command}: can't write {}: {error}. Nothing was added.", file.path);
             return ExitCode::from(1);

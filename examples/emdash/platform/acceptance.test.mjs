@@ -108,7 +108,7 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
     return value.data ?? value;
   }
   const api = (path, options) => http('/__tp/api/v1' + path, options);
-  let story, writer, task, french, media;
+  let story, writer, task, media;
   const body = '<!-- wp:paragraph --><p>A story from the native editor.</p><!-- /wp:paragraph -->';
   await step('native REST + SCF creates a draft with nested values; TypedPress reads persisted data', async () => {
     const schema = await api('');
@@ -162,19 +162,16 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
     const native = JSON.parse(await wp('eval', `global $wpdb; echo wp_json_encode($wpdb->get_row('SELECT label, processed, storyId FROM ' . $wpdb->prefix . 'tp_tasks WHERE id=${task.id}', ARRAY_A));`));
     assert.equal(native.label, 'Review the journal'); assert.equal(Number(native.processed), 1); assert.equal(Number(native.storyId), story.id);
   });
-  await step('revision restoration and Polylang translations preserve shared fields across native and TypedPress writes', async () => {
+  await step('revision restoration recovers a native edit; a native SCF edit reaches TypedPress', async () => {
     const revisions = await api(`/stories/${story.id}/revisions`);
     const snapshot = await api(`/stories/${story.id}/revisions/${revisions[0].id}`);
     await http(`/wp-json/wp/v2/tp_stories/${story.id}`, { method: 'POST', body: { title: 'Temporary headline', acf: { tp_metadata: 'null' } } });
     assert.equal((await api(`/stories/${story.id}`)).metadata, null);
     await api(`/stories/${story.id}/revisions/${revisions[0].id}/restore`, { method: 'POST' });
     assert.equal((await api(`/stories/${story.id}`)).title, snapshot.title);
-    french = await api('/stories', { method: 'POST', body: { title: 'Le bureau éditorial', locale: 'fr', translationOf: story.id } });
-    await http(`/wp-json/wp/v2/tp_stories/${french.id}`, { method: 'POST', body: { acf: { tp_price: 9 } } });
+    await http(`/wp-json/wp/v2/tp_stories/${story.id}`, { method: 'POST', body: { acf: { tp_price: 9 } } });
     assert.equal((await api(`/stories/${story.id}`)).price, 9);
-    const native = JSON.parse(await wp('eval', `echo wp_json_encode([pll_get_post_language(${french.id}), pll_get_post_translations(${story.id}), get_post_meta(${story.id}, 'tp_price', true)]);`));
-    assert.deepEqual(native, ['fr', { en: story.id, fr: french.id }, '9']);
-    assert.equal((await api('/stories?locale=fr', { role: null }))[0].title, 'Le bureau éditorial');
+    assert.equal(await wp('post', 'meta', 'get', String(story.id), 'tp_price'), '9');
   });
   await step('real disk uploads and transformed image bytes reach the public frontend', async () => {
     const image = Buffer.from(await wp('eval', '$i=imagecreatetruecolor(400,200); $red=imagecolorallocate($i,255,0,0); imagefilledrectangle($i,0,0,399,199,$red); ob_start(); imagepng($i); echo base64_encode(ob_get_clean());'), 'base64');
@@ -239,13 +236,12 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
     assert.equal(await wp('option', 'get', 'blogdescription'), 'Preserve this native setting');
     assert.equal(JSON.parse(await command(['dev', 'status', project])).siteUrl, status.siteUrl);
     assert.equal((await api(`/stories/${story.id}`)).price, 9);
-    assert.equal((await api(`/stories/${french.id}?locale=fr`)).title, 'Le bureau éditorial');
     assert.equal((await fetch(media.url)).status, 200);
     const active = JSON.parse(await wp('plugin', 'list', '--status=active', '--format=json'));
     assert.equal(active.some((row) => row.name === 'platform-neighbor'), true);
     assert.equal(await wp('user', 'get', 'platform_editor', '--field=roles'), 'editor');
   });
-  await step('browser renders public stories, relationships, image and locale; native settings/plugins and TypedPress admin stay available', async () => {
+  await step('browser renders public stories, relationships and image; native settings/plugins and TypedPress admin stay available', async () => {
     const browser = await chromium.launch({ headless: true });
     try {
       const publicContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -262,9 +258,6 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
       await expect(page.getByText('A story from the native editor.', { exact: true })).toBeVisible();
       await expect(page.getByRole('blockquote')).toHaveText('Ship small.');
       await page.screenshot({ path: join(evidence, 'public-detail.png'), fullPage: true });
-      await page.getByLabel('Language').selectOption('fr');
-      await expect(page.getByRole('link', { name: 'Le bureau éditorial', exact: true })).toBeVisible();
-      await page.screenshot({ path: join(evidence, 'public-french.png'), fullPage: true });
       assert.deepEqual(errors, []);
       const adminContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
       const admin = await adminContext.newPage();

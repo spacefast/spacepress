@@ -1,0 +1,14 @@
+{
+    "require-dev": {
+        "wp-coding-standards/wpcs": "3.4.1"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    },
+    "scripts": {
+        "check": "phpcs --standard=WordPress"
+    },
+    "license": "MIT"
+}

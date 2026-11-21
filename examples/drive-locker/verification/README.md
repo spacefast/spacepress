@@ -13,18 +13,19 @@ Source baseline: `ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1`.
 Environment: local WordPress Studio at `http://localhost:8796`, with the Vite
 frontend at `http://127.0.0.1:5196/`. No staging or production deployment exists.
 
-This record was captured before the rename from First to TypedPress. Commands and
-output below are verbatim from that run: `first` is today's `typedpress`,
-`first/` and `.first/` are `tp/` and `.tp/`, and `/wp-json/first/v1` is
-`/__tp/api/v1`.
+This record was captured before the rename from First to TypedPress. The command
+is written with today's name, `typedpress`, and so are the files the text names.
+The rest of the recorded output and the request paths are as that run printed
+them: `first/` and `.first/` are `tp/` and `.tp/`, `first-diagnostics` is
+`typedpress-diagnostics`, and `/wp-json/first/v1` is `/__tp/api/v1`.
 
 ## Native compilation and frontend build
 
 ```text
-$ ./target/release/first check examples/drive-locker --frozen --json
+$ ./target/release/typedpress check examples/drive-locker --frozen --json
 {"schema":"first-diagnostics","version":1,"compilerVersion":"0.3.0","ok":true,"offsetEncoding":"utf-8","positionEncoding":"utf-16","diagnostics":[],"groups":[]}
 
-$ ./target/release/first build examples/drive-locker --frozen
+$ ./target/release/typedpress build examples/drive-locker --frozen
 built 0 collections, 4 tables, 1 user projections, 0 globals, 8 hooks, 5 actions -> first/dist/wp-content
 
 $ tsc -p examples/drive-locker
@@ -45,7 +46,7 @@ hooks count both registered hook functions for each of the four tables, and
 actions count the `actions` registry. Compiler errors are
 `check.json.diagnostics.filter(d => d.severity === 'error').length = 0`.
 
-`first build` emitted the committed client, schema registration, SQL migration,
+`typedpress build` emitted the committed client, schema registration, SQL migration,
 snapshot and pinned WordPress plugin lock. The build directory and SPA bundle
 are ignored. They contain no source changes to shared compiler/runtime code.
 
@@ -82,7 +83,7 @@ The actual MCP initialize request returns HTTP 200 with server name
 [ability names](abilities.json) were emitted by:
 
 ```sh
-./target/release/first abilities --site examples/drive-locker
+./target/release/typedpress abilities --site examples/drive-locker
 ```
 
 ## Browser

@@ -136,7 +136,9 @@ shell cannot do. Two things make it usable there:
 
 - `typedpress dev --detach` returns once the site is up. The watcher keeps running
   in the background, rebuilds on save, and writes to `.tp/dev/dev.log`.
-  `typedpress dev stop` stops it.
+  `typedpress dev stop` stops it. When the first build fails it still starts
+  WordPress and keeps watching, but prints the error and exits 1: the site
+  does not serve the current source until a save builds.
 - Without the flag, `typedpress dev` does the same by itself when its output is not a
   terminal and one of `CLAUDECODE`, `CODEX_SANDBOX`, `AI_AGENT` or `AGENT` is
   set to something other than empty, `0` or `false`. It says so on stderr. It
@@ -146,13 +148,17 @@ shell cannot do. Two things make it usable there:
 `.tp/dev/state.json`, which `typedpress dev` writes when the site is up:
 
 ```json
-{"state":"running","url":"http://localhost:8787","port":8787,"admin":"http://localhost:8787/wp-admin/","site":"/work/my-app/.tp/dev/wordpress","watching":true,"pid":41822,"log":"/work/my-app/.tp/dev/dev.log","wordpress":"7.2-beta5","php":"8.4"}
+{"state":"running","url":"http://localhost:8787","port":8787,"admin":"http://localhost:8787/wp-admin/","site":"/work/my-app/.tp/dev/wordpress","watching":true,"pid":41822,"log":"/work/my-app/.tp/dev/dev.log","error":null,"wordpress":"7.1","php":"8.4"}
 ```
 
 `state` is `none`, `stopped` or `running`, checked against the port itself.
 `watching` is true while the recorded `typedpress dev` process exists; after
-`--no-watch` it is false and `pid` is null. `typedpress dev status` without `--json`
-still prints Studio's own report.
+`--no-watch` it is false and `pid` is null. `error` is null while that
+process's last build succeeded. After a build that failed it is
+`{"message": …, "diagnostics": […]}`, with the compiler's diagnostics as
+`typedpress check --json` reports them, and the site keeps serving the last
+build that succeeded. `typedpress dev status` without `--json` still prints
+Studio's own report.
 
 The server speaks MCP revision 2026-07-28 (no handshake; `server/discover`) and,
 for clients that open with `initialize`, 2025-11-25 and 2025-06-18.

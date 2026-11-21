@@ -23,9 +23,9 @@ const examples: Record<string, unknown> = {};
   const lock = JSON.parse(readFileSync(path.join(dir, "tp/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
   examples.tasks = {
     title: "Tasks",
-    summary: "A whole app in two files: one table, one function and one page.",
+    summary: "A whole app: a table, two actions, a page, and a live list you can tick and add to.",
     files,
-    shown: ["typedpress.config.ts", "tp/app/page.tsx"],
+    shown: ["tp/schema.ts", "tp/app/page.tsx", "tp/components/TaskList.tsx", "typedpress.config.ts"],
     run: { lock: lock.plugins.map(({ slug, version }) => ({ slug, version })), landing: "/", seed: readFileSync(path.join(dir, "seed.php"), "utf8"), syncSeed: {}, appPages: true, schemaPhp: output.schemaPhp, ledger: ledger(dir) },
   };
 }

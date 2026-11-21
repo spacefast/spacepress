@@ -102,7 +102,11 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
   const ledgerBefore = sql("SELECT app, id FROM wp_tp__migrations ORDER BY app, id");
   // Legacy prefix indexes exceed MyISAM's key limit; restore them after the engine probe.
   sql(`ALTER TABLE ${table} DROP INDEX by_owner, DROP INDEX by_done, ENGINE=MyISAM`);
-  sql(`UPDATE wp_options SET option_value = 'pending-storage-upgrade' WHERE option_name = '${schemaOption}'`);
+  // Storage falls behind the way a site sees it: through WordPress's option API, whose hook drops the
+  // install marker (InstallMarker), so the next request checks storage again. A raw SQL edit would not
+  // (docs/runtime-contract.md).
+  wp("option", "update", schemaOption, "pending-storage-upgrade");
+  assert.equal(sql("SELECT COUNT(*) AS n FROM wp_options WHERE option_name = 'tp_installed'")[0].n, "0");
   try {
     const refused = await fetch(`${api}/actions/list`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     const problem: unknown = await refused.json();
@@ -121,5 +125,7 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
   }
   assert.equal(await action("count"), 3);
   assert.deepEqual(sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`), schemaBefore);
-  assert.equal(harness.wp.startsWith("7.2"), true);
+  // The stack runs TypedPress's WordPress floor (tests/fixtures/platform.json).
+  const floor: string = JSON.parse(readFileSync(new URL("../../fixtures/platform.json", import.meta.url), "utf8")).wordpress;
+  assert.equal(harness.wp.startsWith(floor), true, `${harness.wp} is the floor, ${floor}`);
 });

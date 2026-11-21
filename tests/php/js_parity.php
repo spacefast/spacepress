@@ -27,6 +27,10 @@ mb_internal_encoding('ISO-8859-1');
 $re = Js::re(...);
 
 $cases = [
+    ['[undefined, null, false, 0, -0, NaN, "", "0", 3].map(v => v ?? "fallback")',
+        fn () => array_map(static fn ($v) => Js::coalesce($v, 'fallback'), [Js::undefined(), null, false, 0, -0.0, NAN, '', '0', 3])],
+    ['[undefined, null, {x: null}, {}, {x: false}, {x: "0"}].map(v => [typeof v?.x, v?.x ?? 7])',
+        fn () => array_map(static fn ($v) => [Js::typeOf(Js::optionalDataGet($v, 'x')), Js::coalesce(Js::optionalDataGet($v, 'x'), 7)], [Js::undefined(), null, new JsObject(['x' => null]), new JsObject(), new JsObject(['x' => false]), new JsObject(['x' => '0'])])],
     ['[(255).toString(16), (-255).toString(2), (0).toString(36), (35).toString(36), (9007199254740991).toString(36), (10).toString(10)]',
         fn () => array_map(static fn ($pair) => Js::dynamicCallMethod($pair[0], 'toString', new JsArray([$pair[1]])), [[255, 16], [-255, 2], [0, 36], [35, 36], [9007199254740991, 36], [10, 10]])],
     ['(() => { try { (1).toString(1); return "no"; } catch (e) { return e.name; } })()',

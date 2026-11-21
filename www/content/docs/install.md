@@ -20,9 +20,9 @@ npm run dev
 
 The creator installs the matching `typedpress` version and TypeScript. The compiler package downloads the exact version for your operating system and CPU and verifies the archive's SHA-256. `typedpress dev` uses pinned WordPress Studio CLI 2.2.0 to supply native PHP, WordPress and SQLite.
 
-Open `/index.html` on the WordPress URL printed in the terminal: the project's `public/` folder is served at the site root. Your public frontend, API, login and native WordPress admin share that origin. WordPress's theme retains its homepage. Add a note through “Write a note”; the example permits public reads and restricts writes to WordPress editors. Use the local admin credentials printed by TypedPress only for development.
+Open the **Website** URL printed in the terminal. The homepage, the **Notes** list, and each note are rendered by WordPress from `tp/app/`. WordPress imports the sample entries in `content/notes/` on first start. **Account** uses the local WordPress login printed in the terminal.
 
-Edit `public/` for the frontend and `typedpress.config.ts` for the backend. TypedPress watches both. Refresh to see changes. The generated client in `tp/_generated/client/` is ready for a TypeScript frontend, and `client.ts` demonstrates its types. A frontend framework is optional. Backend TypeScript compiles to PHP; unsupported language/library behavior fails compiler checks rather than becoming a Node.js service.
+Start by editing `tp/app/page.tsx`. Wait for the rebuild and refresh your browser. Edit `typedpress.config.ts` to change the note fields or site settings. The starter's README shows where to edit layouts, styles, and actions. [Starter source](https://github.com/spacefast/zero/tree/main/packages/create-typedpress/template)
 
 ```sh
 npm run check
@@ -48,11 +48,11 @@ typedpress --help
 
 Prebuilt targets are macOS arm64/x64 and glibc 2.39+ Linux arm64/x64 (Ubuntu 24.04 or newer). Windows, older glibc and musl Linux need a compiler you provide. There is no automatic Cargo build or search for another `typedpress` executable.
 
-| Setting | Effect |
-| --- | --- |
-| `TP_BIN=/absolute/path/to/typedpress` | Use your explicitly provided executable, without downloading. Relative paths and missing/non-executable files fail. |
-| `TP_CACHE_DIR=/absolute/cache` | Store version/target-specific compiler downloads here. The default is `$XDG_CACHE_HOME/tp/npm`, or `~/.cache/tp/npm`. |
-| `TP_OFFLINE=1` | Use only the verified cache or `TP_BIN`. A missing cached version fails with a next step. |
+| Setting                                               | Effect                                                                                                                           |
+|-------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| `TP_BIN=/absolute/path/to/typedpress`                 | Use your explicitly provided executable, without downloading. Relative paths and missing/non-executable files fail.              |
+| `TP_CACHE_DIR=/absolute/cache`                        | Store version/target-specific compiler downloads here. The default is `$XDG_CACHE_HOME/tp/npm`, or `~/.cache/tp/npm`.            |
+| `TP_OFFLINE=1`                                        | Use only the verified cache or `TP_BIN`. A missing cached version fails with a next step.                                        |
 | `TP_RELEASE_BASE_URL=https://mirror/releases/v0.3.0/` | Read the exact archive and checksum from a release mirror. `file://` and loopback HTTP are supported for local maintainer tests. |
 
 Every release needs `typedpress-vVERSION-RUST_TARGET.tar.gz` and its `.sha256` file. The checksum file contains the lowercase SHA-256, two spaces and the exact archive basename. Downloads fail clearly if either asset is missing, malformed or corrupt. Cached executables are checked against their installation receipt before reuse. SHA-256 establishes integrity of the downloaded archive; it is not a publisher signature.
@@ -72,25 +72,25 @@ version, 0.3.0 today) and the independently versioned `@typedpress/astro` and
 1. Make sure the npm account that publishes owns the unscoped names `typedpress` and
    `create-typedpress` (both unpublished) and the `@typedpress` scope. Do not overwrite the
    older `@spacefast/zero` package.
-2. For a compiler release, set one new version in root `Cargo.toml` and both CLI package
+1. For a compiler release, set one new version in root `Cargo.toml` and both CLI package
    manifests; `node scripts/release/version.mjs VERSION` rejects mismatches. Merge it, then push
    an immutable `vVERSION` tag on that commit.
-3. The tag runs the release workflow. It builds seven native archives and `typedpress.wasm`,
+1. The tag runs the release workflow. It builds seven native archives and `typedpress.wasm`,
    smoke-checks each binary, packs and content-checks all four npm packages, installs the packed
    CLI from the archives, runs the packed starter end to end, generates the Homebrew formula and
    attaches the archives, `.sha256` files, wasm, `compiler-assets.json`, the exact source archive
    and the four npm tarballs to the GitHub release. The release assets must be publicly
    downloadable (the repository public) before the npm launcher can install anonymously.
-4. Check the published release from a machine without GitHub credentials:
+1. Check the published release from a machine without GitHub credentials:
    `TP_CACHE_DIR=$(mktemp -d) npx --yes ./typedpress-VERSION.tgz --version` and `check` on an
    example. Have the signing team sign/notarize payloads when ready, then regenerate archive
    checksums and the formula from the final bytes. Never reuse pre-signing hashes.
-5. Publish the tarballs attached to the release, in this order:
+1. Publish the tarballs attached to the release, in this order:
    `npm publish typedpress-VERSION.tgz`, then `create-typedpress-VERSION.tgz`, then
    `typedpress-astro-0.1.0.tgz` and `typedpress-blocks-0.1.0.tgz` (scoped packages publish public
    through their `publishConfig`). Do not rerun `npm pack` from installed tarballs: the prepack
    scripts run from the source repository.
-6. Copy the generated formula to the chosen public tap's `Formula/typedpress.rb`, run
+1. Copy the generated formula to the chosen public tap's `Formula/typedpress.rb`, run
    `brew install` and `brew test typedpress` on supported machines, then publish the tap commit.
    Verify the public npm create command before announcing it.
 

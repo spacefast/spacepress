@@ -37,6 +37,14 @@ final class CoreAccess
     private static ?array $primitives = null;
     /** @var array<string, ?list<int|string>|false> "collection op user" => keys (null = all, false = denied) */
     private static array $keys = [];
+    /** @var array<string, array{int, \Closure(): array}> first candidate checked and its full-list query */
+    private static array $single = [];
+    /** @var array<string, \Closure> evaluated filters awaiting their first item or list read */
+    private static array $pending = [];
+    /** @var array<string, array<int, true>> membership when individual checks use a full list */
+    private static array $members = [];
+    /** @var array<string, array<int, true>> rows a read as the viewer returned ({@see readable()}) */
+    private static array $readable = [];
     private static int $generation = 0;
 
     public static function register(): void
@@ -71,7 +79,32 @@ final class CoreAccess
     public static function flush(): void
     {
         self::$keys = [];
+        self::$single = [];
+        self::$pending = [];
+        self::$members = [];
+        self::$readable = [];
         self::$generation++;
+    }
+
+    /**
+     * Rows of a post kind that a read as $viewer just returned. The read pipeline applied the read
+     * rule, draft visibility and the store's own guards to them, which is the question covers()
+     * asks, so it answers for these rows without another statement: a page that read its item, or a
+     * list that selected its rows, has already asked. Dropped with every other cached answer.
+     *
+     * @param list<int> $ids
+     */
+    public static function readable(string $collection, array $ids, Viewer $viewer): void
+    {
+        $key = self::key($collection, 'read', $viewer);
+        foreach ($ids as $id) {
+            self::$readable[$key][(int) $id] = true;
+        }
+    }
+
+    private static function key(string $collection, string $op, Viewer $viewer): string
+    {
+        return serialize([$collection, $op, $viewer->user, $_COOKIE['wp-postpass_' . COOKIEHASH] ?? null]);
     }
 
     public static function generation(): int
@@ -100,8 +133,19 @@ final class CoreAccess
             if ($collection === null) {
                 return $caps;
             }
+            $allowed = self::postAllowed($collection, $cap, $post, $userId);
+            // WordPress's own posts: core's capabilities decide first, and the app's rule can only narrow
+            // them. A published post's read is the rule's alone: core asks for `read`, which a visitor
+            // doesn't have, and the store already confines unpublished posts to whom core lets read them
+            // ({@see NativePosts::readGuard}).
+            if (self::schema()->collection($collection)['native'] ?? false) {
+                if (!$allowed) {
+                    return ['do_not_allow'];
+                }
+                return $cap === 'read_post' && $post->post_status === 'publish' && $post->post_password === '' ? ['exist'] : $caps;
+            }
 
-            return self::grant(self::postAllowed($collection, $cap, $post, $userId));
+            return self::grant($allowed);
         }
         if (in_array($cap, ['edit_term', 'delete_term', 'assign_term'], true)) {
             $term = isset($args[0]) ? get_term((int) $args[0]) : null;
@@ -207,6 +251,9 @@ final class CoreAccess
         if (self::$primitives === null) {
             self::$primitives = [];
             foreach (self::postBacked() as $name => $spec) {
+                if ($spec['native'] ?? false) {
+                    continue; // core's posts keep core's type-wide capabilities (edit_posts, publish_posts)
+                }
                 $t = $spec['wp']['postType'];
                 self::$primitives += [
                     "create_$t" => [$name, 'create'],
@@ -252,9 +299,23 @@ final class CoreAccess
     /** Does the viewer's $op rule cover row $pk (as stored, without a write's data)? */
     public static function covers(string $collection, string $op, int|string $pk, Viewer $viewer): bool
     {
-        $keys = self::keys($collection, $op, $viewer);
-
-        return $keys === null || ($keys !== false && in_array((int) $pk, array_map('intval', $keys), true));
+        if ($op === 'read' && isset(self::$readable[self::key($collection, $op, $viewer)][(int) $pk])) {
+            return true;
+        }
+        $key = self::cacheKeys($collection, $op, $viewer, (int) $pk);
+        $keys = self::$keys[$key];
+        if ($keys === null || $keys === false || $keys === []) {
+            return $keys === null;
+        }
+        if (isset(self::$single[$key]) || count($keys) === 1) {
+            return (int) $keys[0] === (int) $pk;
+        }
+        if (!isset(self::$members[$key])) {
+            foreach ($keys as $id) {
+                self::$members[$key][(int) $id] = true;
+            }
+        }
+        return isset(self::$members[$key][(int) $pk]);
     }
 
     /**
@@ -265,16 +326,38 @@ final class CoreAccess
      */
     public static function keys(string $collection, string $op, Viewer $viewer): array|null|false
     {
-        $key = $collection . ' ' . $op . ' ' . ($viewer->user['id'] ?? 0) . ' ' . ($viewer->user['role'] ?? '') . ' ' . serialize($_COOKIE['wp-postpass_' . COOKIEHASH] ?? null);
-        if (!array_key_exists($key, self::$keys)) {
-            try {
-                self::$keys[$key] = Plugin::instance()?->db()->permittedKeys($collection, $op, $viewer);
-            } catch (HttpError) {
-                self::$keys[$key] = false;
+        $key = self::cacheKeys($collection, $op, $viewer, null);
+        return self::$keys[$key];
+    }
+
+    /** One item asks only for its own key. A collection request or a second distinct item materializes the full set once. */
+    private static function cacheKeys(string $collection, string $op, Viewer $viewer, ?int $candidate, bool $scopeOnly = false): string
+    {
+        $key = self::key($collection, $op, $viewer);
+        try {
+            if (!$scopeOnly && isset(self::$single[$key]) && self::$single[$key][0] !== $candidate) {
+                [, $all] = self::$single[$key];
+                self::$keys[$key] = $all();
+                unset(self::$single[$key]);
+            } elseif (!array_key_exists($key, self::$keys)) {
+                $read = self::$pending[$key] ?? Plugin::instance()?->db()->preparePermittedKeys($collection, $op, $viewer, validate: $scopeOnly);
+                if ($scopeOnly && $read !== null) {
+                    self::$pending[$key] = $read;
+                } else {
+                    $remaining = null;
+                    self::$keys[$key] = $read === null ? null : $read($candidate, $remaining);
+                    unset(self::$pending[$key]);
+                    if ($remaining !== null) {
+                        self::$single[$key] = [$candidate, $remaining];
+                    }
+                }
             }
+        } catch (HttpError) {
+            unset(self::$single[$key], self::$pending[$key]);
+            self::$keys[$key] = false;
         }
 
-        return self::$keys[$key];
+        return $key;
     }
 
     // ================================================================ viewers
@@ -309,7 +392,8 @@ final class CoreAccess
         if ($viewer === null) {
             return self::error(new HttpError(403, 'suspended', 'This account is suspended'));
         }
-        if (self::keys($collection, 'read', $viewer) === false) {
+        $key = self::cacheKeys($collection, 'read', $viewer, null, scopeOnly: true);
+        if ((self::$keys[$key] ?? null) === false) {
             return self::error(Access::deny($viewer->user, "read $collection"));
         }
 
@@ -353,7 +437,8 @@ final class CoreAccess
                 unset($data[(string) (self::schema()->collection($def['references']['collection'])['wp']['taxonomy'] ?? '')]);
             }
             match ($col) {
-                $spec['content'] ?? null => self::unset($data, ['content', 'excerpt']),
+                $spec['content'] ?? null => self::unset($data, ($spec['excerpt'] ?? null) === null ? ['content', 'excerpt'] : ['content']),
+                $spec['excerpt'] ?? null => self::unset($data, ['excerpt']),
                 $spec['slug'] ?? null => self::unset($data, ['slug', 'generated_slug', 'permalink_template', 'link']),
                 default => is_array($data['acf'] ?? null) ? self::unset($data['acf'], [$spec['wp']['metaPrefix'] . $col, $spec['wp']['metaPrefix'] . $col . '_source']) : null,
             };
@@ -667,7 +752,7 @@ final class CoreAccess
     {
         $spec = self::schema()->collection($collection);
         $data = [];
-        foreach (['title' => $spec['title'] ?? null, 'content' => $spec['content'] ?? null, 'slug' => $spec['slug'] ?? null] as $param => $col) {
+        foreach (['title' => $spec['title'] ?? null, 'content' => $spec['content'] ?? null, 'slug' => $spec['slug'] ?? null, 'excerpt' => $spec['excerpt'] ?? null] as $param => $col) {
             if ($col !== null && $request->has_param($param)) {
                 $v = $request->get_param($param);
                 $data[$col] = is_array($v) ? ($v['raw'] ?? null) : $v;

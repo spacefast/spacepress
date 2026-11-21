@@ -177,21 +177,11 @@ export interface ColumnBuilder<
     this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     fn: () => GeneratedValue<TKind, TData>,
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
-  /** Alias of `$default`. */
-  $defaultFn(
-    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
-    fn: () => GeneratedValue<TKind, TData>,
-  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /**
    * Computed in PHP on update (`() => new Date()` on a timestamp means "now").
    * Like Drizzle, it also counts as a default for inserts. Not allowed on sub-fields.
    */
   $onUpdate(
-    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
-    fn: () => GeneratedValue<TKind, TData>,
-  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
-  /** Alias of `$onUpdate`. */
-  $onUpdateFn(
     this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     fn: () => GeneratedValue<TKind, TData>,
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
@@ -407,6 +397,30 @@ export interface CommentOptions {
   types?: readonly [];
 }
 
+/** Admin presentation options for a collection or table. */
+export interface KindUi<TCol extends string = string> {
+  /** Icon name (e.g. `"post"`, `"page"`, `"table"`, `"store"`, `"globe"`) or a `dashicons-*` name. */
+  icon?: string;
+  /** Singular label used on create buttons (e.g. `"Doc"` → `"New Doc"`). */
+  singularLabel?: string;
+  /** Short subtitle shown under the collection title in TypedPress Admin. */
+  description?: string;
+  /** Optional sidebar section/group override. */
+  group?: string;
+  /** Default visible columns in the admin table view (excluding the primary title column). */
+  defaultColumns?: readonly TCol[];
+  /** Hide this kind from the default admin sidebar (route remains accessible). */
+  hidden?: boolean;
+}
+
+/** Admin presentation options for a global. */
+export interface GlobalUi {
+  icon?: string;
+  description?: string;
+  group?: string;
+  hidden?: boolean;
+}
+
 /** Options shared by the `collection()` signatures; `T` is the collection being defined. */
 export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Physical resource name, without prefixes. Defaults to the registry key in snake_case.
@@ -427,6 +441,8 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   agents?: boolean;
   /** Shown in wp-admin menus and the typed client docs. */
   label?: string;
+  /** Admin presentation options (icon, singularLabel, description, group, defaultColumns, hidden). */
+  ui?: KindUi<keyof ColumnsOf<T> & string>;
   /**
    * The item URL, one pattern for incoming URLs and outgoing links: `"/blog/:slug"`. It starts with a
    * literal segment. Placeholders are `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required
@@ -466,14 +482,14 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
 }
 
 /** Metadata every collection carries alongside its column references. */
-export type StorageKind = "collection" | "table" | "userProjection" | "taxonomy";
+export type StorageKind = "collection" | "table" | "userProjection" | "taxonomy" | "product" | "order";
 
 export interface CollectionMeta<TName extends string, TCols extends ColumnsConfig, TAuth extends boolean = false, TStorage extends StorageKind = StorageKind> {
   readonly [collectionBrand]: { columns: TCols; auth: TAuth; storage: TStorage };
   /** Row type returned by queries. */
   readonly $inferSelect: SelectShape<TCols>;
   /** Shape accepted by `db.insert(...).values(...)`. */
-  readonly $inferInsert: ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
+  readonly $inferInsert: TStorage extends "order" ? never : ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
   /**
    * Hooks on this kind (spec §2.8), in the file that declares it. Returns the kind, so calls chain;
    * several handlers for one event run in order.
@@ -583,6 +599,46 @@ export declare function userProjection<TCols extends ColumnsConfig, TUid extends
   options?: NoInfer<CollectionOptions<Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">>> & { drafts?: false; revisions?: false; uid?: TUid },
 ): Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">;
 
+/** The fields every `wp.posts` kind has, stored in the post itself. `slug` follows `title` until set. */
+type PostColumns = {
+  title: ColumnBuilder<"text", string, true, false>;
+  slug: ColumnBuilder<"slug", string, true, true>;
+  content: ColumnBuilder<"richText", string, false, false>;
+  excerpt: ColumnBuilder<"text", string, false, false>;
+};
+/** An authored field may not take a name posts already have. */
+type PostFields = ColumnsConfig & { [K in keyof PostColumns | keyof DraftColumns | "id"]?: never };
+type PostKind<TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined> =
+  Collection<string, StoredColumns<PostColumns & TCols, TUid, TSync> & DraftColumns>;
+/** Options a `wp.posts` kind takes: comments are on unless `comments: false`. */
+type PostOptions<T extends AnyCollection> = Pick<CollectionOptions<T>, "url" | "comments" | "access" | "label" | "ui" | "sync" | "uid" | "agents" | "api" | "staged">;
+
+/**
+ * WordPress's own kinds. `wp.posts` is WordPress's posts: the block editor, comments, drafts, revisions,
+ * categories and tags are WordPress's, and its capabilities decide who writes; `access` only narrows them.
+ */
+export declare const wp: {
+  readonly posts: {
+    /**
+     * WordPress's posts with the app's fields (post meta `tp_<field>`), exported as `posts`:
+     * `export const posts = wp.posts.extend({ cover: media().optional() }, { url: "/blog/:slug" })`.
+     * `url` is required: it is each post's address, through WordPress's `post_link`.
+     */
+    extend<TCols extends PostFields = {}, TSync extends string | undefined = undefined>(
+      fields: TCols,
+      options: NoInfer<PostOptions<PostKind<TCols, TSync extends string ? true : false, TSync>>> & { url: `/${string}`; sync?: TSync },
+    ): PostKind<TCols, TSync extends string ? true : false, TSync>;
+    /**
+     * Another kind shaped like posts, with its own rows (post type `tp_<name>`): title, slug, content,
+     * excerpt, comments, drafts and revisions, plus the given fields.
+     */
+    clone<TCols extends PostFields = {}, TSync extends string | undefined = undefined>(
+      fields: TCols,
+      options?: NoInfer<PostOptions<PostKind<TCols, TSync extends string ? true : false, TSync>>> & { sync?: TSync; storageName?: string },
+    ): PostKind<TCols, TSync extends string ? true : false, TSync>;
+  };
+};
+
 /** A term's own fields (docs/decisions/2026-11-11-authoring-surface.md, ruling 27). */
 type TermColumns<THierarchical extends boolean> = {
   name: ColumnBuilder<"text", string, true, false>;
@@ -598,6 +654,9 @@ type TermFields = Record<string, ColumnBuilder<TermFieldKind, any, boolean, bool
 
 /** `taxonomy()` options (rulings 25-32). */
 export interface TaxonomyOptions<T extends AnyCollection = AnyCollection, THierarchical extends boolean = boolean> {
+  /** Markdown/JSON source with persistent term UIDs, using the normal seed and sync workflow. */
+  sync?: string;
+  agents?: boolean;
   /** Stored as `tp_<storageName>`: at most 26 characters. Defaults to the export name in snake_case. */
   storageName?: string;
   /** Shown in wp-admin. */
@@ -615,10 +674,10 @@ export interface TaxonomyOptions<T extends AnyCollection = AnyCollection, THiera
 }
 
 /** A taxonomy: terms in WordPress's term tables, with term meta fields, attached to collections. */
-export declare function taxonomy<TFields extends TermFields = {}, THierarchical extends boolean = false>(
+export declare function taxonomy<TFields extends TermFields = {}, THierarchical extends boolean = false, TSync extends string | undefined = undefined>(
   fields?: TFields,
-  options?: NoInfer<TaxonomyOptions<Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">>> & { hierarchical?: THierarchical },
-): Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">;
+  options?: NoInfer<TaxonomyOptions<Collection<string, WithId<TFields> & TermColumns<THierarchical> & IdentityColumns<false, TSync>, false, "taxonomy">>> & { hierarchical?: THierarchical; sync?: TSync },
+): Collection<string, WithId<TFields> & TermColumns<THierarchical> & IdentityColumns<false, TSync>, false, "taxonomy">;
 
 /**
  * An item's terms of `taxonomy`: the term ids in write order (`[]` when none), kept as WordPress's
@@ -794,16 +853,57 @@ export interface NestedQueryConfig<
 
 type RelationKind<R> = R extends { readonly [relationBrand]: { kind: infer K } } ? K : never;
 
+/** The `media()` and `file()` columns of kind `K`: `with` puts each one's row in place of its id. */
+type LoadableColumns<TSchema extends Schema, K extends keyof TSchema> = ColumnsOfKind<ColumnsOf<TSchema[K]>, "media" | "mediaList" | "file">;
+
 export type WithConfig<TSchema extends Schema, TRels, K extends keyof TSchema> = {
-  [R in keyof RelationsOf<TRels, K>]?:
-    | boolean
-    | NestedQueryConfig<
-        TSchema,
-        TRels,
-        TargetOf<RelationsOf<TRels, K>[R]> & keyof TSchema,
-        RelationKind<RelationsOf<TRels, K>[R]> & ("one" | "many")
-      >;
+  [R in keyof RelationsOf<TRels, K> | LoadableColumns<TSchema, K>]?: R extends keyof RelationsOf<TRels, K>
+    ?
+        | boolean
+        | NestedQueryConfig<
+            TSchema,
+            TRels,
+            TargetOf<RelationsOf<TRels, K>[R]> & keyof TSchema,
+            RelationKind<RelationsOf<TRels, K>[R]> & ("one" | "many")
+          >
+    : boolean;
 };
+
+/** A media item, as `with: { cover: true }` loads it in place of a `media()` column's id. */
+export interface MediaRow {
+  id: number;
+  url: string;
+  mime: string;
+  size: number;
+  width: number | null;
+  height: number | null;
+  alt: string | null;
+  filename: string;
+  createdAt: string;
+  /** The sizes `media.sizes` in `defineConfig` names; empty for a file that is no image. */
+  sizes: Record<string, { url: string; width: number; height: number }>;
+}
+
+/** A private file, as `with` loads it in place of a `file()` column's id. `url` is signed and valid for five minutes. */
+export interface FileRow {
+  id: number;
+  bucket: string;
+  filename: string;
+  mime: string;
+  size: number;
+  ownerId: number | null;
+  createdAt: string;
+  url: string;
+}
+
+/** What `with` puts in place of a media or file column. A file stays its id for a visitor the bucket's read rule refuses. */
+type LoadedColumn<C> = ColumnKindOf<C> extends "mediaList"
+  ? MediaRow[]
+  : ColumnKindOf<C> extends "media"
+    ? MediaRow | (ColumnNotNull<C> extends true ? never : null)
+    : ColumnKindOf<C> extends "file"
+      ? FileRow | number | (ColumnNotNull<C> extends true ? never : null)
+      : never;
 
 type TrueKeys<T> = { [K in keyof T]-?: T[K] extends true ? K : never }[keyof T];
 type FalseKeys<T> = { [K in keyof T]-?: T[K] extends false ? K : never }[keyof T];
@@ -831,7 +931,9 @@ type WithResult<TSchema extends Schema, TRels, K extends keyof TSchema, TWith> =
     K
   >
     ? RelationResult<TSchema, TRels, RelationsOf<TRels, K>[W], TWith[W]>
-    : never;
+    : W extends keyof ColumnsOf<TSchema[K]>
+      ? LoadedColumn<ColumnsOf<TSchema[K]>[W]>
+      : never;
 };
 
 /** One row of `db.query.<K>` given its `columns` and `with`. */
@@ -1186,6 +1288,7 @@ export declare function global<TFields extends FieldsConfig>(
   fields: TFields,
   options?: {
     label?: string;
+    ui?: GlobalUi;
     agents?: boolean;
     access?: { read?: GateRule<never>; update?: GateRule<Partial<SelectShape<TFields>>> };
   },
@@ -1201,8 +1304,11 @@ export interface ConfigInput<TLocales extends LocalesConfig = LocalesConfig> {
   webhooks?: Webhook[];
   /** Private native forms, queued mail, publication search and server-priced checkout. */
   services?: ServicesConfig;
+  /** Import synced content when the standalone plugin starts. Existing editorial content is preserved. */
+  seed?: boolean;
   uploads?: UploadsConfig;
   media?: { sizes?: Record<string, { width: number; height?: number; fit?: "cover" | "inside" }> };
+  /** Turned off for now: setting it fails the build. */
   locales?: TLocales;
   /** Build-only WordPress plugin dependencies. */
   plugins?: Readonly<Record<string, WordPressPlugin>>;
@@ -1361,7 +1467,7 @@ interface ScreenBase<TActions extends readonly AnyAction[]> {
   /** Where wp-admin lists it (`parent`: a menu slug such as `"tools.php"`); `false` keeps it out of wp-admin. */
   classic?: false | { parent?: string; icon?: string; position?: number };
   /** Where TypedPress Admin's sidebar lists it; `false` keeps it out (its route still works). */
-  menu?: false | { parent?: string; icon?: string };
+  menu?: false | { parent?: string; icon?: string; section?: string };
   /** Item actions, each one a TypedPress action run as its Ability. */
   actions?: { [K in keyof TActions]: ScreenAction<TActions[K]> };
   /** Fixed lines shown above the body. */
@@ -1389,6 +1495,82 @@ export declare function adminScreen<
   const TActions extends readonly AnyAction[] = [],
   TSubmit extends AnyAction = AnyAction,
 >(definition: AdminScreenDefinition<F, TSource, TActions, TSubmit>): AdminScreen;
+
+declare const widgetBrand: unique symbol;
+declare const dashboardBrand: unique symbol;
+
+/** An `adminWidget()` value: registered by its export and placeable on any admin dashboard. */
+export interface AdminWidget { readonly [widgetBrand]: true }
+
+/** An `adminDashboard()` value: registered by its export as a custom dashboard or Home layout. */
+export interface AdminDashboard { readonly [dashboardBrand]: true }
+
+/** Built-in SpacePress / TypedPress dashboard widget types. */
+export type BuiltinWidgetId =
+  | "tp/content-overview"
+  | "tp/recent-activity"
+  | "tp/drafts-queue"
+  | "tp/app-status"
+  | "tp/store-pulse";
+
+export interface WidgetMetric {
+  id?: string;
+  label: string;
+  /** Dot path into the readonly action's response (e.g. `"totals.orders"`). */
+  path: string;
+  format?: "number" | "currency" | "percent" | "text";
+}
+
+export interface WidgetField {
+  label?: string;
+  type?: "text" | "integer" | "number" | "boolean" | "datetime";
+  description?: string;
+}
+
+export type AdminWidgetDefinition<A extends AnyAction = AnyAction> = ScreenAccess & {
+  title: string;
+  description?: string;
+  info?: string;
+  /** A `readonly: true` action that supplies the widget's data. */
+  action: A;
+  input?: ActionInputOf<A>;
+  display?: "metrics" | "list" | "table" | "summary";
+  /** Dot path to the list rows in the action's response (for `list` / `table` widgets). */
+  items?: string;
+  fields?: Record<string, WidgetField>;
+  metrics?: readonly WidgetMetric[];
+  /** Default grid column span (1–4). */
+  width?: 1 | 2 | 3 | 4;
+  /** Default grid row span (1–4). */
+  height?: 1 | 2 | 3 | 4;
+  link?: { label: string; to: string };
+};
+
+/** Declare a reusable dashboard widget backed by a readonly action. */
+export declare function adminWidget<A extends AnyAction>(definition: AdminWidgetDefinition<A>): AdminWidget;
+
+export type DashboardWidgetPlacement =
+  | AdminWidget
+  | BuiltinWidgetId
+  | {
+      widget: AdminWidget | BuiltinWidgetId;
+      width?: 1 | 2 | 3 | 4;
+      height?: 1 | 2 | 3 | 4;
+      fullWidth?: boolean;
+    };
+
+export type AdminDashboardDefinition = ScreenAccess & {
+  title: string;
+  description?: string;
+  /** Set `home: true` to customize the default Home (`/`) dashboard instead of adding a new route. */
+  home?: boolean;
+  /** Where TypedPress Admin's sidebar lists it; `false` hides it from the sidebar. */
+  menu?: false | { icon?: string; section?: string };
+  widgets: readonly [DashboardWidgetPlacement, ...DashboardWidgetPlacement[]];
+};
+
+/** Declare a custom admin dashboard (or override the default Home dashboard with `home: true`). */
+export declare function adminDashboard(definition: AdminDashboardDefinition): AdminDashboard;
 
 declare const pluginBrand: unique symbol;
 /** A plugin package's definition: `export default (options) => definePlugin({ ... })`. */
@@ -1470,26 +1652,37 @@ export type JobsApi = [RegisteredJobs] extends [never]
 export declare const jobs: JobsApi;
 export declare function once<T>(key: string, fn: () => Awaitable<T>): Promise<T>;
 
-export type MailAddress = string | { email: string; name?: string };
+export type MailAddress = string | { email: string; name?: string | null };
+/**
+ * An optional field may be left out, `undefined` or `null`; all three send without it. An optional
+ * column reads as `string | null`, so `replyTo: settings.replyTo` needs no conversion.
+ */
 export interface MailMessage {
-  /** Defaults to `noreply@` the site's host. On Spacefast it must use the Space's sending domain. */
-  from?: MailAddress;
+  /**
+   * Defaults to `noreply@` the site's host (or `TP_MAIL_SENDER_DOMAIN`). On Spacefast it must use
+   * the Space's sending domain. A local site on `127.0.0.1` or `localhost` sends as
+   * `noreply@typedpress.localhost`.
+   */
+  from?: MailAddress | null;
   to: MailAddress | MailAddress[];
   subject: string;
-  text?: string;
-  html?: string;
-  cc?: MailAddress | MailAddress[];
-  bcc?: MailAddress | MailAddress[];
-  replyTo?: MailAddress;
-  headers?: Record<string, string>;
+  text?: string | null;
+  html?: string | null;
+  cc?: MailAddress | MailAddress[] | null;
+  bcc?: MailAddress | MailAddress[] | null;
+  replyTo?: MailAddress | null;
+  headers?: Record<string, string> | null;
 }
 /**
  * Email from hooks, actions, routes and jobs. `send` queues the message in the handler's
  * transaction and hands it to the site's mail transport after commit, retrying a refusal; a
- * rollback sends nothing. It resolves to the queued delivery's id.
+ * rollback sends nothing. It resolves to the queued delivery's id. `render` turns a React Email
+ * template from `emails/` into the `html` and `text` a message carries.
  */
 export declare const mail: {
   send(message: MailMessage): Promise<{ id: string }>;
+  /** The HTML and plain text of an `emails/` template's default export, rendered with `props`. */
+  render<P>(template: (props: P) => unknown, props: P): { html: string; text: string };
 };
 
 export interface EnvValue { readonly [envBrand]: true }
@@ -1543,3 +1736,81 @@ export type WordPressPlugin = string | ({
       sha256: string;
     }
 ));
+
+/** Native WooCommerce runtime. Source owns only the declared store keys. */
+export interface StoreOptions {
+  currency: string;
+  country: string;
+  address?: { line1: string; line2?: string; city: string; postcode: string };
+  sellTo?: "all" | readonly string[];
+  units?: { weight: "kg" | "g" | "lbs" | "oz"; dimension: "m" | "cm" | "mm" | "in" | "yd" };
+  shipping?: readonly { name: string; countries: readonly string[] | "rest"; methods: readonly (
+    { type: "flatRate"; title: string; cost: string } |
+    { type: "freeShipping"; title: string; minimum?: string } |
+    { type: "localPickup"; title: string; cost?: string }
+  )[] }[];
+  payments?: readonly string[];
+  email?: { fromName: string; fromAddress: string };
+  checkout?: `/${string}`;
+}
+declare const storeBrand: unique symbol;
+export interface CommerceStore { readonly [storeBrand]: true }
+export declare function store(options: StoreOptions): CommerceStore;
+export interface CommerceOptions { sync?: string; url?: `/${string}`; agents?: boolean; label?: string; api?: false | { list?: boolean; get?: boolean; create?: boolean; update?: boolean; delete?: boolean } }
+type ProductColumns = {
+  uid: ColumnBuilder<"text", string, true, true>;
+  name: ColumnBuilder<"text", string, true, false>;
+  slug: ColumnBuilder<"slug", string, true, true>;
+  description: ColumnBuilder<"richText", string, true, true>;
+  shortDescription: ColumnBuilder<"text", string, false, false>;
+  sku: ColumnBuilder<"text", string, false, false>;
+  status: ColumnBuilder<"text", "draft" | "pending" | "scheduled" | "published" | "private", true, true>;
+  price: ColumnBuilder<"text", string, false, false>;
+  images: ColumnBuilder<"mediaList", number[], true, true>;
+  categories: ColumnBuilder<"refList", number[], true, true>;
+  tags: ColumnBuilder<"refList", number[], true, true>;
+  virtual: ColumnBuilder<"boolean", boolean, true, true>;
+  downloadable: ColumnBuilder<"boolean", boolean, true, true>;
+  downloads: ColumnBuilder<"json", { id: string; name: string; file: string }[], true, true>;
+  type: ColumnBuilder<"text", string, true, true>;
+  purchasable: ColumnBuilder<"boolean", boolean, true, true>;
+  availability: ColumnBuilder<"text", string, true, true>;
+  url: ColumnBuilder<"text", string, false, true>;
+};
+export declare function product(options?: CommerceOptions): Collection<string, WithId<ProductColumns>, false, "product">;
+export declare function productCategory(options?: CommerceOptions): Collection<string, WithId<TermColumns<true> & { uid: ColumnBuilder<"text", string, true, true> }>, false, "taxonomy">;
+export declare function productTag(options?: CommerceOptions): Collection<string, WithId<TermColumns<false> & { uid: ColumnBuilder<"text", string, true, true> }>, false, "taxonomy">;
+export interface OrderAddress {
+  first_name: string; last_name: string; company: string; address_1: string; address_2: string;
+  city: string; state: string; postcode: string; country: string; email?: string; phone?: string;
+}
+export interface OrderLine {
+  id: number; name: string; product: number; variation: number | null; quantity: number;
+  subtotal: string; subtotalTax: string; total: string; totalTax: string;
+  taxes: { total: Record<string, string>; subtotal: Record<string, string> };
+}
+export declare function order(options?: Pick<CommerceOptions, "agents" | "label"> & { api?: false | { list?: boolean; get?: boolean } }): Collection<string, WithId<{
+  status: ColumnBuilder<"text", string, true, true>;
+  currency: ColumnBuilder<"text", string, true, true>;
+  total: ColumnBuilder<"text", string, true, true>;
+  subtotal: ColumnBuilder<"text", string, true, true>;
+  discountTotal: ColumnBuilder<"text", string, true, true>;
+  shippingTotal: ColumnBuilder<"text", string, true, true>;
+  taxTotal: ColumnBuilder<"text", string, true, true>;
+  precision: ColumnBuilder<"integer", number, true, true>;
+  createdAt: ColumnBuilder<"timestamp", string, true, true>;
+  updatedAt: ColumnBuilder<"timestamp", string, true, true>;
+  paidAt: ColumnBuilder<"timestamp", string, false, true>;
+  completedAt: ColumnBuilder<"timestamp", string, false, true>;
+  customer: ColumnBuilder<"integer", number, false, true>;
+  paymentMethod: ColumnBuilder<"text", string, true, true>;
+  paymentTitle: ColumnBuilder<"text", string, true, true>;
+  billing: ColumnBuilder<"json", OrderAddress, true, true>;
+  shipping: ColumnBuilder<"json", OrderAddress, true, true>;
+  lines: ColumnBuilder<"json", OrderLine[], true, true>;
+  shippingLines: ColumnBuilder<"json", { id: number; name: string; method_id: string; instance_id: string; total: string; total_tax: string; taxes: unknown }[], true, true>;
+  taxLines: ColumnBuilder<"json", { id: number; name: string; rate_id: number; label: string; compound: boolean; tax_total: string; shipping_tax_total: string }[], true, true>;
+  feeLines: ColumnBuilder<"json", { id: number; name: string; total: string; total_tax: string; taxes: unknown }[], true, true>;
+  couponLines: ColumnBuilder<"json", { id: number; name: string; code: string; discount: string; discount_tax: string }[], true, true>;
+  refunds: ColumnBuilder<"json", { id: number; amount: string; reason: string; createdAt: string }[], true, true>;
+}>, false, "order">;

@@ -3,26 +3,23 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Platform journal · TypedPress</title>
 <style>
-:root{font:18px/1.6 system-ui;color:#192b28;background:#f6f4ed}body{max-width:1050px;margin:auto;padding:50px 24px}header{border-bottom:2px solid #192b28;padding-bottom:35px}h1{font:clamp(40px,7vw,88px)/1.05 Georgia;max-width:700px;margin:24px 0}nav{display:flex;gap:24px;flex-wrap:wrap}a{color:inherit;text-underline-offset:5px}button,select{font:inherit;padding:8px 16px;border:1px solid #192b28;background:transparent;border-radius:5px}#stories{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:32px;margin-top:40px}article{border-top:1px solid;padding-top:16px}article img{width:100%;height:180px;object-fit:cover}h2{font:32px/1.2 Georgia}small{color:#51645d}#detail{max-width:740px}blockquote{border-left:3px solid;padding-left:20px}
+:root{font:18px/1.6 system-ui;color:#192b28;background:#f6f4ed}body{max-width:1050px;margin:auto;padding:50px 24px}header{border-bottom:2px solid #192b28;padding-bottom:35px}h1{font:clamp(40px,7vw,88px)/1.05 Georgia;max-width:700px;margin:24px 0}nav{display:flex;gap:24px;flex-wrap:wrap}a{color:inherit;text-underline-offset:5px}button{font:inherit;padding:8px 16px;border:1px solid #192b28;background:transparent;border-radius:5px}#stories{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:32px;margin-top:40px}article{border-top:1px solid;padding-top:16px}article img{width:100%;height:180px;object-fit:cover}h2{font:32px/1.2 Georgia}small{color:#51645d}#detail{max-width:740px}blockquote{border-left:3px solid;padding-left:20px}
 </style>
-<header><nav><a href="?">Platform journal</a><a href="/wp-admin/">WordPress</a><a href="/wp-admin/new/">TypedPress admin</a><select id="locale" aria-label="Language"><option value="en">English</option><option value="fr">Français</option></select></nav><h1>Stories that keep their shape.</h1><p>A working journal: native editing, connected records and two languages.</p></header>
+<header><nav><a href="?">Platform journal</a><a href="/wp-admin/">WordPress</a><a href="/wp-admin/new/">TypedPress admin</a></nav><h1>Stories that keep their shape.</h1><p>A working journal: native editing and connected records.</p></header>
 <main><p id="status" role="status">Loading published stories…</p><section id="stories"></section><section id="detail"></section></main>
 <script type="module">
 const query = new URLSearchParams(location.search);
-const locale = document.querySelector('#locale');
-locale.value = query.get('locale') || 'en';
-locale.addEventListener('change', () => { query.set('locale',locale.value); query.delete('id'); location.search=query.toString(); });
 const text = (tag, value) => { const el=document.createElement(tag); el.textContent=value; return el; };
 async function read(path) { const response=await fetch('/__tp/api/v1'+path); const value=await response.json(); if(!response.ok) throw Error(value.detail || 'Could not load stories'); return value.data; }
 try {
  const id=query.get('id');
- const rows=id ? [await read('/stories/'+encodeURIComponent(id)+'?locale='+locale.value+'&with=writerId,cover')] : await read('/stories?locale='+locale.value+'&with=writerId,cover');
+ const rows=id ? [await read('/stories/'+encodeURIComponent(id)+'?with=writerId,cover')] : await read('/stories?with=writerId,cover');
  document.querySelector('#status').textContent=rows.length ? '' : 'No published stories yet. Create one in WordPress or TypedPress admin.';
  for (const story of rows) {
   const article=document.createElement('article');
   if(story.cover?.url){const image=document.createElement('img'); image.src=story.cover.sizes?.wide?.url || story.cover.url; image.alt=story.cover.alt || '';article.append(image);}
   article.append(text('small',story.writerId?.name || 'The journal'));
-  const link=text('a',story.title);link.href='?'+new URLSearchParams({locale:locale.value,id:story.id});const heading=document.createElement('h2');heading.append(link);article.append(heading);
+  const link=text('a',story.title);link.href='?'+new URLSearchParams({id:story.id});const heading=document.createElement('h2');heading.append(link);article.append(heading);
   if(story.details?.subtitle)article.append(text('p',story.details.subtitle));
   if(id){ const body=document.createElement('div');body.innerHTML=story.body || '';article.append(body);for(const section of story.sections || []){article.append(text(section.layout==='quote'?'blockquote':'h3',section.text || section.heading || ''));}for(const item of story.links || []) {const a=text('a',item.label);if(/^https?:\/\//.test(item.href)){a.href=item.href;article.append(a,document.createElement('br'));}} }
   document.querySelector(id?'#detail':'#stories').append(article);

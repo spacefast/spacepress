@@ -62,7 +62,7 @@ for (const name of selected) {
     const admin = `admin:${password("admin")}`;
     const other = `other:${password("other")}`;
     const run = spawnSync(process.execPath, [join(project, verifiers[name])], {
-      stdio: "inherit", timeout: 15 * 60_000,
+      stdio: ["ignore", "inherit", "inherit"], timeout: 15 * 60_000,
       env: { ...process.env, TP_BIN: binary, TP_SITE: site, TP_TEST_URL: site, TP_AUTH: admin, TP_OTHER_AUTH: other, TP_APP_PASSWORD: admin, TP_OTHER_APP_PASSWORD: other },
     });
     status = run.status ?? 1;
@@ -76,6 +76,7 @@ for (const name of selected) {
   console.log(`=== ${name}: ${status === 0 ? "ok" : "FAILED"}`);
   if (status !== 0) failed.push(name);
 }
+
 if (failed.length) {
   console.error(`\n${failed.length} example(s) failed: ${failed.join(", ")}`);
   process.exit(1);

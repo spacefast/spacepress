@@ -13,7 +13,18 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('route-pages', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor']]);
+$site = wpSite('route-pages', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor'], 'muPlugins' => [
+    'query-warnings' => <<<'PHP'
+        <?php
+        // A theme's post loop must work with the main query supplied by the app router.
+        set_error_handler(static function (int $level, string $message, string $file, int $line): bool {
+            if ($level === E_WARNING && str_ends_with($file, '/class-wp-query.php')) {
+                throw new ErrorException($message, 0, $level, $file, $line);
+            }
+            return false;
+        });
+        PHP,
+]]);
 // A page an editor made before the app existed, at no route's address.
 wp_set_current_user(1);
 $native = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Native', 'post_name' => 'native']);
@@ -81,12 +92,12 @@ $get = static function (string $path) use ($url): array {
 [$status, $location] = $get('/?page_id=' . $codePages['(site)/about']);
 $out['page_id redirect'] = [$status, $location];
 $out['slug redirect'] = array_slice($get('/typedpress-home/'), 0, 2);
-$out['about'] = $get('/about')[0];
+$out['about'] = $get('/about/')[0];
 $out['native'] = $get('/native/')[0];
 $out['sitemap pages'] = substr_count($get('/wp-sitemap-posts-page-1.xml')[2], '<loc>');
 $out['sitemap app'] = substr_count($get('/wp-sitemap-typedpress-app-pages-1.xml')[2], '<loc>');
 // The route renders with its Page as the queried object, as the page template would.
-$out['body class'] = (bool) preg_match('/<body class="[^"]*\bpage-id-' . $codePages['(site)/about'] . '\b/', $get('/about')[2]);
+$out['body class'] = (bool) preg_match('/<body class="[^"]*\bpage-id-' . $codePages['(site)/about'] . '\b/', $get('/about/')[2]);
 $out['home body class'] = (bool) preg_match('/<body class="[^"]*\bhome\b[^"]*"/', $get('/')[2]);
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

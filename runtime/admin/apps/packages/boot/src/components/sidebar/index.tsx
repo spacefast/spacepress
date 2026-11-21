@@ -20,6 +20,84 @@ import { ErrorBoundary } from '../error-boundary';
 import './style.scss';
 import MetaMenu from '../meta-menu';
 
+const CANONICAL_SECTION_ORDER = [
+	'home',
+	'content',
+	'commerce',
+	'data',
+	'site',
+	'extensions',
+];
+
+const CANONICAL_SECTION_LABELS: Record< string, string > = {
+	content: __( 'Content', 'typedpress-admin' ),
+	commerce: __( 'Commerce', 'typedpress-admin' ),
+	data: __( 'Data', 'typedpress-admin' ),
+	site: __( 'Site', 'typedpress-admin' ),
+	extensions: __( 'Extensions', 'typedpress-admin' ),
+	system: __( 'System', 'typedpress-admin' ),
+};
+
+function formatSectionLabel( key: string, explicitLabel?: string ): string {
+	if ( explicitLabel ) {
+		return explicitLabel;
+	}
+	if ( key in CANONICAL_SECTION_LABELS ) {
+		return CANONICAL_SECTION_LABELS[ key ];
+	}
+	return key
+		.replace( /[-_]+/g, ' ' )
+		.replace( /\b\w/g, ( ch ) => ch.toUpperCase() );
+}
+
+interface SidebarSectionGroup {
+	key: string;
+	label: string | null;
+	items: MenuItem[];
+}
+
+function groupRootItems( items: MenuItem[] ): SidebarSectionGroup[] {
+	const hasAnySection = items.some( ( item ) => Boolean( item.section ) );
+	if ( ! hasAnySection ) {
+		return [ { key: 'default', label: null, items } ];
+	}
+
+	const buckets = new Map< string, SidebarSectionGroup >();
+	const customOrder: string[] = [];
+
+	for ( const item of items ) {
+		const rawSection = item.section?.trim() || 'home';
+		const key = rawSection.toLowerCase();
+		if ( ! buckets.has( key ) ) {
+			const label =
+				key === 'home'
+					? null
+					: formatSectionLabel( key, item.sectionLabel );
+			buckets.set( key, { key, label, items: [] } );
+			if (
+				! CANONICAL_SECTION_ORDER.includes( key ) &&
+				key !== 'system'
+			) {
+				customOrder.push( key );
+			}
+		}
+		buckets.get( key )!.items.push( item );
+	}
+
+	const orderedKeys = [
+		...CANONICAL_SECTION_ORDER,
+		...customOrder,
+		'system',
+	];
+
+	return orderedKeys
+		.map( ( key ) => buckets.get( key ) )
+		.filter(
+			( group ): group is SidebarSectionGroup =>
+				group !== undefined && group.items.length > 0
+		);
+}
+
 function Sidebar() {
 	const nudge = useSelect(
 		( select ) => select( tpAdminStore ).getCurrentNudge(),
@@ -79,6 +157,74 @@ function Sidebar() {
 	);
 
 
+	const renderItem = ( item: MenuItem ) => {
+		if ( item.parent_type === 'dropdown' ) {
+			return (
+				<SidebarDropdownItem
+					key={ item.id }
+					id={ item.id }
+					className="typedpress-admin-sidebar-navigation-item"
+					icon={ item.icon }
+					badge={ item.badge }
+					shouldShowPlaceholder={ hasRealIcons }
+					isExpanded={ parentDropdownId === item.id }
+					onToggle={ () => handleDropdownToggle( item.id ) }
+				>
+					{ item.label }
+				</SidebarDropdownItem>
+			);
+		}
+
+		if ( item.parent_type === 'drilldown' ) {
+			return (
+				<SidebarDrilldownItem
+					key={ item.id }
+					id={ item.id }
+					icon={ item.icon }
+					badge={ item.badge }
+					shouldShowPlaceholder={ hasRealIcons }
+					onNavigate={ handleNavigate }
+				>
+					{ item.label }
+				</SidebarDrilldownItem>
+			);
+		}
+
+		if ( item.parent_type === 'submenu' ) {
+			return (
+				<SidebarSubmenuItem
+					key={ item.id }
+					id={ item.id }
+					to={ item.to }
+					icon={ item.icon }
+					badge={ item.badge }
+					shouldShowPlaceholder={ hasRealIcons }
+					onNavigate={ handleNavigate }
+					className="typedpress-admin-sidebar-navigation-item"
+				>
+					{ item.label }
+				</SidebarSubmenuItem>
+			);
+		}
+
+		return (
+			<SidebarNavigationItem
+				key={ item.id }
+				to={ item.to }
+				icon={ item.icon }
+				badge={ item.badge }
+				shouldShowPlaceholder={ hasRealIcons }
+			>
+				{ item.label }
+			</SidebarNavigationItem>
+		);
+	};
+
+	const rootSections = useMemo(
+		() => ( parent ? null : groupRootItems( items ) ),
+		[ parent, items ]
+	);
+
 	return (
 		<>
 			<div className="typedpress-admin-sidebar__scrollable">
@@ -92,84 +238,32 @@ function Sidebar() {
 						navigationKey={ navigationKey }
 						onNavigate={ handleNavigate }
 						content={
-							<div role="list">
-								{ items.map( ( item: MenuItem ) => {
-									if ( item.parent_type === 'dropdown' ) {
-										return (
-											<SidebarDropdownItem
-												key={ item.id }
-												id={ item.id }
-												className="typedpress-admin-sidebar-navigation-item"
-												icon={ item.icon }
-												badge={ item.badge }
-												shouldShowPlaceholder={
-													hasRealIcons
-												}
-												isExpanded={
-													parentDropdownId === item.id
-												}
-												onToggle={ () =>
-													handleDropdownToggle(
-														item.id
-													)
-												}
-											>
-												{ item.label }
-											</SidebarDropdownItem>
-										);
-									}
-
-									if ( item.parent_type === 'drilldown' ) {
-										return (
-											<SidebarDrilldownItem
-												key={ item.id }
-												id={ item.id }
-												icon={ item.icon }
-												badge={ item.badge }
-												shouldShowPlaceholder={
-													hasRealIcons
-												}
-												onNavigate={ handleNavigate }
-											>
-												{ item.label }
-											</SidebarDrilldownItem>
-										);
-									}
-
-									if ( item.parent_type === 'submenu' ) {
-										return (
-											<SidebarSubmenuItem
-												key={ item.id }
-												id={ item.id }
-												to={ item.to }
-												icon={ item.icon }
-												badge={ item.badge }
-												shouldShowPlaceholder={
-													hasRealIcons
-												}
-												onNavigate={ handleNavigate }
-												className="typedpress-admin-sidebar-navigation-item"
-											>
-												{ item.label }
-											</SidebarSubmenuItem>
-										);
-									}
-
-									return (
-										<SidebarNavigationItem
-											key={ item.id }
-											to={ item.to }
-											icon={ item.icon }
-											badge={ item.badge }
-											shouldShowPlaceholder={
-												hasRealIcons
-											}
+							rootSections ? (
+								<div className="typedpress-admin-sidebar__sections">
+									{ rootSections.map( ( section ) => (
+										<div
+											key={ section.key }
+											className="typedpress-admin-sidebar__section"
+											data-section={ section.key }
 										>
-											{ item.label }
-										</SidebarNavigationItem>
-									);
-								} ) }
-							</div>
+											{ section.label && (
+												<div className="typedpress-admin-sidebar__section-label">
+													{ section.label }
+												</div>
+											) }
+											<div role="list">
+												{ section.items.map(
+													renderItem
+												) }
+											</div>
+										</div>
+									) ) }
+								</div>
+							) : (
+								<div role="list">
+									{ items.map( renderItem ) }
+								</div>
+							)
 						}
 					/>
 				</div>

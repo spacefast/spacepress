@@ -111,6 +111,12 @@ final class Facade
         if (!defined('REST_REQUEST')) {
             define('REST_REQUEST', true); // core's REST behaviour (auth, caching headers) for the dispatches
         }
+        // Every answer here depends on who asks (PRIVATE). Batcache ignores `Cache-Control` and keeps
+        // what any request without a WordPress cookie printed, so it would replay an anonymous list
+        // after a write, or a signed-in answer to an anonymous visitor.
+        if (function_exists('batcache_cancel')) {
+            batcache_cancel();
+        }
         // WordPress's CORS for the request's origin, as /wp-json sends it (rest_send_cors_headers and
         // the filters on it), and its answer to a preflight.
         $method = self::method();
@@ -347,7 +353,9 @@ final class Facade
         $rows = self::unwrap($response);
         $cursor = self::cursor($offset + $limit, (int) ($response->get_headers()['X-WP-Total'] ?? 0));
 
-        $rows = array_values(array_filter(array_map(static fn (mixed $r): mixed => self::rev($kind, $r), Kinds::rows($kind, $rows)), static fn ($r) => $r !== null));
+        $rows = array_values(array_filter(Kinds::rows($kind, $rows), static fn ($r) => $r !== null));
+        // A post kind's rows carry their live `_rev` ({@see Rev}), read for the whole page at once.
+        $rows = $kind['type'] === 'post' ? Rev::attachAll((string) $kind['name'], $rows) : $rows;
 
         return self::json(200, ['data' => $rows, 'cursor' => $cursor]);
     }

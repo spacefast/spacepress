@@ -73,7 +73,7 @@ $out['list anonymous'] = $site->call('GET', '/prerender')[0];
 $out['list subscriber'] = $site->call('GET', '/prerender', as: 'subscriber')[0];
 
 // Before the prebuild has run, every page renders per request.
-$out['before'] = fetch("$url/about")['prebuilt'];
+$out['before'] = fetch("$url/about/")['prebuilt'];
 // Init schedules the build once; Action Scheduler runs it.
 $out['scheduled'] = as_has_scheduled_action(\TypedPress\Render\Prebuilt::ACTION, null, 'typedpress');
 $out['ran'] = $drain() > 0;
@@ -84,22 +84,22 @@ $out['files'] = array_values(array_map(static fn (string $f): string => substr($
 )));
 sort($out['files']);
 
-$about = fetch("$url/about");
+$about = fetch("$url/about/");
 $out['about'] = [$about['status'], $about['prebuilt'], $about['cache'], $text($about, 'about') !== null, str_contains($about['body'], '<title>About · Prebuilt</title>')];
 $twin = fetch("$url/about.md");
 $out['about.md'] = [$twin['status'], $twin['prebuilt'], $twin['type'], $twin['body']];
-$out['note'] = [fetch("$url/notes/hello")['prebuilt'], $text(fetch("$url/notes/hello"), 'note')];
-$out['tag'] = [fetch("$url/tags/lab%20notes")['prebuilt'], $text(fetch("$url/tags/lab%20notes"), 'tag')];
+$out['note'] = [fetch("$url/notes/hello/")['prebuilt'], $text(fetch("$url/notes/hello/"), 'note')];
+$out['tag'] = [fetch("$url/tags/lab%20notes/")['prebuilt'], $text(fetch("$url/tags/lab%20notes/"), 'tag')];
 // Not prebuilt: per request, as before.
 $out['home'] = fetch("$url/")['prebuilt'];
-$out['live'] = fetch("$url/live")['prebuilt'];
+$out['live'] = fetch("$url/live/")['prebuilt'];
 // A draft is never listed, so never written; it stays a 404 for visitors.
-$out['draft'] = [fetch("$url/notes/secret")['status'], fetch("$url/notes/secret")['prebuilt']];
+$out['draft'] = [fetch("$url/notes/secret/")['status'], fetch("$url/notes/secret/")['prebuilt']];
 // A signed-in visitor, a query string, and a POST all fall through to WordPress.
-$out['signed in'] = fetch("$url/about", [$cookie('chief')])['prebuilt'];
-$out['query'] = fetch("$url/about?utm=x")['prebuilt'];
+$out['signed in'] = fetch("$url/about/", [$cookie('chief')])['prebuilt'];
+$out['query'] = fetch("$url/about/?utm=x")['prebuilt'];
 // A prerender header that isn't this site's is an ordinary request.
-$out['forged'] = fetch("$url/notes/hello", ['X-TypedPress-Prerender: ' . str_repeat('0', 64), $cookie('chief')])['prebuilt'];
+$out['forged'] = fetch("$url/notes/hello/", ['X-TypedPress-Prerender: ' . str_repeat('0', 64), $cookie('chief')])['prebuilt'];
 
 // On-demand regeneration: an edit deletes the note's files at once, so the next visitor gets the
 // new title from WordPress; the action then writes the new files.
@@ -107,11 +107,11 @@ wp_set_current_user(1);
 \TypedPress\db()->update('notes', ['title' => 'Hello again'], ['id' => (int) $hello['id']]);
 $written();
 $site->actAs(null);
-$after = fetch("$url/notes/hello");
+$after = fetch("$url/notes/hello/");
 $out['after write'] = [$after['prebuilt'], $text($after, 'note')];
-$out['about kept'] = fetch("$url/about")['prebuilt'];
+$out['about kept'] = fetch("$url/about/")['prebuilt'];
 $drain();
-$rebuilt = fetch("$url/notes/hello");
+$rebuilt = fetch("$url/notes/hello/");
 $out['rebuilt'] = [$rebuilt['prebuilt'], $text($rebuilt, 'note')];
 // A note published later gets its file from the same action, and unpublishing removes it.
 wp_set_current_user(1);
@@ -119,14 +119,14 @@ $late = \TypedPress\db()->insert('notes', ['title' => 'Late', 'slug' => 'late', 
 $written();
 $site->actAs(null);
 $drain();
-$out['published later'] = fetch("$url/notes/late")['prebuilt'];
+$out['published later'] = fetch("$url/notes/late/")['prebuilt'];
 wp_set_current_user(1);
 \TypedPress\db()->update('notes', ['status' => 'draft'], ['id' => (int) $late['id']]);
 $written();
 $site->actAs(null);
-$out['unpublished'] = [fetch("$url/notes/late")['status'], fetch("$url/notes/late")['prebuilt']];
+$out['unpublished'] = [fetch("$url/notes/late/")['status'], fetch("$url/notes/late/")['prebuilt']];
 $drain();
-$out['unpublished after rebuild'] = [fetch("$url/notes/late")['status'], fetch("$url/notes/late")['prebuilt']];
+$out['unpublished after rebuild'] = [fetch("$url/notes/late/")['status'], fetch("$url/notes/late/")['prebuilt']];
 
 
 // A field stored outside the core post fields: the page read the item, so the write still names it.
@@ -134,37 +134,40 @@ wp_set_current_user(1);
 \TypedPress\db()->update('notes', ['summary' => 'Fresh summary'], ['id' => (int) $hello['id']]);
 $written();
 $site->actAs(null);
-$out['meta field'] = [fetch("$url/notes/hello")['prebuilt'], $text(fetch("$url/notes/hello"), 'summary')];
+$out['meta field'] = [fetch("$url/notes/hello/")['prebuilt'], $text(fetch("$url/notes/hello/"), 'summary')];
 $drain();
-$out['meta field rebuilt'] = [fetch("$url/notes/hello")['prebuilt'], $text(fetch("$url/notes/hello"), 'summary')];
+$out['meta field rebuilt'] = [fetch("$url/notes/hello/")['prebuilt'], $text(fetch("$url/notes/hello/"), 'summary')];
 // A site-wide setting no content write announces: every file goes, and the next build has it.
 update_option('blogname', 'Renamed');
-$out['renamed'] = [fetch("$url/about")['prebuilt'], fetch("$url/notes/hello")['prebuilt']];
+$out['renamed'] = [fetch("$url/about/")['prebuilt'], fetch("$url/notes/hello/")['prebuilt']];
 do_action('init');
 $drain();
-$out['renamed rebuilt'] = fetch("$url/about")['prebuilt'];
+$out['renamed rebuilt'] = fetch("$url/about/")['prebuilt'];
 // A file past MAX_AGE is not served; the next full build replaces it.
 $file = \TypedPress\Render\Prebuilt::dir() . '/about.html';
 touch($file, time() - \TypedPress\Render\Prebuilt::MAX_AGE - 10);
 clearstatcache();
-$out['too old'] = fetch("$url/about")['prebuilt'];
+$out['too old'] = fetch("$url/about/")['prebuilt'];
 // `/index` is not the home page.
 $out['index'] = fetch("$url/index")['prebuilt'];
 // A gate (a private-site plugin) vetoes serving files; the request reaches WordPress.
 file_put_contents($site->content . '/mu-plugins/gate.php', "<?php add_filter('tp_prebuilt_serve', '__return_false');");
-$out['gated'] = fetch("$url/notes/hello")['prebuilt'];
+$out['gated'] = fetch("$url/notes/hello/")['prebuilt'];
 unlink($site->content . '/mu-plugins/gate.php');
 // An expired or reused-past-expiry token is an ordinary request.
-$expired = \TypedPress\Render\Prebuilt::token('/live', time() - 5);
-$live = fetch("$url/live", ['X-TypedPress-Prerender: ' . $expired]);
+$expired = \TypedPress\Render\Prebuilt::token('/live/', time() - 5);
+// An expired token is no prerender: the ordinary page, at its one address.
+$live = fetch("$url/live/", ['X-TypedPress-Prerender: ' . $expired]);
 $out['expired token'] = $live['cache'];
+// The same token, unexpired, for the same path: a prerender, so the expiry is what refused it above.
+$out['unexpired token'] = fetch("$url/live/", ['X-TypedPress-Prerender: ' . \TypedPress\Render\Prebuilt::token('/live/')])['cache'];
 $fresh = fetch("$url/live", ['X-TypedPress-Prerender: ' . \TypedPress\Render\Prebuilt::token('/live')]);
 $out['fresh token'] = $fresh['cache'];
 // A value staticParams no longer lists loses its file at the next build.
 update_option('prebuilt_drop', 'lab notes');
 \TypedPress\Render\Prebuilt::stale(['/tags/lab%20notes']);
 $drain();
-$out['dropped value'] = [is_file(\TypedPress\Render\Prebuilt::dir() . '/tags/lab%20notes.html'), fetch("$url/tags/field")['prebuilt']];
+$out['dropped value'] = [is_file(\TypedPress\Render\Prebuilt::dir() . '/tags/lab%20notes.html'), fetch("$url/tags/field/")['prebuilt']];
 
 // Another spelling of a prebuilt path is not its URL: `/%61bout` renders per request.
 $out['encoded spelling'] = fetch("$url/%61bout")['prebuilt'];
@@ -172,7 +175,7 @@ $out['encoded spelling'] = fetch("$url/%61bout")['prebuilt'];
 update_option('wpcom_public_coming_soon', 1);
 do_action('init');
 $drain();
-$out['coming soon'] = fetch("$url/notes/hello")['prebuilt'];
+$out['coming soon'] = fetch("$url/notes/hello/")['prebuilt'];
 delete_option('wpcom_public_coming_soon');
 // A whole-site purge before any file exists is not an error.
 \TypedPress\Render\Prebuilt::forget();
@@ -181,7 +184,7 @@ $out['purge all, no files'] = true;
 // A render older than a write that named its path is dropped, even inside one batch.
 do_action('init');
 $drain();
-$before = fetch("$url/about")['prebuilt'];
+$before = fetch("$url/about/")['prebuilt'];
 \TypedPress\Render\Prebuilt::stale(['/about']);
 $started = microtime(true) - 5; // as if the render began before the write
 $m = new ReflectionMethod(\TypedPress\Render\Prebuilt::class, 'write');
@@ -194,10 +197,13 @@ $out['race'] = [$before, $written, is_file(\TypedPress\Render\Prebuilt::dir() . 
 // The `.md` URL is served from its file.
 do_action('init');
 $drain();
-$negotiated = fetch("$url/about", ['Accept: text/markdown']);
+$negotiated = fetch("$url/about/", ['Accept: text/markdown']);
 $out['accept markdown'] = [$negotiated['prebuilt'], fetch("$url/about.md")['prebuilt']];
 // More spellings that aren't a prebuilt page's URL: an empty segment, a `.` segment, `/.md`.
-$out['spellings'] = [fetch("$url/notes//hello")['prebuilt'], fetch("$url/./about")['prebuilt'], fetch("$url/.md")['prebuilt']];
+$out['spellings'] = [fetch("$url/notes//hello")['prebuilt'], fetch("$url/./about")['prebuilt'], fetch("$url/.md")['prebuilt'], fetch("$url/about/.md")['prebuilt'], fetch("$url/about//.md")['prebuilt']];
+// The bare spelling of a prebuilt page is never its file: the router redirects it to the page's address.
+$bareAbout = fetch("$url/about");
+$out['bare about'] = [$bareAbout['status'], $bareAbout['prebuilt']];
 // A render that began before a forget() writes no file, and a full build that began before it
 // records nothing, so the next request schedules the build again.
 do_action('init');
@@ -206,6 +212,30 @@ $started = microtime(true) - 5;
 \TypedPress\Render\Prebuilt::forget();
 $m = new ReflectionMethod(\TypedPress\Render\Prebuilt::class, 'write');
 $out['forget race'] = [$m->invoke(null, \TypedPress\Render\Prebuilt::dir() . '/about.html', 'old', '/about', $started), is_file(\TypedPress\Render\Prebuilt::dir() . '/about.html')];
+
+// A loose deployment can replace only a public module and its map, with the same size and mtime.
+// Its prebuilt HTML must still stop sending the old digest in a script URL.
+wp_mkdir_p($dir);
+file_put_contents($dir . '/about.html', $about['body']);
+$cached = fetch("$url/about/");
+$appRoot = \TypedPress\Wp\Runtime::plugin()->dir;
+$asset = $appRoot . '/public/about-module.mjs';
+$map = $appRoot . '/tp/app/public-script-versions.json';
+$prior = hash_file('sha256', $asset);
+$script = str_replace('version = 1', 'version = 2', (string) file_get_contents($asset));
+$next = hash('sha256', $script);
+$mtime = filemtime($map);
+$mapSize = filesize($map);
+file_put_contents($asset, $script);
+file_put_contents($map, str_replace($prior, $next, (string) file_get_contents($map)));
+touch($map, $mtime);
+clearstatcache();
+$updated = fetch("$url/about/");
+$out['public script updated'] = [
+    $cached['prebuilt'], str_contains($cached['body'], 'tpv=' . $prior),
+    filesize($map) === $mapSize && filemtime($map) === $mtime,
+    $updated['status'], $updated['prebuilt'], str_contains($updated['body'], 'tpv=' . $next),
+];
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

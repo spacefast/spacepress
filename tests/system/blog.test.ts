@@ -23,7 +23,7 @@ test("the blog's committed posts sync into a fresh WordPress, once", async () =>
   first("build", project, "--quiet");
   const built = join(project, "tp/dist/wp-content/plugins");
   for (const name of readdirSync(built).filter((n) => !n.endsWith(".zip"))) cpSync(join(built, name), join(wpContent, "plugins", name), { recursive: true });
-  wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "polylang", "typedpress-runtime", "typedpress-identity", "typedpress-app-blog");
+  wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "typedpress-runtime", "typedpress-identity", "typedpress-app-blog");
 
   const check = sync("--check");
   assert.equal(check.status, 2, check.stdout + check.stderr);
@@ -40,9 +40,9 @@ test("the blog's committed posts sync into a fresh WordPress, once", async () =>
   const api = `${receipt.url}/__tp/api/v1`;
   const editor = { Authorization: "Basic " + btoa(`editor:${receipt.users.editor.appPassword}`) };
   const posts = (await (await fetch(`${api}/posts?orderBy=title`, { headers: editor })).json()).data;
-  assert.deepEqual(posts.map((p: { title: string; status: string; locale: string; tags: string[] }) => [p.title, p.status, p.locale, p.tags]), [
-    ["Hello, TypedPress", "published", "en", ["news"]],
-    ["Typed content, plain files", "draft", "en", ["guide"]],
+  assert.deepEqual(posts.map((p: { title: string; status: string; tags: string[] }) => [p.title, p.status, p.tags]), [
+    ["Hello, TypedPress", "published", ["news"]],
+    ["Typed content, plain files", "draft", ["guide"]],
   ]);
   const anon = (await (await fetch(`${api}/posts`)).json()).data;
   assert.deepEqual(anon.map((p: { title: string }) => p.title), ["Hello, TypedPress"]);

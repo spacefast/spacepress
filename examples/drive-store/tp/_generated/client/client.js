@@ -8,7 +8,7 @@ export const SCHEMA = {
 			"primaryKey": "id",
 			"drafts": true,
 			"revisions": true,
-			"localized": true,
+			"localized": false,
 			"relations": {
 				"orders": {
 					"kind": "many",
@@ -74,7 +74,8 @@ export const SCHEMA = {
 	"actions": [
 		"buy",
 		"restock",
-		"markShipped"
+		"markShipped",
+		"pendingOrders"
 	],
 	"buckets": []
 };

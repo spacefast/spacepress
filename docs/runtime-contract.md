@@ -6,7 +6,7 @@ copied verbatim into every build) plus generated files. This document is the
 seam between them. The compiler only emits calls listed here.
 
 Requirements (`Platform::problems()` is the one statement of them; activation
-and `typedpress doctor` both apply it): WordPress 7.2-beta5+ on PHP 8.2+ with the
+and `typedpress doctor` both apply it): WordPress 7.1+ on PHP 8.2+ with the
 `mbstring`, `json` and `gd` extensions (`sodium` for the identity bundle);
 MySQL 8.0+ or MariaDB 10.11+ with every TypedPress table InnoDB, or SQLite through
 SQLite Database Integration 3.1.2+; the pinned platform plugins Secure Custom
@@ -230,6 +230,32 @@ That proof is scoped to the collection and explicit viewer, accepts only rows
 with the matching password, and is suspended/restored across nested requests.
 It does not authorize a later First request or borrow the ambient user's rights.
 
+A signed-in SQL read can skip the scan for protected posts when the object cache
+holds a recent negative result for the post type. The row query still checks
+the stored password. The hint expires after five minutes and uses WordPress's
+`posts` change stamp. TypedPress advances the stamp after committing a post
+write. Reads inside a transaction use the database to check for protected posts.
+Scope checks that must establish unrestricted access also use the database.
+
+## Read budgets
+
+`tests/read_budget.rs` builds drive-store, www, and the shop on WordPress with
+SQLite. It checks the largest count over five successful GETs per route and
+visitor, including anonymous requests and signed-in subscribers. Statements
+equal `$wpdb->num_queries` plus calls to `Wp\Connection::run`. The warm-cache
+run also counts single-key and multi-key object cache reads after two warmups.
+Both cache modes must produce identical response bytes.
+
+With a warm cache, the drive-store item page uses one statement. The docs
+page adds one statement for navigation. The API fixtures use six statements
+for the keys, viewer rows, stored rows, and revision state. A page
+with staged versions can take two more statements for staged data. The shop
+budget covers the seeded catalog and a full page of 24 products.
+
+Set `TP_READ_BUDGET_TRACE=1` to see the statements and cache reads. Set
+`TP_READ_BUDGET_BASELINE` to the path of an extracted `runtime/` directory to
+compare counts and response bytes against that revision on the same fixture.
+
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
 Viewer-bound writes must not answer existence questions about unreadable data.
@@ -327,7 +353,13 @@ Writes made by hooks or actions through `Db` run the same pipeline
 
 Every HTTP request and every CLI command runs in one transaction
 (`START TRANSACTION`, REPEATABLE READ). An exception before the commit rolls
-back every write of the request. Nested runtime transactions join without
+back every write of the request. A `GET` or `HEAD` route handler's transaction
+is opened lazily (`Db::reading()`, `Wp\Connection::reading()`): the database
+is told at the first statement that is not a plain `SELECT`, whether TypedPress,
+core or another plugin sends it, and a locking read (`FOR UPDATE`) counts as
+one. A handler that only reads sends neither `START TRANSACTION` nor `COMMIT`;
+its reads see committed data, as they would outside a transaction. From its
+first write on it is the same transaction as any other, rollback included. Nested runtime transactions join without
 savepoints. Any failed joined operation marks the outer transaction rollback-only,
 even if an application hook catches its exception. Attempting the outer commit
 rolls back all writes, discards after-commit callbacks, and throws. Hooks must let
@@ -355,7 +387,7 @@ rolled the transaction back), every later statement of it and its commit fail.
 A job queued before Action Scheduler is ready (a `wp-hooks` handler on `init`
 at priority 0) commits without an action and gets one once Action Scheduler is
 ready. `Jobs\Runner::recover`, run when the runtime prepares a site and by the
-daily maintenance action, gives each waiting job that has no `tp_job` action
+hourly maintenance action, gives each waiting job that has no `tp_job` action
 of any status one, at most 1000 per run. That covers a request that died before
 Action Scheduler was ready, deleted actions, and the jobs that runtimes before
 this one left in `tp__outbox`. A job whose action an administrator cancelled
@@ -525,7 +557,8 @@ transactions.
 On a plugin-installed site, the checks behind "the first request after an
 update" (the stored-name upgrade, the system tables, the app's migration ledger,
 Action Scheduler groups and recurring actions, route and content Pages, Polylang
-languages, the search index shape, the runtime-schema capability) run until one
+languages, the search index shape, the runtime-schema capability, a store's
+order storage) run until one
 request finds them all in place. That request records the autoloaded option
 `tp_installed` (`Wp\InstallMarker`): a digest of the app, the loaded
 `schema.php`, the system-tables version, the runtime version and hash, the UTC
@@ -752,11 +785,11 @@ The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
   rule returns and draft visibility decide, exactly as for a visitor's
   `posts.list()`. Then an item is listed only when it is published without a
   password, every placeholder of its `url` comes from a field a visitor may read
-  (a `:slug` only editors read lists nothing), and no `tp/app/` page under a
-  layout `guard` serves its address. A file's count, its paging and its entries
+  (a `:slug` only editors read lists nothing), and no guarded `tp/app/` page
+  serves its address. A file's count, its paging and its entries
   come from that one list, so a hidden row adds no file and no page. A kind with
   nothing to list has no file.
-- **App pages** are the ones `/llms.txt` lists (no parameters, no layout
+- **App pages** are the ones `/llms.txt` lists (no parameters, no page or layout
   `guard`, a 200 for a signed-out visitor), less the home page (core lists it)
   and any page whose metadata says `robots: { index: false }`.
 - **Core's home entry** is dated from the newest post the posts file lists
@@ -844,9 +877,10 @@ and on core `/wp/v2/<route>`) and `GET /__tp/api/v1/search` read one index.
 
 After a committed write to public content, the v2 app plugin announces the
 URLs it changed on the host's `tp_purge_urls` action:
-`do_action('tp_purge_urls', list<string> $paths)`. On Spacefast the engine
-listens and purges those URLs from Batcache and the edge. With no listener
-(`has_action` is false), nothing is collected or announced.
+`do_action('tp_purge_urls', list<string> $paths)`. The runtime listens itself
+where a page cache it knows is loaded (below), which on WP Cloud and Spacefast
+is Batcache and the platform's edge. With no listener (`has_action` is false),
+nothing is collected or announced.
 
 - **Writes covered:** posts and pages of public post types (create, update,
   publish, unpublish, trash, delete), term assignments, and term edits and
@@ -871,11 +905,14 @@ listens and purges those URLs from Batcache and the edge. With no listener
 - `Purges::paths(array $urls): list<string>` turns URLs into the announced
   paths, `.md` twins included.
 - **`tp/app/` pages** (`Render\Cache`): an anonymous visitor's 200 render of
-  a page outside any guarded layout sends `Cache-Control: public,
+  a page without page or layout guards sends `Cache-Control: public,
   max-age=0, s-maxage=300, must-revalidate` (the `tp_app_cache_window`
   filter sets the window; `s-maxage` comes after `max-age` because Batcache
-  takes the last `max-age=` in the header as its own window); anything else sends `private, no-store` and calls
-  `batcache_cancel()`. Each cacheable render records the rows it read in
+  takes the last `max-age=` in the header as its own window) and
+  `A8C-Edge-Cache: cache`, the WP Cloud edge's opt-in for a PHP response;
+  anything else sends `private, no-store` with `A8C-Edge-Cache: no-cache` and calls
+  `batcache_cancel()`. `Render\Cache::send()` writes both headers from the one
+  `Cache-Control` value, so they never disagree; other hosts ignore the second. Each cacheable render records the rows it read in
   `tp__app_reads` (kind, row id or `*` for a listing, path with query),
   under the address WordPress links the page at (`/notes/a/` for a visit to
   `/notes/a`): one read of what the path recorded last, and nothing written
@@ -883,8 +920,36 @@ listens and purges those URLs from Batcache and the edge. With no listener
   with inserts of 100 rows each. A committed write to a kind adds every recorded path that read
   that row or listed the kind, with its `.md` twin, to the same announcement
   as the paths above: one `tp_purge_urls` call per committed transaction.
-  The router answers a page with or without its trailing slash, so both
-  spellings are purged. More than 200 paths in that call becomes `/*`, a
+  - **A read is a listing unless it names its rows.** Only a read whose `where`
+    (or the key a relation joins on) holds the primary key to a value or a list
+    of values, and that found every row it named, is recorded as those rows alone;
+    so is the item a kind URL names. A `unique()` column (a slug) names rows the
+    same way, except in a hierarchical kind (a slug is unique per parent) and, in
+    a kind with drafts, for a read that can see drafts (drafts may share a value
+    until one is published; a visitor's read sees published rows only). Every other read (a
+    filter, a search, a rank with `limit`, a count, a relation's children) records
+    `*` beside the rows it returned, whether it returned none, one or many: a
+    filtered list that showed one row is purged when a second row matches. A
+    localized kind's reads are always listings, since a read may answer with
+    another row of the translation group.
+  - **Globals.** A render that reads a global records `global:<name>` with `*`.
+    A write to the global's fields (`db.globals.<name>.update()`, the API, or
+    its options page in wp-admin, all of which save `tp_global_<name>_<field>`
+    options) adds every path that read it to the write's announcement.
+  - **Query strings.** A URL is shared and recorded only when every parameter in
+    its query is one the page declares (`export const search`). A request with
+    any other parameter (`?utm_source=`, `?fbclid=`, `?junk=1`) is answered with
+    the page, `private, no-store` and `A8C-Edge-Cache: no-cache`, calls
+    `batcache_cancel()`, and records nothing; a `.md` twin follows its page's
+    declaration. So a page with no `search` has one cacheable URL. One path keeps
+    at most 20 recorded query variants (`Render\Cache::MAX_VARIANTS`); a further
+    variant is answered privately until a recorded one has gone two cache windows
+    without a render, and is then dropped from the index. A URL longer than the
+    index's 191-byte limit is private too. A host that wants shared pages for
+    tracking parameters strips them before the request reaches PHP.
+  A page answers at that one address only: the router 301s the other
+  spelling of its path (with or without the trailing slash, as the
+  permalink structure says) to it, so one spelling is purged. More than 200 paths in that call becomes `/*`, a
   whole-host purge. Nothing is recorded or announced without a listener.
 - **Prebuilt pages** (`Render\Prebuilt::serve`) open the file once, hash that
   handle in 64 KiB chunks, rewind it and stream it (`fpassthru`), so the `ETag`
@@ -903,14 +968,54 @@ listens and purges those URLs from Batcache and the edge. With no listener
   and gets no prebuilt header.
 - **Page caches the runtime purges itself** (`Wp\PageCaches`): where Batcache
   (`batcache_clear_url()`), the VIP edge cache (`wpvip_purge_edge_cache_for_url()`,
-  or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins) or Jetpack
-  Boost (`jetpack_boost_clear_page_cache_url`) is loaded, the runtime listens on
-  `tp_purge_urls` and clears each path in each of them. Batcache counts only
-  while its drop-in runs (`$batcache` is set). `/*` bans the VIP site and clears
-  Boost's whole cache; a list longer than VIP queues in one request (100) bans
-  the VIP site once instead of each URL. Boost clears a URL recursively, so `/`
-  goes to its home action. Batcache has no whole-site clear, so its entries run
-  out with the window. A host's own listener runs beside these.
+  or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins), Jetpack
+  Boost (`jetpack_boost_clear_page_cache_url`) or the WP Cloud edge
+  (`edge_cache_purge_uris`, which the platform adds on `init` where its purge API
+  is configured) is loaded, the runtime listens on `tp_purge_urls` and clears each
+  path in each of them. The WP Cloud edge gets one call with every absolute URL.
+  Batcache counts only while its drop-in runs (`$batcache` is set). `/*` bans the
+  VIP site, clears Boost's whole cache and purges the WP Cloud edge domain
+  (`edge_cache_purge_domain`); a list longer than VIP queues in one request (100)
+  bans the VIP site once instead of each URL. Boost clears a URL recursively, so
+  `/` goes to its home action. Batcache itself has no whole-site clear, so outside
+  WP Cloud its entries run out with the window; the WP Cloud platform clears the
+  host's Batcache entries before each edge purge it sends. A host's own listener
+  runs beside these.
+- **Deploys:** making a build live (`typedpress push`, or a rollback) announces
+  `/*` once, so every page cache and the edge drop pages the old build rendered.
+- **Viewer cookies:** a request carrying a cookie a render may answer differently
+  for (`wordpress_logged_in_*`, `wordpress_sec_*`, `wp-postpass_*`,
+  `comment_author_*`, `wp_lang`, the Identity session cookie) gets a private page
+  (`Render\Cache::viewerCookie()`), as it gets no prebuilt file. A response that
+  sets a cookie before its headers go out is private too, as Batcache refuses to
+  keep one: a plugin that starts a PHP session on every request (`PHPSESSID`)
+  turns page caching off for the site.
+- **WooCommerce carts:** Woo's cart cookies (`wp_woocommerce_session_*`,
+  `woocommerce_cart_hash`, `woocommerce_items_in_cart`) are not viewer cookies. A guest's
+  GET of an app page renders without them (`Commerce\Module::isolateSharedCart`), so the
+  page is the same bytes with or without a cart, sends the shared policy and sets no
+  cookie; the browser reads the cart from the Store API. The router shares an answer only
+  when the session cookie did not reach Woo on that request (`Commerce\Module::cartSession`),
+  whatever the query string or the spelling of the path. Cart, checkout, receipt,
+  order-pay and account paths, Woo's cart actions in the query string, every Store API
+  (`/wc/store/`) answer, and any response Woo sets a cookie on
+  (`woocommerce_set_cookie_enabled`) are `private, no-store` with `A8C-Edge-Cache:
+  no-cache`; those paths are never prebuilt. A page the theme renders keeps the cart
+  session, and Woo prints cart-dependent prefetch links there, so it is private for a
+  request carrying the session cookie. An external `frontend` origin is answered on
+  `/wc/store/` routes only, without `Access-Control-Allow-Credentials`, and is not added
+  to WordPress's allowed origins. **Host limit:** Batcache skips every request
+  with a `wp*` cookie in `advanced-cache.php`, before plugins load, so a visitor holding
+  `wp_woocommerce_session_*` always misses Batcache and is rendered by PHP. A prebuilt
+  file is still served to that visitor, and the response still carries the shared
+  headers for an edge that does not bypass on the cookie. A `Cart-Token` cart has no
+  cookie and misses nothing.
+- **Batcache and signed-in requests:** Batcache keeps what any request without a
+  `wp*` cookie printed, whatever its `Cache-Control`. A request that runs as a
+  user (an application password, a bearer token) calls `batcache_cancel()` as
+  soon as WordPress sets the user; every private router page, every `/__tp/api`
+  answer and every Identity answer (its REST API and hosted screens, which find
+  the session from its cookie without setting the user) calls it too.
 
 ## Reactive queries (`Live\Module`)
 
@@ -1357,7 +1462,7 @@ Misc:
 
 ## TypeScript type normalization
 
-TypedPress uses OXC 0.152.0 to parse TypeScript and keeps its annotations and source
+TypedPress uses OXC 0.158.0 to parse TypeScript and keeps its annotations and source
 locations in the typed IR. The native and browser/WASM compilers run the same
 normalizer before PHP emission. These are type operations, not a JavaScript
 engine or a replacement for TypeScript's complete checker. Check authoring
@@ -1451,7 +1556,7 @@ for JavaScript output. This change adds no scope walker or parser and keeps the
 annotations needed for PHP and client emission, so it does not add those
 crates. Existing OXC parsing/lowering is reused. No upstream implementation was
 copied, no new license notice is needed, and the OXC family remains pinned
-together at 0.152.0.
+together at 0.158.0.
 
 This type-algebra work adds no JS built-in API. Arbitrary browser/Node APIs,
 symbols, generators and dynamic runtime type introspection remain outside the

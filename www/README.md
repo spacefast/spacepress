@@ -45,7 +45,7 @@ after changing `browser/` or `examples/`.
 | Path | What |
 |---|---|
 | `typedpress.config.ts` | the site's name; re-exports the schema and the server function |
-| `tp/schema.ts` | `docs` and `posts` (WordPress content, synced from `content/`); `shares` and `examples` (tables) |
+| `tp/schema.ts` | `docs` (a collection) and `posts` (WordPress's own posts, `wp.posts.extend`), both synced from `content/`; `shares` and `examples` (tables) |
 | `tp/server.ts` | `share` saves a playground edit; `refreshStars` is the job that asks GitHub for star counts; `refreshStarsNow` lets an admin start it |
 | `tp/app/layout.tsx`, `site.css` | the one layout and stylesheet every page uses |
 | `tp/components/Guide.tsx` | what the guide is written with: `<Section>`, `<Ref>`, `<Code>`, `<Source>`, `<Diff>`, `<Tree>`, `<Example>`, the status badges |
@@ -57,7 +57,6 @@ after changing `browser/` or `examples/`.
 | `browser/play.js` | `<tp-play>`, the playground component |
 | `scripts/build.mjs` | bundles `browser/` into `public/site.js`; copies the compiler, the example data and the plugin zips into `public/` |
 | `scripts/sources.mjs` | writes `tp/data/sources.ts`, the text of every file in `examples/` |
-| `scripts/share.mjs` | lets another machine open the dev site (below) |
 | `tests/site.test.mjs` | reads the running site in Chromium |
 
 Git-ignored: `public/`, `tp/data/sources.ts`, `tp/dist/`, `.tp/` except `.tp/sync-base.json`.
@@ -123,30 +122,44 @@ into `public/play-data.json` by `scripts/run-data.ts`.
 SITE_URL=http://localhost:8960 node --test tests/site.test.mjs
 ```
 
-Ten tests against the running site: the guide's sections and drawn code, the guide without
+The WordPress integration check uses a running, seeded Drive Store. It checks
+direct canonical links, navigation without a document reload, and real Tailwind
+utilities against the active theme:
+
+```sh
+DRIVE_STORE_URL=http://localhost:8932 bun run test:wordpress
+```
+
+To also check a Site Editor change without rebuilding Tailwind, pass the local
+compiler and project. This test changes the local site's Global Styles and
+restores their original content afterwards. It refuses non-local sites.
+
+```sh
+TP_BIN=../target/release/typedpress TP_PROJECT=../examples/drive-store \
+  DRIVE_STORE_URL=http://localhost:8932 bun run test:wordpress
+```
+
+`tests/site.test.mjs` checks the guide's sections and drawn code, the guide without
 JavaScript, phone width, the docs' navigation and highlighted code, an edit that builds a
 migration and is shared and reopened, an announced syntax error, the examples page with its JSON
-and its playground link, the blog from the menu to a post, and that a visitor can neither start the star job nor list `/shares`. `CHROMIUM=<path>` names the browser when Playwright's own is not installed. They are
+and its playground link, the blog from the menu to a post and its comments, the newest posts on the home page, and that a visitor can neither start the star job nor list `/shares`. `CHROMIUM=<path>` names the browser when Playwright's own is not installed. They are
 not wired into CI yet.
 
 ## Opening it from another machine
 
-`typedpress dev` listens on this machine's loopback only, and WordPress writes `http://localhost:8960`
-into every page. `scripts/share.mjs` forwards to it and rewrites that address in text answers:
+`typedpress dev` listens on this machine's loopback only. Name the address a proxy serves it at
+with `--url`, and WordPress writes that address into every page:
 
 ```sh
-PUBLIC=https://<this-machine>.<tailnet>.ts.net:8960 node scripts/share.mjs &   # listens on 127.0.0.1:8961
-tailscale serve --bg --https=8960 http://127.0.0.1:8961                        # tailnet only
-tailscale serve --https=8960 off                                               # to stop
+../target/release/typedpress dev --port 8960 --url https://<this-machine>.<tailnet>.ts.net:8960 --detach
+tailscale serve --bg --https=8960 http://localhost:8960     # tailnet only
+tailscale serve --https=8960 off                            # to stop
 ```
 
-It must not pass `X-Forwarded-*` headers on: WordPress then writes `https://localhost:8960`.
+`--host <address of this machine>` listens there instead, with no proxy.
 
 ## What TypedPress lacks for this site (15 November 2026)
 
-- **WordPress's own posts as a kind.** The blog is an app collection for now (post type
-  `tp_posts`, under Collections in TypedPress Admin, not under WordPress's Posts). It moves to
-  `wp.posts` when that lands; `/blog` and `/blog/<slug>` stay the same.
 - **Reading a file from a page.** There is no text import, so `scripts/sources.mjs` copies the
   example files into a TypeScript module.
 - **A code component for TSX.** Markdown code fences are highlighted in PHP; TSX has nothing, so
@@ -157,16 +170,10 @@ It must not pass `X-Forwarded-*` headers on: WordPress then writes `https://loca
 - **Playground plugin source.** Set `PLUGINS_URL` to the destination site when building.
   Public files allow cross-origin reads; verify that the host preserves those headers.
   The current default is the earlier published guide, until a destination is selected.
-- **Theme styles.** The active theme's styles load after the app's and set `body` colours and
-  fonts, so the site's base rules are under `body.typedpress-app`.
 - **Public files still boot WordPress.** Serving them before WordPress initializes is unfinished.
   Stylesheet and image changes do rebuild under `typedpress dev`.
 - **JSX only compiles in `tp/components/`, pages and client components**, which is why the
   guide's sections are under `tp/components/guide/`.
-- **A docs page is a 404 to WordPress's main query.** `/docs/...` answers 200 with the right
-  content, but `<body>` has the class `error404` and the answer carries `Expires: 1984`. It is
-  being fixed in TypedPress (branch `tp/docs-kind-query`); nothing here works around it. When the
-  fix is on main, add a test that a docs page has no `error404` class.
 - **Smaller things in server code.** A timestamp field takes an ISO string on write, not a
   `Date`. `await response.json()` is `unknown`, so it needs `as { … }`. An object indexed by a
   prop needs a fixed set of keys, so lookups here use an array and `.find`.

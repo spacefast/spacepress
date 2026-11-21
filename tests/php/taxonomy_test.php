@@ -14,8 +14,15 @@ require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 $fixture = dirname(__DIR__) . '/fixtures/taxonomy';
+$schema = require "$fixture/schema.php";
+$merchantTags = $schema['taxonomies']['tags'];
+$merchantTags['key'] = 'merchantTags'; $merchantTags['label'] = 'Merchant tags';
+$merchantTags['columns']['uid'] = ['type' => 'text'];
+$merchantTags['relations'] = []; $merchantTags['url'] = null;
+$merchantTags['wp'] = ['taxonomy' => 'tp_merchant_tags', 'groupKey' => 'group_tp_merchant_tags', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_merchant_tags_', 'on' => ['posts']];
+$schema['taxonomies']['merchantTags'] = $merchantTags;
 $wp = wpSite('taxonomy', [
-    'schema' => require "$fixture/schema.php",
+    'schema' => $schema,
     'functions' => file_get_contents("$fixture/functions.php"),
     'users' => ['ed' => 'editor', 'alice' => 'author', 'sub' => 'subscriber'],
 ]);
@@ -37,6 +44,20 @@ function isProblem(string $label, array $r, int $status, string $code, ?string $
 }
 
 $names = static fn (array $rows): array => array_column($rows, 'name');
+
+// Authored uid keeps ordinary term metadata, including SCF's underscore-prefixed field reference.
+$merchant = wp_insert_term('Existing merchant tag', 'tp_merchant_tags')['term_id'];
+update_term_meta($merchant, 'tp_uid', 'merchant-42');
+update_term_meta($merchant, '_tp_uid', 'field_tp_merchant_tags_uid');
+eq('existing authored taxonomy uid values keep their metadata key', $db->findFirst('merchantTags', ['where' => ['id' => $merchant]])['uid'], 'merchant-42');
+eq('authored uid filters use the existing metadata', array_column($db->findMany('merchantTags', ['where' => ['uid' => 'merchant-42']]), 'id'), [$merchant]);
+$db->update('merchantTags', ['uid' => 'merchant-43'], ['id' => $merchant]);
+eq('API writes preserve authored uid storage and the SCF field reference', [get_term_meta($merchant, 'tp_uid', true), get_term_meta($merchant, '_tp_uid', true)], ['merchant-43', 'field_tp_merchant_tags_uid']);
+eq('SCF reads the authored uid written through the API', get_field('field_tp_merchant_tags_uid', 'term_' . $merchant), 'merchant-43');
+update_field('field_tp_merchant_tags_uid', 'merchant-44', 'term_' . $merchant);
+eq('API reads the authored uid written through SCF', $db->findFirst('merchantTags', ['where' => ['id' => $merchant]])['uid'], 'merchant-44');
+$newMerchant = $db->insert('merchantTags', ['name' => 'New merchant tag', 'uid' => 'merchant-45'], true)[0];
+eq('API-created authored uid values use ordinary term metadata', [$newMerchant['uid'], get_term_meta($newMerchant['id'], 'tp_uid', true)], ['merchant-45', 'merchant-45']);
 
 // ================================================================ registration (ruling 25)
 
@@ -74,7 +95,8 @@ problem('a term has no author', fn () => $db->insert('topics', ['name' => 'A', '
 $updated = $db->update('topics', ['name' => 'World news', 'description' => 'Everywhere', 'color' => null], ['id' => $news['id']], true)[0];
 eq('an update writes core\'s fields and term meta', [$updated['name'], $updated['slug'], $updated['description'], $updated['color']], ['World news', 'news', 'Everywhere', null]);
 eq('a cleared field is gone from term meta', get_term_meta($news['id'], 'tp_color', true), '');
-eq('a term with no fields of its own is a row too', array_keys($db->insert('tags', ['name' => 'Short'], true)[0]), ['id', 'name', 'slug', 'description', 'count', 'url']);
+$short = $db->insert('tags', ['name' => 'Short'], true)[0];
+eq('a term with no fields of its own is a row too', array_keys($short), ['id', 'name', 'slug', 'description', 'count', 'url']);
 
 // ================================================================ hierarchy (ruling 30)
 
@@ -83,6 +105,16 @@ $city = $db->insert('topics', ['name' => 'City', 'parent' => $local['id']], true
 eq('parent is a term of the same taxonomy', $local['parent'], $news['id']);
 eq('`:path` is the chain of ancestor slugs', $city['url'], home_url('/topics/news/local/city/'));
 $tag = $db->insert('tags', ['name' => 'Elsewhere'], true)[0];
+foreach ([$tag, $short] as $row) {
+    wp_cache_delete($row['id'], 'terms');
+}
+$readUrls = static fn () => array_column($db->findMany('tags', ['columns' => ['url' => true]]), 'url');
+$beforeUrls = $wpdb->num_queries;
+eq('term lists use the core permalink for each row', $readUrls(), [home_url('/tags/elsewhere/'), home_url('/tags/short/')]);
+$coldQueries = $wpdb->num_queries - $beforeUrls;
+$beforeUrls = $wpdb->num_queries;
+$readUrls();
+eq('cold term links need one more WordPress query than cached links', $coldQueries - ($wpdb->num_queries - $beforeUrls), 1);
 problem('a parent from another taxonomy is refused', fn () => $db->insert('topics', ['name' => 'X', 'parent' => $tag['id']]), 409, 'reference_violation', '/parent');
 problem('a term can\'t be its own parent', fn () => $db->update('topics', ['parent' => $local['id']], ['id' => $local['id']]), 409, 'reference_violation', '/parent');
 problem('a flat taxonomy has no parent', fn () => $db->insert('tags', ['name' => 'Y', 'parent' => $tag['id']]), 422, 'invalid_input', '/parent');
@@ -195,6 +227,13 @@ $wide = array_map(static fn (array $r): array => array_intersect_key($r, array_f
 eq('a term read with columns returns what reading every column gave', $narrow, $wide);
 $termSql = array_values(array_filter($statements, static fn (string $s): bool => str_contains($s, 'AS `name`')))[0] ?? '';
 check('and selects no other term field or meta join', !str_contains($termSql, 'AS `color`') && !str_contains($termSql, 'AS `description`') && !str_contains($termSql, "meta_key = 'tp_color'"), $termSql);
+
+// Older sites can share the same term ID across taxonomies. Core never caches an ambiguous ID.
+$wpdb->insert($wpdb->term_taxonomy, ['term_id' => $tag['id'], 'taxonomy' => 'category', 'description' => '']);
+wp_cache_delete($tag['id'], 'terms');
+check('a shared term still has its taxonomy-specific URL', in_array(home_url('/tags/elsewhere/'), $readUrls(), true));
+$shared = get_term($tag['id']);
+check('listing URLs keeps unqualified shared term IDs ambiguous', is_wp_error($shared) && $shared->get_error_code() === 'ambiguous_term_id');
 
 // A viewer's term delete refuses while an item they can't read carries the term, and keeps its link
 // (docs/decisions/2026-11-16-per-row-delete-visibility.md); core's own delete would remove it.
@@ -315,6 +354,46 @@ check('and selects no other term field or meta join', !str_contains($termSql, 'A
     ini_set('memory_limit', $limit);
     $editor = new \TypedPress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
     problem('an editor is refused too: password visibility here is decided in SQL and fails closed', fn () => $probe->delete('tags', ['id' => $single['id']], false, $editor), 409, 'reference_violation');
+})();
+
+// A post-password cookie is checked against the passwords of the posts that carry the term only:
+// unrelated protected posts' passwords are never read, and the cookie still opens the post it fits.
+(static function () use ($db, $fixture, $wp): void {
+    $raw = require "$fixture/schema.php";
+    $raw['taxonomies']['tags']['access']['delete'] = ['role' => 'anyone'];
+    $raw['collections']['posts']['access']['update'] = ['role' => 'anyone'];
+    $schema = new \TypedPress\Schema($raw);
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $viewer = new \TypedPress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
+    $core = \TypedPress\Wp\Plugin::instance()->connection();
+    foreach (['unrelated-one', 'unrelated-two', 'unrelated-three'] as $password) {
+        $core->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => "Unrelated $password", 'post_status' => 'publish', 'post_password' => $password], true));
+    }
+    $carried = static function (string $name) use ($db, $core): array {
+        $term = $db->insert('tags', ['name' => $name], true)[0];
+        $post = $core->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => "Carries $name", 'post_status' => 'publish', 'post_password' => 'scoped-fixture'], true));
+        wp_set_object_terms($post, [$term['id']], 'tp_tags');
+
+        return [$term, $post];
+    };
+    require_once ABSPATH . WPINC . '/class-phpass.php';
+    $_COOKIE['wp-postpass_' . COOKIEHASH] = (new \PasswordHash(8, true))->HashPassword('scoped-fixture');
+    [$term, $post] = $carried('cookie-opened link');
+    $statements = [];
+    \TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$statements): void {
+        $statements[] = $sql;
+    };
+    try { $probe->delete('tags', ['id' => $term['id']], false, $viewer); $result = ['status' => 200]; }
+    catch (\Throwable $e) { $result = \TypedPress\App::problem($e); }
+    \TypedPress\Wp\Connection::$observer = null;
+    $passwordReads = array_values(array_filter($statements, static fn (string $s): bool => str_contains($s, 'DISTINCT HEX(post_password)')));
+    check('the delete check read some post passwords', $passwordReads !== []);
+    check('… only those of the posts that carry the term', array_filter($passwordReads, static fn (string $s): bool => !str_contains($s, ' AND ID IN (')) === [], implode("\n", $passwordReads));
+    eq('a cookie that opens the carrying post lets the delete through, removing the link', [$result['status'], wp_get_object_terms($post, 'tp_tags', ['fields' => 'ids'])], [200, []]);
+    $_COOKIE['wp-postpass_' . COOKIEHASH] = (new \PasswordHash(8, true))->HashPassword('unrelated-one');
+    [$other] = $carried('cookie for another post');
+    problem('a cookie for an unrelated protected post opens nothing here', fn () => $probe->delete('tags', ['id' => $other['id']], false, $viewer), 409, 'reference_violation');
+    unset($_COOKIE['wp-postpass_' . COOKIEHASH]);
 })();
 
 finish('taxonomy');

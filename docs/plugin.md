@@ -1,7 +1,7 @@
 # Deploy to any WordPress with the TypedPress plugin
 
 One plugin makes a WordPress site a place you deploy a TypedPress app to. You install it once, sign in
-from your project, and push. The site needs WordPress 7.2-beta5 or later and PHP 8.2 with the `zip`
+from your project, and push. The site needs WordPress 7.1 or later and PHP 8.2 with the `zip`
 extension; everything else the plugin installs.
 
 ```sh

@@ -21,7 +21,12 @@ pub struct Args {
     pub(crate) detach: bool,
     pub(crate) foreground: bool,
     pub(crate) allow_destructive: bool,
+    /// `typedpress dev --url` / `--host`: the address WordPress writes into its pages, and the
+    /// address of this machine the dev process listens on. Checked by scripts/dev/studio.mjs.
+    pub(crate) dev_url: Option<String>,
+    pub(crate) dev_host: Option<String>,
     pub(crate) preserve_data: Option<PathBuf>,
+    pub(crate) diagnostics_file: Option<PathBuf>,
     /// Refuse plugin grants the committed lock doesn't hold (also on whenever `CI` is set).
     pub(crate) frozen: bool,
     /// `typedpress doctor --links`: follow every link and anchor the site's pages make.
@@ -108,7 +113,10 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
         detach: false,
         foreground: false,
         allow_destructive: false,
+        dev_url: None,
+        dev_host: None,
         preserve_data: None,
+        diagnostics_file: None,
         frozen: false,
         links: false,
     };
@@ -122,10 +130,31 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
             "--foreground" if command == "dev" && args.rest.is_empty() => args.foreground = true,
             "--json" if command == "dev" && args.rest.first().is_some_and(|mode| mode == "status") => args.json = true,
             "--allow-destructive" if command == "dev" => args.allow_destructive = true,
+            "--url" if command == "dev" && args.rest.is_empty() => {
+                args.dev_url = Some(
+                    it.next()
+                        .ok_or_else(|| fail("--url needs an address such as https://box.example.ts.net:8443".into()))?,
+                )
+            }
+            "--host" if command == "dev" && args.rest.is_empty() => {
+                args.dev_host = Some(
+                    it.next()
+                        .ok_or_else(|| fail("--host needs an address of this machine, such as 10.0.0.24".into()))?,
+                )
+            }
             "--preserve-data" if command == "build" => {
                 args.preserve_data = Some(PathBuf::from(
                     it.next()
                         .ok_or_else(|| fail("--preserve-data needs a snapshot path".into()))?,
+                ));
+            }
+            // Internal to `typedpress dev` (scripts/dev/studio.mjs), so it is in no usage line and no
+            // reference page: the build writes the compile's `typedpress-diagnostics` envelope to this
+            // path, `ok` with none when it compiled, for the browser overlay and `dev status`.
+            "--diagnostics-file" if command == "build" => {
+                args.diagnostics_file = Some(PathBuf::from(
+                    it.next()
+                        .ok_or_else(|| fail("--diagnostics-file needs a path".into()))?,
                 ));
             }
             "--site" if command == "doctor" => {

@@ -1,4 +1,5 @@
 import apiFetch from '@wordpress/api-fetch';
+import { decodeEntities } from '@wordpress/html-entities';
 import { useEffect, useState } from 'react';
 import {
 	EditingObjects,
@@ -198,18 +199,35 @@ export function fromNative(c: Collection, value: unknown, objects?: EditingObjec
 							])
 					)
 				: {};
-	const core = (key: string, col: string | undefined) => {
+	const core = (key: string, col: string | undefined, decode = false) => {
 		if (!col || !(key in r)) return;
 		const v = r[key];
-		result[col] =
-			v && typeof v === 'object' ? (object(v).raw ?? object(v).rendered) : v;
+		if (v && typeof v === 'object') {
+			const obj = object(v);
+			if (obj.raw !== undefined) {
+				result[col] = obj.raw;
+			} else if (typeof obj.rendered === 'string') {
+				result[col] = decode ? decodeEntities(obj.rendered) : obj.rendered;
+			} else {
+				result[col] = obj.rendered;
+			}
+		} else {
+			result[col] = v;
+		}
 	};
 	core('id', c.primaryKey);
-	core('title', c.title);
-	core('content', c.content);
-	core('slug', c.slug);
+	core('title', c.title, true);
+	core('content', c.content, false);
+	core('slug', c.slug, true);
+	core('excerpt', c.excerpt, true);
 	core('status', 'status');
 	core('date_gmt', 'publishedAt');
+	if (typeof r.modified_gmt === 'string' && r.modified_gmt) {
+		result._modified = r.modified_gmt;
+	}
+	if (typeof r.link === 'string' && r.link) {
+		result._link = r.link;
+	}
 	if (result.status === 'publish') result.status = 'published';
 	if (result.status === 'future') result.status = 'scheduled';
 	return result;
@@ -222,6 +240,7 @@ export function toNative(c: Collection, values: Row, objects?: EditingObjects): 
 		if (key === c.title) result.title = v;
 		else if (key === c.content) result.content = v;
 		else if (key === c.slug) result.slug = v;
+		else if (key === c.excerpt) result.excerpt = v;
 		else if (key === 'status')
 			result.status =
 				v === 'published' ? 'publish' : v === 'scheduled' ? 'future' : v;
@@ -289,12 +308,19 @@ export async function response(to: { path: string } | { url: string }): Promise<
 		throw e;
 	}
 }
+export async function remove(c: Collection, id: string): Promise<void> {
+	await apiFetch({
+		...target(c.name, '/' + encodeURIComponent(id)),
+		method: 'DELETE',
+	});
+}
 export async function list(
 	c: Collection,
 	opts: {
 		page: number;
 		perPage: number;
 		search?: string;
+		status?: string;
 		orderBy?: string;
 		direction?: string;
 	}
@@ -303,25 +329,36 @@ export async function list(
 	if (native(c.name)) {
 		q.set('context', 'view');
 		const statuses = c.columns.status?.options ?? [];
-		if (statuses.length && allowed(c.access.update, bootstrap().role) &&
-			['author', 'editor', 'admin'].includes(bootstrap().role))
-			q.set('status', statuses.map((status) =>
-				status === 'published' ? 'publish' : status === 'scheduled' ? 'future' : status
-			).join(','));
+		const wpStatus = (s: string) =>
+			s === 'published' ? 'publish' : s === 'scheduled' ? 'future' : s;
+		if (opts.status && opts.status !== 'all') {
+			q.set('status', wpStatus(opts.status));
+		} else if (
+			statuses.length &&
+			allowed(c.access.update, bootstrap().role) &&
+			['author', 'editor', 'admin'].includes(bootstrap().role)
+		) {
+			q.set('status', statuses.map(wpStatus).join(','));
+		}
 		q.set('per_page', String(opts.perPage));
 		q.set('page', String(opts.page));
 		if (opts.search) q.set('search', opts.search);
 		if (opts.orderBy)
-			q.set('orderby', opts.orderBy === c.title ? 'title' : 'id');
+			q.set('orderby', opts.orderBy === c.title ? 'title' : opts.orderBy === '_modified' ? 'modified' : 'id');
 		q.set('order', opts.direction ?? 'desc');
 	} else {
 		q.set('limit', String(opts.perPage + 1));
 		q.set('offset', String((opts.page - 1) * opts.perPage));
-		if (opts.search && c.title)
-			q.set(
-				'where',
-				JSON.stringify({ [c.title]: { like: `%${opts.search}%` } })
-			);
+		const where: Row = {};
+		if (opts.search && c.title) {
+			where[c.title] = { like: `%${opts.search}%` };
+		}
+		if (opts.status && opts.status !== 'all' && 'status' in c.columns) {
+			where.status = opts.status;
+		}
+		if (Object.keys(where).length) {
+			q.set('where', JSON.stringify(where));
+		}
 		if (opts.orderBy)
 			q.set('orderBy', `${opts.direction === 'asc' ? '' : '-'}${opts.orderBy}`);
 	}

@@ -58,6 +58,14 @@ final class Sitemap
             if (get_query_var('sitemap') || get_query_var('sitemap-stylesheet')) {
                 self::anonymous();
                 wp_sitemaps_get_server()->render_sitemaps();
+                // Core renders and exits for every sitemap it has, so a sitemap still standing here
+                // names a removed provider (the users sitemap while authors are private). WordPress
+                // 7.2 answers it with a 404; 7.1 returns without one, so send 7.2's.
+                if (get_query_var('sitemap') && !is_404()) {
+                    $GLOBALS['wp_query']->set_404();
+                    status_header(404);
+                    nocache_headers();
+                }
                 // Core answered a 404 (sitemaps off, an unknown file, an empty page) and returned: end
                 // here, before an external frontend's gate would redirect the request.
                 if (is_404()) {
@@ -362,7 +370,9 @@ final class Sitemap
             return self::$listed[$kind] = []; // the read rule refuses signed-out visitors outright
         }
         $ids = array_map(static fn (array $row): int => (int) $row[$pk], $rows);
-        _prime_post_caches($ids, false, false);
+        // The posts, and their meta when the kind's URL holds a field: one read each, not one per item.
+        $urls = KindUrls::instance();
+        $urls === null ? _prime_post_caches($ids, false, false) : $urls->prime($kind, $ids);
         $out = [];
         foreach ($ids as $id) {
             $post = get_post($id);
@@ -371,7 +381,7 @@ final class Sitemap
                 continue;
             }
             $path = KindUrls::instance()?->path($kind, $post);
-            if ($path === null || AppRouter::instance()?->guarded($path) === true) {
+            if ($path === null || AppRouter::instance()?->guarded($path, $post->post_type) === true) {
                 continue;
             }
             $out[] = $id;

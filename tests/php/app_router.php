@@ -3,9 +3,8 @@
 declare(strict_types=1);
 
 /*
- * `tp/app/` on WordPress over HTTP (tests/compiler.rs `app_router_serves_pages_on_wordpress`):
- * the fixture tests/fixtures/app-router, built by `typedpress build`, installed with every plugin active
- * and served by php -S with the theme front end on. Prints one JSON object: label => observed.
+ * `app_router_serves_pages_on_wordpress` in tests/app_router.rs builds the app-router fixture
+ * with the page-access routes and serves it through WordPress with the theme active.
  *
  *   TP_WP_THEMES=1 php tests/php/app_router.php <wp-content dir>
  */
@@ -15,6 +14,17 @@ require __DIR__ . '/wp.php';
 // The webhook secret, as a wp-config constant would set it (env() reads constants first).
 $site = wpSite('app', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscriber', 'chief' => 'editor'],
     'muPlugins' => ['secret' => "<?php define('APPROUTER_HOOK_SECRET', 'hook-secret');"]]);
+// An older app has no route index. Both representations must select the same route and parameters.
+$app = \TypedPress\Wp\Runtime::plugin()->schema->app();
+if (!isset($app['routeIndex'])) {
+    throw new RuntimeException('Missing compiled route index');
+}
+foreach (['/', '/notes/', '/notes/hello', '/notes/%68ello/', '/docs', '/docs/a/b', '/missing', '/notes/%2F', '/notes/%zz'] as $path) {
+    $indexed = \TypedPress\Wp\AppRouter::match($app['routes'], $path, $app['routeIndex']);
+    if ($indexed !== \TypedPress\Wp\AppRouter::match($app['routes'], $path)) {
+        throw new RuntimeException("Compiled route lookup disagrees with the ordered matcher for $path");
+    }
+}
 wp_set_current_user(1);
 \TypedPress\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'secret' => 'desk only', 'status' => 'published']);
 \TypedPress\db()->insert('notes', ['title' => 'Draft', 'slug' => 'draft', 'status' => 'draft']);
@@ -55,7 +65,7 @@ function fetch(string $url, string $method = 'GET', array $headers = [], ?string
 function page(array $r): array
 {
     preg_match('#<title>(.*?)</title>#s', $r['body'], $t);
-    preg_match('#data-wp-router-region="tp/main">(.*)</div>\n#s', $r['body'], $m);
+    preg_match('#data-wp-router-region="tp/main">(.*)</div><!-- /tp/main -->#s', $r['body'], $m);
     return ['status' => $r['status'], 'title' => html_entity_decode($t[1] ?? '', ENT_QUOTES), 'body' => $m[1] ?? null];
 }
 
@@ -79,32 +89,94 @@ $session = static function (string $user) use ($site, &$sessions): array {
 };
 $cookie = static fn (string $user): string => $session($user)['cookie'];
 
+$access = [];
+foreach (['guest' => null, 'reader' => 'reader', 'admin' => 'admin'] as $viewer => $user) {
+    $headers = $user === null ? [] : [$cookie($user)];
+    $listing = fetch("$url/directory/all/", headers: $headers);
+    $doc = new DOMDocument();
+    @$doc->loadHTML($listing['body']);
+    foreach ((new DOMXPath($doc))->query('//main//a') as $a) {
+        $access['links'][$viewer][trim($a->textContent)] = [
+            $a->getAttribute('href'), $a->hasAttribute('data-wp-on--click'), $a->hasAttribute('data-wp-on--mouseenter'),
+        ];
+    }
+    $live = fetch("$url/__tp/api/v1/_live", 'POST', [
+        'Content-Type: application/json', ...$headers, ...($user === null ? [] : [$session($user)['nonce']]),
+    ], json_encode(['queries' => [['op' => 'page', 'args' => ['url' => '/office/', 'region' => 'records']]]]));
+    $region = json_decode($live['body'], true)['data']['results'][0] ?? [];
+    $access['live'][$viewer] = [$region['error']['status'] ?? $live['status'], str_contains($region['data']['html'] ?? '', 'Office records')];
+    $toolsPost = fetch("$url/members/tools/", 'POST', [...$headers, ...($user === null ? [] : [$session($user)['nonce']])]);
+    $access['tools POST'][$viewer] = [$toolsPost['status'], $toolsPost['body'] === 'Accepted'];
+    $queue = fetch("$url/api/editor-queue", headers: $headers);
+    $access['queue'][$viewer] = [$queue['status'], $queue['body'] === 'Queue'];
+    $post = fetch("$url/checkout/", 'POST', [
+        ...$headers, ...($user === null ? [] : [$session($user)['nonce']]),
+    ], '');
+    $access['checkout POST'][$viewer] = [$post['status'], $post['body'] === 'Order received'];
+    foreach ([
+        '/office/?view=todo' => 'Office records', '/members/archive/2026/' => 'Member archive',
+        '/checkout/' => 'Checkout', '/signed-desk/' => 'Signed desk',
+        '/members/tools/' => 'Admin tools', '/guest/' => 'Guest preview', '/onboarding/' => 'Admin onboarding',
+    ] as $path => $heading) {
+        $response = fetch($url . $path, headers: $headers);
+        $access['pages'][$viewer][$heading] = [$response['status'], str_contains($response['body'], "<h1>$heading</h1>")];
+        if ($viewer === 'guest' && $heading === 'Guest preview') {
+            $access['guest cache'] = $response['headers']['cache-control'][0] ?? null;
+        }
+        if ($viewer === 'guest' && $heading === 'Office records') {
+            $access['direct login'] = [$response['headers']['location'][0] ?? null, wp_login_url($url . $path)];
+        }
+        if ($viewer === 'guest' && $heading === 'Admin onboarding') {
+            $access['guard redirect'] = $response['headers']['location'][0] ?? null;
+        }
+    }
+}
+foreach (['Office' => '/office/?view=todo#queue', 'Archive' => '/members/archive/2026/', 'Tools' => '/members/tools/'] as $link => $path) {
+    $access['login'][$link] = wp_login_url($url . $path);
+}
+$pages = \TypedPress\Wp\RoutePages::instance()->pages();
+foreach (['office', 'members/tools'] as $name) {
+    $access['private pages'][] = isset($pages[$name]) ? get_post_status($pages[$name]) : null;
+}
+foreach ([
+    'unsigned' => [],
+    'unsigned admin' => [$cookie('admin'), $session('admin')['nonce']],
+    'wrong' => ['X-Hook-Signature: invalid'],
+    'signed' => ['X-Hook-Signature: ' . hash_hmac('sha256', 'delivery', 'hook-secret')],
+] as $kind => $headers) {
+    $response = fetch("$url/signed-desk/", 'POST', $headers, 'delivery');
+    $access['signed POST'][$kind] = [$response['status'], $response['body'] === 'delivery'];
+}
+$access['checkout without nonce'] = fetch("$url/checkout/", 'POST', [$cookie('admin')], '')['status'];
+$access['private twin'] = fetch("$url/office.md", headers: [$cookie('admin')])['status'];
+
 $home = fetch("$url/");
 $out = [
     'base' => $url,
+    'page access' => $access,
     'home' => page($home),
     'home description' => str_contains($home['body'], '<meta name="description" content="Notes.">'),
     'home cache' => $home['headers']['cache-control'] ?? null,
     'router module' => str_contains($home['body'], 'tp/Render/client/router.js'),
-    'note' => page(fetch("$url/notes/hello")),
-    'note canonical' => (bool) preg_match('#<link rel="canonical" href="' . preg_quote($url, '#') . '/notes/hello">#', fetch("$url/notes/hello")['body']),
+    'note' => page(fetch("$url/notes/hello/")),
+    'note canonical' => (bool) preg_match('#<link rel="canonical" href="' . preg_quote($url, '#') . '/notes/hello/">#', fetch("$url/notes/hello/")['body']),
     // The layout's Open Graph type, card and link, with the page's image and link added.
     'note social' => (static function (string $body): array {
         preg_match_all('#<meta (?:property|name)="((?:og|twitter):[a-z]+)" content="([^"]*)">#', $body, $meta, PREG_SET_ORDER);
         preg_match_all('#<link rel="(describedby|alternate)" href="([^"]*)" type="([^"]*)">#', $body, $links, PREG_SET_ORDER);
         preg_match_all('#<script id="typedpress-app-script-[0-9a-f]+-js-module" src="([^"]*)" type="module">#', $body, $scripts);
         return ['meta' => array_map(static fn ($m) => [$m[1], html_entity_decode($m[2], ENT_QUOTES)], $meta), 'links' => array_map(static fn ($m) => array_slice($m, 1), $links), 'scripts' => $scripts[1]];
-    })(fetch("$url/notes/hello")['body']),
-    'note as editor' => page(fetch("$url/notes/hello", headers: [$cookie('chief')])),
-    'draft' => page(fetch("$url/notes/draft")),
-    'missing' => page(fetch("$url/notes/nope")),
-    'unrouted' => page(fetch("$url/no/such/page")),
-    'search' => page(fetch("$url/notes?page=3&q=tea")),
-    'search defaults' => page(fetch("$url/notes?page=abc")),
+    })(fetch("$url/notes/hello/")['body']),
+    'note as editor' => page(fetch("$url/notes/hello/", headers: [$cookie('chief')])),
+    'draft' => page(fetch("$url/notes/draft/")),
+    'missing' => page(fetch("$url/notes/nope/")),
+    'unrouted' => page(fetch("$url/no/such/page/")),
+    'search' => page(fetch("$url/notes/?page=3&q=tea")),
+    'search defaults' => page(fetch("$url/notes/?page=abc")),
     // `<Pagination>` on page 6 of 12, reached from a URL with another argument and a flash marker.
     'pagination' => (static function () use ($url): array {
         $doc = new DOMDocument();
-        @$doc->loadHTML((string) fetch("$url/notes?q=tea&page=6&_flash=abcdefabcdef")['body']);
+        @$doc->loadHTML((string) fetch("$url/notes/?q=tea&page=6&_flash=abcdefabcdef")['body']);
         $x = new DOMXPath($doc);
         $nav = $x->query('//nav[@class="typedpress-pagination"]')->item(0);
         $out = ['label' => $nav?->getAttribute('aria-label'), 'items' => []];
@@ -117,23 +189,23 @@ $out = [
     })(),
     'pagination first' => (static function () use ($url): array {
         $doc = new DOMDocument();
-        @$doc->loadHTML((string) fetch("$url/notes")['body']);
+        @$doc->loadHTML((string) fetch("$url/notes/")['body']);
         $x = new DOMXPath($doc);
         return array_map(static fn ($li) => trim($li->textContent), iterator_to_array($x->query('//nav[@class="typedpress-pagination"]//li')));
     })(),
-    'search noindex' => str_contains(fetch("$url/notes")['body'], 'noindex'),
-    'group' => page(fetch("$url/about")),
-    'docs index' => page(fetch("$url/docs")),
-    'docs deep' => page(fetch("$url/docs/a/b")),
-    'guard anonymous' => [fetch("$url/account")['status'], str_contains((fetch("$url/account")['headers']['location'][0] ?? ''), 'wp-login.php')],
-    'guard subscriber' => page(fetch("$url/account", headers: [$cookie('reader')])),
-    'broken' => page(fetch("$url/broken")),
+    'search noindex' => str_contains(fetch("$url/notes/")['body'], 'noindex'),
+    'group' => page(fetch("$url/about/")),
+    'docs index' => page(fetch("$url/docs/")),
+    'docs deep' => page(fetch("$url/docs/a/b/")),
+    'guard anonymous' => [fetch("$url/account/")['status'], str_contains((fetch("$url/account/")['headers']['location'][0] ?? ''), 'wp-login.php')],
+    'guard subscriber' => page(fetch("$url/account/", headers: [$cookie('reader')])),
+    'broken' => page(fetch("$url/broken/")),
     'api' => [fetch("$url/api/notes")['status'], fetch("$url/api/notes")['body']],
     'api method' => fetch("$url/api/notes", 'DELETE')['status'],
-    // A page's own POST is for subscribers (its `access`), with the REST nonce as every cookie write needs.
-    'page POST anonymous' => fetch("$url/notes/hello", 'POST', ['Content-Type: application/x-www-form-urlencoded'], 'x=1')['status'],
+    // The page's handler guard restricts POST to subscribers, with the REST nonce as every cookie write needs.
+    'page POST anonymous' => fetch("$url/notes/hello/", 'POST', ['Content-Type: application/x-www-form-urlencoded'], 'x=1')['status'],
     'page POST' => (function () use ($url, $session): array {
-        $r = fetch("$url/notes/hello", 'POST', [$session('reader')['cookie'], $session('reader')['nonce']], 'x=1');
+        $r = fetch("$url/notes/hello/", 'POST', [$session('reader')['cookie'], $session('reader')['nonce']], 'x=1');
         return [$r['status'], $r['headers']['location'][0] ?? null];
     })(),
     // A signed webhook: a wrong signature is refused, the right one runs as the system (it counts the draft).
@@ -152,7 +224,7 @@ $out = [
     'twin note as editor' => fetch("$url/notes/hello.md", headers: [$cookie('chief')])['body'],
     'twin draft' => fetch("$url/notes/draft.md")['status'],
     'twin guarded' => fetch("$url/account.md", headers: [$cookie('reader')])['status'],
-    'twin link' => [fetch("$url/notes/hello")['headers']['link'] ?? [], str_contains(fetch("$url/notes/hello")['body'], '<link rel="alternate" type="text/markdown" href="' . $url . '/notes/hello.md"')],
+    'twin link' => [fetch("$url/notes/hello/")['headers']['link'] ?? [], str_contains(fetch("$url/notes/hello/")['body'], '<link rel="alternate" type="text/markdown" href="' . $url . '/notes/hello.md"')],
     'llms' => fetch("$url/llms.txt")['body'],
     'rest' => fetch("$url/wp-json/")['status'],
     'feed' => fetch("$url/feed/")['status'],
@@ -169,7 +241,7 @@ $out = [
             'additional css' => str_contains($head, '.owner-css { color: #654321; }'),
             'site icon' => (bool) preg_match('#<link rel="icon" href="[^"]*icon\.png"#', $head),
         ];
-    })(explode('</head>', fetch("$url/notes/hello")['body'])[0]),
+    })(explode('</head>', fetch("$url/notes/hello/")['body'])[0]),
 ];
 // `wp typedpress styles export`, which `typedpress styles pull` writes to tp/theme.json: the project's file
 // with the owner's Global Styles merged over it, settings and styles only.

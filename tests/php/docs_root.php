@@ -34,13 +34,13 @@ function get(string $url, string $method = 'GET'): array
 $page = static fn (string $path): array => array_intersect_key(get("$url$path"), ['status' => 1, 'h1' => 1, 'location' => 1]);
 
 // The kind's items at their paths, and the app's own pages beside them.
-foreach (['/', '/getting-started', '/reference', '/reference/config', '/playground', '/roadmap', '/reference/nothing', '/nothing', '/config'] as $path) {
+foreach (['/', '/getting-started/', '/reference/', '/reference/config/', '/playground/', '/roadmap/', '/reference/nothing/', '/nothing/', '/config/'] as $path) {
     $out['pages'][$path] = $page($path);
 }
 // Links WordPress builds follow the pattern, and the tree and pager use them.
 $config = get_page_by_path('reference/config', OBJECT, \TypedPress\Wp\Runtime::plugin()->schema->collection('docs')['wp']['postType']);
 $out['permalink'] = parse_url((string) get_permalink($config), PHP_URL_PATH);
-$doc = get("$url/getting-started")['body'];
+$doc = get("$url/getting-started/")['body'];
 preg_match_all('#<ul class="tree">(.*?)</ul>#s', $doc, $tree);
 preg_match_all('#href="([^"]+)"#', $tree[1][0] ?? '', $links);
 $out['tree'] = array_map(static fn (string $h): ?string => parse_url($h, PHP_URL_PATH), $links[1]);
@@ -65,7 +65,7 @@ $out['sitemap'] = array_map(static fn (string $u): ?string => parse_url($u, PHP_
 
 // What a visitor may not read stays unread, as a page, a twin, through %2F or in the sitemap: a
 // members-only item, a published item under a draft, and either with its `/` written as %2F.
-foreach (['/members', '/members.md', '/drafts/child', '/drafts/child.md', '/drafts/index.md', '/drafts.md', '/roadmap.md', '/reference%2Fconfig', '/reference%2Fconfig.md', '/drafts%2Fchild.md'] as $path) {
+foreach (['/members', '/members/', '/Members', '/members.md', '/drafts/child', '/drafts/child/', '/drafts/child.md', '/drafts/index.md', '/drafts.md', '/roadmap.md', '/reference%2Fconfig', '/reference%2Fconfig.md', '/drafts%2Fchild.md'] as $path) {
     $r = get("$url$path");
     $out['hidden'][$path] = [$r['status'], str_contains($r['body'], 'members-only text') || str_contains($r['body'], 'under a draft') || str_contains($r['body'], 'Every option')];
 }
@@ -79,6 +79,12 @@ $out['page wins'] = [$r['status'], str_contains($r['body'], 'The Page wins.'), s
 // A form posting back to a WordPress Page isn't refused by the app's catch-all.
 $out['post to a page'] = get("$url/about/", 'POST')['status'];
 // Another case of a path redirects to the item's own.
+// The bare spelling of an item's path redirects to its one address (#462).
+$out['bare'] = $page('/reference/config');
 $out['case'] = [get("$url/Reference/Config")['status'], get("$url/Reference/Config")['location']];
+// <Link> names no template for a path under the root kind's catch-all: WordPress may answer it (a
+// Page), so the router loads it rather than swap a region that isn't there. The app's own pages say theirs.
+$router = \TypedPress\Wp\AppRouter::instance();
+$out['link templates'] = ['/about/' => $router?->templateFor('/about/'), '/reference/config' => $router?->templateFor('/reference/config'), '/playground' => $router?->templateFor('/playground')];
 $site->destroy();
 echo json_encode($out, JSON_UNESCAPED_SLASHES), "\n";

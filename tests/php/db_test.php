@@ -458,7 +458,7 @@ eq('json whole-value eq compares the stored text: the same document matches, a d
 // is neither empty nor a member of anything.
 (static function (): void {
     $wp = $GLOBALS['wp'];
-    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => ['listed' => [
+    $schema = new \TypedPress\Schema(['version' => 5, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => ['listed' => [
         'primaryKey' => 'id', 'editor' => false, 'table' => 'first_listed',
         'columns' => [
             'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
@@ -587,6 +587,90 @@ problem('post-commit exception propagates', function () use ($db, $wp) {
 eq('post-commit failure never undoes committed filesystem effects', is_file($wp->dir . '/committed-file'), true);
 \TypedPress\Extensions::afterCommit(function () use (&$committed) { $committed[] = 'immediate'; });
 eq('rollback and post-commit failure leave no stale callbacks', [(int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn(), $committed], [5, ['outer:6', 'inner:6', 'immediate']]);
+
+// A reading transaction tells the database nothing until something writes. `open` is whether the
+// database itself has a transaction; `sent` is what ended it.
+$sent = [];
+$spy = static function (mixed $sql) use (&$sent): mixed {
+    if (is_string($sql) && preg_match('/^\s*(START TRANSACTION|COMMIT|ROLLBACK)\b/i', $sql, $m) === 1) {
+        $sent[] = strtoupper($m[1]);
+    }
+
+    return $sql;
+};
+add_filter('query', $spy);
+$open = static fn (): bool => $wp->connection()->wpdb()->dbh->inTransaction();
+$queries = static fn (): int => (int) $wp->connection()->wpdb()->num_queries;
+$during = [];
+$after = [];
+$counted = $queries();
+$found = $db->reading(function () use ($db, $wp, $open, &$during, &$after): array {
+    $during = [$wp->connection()->inTransaction(), $open()];
+    \TypedPress\Extensions::afterCommit(static function () use (&$after): void {
+        $after[] = 'ran';
+    });
+
+    return $db->findMany('items', ['where' => ['name' => 'Hammer']]);
+});
+eq('a reading transaction that only reads sends neither START TRANSACTION nor COMMIT', [names($found), $sent, $during, $after, $open(), $queries() - $counted],
+    [['Hammer'], [], [true, false], ['ran'], false, 0]);
+$counted = $queries();
+$db->reading(function () use ($db, $open, &$during): void {
+    $db->findMany('items', ['where' => ['name' => 'Hammer']]);
+    $during = [$open()];
+    $db->update('items', ['qty' => 7], ['name' => 'Hammer']);
+    $during[] = $open();
+});
+eq('its first write starts the transaction, and the end commits it', [$sent, $during, $open(), (int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn()], [['COMMIT'], [false, true], false, 7]);
+check('… both counted as statements, as an ordinary transaction\'s are', $queries() - $counted >= 2, $queries() - $counted);
+$sent = [];
+problem('a throw after a write rolls the write back', fn () => $db->reading(function () use ($db): void {
+    $db->update('items', ['qty' => 9], ['name' => 'Hammer']);
+    throw new JsError('no');
+}), 422, 'rejected');
+eq('… with one ROLLBACK', [$sent, $open(), (int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn()], [['ROLLBACK'], false, 7]);
+$sent = [];
+$ran = [];
+problem('a throw before any write', fn () => $db->reading(function () use (&$ran): void {
+    \TypedPress\Extensions::afterCommit(static function () use (&$ran): void {
+        $ran[] = 'after';
+    });
+    throw new JsError('no');
+}), 422, 'rejected');
+eq('… sends nothing and drops its afterCommit callbacks', [$sent, $ran, $wp->connection()->inTransaction()], [[], [], false]);
+$sent = [];
+$db->reading(static function () use ($open, &$during): void {
+    get_option('tp_reading_probe'); // core's read: still no transaction
+    $during = [$open()];
+    update_option('tp_reading_probe', 'core write', false);
+    $during[] = $open();
+});
+eq('a write through $wpdb (core\'s, another plugin\'s) starts it too', [$sent, $during, get_option('tp_reading_probe')], [['COMMIT'], [false, true], 'core write']);
+$sent = [];
+problem('… and rolls back with it', fn () => $db->reading(static function (): void {
+    update_option('tp_reading_probe', 'rolled back', false);
+    throw new JsError('no');
+}), 422, 'rejected');
+wp_cache_delete('tp_reading_probe', 'options');
+eq('… leaving what was committed', [$sent, get_option('tp_reading_probe')], [['ROLLBACK'], 'core write']);
+$sent = [];
+$db->reading(static function () use ($wp, $items, $open, &$during): void {
+    $wp->connection()->run("SELECT id FROM $items WHERE name = ? FOR UPDATE", ['Hammer']);
+    $during = [$open()];
+});
+eq('a locking read starts it, like a write', [$sent, $during], [['COMMIT'], [true]]);
+$sent = [];
+$db->transaction(fn () => $db->reading(fn () => $db->findMany('items', ['limit' => 1])));
+eq('inside an open transaction it joins that one', $sent, ['START TRANSACTION', 'COMMIT']);
+$sent = [];
+$db->reading(fn () => $db->transaction(fn () => $db->findMany('items', ['limit' => 1])));
+eq('a transaction opened inside it joins it, and stays unsent while it only reads', $sent, []);
+$sent = [];
+$db->transaction(fn () => $db->findMany('items', ['limit' => 1]));
+eq('an ordinary transaction starts at once, as before', $sent, ['START TRANSACTION', 'COMMIT']);
+remove_filter('query', $spy);
+delete_option('tp_reading_probe');
+$db->update('items', ['qty' => 5], ['name' => 'Hammer']);
 
 $before = $logCount();
 $db->transaction(fn () => $db->insert('logs', ['message' => 'loop:8']));
@@ -863,7 +947,7 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     $status = ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true];
     $seen = [];
-    $raw = ['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+    $raw = ['version' => 5, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
         'bulletins' => ['primaryKey' => 'id', 'drafts' => true, 'editor' => false, 'table' => 'tp_ap_bulletins',
             'hooks' => ['afterPublish' => static function (array $row) use (&$seen): void { $seen[] = $row['title']; }],
             'columns' => ['id' => $id, 'title' => ['type' => 'text', 'notNull' => true], 'status' => $status, 'publishedAt' => ['type' => 'timestamp', 'system' => true]]],
@@ -893,7 +977,7 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     $status = ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true];
     $one = static fn (string $c, string $from) => ['kind' => 'one', 'collection' => $c, 'from' => $from, 'to' => 'id'];
-    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+    $schema = new \TypedPress\Schema(['version' => 5, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
         'accounts' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'admin']],
             'columns' => ['id' => $id, 'apiKey' => ['type' => 'text', 'notNull' => true]]],
         'articles' => ['primaryKey' => 'id', 'drafts' => true,
@@ -905,7 +989,7 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
     ]]);
     // Its own custom tables on the site, read through a Db over the same connection.
     $wp = $GLOBALS['wp'];
-    $raw = ['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => []];
+    $raw = ['version' => 5, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => []];
     foreach (['accounts', 'articles', 'comments'] as $t) {
         $raw['collections'][$t] = $schema->collection($t) + ['editor' => false, 'table' => "tp_rf_$t"];
     }
@@ -1204,7 +1288,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
 (static function (): void {
     $now = ['now' => true];
     $wp = $GLOBALS['wp'];
-    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [], 'globals' => ['site' => [
+    $schema = new \TypedPress\Schema(['version' => 5, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [], 'globals' => ['site' => [
         'label' => 'site', 'agents' => true, 'access' => ['read' => ['role' => 'anyone'], 'update' => ['role' => 'editor']],
         'wp' => ['postId' => 'tp_global_site', 'menuSlug' => 'typedpress-global-site', 'groupKey' => 'group_tp_global_site', 'fieldKeyPrefix' => 'field_tp_global_site_', 'optionPrefix' => 'tp_global_site_'],
         'fields' => [
@@ -1226,7 +1310,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     }
     eq('a global update stores its now defaults at one instant', [$site['createdAt'], $site['audit']['at']], ['2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']);
     // A render's bound visitor applies to compiled global reads too: this global is editor-read.
-    $guarded = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [], 'globals' => ['desk' => [
+    $guarded = new \TypedPress\Schema(['version' => 5, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [], 'globals' => ['desk' => [
         'label' => 'desk', 'agents' => true, 'access' => ['read' => ['role' => 'editor'], 'update' => ['role' => 'editor']],
         'wp' => ['postId' => 'tp_global_desk', 'menuSlug' => 'typedpress-global-desk', 'groupKey' => 'group_tp_global_desk', 'fieldKeyPrefix' => 'field_tp_global_desk_', 'optionPrefix' => 'tp_global_desk_'],
         'fields' => ['note' => ['type' => 'text', 'default' => ['value' => 'shh']]],
@@ -1244,7 +1328,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eval('namespace TypedPressApp; function marked__update($ctx) { return !\TypedPress\Js::includes($ctx->p["data"]->p["tags"], "locked"); }');
     // A read rule returning a filter that contains an empty object: compiled `{ AND: [{}] }`.
     eval('namespace TypedPressApp; function marked__read($ctx) { return ["AND" => [new \\TypedPress\\JsObject()]]; }');
-    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => ['marked' => [
+    $schema = new \TypedPress\Schema(['version' => 5, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => ['marked' => [
         'primaryKey' => 'id', 'editor' => false, 'table' => 'first_marked', 'access' => ['read' => ['fn' => 'marked__read'], 'update' => ['fn' => 'marked__update']],
         'columns' => [
             'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
@@ -1326,7 +1410,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         'meta' => ['type' => 'json', 'rules' => ['validate' => 'refs__validate'], 'access' => ['update' => ['allow' => false]]],
         'info' => ['type' => 'group', 'fields' => ['extra' => ['type' => 'json', 'default' => ['json' => '{"1":1,"0":2}']]], 'default' => ['json' => '{}']],
     ];
-    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => ['refs' => [
+    $schema = new \TypedPress\Schema(['version' => 5, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => ['refs' => [
         'primaryKey' => 'id', 'editor' => false, 'table' => 'tp_refs', 'columns' => $columns,
         'access' => ['read' => ['allow' => true], 'update' => ['allow' => true]],
         'hooks' => ['beforeCreate' => 'refs__before', 'afterCreate' => 'refs__after'],
@@ -1378,7 +1462,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $wp = $GLOBALS['wp'];
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     eval('namespace TypedPressApp; function scoped__rule($ctx) { return \\TypedPress\\db()->schema()->hasCollection("people"); } function scoped__default() { return \\TypedPress\\db()->schema()->hasCollection("people") ? "secondary" : "booted"; }');
-    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+    $schema = new \TypedPress\Schema(['version' => 5, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
         'people' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_scoped_people', 'revisions' => true, 'access' => ['read' => ['fn' => 'scoped__rule'], 'update' => ['fn' => 'scoped__rule']],
             'columns' => ['id' => $id, 'name' => ['type' => 'text', 'notNull' => true], 'ssn' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]]]],
     ], 'globals' => ['scope' => ['label' => 'scope', 'agents' => true, 'fields' => ['name' => ['type' => 'text', 'default' => ['fn' => 'scoped__default']]], 'access' => ['read' => ['fn' => 'scoped__rule'], 'update' => ['fn' => 'scoped__rule']],
@@ -1403,7 +1487,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('editor captures dispatch query extensions in their own Db', $db->editorRow('people', 1)['name'], 'p');
     eq('global rules and default generators use the secondary schema', $db->globalGet('scope', $viewer)['name'], 'secondary');
     eq('global update authorization uses the secondary schema', $db->globalUpdate('scope', ['name' => 'saved'], $viewer)['name'], 'saved');
-    $shared = new \TypedPress\Db($store, new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => []]), $db->media());
+    $shared = new \TypedPress\Db($store, new \TypedPress\Schema(['version' => 5, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => []]), $db->media());
     $committed = [];
     $shared->transaction(function () use ($db, &$committed): void {
         $db->transaction(function () use ($db, &$committed): void {
@@ -1426,7 +1510,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     $anyone = ['role' => 'anyone'];
     $table = static fn (string $name, array $access, array $columns): array => ['primaryKey' => 'id', 'editor' => false, 'table' => "tp_$name", 'access' => $access, 'columns' => ['id' => $id] + $columns];
-    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+    $schema = new \TypedPress\Schema(['version' => 5, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
         // Anyone signs up; only admins see who did.
         'subscribers' => $table('subscribers', ['read' => ['role' => 'admin'], 'create' => $anyone],
             ['email' => ['type' => 'text', 'notNull' => true, 'unique' => true], 'note' => ['type' => 'text', 'default' => ['value' => 'welcome']]]),
@@ -1527,6 +1611,16 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             problem('changing a referenced non-id key is refused, children or not', fn () => $db->update('badges', ['code' => $parent['code'] + 10], ['id' => $parent['id']], true, $editor), 409, 'reference_violation');
         }
         eq('refused key changes keep both keys', array_column($db->findMany('badges', ['orderBy' => ['id' => 'asc']]), 'code'), [701001, 701002]);
+        // A delete can't tell whether a referenced key the viewer can't read is null: `badge` is
+        // admin-only, so deleting a badge refuses alike whether it holds one or not, before any count.
+        [$nullBadge, $setBadge] = $db->insert('badges', [['code' => 701003, 'badge' => null], ['code' => 701004, 'badge' => 889004]], true);
+        $answers = [];
+        foreach ([$nullBadge, $setBadge] as $parent) {
+            $answers[] = $failure(fn () => $db->delete('badges', ['id' => $parent['id']], true, $anon));
+        }
+        eq('a hidden referenced key refuses the delete whether it is null or not', $answers[0], $answers[1]);
+        eq('… with the one body', [$answers[0]['status'], $answers[0]['code'], $answers[0]['detail']], [409, 'reference_violation', "Rows you can't read may reference this row"]);
+        eq('a reader of the key deletes the badge whose key is null', $db->delete('badges', ['id' => $nullBadge['id']], true, $admin)[0]['id'], $nullBadge['id']);
     } finally {
         \TypedPress\Db::setInstance($previous);
     }

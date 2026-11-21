@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/pro
 import { basename, isAbsolute, join, resolve } from 'node:path';
 
 const metadata = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-const help = `Create TypedPress ${metadata.version}\n\nUsage: npm create typedpress@${metadata.version} <directory> [-- --no-install]\n\nCreates a backend and public frontend served by WordPress. Installs npm dependencies\nunless --no-install is supplied, then writes AGENTS.md, .mcp.json and skills for coding\nagents (typedpress init). Existing destinations are never overwritten.\n\nNext: cd <directory> && npm run dev\nRequires Node.js 22+ and npm. No Rust toolchain or Docker required.\n`;
+const help = `Create TypedPress ${metadata.version}\n\nUsage: npm create typedpress@${metadata.version} <directory> [-- --no-install]\n\nCreates a starter site with pages and sample content, served by WordPress. Installs npm dependencies\nunless --no-install is supplied, then writes AGENTS.md, .mcp.json and skills for coding\nagents (typedpress init). Existing destinations are never overwritten.\n\nNext: cd <directory> && npm run dev\nRequires Node.js 22+ and npm. No Rust toolchain or Docker required.\n`;
 
 // The files a coding agent reads (AGENTS.md, .mcp.json, the skills) come from `typedpress init`, so a new
 // project gets the same ones a later `typedpress init` writes, generated from its own config. The
@@ -41,7 +41,7 @@ async function main() {
     await rename(join(destination, 'gitignore'), join(destination, '.gitignore'));
     for (const file of ['typedpress.config.ts', 'README.md']) {
       const path = join(destination, file);
-      await writeFile(path, (await readFile(path, 'utf8')).replaceAll('__ZERO_APP_NAME__', name));
+      await writeFile(path, (await readFile(path, 'utf8')).replaceAll('__TP_APP_NAME__', name));
     }
     await writeFile(join(destination, 'package.json'), JSON.stringify({
       name, version: '0.0.0', private: true, type: 'module', engines: { node: '>=22' },
@@ -64,7 +64,7 @@ async function main() {
     if (code !== 0) throw new Error(`App created at ${destination}, but npm install failed. Fix the reported download/tool error, then run npm install there. Your app was preserved.`);
   }
   const agents = await agentFiles(destination, !args.includes('--no-install'));
-  process.stdout.write(`\nCreated ${name}.\n\n  cd ${JSON.stringify(directories[0])}\n${args.includes('--no-install') ? '  npm install\n' : ''}${agents ? '' : '  npx typedpress init    # AGENTS.md, .mcp.json and skills for coding agents\n'}  npm run dev\n\nOpen /index.html on the printed WordPress URL.\n“Write a note” opens the native editor. See README.md for local credentials and commands.\n${agents ? 'AGENTS.md, .mcp.json and the agent skills describe this project to coding agents; run npx typedpress init after changing the config.\n' : ''}`);
+  process.stdout.write(`\nCreated ${name}.\n\n  cd ${JSON.stringify(directories[0])}\n${args.includes('--no-install') ? '  npm install\n' : ''}${agents ? '' : '  npx typedpress init    # AGENTS.md, .mcp.json and skills for coding agents\n'}  npm run dev\n\nOpen the Website URL printed by TypedPress.\nStart by editing tp/app/page.tsx. See README.md for the other starter files.\n${agents ? 'AGENTS.md, .mcp.json and the agent skills describe this project to coding agents; run npx typedpress init after changing the config.\n' : ''}`);
 }
 
 main().catch((error) => { process.stderr.write(`create-typedpress: ${error.message}\n`); process.exitCode = 1; });

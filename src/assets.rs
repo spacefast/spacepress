@@ -80,6 +80,11 @@ fn hash(bytes: &[u8]) -> String {
     crate::hex(&Sha256::digest(bytes)[..8])
 }
 
+pub(crate) fn is_javascript(path: &str) -> bool {
+    path.rsplit_once('.')
+        .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("js") || extension.eq_ignore_ascii_case("mjs"))
+}
+
 impl Asset {
     /// Reads one imported file. `file` is the diagnostic file id of its text.
     pub fn new(source: &str, kind: Kind, bytes: Vec<u8>, file: u32) -> Result<Self> {

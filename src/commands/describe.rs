@@ -195,6 +195,7 @@ fn routes(app: &App, schema: &Schema) -> Vec<Value> {
     app.routes
         .iter()
         .chain(&app.not_found)
+        .chain(&app.login)
         .map(|route| {
             let file = route.page.as_ref().or(route.handler.as_ref());
             let compiled = file.and_then(|file| app.files.get(file));
@@ -209,8 +210,15 @@ fn routes(app: &App, schema: &Schema) -> Vec<Value> {
                 if !compiled.methods.is_empty() {
                     out["methods"] = json!(compiled.methods.keys().collect::<Vec<_>>());
                 }
-                if let Some(rule) = compiled.access.as_ref().or(compiled.guard.as_ref()) {
-                    out["access"] = access(rule);
+                match (&compiled.guard, &compiled.handler_guard) {
+                    (Some(page), Some(handlers)) if page != handlers => {
+                        out["guard"] = json!({ "page": access(page), "handlers": access(handlers) });
+                    }
+                    (None, Some(handlers)) if route.page.is_some() => {
+                        out["guard"] = json!({ "handlers": access(handlers) });
+                    }
+                    (Some(rule), _) | (None, Some(rule)) => out["guard"] = access(rule),
+                    (None, None) => {}
                 }
                 if compiled.signature.is_some() {
                     out["signed"] = json!(true);

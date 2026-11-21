@@ -84,7 +84,18 @@ final class Routes
     /** Every status, trusted selection; then the viewer's read transforms (field access) as any read. */
     private static function rows(string $collection, array $opts, ?Viewer $viewer): array
     {
-        $rows = Module::ensureUids($collection, Module::find($collection, $opts));
+        // WordPress's own posts: only what core lets this viewer read (drafts and private posts of
+        // others, password-protected bodies stay out), as the pipeline reads them.
+        $rows = Module::find($collection, $opts);
+        if ($viewer !== null && (db()->schema()->collection($collection)['native'] ?? false)) {
+            $pk = db()->schema()->collection($collection)['primaryKey'];
+            $readable = db()->permittedKeys($collection, 'read', $viewer);
+            if ($readable !== null) {
+                $readable = array_flip(array_map('strval', $readable));
+                $rows = array_values(array_filter($rows, static fn (array $row): bool => isset($readable[(string) $row[$pk]])));
+            }
+        }
+        $rows = Module::ensureUids($collection, $rows);
 
         return Extensions::read($rows, $collection, $viewer);
     }
@@ -118,7 +129,7 @@ final class Routes
                 if (Canon::json($normalized) !== Canon::json($current['row'][$field] ?? null)) { $same = false; }
             }
             if ($same) { return 'unchanged'; }
-            if ($spec['editor'] ?? true) { return 'skipped_existing'; }
+            if (($spec['editor'] ?? true) || isset($spec['commerce']) || ($spec['taxonomy'] ?? false)) { return 'skipped_existing'; }
         }
         $decoded = ['record' => $record, 'expect' => $current['digest'] ?? 'absent'];
         $result = self::apply($collection, $spec, \TypedPress\Seam::sync($collection, $decoded), $decoded, null);
@@ -321,6 +332,9 @@ final class Routes
     private static function authorizeRow(string $collection, array $spec, string $op, ?Viewer $viewer, int|string $id, ?array $data): void
     {
         if ($viewer === null) { return; }
+        if (($spec['native'] ?? false) && !\TypedPress\Wp\NativePosts::allows($viewer, $op, (int) $id)) {
+            throw HttpError::notFound("No such $collection row");
+        }
         $rule = Access::evaluate(Access::collectionRules($spec)[$op], $viewer, $op, $data, $spec['columns'], $collection);
         if ($rule === false) {
             throw Access::deny($viewer->user, "$op $collection rows");

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace TypedPress;
 
 /**
- * Read-only view of the generated schema.php (version 3, phase-2 §3.1) plus the value codecs shared
+ * Read-only view of the generated schema.php (version 5, phase-2 §3.1) plus the value codecs shared
  * by the write pipeline, filters, globals and action input validation (§3.4).
  *
  * Values exist in three forms:
@@ -37,8 +37,8 @@ final class Schema
         if (!is_array($raw)) {
             throw new \RuntimeException("$file must return an array");
         }
-        if (($raw['version'] ?? null) !== 3) {
-            throw new \RuntimeException('schema.php version 3 required; rebuild with this TypedPress version');
+        if (($raw['version'] ?? null) !== 5) {
+            throw new \RuntimeException('schema.php version 5 required; rebuild with this TypedPress version');
         }
 
         if (($raw['runtime'] ?? null) !== self::SERIES) {
@@ -55,6 +55,8 @@ final class Schema
      * (`version`, `hash`) and the site's active version this request runs (`active`: its `version`
      * and `hash`).
      */
+    public function commerce(): ?array { return $this->raw['store'] ?? null; }
+
     public function runtimeSchema(): ?array
     {
         return $this->raw['runtimeSchema'] ?? null;
@@ -62,7 +64,7 @@ final class Schema
 
     public function version(): int
     {
-        return $this->raw['version'] ?? 3;
+        return $this->raw['version'] ?? 5;
     }
 
     public function runtime(): ?string
@@ -134,6 +136,26 @@ final class Schema
     public function screens(): array
     {
         return $this->raw['screens'] ?? [];
+    }
+
+    /**
+     * `adminWidget()` exports by widget id.
+     *
+     * @return array<string, array>
+     */
+    public function widgets(): array
+    {
+        return $this->raw['widgets'] ?? [];
+    }
+
+    /**
+     * `adminDashboard()` exports by dashboard id.
+     *
+     * @return array<string, array>
+     */
+    public function dashboards(): array
+    {
+        return $this->raw['dashboards'] ?? [];
     }
 
     public function site(): array
@@ -316,11 +338,12 @@ final class Schema
                 'auth' => $c['auth'] ?? false,
                 'agents' => $c['agents'] ?? true,
                 'localized' => $c['localized'] ?? false,
-            ] + (($c['taxonomy'] ?? false) ? ['taxonomy' => true, 'hierarchical' => (bool) ($c['hierarchical'] ?? false)] : []) + [
+            ] + (isset($c['commerce']) ? ['commerce' => $c['commerce']] : []) + (($c['taxonomy'] ?? false) ? ['taxonomy' => true, 'hierarchical' => (bool) ($c['hierarchical'] ?? false)] : []) + [
                 'title' => $c['title'] ?? null,
                 'content' => $c['content'] ?? null,
                 'slug' => $c['slug'] ?? null,
                 'primaryKey' => $c['primaryKey'],
+            ] + (isset($c['excerpt']) ? ['excerpt' => $c['excerpt']] : []) + (isset($c['ui']) ? ['ui' => $c['ui']] : []) + [
                 'columns' => array_map(self::publicColumn(...), $c['columns']),
                 'relations' => $c['relations'] ?? [],
                 'access' => array_map(self::accessSummary(...), Access::collectionRules($c)),
@@ -334,7 +357,7 @@ final class Schema
                 'agents' => $g['agents'] ?? true,
                 'fields' => array_map(self::publicColumn(...), $g['fields']),
                 'access' => array_map(self::accessSummary(...), Access::globalRules($g)),
-            ];
+            ] + (isset($g['ui']) ? ['ui' => $g['ui']] : []);
         }
         $actions = [];
         foreach ($this->actions() as $name => $a) {

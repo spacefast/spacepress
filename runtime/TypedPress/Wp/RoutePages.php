@@ -14,7 +14,7 @@ namespace TypedPress\Wp;
  * - its permalink and canonical URL are the route's URL, and `/` is the front page (`page_on_front`);
  * - it keeps one ID per route across builds (the route ID is its `_tp_route` meta and the key of
  *   the option below), so a menu item that points at it keeps working;
- * - a route under a layout `guard` stores its Page private, so search, feeds, the REST API and the
+ * - a route with a page or layout guard stores its Page private, so search, feeds, the REST API and the
  *   sitemap never list it;
  * - it is absent from the wp-admin Pages list, its counts and REST `context=edit` lists, and
  *   `edit_post`/`delete_post` are denied on it; a write that bypasses capabilities keeps the
@@ -60,14 +60,10 @@ final class RoutePages
             if (!is_string($page) || str_ends_with($page, '.md') || str_contains($pattern, ':') || str_contains($pattern, '*')) {
                 continue;
             }
-            $guarded = false;
-            foreach ($route['layouts'] as $layout) {
-                $guarded = $guarded || (($app['files'][$layout]['guard'] ?? null) !== null);
-            }
             $routes[(string) $route['id']] = [
                 'pattern' => $pattern,
                 'title' => self::title($app['files'][$page] ?? [], $pattern),
-                'status' => $guarded ? 'private' : 'publish',
+                'status' => $route['guards'] !== [] ? 'private' : 'publish',
             ];
         }
         if ($routes === []) {
@@ -420,14 +416,14 @@ final class RoutePages
     {
         $route = $this->routeOf($post);
 
-        return $route === null ? $link : home_url($this->routes[$route]['pattern']);
+        return $route === null ? $link : home_url(AppRouter::address($this->routes[$route]['pattern']));
     }
 
     public function canonicalUrl(string|false $url, \WP_Post $post): string|false
     {
         $route = $this->routeOf($post->ID);
 
-        return $route === null ? $url : home_url($this->routes[$route]['pattern']);
+        return $route === null ? $url : home_url(AppRouter::address($this->routes[$route]['pattern']));
     }
 
     /** template_redirect: WordPress's own address for a code Page (its slug, `?page_id=`) goes to the route. */
@@ -445,7 +441,7 @@ final class RoutePages
         if (rawurldecode(rtrim($path, '/') ?: '/') === $this->routes[$route]['pattern'] && $own === []) {
             return;
         }
-        wp_safe_redirect(add_query_arg(urlencode_deep(array_diff_key($query, $own)), home_url($this->routes[$route]['pattern'])), 301);
+        wp_safe_redirect(add_query_arg(urlencode_deep(array_diff_key($query, $own)), home_url(AppRouter::address($this->routes[$route]['pattern']))), 301);
         exit;
     }
 }

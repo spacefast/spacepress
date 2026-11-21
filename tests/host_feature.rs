@@ -359,7 +359,7 @@ fn app_routes_capture_and_compile_on_the_host() {
     .unwrap();
     fs::write(
         work.path().join("tp/app/api/[id]/feed.json/route.ts"),
-        "import type { RouteRequest } from 'typedpress';\nexport const access = 'anyone';\nexport async function GET(req: RouteRequest) { return { body: req.params['id'] + (req.query.get('k') ?? '') + req.query.getAll('k').join(',') }; }\n",
+        "import type { RouteRequest } from 'typedpress';\nexport const guard = 'anyone';\nexport async function GET(req: RouteRequest) { return { body: req.params['id'] + (req.query.get('k') ?? '') + req.query.getAll('k').join(',') }; }\n",
     )
     .unwrap();
     let out = work.path().join("src");

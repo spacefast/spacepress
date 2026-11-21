@@ -248,11 +248,19 @@ fn require_static_coercion(value: &Value, span: Span) -> R<()> {
     visit(value, span, &mut HashSet::new())
 }
 
+/// The fields every `wp.posts` kind has: the post row's own columns.
+pub const POST_FIELDS: &[&str] = &["id", "title", "slug", "content", "excerpt", "status", "publishedAt"];
+
 /// Names exported by `"first"`.
 pub const TP_EXPORTS: &[&str] = &[
     "collection",
     "table",
     "userProjection",
+    "store",
+    "product",
+    "productCategory",
+    "productTag",
+    "order",
     "taxonomy",
     "terms",
     "integer",
@@ -286,7 +294,10 @@ pub const TP_EXPORTS: &[&str] = &[
     "mail",
     "definePlugin",
     "adminScreen",
+    "adminWidget",
+    "adminDashboard",
     "item",
+    "wp",
 ];
 /// Type-only exports of `"first"`: importable, erased.
 const TP_TYPES: &[&str] = &[
@@ -300,6 +311,10 @@ const TP_TYPES: &[&str] = &[
     "AccessCtx",
     "ValidateCtx",
     "FieldUi",
+    "KindUi",
+    "GlobalUi",
+    "MediaRow",
+    "FileRow",
     "AccessRule",
     "AccessConfig",
     "CollectionOptions",
@@ -315,6 +330,14 @@ const TP_TYPES: &[&str] = &[
     "AnyJob",
     "AdminScreen",
     "AdminScreenDefinition",
+    "AdminWidget",
+    "AdminWidgetDefinition",
+    "AdminDashboard",
+    "AdminDashboardDefinition",
+    "BuiltinWidgetId",
+    "WidgetMetric",
+    "WidgetField",
+    "DashboardWidgetPlacement",
     "ScreenField",
     "ScreenAction",
     "ItemRef",
@@ -1075,6 +1098,22 @@ impl<'p> Evaluator<'p> {
                     Ctl::Err(d)
                 });
         }
+        if source == "react-email" && crate::loader::email_module(&self.program.root, &self.program.modules[from].path)
+        {
+            let component = match name {
+                "Html" => "EmailHtml",
+                "Body" => "EmailBody",
+                "Text" => "EmailText",
+                "Button" => "EmailButton",
+                _ => {
+                    return Err(Ctl::Err(Diag::new(
+                        span,
+                        format!("React Email component `{name}` is not supported"),
+                    )));
+                }
+            };
+            return Ok(Value::Builtin(Builtin::App(component)));
+        }
         if source == crate::loader::APP_MODULE {
             return crate::app::export(name)
                 .map(|e| Value::Builtin(Builtin::App(e)))
@@ -1165,6 +1204,11 @@ impl<'p> Evaluator<'p> {
                     Value::Builtin(Builtin::NodeCrypto(None))
                 }
                 ImportName::Namespace => {
+                    if source == "react-email"
+                        && crate::loader::email_module(&self.program.root, &self.program.modules[id].path)
+                    {
+                        return err(spec.span, "import supported React Email components by name");
+                    }
                     if source == WORDPRESS_MODULE {
                         return err_help(
                             spec.span,
@@ -2566,6 +2610,28 @@ impl<'p> Evaluator<'p> {
                 span,
                 "`db` only works inside hooks and actions, which run in PHP at request time",
             ),
+            // WordPress's own kinds. Posts are the first; the others say so.
+            Value::Builtin(Builtin::Wp) => match prop {
+                "posts" => Ok(Value::Builtin(Builtin::WpPosts)),
+                "pages" | "media" | "users" | "comments" | "categories" | "tags" | "menus" | "settings" => err_help(
+                    span,
+                    format!("`wp.{prop}` isn't supported yet: `wp.posts` is the one WordPress kind an app can use"),
+                    "use `wp.posts.extend({ ... }, { url })` for WordPress's posts, or `wp.posts.clone({ ... })` for a kind like them",
+                ),
+                _ => err_help(
+                    span,
+                    format!("`wp` has no kind `{prop}`"),
+                    "`wp.posts` is WordPress's posts",
+                ),
+            },
+            Value::Builtin(Builtin::WpPosts) if matches!(prop, "extend" | "clone") => {
+                Ok(Value::Bound(Rc::new(v.clone()), Rc::from(prop)))
+            }
+            Value::Builtin(Builtin::WpPosts) => err_help(
+                span,
+                format!("`wp.posts` has no `{prop}`"),
+                "`wp.posts.extend(fields, { url })` adds fields to WordPress's posts; `wp.posts.clone(fields, options)` makes another kind like them",
+            ),
             Value::Builtin(Builtin::Global("globalThis")) => match global_member(prop) {
                 GlobalMember::Provided("Infinity") => Ok(Value::Num(f64::INFINITY)),
                 GlobalMember::Provided("NaN") => Ok(Value::Num(f64::NAN)),
@@ -2771,11 +2837,88 @@ impl<'p> Evaluator<'p> {
         }
     }
 
+    /// `wp.posts.extend(fields, options)` and `wp.posts.clone(fields, options)`: a kind with posts'
+    /// own fields (title, slug, content, excerpt, status, publishedAt) and the authored ones.
+    fn wp_posts(&mut self, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
+        let post = match m {
+            "extend" => PostKind::Native,
+            "clone" => PostKind::Clone,
+            _ => unreachable!("get_prop binds extend and clone only"),
+        };
+        if args.len() > 2 {
+            return err(span, format!("`wp.posts.{m}()` takes fields and options"));
+        }
+        let mut args = args.into_iter();
+        let fields = match args.next() {
+            None | Some(Value::Undef) => Value::object(IndexMap::new()),
+            Some(v) => v,
+        };
+        let columns = self.fields_object(
+            &fields,
+            span,
+            &format!(
+                "`wp.posts.{m}()` takes an object of fields first: `wp.posts.{m}({{ cover: media().optional() }})`"
+            ),
+        )?;
+        let options = match args.next() {
+            None | Some(Value::Undef) => None,
+            Some(o @ Value::Object(_)) => Some(o),
+            Some(other) => {
+                return err(
+                    span,
+                    format!("`wp.posts.{m}()` options must be an object, not {}", other.describe()),
+                );
+            }
+        };
+        // Posts' own fields, stored in the post row itself (post_title, post_name, post_content,
+        // post_excerpt, post_status, post_date_gmt). An authored field can't take their names.
+        for (name, b) in &columns {
+            if POST_FIELDS.contains(&name.as_str()) {
+                return err_help(
+                    b.span,
+                    format!("`{name}` is built into every post; delete this field"),
+                    format!(
+                        "`wp.posts.{m}()` kinds have id, title, slug, content, excerpt, status and publishedAt; add only the fields posts don't have"
+                    ),
+                );
+            }
+        }
+        let mut title = ColBuilder::new(ColType::Text, span);
+        title.optional = false;
+        let mut slug = ColBuilder::new(ColType::Slug, span);
+        slug.source = Some("title".into());
+        let mut content = ColBuilder::new(ColType::RichText, span);
+        content.optional = true;
+        let mut excerpt = ColBuilder::new(ColType::Text, span);
+        excerpt.optional = true;
+        excerpt.multiline = true;
+        let mut all = IndexMap::new();
+        all.insert("id".to_string(), Rc::new(legacy::id(span)));
+        all.insert("title".to_string(), Rc::new(title));
+        all.insert("slug".to_string(), Rc::new(slug));
+        all.insert("content".to_string(), Rc::new(content));
+        all.insert("excerpt".to_string(), Rc::new(excerpt));
+        all.extend(columns);
+        let value = Value::Collection(Rc::new(CollectionVal {
+            kind: StorageKind::Collection,
+            table: OnceCell::new(),
+            columns: all,
+            options,
+            span,
+            hooks: RefCell::new(Vec::new()),
+            indexes: RefCell::new(Vec::new()),
+            post: Some(post),
+        }));
+        self.built.push(value.clone());
+        Ok(value)
+    }
+
     fn call_builtin(&mut self, b: &Builtin, args: Vec<Value>, span: Span) -> R<Value> {
         let name = match b {
             Builtin::Collection(kind) => Some(kind.builder()),
             Builtin::Id => Some("id"),
             Builtin::DefineGlobal => Some("global"),
+            Builtin::Store => Some("store"),
             Builtin::DefineRelations => Some("defineRelations"),
             Builtin::Ref => Some("ref"),
             Builtin::Terms => Some("terms"),
@@ -2786,6 +2929,8 @@ impl<'p> Evaluator<'p> {
             Builtin::Job => Some("job"),
             Builtin::Route => Some("route"),
             Builtin::AdminScreen => Some("adminScreen"),
+            Builtin::AdminWidget => Some("adminWidget"),
+            Builtin::AdminDashboard => Some("adminDashboard"),
             Builtin::Item => Some("item"),
             Builtin::RelFn(..) => Some("relation"),
             _ => None,
@@ -2796,9 +2941,19 @@ impl<'p> Evaluator<'p> {
         }
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         match b {
+            Builtin::Store => {
+                let options = arg(0);
+                if !matches!(options, Value::Object(_)) {
+                    return err(span, "store() needs an options object");
+                }
+                let value = Value::Store(Rc::new(ActionVal { config: options, span }));
+                self.built.push(value.clone());
+                Ok(value)
+            }
             Builtin::Collection(kind) => {
                 // `taxonomy(fields?, options)`: a taxonomy may declare no fields of its own.
                 let cols_val = match arg(0) {
+                    _ if kind.commerce() => Value::object(IndexMap::new()),
                     Value::Undef if *kind == StorageKind::Taxonomy => Value::object(IndexMap::new()),
                     v => v,
                 };
@@ -2836,7 +2991,7 @@ impl<'p> Evaluator<'p> {
                 if !columns.contains_key("id") && !own_key {
                     columns.shift_insert(0, "id".into(), Rc::new(legacy::id(span)));
                 }
-                let options = match arg(1) {
+                let options = match arg(if kind.commerce() { 0 } else { 1 }) {
                     Value::Undef => None,
                     o @ Value::Object(_) => Some(o),
                     other => {
@@ -2854,6 +3009,7 @@ impl<'p> Evaluator<'p> {
                     span,
                     hooks: RefCell::new(Vec::new()),
                     indexes: std::cell::RefCell::new(Vec::new()),
+                    post: None,
                 }));
                 self.built.push(value.clone());
                 Ok(value)
@@ -2926,7 +3082,7 @@ impl<'p> Evaluator<'p> {
             }
             Builtin::Terms => {
                 let taxonomy = match arg(0) {
-                    k @ Value::Collection(_) if matches!(&k, Value::Collection(c) if c.kind == StorageKind::Taxonomy) => {
+                    k @ Value::Collection(_) if matches!(&k, Value::Collection(c) if c.kind.term()) => {
                         RefTarget::Kind(k)
                     }
                     // A taxonomy declared later: checked once every kind is registered.
@@ -3004,6 +3160,30 @@ impl<'p> Evaluator<'p> {
                     span,
                     "adminScreen() needs `{ title, view | form, ... }`",
                     "pass the screen as an object literal: `export const orders = adminScreen({ title: \"Orders\", view: { ... } })`",
+                ),
+            },
+            Builtin::AdminWidget => match arg(0) {
+                config @ Value::Object(_) => {
+                    let value = Value::Widget(Rc::new(ActionVal { config, span }));
+                    self.built.push(value.clone());
+                    Ok(value)
+                }
+                _ => err_help(
+                    span,
+                    "adminWidget() needs `{ title, action, ... }`",
+                    "pass the widget as an object literal: `export const sales = adminWidget({ title: \"Sales\", action: salesSummary })`",
+                ),
+            },
+            Builtin::AdminDashboard => match arg(0) {
+                config @ Value::Object(_) => {
+                    let value = Value::Dashboard(Rc::new(ActionVal { config, span }));
+                    self.built.push(value.clone());
+                    Ok(value)
+                }
+                _ => err_help(
+                    span,
+                    "adminDashboard() needs `{ title, widgets, ... }`",
+                    "pass the dashboard as an object literal: `export const ops = adminDashboard({ title: \"Operations\", widgets: [...] })`",
                 ),
             },
             // The placeholder TypedPress Admin fills from the item (runtime/admin/apps/packages/screens).
@@ -3131,6 +3311,11 @@ impl<'p> Evaluator<'p> {
             Builtin::Db => err(
                 span,
                 "`db` only works inside hooks and actions, which run in PHP at request time",
+            ),
+            Builtin::Wp | Builtin::WpPosts => err_help(
+                span,
+                "`wp` and `wp.posts` aren't functions",
+                "write `export const posts = wp.posts.extend({ ... }, { url: \"/blog/:slug\" })`",
             ),
             Builtin::HttpError => err(span, "use `new HttpError(status, code, message)`"),
             Builtin::Global(g) => call_global(g, &args, span),
@@ -3927,6 +4112,7 @@ impl<'p> Evaluator<'p> {
             }
             Value::Column(c) if self.legacy && legacy::MODIFIERS.contains(&m) => legacy::modifier(c, m, &args, span),
             Value::Column(c) => column_method(c, m, &args, span),
+            Value::Builtin(Builtin::WpPosts) => self.wp_posts(m, args, span),
             // `.on({ beforeCreate, ... })` (spec §2.8, ruling 18): handlers in call order; returns the kind.
             Value::Collection(c) if m == "on" => {
                 let extra = args.len() > 1;
@@ -4264,6 +4450,11 @@ fn tp_export(name: &str, legacy: bool, span: Span) -> R<Value> {
         "table" => Builtin::Collection(StorageKind::Table),
         "userProjection" => Builtin::Collection(StorageKind::UserProjection),
         "taxonomy" => Builtin::Collection(StorageKind::Taxonomy),
+        "product" => Builtin::Collection(StorageKind::Product),
+        "productCategory" => Builtin::Collection(StorageKind::ProductCategory),
+        "productTag" => Builtin::Collection(StorageKind::ProductTag),
+        "order" => Builtin::Collection(StorageKind::Order),
+        "store" => Builtin::Store,
         "terms" => Builtin::Terms,
         // Deleted builders still resolve, so the call says what replaces them.
         "id" => Builtin::Id,
@@ -4297,7 +4488,10 @@ fn tp_export(name: &str, legacy: bool, span: Span) -> R<Value> {
         "defineConfig" => Builtin::DefineConfig,
         "definePlugin" => Builtin::DefinePlugin,
         "adminScreen" => Builtin::AdminScreen,
+        "adminWidget" => Builtin::AdminWidget,
+        "adminDashboard" => Builtin::AdminDashboard,
         "item" => Builtin::Item,
+        "wp" => Builtin::Wp,
         "action" => Builtin::Action,
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,
@@ -4306,7 +4500,7 @@ fn tp_export(name: &str, legacy: bool, span: Span) -> R<Value> {
             return err_help(
                 span,
                 "\"typedpress\" has no export named `route`",
-                "an HTTP route is a file: tp/app/<path>/route.ts exporting `access` (or `signature`) and GET, POST, … handlers",
+                "an HTTP route is a file: tp/app/<path>/route.ts exporting `guard` (or `signature`) and GET, POST, … handlers",
             );
         }
         "fetch" | "crypto" => {
@@ -4829,8 +5023,8 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
             }
             c.default = Some(DefaultVal::Now);
         }
-        "$default" | "$defaultFn" => c.default = Some(now_or_fn(closure_arg()?, c.ty)),
-        "$onUpdate" | "$onUpdateFn" => c.on_update = Some(now_or_fn(closure_arg()?, c.ty)),
+        "$default" => c.default = Some(now_or_fn(closure_arg()?, c.ty)),
+        "$onUpdate" => c.on_update = Some(now_or_fn(closure_arg()?, c.ty)),
         "onDelete" => {
             let Some(r) = c.references.as_mut() else {
                 return err_help(
@@ -4899,9 +5093,7 @@ const MODIFIERS: &[&str] = &[
     "defaultNow",
     "many",
     "$default",
-    "$defaultFn",
     "$onUpdate",
-    "$onUpdateFn",
     "onDelete",
     "reverse",
     "min",
@@ -4921,6 +5113,14 @@ fn removed_modifier(m: &str) -> Option<(&'static str, &'static str)> {
         "references" => (
             "`.references()` is gone: a reference is a `ref()` field, which refers to the target's `id`",
             "write `locationId: ref(locations)`, with `.onDelete(\"cascade\" | \"restrict\" | \"setNull\")` for the delete action; a reference to another column isn't supported, so keep that value as a plain field",
+        ),
+        "$defaultFn" => (
+            "`.$defaultFn()` is gone: it was a second name for `.$default()`",
+            "write `.$default(() => ...)`",
+        ),
+        "$onUpdateFn" => (
+            "`.$onUpdateFn()` is gone: it was a second name for `.$onUpdate()`",
+            "write `.$onUpdate(() => ...)`",
         ),
         "notNull" => (
             "`.notNull()` is gone: fields are required by default",
@@ -4953,12 +5153,7 @@ pub fn kind_phrase(ty: ColType) -> String {
 fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
     use ColType as T;
     let ty = c.ty;
-    if ty == T::RefList
-        && matches!(
-            m,
-            "unique" | "default" | "$default" | "$defaultFn" | "defaultNow" | "$onUpdate" | "$onUpdateFn"
-        )
-    {
+    if ty == T::RefList && matches!(m, "unique" | "default" | "$default" | "defaultNow" | "$onUpdate") {
         return Some((
             format!("`.{m}()` isn't valid on a `ref().many()` field"),
             "a many-ref is a list of links TypedPress keeps in its own table; remove the modifier".into(),
@@ -4972,7 +5167,7 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
         "pattern" => ty.is_stringy(),
         "unique" => matches!(ty, T::Integer | T::Real | T::Date | T::Timestamp) || ty.is_stringy(),
         "references" => matches!(ty, T::Integer | T::Real),
-        "default" | "$default" | "$defaultFn" => ty != T::Media,
+        "default" | "$default" => ty != T::Media,
         "defaultNow" => matches!(ty, T::Timestamp | T::Date),
         _ => true,
     };
@@ -4984,7 +5179,7 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
         ("min" | "max" | "pattern" | "unique", _) | ("references", _) => {
             "use `.validate((value) => ... )` for custom checks".to_string()
         }
-        ("default" | "$default" | "$defaultFn", T::Media) => "media columns start empty; set them on write".into(),
+        ("default" | "$default", T::Media) => "media columns start empty; set them on write".into(),
         ("defaultNow", _) => "use `.default(value)` with a literal".into(),
         _ => "remove it".into(),
     };
@@ -6022,12 +6217,14 @@ export default [values.map(truth), applyEach(Boolean, values), values.filter(glo
     #[test]
     fn missing_default_export_points_to_the_current_file_after_repeated_loads() {
         let tmp = tempfile::tempdir().unwrap();
+        // The loader and CLI keep canonical project paths (macOS aliases /var to /private/var).
+        let root = tmp.path().canonicalize().unwrap();
         for name in ["first.ts", "second.ts"] {
-            let entry = tmp.path().join(name);
+            let entry = root.join(name);
             std::fs::write(&entry, "export const value = 1;").unwrap();
             let program = crate::loader::load(&entry).unwrap();
             let error = super::Evaluator::new(&program).run().unwrap_err();
-            let rendered = crate::diag::render(&error, tmp.path());
+            let rendered = crate::diag::render(&error, &root);
             assert!(rendered.contains(&format!("--> {name}:1:1")), "{rendered}");
         }
     }
@@ -6043,7 +6240,14 @@ mod legacy {
     use super::*;
 
     /// Modifiers this reading accepts besides the current ones.
-    pub const MODIFIERS: &[&str] = &["notNull", "primaryKey", "$type", "references"];
+    pub const MODIFIERS: &[&str] = &[
+        "notNull",
+        "primaryKey",
+        "$type",
+        "references",
+        "$defaultFn",
+        "$onUpdateFn",
+    ];
 
     /// `"zero"` exports this reading accepts besides the current ones (for `import * as z`).
     pub const EXPORTS: &[&str] = &["id", "real", "route", "defineRelations"];
@@ -6057,6 +6261,12 @@ mod legacy {
     }
 
     pub fn modifier(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<Value> {
+        // 0.3.0's second spellings of `$default` and `$onUpdate`.
+        match m {
+            "$defaultFn" => return column_method(c, "$default", args, span),
+            "$onUpdateFn" => return column_method(c, "$onUpdate", args, span),
+            _ => {}
+        }
         if !args.is_empty() && m != "references" {
             return err(span, format!("`.{m}()` takes no arguments"));
         }

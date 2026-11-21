@@ -32,10 +32,10 @@ copy=${SUMMARY_FILE:-/dev/null}
   echo "</details>"
   echo
   # Which core changes: a nightly's version ends in its SVN revision (7.2-beta5-65523); the core
-  # commits up to it are trunk's Trac log, which holds the floor (7.2-beta5) too. A beta or RC names its tag.
+  # commits up to it are trunk's Trac log. A beta or RC names its tag.
   rev=$(sed -nE 's/^.*-([0-9]{5,})$/\1/p' <<<"$version")
   if [ -n "$rev" ]; then
-    echo "Core changes up to r$rev: https://core.trac.wordpress.org/log/trunk?rev=$rev (TypedPress's floor, 7.2-beta5, is on trunk too)"
+    echo "Core changes up to r$rev: https://core.trac.wordpress.org/log/trunk?rev=$rev"
   else
     echo "Core changes in this build: https://core.trac.wordpress.org/browser/tags/$version (its milestone's tickets list what changed)"
   fi

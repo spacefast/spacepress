@@ -529,7 +529,7 @@ final class Staged
         // Fields an anonymous visitor may not read: absent from the row, so blank on the page too.
         $masked = array_values(array_diff(array_map('strval', array_keys($spec['columns'])), array_keys($view['row'])));
         $staged = clone $shown;
-        foreach (['title' => 'post_title', 'content' => 'post_content'] as $designation => $native) {
+        foreach (['title' => 'post_title', 'content' => 'post_content', 'excerpt' => 'post_excerpt'] as $designation => $native) {
             if (in_array($spec[$designation] ?? null, $fields, true)) {
                 $staged->$native = $revision->$native;
             }
@@ -688,6 +688,10 @@ final class Staged
             }
         };
         if ($viewer !== null && !$permits(null) && ($state === null || !$permits($state['values']))) {
+            throw self::missing($spec, $collection, $pk);
+        }
+        // WordPress's own posts: staging is editing, so core's edit_post decides first.
+        if (($spec['native'] ?? false) && !NativePosts::allows($viewer, 'update', $id)) {
             throw self::missing($spec, $collection, $pk);
         }
 

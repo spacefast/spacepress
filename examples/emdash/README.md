@@ -28,7 +28,7 @@ receipts, owners, commands, pending proofs and known gaps.
 | [portfolio](portfolio/) | Projects, galleries, work filters and page layouts | `portfolio/acceptance.test.mjs` |
 | [plugins](plugins/) | Durable hooks, webhooks, forms, fields and embeds | `plugins/acceptance.test.mjs` |
 | [agents](agents/README.md) | Real MCP, core Abilities, REST, native editor and public page | `agents/acceptance.test.mjs` |
-| [platform](platform/) | Relations, identity, locales, jobs, sync and media | `platform/acceptance.test.mjs` |
+| [platform](platform/) | Relations, identity, jobs, sync and media | `platform/acceptance.test.mjs` |
 
 Run from the repository root with Node.js 22.23.4+, npm/npx and the Rust toolchain.
 Studio supplies WordPress, PHP and SQLite; Docker is not required:

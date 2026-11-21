@@ -34,11 +34,12 @@ export default async function Post({ params }: PageProps<"blog/[slug]">) {
   );
 }`}</Code>
       <p>The page is rendered by WordPress, in PHP, as the person viewing it. Drafts and fields they may not see never reach the HTML.</p>
+      <p>This site does both of these itself. Each <a href="/blog/">blog post</a> ends with WordPress's own comments, from <code>{"<Comments for={item} />"}</code> and one line on the kind, and the bottom of this page lists the newest posts with a component that reads them while the page renders.</p>
       <div className="scroll"><table>
       <tr><th>You want</th><th>You write</th></tr>
       <tr><td>Title, description, canonical URL, robots, social cards</td><td><code>export const metadata</code>, an object or a function of the page's props</td></tr>
       <tr><td>A typed query string</td><td><code>{"export const search = { page: integer().default(1), q: text().optional() }"}</code></td></tr>
-      <tr><td>Protect a section</td><td><code>export const guard = "subscriber"</code> on a layout; a role, <code>"authenticated"</code> or a function</td></tr>
+      <tr><td>Protect a page or section</td><td><code>export const guard = "subscriber"</code> on a page or layout. Use a role, <code>"authenticated"</code> or a function</td></tr>
       <tr><td>A 404 or a redirect</td><td><code>notFound()</code>, <code>redirect(url, status?)</code></td></tr>
       <tr><td>Links without full page loads</td><td><code>&lt;Link href&gt;</code>, checked against your routes; <code>prefetch</code> loads on hover</td></tr>
       <tr><td>A post body</td><td><code>{"<Content value={post.body} />"}</code></td></tr>

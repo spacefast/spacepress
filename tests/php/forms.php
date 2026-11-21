@@ -13,7 +13,9 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('forms', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscriber']]);
+// A second argument (`/blog`) puts WordPress in that subdirectory and runs the redirect steps only.
+$base = $argv[2] ?? '';
+$site = wpSite('forms', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscriber'], 'base' => $base]);
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
@@ -92,11 +94,27 @@ function submit(array $form, array $values, array $headers = []): array
 $out = [];
 $page = fetch("$url/?ref=nav");
 $subscribe = form($page['body'], 'subscribe');
+if ($base !== '') {
+    // Under a subdirectory install the return is the request URI, home path included (`/blog/join`):
+    // the form still comes back to that page once, with its result.
+    $join = form(fetch("$url/join/")['body'], 'subscribe');
+    $ok = submit($join, ['email' => 'sub@example.test', 'seats' => '1']);
+    $sub = [
+        'return' => array_values(array_filter($join['fields'], static fn ($f) => $f[0] === '_tp_return'))[0][2] ?? null,
+        'location' => preg_replace('/_flash=[0-9a-f]{12}/', '_flash=ID', (string) parse_url((string) $ok['location'], PHP_URL_PATH) . '?' . parse_url((string) $ok['location'], PHP_URL_QUERY)),
+        'back' => [$ok['back']['status'] ?? null, text($ok['back']['body'] ?? '', 'done')],
+    ];
+    echo json_encode($sub, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
+    $site->destroy();
+    exit;
+}
 $out['form'] = [
     'method' => $subscribe['method'],
     'action' => parse_url($subscribe['action'], PHP_URL_PATH),
     'hidden' => array_values(array_filter($subscribe['fields'], static fn ($f) => $f[1] === 'hidden')),
-    'page cache' => $page['headers']['cache-control'][0] ?? null,
+    'page cache' => fetch("$url/")['headers']['cache-control'][0] ?? null,
+    // `ref` is not a parameter the page declares (`export const search`): that URL is not shared.
+    'undeclared query' => $page['headers']['cache-control'][0] ?? null,
 ];
 
 // Success: the action's result comes back on the page; the redirect goes to the page it came from.
@@ -144,6 +162,15 @@ $out['not a number'] = text(submit($subscribe, ['email' => 'c@example.test', 'se
 $evil = $subscribe;
 $evil['fields'] = array_map(static fn ($f) => $f[0] === '_tp_return' ? [$f[0], $f[1], '//evil.example/x'] : $f, $evil['fields']);
 $out['open redirect'] = parse_url((string) submit($evil, ['email' => 'd@example.test', 'seats' => '1'])['location'], PHP_URL_HOST) === parse_url($url, PHP_URL_HOST);
+
+// A form rendered at a page's other spelling (`/join`, before its redirect) comes back to `/join/`.
+$bare = $subscribe;
+$bare['fields'] = array_map(static fn ($f) => $f[0] === '_tp_return' ? [$f[0], $f[1], '/join'] : $f, $bare['fields']);
+$joined = submit($bare, ['email' => 'b@example.test', 'seats' => '2']);
+$out['other spelling'] = [parse_url((string) $joined['location'], PHP_URL_PATH), text($joined['back']['body'], 'done')];
+// A request that carries a result is answered where it is, even at the other spelling.
+$flashBare = fetch("$url/join?_flash=" . str_repeat('a', 12));
+$out['flash bare'] = [$flashBare['status'], $flashBare['headers']['location'][0] ?? null];
 
 // A cross-site form post is refused before the action runs.
 $cross = submit($subscribe, ['email' => 'e@example.test', 'seats' => '1'], ['Origin: https://evil.example']);

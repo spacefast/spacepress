@@ -13,6 +13,8 @@ final class Navigation
 {
     public const NAMESPACE = 'tp/router';
     public const REGION = 'tp/main';
+    /** The router region's closing tag, marked so tools that read a page can find where it ends. */
+    public const END = '</div><!-- /tp/main -->';
     private static bool $used = false;
 
     public static function used(): void
@@ -25,10 +27,14 @@ final class Navigation
         self::$used = false;
     }
 
-    /** The router region's opening tag; the page's HTML follows it, then `</div>`. */
-    public static function region(): string
+    /**
+     * The router region's opening tag; the page's HTML follows it, then `</div>`. On its own it is
+     * the document's `wp-site-blocks`; inside a block template (which has that root already) it is
+     * the page's own box.
+     */
+    public static function region(string $class = 'wp-site-blocks'): string
     {
-        return '<div class="wp-site-blocks" data-wp-interactive="' . esc_attr(self::NAMESPACE) . '" data-wp-router-region="' . esc_attr(self::REGION) . '">';
+        return '<div class="' . esc_attr($class) . '" data-wp-interactive="' . esc_attr(self::NAMESPACE) . '" data-wp-router-region="' . esc_attr(self::REGION) . '">';
     }
 
     /**
@@ -40,11 +46,18 @@ final class Navigation
      */
     public static function enqueue(string $url): void
     {
-        if (!self::$used || !function_exists('wp_register_script_module')) {
+        // The module also removes a form's one-use flash marker from the address bar.
+        if ((!self::$used && !Forms::marked()) || !function_exists('wp_register_script_module')) {
             return;
         }
         wp_register_script_module('typedpress-router', $url, [['id' => '@wordpress/interactivity', 'import' => 'static'], ['id' => '@wordpress/interactivity-router', 'import' => 'dynamic']], \TypedPress\Islands::runtimeVersion());
         wp_enqueue_script_module('typedpress-router');
+        // What a form says when its post may have reached the server but no page came back.
+        wp_interactivity_config(self::NAMESPACE, [
+            'failed' => __('Something went wrong sending this form. Reload the page to see whether it went through.'),
+            // And when another form on the page was sent after it, whose answer is the one shown.
+            'overtaken' => __('Another form on this page was sent after this one, and its result is the one shown.'),
+        ]);
         wp_interactivity_process_directives(self::region() . '</div>');
     }
 }

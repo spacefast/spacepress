@@ -28,7 +28,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
-      "localized": true,
+      "localized": false,
       "relations": {
         "authorId": {
           "kind": "one",

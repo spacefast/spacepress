@@ -16,7 +16,7 @@ test("the playground recompiles edited sources and replaces invalid output with 
   const generatedFile = page.getByRole("combobox", { name: "Generated file", exact: true });
   await expect(status).toHaveAttribute("data-state", "ok", { timeout: 30_000 });
   await expect(page.getByRole("combobox", { name: "Example", exact: true })).toHaveValue("blog");
-  await expect(generated).toHaveValue(/function action__approveComment/);
+  await expect(generated).toHaveValue(/function action__approve_comment/);
   const tokenColors = (view: string) => page.locator(`.code-editor[data-highlighted] ${view} .line > span`)
     .evaluateAll((spans) => new Set(spans.map((span) => getComputedStyle(span).color)).size);
   await expect(page.locator("#generated-view diffs-container")).toBeVisible();
@@ -38,7 +38,7 @@ test("the playground recompiles edited sources and replaces invalid output with 
 
   await page.getByRole("combobox", { name: "Example", exact: true }).selectOption("pantry");
   await generatedFile.selectOption("tp/app/functions.php");
-  await expect(generated).toHaveValue(/function items__beforeCreate/);
+  await expect(generated).toHaveValue(/function items__before_create/);
 
   const original = await source.inputValue();
   await source.fill(original.replace("name can't be empty", "Give this item a name"));
@@ -59,7 +59,7 @@ test("the playground recompiles edited sources and replaces invalid output with 
   await page.getByRole("button", { name: "Reset example" }).click();
   await expect(status).toHaveAttribute("data-state", "ok");
   await expect(source).toHaveValue(original);
-  await expect(generated).toHaveValue(/function items__beforeCreate/);
+  await expect(generated).toHaveValue(/function items__before_create/);
 
   await page.getByRole("combobox", { name: "Example", exact: true }).selectOption("blog");
   await expect(status).toHaveAttribute("data-state", "ok");

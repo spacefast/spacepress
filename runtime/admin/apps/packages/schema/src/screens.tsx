@@ -1,18 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import apiFetch from '@wordpress/api-fetch';
+import { decodeEntities } from '@wordpress/html-entities';
+import { external, pencil, trash } from '@wordpress/icons';
 import { useNavigate, useParams, useSearch } from '@wordpress/route';
 import { Button, Notice, Spinner } from '@wordpress/components';
-import { Page, RouterLink, useDocumentChanges } from '@typedpress-admin/admin-toolkit';
-import type { Field, View } from '@typedpress-admin/dataviews';
+import {
+	Page,
+	RouterLink,
+	createConfirmModal,
+	useDocumentChanges,
+} from '@typedpress-admin/admin-toolkit';
+import type { Action, Field, View } from '@typedpress-admin/dataviews';
 import { DataViews, useView } from '@typedpress-admin/views';
 import {
 	EditingObjects,
 	allowed,
+	defaultListColumns,
 	defaults,
+	label as humanLabel,
 	object,
+	singularLabel,
+	stripHtml,
 	text,
 	type Row,
 	type Collection,
+	type Column,
 	type Columns,
 } from './model';
 import {
@@ -24,6 +36,7 @@ import {
 	native,
 	nativeEditor,
 	read,
+	remove,
 	save,
 	schema,
 	unwrap,
@@ -41,16 +54,17 @@ export function Loading({ state }: { state: Load<unknown> }) {
 			</Notice>
 		</div>
 	) : (
-		<div role="status">
+		<div role="status" className="typedpress-schema-loading">
 			<Spinner />
-			Loading…
+			<span>Loading…</span>
 		</div>
 	);
 }
+
 export function Overview() {
 	const state = useLoad(schema, []);
 	return (
-		<Page title="Collections" subTitle="Your app’s content, in one place.">
+		<Page title="Collections" subTitle="Your app’s content and data.">
 			{state.kind !== 'ready' ? (
 				<Loading state={state} />
 			) : (
@@ -64,8 +78,10 @@ export function Overview() {
 										{c.label}
 									</RouterLink>
 								</h2>
-								<p>{c.storage ?? (native(c.name) ? 'Collection' : 'Table')}</p>
-								<p>{Object.keys(c.columns).length} fields</p>
+								{c.ui?.description && <p>{c.ui.description}</p>}
+								<p className="typedpress-schema-card-meta">
+									{Object.keys(c.columns).length} fields
+								</p>
 							</article>
 						))}
 				</div>
@@ -73,20 +89,115 @@ export function Overview() {
 		</Page>
 	);
 }
-function display(value: unknown): string {
-	return value == null
-		? '—'
-		: typeof value === 'object'
-			? JSON.stringify(value)
-			: String(value);
+
+function formatDate(value: unknown): string {
+	if (typeof value !== 'string' || !value) return '—';
+	const normalized = value.includes('T') && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(value)
+		? `${value}Z`
+		: value;
+	const parsed = new Date(normalized);
+	if (Number.isNaN(parsed.getTime())) return value;
+	return new Intl.DateTimeFormat(undefined, {
+		year: 'numeric',
+		month: 'short',
+		day: 'numeric',
+	}).format(parsed);
 }
+
+function statusTone(status: string): string {
+	switch (status.toLowerCase()) {
+		case 'published':
+		case 'publish':
+		case 'active':
+		case 'completed':
+		case 'paid':
+			return 'success';
+		case 'scheduled':
+		case 'future':
+		case 'processing':
+			return 'info';
+		case 'pending':
+		case 'review':
+		case 'paused':
+			return 'warning';
+		case 'trash':
+		case 'failed':
+		case 'cancelled':
+		case 'canceled':
+		case 'rejected':
+			return 'error';
+		default:
+			return 'neutral';
+	}
+}
+
+function formatCellText(value: unknown, col?: Column): string {
+	if (value == null || value === '') return '—';
+	if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+	if (Array.isArray(value)) {
+		return value.length === 0
+			? '—'
+			: value.length === 1
+				? '1 item'
+				: `${value.length} items`;
+	}
+	if (typeof value === 'object') {
+		const keys = Object.keys(value);
+		return keys.length ? `${keys.length} fields` : '—';
+	}
+	const raw = String(value);
+	if (col && (col.type === 'date' || col.type === 'timestamp' || col.type === 'datetime')) {
+		return formatDate(raw);
+	}
+	if (col && (col.type === 'richText' || col.multiline) || /<[a-z][\s\S]*>/i.test(raw)) {
+		const plain = decodeEntities(stripHtml(raw));
+		return plain.length > 90 ? `${plain.slice(0, 89)}…` : plain || '—';
+	}
+	const decoded = decodeEntities(raw);
+	return decoded.length > 90 ? `${decoded.slice(0, 89)}…` : decoded;
+}
+
+function renderCell(value: unknown, key: string, col: Column) {
+	if (value == null || value === '') {
+		return <span className="typedpress-schema-cell-muted">—</span>;
+	}
+	if (key === 'status' || (col.options.length > 0 && typeof value === 'string')) {
+		const str = String(value);
+		const tone = key === 'status' ? statusTone(str) : 'neutral';
+		return (
+			<span className={`typedpress-schema-badge is-${tone}`}>
+				{humanLabel(str)}
+			</span>
+		);
+	}
+	if (col.type === 'boolean' && typeof value === 'boolean') {
+		return (
+			<span className={`typedpress-schema-badge is-${value ? 'success' : 'neutral'}`}>
+				{value ? 'Yes' : 'No'}
+			</span>
+		);
+	}
+	if (key === 'slug' || col.type === 'url') {
+		return (
+			<code className="typedpress-schema-cell-code">
+				{formatCellText(value, col)}
+			</code>
+		);
+	}
+	return (
+		<span className="typedpress-schema-cell-truncate">
+			{formatCellText(value, col)}
+		</span>
+	);
+}
+
 export function listFields(c: Collection, rows: Row[]): Field<Row>[] {
 	const linkField =
 		c.title && rows.some((r) => c.title && c.title in r)
 			? c.title
 			: c.primaryKey;
-	return Object.entries(c.columns)
-		.filter(([key]) => key === c.primaryKey || rows.some((r) => key in r))
+	const fields: Field<Row>[] = Object.entries(c.columns)
+		.filter(([key]) => key === c.primaryKey || key === c.title || rows.some((r) => key in r))
 		.map(([key, col]) => ({
 			id: key,
 			label: col.label,
@@ -104,72 +215,235 @@ export function listFields(c: Collection, rows: Row[]): Field<Row>[] {
 			render: ({ item }) =>
 				key === linkField ? (
 					<RouterLink
+						className="typedpress-schema-title-link"
 						to={`/collections/${c.name}/${encodeURIComponent(String(item[c.primaryKey]))}`}
 					>
-						{display(item[key])}
+						{formatCellText(item[key], col)}
 					</RouterLink>
 				) : (
-					<span>{display(item[key])}</span>
+					renderCell(item[key], key, col)
 				),
 		}));
+
+	if (native(c.name) && rows.some((r) => typeof r._modified === 'string')) {
+		fields.push({
+			id: '_modified',
+			label: 'Updated',
+			type: 'text',
+			enableSorting: true,
+			enableGlobalSearch: false,
+			filterBy: false,
+			getValue: ({ item }) => item._modified,
+			render: ({ item }) => (
+				<span className="typedpress-schema-cell-muted">
+					{formatDate(item._modified)}
+				</span>
+			),
+		});
+	}
+	return fields;
 }
+
 export function CollectionList() {
 	const { collection } = useParams({ from: '/collections/$collection' });
 	const state = useLoad(() => collectionSpec(collection), [collection]);
 	return state.kind === 'ready' ? (
 		<CollectionTable key={collection} c={state.value} />
 	) : (
-		<Page title="Collection"><Loading state={state} /></Page>
+		<Page title="Loading…"><Loading state={state} /></Page>
 	);
 }
+
 function CollectionTable({ c }: { c: Collection }) {
 	const collection = c.name;
 	const search = object(useSearch({ from: '/collections/$collection' }));
 	const navigate = useNavigate();
+	const [revision, setRevision] = useState(0);
+	const [actionError, setActionError] = useState('');
+	const singular = singularLabel(c);
+	const statusFilter = text(search.status) ?? 'all';
+	const canFilterStatus = Boolean(
+		c.columns.status?.options?.length &&
+			c.columns.status.options.length > 1 &&
+			(!native(c.name) ||
+				(allowed(c.access.update, bootstrap().role) &&
+					['author', 'editor', 'admin'].includes(bootstrap().role)))
+	);
+
 	const defaultView = useMemo<View>(() => {
 		const titleField = c.title && c.title in c.columns ? c.title : c.primaryKey;
+		const secondary = defaultListColumns(c, titleField);
+		if (native(c.name) && !c.ui?.defaultColumns?.length && secondary.length < 4) {
+			secondary.push('_modified');
+		}
 		return {
 			type: 'table',
 			titleField,
-			fields: [titleField, ...Object.keys(c.columns).filter(id => id !== titleField && id !== c.primaryKey)].slice(0, 5),
+			fields: secondary,
 			perPage: 20,
 			sort: { field: c.primaryKey, direction: 'desc' },
 		};
 	}, [c]);
+
 	const { view: savedView, updateView, isModified, resetToDefault } = useView({
-		kind: 'firstCollection',
+		kind: 'tpCollection',
 		name: collection,
 		slug: 'all',
 		defaultView,
-		queryParams: { page: Math.max(1, Number(search.page) || 1), search: text(search.search) ?? '' },
+		queryParams: {
+			page: Math.max(1, Number(search.page) || 1),
+			search: text(search.search) ?? '',
+		},
 		onChangeQueryParams: (next) => {
-			void navigate({ to: `/collections/${collection}`, search: {
-				page: next.page,
-				search: next.search || undefined,
-			} });
+			void navigate({
+				to: `/collections/${collection}`,
+				search: {
+					page: next.page,
+					search: next.search || undefined,
+					status: statusFilter !== 'all' ? statusFilter : undefined,
+				},
+			});
 		},
 	});
+
 	const page = savedView.page ?? 1,
 		perPage = Math.min(100, Math.max(1, savedView.perPage ?? 20)),
 		query = savedView.search ?? '',
 		orderBy = savedView.sort?.field,
 		direction = savedView.sort?.direction ?? 'desc';
-	const state = useLoad(() => list(c, { page, perPage, search: query, orderBy, direction }),
-		[c, page, perPage, query, orderBy, direction]);
+
+	const state = useLoad(
+		() =>
+			list(c, {
+				page,
+				perPage,
+				search: query,
+				status: canFilterStatus ? statusFilter : undefined,
+				orderBy,
+				direction,
+			}),
+		[c, page, perPage, query, statusFilter, canFilterStatus, orderBy, direction, revision]
+	);
+
+	const deleteModal = useMemo(
+		() =>
+			createConfirmModal<Row>({
+				modalHeader: (items) =>
+					items.length === 1
+						? `Delete ${singular}`
+						: `Delete ${items.length} ${c.label}`,
+				intent: 'delete-permanently',
+				message: (items) =>
+					items.length === 1
+						? `Delete "${formatCellText(items[0][c.title ?? c.primaryKey])}"?`
+						: `Delete ${items.length} selected items?`,
+				onSubmit: async (items, setIsLoading) => {
+					setIsLoading(true);
+					setActionError('');
+					try {
+						await Promise.all(
+							items.map((item) => remove(c, String(item[c.primaryKey])))
+						);
+						setRevision((r) => r + 1);
+					} catch (e: unknown) {
+						setActionError(message(e));
+					}
+				},
+			}),
+		[c, singular]
+	);
+
+	const actions = useMemo<Action<Row>[]>(() => {
+		const listActions: Action<Row>[] = [
+			{
+				id: 'edit',
+				label: 'Edit',
+				isPrimary: true,
+				icon: pencil,
+				supportsBulk: false,
+				callback: (items) => {
+					const item = items[0];
+					if (!item) return;
+					void navigate({
+						to: `/collections/${collection}/${encodeURIComponent(String(item[c.primaryKey]))}`,
+					});
+				},
+			},
+			{
+				id: 'view',
+				label: 'View',
+				isPrimary: false,
+				icon: external,
+				supportsBulk: false,
+				isEligible: (item) => typeof item._link === 'string' && item._link.length > 0,
+				callback: (items) => {
+					const url = items[0]?._link;
+					if (typeof url === 'string' && url) {
+						window.open(url, '_blank', 'noopener,noreferrer');
+					}
+				},
+			},
+		];
+		if (allowed(c.access.delete, bootstrap().role)) {
+			listActions.push({
+				id: 'delete',
+				label: 'Delete',
+				isPrimary: false,
+				icon: trash,
+				supportsBulk: true,
+				...deleteModal,
+			});
+		}
+		return listActions;
+	}, [c, collection, navigate, deleteModal]);
+
+	const statusTabs = canFilterStatus ? (
+		<div className="typedpress-schema-status-tabs" role="tablist" aria-label="Filter by status">
+			{['all', ...(c.columns.status?.options ?? [])].map((status) => {
+				const active = statusFilter === status;
+				return (
+					<button
+						key={status}
+						type="button"
+						role="tab"
+						aria-selected={active}
+						className={`typedpress-schema-status-tab${active ? ' is-active' : ''}`}
+						onClick={() => {
+							void navigate({
+								to: `/collections/${collection}`,
+								search: {
+									page: 1,
+									search: query || undefined,
+									status: status === 'all' ? undefined : status,
+								},
+							});
+						}}
+					>
+						{status === 'all' ? 'All' : humanLabel(status)}
+					</button>
+				);
+			})}
+		</div>
+	) : undefined;
+
 	if (state.kind !== 'ready')
 		return (
-			<Page title="Collection">
+			<Page title={c.label} subTitle={c.ui?.description}>
 				<Loading state={state} />
 			</Page>
 		);
+
 	const { rows, total, hasMore } = state.value,
 		fields = listFields(c, rows);
 	const available = fields.map((f) => f.id);
 	const titleField =
 		c.title && available.includes(c.title) ? c.title : c.primaryKey;
+	const secondaryFields = (savedView.fields ?? []).filter(
+		(id) => id !== titleField && available.includes(id)
+	);
 	const view: View = {
 		...savedView,
-		fields: (savedView.fields ?? []).filter((id) => available.includes(id)),
+		fields: secondaryFields,
 		titleField,
 		page,
 		perPage,
@@ -178,11 +452,13 @@ function CollectionTable({ c }: { c: Collection }) {
 	};
 	const totalItems =
 		total ?? (page - 1) * perPage + rows.length + (hasMore ? 1 : 0);
+
 	return (
 		<Page
 			title={c.label}
 			hasPadding={false}
-			subTitle={c.storage ?? (native(c.name) ? 'Collection' : 'Table')}
+			subTitle={c.ui?.description}
+			tabs={statusTabs}
 			actions={
 				<Button
 					variant="primary"
@@ -191,24 +467,37 @@ function CollectionTable({ c }: { c: Collection }) {
 						void navigate({ to: `/collections/${collection}/-/new` });
 					}}
 				>
-					New {c.label}
+					New {singular}
 				</Button>
 			}
 		>
-			{!native(c.name) && c.title && (
-				<p>Search matches the {c.columns[c.title]?.label ?? c.title} field.</p>
+			{actionError && (
+				<Notice status="error" isDismissible onRemove={() => setActionError('')}>
+					{actionError}
+				</Notice>
 			)}
 			<DataViews<Row>
 				data={rows}
 				fields={fields}
 				view={view}
+				actions={actions}
 				onChangeView={(next) => {
-					updateView({ ...next, page: next.search !== query || next.perPage !== perPage ? 1 : next.page });
+					updateView({
+						...next,
+						page: next.search !== query || next.perPage !== perPage ? 1 : next.page,
+					});
 				}}
-				onReset={isModified ? () => {
-					resetToDefault();
-					void navigate({ to: `/collections/${collection}`, search: { page: 1, search: query || undefined } });
-				} : false}
+				onReset={
+					isModified
+						? () => {
+								resetToDefault();
+								void navigate({
+									to: `/collections/${collection}`,
+									search: { page: 1, search: query || undefined },
+								});
+							}
+						: false
+				}
 				getItemId={(r) => String(r[c.primaryKey])}
 				defaultLayouts={{ table: {} }}
 				showSearch={Boolean(c.title)}
@@ -220,6 +509,7 @@ function CollectionTable({ c }: { c: Collection }) {
 		</Page>
 	);
 }
+
 export function DocumentForm({
 	fields,
 	initial,
@@ -325,6 +615,7 @@ export function DocumentForm({
 		</form>
 	);
 }
+
 export function NewDocument() {
 	const { collection } = useParams({ from: '/collections/$collection/-/new' });
 	const state = useLoad(() => collectionSpec(collection), [collection]);
@@ -336,6 +627,7 @@ export function NewDocument() {
 			</Page>
 		);
 	const c = state.value;
+	const singular = singularLabel(c);
 	const initial = defaults(c.columns, (column) => allowed(column.create, bootstrap().role));
 	// A content author can review blocks before publishing.
 	if (c.content && c.columns.status?.options.includes('draft') &&
@@ -343,7 +635,7 @@ export function NewDocument() {
 		initial.status = 'draft';
 	return (
 		<Page
-			title={`New ${c.label}`}
+			title={`New ${singular}`}
 			breadcrumbs={
 				<RouterLink
 					className="typedpress-schema-back"
@@ -366,7 +658,7 @@ export function NewDocument() {
 				editing={false}
 				omit={[c.primaryKey]}
 				disabled={!allowed(c.access.create, bootstrap().role)}
-				label="Create record"
+				label={`Create ${singular}`}
 				submit={(values) => save(c, values)}
 				onSaved={async (row) => {
 					await navigate({
@@ -377,6 +669,7 @@ export function NewDocument() {
 		</Page>
 	);
 }
+
 export function PlainDocument() {
 	const { collection, slug: id } = useParams({
 		from: '/collections/$collection/$slug',
@@ -396,7 +689,7 @@ export function PlainDocument() {
 	if (nativeEditor(c, row, editable)) return null;
 	return (
 		<Page
-			title={`Edit ${c.label}`}
+			title={`Edit ${singularLabel(c)}`}
 			breadcrumbs={
 				<RouterLink
 					className="typedpress-schema-back"
@@ -419,6 +712,7 @@ export function PlainDocument() {
 		</Page>
 	);
 }
+
 export function Globals() {
 	const state = useLoad(async () => {
 		const s = await schema();
@@ -429,7 +723,7 @@ export function Globals() {
 						await apiFetch({
 							...api(`/${encodeURIComponent(name)}`),
 						});
-						return { name, label: g.label };
+						return { name, label: g.label, description: g.ui?.description };
 					} catch (e: unknown) {
 						const error = object(e);
 						const status =
@@ -443,7 +737,7 @@ export function Globals() {
 		).filter((g) => g !== null);
 	}, []);
 	return (
-		<Page title="Globals">
+		<Page title="Globals" subTitle="Site-wide structured settings and content.">
 			{state.kind !== 'ready' ? (
 				<Loading state={state} />
 			) : (
@@ -453,6 +747,7 @@ export function Globals() {
 							<h2>
 								<RouterLink to={`/globals/${g.name}`}>{g.label}</RouterLink>
 							</h2>
+							{g.description && <p>{g.description}</p>}
 						</article>
 					))}
 				</div>
@@ -460,6 +755,7 @@ export function Globals() {
 		</Page>
 	);
 }
+
 export function GlobalDocument() {
 	const { name } = useParams({ from: '/globals/$name' });
 	const state = useLoad(async () => {
@@ -484,7 +780,7 @@ export function GlobalDocument() {
 		);
 	const { g, row } = state.value;
 	return (
-		<Page title={g.label} contentWidth="constrained">
+		<Page title={g.label} subTitle={g.ui?.description} contentWidth="constrained">
 			<DocumentForm
 				key={name}
 				fields={g.fields}

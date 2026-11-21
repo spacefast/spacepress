@@ -222,6 +222,19 @@ final class Site
             && is_dir($root . '/app/' . $manifest['app'] . '/plugins/typedpress-app-' . $manifest['name']);
     }
 
+    /** This receiver has no checkout suspension or shipping-compatible selection/recovery yet. */
+    public static function checkCommerce(array $manifest): void
+    {
+        $path = self::root() . '/app/' . $manifest['app'] . '/manifest.json';
+        $hosted = json_decode((string) @file_get_contents($path), true);
+        if (!is_array($hosted) || ($hosted['format'] ?? null) !== 'typedpress.hosted.v1') {
+            throw new \RuntimeException('The build is missing its hosted manifest. Upload it again.');
+        }
+        if (array_key_exists('woocommerce', $hosted['requires'] ?? [])) {
+            throw new \RuntimeException('The TypedPress deployment receiver does not yet support commerce builds: managed shipping selection and recovery are not qualified. Use a qualified commerce host or a standalone local/plugin installation.');
+        }
+    }
+
     /** Whether the build has been initialized on this site, so it can be made live without installing. */
     public static function ready(string $build): bool
     {
@@ -307,6 +320,11 @@ final class Site
         ];
         update_option(self::HISTORY, $history, false);
         update_option(self::LIVE, $build, true);
+        // Every page may render differently now: page caches and the edge purge the whole host, once,
+        // when this request ends (nothing is announced where no page cache listens).
+        if (method_exists(\TypedPress\Wp\Purges::class, 'everything')) {
+            \TypedPress\Wp\Purges::everything();
+        }
     }
 
     /**

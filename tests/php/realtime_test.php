@@ -129,7 +129,7 @@ eq('publishers still run after a throwing listener', count($sent), 1);
 // WordPress posts (WP cron promotes them, covered in tests/wp/rest.test.ts); a table-backed
 // drafts collection is promoted by Db::promoteDue.
 $status = ['type' => 'select', 'options' => ['draft', 'published', 'scheduled'], 'notNull' => true, 'default' => 'draft', 'system' => true];
-$notes = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => ['notes' => [
+$notes = new \TypedPress\Schema(['version' => 5, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => ['notes' => [
     'key' => 'notes', 'primaryKey' => 'id', 'drafts' => true, 'editor' => false, 'table' => 'tp_rt_notes',
     'columns' => ['id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true], 'status' => $status, 'publishedAt' => ['type' => 'timestamp', 'system' => true]],
 ]]]);

@@ -4,17 +4,31 @@ import { once } from 'node:events';
 import { access, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
-import { createServer } from 'node:net';
+import { BlockList, connect, createServer, isIP } from 'node:net';
+import { lookup } from 'node:dns/promises';
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const STUDIO_VERSION = '2.2.0';
-// The WordPress Studio installs (wordpress.org's ZIP of it) and setup.php's typedpress check; TypedPress's floor,
-// src/platform.rs WORDPRESS, is 7.2-beta5, and setup.php also runs the runtime's own Platform::problems().
-const WORDPRESS_VERSION = '7.2-beta5';
-const here = dirname(fileURLToPath(import.meta.url));
+// The supported floor (src/platform.rs WORDPRESS). Studio's version picker only offers current releases,
+// so the floor resolves to the stable update WordPress offers from it; setup.php also runs Platform::problems().
+const WORDPRESS_VERSION = '7.1';
+const modulePath = await realpath(fileURLToPath(import.meta.url));
+const here = dirname(modulePath);
 const exists = async (path) => access(path).then(() => true, () => false);
 const json = async (path) => JSON.parse(await readFile(path, 'utf8'));
+export async function wordpressVersion(fetcher = fetch) {
+  try {
+    const response = await fetcher(`https://api.wordpress.org/core/version-check/1.7/?version=${WORDPRESS_VERSION}`, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) return WORDPRESS_VERSION;
+    const data = await response.json();
+    const update = data.offers?.find((offer) => ['autoupdate', 'upgrade'].includes(offer.response));
+    return typeof update?.version === 'string' ? update.version : WORDPRESS_VERSION;
+  } catch {
+    // Keep the supported floor when the update service is unavailable.
+    return WORDPRESS_VERSION;
+  }
+}
 const inside = (parent, path) => {
   const rel = relative(parent, path);
   return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`));
@@ -45,9 +59,10 @@ async function studioBinary() {
   throw new Error(`Cannot find wp-studio@${STUDIO_VERSION}. Run typedpress dev with Node.js 22+ and npm installed.`);
 }
 
-function execute(file, args, { capture = false, timeout = 180000, env = process.env, input = 'ignore' } = {}) {
+function execute(file, args, { capture = false, log = false, timeout = 180000, env = process.env, input = 'ignore' } = {}) {
   return new Promise((resolveResult, reject) => {
-    const child = spawn(file, args, { stdio: [input, capture ? 'pipe' : 'inherit', capture ? 'pipe' : 'inherit'], env });
+    const output = capture || log ? 'pipe' : 'inherit';
+    const child = spawn(file, args, { stdio: [input, output, output], env });
     let stdout = '', stderr = '', timedOut = false;
     const timer = setTimeout(() => { timedOut = true; child.kill('SIGTERM'); }, timeout);
     child.stdout?.on('data', (chunk) => { stdout += chunk; });
@@ -55,8 +70,10 @@ function execute(file, args, { capture = false, timeout = 180000, env = process.
     child.once('error', (error) => { clearTimeout(timer); reject(error); });
     child.once('close', (code, signal) => {
       clearTimeout(timer);
-      if (code === 0) resolveResult(stdout);
-      else reject(Object.assign(new Error(`${timedOut ? 'Timed out' : `Failed (${code ?? signal})`}: ${args[0]}\n${stderr || stdout}`), { stdout }));
+      if (code === 0) {
+        if (log) { process.stdout.write(stdout); process.stderr.write(stderr); }
+        resolveResult(stdout);
+      } else reject(Object.assign(new Error(`${timedOut ? 'Timed out' : `Failed (${code ?? signal})`}: ${args[0]}\n${stderr || stdout}`), { stdout }));
     });
   });
 }
@@ -126,6 +143,28 @@ async function migrationHistory(project) {
   return history;
 }
 
+async function appRevision(content) {
+  const manifest = await readFile(join(content, 'typedpress-manifest.json'));
+  const { app } = JSON.parse(manifest);
+  const plugin = await readFile(join(content, 'plugins', `typedpress-app-${app}.zip`));
+  return createHash('sha256').update(manifest).update(plugin).digest('hex');
+}
+
+const fileHash = async (path) => createHash('sha256').update(await readFile(path)).digest('hex');
+
+// What identifies each plugin's files in a build: the hash of the ZIP the build wrote beside the
+// folder (TypedPress's own plugins), else the tree hash the manifest pins (a dependency), else the
+// version. A plugin whose print is unchanged since the last publish is not copied again.
+export async function pluginPrints(content, manifest) {
+  const prints = {};
+  for (const [slug, version] of Object.entries(manifest.plugins)) {
+    const zip = join(content, 'plugins', `${slug}.zip`);
+    prints[slug] = await exists(zip) ? await fileHash(zip)
+      : manifest.dependencies.find((dependency) => dependency.slug === slug)?.treeSha256 ?? String(version);
+  }
+  return prints;
+}
+
 async function availablePort(port) {
   await new Promise((resolvePort, reject) => {
     const server = createServer();
@@ -134,7 +173,8 @@ async function availablePort(port) {
   });
 }
 
-export async function publishPlugins(content, managed) {
+// `changed(slug)` says whether a plugin's files differ from what the site holds; by default all do.
+export async function publishPlugins(content, managed, changed = () => true) {
   const manifest = await json(join(content, 'typedpress-manifest.json'));
   if (managed.owner.app && managed.owner.app !== manifest.app) {
     throw new Error('Changing the application name needs a separate local site; the existing app and data were preserved.');
@@ -153,6 +193,7 @@ export async function publishPlugins(content, managed) {
   }
   for (const slug of plugins) {
     const destination = join(target, slug);
+    if (!changed(slug) && managed.owner.generated.includes(slug) && await exists(destination)) continue;
     const stage = join(target, `.tp-${slug}-${randomUUID()}`);
     const backup = `${stage}.previous`;
     await cp(join(content, 'plugins', slug), stage, { recursive: true, dereference: true });
@@ -181,9 +222,199 @@ export async function publishPlugins(content, managed) {
     wordpress: WORDPRESS_VERSION, sqlite: '3.1.2', localized: manifest.locales !== null,
   };
   await atomicJson(join(managed.state, 'setup.json'), spec);
-  managed.owner.app = manifest.app;
-  await atomicJson(managed.marker, managed.owner);
-  return { manifest, activate };
+  if (managed.owner.app !== manifest.app) {
+    managed.owner.app = manifest.app;
+    await atomicJson(managed.marker, managed.owner);
+  }
+  return { manifest, activate, spec };
+}
+
+// `typedpress dev --url` and `--host`: the address WordPress writes into every page (`url`), and the
+// address of this machine TypedPress listens on (`listen`). Studio 2.2.0 serves a site on localhost
+// only, and names it http://localhost:<port> or a `.local` domain behind its own proxy on ports
+// 80 and 443, so neither is Studio's to set.
+// A host name as DNS spells it: letters, digits and hyphens between dots. Nothing else reaches the
+// PHP file addressPhp writes, or the address WordPress prints into pages.
+const HOSTNAME = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+
+// An IP address that stands for every interface: 0.0.0.0 or ::, however it is spelled (Node's own
+// address matching, which also reads IPv4-mapped IPv6 such as ::ffff:0:0).
+const EVERY = new BlockList();
+EVERY.addAddress('0.0.0.0', 'ipv4');
+EVERY.addAddress('::', 'ipv6');
+const unspecified = (ip) => isIP(ip) !== 0 && EVERY.check(ip, isIP(ip) === 6 ? 'ipv6' : 'ipv4');
+
+export function siteAddress(flags, port) {
+  const value = (name) => flags.find((flag) => flag.startsWith(`--${name}=`))?.slice(name.length + 3);
+  const host = value('host'), announced = value('url');
+  let url = null;
+  if (host !== undefined) {
+    // WordPress writes one address into every page, so "every interface" names none. A bare number
+    // (`0`, `2130706433`) is an IPv4 address to the resolver, so it is refused too.
+    // A scoped IPv6 address (fe80::1%eth0) has no form in a URL WordPress can write.
+    const named = isIP(host) ? !unspecified(host) && !host.includes('%') : HOSTNAME.test(host) && !/^[0-9.]+$/.test(host);
+    if (!named) throw new Error('--host takes one address or name of this machine, such as 10.0.0.24 (ip -4 addr lists them).');
+    if (flags.includes('--no-watch')) throw new Error('--host needs typedpress dev to keep running, because that process is what listens there. Use --detach instead of --no-watch.');
+    url = `http://${isIP(host) === 6 ? `[${host}]` : host}:${port}`;
+  }
+  if (announced !== undefined) {
+    const parsed = URL.canParse(announced) ? new URL(announced) : null;
+    if (!parsed || !['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+      throw new Error('--url takes an address such as https://box.example.ts.net:8443, with no path: WordPress serves the site at its root.');
+    }
+    const name = parsed.hostname.replace(/^\[(.*)\]$/, '$1');
+    if (!(isIP(name) ? !unspecified(name) : HOSTNAME.test(name))) {
+      throw new Error('--url takes an address such as https://box.example.ts.net:8443: a host name of letters, digits, hyphens and dots, or an IP address.');
+    }
+    url = parsed.origin;
+  }
+  return { url, listen: host ?? null };
+}
+
+// --host as the address the relay binds: a name resolved once, here, so what is checked is what is
+// bound, and an address standing for every interface is refused whatever spelled it.
+export async function listenAddress(host) {
+  const { address } = await lookup(host);
+  if (unspecified(address)) throw new Error(`--host ${host} is ${address}, which is every interface of this machine; name one address of it.`);
+  return address;
+}
+
+// A PHP single-quoted string holding `text`.
+const phpString = (text) => `'${text.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
+
+// What WordPress reads before it loads. `home` and `siteurl` are answered before Studio's WP_HOME
+// and WP_SITEURL (http://localhost:<port>, defined ahead of wp-config.php) are consulted, and early
+// enough for the content and plugin URLs WordPress fixes before any plugin runs. The request's own
+// host and scheme are the address too, as WordPress documents for a site behind a proxy, but from
+// this file instead of a header any client can send.
+export const addressPhp = (url) => `<?php
+// Written by typedpress dev --url / --host, and removed by a start without them.
+$tp_dev_url = ${phpString(url)};
+$_SERVER['HTTP_HOST'] = substr( $tp_dev_url, strpos( $tp_dev_url, '://' ) + 3 );
+if ( 0 === strpos( $tp_dev_url, 'https://' ) ) {
+	$_SERVER['HTTPS'] = 'on';
+}
+$tp_dev_address = static function () use ( $tp_dev_url ) {
+	return $tp_dev_url;
+};
+foreach ( array( 'pre_option_home', 'pre_option_siteurl' ) as $tp_dev_option ) {
+	if ( function_exists( 'add_filter' ) ) {
+		add_filter( $tp_dev_option, $tp_dev_address );
+	} else {
+		$GLOBALS['wp_filter'][ $tp_dev_option ][10][] = array( 'function' => $tp_dev_address, 'accepted_args' => 1 );
+	}
+}
+unset( $tp_dev_url, $tp_dev_address, $tp_dev_option );
+`;
+
+const ADDRESS_FILE = 'tp-dev-address.php';
+const ADDRESS_LINE = `if ( is_file( ABSPATH . '${ADDRESS_FILE}' ) ) { require ABSPATH . '${ADDRESS_FILE}'; } // typedpress dev --url / --host`;
+
+// Where in wp-config.php the address line goes, found by PHP's own tokenizer: PHP code that reads
+// the file at the path in $tp_config and prints the byte offset of the `require_once ABSPATH .
+// 'wp-settings.php';` that loads WordPress, or -1 when the file is not shaped so that it surely is
+// that one. The require must be the file's last code (only whitespace, comments, a `?>` and blank
+// text after it), as in wp-config-sample.php and the configs WordPress and Studio write, and the
+// code just before it must be a bare `;` or `}` (one that ends a statement or block, not a brace
+// inside a string, which is no token of its own) or the open tag. A require in a string, a
+// heredoc, a comment, an attribute or text outside PHP is not code; one in a function, class or
+// braced block is followed by that block's `}`; one that is an unbraced if/else/while body
+// follows `)` or `else`. Files
+// with alternative control syntax (`if (…): … endif;`), which can leave a block open at the end of
+// a file, are refused, and so are files that name wp-settings.php more than once or use return,
+// exit, die, goto or __halt_compiler anywhere: the last require might then never run.
+export const SETTINGS_OFFSET = String.raw`
+$code = array();
+$offset = 0;
+foreach (token_get_all(file_get_contents($tp_config)) as $token) {
+  $id = is_array($token) ? $token[0] : null;
+  $text = is_array($token) ? $token[1] : $token;
+  $skip = in_array($id, array(T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_CLOSE_TAG), true) || ($id === T_INLINE_HTML && trim($text) === '');
+  if (!$skip) $code[] = array($id, $text, $offset);
+  $offset += strlen($text);
+}
+$found = -1;
+$ends = array(T_ENDIF, T_ENDWHILE, T_ENDFOR, T_ENDFOREACH, T_ENDSWITCH, T_ENDDECLARE);
+$alternative = false;
+$settings = 0;
+foreach ($code as $t) {
+  $alternative = $alternative || in_array($t[0], $ends, true);
+  // A config that loads wp-settings.php twice, or stops early: the last require might never run.
+  if ($t[0] === T_CONSTANT_ENCAPSED_STRING && ($t[1] === "'wp-settings.php'" || $t[1] === '"wp-settings.php"')) $settings++;
+  if ($t[0] === T_RETURN || $t[0] === T_EXIT || $t[0] === T_HALT_COMPILER || $t[0] === T_GOTO) $alternative = true;
+}
+if ($settings !== 1) $alternative = true;
+$is = function ($t, $want) {
+  if ($want === 'require') return $t[0] === T_REQUIRE_ONCE || $t[0] === T_REQUIRE;
+  if ($want === 'ABSPATH') return $t[0] === T_STRING && $t[1] === 'ABSPATH';
+  if ($want === 'file') return $t[0] === T_CONSTANT_ENCAPSED_STRING && ($t[1] === "'wp-settings.php'" || $t[1] === '"wp-settings.php"');
+  return $t[0] === null && $t[1] === $want;
+};
+foreach (array(array('require', 'ABSPATH', '.', 'file', ';'), array('require', '(', 'ABSPATH', '.', 'file', ')', ';')) as $shape) {
+  $i = count($code) - count($shape);
+  if ($alternative || $i < 1) continue;
+  $match = true;
+  foreach ($shape as $k => $want) $match = $match && $is($code[$i + $k], $want);
+  $before = $code[$i - 1];
+  if ($match && ($before[0] === T_OPEN_TAG || ($before[0] === null && ($before[1] === ';' || $before[1] === '}')))) $found = $code[$i][2];
+}
+echo $found;
+`;
+
+// wp-config.php with the one line that reads the address file, put on its own line before the
+// require_once of wp-settings.php that PHP runs. `offset` is SETTINGS_OFFSET's answer for `config`.
+// Only where that require starts its line (indentation aside), so the line put before it can't
+// split a statement; anything else is refused before a file is written.
+export function withAddressLine(config, offset) {
+  if (config.includes(ADDRESS_FILE)) return config;
+  const bytes = Buffer.from(config, 'utf8');
+  const at = offset >= 0 ? bytes.subarray(0, offset).toString('utf8').length : -1;
+  const start = at >= 0 ? config.lastIndexOf('\n', at - 1) + 1 : -1;
+  if (at < 0 || config.slice(start, at).trim() !== '') {
+    throw new Error("wp-config.php does not load wp-settings.php in a statement of its own (require_once ABSPATH . 'wp-settings.php';); --url and --host cannot set the address.");
+  }
+  return `${config.slice(0, start)}${ADDRESS_LINE}\n${config.slice(start)}`;
+}
+
+// `php(code)` runs PHP code and answers what it printed.
+export const settingsOffset = async (php, config) => {
+  const out = (await php(`$tp_config = ${phpString(config)};${SETTINGS_OFFSET}`)).trim();
+  if (!/^-?\d+$/.test(out)) throw new Error(`Could not read wp-config.php with PHP's tokenizer: ${out.slice(0, 200)}`);
+  return Number(out);
+};
+
+async function announce(site, url, php) {
+  const file = join(site, ADDRESS_FILE);
+  if (!url) return rm(file, { force: true });
+  const config = join(site, 'wp-config.php');
+  const source = await readFile(config, 'utf8');
+  const patched = source.includes(ADDRESS_FILE) ? source : withAddressLine(source, await settingsOffset(php, config));
+  await writeFile(file, addressPhp(url));
+  if (patched !== source) await writeFile(config, patched);
+}
+
+// --host: connections to this machine's address, passed to Studio's listener and back unchanged.
+// The address bound is the one `host` resolves to, refused when that is every interface.
+export async function forward(host, port, upstream) {
+  const bind = await listenAddress(host);
+  const open = new Set();
+  const server = createServer((client) => {
+    const site = connect(upstream, 'localhost');
+    for (const [socket, other] of [[client, site], [site, client]]) {
+      open.add(socket);
+      socket.on('error', () => {});
+      socket.once('close', () => { open.delete(socket); other.destroy(); });
+    }
+    client.pipe(site).pipe(client);
+  });
+  await new Promise((done, fail) => {
+    server.once('error', (error) => fail(new Error(`Cannot listen on ${host}:${port}: ${error.message}`)));
+    server.listen(port, bind, done);
+  });
+  return {
+    port: server.address().port,
+    close: () => new Promise((done) => { server.close(done); for (const socket of open) socket.destroy(); }),
+  };
 }
 
 // Directory names never watched anywhere, and the project paths TypedPress writes itself.
@@ -193,6 +424,64 @@ const ignoredPath = (name) => IGNORED_NAMES.has(name.split('/').at(-1)) || GENER
 // What a build reads: TypeScript, imported stylesheets and images, public files,
 // Markdown pages under tp/app/, and the project's tp/theme.json.
 const isSource = (name) => /\.(?:[cm]?[jt]sx?|css|svg)$/.test(name) || name.split('/')[0] === 'public' || /^tp\/app\/(.*\/)?page\.md$/.test(name) || name === 'tp/theme.json';
+
+// The Studio site's must-use plugin, written on every start. While `typedpress dev` watches,
+// live.json (scripts/dev/live.mjs) names the session and its build, and every document a person
+// opens carries the reload client, all from the site's own address.
+export const DEV_PLUGIN = `<?php
+// Written by typedpress dev. Local development only.
+// Allow identity callbacks on the site's HTTP origin.
+if (!defined('TP_IDENTITY_DEV_HTTP')) define('TP_IDENTITY_DEV_HTTP', true);
+// Studio's PHP looks at a file's modification time at most every two seconds
+// (opcache.revalidate_freq=2), so a request just after a rebuild would run the previous build's
+// code. From here on (the plugins load after this file) every request checks.
+ini_set('opcache.revalidate_freq', '0');
+(static function () {
+    // What typedpress dev publishes while it watches. With none (--no-watch, or it stopped), the
+    // site is as a build leaves it.
+    $state = __DIR__ . '/typedpress-dev/live.json';
+    $live = is_readable($state) ? json_decode((string) file_get_contents($state), true) : null;
+    if (!is_array($live) || !isset($live['session'], $live['revision'])) return;
+    // A page rendered to be kept (a prerender, typedpress export) carries no reload client.
+    if (isset($_SERVER['HTTP_X_TYPEDPRESS_PRERENDER']) || isset($_SERVER['HTTP_X_TYPEDPRESS_EXPORT'])) return;
+    // Pages render from the current build on each request, never from a prerendered file.
+    add_filter('tp_prebuilt_serve', '__return_false');
+    $client = static fn (): string => plugins_url('typedpress-dev/live-client.js', __FILE__);
+    $enqueue = static function () use ($live, $client): void {
+        wp_enqueue_script('typedpress-dev', add_query_arg('build', $live['session'] . '.' . (int) $live['revision'], $client()), [], null, ['strategy' => 'defer']);
+    };
+    // Themed pages, the login page, wp-admin, and TypedPress Admin, which prints its own document.
+    foreach (['wp_enqueue_scripts', 'login_enqueue_scripts', 'admin_enqueue_scripts', 'tp_admin_init'] as $hook) {
+        add_action($hook, $enqueue);
+    }
+    // An HTML file from public/ (/index.html): the runtime drops every output buffer, sends the
+    // status, the headers and the file, and exits. The file's bytes pass through a buffer opened
+    // at that status, so the answer carries the client and the file on disk is never edited. The
+    // browser keeps no copy: the next load is the file as it is then.
+    add_filter('status_header', static function ($header, $code) use ($live, $client) {
+        if ((int) $code !== 200 || ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET' || !doing_filter('do_parse_request')
+            || !class_exists(\\TypedPress\\Wp\\PublicFiles::class) || !class_exists(\\TypedPress\\Wp\\Plugin::class)) {
+            return $header;
+        }
+        $plugin = \\TypedPress\\Wp\\Plugin::instance();
+        $file = $plugin === null ? null : \\TypedPress\\Wp\\PublicFiles::file($plugin->dir . '/public', $plugin->schema->reserved());
+        if ($file === null || preg_match('/\\\\.html?$/i', $file) !== 1) return $header;
+        $tag = '<script src="' . esc_url(add_query_arg('build', $live['session'] . '.' . (int) $live['revision'], $client())) . '" defer></script>';
+        ob_start(static function (string $html) use ($tag): string {
+            if ($html === '') return $html;
+            $at = strripos($html, '</body>');
+            $html = $at === false ? $html . $tag : substr_replace($html, $tag, $at, 0);
+            if (!headers_sent()) {
+                header('Content-Length: ' . strlen($html));
+                header('Cache-Control: no-store');
+                header_remove('ETag');
+            }
+            return $html;
+        });
+        return $header;
+    }, 10, 2);
+})();
+`;
 
 export async function sourceDigest(project) {
   const digest = createHash('sha256');
@@ -317,7 +606,7 @@ async function exportSite(content, seed) {
     await rm(work, { recursive: true, force: true });
   }
   try {
-    await run(['create', '--name', `TypedPress export ${randomUUID().slice(0, 8)}`, '--wp', WORDPRESS_VERSION, '--php', '8.4',
+    await run(['create', '--name', `TypedPress export ${randomUUID().slice(0, 8)}`, '--wp', await wordpressVersion(), '--php', '8.4',
       '--admin-username', 'admin', '--admin-password', randomUUID(), '--skip-browser', '--skip-log-details'],
       { capture: true, timeout: 600000, env: { ...process.env, STUDIO_BASE_PORT: String(port) } });
     created = true;
@@ -346,6 +635,8 @@ async function exportSite(content, seed) {
     printed = true;
     await released;
   } finally {
+    // A failed startup must not leave the parent's lifetime pipe keeping Node alive.
+    process.stdin.pause();
     if (stopping) await stopping;
     else await cleanup();
   }
@@ -356,6 +647,8 @@ async function main() {
   if (process.argv[2] === 'export') return exportSite(resolve(process.argv[3]), process.argv[4] ? resolve(process.argv[4]) : null);
   const [mode, directory, first, output, requestedPort = '8787', ...flags] = process.argv.slice(2);
   const noWatch = flags.includes('--no-watch');
+  // A --url or --host that names no address is refused before anything is built or started.
+  if (mode === 'start') siteAddress(flags, Number(requestedPort));
   const project = await realpath(directory);
   const managed = await ownedState(project, mode === 'start');
   const studio = await studioBinary();
@@ -405,8 +698,18 @@ async function main() {
   if (flags.includes('--detach') && !noWatch) return detached(managed);
   const release = await lock(managed.state);
   const statePath = join(managed.state, 'state.json');
+  const diagnosticPath = join(managed.state, 'diagnostics.json');
   await rm(join(managed.state, 'stop'), { force: true });
-  let watcher, timer, stopTimer, stopping = false, running = false, dirty = false, siteStarted = false, siteUrl;
+  let watcher, timer, stopTimer, stopping = false, running = false, dirty = false, siteStarted = false, siteUrl, relay, live;
+  // What `typedpress dev status --json` reads: where the site is, the process that rebuilds it, and the
+  // last build's error while it stands. Written once the site is up, and again when the error changes.
+  let state, buildError = null;
+  const record = async () => {
+    if (state && JSON.stringify(state.error) !== JSON.stringify(buildError)) {
+      state = { ...state, error: buildError };
+      await atomicJson(statePath, state);
+    }
+  };
   let finish;
   const finished = new Promise((resolveDone) => { finish = resolveDone; });
   const stop = async () => {
@@ -416,12 +719,13 @@ async function main() {
     if (!running) finish();
   };
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
+  let publishedRevision;
   const build = async (allowDestructive = false) => {
     // Before the history check, which would read a moved ledger as changed and point at --allow-destructive.
     if (await exists(join(project, 'tp/migrations'))) {
       throw new Error('tp/migrations/ moved to tp/_generated/migrations/; move it with `mkdir -p tp/_generated && rmdir tp/_generated/migrations 2>/dev/null; git mv tp/migrations tp/_generated/migrations`, then start again.');
     }
-    const args = ['build', project, '--out', content];
+    const args = ['build', project, '--out', content, '--diagnostics-file', diagnosticPath];
     if (managed.owner.snapshot && !allowDestructive) {
       // A prebuilt/edited migration can hide an intermediate destructive step even if the final
       // snapshot looks unchanged. Only the dev-owned build may extend the accepted history.
@@ -433,12 +737,21 @@ async function main() {
       await atomicJson(snapshot, managed.owner.pending?.snapshot ?? managed.owner.snapshot);
       args.push('--preserve-data', snapshot);
     }
-    await execute(first, args, { timeout: 300000 });
+    await rm(diagnosticPath, { force: true });
+    try {
+      await execute(first, args, { timeout: 300000, log: true });
+    } catch (error) {
+      error.diagnostics = (await json(diagnosticPath).catch(() => null))?.diagnostics;
+      throw error;
+    }
+    const revision = await appRevision(content);
+    if (revision === publishedRevision && !managed.owner.pending) return revision;
     managed.owner.pending = {
       migrations: await migrationHistory(project),
       snapshot: await json(join(project, 'tp/_generated/migrations/snapshot.json')),
     };
     await atomicJson(managed.marker, managed.owner);
+    return revision;
   };
   // `wp typedpress migrate`, checked against live rows (spec §2.9). With --allow-destructive, a refused
   // drop is confirmed at the counts the refusal reports; anything else (a required field rows lack)
@@ -453,40 +766,78 @@ async function main() {
       await runStudio(['wp', 'typedpress', 'migrate', `--drop=${problem.drop.join(',')}`]);
     }
   };
+  // What the site holds from the last configure that finished: nothing until the first one, and
+  // nothing again after one that failed part-way, so the next one does every step.
+  let applied = null;
+  // Puts a build on the site. Only the steps the change needs run, because each `studio wp` starts
+  // WordPress and takes about a second: a page, style or public-file edit copies the app plugin and
+  // starts none.
   const configure = async (allowDestructive = false) => {
+    const previous = applied;
+    applied = null;
     const snapshot = await json(join(project, 'tp/_generated/migrations/snapshot.json'));
     const manifest = await json(join(content, 'typedpress-manifest.json'));
+    const prints = await pluginPrints(content, manifest);
+    const schema = await fileHash(join(content, 'plugins', `typedpress-app-${manifest.app}`, 'tp/app/schema.php'));
+    const history = await migrationHistory(project);
     const retired = managed.owner.generated.filter((slug) => !(slug in manifest.plugins));
     for (const slug of retired) await plainDirectory(join(managed.owner.site, 'wp-content/plugins', slug));
     if (retired.length) await runStudio(['wp', 'plugin', 'deactivate', ...retired]);
-    const { activate } = await publishPlugins(content, managed);
-    const active = JSON.parse(await runStudio(['wp', 'plugin', 'list', '--status=active', '--format=json'], { capture: true })).map((plugin) => plugin.name);
-    // Each activation gets a fresh WordPress bootstrap, including plugins_loaded dependencies.
-    for (const slug of activate) {
-      if (!active.includes(slug)) await runStudio(['wp', 'plugin', 'activate', slug]);
+    const { activate, spec } = await publishPlugins(content, managed, (slug) => prints[slug] !== previous?.prints[slug]);
+    // The plugin set: activation, and the development identity app (TypedPress Identity may be new).
+    const plugins = !previous || retired.length > 0 || Object.keys(prints).some((slug) => !(slug in previous.prints));
+    if (plugins) {
+      const active = JSON.parse(await runStudio(['wp', 'plugin', 'list', '--status=active', '--format=json'], { capture: true })).map((plugin) => plugin.name);
+      // Each activation gets a fresh WordPress bootstrap, including plugins_loaded dependencies.
+      for (const slug of activate) {
+        if (!active.includes(slug)) await runStudio(['wp', 'plugin', 'activate', slug]);
+      }
     }
-    await runStudio(['wp', 'eval-file', join(here, 'setup.php'), join(managed.state, 'setup.json'), '--use-include']);
-    await migrate(allowDestructive);
-    await runStudio(['wp', 'typedpress', 'identity', 'app', 'add', '--name=TypedPress development', '--id=app_zero_dev',
-      `--redirect=${siteUrl}/auth/callback`, `--origin=${siteUrl}`]);
+    // The platform check: at startup, and when what it checks (a localized app) changed.
+    if (!previous || JSON.stringify(spec) !== previous.spec) {
+      await runStudio(['wp', 'eval-file', join(here, 'setup.php'), join(managed.state, 'setup.json'), '--use-include']);
+    }
+    // Storage: at startup, when the migration history changed, and when the compiled schema did
+    // (the command also records the schema the storage matches). Page and function edits change neither.
+    if (!previous || schema !== previous.schema || JSON.stringify(history) !== JSON.stringify(managed.owner.migrations)) {
+      await migrate(allowDestructive);
+    }
+    if (plugins) {
+      await runStudio(['wp', 'typedpress', 'identity', 'app', 'add', '--name=TypedPress development', '--id=app_zero_dev',
+        `--redirect=${siteUrl}/auth/callback`, `--origin=${siteUrl}`]);
+    }
     for (const slug of retired) await rm(join(managed.owner.site, 'wp-content/plugins', slug), { recursive: true });
     managed.owner.generated = Object.keys(manifest.plugins);
     managed.owner.snapshot = snapshot;
-    managed.owner.migrations = await migrationHistory(project);
+    managed.owner.migrations = history;
     delete managed.owner.pending;
     await atomicJson(managed.marker, managed.owner);
+    applied = { prints, schema, spec: JSON.stringify(spec) };
   };
   try {
     running = true;
     if (!await exists(join(project, 'typedpress.config.ts'))) throw new Error(`No typedpress.config.ts in ${project}`);
     let digest = await sourceDigest(project);
-    await build(flags.includes('--allow-destructive'));
+    const allowDestructive = flags.includes('--allow-destructive');
+    const report = async (error) => {
+      console.error(error.message);
+      console.error('Fix the error and save to retry.');
+      buildError = { message: error.diagnostics?.[0]?.message ?? error.message, diagnostics: error.diagnostics ?? [] };
+      // Open pages and `dev status` learn of it; neither may hide the error itself.
+      await Promise.all([live?.failed(error), record()]).catch((failure) => console.error(failure.message));
+    };
+    let startupError, initialRevision;
+    try { initialRevision = await build(allowDestructive); }
+    catch (error) {
+      if (noWatch || !error.diagnostics?.length) throw error;
+      startupError = error;
+    }
     if (!managed.owner.created) {
       await availablePort(Number(requestedPort));
       if (await exists(managed.owner.site) && (await readdir(managed.owner.site)).length) {
         throw new Error('A previous Studio creation was interrupted. Inspect .tp/dev/wordpress; TypedPress will not adopt or delete it automatically.');
       }
-      await runStudio(['create', '--name', `TypedPress ${project.split(sep).at(-1)}`, '--wp', WORDPRESS_VERSION, '--php', '8.4',
+      await runStudio(['create', '--name', `TypedPress ${project.split(sep).at(-1)}`, '--wp', await wordpressVersion(), '--php', '8.4',
         '--admin-username', 'admin', '--admin-password', 'typedpress-test-admin', '--skip-browser', '--skip-log-details'],
         { timeout: 600000, env: { ...process.env, STUDIO_BASE_PORT: requestedPort } });
       managed.owner.created = true;
@@ -496,31 +847,63 @@ async function main() {
     }
     siteStarted = true;
     const status = JSON.parse(await runStudio(['status', '--format', 'json'], { capture: true }));
-    const url = status.siteUrl.replace(/\/$/, '');
-    siteUrl = url;
+    // Where Studio listens, and where the site is opened: the same unless --url or --host says otherwise.
+    const local = status.siteUrl.replace(/\/$/, '');
+    const port = Number(new URL(local).port) || 80;
+    const address = siteAddress(flags, port);
+    const url = address.url ?? local;
+    // The development identity app stays registered for this machine's own address.
+    siteUrl = local;
+    // Studio's own PHP, through WP-CLI without loading WordPress.
+    await announce(managed.owner.site, address.url, (code) => runStudio(['wp', 'eval', '--skip-wordpress', code], { capture: true }));
+    if (address.listen) relay = await forward(address.listen, port, port);
     const mu = join(managed.owner.site, 'wp-content/mu-plugins/typedpress-dev-runtime.php');
     if (!managed.owner.devMu && await exists(mu)) throw new Error('typedpress-dev-runtime.php already exists and is not managed by TypedPress.');
-    await writeFile(mu, "<?php\n// Local development only: allow identity callbacks on the site's HTTP origin.\nif (!defined('TP_IDENTITY_DEV_HTTP')) define('TP_IDENTITY_DEV_HTTP', true);\n");
+    await writeFile(mu, DEV_PLUGIN);
     managed.owner.devMu = true;
     await atomicJson(managed.marker, managed.owner);
-    await configure(flags.includes('--allow-destructive'));
-    const response = await fetch(`${url}/__tp/api/v1`, { signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw new Error(`TypedPress application is not ready: HTTP ${response.status}. Run typedpress doctor --site ${url}`);
+    const devAssets = join(dirname(mu), 'typedpress-dev');
+    await mkdir(devAssets, { recursive: true });
+    const publish = (signal) => atomicJson(join(devAssets, 'live.json'), signal);
+    // No session yet: a signal left by a process that was killed is not this one's.
+    await publish(null);
+    if (!startupError) {
+      await configure(allowDestructive);
+      publishedRevision = initialRevision;
+      const response = await fetch(`${local}/__tp/api/v1`, { signal: AbortSignal.timeout(15000) });
+      if (!response.ok) throw new Error(`TypedPress application is not ready: HTTP ${response.status}. Run typedpress doctor --site ${local}`);
+    }
+    // The session starts once the site holds this build, so a page left open from an earlier
+    // session reloads into it and not into what the site held before.
+    if (!noWatch) {
+      const { liveUpdates } = await import(pathToFileURL(join(here, 'live.mjs')));
+      await cp(join(here, 'live-client.js'), join(devAssets, 'live-client.js'));
+      live = await liveUpdates({ publish });
+    }
+    if (startupError) await report(startupError);
     const summary = [`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`];
     if (await exists(join(project, 'public/index.html'))) summary.push(`App:       ${url}/index.html`);
     if (managed.owner.generated.includes('typedpress-admin')) summary.push(`TypedPress Admin: ${url}/wp-admin/new/`);
     summary.push('Initial login: admin / typedpress-test-admin (local development only; unchanged if you edited it)\n');
+    if (address.listen) summary.push(`Listening on ${address.listen} port ${port}: whoever can reach it is an administrator of this WordPress and can run code on this machine as you.`);
+    else if (address.url) summary.push(`Listening on this machine only: point your proxy for ${url} at ${local}`);
     summary.push(`Data persists in ${managed.owner.site}\nStop: typedpress dev stop ${JSON.stringify(project)}`);
     console.log(summary.join('\n'));
     // What `typedpress dev status --json` and `typedpress mcp` read without starting Studio: where the site
     // is, and the process that rebuilds it on save (none after --no-watch).
-    await atomicJson(statePath, {
-      version: 1, url, port: Number(new URL(url).port) || (url.startsWith('https:') ? 443 : 80),
+    state = {
+      version: 1, url, local, port,
       pid: noWatch ? null : process.pid, log: process.send ? join(managed.state, 'dev.log') : null,
       wordpress: status.wpVersion ?? null, php: status.phpVersion ?? null, startedAt: new Date().toISOString(),
-    });
-    // Started by --detach: tell the waiting command the site is ready, then let it go.
-    if (process.send) { process.send({ ready: true, summary: summary.join('\n') }); process.channel?.unref(); }
+      error: buildError,
+    };
+    await atomicJson(statePath, state);
+    // Started by --detach: tell the waiting command the site is ready, and whether the first build
+    // failed, then let it go.
+    if (process.send) {
+      process.send({ ready: true, summary: summary.join('\n'), failed: startupError?.message ?? null });
+      process.channel?.unref();
+    }
     running = false;
     if (await exists(join(managed.state, 'stop'))) stopping = true;
     if (noWatch) return;
@@ -535,15 +918,25 @@ async function main() {
           if (next === digest) continue;
           digest = next;
           console.log('\nSources changed; rebuilding…');
-          try { await build(); await configure(); console.log('Updated. Refresh the page to see your changes.'); }
-          catch (error) { console.error(error.message); console.error('Fix the error and save to retry.'); }
+          try {
+            const revision = await build();
+            const changed = revision !== publishedRevision || Boolean(managed.owner.pending);
+            if (changed) await configure();
+            await live.updated(changed);
+            publishedRevision = revision;
+            buildError = null;
+            await record();
+            console.log('Updated.');
+          } catch (error) { await report(error); }
         } while (dirty && !stopping);
       } catch (error) { console.error(error.message); }
       finally { running = false; if (stopping) finish(); }
     }
     watcher = await watchSources(project, () => {
       if (stopping) return;
-      dirty = true; clearTimeout(timer); timer = setTimeout(rebuild, 200);
+      // Long enough to take an editor's several writes of one save as one; a change that lands
+      // during the build is built next (dirty).
+      dirty = true; clearTimeout(timer); timer = setTimeout(rebuild, 80);
     }, (error) => { console.error(`File watcher: ${error.message}`); void stop(); });
     stopTimer = setInterval(() => { exists(join(managed.state, 'stop')).then((requested) => { if (requested) void stop(); }); }, 250);
     console.log('Watching config, TypeScript, stylesheets, images and public files. Ctrl+C stops WordPress; content is retained.');
@@ -551,6 +944,8 @@ async function main() {
     await finished;
   } finally {
     watcher?.close(); clearTimeout(timer); clearInterval(stopTimer);
+    await live?.close().catch((error) => console.error(error.message));
+    await relay?.close();
     process.off('SIGINT', stop); process.off('SIGTERM', stop);
     if (await exists(join(managed.state, 'stop'))) stopping = true;
     if (siteStarted && (stopping || !noWatch)) {
@@ -558,10 +953,26 @@ async function main() {
     }
     await rm(join(managed.state, 'stop'), { force: true });
     // This process no longer rebuilds the site; the URL and port stay for the next start.
-    const state = await json(statePath).catch(() => null);
-    if (state?.pid === process.pid) await atomicJson(statePath, { ...state, pid: null, log: null });
+    const recorded = await json(statePath).catch(() => null);
+    if (recorded?.pid === process.pid) await atomicJson(statePath, { ...recorded, pid: null, log: null, error: null });
     await release();
   }
+}
+
+// What `typedpress dev --detach` says once the background process reports the site is up: standard
+// output, standard error and the exit status. A first build that failed leaves the process running,
+// as it does in the foreground (saving a fix rebuilds), but the command exits 1 and prints the
+// error: a script or an agent that goes on after `typedpress dev --detach` must not take a site that
+// does not serve the current source for a started app.
+export function detachedReport({ summary, failed }, pid, log) {
+  const out = `${summary}\nRunning in the background (pid ${pid}), rebuilding on save.\nLog:  ${log}`;
+  if (!failed) return { out, error: '', code: 0 };
+  return {
+    out,
+    error: `typedpress dev: the first build failed, so the site does not serve this source yet:\n${failed.trimEnd()}\n`
+      + `WordPress is running in the background (pid ${pid}). Fix the error and save: it rebuilds, and typedpress dev status --json reports the error until a build succeeds.`,
+    code: 1,
+  };
 }
 
 // `typedpress dev --detach`: the same command as a background process in its own session, so it outlives
@@ -592,10 +1003,14 @@ async function detached(managed) {
       throw new Error(`The background process stopped before the site was ready (${outcome.failed}). Its output is above.`);
     }
     child.disconnect(); child.unref();
-    console.log(`${outcome.summary}\nRunning in the background (pid ${child.pid}), rebuilding on save.\nLog:  ${log}`);
+    const report = detachedReport(outcome, child.pid, log);
+    console.log(report.out);
+    if (report.error) console.error(report.error);
+    process.exitCode = report.code;
   } finally { await out.close(); }
 }
 
-if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+const invokedPath = process.argv[1] && await realpath(process.argv[1]).catch(() => null);
+if (invokedPath === modulePath) {
   main().catch((error) => { console.error(`typedpress dev: ${error.message}`); process.exitCode = 1; });
 }

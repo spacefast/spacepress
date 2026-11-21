@@ -73,7 +73,16 @@ eq('bundled merge combines independent edits', [$result->has_conflicts(), $resul
 // The identity bundle runs its own JWT and TOTP copies while the original names are occupied.
 eval('namespace Firebase\JWT; final class JWT {}');
 eval('namespace OTPHP; final class TOTP {}');
-require __DIR__ . '/../../runtime/identity/vendor-prefixed/autoload.php';
+$identity = __DIR__ . '/../../runtime/identity';
+$issues = 'caller-owned';
+require "$identity/src/autoload.php";
+eq('identity platform check preserves the caller scope', $issues, 'caller-owned');
+$classes = require "$identity/vendor-prefixed/composer/autoload_classmap.php";
+$globals = array_filter(array_keys($classes), static fn (string $name) => !str_starts_with($name, 'TypedPress\\Identity\\Vendor\\'));
+eq('identity registers every Composer global polyfill class', array_keys(require "$identity/vendor-prefixed/composer/polyfill_classes.php"), array_values($globals));
+check('identity exposes Composer functions before any private class is requested', function_exists('typedpress_identity_vendor_trigger_deprecation'));
+check('identity boots without the private class map', !class_exists('ComposerAutoloaderInitTypedPressIdentity', false));
+check('a missing private class leaves the loader usable', !class_exists('TypedPress\\Identity\\Vendor\\MissingDependency'));
 $rsa = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
 openssl_pkey_export($rsa, $pem);
 $jwt = \TypedPress\Identity\Vendor\Firebase\JWT\JWT::encode(['sub' => '1', 'exp' => time() + 60], $pem, 'RS256', 'k');

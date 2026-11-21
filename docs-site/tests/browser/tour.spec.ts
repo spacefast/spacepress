@@ -11,5 +11,5 @@ test("a stop shows the config excerpt beside the compiled output", async ({ page
   await page.goto("./tour/pantry#a-hook");
   const stop = page.locator("#a-hook");
   await expect(stop.locator(".in pre").first()).toContainText("beforeCreate(data)");
-  await expect(stop.locator(".out pre").first()).toContainText("function items__beforeCreate");
+  await expect(stop.locator(".out pre").first()).toContainText("function items__before_create");
 });

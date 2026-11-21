@@ -1,5 +1,5 @@
 {
-    "version": 3,
+    "version": 5,
     "runtime": "0.3",
     "name": "phase2",
     "admin": true,
@@ -139,7 +139,7 @@
                     }
                 }
             },
-            "handler": "job__sendWelcome",
+            "handler": "job__send_welcome",
             "retries": 5,
             "agents": true
         }

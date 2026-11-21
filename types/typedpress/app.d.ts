@@ -1,7 +1,7 @@
 // "typedpress/app": pages, layouts and HTTP routes under tp/app/ (docs/spec/rendering.md §2–§4).
 // Types only: the compiler lowers these to PHP; nothing here runs in Node or the browser.
 /// <reference path="./assets.d.ts" />
-import type { Action, ColumnsConfig, RouteRequest, RouteResponse, User } from "typedpress";
+import type { AccessCtx, Action, ColumnsConfig, RouteRequest, RouteResponse } from "typedpress";
 import type { JSX } from "typedpress/jsx-runtime";
 
 export type { RouteRequest, RouteResponse };
@@ -17,7 +17,7 @@ export interface Routes {}
 export type ReactNode = JSX.Children;
 
 /** A path the app serves, checked against the generated route map once it exists. */
-export type Href = keyof Routes extends never ? string : RoutePaths | `http${string}` | `mailto:${string}` | `#${string}` | `?${string}`;
+export type Href = keyof Routes extends never ? string : RoutePaths | `${RoutePaths}?${string}` | `${RoutePaths}#${string}` | `http${string}` | `mailto:${string}` | `#${string}` | `?${string}`;
 type RoutePaths = { [K in keyof Routes]: Routes[K] extends { path: infer P extends string } ? P : never }[keyof Routes];
 
 type Params<R> = R extends keyof Routes ? (Routes[R] extends { params: infer P } ? P : Record<string, string>) : Record<string, string | string[]>;
@@ -39,6 +39,29 @@ export interface LayoutProps<R extends keyof Routes | string = string> {
   children: JSX.Element;
 }
 
+/**
+ * What `tp/app/login.tsx` receives: wp-login.php's sign-in view, after WordPress has run the
+ * sign-in. Messages are plain text (WordPress's own, after `login_errors` and `login_messages`).
+ */
+export interface LoginProps {
+  params: Record<string, never>;
+  /** Why the last attempt failed: a wrong password, too many attempts, … */
+  errors: string[];
+  /** Notices: "You are now logged out.", "Check your email…", … */
+  messages: string[];
+  /** The login to fill in again after a wrong password; empty otherwise. */
+  login: string;
+  /** Whether "Remember Me" was checked on the last attempt. */
+  remember: boolean;
+  /** Where WordPress sends the visitor after signing in. */
+  redirectTo: string;
+  /** wp-login.php's URL: where the form posts. */
+  action: string;
+  lostPasswordUrl: string;
+  /** wp-login.php's registration URL when the site lets anyone register, else null. */
+  registerUrl: string | null;
+}
+
 /** `export const metadata` in a page or layout, or a function of the page props returning it. */
 export interface Metadata {
   /** A page title, or (in a layout) a default plus a `%s` template child pages fill. */
@@ -57,8 +80,18 @@ export interface Metadata {
   scripts?: string[];
 }
 
-/** `export const guard` in a layout: who may see everything below it. */
-export type Guard = "anyone" | "authenticated" | "subscriber" | "author" | "editor" | "admin" | boolean | ((ctx: { user: User | null }) => boolean);
+type GuardRule = "anyone" | "authenticated" | "guest" | "subscriber" | "author" | "editor" | "admin" | boolean | ((ctx: AccessCtx) => boolean);
+
+/** A page, layout, or HTTP handler can export one rule. A page with handlers can give each its own rule. */
+export type Guard = GuardRule | { page?: GuardRule; handlers: GuardRule };
+
+/**
+ * `export const template` in a page or layout: the WordPress block template the page renders in.
+ * `"theme"` (the default) is TypedPress's template with the theme's header and footer parts; `"blank"`
+ * has none, for a layout that draws its own; any other value is a template's slug (one the theme,
+ * a plugin or the Site Editor provides). The page nearest wins, then the nearest layout.
+ */
+export type Template = "theme" | "blank" | (string & {});
 
 /**
  * `export async function staticParams(): Promise<StaticParams<"blog/[slug]">>` in a prebuilt dynamic
@@ -75,8 +108,9 @@ export declare function notFound(): never;
 export declare function redirect(url: string, status?: 301 | 302 | 303 | 307 | 308): never;
 
 /**
- * What the last submit of a `<form action={action}>` on this page left: read once, after the form
- * posted without JavaScript and came back. `pending` is false on the server. `error.fields` names
+ * What the last submit of a `<form action={action}>` on this page left: read once, when the page
+ * the form came back to renders (with or without JavaScript). `pending` is always false: while a
+ * submit is in flight the form has `aria-busy="true"` instead. `error.fields` names
  * the field an input error is about; `values` is what was typed, to fill the form again (never a
  * password field).
  */
@@ -106,6 +140,21 @@ export declare function Live(props: { id: string; children?: JSX.Children }): JS
  * only `param` (default `"page"`) changed; page 1 drops it. Many pages collapse around the current one.
  */
 export declare function Pagination(props: { page: number; pages: number; param?: string; className?: string; "aria-label"?: string }): JSX.Element;
+/**
+ * The sign-in form wp-login.php reads (`log`, `pwd`, `rememberme`, `redirect_to`), with the fields
+ * plugins add through `login_form`. It posts to wp-login.php, so WordPress runs the sign-in: the
+ * second factor, attempt limits and every `authenticate` filter apply. In `login.tsx` it shows
+ * wp-login.php's errors and messages above the fields (`notices={false}` leaves them to the page)
+ * and refills the login; anywhere else it signs in and comes back to the page it is on. `links`
+ * (default true) adds "Register" (when open) and "Lost your password?".
+ */
+export declare function LoginForm(props: { className?: string; submitLabel?: string; notices?: boolean; links?: boolean }): JSX.Element;
+/**
+ * One of the active theme's template parts (`core/template-part`), as the Site Editor holds it:
+ * `<TemplatePart slug="header" />`. A layout that places parts itself renders in the blank
+ * template unless it exports a `template` of its own.
+ */
+export declare function TemplatePart(props: { slug: string; tagName?: string; className?: string }): JSX.Element;
 /** A post body (block markup) rendered through `the_content`. */
 export declare function Content(props: { value: string | null | undefined }): JSX.Element;
 /** Trusted markup: a literal is placed as written; any other value goes through `wp_kses_post`. */
@@ -118,6 +167,8 @@ export declare function Link(props: {
   href: Href;
   children?: JSX.Element | string | number | (JSX.Element | string | number)[];
   prefetch?: boolean;
+  /** Override automatic sign-in routing for a local destination. By default its page and layout guards decide. */
+  requireAuth?: boolean;
   className?: string;
   id?: string;
   title?: string;
@@ -125,3 +176,9 @@ export declare function Link(props: {
   target?: string;
   "aria-current"?: string;
 }): JSX.Element;
+
+/** A GET search form using the app's `q` query parameter. */
+export declare function Search(props: { action?: Href; label?: string; placeholder?: string; className?: string }): JSX.Element;
+
+/** Search results from one kind with a URL, or from every searchable kind with a URL. */
+export declare function SearchResults(props: { kind?: string; q: string | null | undefined; page?: number; perPage?: number; className?: string }): JSX.Element;

@@ -27,6 +27,9 @@ final class Api
     }
     public function dispatch(\WP_REST_Request $request): \WP_REST_Response
     {
+        // Every answer is the browser's own session's, found from its cookie without WordPress
+        // signing anyone in, so nothing tells a page cache keyed on the URL (Batcache) to skip it.
+        Plugin::uncached();
         try {
             $method = $request->get_method();
             $op = $request["operation"];
@@ -307,8 +310,19 @@ final class Api
             return ["revoked" => true];
         }
         if ($op === "sign-out" && $method === "POST") {
+            // One sign-in: the browser's WordPress session for the same account ends too, or the
+            // next page would open a new identity session from it. Read before revoking, which
+            // ends a WordPress session this one was opened from.
+            $wordpress = (int) wp_validate_auth_cookie("", "logged_in") === $uid;
+            $cookie = wp_parse_auth_cookie("", "logged_in");
             $this->sessions->revoke($uid, $s["id"]);
             Sessions::cookie("", time() - 3600);
+            if ($wordpress) {
+                if (is_array($cookie) && ($cookie["token"] ?? "") !== "") {
+                    \WP_Session_Tokens::get_instance($uid)->destroy($cookie["token"]);
+                }
+                wp_clear_auth_cookie();
+            }
             return ["signed_out" => true];
         }
         if ($op === "reverify" && $method === "POST") {
@@ -537,7 +551,13 @@ final class Api
                 $uid,
                 $s["id"],
             );
-            \WP_Session_Tokens::get_instance($uid)->destroy_all();
+            // Every other WordPress session ends; this browser's stays, or the identity session it
+            // came from would end with it and sign the user out mid-setup.
+            $cookie = wp_parse_auth_cookie("", "logged_in");
+            $current = (int) wp_validate_auth_cookie("", "logged_in") === $uid && is_array($cookie) ? (string) ($cookie["token"] ?? "") : "";
+            $current !== ""
+                ? \WP_Session_Tokens::get_instance($uid)->destroy_others($current)
+                : \WP_Session_Tokens::get_instance($uid)->destroy_all();
             $this->security->event($uid, "mfa.enabled");
             return ["recovery_codes" => $this->mfa->recoveryCodes($uid)];
         }

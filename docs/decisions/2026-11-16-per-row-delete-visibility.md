@@ -23,9 +23,12 @@ viewer's own writes:
    inspects a whole table. WordPress's password visibility for these rows is decided in SQL only and
    fails closed: a protected post the viewer's password proof doesn't open counts as hidden, even for
    an editor who could open it in wp-admin, and no post is loaded, so hidden volume can't change the
-   answer. When the counts differ, when the referencing column or the
-   referenced key may be hidden, or when a read extension that may hide rows is registered
-   (`Extensions::constraintReadsSafe()` is false), the delete is refused. Under `cascade` this repeats
+   answer. A post-password cookie is checked only against the passwords of the posts that reference
+   the row, not every protected post of the kind. When the counts differ, when the referencing column
+   or the referenced key of any relationship to this kind may be hidden (checked before a relationship
+   is skipped for a null key, so the answer can't tell whether a hidden key is null), or when a read
+   extension that may hide rows is registered (`Extensions::constraintReadsSafe()` is false), the
+   delete is refused. Under `cascade` this repeats
    for each visible child, to every depth.
 2. **Side effects are ordinary writes by the same viewer.** A cascade is the viewer's delete of each
    child; `setNull` / `setDefault` the viewer's update of it with the real patch; a `ref().many()` or
@@ -67,8 +70,9 @@ actions.
 
 ## Tests
 
-`tests/php/db_test.php` (the owner-scoped block, the hidden-child cases and the PR #516 review
-cases: hook-written and default references, many-ref links, hidden volume, read extensions),
-`tests/php/taxonomy_test.php` (a term on an item the viewer can't read),
+`tests/php/db_test.php` (the owner-scoped block, the hidden-child cases, a hidden nullable
+referenced key, and the PR #516 review cases: hook-written and default references, many-ref links,
+hidden volume, read extensions), `tests/php/taxonomy_test.php` (a term on an item the viewer can't
+read, a post-password cookie scoped to the posts carrying the term),
 `tests/wp/tables.test.ts` (both REST surfaces) and `tests/sync.rs`
 (`a_pointerless_reference_refusal_is_not_reported_as_a_missing_target`).

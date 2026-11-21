@@ -1,5 +1,5 @@
 === TypedPress Admin ===
-Requires at least: 7.2-beta5
+Requires at least: 7.1
 Requires PHP: 8.2
 License: GPL-2.0-or-later
 
@@ -24,7 +24,7 @@ The default admin for TypedPress apps on WordPress, at /wp-admin/new/. Emitted b
 
 WordPress owns the login session, cookies, users, capabilities and REST nonces.
 Content collections use WordPress's native block editor and Secure Custom
-Fields' REST field. WordPress 7.2 includes the editor; a separate Gutenberg
+Fields' REST field. WordPress includes the editor; a separate Gutenberg
 plugin is optional. TypedPress Admin does not require a separate identity provider
 for its WordPress login.
 

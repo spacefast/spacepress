@@ -38,7 +38,7 @@ export const reads = table({
   },
 });
 
-// POST /__tp/api/v1/actions/logRead, typed in the generated client.
+// POST /wp-json/typedpress/v1/actions/logRead, typed in the generated client.
 export const logRead = mutation({ access: "authenticated" }, async ({ bookId, minutes }: { bookId: number; minutes: number }, ctx) => {
   if (!Number.isInteger(bookId)) throw new HttpError(422, "invalid_input", "bookId must be an integer", "/bookId");
   if (!Number.isInteger(minutes)) throw new HttpError(422, "invalid_input", "minutes must be an integer", "/minutes");

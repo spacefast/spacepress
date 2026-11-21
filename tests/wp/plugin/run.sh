@@ -86,7 +86,7 @@ sample=$(wp post list --post_type=page --name=sample-page --field=ID)
 "$harness" sql "UPDATE wp_posts SET post_title = 'About us', post_modified_gmt = post_date_gmt + INTERVAL 1 DAY WHERE ID = $sample" >/dev/null
 [[ $(browser screen 'admin.php?page=typedpress-setup' '<div class="wrap"><h1>TypedPress') == *"already has content (1 page)"* ]] || fail "an edited sample page counts as the site's content"
 "$harness" sql "UPDATE wp_posts SET post_title = 'Sample Page', post_modified_gmt = post_date_gmt WHERE ID = $sample" >/dev/null
-[[ $(status "$url/") == 200 && $(status "$url/__tp/api/v1") == 404 ]] || fail "before a deployment WordPress serves and TypedPress's API doesn't"
+[[ $(status "$url/") == 200 && $(status "$url/wp-json/typedpress/v1") == 404 ]] || fail "before a deployment WordPress serves and TypedPress's API doesn't"
 # A dependency that goes missing later is named on the screen and on other wp-admin screens, and the
 # screen's button brings it back.
 wp plugin deactivate two-factor >/dev/null
@@ -139,7 +139,7 @@ curl -s -u "$admin" "$api/site" > "$work/answer.json"
 [[ $(json live < "$work/answer.json") == null && -z $(option tp_store_key) ]] || fail "reading a fresh site names no build store: $(cat "$work/answer.json")"
 out=$(push --dry-run) || fail "a dry run: $out"
 [[ $out == *"run migration 0001_init"* && $out == *"--dry-run"* ]] || fail "a dry run uploads and prints the plan: $out"
-[[ $(status "$url/__tp/api/v1") == 404 && -z $(wp option get tp_live_build 2>/dev/null) ]] || fail "a dry run makes nothing live"
+[[ $(status "$url/wp-json/typedpress/v1") == 404 && -z $(wp option get tp_live_build 2>/dev/null) ]] || fail "a dry run makes nothing live"
 [[ -n $(option tp_store_key) ]] || fail "the first upload names the build store"
 # The uploaded build's browser files stay private until it is made live.
 candidate=$(python3 -c '
@@ -153,7 +153,7 @@ print(f"app/{app}/plugins/" + os.path.relpath(image, f"{store}/app/{app}/plugins
 out=$(push) || fail "the first deploy: $out"
 [[ $out == *"the site already has this runtime tree"* && $out == *"applied migration 0001_init"* && $out == *"live: $url now runs pluginlane"* ]] || fail "the first deploy reuses the uploaded trees and goes live: $out"
 tp_build=$(wp option get tp_live_build)
-[[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane ]] || fail "TypedPress's API answers for the deployed app"
+[[ $(curl -s "$url/wp-json/typedpress/v1" | json data.name) == pluginlane ]] || fail "TypedPress's API answers for the deployed app"
 [[ $(status "$url/about") == 301 ]] || fail "the page's noncanonical address redirects"
 [[ $(status "$url/about/") == 200 ]] || fail "the page's canonical address answers"
 curl -s "$url/about/" > "$work/about.html"
@@ -164,14 +164,14 @@ image=$(grep -o -m1 "$url/wp-content/typedpress-assets/app/[^\"' ]*\.svg" "$work
 [[ $(curl -s "$url/wp-content/typedpress-assets/$candidate") == *"<circle"* ]] || fail "making the uploaded build live makes its files public: $candidate"
 [[ $(option pluginlane_hook_ran) == yes ]] || fail "the live app runs its own WordPress hooks"
 [[ $(curl -s "$url/hello.txt") == "served from public/" ]] || fail "public/ is served at the site root"
-note=$(curl -s -u "$editor" -H 'Content-Type: application/json' -d '{"title":"Written before the second deploy"}' "$url/__tp/api/v1/notes")
+note=$(curl -s -u "$editor" -H 'Content-Type: application/json' -d '{"title":"Written before the second deploy"}' "$url/wp-json/typedpress/v1/notes")
 [[ $(json data.title <<< "$note") == "Written before the second deploy" ]] || fail "an editor writes through the API: $note"
 wp typedpress insert entries '{"body":"a row before the second deploy"}' >/dev/null
 ok "typedpress push compiles, uploads, shows the plan and makes the app live"
 
 # What the plugin supplies as the host: the app's variables and mail delivery.
-[[ $(curl -s -X POST -H 'Content-Type: application/json' -d '{}' "$url/__tp/api/v1/actions/greeting" | json data.greeting) == "hello from wp-config" ]] || fail "process.env reads TP_VARIABLES from wp-config.php"
-curl -s -u "$editor" -H 'Content-Type: application/json' -d '{"to":"reader@example.test"}' "$url/__tp/api/v1/actions/welcome" | json data.id >/dev/null || fail "the app queues a message"
+[[ $(curl -s -X POST -H 'Content-Type: application/json' -d '{}' "$url/wp-json/typedpress/v1/actions/greeting" | json data.greeting) == "hello from wp-config" ]] || fail "process.env reads TP_VARIABLES from wp-config.php"
+curl -s -u "$editor" -H 'Content-Type: application/json' -d '{"to":"reader@example.test"}' "$url/wp-json/typedpress/v1/actions/welcome" | json data.id >/dev/null || fail "the app queues a message"
 wp typedpress jobs tick >/dev/null
 [[ $("$harness" compose exec -T wordpress cat /var/www/html/wp-content/typedpress-test-mail/reader@example.test.txt) == "Sent by the deployed app." ]] || fail "the app's mail leaves through wp_mail"
 ok "the app reads its variables from wp-config.php and sends mail through WordPress"
@@ -209,7 +209,7 @@ out=$(push) || fail "the second deploy: $out"
 [[ $out == *"the site already has this runtime tree"* && $out == *"uploading the app tree"* && $out == *"run migration 0002"* && $out == *"live:"* ]] || fail "the second deploy sends only the app tree and migrates: $out"
 second_build=$(wp option get tp_live_build)
 [[ $second_build != "$tp_build" ]] || fail "the second deploy is a new build"
-[[ $(curl -s "$url/__tp/api/v1/notes" | json data.0.title) == "Written before the second deploy" && $(status "$url/__tp/api/v1/tasks") == 200 ]] || fail "content is kept and the new kind answers"
+[[ $(curl -s "$url/wp-json/typedpress/v1/notes" | json data.0.title) == "Written before the second deploy" && $(status "$url/wp-json/typedpress/v1/tasks") == 200 ]] || fail "content is kept and the new kind answers"
 [[ $(wp typedpress find entries | json data.0.state) == open ]] || fail "the migration gave the existing row the new column's default"
 [[ $(push) == *"already runs this code; nothing to deploy"* ]] || fail "pushing the same source again deploys nothing"
 [[ $(wp option get tp_live_build) == "$second_build" ]] || fail "pushing the same source leaves the live build"
@@ -239,7 +239,7 @@ step additive
 [[ $out == *"can't take a dry run without changing the site, so nothing was uploaded"* && $out != *"uploading"* ]] || fail "a dry run sends an older plugin nothing: $out"
 out=$(push) || fail "a push to a site with another TypedPress plugin: $out"
 [[ $out == *"updated the TypedPress plugin on the site"* && $(curl -s -u "$admin" "$api/site" | json pluginHash) != 0000* ]] || fail "push replaces the site's plugin with the one it carries: $out"
-[[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane ]] || fail "the app keeps running across the plugin update"
+[[ $(curl -s "$url/wp-json/typedpress/v1" | json data.name) == pluginlane ]] || fail "the app keeps running across the plugin update"
 wp plugin deactivate two-factor >/dev/null
 out=$(push --dry-run) || fail "a dry run to a site missing a plugin the build needs: $out"
 [[ $out == *"--dry-run: a push would install them"*"nothing changed"* && $(wp plugin is-active two-factor || echo inactive) == inactive ]] || fail "a dry run installs nothing: $out"
@@ -252,7 +252,7 @@ ok "push updates the site's TypedPress plugin and installs the plugins a build n
 # sealed list, so the site that was deployed to reports nothing unlisted and keeps taking deploys.
 step sealed
 out=$(push) || fail "deploying the sealed app: $out"
-sealed=$(curl -s -u "$admin" "$url/__tp/api/v1" | json data.runtime.wp.sealed.plugins)
+sealed=$(curl -s -u "$admin" "$url/wp-json/typedpress/v1" | json data.runtime.wp.sealed.plugins)
 [[ $sealed == "[]" ]] || fail "a sealed site deployed through the plugin reports no unlisted plugin: $sealed"
 if wp plugin activate hello >/dev/null 2>&1; then fail "a sealed site activated a plugin that is not on its list"; fi
 step additive
@@ -268,7 +268,7 @@ step required
 if out=$(push); then fail "a required field on a kind with rows was deployed: $out"; fi
 [[ $out == *"refuses this build; nothing changed there"*"entries.author is required, and 1 rows have no value for it"*"Change typedpress.config.ts and push again"* ]] || fail "the schema check's refusal names the field and the rows: $out"
 [[ $(wp option get tp_live_build) == "$second_build" ]] || fail "a refused build is not made live"
-[[ $(status "$url/__tp/api/v1/tasks") == 200 ]] || fail "the live app keeps serving after a refused deploy"
+[[ $(status "$url/wp-json/typedpress/v1/tasks") == 200 ]] || fail "the live app keeps serving after a refused deploy"
 step additive
 ok "a build the schema check refuses is not installed, and the live build stays"
 
@@ -396,11 +396,24 @@ PY
 "$harness" compose exec -T wordpress sh -c "! find /var/www/html/wp-content -name zeros.bin | grep -q ." || fail "the oversized archive was not unpacked"
 "$harness" compose exec -T wordpress sh -c "! find /var/www/html/wp-content -name escaped.php | grep -q ." || fail "nothing was written outside the store"
 # The deployment's token only selects code on that deployment's own routes, for an administrator.
-[[ $(curl -s -H "X-TypedPress-Deployment: $id:$token" "$url/__tp/api/v1" | json data.name) == pluginlane && $(status -H "X-TypedPress-Deployment: $id:$token" "$url/__tp/api/v1/tasks") == 200 ]] || fail "a deployment token on another URL still gets the live build"
-# Naming the deployment's route in the query string of another URL is not being on that route.
-[[ $(status -H "X-TypedPress-Deployment: $id:$token" "$url/__tp/api/v1/tasks?rest_route=/typedpress-deploy/v1/deployments/$id/plan") == 200 ]] || fail "a deployment token with its route named in another URL's query still gets the live build"
+[[ $(curl -s -H "X-TypedPress-Deployment: $id:$token" "$url/wp-json/typedpress/v1" | json data.name) == pluginlane && $(status -H "X-TypedPress-Deployment: $id:$token" "$url/wp-json/typedpress/v1/tasks") == 200 ]] || fail "a deployment token on another URL still gets the live build"
+# A route named in the query string replaces the one in the path (WP::parse_request), so WordPress
+# serves the plan here. A request that names a route in two places is not taken as the deployment's:
+# the live build is mounted, and the plan answers as it does for anyone signed out.
+[[ $(status -H "X-TypedPress-Deployment: $id:$token" "$url/wp-json/typedpress/v1/tasks?rest_route=/typedpress-deploy/v1/deployments/$id/plan") == 401 ]] || fail "a deployment token with its route named in another URL's query is signed out on the plan"
 # Nor does it make an application password sign anyone in outside the REST API.
 [[ $(curl -s -u "$admin" -d 'action=heartbeat' "$url/wp-admin/admin-ajax.php?rest_route=/typedpress-deploy/v1/site") == *'"wp-auth-check":false'* ]] || fail "an application password signs nobody in on admin-ajax.php"
+# Nor does a path that starts as the receiver's and walks out of it with dot segments: WordPress decides
+# what a REST request is, and the plugin accepts an application password early only for the holder of a
+# deployment's token on that deployment's own route.
+for dots in '../../..' '%2e%2e/%2e%2e/%2e%2e'; do
+  [[ $(curl -s --path-as-is -u "$admin" "$api/$dots/wp-admin/admin-ajax.php?action=rest-nonce") == 0 ]] || fail "an application password gets no nonce from admin-ajax.php through $dots"
+  [[ $(curl -s --path-as-is -u "$admin" -H "X-TypedPress-Deployment: $id:$token" "$api/deployments/$id/plan/$dots/$dots/wp-admin/admin-ajax.php?action=rest-nonce") == 0 ]] || fail "nor with a deployment's token, through $dots"
+done
+[[ $(curl -s -u "$admin" "$url/wp-admin/admin-ajax.php?action=rest-nonce") == 0 ]] || fail "an application password gets no nonce from admin-ajax.php"
+[[ $(curl -s --path-as-is -u "$admin" -d 'a=1' "$url//x/wp-json/typedpress-deploy/v1/site") != *wpadminbar* ]] || fail "an application password signs nobody in on a page whose path ends like the receiver's"
+# Such a path is a page to WordPress, so a deployment's token selects nothing on it either: the live build answers.
+[[ $(curl -s --path-as-is -u "$admin" -H "X-TypedPress-Deployment: $id:$token" -d 'a=1' "$url//x/wp-json/typedpress-deploy/v1/deployments/$id/plan") != *wpadminbar* ]] || fail "a deployment's token on a page signs nobody in"
 [[ $(status -u "$editor" -H "X-TypedPress-Deployment: $id:$token" "$api/deployments/$id/plan") == 403 ]] || fail "the token alone does not open the plan"
 [[ $(status -u "$admin" -H "X-TypedPress-Deployment: $id:$(printf 'f%.0s' {1..64})" "$api/deployments/$id/plan") == 409 ]] || fail "a wrong token mounts nothing"
 [[ $(status -u "$admin" -X POST -H "X-TypedPress-Deployment: $id:$token" "$api/deployments/$id/activate") == 409 ]] || fail "a deployment whose trees never arrived can't go live"
@@ -451,6 +464,9 @@ mine=(-H "X-TypedPress-Deployment: $mid:$mtoken")
 # A request WordPress dispatches somewhere else is not this deployment's request: its path names the
 # plan and its `rest_route` or method override names something else.
 [[ $(status -u "$admin" "${mine[@]}" "$api/deployments/$mid/plan?rest_route=/wp/v2/types") == 200 ]] || fail "WordPress serves the route named in the query"
+# The other way round, the plan named in the query of another route's URL: WordPress serves the plan,
+# and the deployment's code is not mounted for it (409), administrator or not.
+[[ $(status -u "$admin" "${mine[@]}" "$url/wp-json/typedpress/v1/tasks?rest_route=/typedpress-deploy/v1/deployments/$mid/plan") == 409 ]] || fail "the plan named in another URL's query mounts nothing"
 [[ $(status -u "$admin" "${mine[@]}" -X POST "$api/deployments/$mid/activate?_method=DELETE") == 404 && $(status -u "$admin" "${mine[@]}" -H 'X-HTTP-Method-Override: DELETE' -X POST "$api/deployments/$mid/activate") == 404 ]] || fail "an overridden method is not the activation"
 # An administrator's browser session is not enough either: the cookie alone, the cookie with a wrong
 # nonce, and the cookie with the right one. Only an application password gets the build loaded.
@@ -479,7 +495,7 @@ if ran; then fail "a suspended account got a deployment's uploaded code loaded";
 [[ $(status -u "$admin" "${mine[@]}" "$api/deployments/$mid/plan") == 200 ]] || fail "the administrator reads the plan"
 ran || fail "the marker shows the candidate's code is read when an administrator inspects it"
 "$harness" compose exec -T wordpress rm -f "$marker"
-[[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane ]] || fail "the live app serves"
+[[ $(curl -s "$url/wp-json/typedpress/v1" | json data.name) == pluginlane ]] || fail "the live app serves"
 if ran; then fail "the live build is not the candidate"; fi
 [[ $(wp option get tp_live_build) == "$second_build" ]] || fail "the refused requests left the live build"
 ok "the receiver refuses other people, other trees, unsafe archives and tokens used elsewhere"
@@ -488,8 +504,8 @@ ok "the receiver refuses other people, other trees, unsafe archives and tokens u
 screen=$(browser screen 'admin.php?page=typedpress-setup' '<div class="wrap"><h1>TypedPress')
 [[ $screen == *"${second_build:0:12} | admin | Deployed | Live"* && $screen == *"${tp_build:0:12} | admin | Deployed |"* ]] || fail "the TypedPress screen lists the live deployment and the first one: $screen"
 browser press 'admin.php?page=typedpress-setup' "value=\"$tp_build\"" "live=$tp_build" >/dev/null
-[[ $(wp option get tp_live_build) == "$tp_build" && $(status "$url/__tp/api/v1/tasks") == 404 ]] || fail "the earlier build's code is live again"
-[[ $(curl -s "$url/__tp/api/v1/notes" | json data.0.title) == "Written before the second deploy" ]] || fail "making an earlier build live keeps content"
+[[ $(wp option get tp_live_build) == "$tp_build" && $(status "$url/wp-json/typedpress/v1/tasks") == 404 ]] || fail "the earlier build's code is live again"
+[[ $(curl -s "$url/wp-json/typedpress/v1/notes" | json data.0.title) == "Written before the second deploy" ]] || fail "making an earlier build live keeps content"
 # The history is appended to, never rewritten: its last entry is the switch, to the first build.
 last=$(wp option get tp_deployments --format=json | python3 -c 'import json,sys; h=json.load(sys.stdin); print(len(h), h[-1]["kind"], h[-1]["build"], h[0]["build"])')
 [[ $last == "5 rollback $tp_build $tp_build" ]] || fail "the history records the switch after the four deployments: $last"
@@ -505,23 +521,23 @@ rows=$(curl -s -u "$admin" "$abilities/tp/deployments/run")
 [[ $(status -u "$editor" "$abilities/tp/deployments/run") == 403 && $(status -u "$editor" "$url/wp-json/typedpress-admin/v1/screens/typedpress-deployments") == 403 ]] || fail "the list and its screen are for people who may deploy"
 [[ $(status -u "$editor" -X POST -H 'Content-Type: application/json' -d "{\"input\":{\"build\":\"$second_build\"}}" "$abilities/tp/deployments-live/run") == 403 && $(wp option get tp_live_build) == "$tp_build" ]] || fail "an editor can't make a build live"
 # Made live from TypedPress Admin's action, then back, so the rest of the lane continues from the same state.
-[[ $(curl -s -u "$admin" -X POST -H 'Content-Type: application/json' -d "{\"input\":{\"build\":\"$second_build\"}}" "$abilities/tp/deployments-live/run" | json live) == "$second_build" && $(wp option get tp_live_build) == "$second_build" && $(status "$url/__tp/api/v1/tasks") == 200 ]] || fail "Make live in TypedPress Admin switches the code"
+[[ $(curl -s -u "$admin" -X POST -H 'Content-Type: application/json' -d "{\"input\":{\"build\":\"$second_build\"}}" "$abilities/tp/deployments-live/run" | json live) == "$second_build" && $(wp option get tp_live_build) == "$second_build" && $(status "$url/wp-json/typedpress/v1/tasks") == 200 ]] || fail "Make live in TypedPress Admin switches the code"
 [[ $(curl -s -u "$admin" -X POST -H 'Content-Type: application/json' -d "{\"input\":{\"build\":\"$(printf 'a%.0s' {1..64})\"}}" "$abilities/tp/deployments-live/run" | json code) == tp_unknown_build ]] || fail "a build that was never live here can't be made live"
-[[ $(curl -s -u "$admin" -X POST -H 'Content-Type: application/json' -d "{\"input\":{\"build\":\"$tp_build\"}}" "$abilities/tp/deployments-live/run" | json live) == "$tp_build" && $(status "$url/__tp/api/v1/tasks") == 404 ]] || fail "and back to the first build"
+[[ $(curl -s -u "$admin" -X POST -H 'Content-Type: application/json' -d "{\"input\":{\"build\":\"$tp_build\"}}" "$abilities/tp/deployments-live/run" | json live) == "$tp_build" && $(status "$url/wp-json/typedpress/v1/tasks") == 404 ]] || fail "and back to the first build"
 [[ $(wp option get tp_deployments --format=json | python3 -c 'import json,sys; h=json.load(sys.stdin); print(len(h), h[-1]["kind"])') == "7 rollback" ]] || fail "each switch is in the history"
 # Neither ability is offered to agents.
 [[ $(curl -s -u "$admin" "$url/wp-json/wp-abilities/v1/abilities?per_page=100" | python3 -c 'import json,sys; print(sorted(a["name"] for a in json.load(sys.stdin) if a["name"].startswith("tp/")))') == "['tp/deployments', 'tp/deployments-live']" ]] || fail "the two abilities are registered"
 # The next push is compared with what the database holds (the last deployment), so nothing migrates twice.
 out=$(push) || fail "a push after making an earlier build live: $out"
-[[ $out != *"run migration"* && $out == *"live:"* && $(status "$url/__tp/api/v1/tasks") == 200 ]] || fail "it deploys the code without running a migration again: $out"
+[[ $out != *"run migration"* && $out == *"live:"* && $(status "$url/wp-json/typedpress/v1/tasks") == 200 ]] || fail "it deploys the code without running a migration again: $out"
 ok "an earlier build is made live again from the TypedPress screen and from TypedPress Admin, and the next push migrates nothing twice"
 
 # ---- the site keeps serving when the app can't run -----------------------------------------------
 wp plugin deactivate action-scheduler >/dev/null
-[[ $(status "$url/") == 200 && $(status "$url/__tp/api/v1") == 404 ]] || fail "without a plugin the app needs, WordPress serves and the app does not"
+[[ $(status "$url/") == 200 && $(status "$url/wp-json/typedpress/v1") == 404 ]] || fail "without a plugin the app needs, WordPress serves and the app does not"
 [[ $(browser screen 'admin.php?page=typedpress-setup' '<div class="wrap"><h1>TypedPress') == *"The app is not running."* ]] || fail "the TypedPress screen says the app is not running"
 wp plugin activate action-scheduler >/dev/null
-[[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane ]] || fail "the app runs again once the plugin is back"
+[[ $(curl -s "$url/wp-json/typedpress/v1" | json data.name) == pluginlane ]] || fail "the app runs again once the plugin is back"
 ok "a build that can't mount leaves WordPress serving and is reported on the TypedPress screen"
 
 # ---- a plugin a build needs, installed while an app is live ---------------------------------------
@@ -537,7 +553,7 @@ wrong=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); d["pins"]["polyl
 [[ $(wp plugin is-installed polylang && echo yes || echo no) == no ]] || fail "the refused download left nothing behind"
 [[ $(pins '{"pins":{"hello-dolly":{"version":"1.7.2","sha256":"'"$(printf '0%.0s' {1..64})"'"}}}') == 502 && $(json message < "$work/answer.json") == *"is not a plugin TypedPress installs"* ]] || fail "only the plugins TypedPress depends on can be installed: $(cat "$work/answer.json")"
 [[ $(pins "$polylang") == 200 && $(wp plugin get polylang --field=status) == active ]] || fail "the receiver installs and activates a pinned plugin: $(cat "$work/answer.json")"
-[[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane ]] || fail "the app keeps running after the install"
+[[ $(curl -s "$url/wp-json/typedpress/v1" | json data.name) == pluginlane ]] || fail "the app keeps running after the install"
 # Polylang would send the next wp-admin page to its setup wizard; the owner's next page is their own.
 [[ $(browser screen 'admin.php?page=typedpress-setup' '<div class="wrap"><h1>TypedPress') == *"Deployments"* ]] || fail "a plugin TypedPress installed doesn't send wp-admin to its own setup wizard"
 ok "with an app live, the receiver installs a pinned plugin by checksum and nothing else"
@@ -550,15 +566,15 @@ key=$(wp option get tp_store_key)
 runtime_tree=$("$harness" compose exec -T wordpress sh -c "sed -n 's/.*\"runtime\": *\"\([0-9a-f]*\)\".*/\1/p' /var/www/html/wp-content/typedpress-store-$key/build/$live_build.json")
 [[ ${#runtime_tree} == 64 ]] || fail "the live build names its runtime tree: $runtime_tree"
 "$harness" compose exec -T wordpress mv "/var/www/html/wp-content/typedpress-store-$key/runtime/$runtime_tree" "/var/www/html/wp-content/typedpress-store-$key/.tmp/lost"
-[[ $(status "$url/") == 200 && $(status "$url/__tp/api/v1") == 404 ]] || fail "without its runtime tree the app does not run and WordPress serves"
+[[ $(status "$url/") == 200 && $(status "$url/wp-json/typedpress/v1") == 404 ]] || fail "without its runtime tree the app does not run and WordPress serves"
 # Storing that tree would run the live build again with no deployment, so a dry run doesn't send it.
 out=$(push --dry-run) || fail "a dry run to a site that lost a tree: $out"
 [[ $out == *"has lost the runtime tree its live build runs"*"nothing was uploaded"* && $out != *"uploading the runtime tree"* ]] || fail "a dry run stops before restoring the live build's tree: $out"
 "$harness" compose exec -T wordpress test ! -e "/var/www/html/wp-content/typedpress-store-$key/runtime/$runtime_tree" || fail "a dry run leaves the live build's tree missing"
-[[ $(status "$url/__tp/api/v1") == 404 ]] || fail "after a dry run the live build still does not run"
+[[ $(status "$url/wp-json/typedpress/v1") == 404 ]] || fail "after a dry run the live build still does not run"
 out=$(push) || fail "a push to a site that lost a tree: $out"
 [[ $out == *"has this code and is not running it"*"uploading the runtime tree"*"live:"* ]] || fail "push sends the missing tree again: $out"
-[[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane && $(curl -s "$url/__tp/api/v1/notes" | json data.0.title) == "Written before the second deploy" ]] || fail "the app runs again with its content"
+[[ $(curl -s "$url/wp-json/typedpress/v1" | json data.name) == pluginlane && $(curl -s "$url/wp-json/typedpress/v1/notes" | json data.0.title) == "Written before the second deploy" ]] || fail "the app runs again with its content"
 # The last deployment's manifest goes missing: the site still names that build as the baseline (the
 # database is at its schema) and says its files are gone. It never offers an older build instead.
 base=$(curl -s -u "$admin" "$api/site" | json baseline)
@@ -569,7 +585,7 @@ base=$(curl -s -u "$admin" "$api/site" | json baseline)
 if out=$(push); then fail "a push compiled against something other than the last deployment: $out"; fi
 [[ $out == *"no longer in its build store"* ]] || fail "push stops and says why: $out"
 "$harness" compose exec -T wordpress mv "/var/www/html/wp-content/typedpress-store-$key/.tmp/held.json" "/var/www/html/wp-content/typedpress-store-$key/build/$base.json"
-[[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane ]] || fail "the app runs again once the manifest is back"
+[[ $(curl -s "$url/wp-json/typedpress/v1" | json data.name) == pluginlane ]] || fail "the app runs again once the manifest is back"
 ok "a site that lost a stored tree gets it again from the next push, and a lost baseline is reported, not replaced"
 
 # ---- typedpress logout, and signing in again with an app live ------------------------------------------

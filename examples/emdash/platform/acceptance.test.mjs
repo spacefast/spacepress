@@ -107,7 +107,7 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
     else assert.ok(response.ok, `${method} ${path}: ${response.status} ${JSON.stringify(value)}`);
     return value.data ?? value;
   }
-  const api = (path, options) => http('/__tp/api/v1' + path, options);
+  const api = (path, options) => http('/wp-json/typedpress/v1' + path, options);
   let story, writer, task, media;
   const body = '<!-- wp:paragraph --><p>A story from the native editor.</p><!-- /wp:paragraph -->';
   await step('native REST + SCF creates a draft with nested values; TypedPress reads persisted data', async () => {
@@ -176,7 +176,7 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
   await step('real disk uploads and transformed image bytes reach the public frontend', async () => {
     const image = Buffer.from(await wp('eval', '$i=imagecreatetruecolor(400,200); $red=imagecolorallocate($i,255,0,0); imagefilledrectangle($i,0,0,399,199,$red); ob_start(); imagepng($i); echo base64_encode(ob_get_clean());'), 'base64');
     const form = new FormData(); form.append('file', new Blob([image], { type: 'image/png' }), 'platform.png');
-    const response = await fetch(`${base}/__tp/api/v1/media`, { method: 'POST', headers: { authorization: credentials.editor }, body: form });
+    const response = await fetch(`${base}/wp-json/typedpress/v1/media`, { method: 'POST', headers: { authorization: credentials.editor }, body: form });
     const uploaded = await response.json(); assert.equal(response.status, 201, JSON.stringify(uploaded)); media = uploaded.data;
     assert.deepEqual([media.sizes.card.width, media.sizes.card.height], [120, 120]);
     const original = Buffer.from(await (await fetch(media.url)).arrayBuffer()); assert.deepEqual(original, image);

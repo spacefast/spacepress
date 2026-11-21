@@ -35,7 +35,7 @@ const cases: [string, string][] = [
 	["./target/debug/zero wp --hooks=zero_job", "./target/debug/typedpress wp --hooks=tp_job"],
 	["Costs per system, including zero-cost systems", "Costs per system, including zero-cost systems"],
 	["/__zero/auth/session and /__zero/run and /__zero/realtime/ticket", "/__zero/auth/session and /__zero/run and /__zero/realtime/ticket"],
-	["/__zero/realtime.js and /__zero/api/v1/posts", "/__tp/realtime.js and /__tp/api/v1/posts"],
+	["/__zero/realtime.js and /__zero/api/v1/posts", "/__tp/realtime.js and /wp-json/typedpress/v1/posts"],
 	["sf zero abilities and sf zero call and sf zero ls", "sf zero abilities and sf zero call and sf zero ls"],
 	["sf zero check and sf zero migrate", "sf typedpress check and sf typedpress migrate"],
 	["@spacefast/zero-compile and @spacefast/zero/client", "@spacefast/zero-compile and @spacefast/zero/client"],

@@ -92,7 +92,7 @@ check('the request that found everything installed records the marker, autoloade
 [$status, $next] = request($url, '/');
 eq('with the marker, a request runs none of the install checks', [$status, checks($next)], [200, []]);
 check('and fewer statements in all', count($next) < count($first), [count($first), count($next)]);
-[$status, $api] = request($url, '/__tp/api/v1/posts');
+[$status, $api] = request($url, '/wp-json/typedpress/v1/posts');
 eq('an API read runs none of them either', [$status, checks($api)], [200, []]);
 
 // ---- what drops it -----------------------------------------------------------------------------------
@@ -165,7 +165,7 @@ $wp->writeSchema($broken);
 [, $statements] = request($url, '/');
 check('a failing migration is tried', in_array('ledger', checks($statements), true), checks($statements));
 eq('and leaves no marker', $marker(), null);
-[$status, $statements] = request($url, '/__tp/api/v1/posts');
+[$status, $statements] = request($url, '/wp-json/typedpress/v1/posts');
 eq('the next request retries it, and TypedPress refuses meanwhile', [$status, in_array('schema hash', checks($statements), true), $marker()], [503, true, null]);
 unlink("$brokenMigDir/migration.sql");
 rmdir($brokenMigDir);

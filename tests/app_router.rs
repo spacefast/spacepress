@@ -889,6 +889,12 @@ fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
     let module = page("import s from \"./x.module.css\";");
     rejects(
         &dir,
+        &[("tp/app/page.tsx", &styled), ("tp/app/x.ts", "export {};")],
+        "can't find \"./x.css\"",
+        "tp/app/page.tsx:1:1",
+    );
+    rejects(
+        &dir,
         &[
             ("tp/app/page.tsx", &styled),
             ("tp/app/x.css", "@import \"normalize.css\";\n.a {}\n"),
@@ -1990,7 +1996,7 @@ fn client_components_compile_to_interactivity_stores() {
     assert_eq!(like["label2"], "142 likes");
     assert_eq!(
         like["calls"],
-        serde_json::json!([{ "url": "/__tp/api/v1/actions/like", "method": "POST", "nonce": "n0nce", "body": { "postId": 42 } }])
+        serde_json::json!([{ "url": "/wp-json/typedpress/v1/actions/like", "method": "POST", "nonce": "n0nce", "body": { "postId": 42 } }])
     );
     let effects = drive("clients/Effects", "effects.mjs");
     assert_eq!(
@@ -2311,9 +2317,10 @@ export const nope = state.result?.nope;
         seen["form"],
         serde_json::json!({
             "method": "post",
-            "action": "/__tp/api/v1/actions/subscribe",
+            "action": "/wp-json/typedpress/v1/actions/subscribe",
             "hidden": [["_tp_return", "hidden", "/?ref=nav"]],
             "page cache": "public, max-age=0, s-maxage=300, must-revalidate",
+            "undeclared query": "private, no-store, max-age=0",
         }),
         "an anonymous page with a form stays shared and carries no nonce: {seen}"
     );
@@ -2462,7 +2469,7 @@ fn forms_submit_in_place_in_the_browser() {
     // A second submit while the first was in flight sent nothing.
     assert_eq!(
         success["posts"],
-        serde_json::json!(["/__tp/api/v1/actions/subscribe"]),
+        serde_json::json!(["/wp-json/typedpress/v1/actions/subscribe"]),
         "{seen}"
     );
     // The same document: the window marker survives and no navigation entry was added.
@@ -2529,7 +2536,7 @@ fn forms_submit_in_place_in_the_browser() {
     assert_eq!(
         seen["failed"],
         serde_json::json!({
-            "posts": ["/__tp/api/v1/actions/subscribe"],
+            "posts": ["/wp-json/typedpress/v1/actions/subscribe"],
             "message": ["alert", true],
             "afterPending": { "busy": null, "disabled": [false] },
             "marker": "same document",
@@ -2538,7 +2545,7 @@ fn forms_submit_in_place_in_the_browser() {
     );
     assert_eq!(
         seen["dropped"],
-        serde_json::json!({ "posts": ["/__tp/api/v1/actions/subscribe"], "message": true, "marker": "same document" }),
+        serde_json::json!({ "posts": ["/wp-json/typedpress/v1/actions/subscribe"], "message": true, "marker": "same document" }),
         "{seen}"
     );
     // A `<Link>` click during a submit: the linked page stays; the late answer isn't rendered.
@@ -3573,6 +3580,8 @@ fn one_write_announces_its_purges_once() {
         json!(["/", "/notes/hello.md", "/notes/hello/"]),
         "{seen}"
     );
+    // The home page lists notes: a listing, though the list held one note when it rendered.
+    assert_eq!(seen["home reads"], json!(["*", "row"]), "{seen}");
     let once = |key: &str| {
         let calls = seen[key]["calls"].as_array().unwrap_or_else(|| panic!("{key}: {seen}"));
         assert_eq!(calls.len(), 1, "{key}: one call per write: {seen}");
@@ -3622,6 +3631,140 @@ fn one_write_announces_its_purges_once() {
     );
 }
 
+/// What a page cache holds and what a write drops from it, on WordPress with a stand-in host
+/// listening on `tp_purge_urls` (tests/php/page_caching.php). Each purge is checked beside the page as
+/// the origin renders it after the write, so every expected path is one whose content changed.
+///
+/// - A list read is a list read whatever it returned: a filtered catalog with one row, and a page
+///   that shows the top-ranked row, are purged when a new row joins or outranks it.
+/// - A global is a dependency: a write to it (the API, or its options page) purges the pages that
+///   printed it.
+/// - A query string is shared and recorded only when every parameter is one the page declares, and
+///   a path keeps a bounded number of recorded variants.
+#[test]
+fn page_caches_drop_what_a_write_changed() {
+    let project = fixture("page-caching", "writes");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/page_caching.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    use serde_json::json;
+    let shared = "public, max-age=0, s-maxage=300, must-revalidate";
+    let private = "private, no-store, max-age=0";
+    // Before any write: one nvme drive, so the filtered catalog and the top page each show one row.
+    for key in ["catalog", "nvme", "none", "top", "drive", "about"] {
+        assert_eq!(seen["warm"][key]["status"], 200, "{key}: {seen}");
+        assert_eq!(seen["warm"][key]["cache"], shared, "{key}: {seen}");
+    }
+    assert_eq!(seen["warm"]["nvme"]["items"], json!(["Alpha"]), "{seen}");
+    assert_eq!(seen["warm"]["top"]["line"], "Gamma", "{seen}");
+    let index: Vec<&str> = seen["index"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    // Both one-row reads are recorded as listings (`*`), with the row they showed.
+    for row in [
+        "drives * /catalog/?media=nvme",
+        "drives # /catalog/?media=nvme",
+        "drives * /top/",
+        "drives * /catalog.md?media=nvme",
+        // A filter that matched nothing still depends on every write to the kind.
+        "drives * /catalog/?media=tape",
+        // The global the catalog and the drive page print.
+        "global:shop * /catalog/",
+        "global:shop * /drives/alpha/",
+    ] {
+        assert!(index.contains(&row), "{row} in {index:?}");
+    }
+    // The item a URL names is that row alone, and a page that reads nothing records nothing.
+    assert!(!index.contains(&"drives * /drives/alpha/"), "{index:?}");
+    assert!(!index.iter().any(|r| r.ends_with(" /about/")), "{index:?}");
+
+    // A second nvme drive, priced above every other: the filtered list grows from 1 to 2 and the
+    // top page shows the new drive. Both URLs, the empty filter and the twin are announced.
+    assert_eq!(
+        seen["grown"],
+        json!({
+            "announced": ["/catalog/", "/catalog/?media=nvme", "/catalog/?media=tape", "/catalog.md?media=nvme", "/top/"],
+            "nvme": ["Alpha", "Delta"],
+            "top": "Delta",
+            "twin": "# TypedPress test site\n\n- Alpha\n- Delta",
+        }),
+        "{seen}"
+    );
+    // A price and stock change: the item's page and every list of its kind, not another item's page.
+    assert_eq!(
+        seen["priced"],
+        json!({
+            "announced": ["/catalog/", "/catalog/?media=nvme", "/top/", "/drives/alpha/"],
+            "drive": "Alpha: 12.5 USD, 0 in stock",
+        }),
+        "{seen}"
+    );
+    // A rolled-back write announces nothing, and the pages still show what they showed.
+    assert_eq!(seen["rolled back"]["announced"], json!(null), "{seen}");
+    assert_eq!(seen["rolled back"]["drive"], "Alpha: 12.5 USD, 0 in stock", "{seen}");
+    assert_eq!(seen["rolled back"]["top"], "Delta", "{seen}");
+    // A write to the global purges the pages that printed it (and no other), from the API…
+    assert_eq!(
+        seen["global"],
+        json!({
+            "announced": ["/catalog/", "/catalog/?media=nvme", "/drives/alpha/", "/drives/beta/"],
+            "catalog": "EUR",
+            "drive": "Alpha: 12.5 EUR, 0 in stock",
+        }),
+        "{seen}"
+    );
+    // …and from its options page, which saves the option itself.
+    assert_eq!(
+        seen["global option"],
+        json!({ "announced": ["/catalog/", "/drives/alpha/"], "catalog": "GBP" }),
+        "{seen}"
+    );
+
+    // A parameter the page doesn't declare: answered, never shared, never recorded, never announced.
+    for (path, answer) in seen["junk"]["answers"].as_object().unwrap() {
+        assert_eq!(answer, &json!([200, private, "no-cache"]), "{path}: {seen}");
+    }
+    assert_eq!(seen["junk"]["recorded"], json!([]), "{seen}");
+    assert_eq!(seen["junk"]["announced"], json!([]), "{seen}");
+    // Declared parameters: 20 recorded variants of one path, the rest private; a write names those
+    // 20 (and their twins), not the whole host; a variant unconfirmed for two windows gives way.
+    assert_eq!(
+        seen["variants"],
+        json!({
+            "max": 20,
+            // `?media=nvme` and `?media=tape` were recorded already: 18 of the 22 new ones fit.
+            "shared": 18,
+            "private": 4,
+            "recorded": 20,
+            "announced": 20,
+            "whole host": false,
+            "recorded one": shared,
+            "over the limit": private,
+            "after two windows": shared,
+            // The 18 stale ones went; `nvme`, `tape` (rendered since) and the new one stay.
+            "recorded then": 3,
+        }),
+        "{seen}"
+    );
+}
+
 /// Stylesheets and SVGs that pages, layouts and components import (docs/spec/tsx-to-php.md,
 /// "Accepted"), on WordPress over HTTP: each page links its layouts' and its own stylesheets once,
 /// in import order (the root layout's first), from the app plugin, with content-hashed names; a CSS
@@ -3630,6 +3773,17 @@ fn one_write_announces_its_purges_once() {
 #[test]
 fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     let project = fixture("app-assets", "serve");
+    // An explicit asset import keeps its extension even when a TypeScript module shares its stem.
+    for (path, source) in [
+        ("tp/app/site.ts", "export {};"),
+        (
+            "tp/app/about/page.module.ts",
+            r#"export default { card: "other-card", title: "other-title" };"#,
+        ),
+        ("tp/app/about/compass.ts", r#"export default "";"#),
+    ] {
+        std::fs::write(project.join(path), source).unwrap();
+    }
     build(&project);
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
@@ -3826,7 +3980,7 @@ fn api_reference_renders_openapi_as_pages() {
     assert_eq!(index["status"], 200);
     assert_eq!(index["h1"], serde_json::json!(["Apiref API"]));
     assert!(
-        index["server"][0].as_str().unwrap().ends_with("/__tp/api/v1"),
+        index["server"][0].as_str().unwrap().ends_with("/wp-json/typedpress/v1"),
         "{index}"
     );
     assert_eq!(index["tags"][0], "notes");
@@ -4183,7 +4337,8 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         (&serde_json::json!(200), &doc, &doc),
         "{paged}"
     );
-    assert_eq!(paged["expires"], serde_json::Value::Null, "{paged}");
+    // The page declares no `page` parameter, so this URL is the visitor's own answer, not a shared one.
+    assert_eq!(paged["cache"], "private, no-store, max-age=0", "{paged}");
     assert!(
         !paged["body"]
             .as_array()
@@ -4203,8 +4358,8 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     );
     assert_eq!(missing["cache"], "private, no-store, max-age=0");
     // One address per page (#462), the permalink structure's (`/%postname%/`, a trailing slash): the
-    // bare spelling 301s there with its query string. The address itself, a `.md` twin, the REST and
-    // `/__tp/` API routes and WordPress's own paths answer where they are. A path no doc has, and
+    // bare spelling 301s there with its query string. The address itself, a `.md` twin, the REST routes
+    // (TypedPress's API among them) and WordPress's own paths answer where they are. A path no doc has, and
     // `/docs` (the catch-all with no item), are a 404 where they were asked, as WordPress answers one.
     assert_eq!(
         seen["spellings"],
@@ -5075,7 +5230,7 @@ fn static_export_from_a_hosted_site() {
                 "-d",
             ])
             .arg(body.to_string())
-            .arg(format!("{site}/__tp/api/v1{path}"))
+            .arg(format!("{site}/wp-json/typedpress/v1{path}"))
             .output()
             .unwrap();
         String::from_utf8_lossy(&out.stdout).into_owned()
@@ -5282,255 +5437,50 @@ fn static_export_refuses_what_needs_a_server() {
     );
 }
 
-/// The drive-store example (examples/drive-store), the shop that shows most of TypedPress at once, on
-/// WordPress: built as committed, seeded from the records a hosted compile writes for its
-/// content/drives/, and used as a browser with scripts off would (tests/php/drive_store.php):
-/// search, the buy form and its stock rule, guarded pages, staff actions, reviews,
-/// the RSS feed and the settings global.
+/// WordPress renders the checked-in drive store over its native Woo products and orders.
 #[test]
 fn drive_store_example_sells_on_wordpress() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("drive-store");
-    copy(&root().join("examples/drive-store"), &project);
-    let _ = std::fs::remove_dir_all(project.join(".tp"));
-    let _ = std::fs::remove_dir_all(project.join("tp/dist"));
-    build(&project);
-    let (sources, compiled) = (work.path().join("sources"), work.path().join("compiled"));
-    for args in [
-        vec![
-            "sources".as_ref(),
-            project.as_os_str(),
-            "--out".as_ref(),
-            sources.as_os_str(),
-        ],
-        vec![
-            "compile-sources".as_ref(),
-            sources.as_os_str(),
-            compiled.as_os_str(),
-            project.as_os_str(),
-        ],
-    ] {
-        let out = first().args(&args).output().unwrap();
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let source = root().join("examples/drive-store");
+    std::fs::create_dir_all(project.join("tp")).unwrap();
+    std::fs::copy(
+        source.join("typedpress.config.ts"),
+        project.join("typedpress.config.ts"),
+    )
+    .unwrap();
+    for name in ["content", "public", "tp/app", "tp/lib", "tp/wp-hooks", "tp/_generated"] {
+        copy(&source.join(name), &project.join(name));
     }
-    let profile = std::env::var_os("TP_DRIVE_PROFILE")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| work.path().join("drive-profile.json"));
+    for name in ["schema.ts", "server.ts"] {
+        std::fs::copy(source.join("tp").join(name), project.join("tp").join(name)).unwrap();
+    }
+    build(&project);
+    let init_dir = std::fs::read_dir(project.join("tp/_generated/migrations"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.is_dir())
+        .expect("init migration folder");
+    let ops: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(init_dir.join("ops.json")).unwrap()).unwrap();
+    let tables: Vec<&str> = ops["ops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|op| op["op"] == "createTable" && op["table"] != "tp__revisions")
+        .filter_map(|op| op["table"].as_str())
+        .collect();
+    assert_eq!(tables, ["stock_movements"]);
+
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/drive_store.php"))
         .arg(project.join("tp/dist/wp-content"))
-        .arg(compiled.join("seed"))
-        .env("TP_DRIVE_PROFILE", &profile)
         .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
-    assert!(
-        out.status.success(),
-        "{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let report: serde_json::Value = serde_json::from_slice(&std::fs::read(profile).unwrap()).unwrap();
-    for (state, max_queries) in [
-        ("catalog", 1),
-        ("catalog/search", 1),
-        ("catalog/filter", 1),
-        ("catalog/no-matches", 1),
-        ("catalog/shop-notice", 1),
-        ("product/in-stock", 3),
-        ("product/missing", 1),
-        ("product/review", 5),
-        ("product/sold-out", 3),
-        ("orders/guest", 0),
-        ("orders/empty", 1),
-        ("orders/purchased", 3),
-        ("staff/guest", 0),
-        ("staff/forbidden", 0),
-        ("staff/no-orders", 4),
-        ("staff/pending", 4),
-        ("staff/after-shipping", 5),
-        ("login", 0),
-        ("login/return", 0),
-        ("source", 0),
-        ("feed", 0),
-        ("not-found", 0),
-    ] {
-        let queries = report["states"][state]["typedpress_sql"].as_u64().unwrap();
-        assert!(
-            queries <= max_queries,
-            "{state} executed {queries} TypedPress SQL statements (budget {max_queries})"
-        );
-    }
-    for (state, max_joins) in [
-        ("catalog", 8),
-        ("orders/purchased", 0),
-        ("product/in-stock", 11),
-        ("product/missing", 11),
-        ("product/review", 11),
-        ("product/sold-out", 11),
-    ] {
-        let joins = report["states"][state]["typedpress_postmeta_joins"].as_u64().unwrap();
-        assert!(
-            joins <= max_joins,
-            "{state} used {joins} postmeta joins, budget is {max_joins}"
-        );
-    }
-    let seen: serde_json::Value =
-        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
-    use serde_json::json;
-    // content/drives/ seeds four drives.
-    assert_eq!(seen["seed"]["created"], 4, "{seen}");
-    assert_eq!(
-        seen["rows"],
-        json!([
-            "crucial-p3-2tb",
-            "samsung-870-evo-1tb",
-            "seagate-exos-x16",
-            "wd-red-plus-4tb"
-        ])
-    );
-    // The catalog, cheapest first, links every drive's page and WordPress's feed of the post type.
-    assert_eq!(
-        seen["catalog"],
-        json!({
-            "status": 200,
-            "title": ["Catalog · Drive Store"],
-            "names": ["WD Red Plus 4 TB", "Samsung 870 EVO 1 TB", "Crucial P3 2 TB", "Seagate Exos X16 16 TB"],
-            "links": ["/drives/wd-red-plus-4tb/", "/drives/samsung-870-evo-1tb/", "/drives/crucial-p3-2tb/", "/drives/seagate-exos-x16/"],
-            "feed link": true,
-        }),
-        "{seen}"
-    );
-    for response in seen["catalog direct"].as_array().unwrap() {
-        assert_eq!(
-            response,
-            &json!([200, null]),
-            "a generated product link must not redirect: {seen}"
-        );
-    }
-    assert_eq!(
-        seen["catalog direct"].as_array().unwrap().len(),
-        seen["catalog"]["links"].as_array().unwrap().len()
-    );
-    assert_eq!(
-        seen["catalog navigation"],
-        json!(seen["catalog"]["links"].as_array().unwrap().len()),
-        "every product link enables region navigation and prefetch"
-    );
-    assert_eq!(
-        seen["sign-in navigation"],
-        json!({"form": ["post"], "catalog": ["/"], "router": false, "enhanced": []}),
-        "{seen}"
-    );
-    assert_eq!(seen["guest staff entry"], true, "{seen}");
-    assert_eq!(seen["member staff entry"], true, "{seen}");
-    assert_eq!(seen["search"], json!(["Samsung 870 EVO 1 TB"]));
-    assert_eq!(seen["filter"], json!(["Crucial P3 2 TB"]));
-    assert_eq!(seen["filter beyond limit"], seen["filter"]);
-    assert_eq!(seen["invalid filter"], json!(["No drives match your search."]));
-    assert_eq!(seen["sold out"], json!([200, ["Sold out"], ["Buy"]]));
-    assert_eq!(
-        seen["missing products"],
-        json!({"unpublished-nvme": [404, ["Not found"]], "unlisted-model": [404, ["Not found"]]})
-    );
-    assert_eq!(
-        seen["product"],
-        json!({
-            "status": 200, "h1": ["WD Red Plus 4 TB"], "stock": ["2 in stock"],
-            "reviews": ["Sign in to comment"],
-        }),
-        "{seen}"
-    );
-    // Buying: the confirmation comes back on the product page; stock goes down; the hook refuses
-    // more than is left, and the buyer can't name a price.
-    assert_eq!(
-        seen["guest buy"],
-        json!([
-            303,
-            "/drives/wd-red-plus-4tb/",
-            "Thanks! Your order code is CODE ($48.00)."
-        ])
-    );
-    assert_eq!(seen["stock after"], json!(["1 in stock"]));
-    assert_eq!(seen["over stock"], json!(["Only 1 left."]));
-    assert_eq!(seen["price from buyer"], 422);
-    // My orders: a customer's own orders only, and only signed in.
-    assert_eq!(seen["ann buy"], "Thanks! Your order code is CODE ($109.00).");
-    assert_eq!(
-        seen["my orders"],
-        json!({ "ann": ["Samsung 870 EVO 1 TB"], "bo": ["No orders yet. Browse the catalog."] })
-    );
-    assert_eq!(seen["my orders signed out"], json!([302, true]));
-    assert_eq!(
-        seen["orders api as ann"],
-        json!(["Ann"]),
-        "the read rule holds on the API: {seen}"
-    );
-    // Staff: editors only, on the page and on the actions.
-    assert_eq!(seen["staff as customer"], 403);
-    assert_eq!(
-        seen["staff"],
-        json!({
-            "status": 200, "to ship": 2,
-            "low": ["Crucial P3 2 TB (1 left)", "Samsung 870 EVO 1 TB (1 left)", "WD Red Plus 4 TB (1 left)"],
-        }),
-        "{seen}"
-    );
-    assert_eq!(seen["ship"], "Order CODE is shipped.");
-    assert_eq!(seen["restock"], json!(["Restocked: 5 on the shelf now."]));
-    assert_eq!(seen["movements"], json!(["restock", "sale", "sale"]));
-    assert_eq!(
-        seen["staff drive names"],
-        json!({
-            "orders": ["WD Red Plus 4 TB", "Samsung 870 EVO 1 TB"],
-            "movements": ["Crucial P3 2 TB", "Samsung 870 EVO 1 TB", "WD Red Plus 4 TB"],
-        })
-    );
-    assert_eq!(seen["restock as customer"], 403);
-    assert_eq!(
-        seen["pending orders"],
-        json!({"editor": [200, ["Ann"]], "ann": [403, []]})
-    );
-    // Reviews: a first review is held and shown to its author only.
-    assert_eq!(seen["review"], json!([303, ["Arrived well packed, SMART clean."]]));
-    assert_eq!(seen["review signed out"], json!([[], ["Sign in to comment"]]));
-    // WordPress's RSS feed of the drives, linking each drive's page; sorted here,
-    // since the seed publishes them within the same second.
-    assert_eq!(
-        seen["feed"],
-        json!([
-            200,
-            "application/rss+xml",
-            [
-                "Crucial P3 2 TB",
-                "Samsung 870 EVO 1 TB",
-                "Seagate Exos X16 16 TB",
-                "WD Red Plus 4 TB"
-            ],
-            [
-                "/drives/crucial-p3-2tb/",
-                "/drives/samsung-870-evo-1tb/",
-                "/drives/seagate-exos-x16/",
-                "/drives/wd-red-plus-4tb/"
-            ]
-        ]),
-        "{seen}"
-    );
-    // The settings global: the notice banner on every page, and the currency on every price.
-    assert_eq!(seen["settings"], json!([["Demo shop: orders are fake."], "€48.00"]));
-    assert_eq!(seen["bad price"], json!([422, "A price has two decimals at most."]));
-    // TypedPress Admin's classic table screen: the kind's label, and each field's `.ui({ label })`.
-    assert_eq!(
-        seen["orders screen"],
-        json!([200, "Orders", {
-            "id": "id", "code": "Order code", "drive": "Drive", "quantity": "Quantity", "unitPrice": "Unit price",
-            "total": "Total", "buyerName": "Buyer", "buyerEmail": "Email", "buyerId": "Buyer user ID",
-            "status": "Status", "placedAt": "Placed", "shippedAt": "Shipped",
-            "author": "author", "createdAt": "createdAt", "updatedAt": "updatedAt", "deletedAt": "deletedAt", "deletedBy": "deletedBy",
-        }]),
-        "{seen}"
-    );
+    println!("{}", String::from_utf8_lossy(&out.stdout));
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 }
 
 /// examples/docs in Chromium as an anonymous visitor (tests/differential/client/docs.mjs).

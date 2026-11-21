@@ -70,7 +70,7 @@ test("anonymous: a post's oEmbed and its REST author embed reveal no login", asy
   const author = posts[0]._embedded?.author?.[0];
   assert.ok(author === undefined || author.code === "rest_user_cannot_view", JSON.stringify(author));
   // The facade's built-in users kind agrees with core's route.
-  const facade = await get("/__tp/api/v1/users");
+  const facade = await get("/wp-json/typedpress/v1/users");
   assert.equal(facade.status, 401);
 });
 
@@ -157,7 +157,7 @@ test("publicAuthors: true keeps them as WordPress ships them", async () => {
   const original = wp("eval", `echo base64_encode(file_get_contents('${schema}'));`);
   wp("eval", `file_put_contents('${schema}', str_replace(["    'admin' => false,\\n", "    'admin' => true,\\n"], ["    'admin' => false,\\n    'publicAuthors' => true,\\n", "    'admin' => true,\\n    'publicAuthors' => true,\\n"], file_get_contents('${schema}')));`);
   try {
-    assert.equal((await fetch(`${harness.url}/__tp/api/v1`, { headers: auth("admin") }).then((r) => r.json())).data.runtime.wp.publicAuthors, true);
+    assert.equal((await fetch(`${harness.url}/wp-json/typedpress/v1`, { headers: auth("admin") }).then((r) => r.json())).data.runtime.wp.publicAuthors, true);
     assert.equal((await get("/wp-json/wp/v2/users")).status, 200);
     assert.equal((await get(`/author/${login}/`)).status, 200);
     assert.equal((await get(`/?author=${admin}`)).status, 301);

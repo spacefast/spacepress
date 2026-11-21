@@ -8,10 +8,10 @@ import type { RestAttachment } from '@wordpress/media-utils';
 export async function uploadAttachment(file: File): Promise<RestAttachment> {
 	const body = new FormData();
 	body.append('file', file);
-	// TypedPress's API (window.tpAdmin.api, /__tp/api/v1): the upload under TypedPress's media rules.
+	// TypedPress's API (window.tpAdmin.api, /wp-json/typedpress/v1): the upload under TypedPress's media rules.
 	const base = (window as { tpAdmin?: { api?: unknown } }).tpAdmin?.api;
 	const result: unknown = await apiFetch({
-		url: `${typeof base === 'string' ? base.replace(/\/+$/, '') : '/__tp/api/v1'}/media`,
+		url: `${typeof base === 'string' ? base.replace(/\/+$/, '') : '/wp-json/typedpress/v1'}/media`,
 		method: 'POST',
 		body,
 	});

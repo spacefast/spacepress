@@ -1223,7 +1223,7 @@ pub(super) fn app(
             entries.push(entry(
                 at,
                 "review",
-                format!("`{name}` also names a table, and v2 names are one namespace: the action is `{renamed}`, served at /__tp/api/v1/actions/{renamed}; the converted client calls it there, and other callers must change"),
+                format!("`{name}` also names a table, and v2 names are one namespace: the action is `{renamed}`, served at /wp-json/typedpress/v1/actions/{renamed}; the converted client calls it there, and other callers must change"),
             ));
             if let Some(h) = client_handlers.iter_mut().find(|h| h.name == *name) {
                 h.action = Some(renamed.clone());

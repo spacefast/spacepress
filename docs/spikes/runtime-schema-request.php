@@ -10,7 +10,7 @@ declare(strict_types=1);
  *   php docs/spikes/runtime-schema-request.php [--json]
  *
  * Boots the blog fixture on the in-process WordPress harness (tests/php/wp.php), seeds ten posts,
- * starts the harness's `php -S` and sends `GET /__tp/api/v1/posts?limit=10` over loopback. A
+ * starts the harness's `php -S` and sends `GET /wp-json/typedpress/v1/posts?limit=10` over loopback. A
  * must-use plugin runs one loader per request, chosen by a file the script rewrites between
  * rounds, and logs how long the loader took and how long the whole request took:
  *
@@ -106,7 +106,7 @@ foreach ([1, 20, 200, 450] as $fields) {
 }
 touch("$wp->content/plugins/typedpress-app-blog/tp/app/schema.php", time() - 60);
 
-$url = $wp->url() . '/__tp/api/v1/posts?limit=10';
+$url = $wp->url() . '/wp-json/typedpress/v1/posts?limit=10';
 $get = static function () use ($url): void {
     $body = file_get_contents($url, false, stream_context_create(['http' => ['timeout' => 30, 'ignore_errors' => true]]));
     $rows = json_decode((string) $body, true)['data'] ?? null;
@@ -145,7 +145,7 @@ $median = static function (array $v): float {
 };
 $load = sys_getloadavg();
 $results = ['php' => PHP_VERSION, 'wordpress' => WP_CORE_VERSION, 'database' => 'SQLite', 'server' => 'php -S (cli-server)',
-    'request' => 'GET /__tp/api/v1/posts?limit=10', 'requestsPerLoader' => ROUNDS * REQUESTS, 'hostLoad' => $load, 'baseColumns' => $baseColumns, 'loaders' => []];
+    'request' => 'GET /wp-json/typedpress/v1/posts?limit=10', 'requestsPerLoader' => ROUNDS * REQUESTS, 'hostLoad' => $load, 'baseColumns' => $baseColumns, 'loaders' => []];
 foreach ($modes as $mode) {
     [$loader, $fields] = explode(':', $mode);
     count($samples[$mode]['request']) === ROUNDS * REQUESTS || throw new RuntimeException("$mode logged " . count($samples[$mode]['request']) . ' requests');

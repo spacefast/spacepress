@@ -115,7 +115,7 @@ Added 2026-11-14:
 | `url` patterns | rewrite rules + the kind's link filter (`post_link`, `page_link`, `post_type_link`, `term_link`) + automatic 301s |
 | `job()`, `every`, `cron` | Action Scheduler async / recurring / cron actions |
 | `query()`, `mutation()` | `wp_register_ability`, served by core's Abilities route, the MCP Adapter and the facade |
-| HTTP API | core `/wp/v2` routes enforce TypedPress's rules; `/__tp/api/v1` maps them to clean shapes for clients and agents |
+| HTTP API | core `/wp/v2` routes enforce TypedPress's rules; `/wp-json/typedpress/v1` maps them to clean shapes for clients and agents |
 | `app/**/page.tsx` | compiled PHP renderer behind one `template_redirect` gate |
 | `"use client"` | Interactivity API store module + `data-wp-*` directives |
 | live updates | `tp_realtime_changes` → control plane → Cast room |

@@ -67,7 +67,7 @@ export async function connect(project) {
     base,
     authorization,
     request,
-    api: (path, options) => request("/__tp/api/v1" + path, options),
+    api: (path, options) => request("/wp-json/typedpress/v1" + path, options),
     dispose: async () => {
       const list = JSON.parse(
         await wp(

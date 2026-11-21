@@ -130,7 +130,9 @@ shell cannot do. Two things make it usable there:
 
 - `typedpress dev --detach` returns once the site is up. The watcher keeps running
   in the background, rebuilds on save, and writes to `.tp/dev/dev.log`.
-  `typedpress dev stop` stops it.
+  `typedpress dev stop` stops it. When the first build fails it still starts
+  WordPress and keeps watching, but prints the error and exits 1: the site
+  does not serve the current source until a save builds.
 - Without the flag, `typedpress dev` does the same by itself when its output is not a
   terminal and one of `CLAUDECODE`, `CODEX_SANDBOX`, `AI_AGENT` or `AGENT` is
   set to something other than empty, `0` or `false`. It says so on stderr. It
@@ -140,13 +142,17 @@ shell cannot do. Two things make it usable there:
 `.tp/dev/state.json`, which `typedpress dev` writes when the site is up:
 
 ```json
-{"state":"running","url":"http://localhost:8787","port":8787,"admin":"http://localhost:8787/wp-admin/","site":"/work/my-app/.tp/dev/wordpress","watching":true,"pid":41822,"log":"/work/my-app/.tp/dev/dev.log","wordpress":"7.1","php":"8.4"}
+{"state":"running","url":"http://localhost:8787","port":8787,"admin":"http://localhost:8787/wp-admin/","site":"/work/my-app/.tp/dev/wordpress","watching":true,"pid":41822,"log":"/work/my-app/.tp/dev/dev.log","error":null,"wordpress":"7.1","php":"8.4"}
 ```
 
 `state` is `none`, `stopped` or `running`, checked against the port itself.
 `watching` is true while the recorded `typedpress dev` process exists; after
-`--no-watch` it is false and `pid` is null. `typedpress dev status` without `--json`
-still prints Studio's own report.
+`--no-watch` it is false and `pid` is null. `error` is null while that
+process's last build succeeded. After a build that failed it is
+`{"message": …, "diagnostics": […]}`, with the compiler's diagnostics as
+`typedpress check --json` reports them, and the site keeps serving the last
+build that succeeded. `typedpress dev status` without `--json` still prints
+Studio's own report.
 
 The server speaks MCP revision 2026-07-28 (no handshake; `server/discover`) and,
 for clients that open with `initialize`, 2025-11-25 and 2025-06-18.
@@ -206,7 +212,7 @@ update abilities. Jobs are exposed only when explicitly opted in with
 The app server lists named tools directly. The adapter's separate default
 server has discovery and execution meta-tools; it is not the app endpoint above.
 Both are built on `/wp-json` requests only: a request to TypedPress's own API
-(`/__tp/api/v1`) never reaches `/mcp`, so it builds neither server and
+(`/wp-json/typedpress/v1`) never reaches `/mcp`, so it builds neither server and
 registers no abilities it doesn't run.
 
 The owning code is
@@ -248,9 +254,9 @@ data*) and shows each password's scope.
 A scope only narrows. The user's role, each kind's access rules and its field
 rules still decide first, so a subscriber's credential with `--write` writes
 what a subscriber may. It is enforced wherever the app can be reached: the
-abilities run route, the MCP server, `/__tp/api/v1`, core's `/wp/v2` routes,
+abilities run route, the MCP server, `/wp-json/typedpress/v1`, core's `/wp/v2` routes,
 `/batch/v1` sub-requests, `?rest_route=` and method overrides. `GET
-/__tp/api/v1` reports the scope of the credential asking, under
+/wp-json/typedpress/v1` reports the scope of the credential asking, under
 `runtime.credential`.
 
 Whatever its grants and its user's role, a scoped credential can't do the
@@ -269,7 +275,10 @@ abilities of an app's users kind.
 
 An agent that has to do one of these needs an unscoped credential, which is a
 choice its owner makes on purpose. A credential limited to named abilities also
-sees only those in core's abilities list and in the MCP tool list.
+sees only those in core's abilities list and in the MCP tool list. The list
+covers what an action calls with `abilities.call` too: the inner ability runs as
+the same credential, so it is named on the list beside the action, and a refusal
+says which ability is missing.
 
 A refusal is a 403 with the code `scope` (`tp_scope` on core routes; a tool
 error over MCP) and says which grant is missing. Without `personal`, emails and

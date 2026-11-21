@@ -1890,7 +1890,14 @@ type ProductColumns = {
   availability: ColumnBuilder<"text", string, true, true>;
   url: ColumnBuilder<"text", string, false, true>;
 };
-export declare function product(options?: CommerceOptions): Collection<string, WithId<ProductColumns>, false, "product">;
+type ProductFields = Record<string, ColumnBuilder<"text" | "integer" | "number" | "boolean" | "date" | "email" | "url", unknown, false, false>> & {
+  [K in keyof ProductColumns | "id" | "stockQuantity"]?: never;
+};
+export declare function product<F extends ProductFields = {}, I extends boolean = false>(
+  options?: CommerceOptions & { fields?: F; inventory?: I; reviews?: boolean },
+): Collection<string, WithId<ProductColumns & F & (I extends true ? {
+  stockQuantity: ColumnBuilder<"integer", number, false, true>;
+} : {})>, false, "product">;
 export declare function productCategory(options?: CommerceOptions): Collection<string, WithId<TermColumns<true> & { uid: ColumnBuilder<"text", string, true, true> }>, false, "taxonomy">;
 export declare function productTag(options?: CommerceOptions): Collection<string, WithId<TermColumns<false> & { uid: ColumnBuilder<"text", string, true, true> }>, false, "taxonomy">;
 export interface OrderAddress {

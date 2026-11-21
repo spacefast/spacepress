@@ -115,13 +115,13 @@ Host contract version: **2** (`hostContract` in the manifest).
 
 | Path | What |
 |---|---|
-| `/__tp/*` | TypedPress's HTTP API (`/__tp/api/v1/*`): kinds, globals, actions, files, `/me`; served before the theme, outside `/wp-json`. Route it to WordPress and never cache it: every answer is `Cache-Control: private, no-store` with `Vary: Cookie, Authorization`, except file streams |
+| `/wp-json/typedpress/v1/*` | TypedPress's HTTP API: kinds, globals, actions, files, `/me`, one route on WordPress's REST server. Every answer is `Cache-Control: private, no-store` with `Vary: Origin, Cookie, Authorization`, except file streams and `/openapi.json` |
 | `/identity/*` | TypedPress Identity's issuer and pages, when the app mounts identity |
 | `/wp-json/typedpress-identity/v1/*` | TypedPress Identity's REST API |
 | `/wp-admin/new/*` | TypedPress Admin, unless the app sets `admin: false`: served by wp-admin's `admin.php?page=typedpress-admin`. Apache applies the plugin's `.htaccess` rule; any other server must send a path that is not a file to WordPress's `index.php`, which redirects it to `admin.php?page=typedpress-admin&p=<route>` |
 | `/typedpress-admin/*` | the admin's earlier address, redirected to `/wp-admin/new/*` |
 
-The app API is `/__tp/api/v1`; actions are `POST /__tp/api/v1/actions/<name>`. The generated client is a file of the compiled tree (`client/client.js`); the host chooses the URL it serves it at.
+The app API is `/wp-json/typedpress/v1`; actions are `POST /wp-json/typedpress/v1/actions/<name>`. The generated client is a file of the compiled tree (`client/client.js`); the host chooses the URL it serves it at.
 
 ### Mount and lifecycle
 
@@ -138,7 +138,7 @@ The app API is `/__tp/api/v1`; actions are `POST /__tp/api/v1/actions/<name>`. T
 | Hook | Kind | What |
 |---|---|---|
 | `tp_mail_transport` | filter | delivers `mail.send` messages; without it, the app's mail is refused |
-| `tp_purge_urls` | action | the root-relative URLs a committed content write changed, for a host's page cache; `/*` after a new build goes live |
+| `tp_purge_urls` | action | the root-relative URLs a committed content write changed, for a host's page cache, each with the query string a page was cached under (only parameters the page declares as `search`; a request with any other parameter is answered `private, no-store` and never named here); `/*` after a new build goes live |
 | `tp_private_probe_url` | filter | the URL the private-files probe fetches, when the public URL is not reachable from the server |
 | `tp_prebuild_url` | filter | the URL a prebuilt page is rendered from, when the site cannot reach its own address (`output: "server"` with `prerender`) |
 | `tp_identity_providers` | filter | OpenID Connect sign-in providers TypedPress Identity offers |
@@ -182,14 +182,14 @@ the ordinary 35-character limit shown below.
 ```json
 {
   "reservedPaths": [
-    "/__tp/*",
+    "/wp-json/typedpress/v1/*",
     "/identity/*",
     "/wp-json/typedpress-identity/v1/*",
     "/wp-admin/new/*",
     "/typedpress-admin/*"
   ],
-  "apiPrefix": "/__tp/api/v1",
-  "actionPrefix": "/__tp/api/v1/actions/",
+  "apiPrefix": "/wp-json/typedpress/v1",
+  "actionPrefix": "/wp-json/typedpress/v1/actions/",
   "liveUpdates": {
     "action": "tp_realtime_changes",
     "publisher": "TypedPress\\Realtime\\Publisher",

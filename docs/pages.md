@@ -80,6 +80,8 @@ export async function POST(req: RouteRequest) {
   `title: { default, template: "%s · Site" }` wraps its pages' titles.
 - `export const search = { page: integer().default(1), q: text().optional() }`
   types the query string. A value a field refuses (`?page=abc`) reads as absent.
+  These are also the only query parameters a page cache keeps the page under: a
+  request with any other parameter (`?utm_source=…`) gets the page, uncached.
 - Declare page access once. For example, `export const guard = "admin"` on
   `page.tsx` protects that page. On `layout.tsx` it protects the whole section.
   A page inherits every enclosing layout's rule. A signed-out visitor who opens
@@ -138,7 +140,7 @@ export default function Page() {
 ```
 
 - The form posts form-encoded to the action's endpoint
-  (`/__tp/api/v1/actions/<name>`), with a hidden `_tp_return` (the page's
+  (`/wp-json/typedpress/v1/actions/<name>`), with a hidden `_tp_return` (the page's
   path and query). The action runs as the visitor, exactly as a JSON call runs
   it, and the answer is `303 See Other` back to that page.
 - Fields read as the action's input types them: `integer()` and `number()` from
@@ -510,6 +512,12 @@ import compass from "./compass.svg";
   `url(/name.png)`), `:global`, `:local` and `composes` in a module, and an SVG
   imported by a `"use client"` component (pass the URL as a prop). Other files,
   binary images and fonts among them, go in `public/`, by their URL.
+
+Install [`@typedpress/frontend`](../packages/frontend/README.md) and Tailwind,
+then import a plain stylesheet containing `@import "tailwindcss"` from a
+page or layout. `typedpress dev` and `typedpress build` compile it and link
+the hashed result on the routes that use it. The same package offers an
+explicit build command for npm-backed browser scripts.
 
 ## Scripts
 

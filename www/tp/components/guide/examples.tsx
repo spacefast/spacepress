@@ -13,7 +13,7 @@ export function Examples() {
       <tr><th>From these files you get</th><th>Without writing it</th></tr>
       <tr><td><code>/</code>, <code>/notes</code>, <code>/notes/&lt;slug&gt;</code>, <code>/about</code>, a 404 page</td><td>routing, titles, canonical URLs, the page cache and its purges</td></tr>
       <tr><td>Notes in the WordPress editor</td><td>drafts, revisions, scheduling, staged versions, the admin screens</td></tr>
-      <tr><td><code>GET /notes</code>, <code>{"GET /notes/{id}"}</code>, <code>POST /notes</code>, <code>PATCH</code> and <code>DELETE</code>, the same for <code>cheers</code></td><td>the API under <code>/__tp/api/v1</code>, its OpenAPI document and the typed client</td></tr>
+      <tr><td><code>GET /notes</code>, <code>{"GET /notes/{id}"}</code>, <code>POST /notes</code>, <code>PATCH</code> and <code>DELETE</code>, the same for <code>cheers</code></td><td>the API under <code>/wp-json/typedpress/v1</code>, its OpenAPI document and the typed client</td></tr>
       <tr><td><code>{"tp.cheer({ noteId })"}</code></td><td>input checking from the parameter type, a rate limit, one transaction</td></tr>
       <tr><td><code>deskNotes</code> hidden from visitors</td><td>the field is absent from pages, the API, search and agent tools alike</td></tr>
       <tr><td>One agent tool per operation</td><td>the MCP endpoint and its scoped credentials</td></tr>

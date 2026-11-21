@@ -51,7 +51,7 @@ $wp = wpSite('rtschema', ['schema' => $base, 'server' => true, 'identity' => tru
         return new \TypedPress\JsObject(array_intersect_key($patch->p, \TypedPress\RuntimeSchema\Loader::compiled()['collections']['articles']['columns']));
     }
     PHP]);
-$api = $wp->url() . '/__tp/api/v1';
+$api = $wp->url() . '/wp-json/typedpress/v1';
 
 /** @return array{int, mixed} status and decoded body, as $as (a test user name) or anonymous */
 function http(string $method, string $url, mixed $body = null, ?string $as = null): array

@@ -155,7 +155,7 @@ if ($phase === 'nested') {
                         proof($e->kind === 'storage_unavailable' && $e->status === 503 && !str_contains($e->getMessage(), $table), 'canonical and legacy reads propagate sanitized storage failures');
                     }
                     $_COOKIE['__Host-sfi_session'] = 'old-token';
-                    $_SERVER['REQUEST_URI'] = '/__tp/api/v1/me';
+                    $_SERVER['REQUEST_URI'] = '/wp-json/typedpress/v1/me';
                     $_SERVER['REQUEST_METHOD'] = 'GET';
                     wp_set_current_user(0);
                     $error = apply_filters('rest_authentication_errors', null);
@@ -182,7 +182,7 @@ if ($phase === 'nested') {
             proof($e->kind === 'storage_conflict' && $e->status === 409, 'upgrade write failure propagates');
         }
         $_COOKIE['__Host-sfi_session'] = 'old-token';
-        $_SERVER['REQUEST_URI'] = '/__tp/api/v1/me';
+        $_SERVER['REQUEST_URI'] = '/wp-json/typedpress/v1/me';
         $_SERVER['REQUEST_METHOD'] = 'GET';
         wp_set_current_user(0);
         $error = apply_filters('rest_authentication_errors', null);

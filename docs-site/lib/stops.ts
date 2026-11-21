@@ -85,7 +85,7 @@ export const tours: Tour[] = [
         slug: "an-action",
         title: "A mutation is an endpoint",
         prose: [
-          "A mutation takes typed input and returns whatever its handler returns. Its export name is its name: it is served at `/__tp/api/v1/actions/consume`, its input is validated against the handler's parameter type, and `access` decides who may call it.",
+          "A mutation takes typed input and returns whatever its handler returns. Its export name is its name: it is served at `/wp-json/typedpress/v1/actions/consume`, its input is validated against the handler's parameter type, and `access` decides who may call it.",
           "The typed client gets an `Actions` entry for it, so `first.actions.consume({ itemId })` is checked in your editor.",
         ],
         config: { file: "typedpress.config.ts", lines: { from: "export const consume = mutation(", toLine: "});" } },

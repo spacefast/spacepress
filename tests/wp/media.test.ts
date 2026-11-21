@@ -500,7 +500,7 @@ test("a signed URL streams the file through the REST route with the security hea
   probe();
   const row = await deck("slide one");
   assert.deepEqual([row.bucket, row.mime, row.filename, row.ownerId, "path" in row], ["decks", "application/pdf", "Q3 plan.pdf", harness.users.author.id, false]);
-  assert.ok(row.url.startsWith(`${harness.url}/__tp/api/v1/files/decks/${row.id}/download?`), row.url);
+  assert.ok(row.url.startsWith(`${harness.url}/wp-json/typedpress/v1/files/decks/${row.id}/download?`), row.url);
   const res = await fetch(row.url);
   assert.equal(res.status, 200);
   assert.deepEqual(new Uint8Array(await res.arrayBuffer()), pdf("slide one"));
@@ -708,7 +708,7 @@ test("a media item reads on the API exactly as on core's media route: its parent
     // Poll an actual HTTP signal while the fresh image installs core/config.
     const deadline = Date.now() + 60_000;
     while (true) {
-      try { if ((await fetch(`${replicaUrl}/__tp/api/v1`)).status === 200) break; } catch {}
+      try { if ((await fetch(`${replicaUrl}/wp-json/typedpress/v1`)).status === 200) break; } catch {}
       assert.ok(Date.now() < deadline, "fresh replica reached the TypedPress route");
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
@@ -716,7 +716,7 @@ test("a media item reads on the API exactly as on core's media route: its parent
     wp("option", "update", "home", replicaUrl);
     wp("option", "update", "siteurl", replicaUrl);
     compose("stop", "wordpress");
-    const replica = createClient({ url: `${replicaUrl}/__tp/api/v1`, headers: auth("editor") });
+    const replica = createClient({ url: `${replicaUrl}/wp-json/typedpress/v1`, headers: auth("editor") });
     const fresh = await replica.files.decks.get(file.id);
     assert.deepEqual(Buffer.from(await (await fetch(fresh.url)).arrayBuffer()), bytes);
     const freshImage = await replica.media.get(image.id);
@@ -727,7 +727,7 @@ test("a media item reads on the API exactly as on core's media route: its parent
     assert.notDeepEqual(Buffer.from(await (await fetch(focal.sizes.card.url)).arrayBuffer()), derivative, "B hydrates original and generates a new crop");
     assert.equal((await fetch(freshImage.sizes.card.url)).status, 404, "superseded crop loses its manifest grant");
     const responsive = replicaPhp(`echo wp_get_attachment_image_srcset(${attachment.id}, 'tp_wide');`);
-    assert.ok(responsive.includes('/__tp/api/v1/media/'), responsive);
+    assert.ok(responsive.includes('/wp-json/typedpress/v1/media/'), responsive);
     for (const candidate of responsive.split(', ')) {
       assert.equal((await fetch(candidate.split(' ')[0])).status, 200, "core srcset uses durable variants");
     }

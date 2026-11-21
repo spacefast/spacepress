@@ -22,7 +22,7 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 ## Procedure
 
 1. Export it from any file under `tp/` (by convention `tp/server/*.ts`). The export name is its
-   name: the mutation `rate` is `POST /__tp/api/v1/actions/rate`, and the browser calls `rate()`.
+   name: the mutation `rate` is `POST /wp-json/typedpress/v1/actions/rate`, and the browser calls `rate()`.
 
    ```ts
    // tp/server/ratings.ts

@@ -5,12 +5,15 @@ import { runCLI, type RunCLIServer } from '@wp-playground/cli';
 import { chromium, expect as baseExpect, type Browser, type Page } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import ts from 'typescript';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const expect = baseExpect.configure({ timeout: 20_000 });
@@ -26,11 +29,12 @@ const cli = (args: string[], auth = false) => new Promise<{ code: number; text: 
   let text = ''; child.stdout.on('data', chunk => { text += chunk; }); child.stderr.on('data', chunk => { text += chunk; });
   child.on('error', reject); child.on('exit', code => resolve({ code: code ?? 1, text }));
 });
-async function php(code: string): Promise<any> {
-  const result = await wordpress.playground.run({ code: `<?php require '/wordpress/wp-load.php'; ${code}` });
+async function runPhp(site: RunCLIServer, code: string): Promise<any> {
+  const result = await site.playground.run({ code: `<?php require '/wordpress/wp-load.php'; ${code}` });
   assert.equal(result.errors, '', result.errors);
   try { return JSON.parse(result.text); } catch { throw new Error(`Playground PHP returned non-JSON: ${result.text.slice(0, 1200)}`); }
 }
+const php = (code: string) => runPhp(wordpress, code);
 async function sync(ok = true) {
   const out = await cli(['sync', project, '--site', base, '--no-commit', '--json'], true);
   const data = JSON.parse(out.text).data;
@@ -38,7 +42,7 @@ async function sync(ok = true) {
   return out.text;
 }
 const api = async (resource: string) => {
-  const response = await fetch(new URL(`/__tp/api/v1/${resource}`, base), { headers: { Authorization: `Basic ${Buffer.from(credential).toString('base64')}` } });
+  const response = await fetch(new URL(`/wp-json/typedpress/v1/${resource}`, base), { headers: { Authorization: `Basic ${Buffer.from(credential).toString('base64')}` } });
   assert.equal(response.status, 200, await response.clone().text());
   return response.json();
 };
@@ -47,8 +51,8 @@ async function add(page: Page, slug: string) {
   await page.getByRole('button', { name: 'Add to cart' }).click();
   await page.getByText('Added to your cart.').waitFor();
 }
-async function checkout(page: Page) {
-  const response = await page.goto(new URL('/checkout', base).href);
+async function checkout(page: Page, origin = base, country = 'PL') {
+  const response = await page.goto(new URL('/checkout', origin).href, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   assert.match(response!.headers()['cache-control']!, /private.*no-store/);
   await page.getByLabel('Email address', { exact: true }).fill('buyer@example.test');
   const sameBilling = page.getByRole('checkbox', { name: 'Use same address for billing', exact: true });
@@ -56,33 +60,47 @@ async function checkout(page: Page) {
   for (const name of ['Shipping address', 'Billing address']) {
     const address = page.getByRole('group', { name, exact: true });
     if (!await address.count()) continue;
-    await address.getByLabel('Country/Region', { exact: true }).selectOption('PL');
+    await address.getByLabel('Country/Region', { exact: true }).selectOption(country);
     await address.getByLabel('First name', { exact: true }).fill('Test');
     await address.getByLabel('Last name', { exact: true }).fill('Buyer');
-    await address.getByLabel('Address', { exact: true }).fill('Rynek 2');
-    await address.getByLabel('Postal code', { exact: true }).fill('31-042');
-    await address.getByLabel('City', { exact: true }).fill('Kraków');
+    await address.getByLabel('Address', { exact: true }).fill(country === 'PL' ? 'Rynek 2' : '10 Main Street');
+    await address.getByLabel(/^(ZIP|Postal) code$/i).fill(country === 'PL' ? '31-042' : '10001');
+    await address.getByLabel('City', { exact: true }).fill(country === 'PL' ? 'Kraków' : 'New York');
+    if (country === 'US') {
+      await address.getByLabel('State', { exact: true }).selectOption('NY');
+      const phone = address.getByLabel('Phone', { exact: false });
+      if (await phone.count()) await phone.fill('2125550100');
+    }
   }
   await expect(page.getByRole('button', { name: 'Place Order', exact: true })).toBeEnabled();
 }
 
-before(async () => {
-  writeFileSync(path.join(project, 'typedpress.config.ts'), `import {defineConfig} from 'typedpress'; export default defineConfig({name:'shop'});`);
-  for (const args of [['add', 'shop', project], ['build', project]]) {
-    const out = await cli(args); assert.equal(out.code, 0, out.text);
-    if (args[0] === 'add') {
-      const guide = path.join(project, 'content/products/field-guide.md');
-      writeFileSync(guide, readFileSync(guide, 'utf8').replace(/file: https:[^\n]+/, 'file: /wordpress/wp-content/uploads/guide.pdf'));
-    }
-  }
-  console.log('commerce scaffold built');
+// The Checkout Block sends an address edit 1.5 s after the last keystroke, or at once when an input
+// loses focus, and disables Place Order while the answer recalculates shipping. Pressing the button
+// with an unsent edit therefore starts the request on mousedown: the button is disabled before
+// mouseup, WooCommerce 11.3.0 drops the click, no order is placed and the button comes back enabled.
+// A test types faster than 1.5 s, so it sends the edits and waits for the answer before it clicks.
+async function placeOrder(page: Page) {
+  const settled = () => page.waitForFunction(() => {
+    const { select } = (window as any).wp.data;
+    return !select('wc/store/cart').isCustomerDataUpdating() && !select('wc/store/checkout').isCalculating();
+  });
+  await settled();
+  const email = page.getByLabel('Email address', { exact: true });
+  await email.focus();
+  await email.blur();
+  await settled();
+  await page.getByRole('button', { name: 'Place Order', exact: true }).click();
+}
+
+async function bootWoo(project: string, appName: string) {
   const content = path.join(project, 'tp/dist/wp-content');
   const manifest = JSON.parse(readFileSync(path.join(content, 'typedpress-manifest.json'), 'utf8'));
   // A copy is essential: Playground prepares its SQLite integration directory while booting.
   const sqlite = path.join(project, 'sqlite');
   const acquired = await promisify(execFile)('php', ['-r', `require ${JSON.stringify(path.join(root, 'tests/php/wp.php'))}; echo wpPlugin('sqlite-database-integration', WP_SQLITE_VERSION, WP_SQLITE_SHA256);`]);
   cpSync(acquired.stdout.trim(), sqlite, { recursive: true });
-  wordpress = await runCLI({ command: 'server', port: 0, wp: '7.2-beta5', php: '8.4', login: false, verbosity: 'quiet',
+  const wordpress = await runCLI({ command: 'server', port: 0, wp: '7.2-beta5', php: '8.4', login: false, verbosity: 'quiet',
     mount: [...readdirSync(path.join(content, 'plugins'), { withFileTypes: true }).filter(d => d.isDirectory()).map(d => ({ hostPath: path.join(content, 'plugins', d.name), vfsPath: `/wordpress/wp-content/plugins/${d.name}` })),
       { hostPath: sqlite, vfsPath: '/internal/shared/sqlite-database-integration' }],
     blueprint: { steps: [
@@ -92,6 +110,7 @@ before(async () => {
       { step: 'writeFile', path: '/wordpress/wp-content/mu-plugins/commerce-proof.php', data: `<?php
 add_filter('pre_wp_mail', static function($pre,$mail){$all=get_option('tp_test_mail',[]);$all[]=$mail;update_option('tp_test_mail',$all);return true;},10,2);
 add_filter('woocommerce_allow_tracking','__return_false');
+add_filter('allowed_http_origins', static fn ($origins) => [...$origins, get_option('tp_test_frontend_origin', '')]);
 add_action('plugins_loaded',static function(){if(!class_exists('WC_Gateway_COD'))return;
  class TP_Commerce_Test_Gateway extends WC_Gateway_COD {
   public function process_payment($id) {
@@ -105,16 +124,27 @@ add_action('plugins_loaded',static function(){if(!class_exists('WC_Gateway_COD')
       { step: 'setSiteOptions', options: { permalink_structure: '/%postname%/', woocommerce_custom_orders_table_enabled: 'no', woocommerce_custom_orders_table_data_sync_enabled: 'no' } },
     ] } as never,
   });
-  base = wordpress.serverUrl;
-  console.log('commerce Playground booted');
+  const base = wordpress.serverUrl;
   await wordpress.playground.writeFile('/wordpress/wp-content/mu-plugins/typedpress-commerce.php', readFileSync(path.join(content, 'mu-plugins/typedpress-commerce.php'), 'utf8'));
-  for (const slug of [...Object.keys(manifest.requires), 'typedpress-runtime', 'typedpress-app-shop', 'typedpress-admin']) {
-    console.log('commerce activating', slug);
+  for (const slug of [...Object.keys(manifest.requires), 'typedpress-runtime', `typedpress-app-${appName}`, 'typedpress-admin']) {
     const file = slug === 'secure-custom-fields' ? `${slug}/secure-custom-fields.php` : `${slug}/${slug}.php`;
-    await php(`require_once ABSPATH.'wp-admin/includes/plugin.php';$r=activate_plugin(${JSON.stringify(file)});if(is_wp_error($r)){throw new Exception($r->get_error_message());}echo 'true';`);
+    await runPhp(wordpress, `require_once ABSPATH.'wp-admin/includes/plugin.php';$r=activate_plugin(${JSON.stringify(file)});if(is_wp_error($r)){throw new Exception($r->get_error_message());}echo 'true';`);
   }
-  credential = await php(`[$password]=WP_Application_Passwords::create_new_application_password(1,['name'=>'Disposable commerce test']);flush_rewrite_rules(false);echo wp_json_encode('admin:'.$password);`);
-  await php(`echo wp_json_encode(['products'=>wc_get_products(['limit'=>-1,'return'=>'ids']),'zones'=>array_column(WC_Shipping_Zones::get_zones(),'zone_name')]);`);
+  const credential = await runPhp(wordpress, `[$password]=WP_Application_Passwords::create_new_application_password(1,['name'=>'Disposable commerce test']);flush_rewrite_rules(false);echo wp_json_encode('admin:'.$password);`);
+  await runPhp(wordpress, `echo wp_json_encode(['products'=>wc_get_products(['limit'=>-1,'return'=>'ids']),'zones'=>array_column(WC_Shipping_Zones::get_zones(),'zone_name')]);`);
+  return { wordpress, base, credential };
+}
+
+before(async () => {
+  writeFileSync(path.join(project, 'typedpress.config.ts'), `import {defineConfig} from 'typedpress'; export default defineConfig({name:'shop'});`);
+  for (const args of [['add', 'shop', project], ['build', project]]) {
+    const out = await cli(args); assert.equal(out.code, 0, out.text);
+    if (args[0] === 'add') {
+      const guide = path.join(project, 'content/products/field-guide.md');
+      writeFileSync(guide, readFileSync(guide, 'utf8').replace(/file: https:[^\n]+/, 'file: /wordpress/wp-content/uploads/guide.pdf'));
+    }
+  }
+  ({ wordpress, base, credential } = await bootWoo(project, 'shop'));
   browser = await chromium.launch({ headless: true, ...(process.env.CHROME_CHANNEL ? { channel: process.env.CHROME_CHANNEL } : {}) });
 }, { timeout: 300_000 });
 after(async () => { await browser?.close(); await wordpress?.[Symbol.asyncDispose](); rmSync(project, { recursive: true, force: true }); });
@@ -190,6 +220,96 @@ test('storefront offers direct purchase only for simple products', { timeout: 90
   }
 });
 
+test('a cross-origin storefront checks out its token cart without cookies', { timeout: 90_000 }, async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const generated = readFileSync(path.join(project, 'tp/_generated/client/commerce.ts'), 'utf8');
+  const clientScript = ts.transpile(generated, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 });
+  const clientPath = '/commerce.js';
+  const frontend = createServer((request, response) => {
+    const script = request.url === clientPath;
+    response.setHeader('Content-Type', script ? 'text/javascript' : 'text/html');
+    response.end(script ? clientScript : '<!doctype html><title>External storefront</title>');
+  });
+  frontend.listen(0, '127.0.0.1');
+  await once(frontend, 'listening');
+  const address = frontend.address();
+  assert.ok(address && typeof address !== 'string');
+  const astroOrigin = `http://127.0.0.1:${address.port}`;
+  const baseUrl = new URL('/wp-json/wc/store/v1', base).href;
+  try {
+    await php(`update_option('tp_test_frontend_origin', ${JSON.stringify(astroOrigin)}); echo 'true';`);
+    const products = await api('products');
+    const mug = products.data.find((product: { sku: string }) => product.sku === 'MUG-BLUE');
+    await page.goto(astroOrigin);
+    const added = await page.evaluate(async ({ base, id, clientPath }) => {
+      const { createCartClient } = await import(clientPath);
+      const cart = createCartClient({ base, session: 'token' });
+      const added = await cart.add(id);
+      return { count: added.itemsCount, product: added.items[0]?.name };
+    }, { base: baseUrl, id: mug.id, clientPath });
+    assert.deepEqual(added, { count: 1, product: 'Ceramic mug' });
+
+    // Woo's handoff to the native Checkout Block, in a browser of its own: the link copies the token
+    // cart into a new cookie session there, and this one stays without cookies.
+    const link = await page.evaluate(async ({ base, clientPath, checkout }) => {
+      const { createCartClient } = await import(clientPath);
+      return createCartClient({ base }).checkoutLink(checkout);
+    }, { base: baseUrl, clientPath, checkout: new URL('/checkout/', base).href });
+    const blockContext = await browser.newContext();
+    try {
+      const blockPage = await blockContext.newPage();
+      const handoff = await blockPage.goto(link, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      assert.match(handoff!.headers()['cache-control']!, /private.*no-store/);
+      // The token is a credential: the store redirects to the same address without it.
+      const redirected = handoff!.request().redirectedFrom();
+      assert.equal(new URL(redirected!.url()).searchParams.has('session'), true);
+      assert.equal((await redirected!.response())!.headers()['referrer-policy'], 'same-origin');
+      assert.equal(blockPage.url(), new URL('/checkout/', base).href);
+      await expect(blockPage.locator('.wc-block-components-order-summary').getByText('Ceramic mug').first()).toBeVisible();
+      assert.ok((await blockContext.cookies()).some(cookie => cookie.name.startsWith('wp_woocommerce_session_')));
+    } finally {
+      await blockContext.close();
+    }
+
+    await page.reload();
+    const placed = await page.evaluate(async ({ base, clientPath }) => {
+      const { createCartClient } = await import(clientPath);
+      const sent: { credentials?: string; nonce: boolean; token: boolean }[] = [];
+      // No `session`: a Store API on another origin is a token cart by default.
+      const cart = createCartClient({ base, fetch: (url: RequestInfo, init: RequestInit) => {
+        const headers = new Headers(init.headers);
+        sent.push({ credentials: init.credentials, nonce: headers.has('Nonce'), token: headers.has('Cart-Token') });
+        return fetch(url, init);
+      } });
+      const restored = await cart.get();
+      const address = { first_name: 'Test', last_name: 'Buyer', address_1: 'Rynek 2', city: 'Kraków', postcode: '31-042', country: 'PL' };
+      const order = await cart.checkout({
+        billing_address: { ...address, email: 'buyer@example.test', phone: '123456789' },
+        shipping_address: address,
+        payment_method: 'cod',
+        expected_total: '3900',
+      });
+      return { restored: restored.itemsCount, remaining: (await cart.get()).itemsCount, order, sent };
+    }, { base: baseUrl, clientPath });
+    assert.equal(placed.restored, 1);
+    // The token found in storage after the reload is the whole session: no cookie, no nonce.
+    // Four requests: the read, the order, the client's read of the emptied cart, and the read above.
+    assert.deepEqual(placed.sent, Array(4).fill({ credentials: 'omit', nonce: false, token: true }));
+    assert.equal(placed.remaining, 0);
+    assert.equal(placed.order.payment_result.payment_status, 'success');
+    assert.equal((await context.cookies()).length, 0);
+    const order = await php(`$order=wc_get_order(${placed.order.order_id});echo wp_json_encode([$order->get_total(),array_values(array_map(static fn ($item) => $item->get_product_id(), $order->get_items()))]);`);
+    assert.deepEqual(order, ['39.00', [mug.id]]);
+    const receipt = await page.goto(placed.order.payment_result.redirect_url);
+    assert.match(receipt!.headers()['cache-control']!, /private.*no-store/);
+    await expect(page.getByText('Thank you. Your order has been received.')).toBeVisible();
+  } finally {
+    await context.close();
+    await promisify(frontend.close.bind(frontend))();
+  }
+});
+
 // These long journeys issue many PHP-WASM requests; shared CI runners can take over two minutes.
 // Keep individual browser/assertion deadlines short so missing UI still fails promptly.
 test('fresh storefront, cart, shipping, stock rejection and native stock gateway checkout', { timeout: 240_000 }, async () => {
@@ -197,7 +317,7 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   page.setDefaultTimeout(20_000);
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const catalog = await page.goto(new URL('/shop', base).href);
-  const publicProducts = await (await page.request.get(new URL('/__tp/api/v1/products', base).href)).json();
+  const publicProducts = await (await page.request.get(new URL('/wp-json/typedpress/v1/products', base).href)).json();
   const publicGuide = publicProducts.data.find((product: any) => product.sku === 'GUIDE-PDF');
   assert.equal(publicGuide.downloads[0].id, 'field-guide');
   assert.equal('file' in publicGuide.downloads[0], false, 'the public catalog must not disclose backing download locations');
@@ -209,8 +329,12 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
     assert.equal(new URL(alias.headers().location!).pathname.replace(/\/$/, ''), canonical);
   }
   await expect(page.getByRole('link', { name: 'Ceramic mug', exact: true })).toBeVisible();
+  await expect(page.locator('shop-mini-cart a')).toHaveText('Cart (0)');
+  await expect(page.locator('link[data-shop-checkout-prefetch]')).toHaveCount(0);
   await page.screenshot({ path: path.join(tmpdir(), 'typedpress-commerce-catalog.png'), fullPage: true });
   await add(page, 'ceramic-mug');
+  await expect(page.locator('shop-mini-cart a')).toHaveText('Cart (1)');
+  await expect(page.locator('link[data-shop-checkout-prefetch]')).toHaveCount(1);
   const cartPage = await page.goto(new URL('/cart', base).href);
   assert.match(cartPage!.headers()['cache-control']!, /private.*no-store/);
   assert.equal(cartPage!.headers()['x-robots-tag'], 'noindex');
@@ -291,7 +415,7 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   // Replace the test gateway with the stock gateway for this purchase.
   await php(`update_option('tp_test_stock_gateway',true);echo 'true';`);
   await wordpress.playground.writeFile('/wordpress/wp-content/mu-plugins/stock-gateway.php', `<?php add_filter('woocommerce_payment_gateways',static fn($all)=>array_map(static fn($c)=>$c==='TP_Commerce_Test_Gateway'?'WC_Gateway_COD':$c,$all),100);`);
-  await page.getByRole('button', { name: 'Place Order', exact: true }).click();
+  await placeOrder(page);
   await page.waitForURL('**/checkout/order-received/**');
   await expect(page.getByText('Thank you. Your order has been received.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Everyday objects' })).toBeVisible();
@@ -303,7 +427,7 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   await page.goto(new URL('/shop', base).href);
   const refused = await page.evaluate(async () => {
     const get = await fetch('/wp-json/wc/store/v1/cart'); const nonce = get.headers.get('Nonce')!;
-    const products = await (await fetch('/__tp/api/v1/products')).json();
+    const products = await (await fetch('/wp-json/typedpress/v1/products')).json();
     const post = (path: string, data: unknown) => fetch(`/wp-json/wc/store/v1/cart/${path}`, { method: 'POST', headers: { Nonce: nonce, 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => r.status);
     return [await post('add-item', { id: products.data.find((p: any) => p.sku === 'MUG-BLUE').id, quantity: 2 }), await post('apply-coupon', { code: 'TEST' })];
   });
@@ -325,9 +449,9 @@ test('dummy gateway decline/retry, native paid download grants, receipt and emai
   await php(`update_option('tp_test_decline',true);echo 'true';`);
   const context = await browser.newContext(); const page = await context.newPage();
   await add(page, 'field-guide'); await checkout(page);
-  await page.getByRole('button', { name: 'Place Order', exact: true }).click();
+  await placeOrder(page);
   await page.getByText('Test payment declined. Retry this order.', { exact: true }).first().waitFor();
-  await page.getByRole('button', { name: 'Place Order', exact: true }).click();
+  await placeOrder(page);
   await page.waitForURL('**/checkout/order-received/**');
   await expect(page.getByText('Thank you. Your order has been received.')).toBeVisible();
   const download = page.locator('a[href*="download_file="]').first();
@@ -383,4 +507,58 @@ test('real CLI sync pushes, pulls, conflicts, retries and preserves Woo operatio
   const permissions = await grants(); assert.ok(permissions.length > 0);
   const before = readFileSync(guide, 'utf8'); await sync(); assert.equal(readFileSync(guide, 'utf8'), before);
   assert.deepEqual(await grants(), permissions, 'unchanged sync preserves native download entitlements');
+});
+
+test('Drive Store carries the generated cart session into native checkout and logs the sale', { timeout: 360_000 }, async () => {
+  const drive = mkdtempSync(path.join(tmpdir(), 'typedpress-drive-woo-'));
+  let site: Awaited<ReturnType<typeof bootWoo>> | undefined;
+  const page = await browser.newPage();
+  try {
+    const example = path.join(root, 'examples/drive-store');
+    for (const entry of ['typedpress.config.ts', 'tp', 'content', 'public']) {
+      cpSync(path.join(example, entry), path.join(drive, entry), {
+        recursive: true,
+        filter: (source) => !['dist', '.tp', 'drive-source'].includes(path.basename(source)),
+      });
+    }
+    const build = await cli(['build', drive]);
+    assert.equal(build.code, 0, build.text);
+    site = await bootWoo(drive, 'drive-store');
+    const { wordpress: driveWordPress } = site;
+    const run = (code: string) => runPhp(driveWordPress, code);
+    await run(`update_option('tp_test_stock_gateway',true);
+      $p=wc_get_product(wc_get_product_id_by_sku('SEAGATE-EXOS-X16'));
+      wc_update_product_stock($p, 2, 'increase');
+      echo 'true';`);
+    await site.wordpress.playground.writeFile('/wordpress/wp-content/mu-plugins/stock-gateway.php', `<?php add_filter('woocommerce_payment_gateways',static fn($all)=>array_map(static fn($c)=>$c==='TP_Commerce_Test_Gateway'?'WC_Gateway_COD':$c,$all),100);`);
+    await page.goto(new URL('/drives/seagate-exos-x16', site.base).href);
+    await expect(page.getByText('2 in stock')).toBeVisible();
+    await expect(page.getByText('SMART power-on hours')).toBeVisible();
+    await page.getByRole('button', { name: 'Add to cart' }).click();
+    await expect(page.getByText('Added to your cart.')).toBeVisible();
+    await page.getByRole('link', { name: 'View cart' }).click();
+    await expect(page.getByText('Seagate Exos X16 16 TB')).toBeVisible();
+    await page.getByRole('spinbutton', { name: 'Quantity' }).fill('2');
+    await page.getByRole('button', { name: 'Update' }).click();
+    await expect(page.getByText('278.00 USD', { exact: true })).toBeVisible();
+    await checkout(page, site.base, 'US');
+    await expect(page.locator('.wc-block-components-totals-footer-item')).toContainText('286.00');
+    await placeOrder(page);
+    await page.waitForURL('**/checkout/order-received/**');
+    const result = await run(`
+      $id=wc_get_product_id_by_sku('SEAGATE-EXOS-X16');
+      $order=wc_get_orders(['status'=>'processing','limit'=>1])[0];
+      $plugin=\\TypedPress\\Wp\\Runtime::plugin();
+      $viewer=new \\TypedPress\\Viewer(['id'=>1,'name'=>'Admin','role'=>'admin']);
+      $rows=$plugin->app()->db->findMany('stock_movements', ['where'=>['reason'=>'sale']], $viewer);
+      echo wp_json_encode(['stock'=>wc_get_product($id)->get_stock_quantity(),'order'=>$order->get_id(),
+        'recorded'=>$rows[0]['order']??null,'change'=>$rows[0]['change']??null]);`);
+    assert.deepEqual(result, { stock: 0, order: result.order, recorded: result.order, change: -2 });
+    await page.goto(new URL('/drives/seagate-exos-x16', site.base).href);
+    await expect(page.getByText('Sold out')).toBeVisible();
+  } finally {
+    await page.close();
+    await site?.wordpress[Symbol.asyncDispose]();
+    rmSync(drive, { recursive: true, force: true });
+  }
 });

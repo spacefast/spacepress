@@ -25,7 +25,7 @@ let ids = {};
 async function api(method, path, body) {
   const headers = { accept: "application/json", authorization: `Basic ${btoa(site.users.admin.appPassword)}` };
   if (body !== undefined) headers["content-type"] = "application/json";
-  const response = await fetch(path.startsWith("/wp-json") ? `${site.url}${path}` : `${site.url}/__tp/api/v1${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const response = await fetch(path.startsWith("/wp-json") ? `${site.url}${path}` : `${site.url}/wp-json/typedpress/v1${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const json = await response.json();
   assert.ok(response.ok, `${method} ${path}: ${JSON.stringify(json)}`);
   return json.data ?? json;

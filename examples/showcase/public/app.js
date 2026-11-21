@@ -1,6 +1,6 @@
 import { createClient } from "./client/index.js";
 
-const first = createClient({ url: "/__tp/api/v1" });
+const first = createClient({ url: "/wp-json/typedpress/v1" });
 const element = (id) => document.getElementById(id);
 const node = (tag, className = "", text) => {
   const result = document.createElement(tag);

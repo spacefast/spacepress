@@ -1,12 +1,13 @@
 # Verification record
 
 > **2026-11-16:** this record is from the `ef0a42e3` baseline, before HTTP drive
-> creation worked. The 403 on `serialKey` it describes is gone: `serialKey`
-> became a compound unique index on `ownerId` and `serial`.
-> `node examples/drive-locker/verify.mjs` (no `--probe-main` mode any more)
-> covers drive CRUD over HTTP. The 409s on deleting drives and places remain on
-> main ([#533](https://github.com/spacefast/zero/issues/533)). The rest of this
-> record is kept as it was run.
+> creation and owner deletes worked. The 403 on `serialKey` and the 409s on
+> deleting drives and places it describes are gone: `serialKey` became a
+> compound unique index on `ownerId` and `serial`, and a delete now checks only
+> the rows that reference it
+> ([decision](../../../docs/decisions/2026-11-16-per-row-delete-visibility.md)).
+> `node examples/drive-locker/verify.mjs` (no `--probe-main` mode any more) now
+> covers drive CRUD over HTTP. The rest of this record is kept as it was run.
 
 Source baseline: `ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1`.
 Environment: local WordPress Studio at `http://localhost:8796`, with the Vite
@@ -16,7 +17,7 @@ This record was captured before the rename from First to TypedPress. The command
 is written with today's name, `typedpress`, and so are the files the text names.
 The rest of the recorded output and the request paths are as that run printed
 them: `first/` and `.first/` are `tp/` and `.tp/`, `first-diagnostics` is
-`typedpress-diagnostics`, and `/wp-json/first/v1` is `/__tp/api/v1`.
+`typedpress-diagnostics`, and `/wp-json/first/v1` is `/wp-json/typedpress/v1`.
 
 ## Native compilation and frontend build
 

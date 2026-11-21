@@ -1,19 +1,19 @@
 // @typedpress/astro: a TypedPress site as the content source of an Astro site.
 //
 // - tpLoader(kind): a build-time content collection. Each build asks the site whether each page
-//   of the collection changed since the last one, with the tokens `POST /__tp/api/v1/_live`
+//   of the collection changed since the last one, with the tokens `POST /wp-json/typedpress/v1/_live`
 //   issued; a page that didn't change costs no rows, and Astro's digest skips the unchanged
 //   entries of a page that did.
 // - tpLiveLoader(kind?): a live collection, read at request time, with cache hints tagged
 //   `<kind>` and `<kind>:<id>`.
 // - tpWebhook(): an Astro endpoint that verifies TypedPress's signed webhook and invalidates those tags.
 //
-// It speaks the same HTTP API as the typed client `typedpress build` generates (`/__tp/api/v1`), so the
+// It speaks the same HTTP API as the typed client `typedpress build` generates (`/wp-json/typedpress/v1`), so the
 // Astro project needs only the site's URL, in this repository or another one.
 
 import { z } from "astro/zod";
 
-const API = "/__tp/api/v1";
+const API = "/wp-json/typedpress/v1";
 /** The API's largest page (Facade::MAX_LIMIT, Live\Module::MAX_LIST_LIMIT). */
 const PAGE = 100;
 /** Reads one `_live` request may carry (Live\Module::MAX_QUERIES). */
@@ -52,7 +52,7 @@ function base64(text) {
 function siteUrl(site) {
   const url = site ?? env("TP_URL");
   if (!url) throw new Error("@typedpress/astro: set TP_URL to the TypedPress site's URL, or pass { site }");
-  return String(url).replace(/\/+$/, "").replace(/\/__tp\/api\/v1$/, "");
+  return String(url).replace(/\/+$/, "").replace(/\/wp-json\/typedpress\/v1$/, "");
 }
 
 const connections = new Map();
@@ -108,7 +108,7 @@ export function connect(options = {}) {
   const connection = {
     site,
     request,
-    /** `GET /__tp/api/v1`: the app's kinds, fields and actions. */
+    /** `GET /wp-json/typedpress/v1`: the app's kinds, fields and actions. */
     describe() {
       described ??= request("GET", API).then((r) => r.data).catch((e) => {
         described = undefined;

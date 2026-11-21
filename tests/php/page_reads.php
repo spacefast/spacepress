@@ -56,7 +56,7 @@ $out = [];
 foreach (['anonymous' => [], 'editor' => $editor] as $who => $headers) {
     $home = fetch("$url/", headers: $headers);
     preg_match('#layout (\d+)#', $home['body'], $count);
-    $call = static fn (string $name): array => fetch("$url/__tp/api/v1/actions/$name", 'POST', [...$headers, 'Content-Type: application/json', ...($who === 'editor' ? ["X-WP-Nonce: $nonce"] : [])], '{}');
+    $call = static fn (string $name): array => fetch("$url/wp-json/typedpress/v1/actions/$name", 'POST', [...$headers, 'Content-Type: application/json', ...($who === 'editor' ? ["X-WP-Nonce: $nonce"] : [])], '{}');
     [$trusted, $visitor] = [$call('trustedTitles'), $call('visitorTitles')];
     $out[$who] = [
         'page' => $titles($home['body']),

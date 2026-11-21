@@ -258,7 +258,7 @@ test("a screen declared with adminScreen() in TypeScript is registered and serve
 // is TypedPress's own: what it reads from its REST controllers and what its screens save are content and
 // settings, never the schema, so none of it is refused.
 test("with the schema lock on, the admin's controllers answer and its saves go through", async () => {
-  const lock = (await (await fetch(`${site}/__tp/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.hardening;
+  const lock = (await (await fetch(`${site}/wp-json/typedpress/v1`, { headers: auth("admin") })).json()).data.runtime.wp.hardening;
   assert.ok(lock.includes("schemaLock"));
   const json = (method: string, path: string, body?: unknown) =>
     fetch(`${site}${path}`, { method, headers: { ...auth("admin"), ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -275,7 +275,7 @@ test("with the schema lock on, the admin's controllers answer and its saves go t
   assert.equal(edited.status, 200, await edited.clone().text());
   assert.deepEqual((await edited.json()).meta.tags, ["guide"]);
   // A global, and core's settings, as the admin's settings screens save them.
-  const global = await json("PATCH", "/__tp/api/v1/settings", { siteTitle: "Admin saved" });
+  const global = await json("PATCH", "/wp-json/typedpress/v1/settings", { siteTitle: "Admin saved" });
   assert.equal(global.status, 200, await global.clone().text());
   const tagline = `Admin ${Date.now().toString(36)}`;
   const settings = await json("POST", "/wp-json/wp/v2/settings", { description: tagline });
@@ -428,12 +428,14 @@ test("the classic route's earlier address /legacy/<slug> redirects to /classic/<
 test("the sidebar reaches classic-only screens through /classic/ and leaves out what the app turned off", async () => {
   const items = await sidebar(await loginCookie(site, "admin", `${site}/wp-admin/new/`));
   const to = (id: string) => items.find((i) => i.id === id)?.to;
-  // Settings pages TypedPress Admin has no screen for, and Tools, framed.
+  // Settings pages TypedPress Admin has no screen for, and Tools, framed. Tools has no entry of its
+  // own for someone who may manage options: its pages are under Settings.
   for (const page of ["options-writing.php", "options-discussion.php", "options-media.php", "options-permalink.php", "options-privacy.php"]) {
     assert.equal(to(`settings-${page.replace(/[^a-z0-9_-]/g, "")}`), `/classic/${page}`, page);
   }
   assert.equal(items.some((i) => i.parent === "settings" && i.to === "/classic/options-general.php"), false, "General has its own screen");
-  assert.equal(to("tools-site-healthphp"), "/classic/site-health.php");
+  assert.equal(to("settings-site-healthphp"), "/classic/site-health.php");
+  assert.equal(items.some((i) => i.id === "tools" || i.parent === "tools"), false, "Tools is under Settings");
   // The hardening switches refuse installs, file editors and the Customizer: none of them is offered.
   for (const item of items) {
     assert.doesNotMatch(item.to, /plugin-install\.php|theme-install\.php|theme-editor\.php|plugin-editor\.php|customize\.php|\/plugins\/install/, `${item.id} -> ${item.to}`);

@@ -31,7 +31,7 @@ let hooks; // the receiver's server
 async function api(method, path, body, as = "admin") {
   const headers = { accept: "application/json", authorization: `Basic ${btoa(site.users[as].appPassword)}` };
   if (body !== undefined) headers["content-type"] = "application/json";
-  const response = await fetch(`${site.url}/__tp/api/v1${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const response = await fetch(`${site.url}/wp-json/typedpress/v1${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const json = await response.json();
   assert.ok(response.ok, `${method} ${path}: ${JSON.stringify(json)}`);
   return json.data;
@@ -98,7 +98,7 @@ before(async () => {
   const form = new FormData();
   form.append("file", new Blob([png], { type: "image/png" }), "cover.png");
   form.append("alt", "A cover");
-  const upload = await fetch(`${site.url}/__tp/api/v1/media`, { method: "POST", headers: { authorization: `Basic ${btoa(site.users.admin.appPassword)}` }, body: form });
+  const upload = await fetch(`${site.url}/wp-json/typedpress/v1/media`, { method: "POST", headers: { authorization: `Basic ${btoa(site.users.admin.appPassword)}` }, body: form });
   const cover = (await upload.json()).data;
   assert.equal(upload.status, 201);
   for (let i = 1; i <= 7; i++) {
@@ -206,7 +206,7 @@ test("the next build pulls only the pages that changed, and only their changed e
   const same = context("notes", state);
   await loader.load(same);
   assert.deepEqual(same.writes, []);
-  const reads = () => rec.calls.filter((c) => c.path !== "/__tp/api/v1").map((c) => c.changed ?? c.path.split("?")[0]);
+  const reads = () => rec.calls.filter((c) => c.path !== "/wp-json/typedpress/v1").map((c) => c.changed ?? c.path.split("?")[0]);
   assert.deepEqual(reads(), [[false, false, false]], "one request, no rows, no HTML");
   assert.match(same.logs.at(-1), /0 changed, 0 removed, 7 entries, 3 of 3 pages not modified/);
 

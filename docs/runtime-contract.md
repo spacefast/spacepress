@@ -30,7 +30,7 @@ Every TypedPress file starts with `declare(strict_types=1);`. Namespace `TypedPr
     typedpress-app-<name>.php                plugin header
     tp/app/schema.php                generated: `return [...]` schema metadata
     tp/app/functions.php             generated: compiled hooks, actions, helpers (namespace TypedPressApp)
-    tp/app/openapi.json              generated: the API as OpenAPI 3.1, served at /__tp/api/v1/openapi.json
+    tp/app/openapi.json              generated: the API as OpenAPI 3.1, served at /wp-json/typedpress/v1/openapi.json
     tp/app/migrations/NNNN_<name>.sql  MySQL DDL, `{prefix}` for the table prefix
     tp/app/client/typedpress-client.js   the typed client as a browser module (`@typedpress/client`), minified
     tp/app/client-version.php       `return '<12 hex>';`: digest of typedpress-client.js, its script version
@@ -89,7 +89,7 @@ minted on activation.
 The app's schema is the authoritative runtime series check; the runtime
 refuses a mismatched series or a second app plugin.
 
-`GET /__tp/api/v1` on WordPress includes `runtime.wp` with WordPress/PHP/database
+`GET /wp-json/typedpress/v1` on WordPress includes `runtime.wp` with WordPress/PHP/database
 versions, `scf`, `actionScheduler`, `mcpAdapter`, `twoFactor`, `polylang`, `identity`,
 `imageCdn`, `akismet` (`{ version, spamChecks }`: the Akismet a site has through
 Jetpack, and whether it has a key; never required), and `incompatibleTables`. `runtime.pendingMigrations` and
@@ -230,6 +230,32 @@ That proof is scoped to the collection and explicit viewer, accepts only rows
 with the matching password, and is suspended/restored across nested requests.
 It does not authorize a later First request or borrow the ambient user's rights.
 
+A signed-in SQL read can skip the scan for protected posts when the object cache
+holds a recent negative result for the post type. The row query still checks
+the stored password. The hint expires after five minutes and uses WordPress's
+`posts` change stamp. TypedPress advances the stamp after committing a post
+write. Reads inside a transaction use the database to check for protected posts.
+Scope checks that must establish unrestricted access also use the database.
+
+## Read budgets
+
+`tests/read_budget.rs` builds drive-store, www, and the shop on WordPress with
+SQLite. It checks the largest count over five successful GETs per route and
+visitor, including anonymous requests and signed-in subscribers. Statements
+equal `$wpdb->num_queries` plus calls to `Wp\Connection::run`. The warm-cache
+run also counts single-key and multi-key object cache reads after two warmups.
+Both cache modes must produce identical response bytes.
+
+With a warm cache, the drive-store item page uses one statement. The docs
+page adds one statement for navigation. The API fixtures use six statements
+for the keys, viewer rows, stored rows, and revision state. A page
+with staged versions can take two more statements for staged data. The shop
+budget covers the seeded catalog and a full page of 24 products.
+
+Set `TP_READ_BUDGET_TRACE=1` to see the statements and cache reads. Set
+`TP_READ_BUDGET_BASELINE` to the path of an extracted `runtime/` directory to
+compare counts and response bytes against that revision on the same fixture.
+
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
 Viewer-bound writes must not answer existence questions about unreadable data.
@@ -274,12 +300,22 @@ visible peer is available. This applies to core WordPress saves too.
 Sync checks target visibility before resolved values reach input rules or validators.
 Potential generated constraints are preflighted before defaults and on-update
 generators run; hook-written references are checked before field validation.
-A delete requires visibility across the referencing collection and
-column before checking for children, so hidden children cannot be discovered by
-trying to delete their parent. The preflight follows cascade branches and covers
-generated values from referential updates even when a branch has no rows. Hidden
-cascade branches are refused before traversal, so recursion limits cannot reveal
-their depth.
+A viewer's delete looks at the rows that reference the deleted row, never at
+whole tables ([decision](decisions/2026-11-16-per-row-delete-visibility.md)).
+It counts them in SQL, trusted and as the viewer, WordPress's trash included,
+without loading them, and follows visible cascades to every depth. Password
+visibility for these rows is decided in SQL only and fails closed: a protected post
+the viewer's password proof doesn't open counts as hidden, for an editor too. What the delete
+then does to them is the viewer's own writes through the ordinary pipeline: a
+cascade is their delete of each child, `setNull` / `setDefault` their update of
+it, a `ref().many()` or term link their update of the owner without that id, with
+the collection rule on the real patch, field rules, hooks, write extensions and
+listeners. Nothing trusted runs for a viewer's delete: afterwards the referencing
+rows are counted again, and any left refuses. A hidden referencing row, a hidden
+referencing column or key, a read extension that may hide rows, or any error from a
+side effect (its message is never passed on) refuses the whole delete with `409 reference_violation`, detail `Rows you can't read may reference
+this row` and no pointer, whatever the table, depth or count. Trusted writes
+(hooks, CLI, jobs) are not checked.
 These checks roll back the whole write on refusal.
 Changing a referenced key uses the same relationship visibility preflight,
 following native cascading updates before the database can expose hidden children.
@@ -317,7 +353,13 @@ Writes made by hooks or actions through `Db` run the same pipeline
 
 Every HTTP request and every CLI command runs in one transaction
 (`START TRANSACTION`, REPEATABLE READ). An exception before the commit rolls
-back every write of the request. Nested runtime transactions join without
+back every write of the request. A `GET` or `HEAD` route handler's transaction
+is opened lazily (`Db::reading()`, `Wp\Connection::reading()`): the database
+is told at the first statement that is not a plain `SELECT`, whether TypedPress,
+core or another plugin sends it, and a locking read (`FOR UPDATE`) counts as
+one. A handler that only reads sends neither `START TRANSACTION` nor `COMMIT`;
+its reads see committed data, as they would outside a transaction. From its
+first write on it is the same transaction as any other, rollback included. Nested runtime transactions join without
 savepoints. Any failed joined operation marks the outer transaction rollback-only,
 even if an application hook catches its exception. Attempting the outer commit
 rolls back all writes, discards after-commit callbacks, and throws. Hooks must let
@@ -515,7 +557,8 @@ transactions.
 On a plugin-installed site, the checks behind "the first request after an
 update" (the stored-name upgrade, the system tables, the app's migration ledger,
 Action Scheduler groups and recurring actions, route and content Pages, Polylang
-languages, the search index shape, the runtime-schema capability) run until one
+languages, the search index shape, the runtime-schema capability, a store's
+order storage) run until one
 request finds them all in place. That request records the autoloaded option
 `tp_installed` (`Wp\InstallMarker`): a digest of the app, the loaded
 `schema.php`, the system-tables version, the runtime version and hash, the UTC
@@ -583,8 +626,12 @@ uses the validated schema passed by the WordPress registry and requires
 its store, authentication and media services, and migrates on activation and
 on the first request after an update (`Wp\Plugin`).
 
-The app's API is `/__tp/api/v1` (spec §3a, `Wp\Facade`), served on
-`do_parse_request` before the theme. Each request is dispatched with
+The app's API is `/wp-json/typedpress/v1` (spec §3a, `Wp\Facade`), one route on
+WordPress's REST server (`?rest_route=/typedpress/v1` reaches it too). Core
+authenticates the request, answers preflights and applies the method override; the
+route's callback answers with TypedPress's own body and headers
+(`rest_pre_serve_request`), and a request core refuses first (a bad nonce, a scoped
+credential, a malformed JSON body) gets the same problem document. Each request is dispatched with
 `rest_do_request()` to the core route that serves it, which enforces TypedPress's
 rules (`PostsController`, `UserMeta`, `TableController`, the Abilities run
 route); the facade maps input and output only. Everything else → 404 problem.
@@ -610,7 +657,13 @@ where the app declares none of that name. A collection's `api` flags gate
 list/get/create/update/delete (disabled → 405 `method_not_allowed`).
 Authentication is core REST's (cookie and nonce, an application password,
 or a TypedPress Identity bearer); CORS headers and `OPTIONS` preflights are
-core's; `_method` and `X-HTTP-Method-Override` work as on `/wp-json`. Every
+core's; `_method` and `X-HTTP-Method-Override` work as on `/wp-json`. An
+application password is accepted under core's rule and no other: on a request
+WordPress itself serves from the REST API (`REST_REQUEST`), never because of
+how its URL starts, so it signs nobody in on a page or on `admin-ajax.php`.
+A wrong, suspended or out-of-scope one is refused with its error (401 or 403),
+not answered as a visitor. A path segment is percent-decoded once, the same
+under `/wp-json/typedpress/v1/…` and as `?rest_route=/typedpress/v1/…`. Every
 answer is `Cache-Control: private, no-store` with `Vary: Origin, Cookie,
 Authorization`, except file streams and `/openapi.json`, which is the same for
 every caller.
@@ -669,7 +722,7 @@ The v2 app plugin registers these. A WordPress without a TypedPress app is uncha
   `password` parameter, or an editor in the edit context). Core is asked only
   for the item's `id` (`_fields=id`), so `the_content` runs once per request. Every refusal stays
   core's JSON error. List routes and other methods are unchanged. The
-  `/__tp/api/v1` item route's `?format=md` calls `MarkdownTwins::post()`
+  `/wp-json/typedpress/v1` item route's `?format=md` calls `MarkdownTwins::post()`
   too, so both give the same Markdown.
 - **Listing and `/llms.txt` summaries** come from the hand-written excerpt or
   from `Markdown::renderPost()` of the post, never from its raw stored markup. So
@@ -767,8 +820,8 @@ The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
 `search` is a reserved kind name: the compiler refuses it, as it does `media` and
 `files`, because the API serves `GET /search`.
 
-`search` on a kind (`posts.list({ search })`, `?search=` on `/__tp/api/v1/<kind>`
-and on core `/wp/v2/<route>`) and `GET /__tp/api/v1/search` read one index.
+`search` on a kind (`posts.list({ search })`, `?search=` on `/wp-json/typedpress/v1/<kind>`
+and on core `/wp/v2/<route>`) and `GET /wp-json/typedpress/v1/search` read one index.
 
 - **The index.** `{prefix}tp__search` has one row per (kind, row id, field):
   the field's text with markup and block comments removed (each tag is a word
@@ -877,6 +930,33 @@ nothing is collected or announced.
   with inserts of 100 rows each. A committed write to a kind adds every recorded path that read
   that row or listed the kind, with its `.md` twin, to the same announcement
   as the paths above: one `tp_purge_urls` call per committed transaction.
+  - **A read is a listing unless it names its rows.** Only a read whose `where`
+    (or the key a relation joins on) holds the primary key to a value or a list
+    of values, and that found every row it named, is recorded as those rows alone;
+    so is the item a kind URL names. A `unique()` column (a slug) names rows the
+    same way, except in a hierarchical kind (a slug is unique per parent) and, in
+    a kind with drafts, for a read that can see drafts (drafts may share a value
+    until one is published; a visitor's read sees published rows only). Every other read (a
+    filter, a search, a rank with `limit`, a count, a relation's children) records
+    `*` beside the rows it returned, whether it returned none, one or many: a
+    filtered list that showed one row is purged when a second row matches. A
+    localized kind's reads are always listings, since a read may answer with
+    another row of the translation group.
+  - **Globals.** A render that reads a global records `global:<name>` with `*`.
+    A write to the global's fields (`db.globals.<name>.update()`, the API, or
+    its options page in wp-admin, all of which save `tp_global_<name>_<field>`
+    options) adds every path that read it to the write's announcement.
+  - **Query strings.** A URL is shared and recorded only when every parameter in
+    its query is one the page declares (`export const search`). A request with
+    any other parameter (`?utm_source=`, `?fbclid=`, `?junk=1`) is answered with
+    the page, `private, no-store` and `A8C-Edge-Cache: no-cache`, calls
+    `batcache_cancel()`, and records nothing; a `.md` twin follows its page's
+    declaration. So a page with no `search` has one cacheable URL. One path keeps
+    at most 20 recorded query variants (`Render\Cache::MAX_VARIANTS`); a further
+    variant is answered privately until a recorded one has gone two cache windows
+    without a render, and is then dropped from the index. A URL longer than the
+    index's 191-byte limit is private too. A host that wants shared pages for
+    tracking parameters strips them before the request reaches PHP.
   A page answers at that one address only: the router 301s the other
   spelling of its path (with or without the trailing slash, as the
   permalink structure says) to it, so one spelling is purged. More than 200 paths in that call becomes `/*`, a
@@ -920,11 +1000,31 @@ nothing is collected or announced.
   sets a cookie before its headers go out is private too, as Batcache refuses to
   keep one: a plugin that starts a PHP session on every request (`PHPSESSID`)
   turns page caching off for the site.
+- **WooCommerce carts:** Woo's cart cookies (`wp_woocommerce_session_*`,
+  `woocommerce_cart_hash`, `woocommerce_items_in_cart`) are not viewer cookies. A guest's
+  GET of an app page renders without them (`Commerce\Module::isolateSharedCart`), so the
+  page is the same bytes with or without a cart, sends the shared policy and sets no
+  cookie; the browser reads the cart from the Store API. The router shares an answer only
+  when the session cookie did not reach Woo on that request (`Commerce\Module::cartSession`),
+  whatever the query string or the spelling of the path. Cart, checkout, receipt,
+  order-pay and account paths, Woo's cart actions in the query string, every Store API
+  (`/wc/store/`) answer, and any response Woo sets a cookie on
+  (`woocommerce_set_cookie_enabled`) are `private, no-store` with `A8C-Edge-Cache:
+  no-cache`; those paths are never prebuilt. A page the theme renders keeps the cart
+  session, and Woo prints cart-dependent prefetch links there, so it is private for a
+  request carrying the session cookie. An external `frontend` origin is answered on
+  `/wc/store/` routes only, without `Access-Control-Allow-Credentials`, and is not added
+  to WordPress's allowed origins. **Host limit:** Batcache skips every request
+  with a `wp*` cookie in `advanced-cache.php`, before plugins load, so a visitor holding
+  `wp_woocommerce_session_*` always misses Batcache and is rendered by PHP. A prebuilt
+  file is still served to that visitor, and the response still carries the shared
+  headers for an edge that does not bypass on the cookie. A `Cart-Token` cart has no
+  cookie and misses nothing.
 - **Batcache and signed-in requests:** Batcache keeps what any request without a
   `wp*` cookie printed, whatever its `Cache-Control`. A request that runs as a
   user (an application password, a bearer token) calls `batcache_cancel()` as
-  soon as WordPress sets the user; every private router page, every `/__tp/api`
-  answer and every Identity answer (its REST API and hosted screens, which find
+  soon as WordPress sets the user; every private router page, every
+  `/wp-json/typedpress/v1` answer and every Identity answer (its REST API and hosted screens, which find
   the session from its cookie without setting the user) calls it too.
 
 ## Reactive queries (`Live\Module`)
@@ -940,7 +1040,7 @@ Design and measurements: [the decision](decisions/2026-11-13-reactive-queries.md
   out of the trash (`transition_post_status`).
 - **`Connection::beforeCommit(callable)`** runs a callback just before `COMMIT` of the outermost
   transaction (at once when none is open). A throw rolls the transaction back.
-- **`POST /__tp/api/v1/_live`** takes `{ queries: [{ kind, op, args?, id?, token? }] }`:
+- **`POST /wp-json/typedpress/v1/_live`** takes `{ queries: [{ kind, op, args?, id?, token? }] }`:
   `kind` is the client's schema key, `op` one of `list`, `paginate`, `get`, `count`, `args` that
   call's arguments, `id` the row for `get` (or `args.where` for a `get` by filter), `token` what
   the previous answer to the same query returned. It answers

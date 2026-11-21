@@ -10,7 +10,7 @@ export function Rename() {
       <tr><td><code>typedpress</code>, <code>@typedpress/*</code>, <code>create-typedpress</code></td><td>The CLI and packages use these names.</td><td><Built /></td></tr>
       <tr><td><code>tp/</code></td><td><code>tp/</code></td><td><Built /></td></tr>
       <tr><td><code>typedpress.config.ts</code>, <code>typedpress/app</code>, <code>typedpress/state</code>, <code>typedpress:db</code></td><td><code>typedpress.config.ts</code>, <code>typedpress/app</code>, <code>typedpress/client</code>, <code>typedpress:db</code></td><td><Proposed /> state module</td></tr>
-      <tr><td><code>/__tp/api/v1</code>, <code>wp_tp_&lt;name&gt;</code>, <code>TypedPress\</code>, <code>TP_URL</code></td><td>The runtime uses these names.</td><td><Built /></td></tr>
+      <tr><td><code>/wp-json/typedpress/v1</code>, <code>wp_tp_&lt;name&gt;</code>, <code>TypedPress\</code>, <code>TP_URL</code></td><td>The runtime uses these names.</td><td><Built /></td></tr>
       <tr><td><code>kind.on("event", fn)</code> from any file</td><td><code>{"kind.on({ event })"}</code> in the declaring file</td><td><Decided /></td></tr>
       <tr><td><code>change</code>, <code>committed</code>, <code>afterUnpublish</code> events</td><td>not there</td><td><Decided /></td></tr>
       <tr><td>handlers run as the caller</td><td>handlers are trusted</td><td><Decided /></td></tr>

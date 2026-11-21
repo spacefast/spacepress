@@ -185,7 +185,7 @@ add_filter(
 			);
 		}
 
-		if ( $plugin && $plugin->schema->store() !== null && current_user_can( 'manage_options' ) ) {
+		if ( $plugin && $plugin->schema->commerce() !== null && current_user_can( 'manage_options' ) ) {
 			$layout[] = array(
 				'uid'    => 'tp-default-store-pulse',
 				'type'   => 'tp/store-pulse',

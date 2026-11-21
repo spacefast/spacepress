@@ -97,14 +97,12 @@ function tp_admin_register_menu_items() {
 	);
 	$public_post_types = apply_filters( 'tp_admin_native_post_types', get_post_types( $query, 'objects' ) );
 	$native_pos        = 200;
+	$commerce_pos      = 310;
 	foreach ( $public_post_types as $post_type ) {
 		if ( 'page' === $post_type->name && ! tp_admin_pages_relevant() ) {
 			continue;
 		}
-		// WooCommerce types are grouped cleanly under Commerce.
-		if ( in_array( $post_type->name, array( 'product', 'shop_order' ), true ) ) {
-			continue;
-		}
+		$is_commerce = in_array( $post_type->name, array( 'product', 'shop_order' ), true );
 
 		$taxonomies        = get_object_taxonomies( $post_type->name, 'objects' );
 		$public_taxonomies = array_filter(
@@ -114,7 +112,8 @@ function tp_admin_register_menu_items() {
 			}
 		);
 
-		$pos = 'page' === $post_type->name ? 200 : ++$native_pos;
+		$section = $is_commerce ? 'commerce' : 'content';
+		$pos     = $is_commerce ? ++$commerce_pos : ( 'page' === $post_type->name ? 200 : ++$native_pos );
 
 		if ( empty( $public_taxonomies ) ) {
 			tp_admin_register_menu_item(
@@ -122,8 +121,8 @@ function tp_admin_register_menu_items() {
 				array(
 					'to'       => '/types/' . $post_type->name,
 					'label'    => $post_type->labels->name,
-					'icon'     => $post_type->menu_icon,
-					'section'  => 'content',
+					'icon'     => $is_commerce ? 'store' : $post_type->menu_icon,
+					'section'  => $section,
 					'position' => $pos,
 				)
 			);
@@ -133,9 +132,9 @@ function tp_admin_register_menu_items() {
 				$parent_id,
 				array(
 					'label'       => $post_type->labels->name,
-					'icon'        => $post_type->menu_icon,
+					'icon'        => $is_commerce ? 'store' : $post_type->menu_icon,
 					'parent_type' => 'dropdown',
-					'section'     => 'content',
+					'section'     => $section,
 					'position'    => $pos,
 				)
 			);
@@ -328,7 +327,20 @@ function tp_admin_register_menu_items() {
  * and Experiments removed).
  */
 function tp_admin_register_settings_menu_items() {
-	if ( ! current_user_can( 'manage_options' ) ) {
+	global $submenu;
+	$can_manage_options = current_user_can( 'manage_options' );
+	$permitted_tools    = array();
+	if ( isset( $submenu['tools.php'] ) && is_array( $submenu['tools.php'] ) ) {
+		foreach ( $submenu['tools.php'] as $item ) {
+			$slug = $item[2] ?? '';
+			$cap  = $item[1] ?? '';
+			if ( '' !== $slug && 'tools.php' !== $slug && current_user_can( $cap ) ) {
+				$permitted_tools[] = $item;
+			}
+		}
+	}
+
+	if ( ! $can_manage_options && empty( $permitted_tools ) ) {
 		return;
 	}
 
@@ -336,60 +348,76 @@ function tp_admin_register_settings_menu_items() {
 	$managed = class_exists( '\\TypedPress\\Wp\\Runtime' ) && \TypedPress\Wp\Runtime::managed();
 	$sealed  = $plugin !== null && $plugin->schema->sealed() !== null;
 
-	tp_admin_register_menu_item(
-		'settings',
-		array(
-			'to'          => '/settings/general',
-			'label'       => __( 'Settings', 'typedpress-admin' ),
-			'icon'        => 'settings',
-			'parent_type' => 'submenu',
-			'section'     => 'system',
-			'position'    => 720,
-		)
-	);
-
-	tp_admin_register_menu_item(
-		'settings-general',
-		array(
-			'to'       => '/settings/general',
-			'label'    => __( 'General', 'typedpress-admin' ),
-			'parent'   => 'settings',
-			'position' => 10,
-		)
-	);
-	tp_admin_register_menu_item(
-		'settings-reading',
-		array(
-			'to'       => '/settings/reading',
-			'label'    => __( 'Reading', 'typedpress-admin' ),
-			'parent'   => 'settings',
-			'position' => 20,
-		)
-	);
-
-	$skip_settings = array( 'options-general.php', 'options-reading.php' );
-	if ( ! tp_admin_discussion_relevant() ) {
-		$skip_settings[] = 'options-discussion.php';
-	}
-	tp_admin_register_classic_children( 'settings', null, null, 'options-general.php', $skip_settings );
-
-	// On managed/sealed sites, keep a read-only Plugins view reachable under Settings.
-	if ( ( $managed || $sealed ) && ! is_multisite() && current_user_can( 'activate_plugins' ) ) {
+	if ( $can_manage_options ) {
 		tp_admin_register_menu_item(
-			'settings-plugins',
+			'settings',
 			array(
-				'to'       => '/plugins',
-				'label'    => __( 'Plugins', 'typedpress-admin' ),
-				'icon'     => 'plugins',
-				'parent'   => 'settings',
-				'position' => 80,
+				'to'          => '/settings/general',
+				'label'       => __( 'Settings', 'typedpress-admin' ),
+				'icon'        => 'settings',
+				'parent_type' => 'submenu',
+				'section'     => 'system',
+				'position'    => 720,
 			)
 		);
-	}
 
-	// Fold wp-admin's Tools (Site Health, Import, Export, Personal Data) cleanly inside Settings
-	// instead of taking a top-level root sidebar slot.
-	tp_admin_register_classic_children( 'settings', null, null, 'tools.php', array( 'tools.php' ) );
+		tp_admin_register_menu_item(
+			'settings-general',
+			array(
+				'to'       => '/settings/general',
+				'label'    => __( 'General', 'typedpress-admin' ),
+				'parent'   => 'settings',
+				'position' => 10,
+			)
+		);
+		tp_admin_register_menu_item(
+			'settings-reading',
+			array(
+				'to'       => '/settings/reading',
+				'label'    => __( 'Reading', 'typedpress-admin' ),
+				'parent'   => 'settings',
+				'position' => 20,
+			)
+		);
+
+		$skip_settings = array( 'options-general.php', 'options-reading.php' );
+		if ( ! tp_admin_discussion_relevant() ) {
+			$skip_settings[] = 'options-discussion.php';
+		}
+		tp_admin_register_classic_children( 'settings', null, null, 'options-general.php', $skip_settings );
+
+		// On managed/sealed sites, keep a read-only Plugins view reachable under Settings.
+		if ( ( $managed || $sealed ) && ! is_multisite() && current_user_can( 'activate_plugins' ) ) {
+			tp_admin_register_menu_item(
+				'settings-plugins',
+				array(
+					'to'       => '/plugins',
+					'label'    => __( 'Plugins', 'typedpress-admin' ),
+					'icon'     => 'plugins',
+					'parent'   => 'settings',
+					'position' => 80,
+				)
+			);
+		}
+
+		// Fold wp-admin's Tools (Site Health, Import, Export, Personal Data) cleanly inside Settings
+		// instead of taking a top-level root sidebar slot.
+		tp_admin_register_classic_children( 'settings', null, null, 'tools.php', array( 'tools.php' ) );
+	} else {
+		$first_tool_slug = (string) ( $permitted_tools[0][2] ?? 'export.php' );
+		tp_admin_register_menu_item(
+			'tools',
+			array(
+				'to'          => tp_admin_get_menu_to_from_slug( $first_tool_slug, 'tools.php' ),
+				'label'       => __( 'Tools', 'typedpress-admin' ),
+				'icon'        => 'tool',
+				'parent_type' => 'submenu',
+				'section'     => 'system',
+				'position'    => 720,
+			)
+		);
+		tp_admin_register_classic_children( 'tools', null, null, 'tools.php', array( 'tools.php' ) );
+	}
 }
 
 /**

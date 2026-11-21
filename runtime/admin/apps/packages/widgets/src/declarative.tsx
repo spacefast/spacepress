@@ -129,7 +129,13 @@ function DeclarativeWidgetBody({
 						: 'Unable to load widget data.';
 				setError?.({
 					message: msg,
-					action: { label: 'Retry', onClick: reload },
+					action: {
+						label: 'Retry',
+						onClick: () => {
+							setError?.(null);
+							reload();
+						},
+					},
 				});
 			});
 		return () => {

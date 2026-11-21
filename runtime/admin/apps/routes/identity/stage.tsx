@@ -94,7 +94,9 @@ function randomIdempotencyKey(): string {
 
 export default function IdentityStage() {
 	const [ tab, setTab ] = useState< TabKey >( 'people' );
-	const [ data, setData ] = useState< unknown >( null );
+	const [ loaded, setLoaded ] = useState< { tab: TabKey; value: unknown } | null >(
+		null
+	);
 	const [ loading, setLoading ] = useState( true );
 	const [ busy, setBusy ] = useState( false );
 	const [ error, setError ] = useState( '' );
@@ -113,15 +115,17 @@ export default function IdentityStage() {
 		let active = true;
 		setLoading( true );
 		setError( '' );
+		setLoaded( ( prev ) => ( prev?.tab === tab ? prev : null ) );
 		identityRequest( tab )
 			.then( ( res ) => {
 				if ( active ) {
-					setData( res );
+					setLoaded( { tab, value: res } );
 					setLoading( false );
 				}
 			} )
 			.catch( ( err: unknown ) => {
 				if ( active ) {
+					setLoaded( null );
 					setError( errorMessage( err ) );
 					setLoading( false );
 				}
@@ -158,6 +162,10 @@ export default function IdentityStage() {
 				</div>
 			);
 		}
+		if ( ! loaded || loaded.tab !== tab ) {
+			return null;
+		}
+		const data = loaded.value;
 
 		if ( tab === 'people' ) {
 			const rows = Array.isArray( data ) ? ( data as Row[] ) : [];

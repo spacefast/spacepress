@@ -88,7 +88,7 @@ function tp_admin_get_boot_context() {
 			'dashboards'               => function_exists( 'tp_admin_get_dashboards' ) ? tp_admin_get_dashboards() : array(),
 			'managed'                  => class_exists( '\\TypedPress\\Wp\\Runtime' ) && \TypedPress\Wp\Runtime::managed(),
 			'sealed'                   => $plugin !== null && $plugin->schema->sealed() !== null,
-			'has_store'                => $plugin !== null && $plugin->schema->store() !== null,
+			'has_store'                => $plugin !== null && $plugin->schema->commerce() !== null,
 			'identity_active'          => class_exists( '\\TypedPress\\Identity\\Plugin' ),
 			// Where this admin is mounted and where wp-admin is: a WordPress installed below the
 			// origin root (`/blog/`) routes and frames correctly only if the app learns both here.

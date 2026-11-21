@@ -37,6 +37,20 @@ export class EditingObjects {
 	}
 }
 export type Columns = Record<string, Column>;
+export type KindUi = {
+	icon?: string;
+	singularLabel?: string;
+	description?: string;
+	group?: string;
+	defaultColumns?: string[];
+	hidden?: boolean;
+};
+export type GlobalUi = {
+	icon?: string;
+	description?: string;
+	group?: string;
+	hidden?: boolean;
+};
 export type Collection = {
 	name: string;
 	label: string;
@@ -48,11 +62,12 @@ export type Collection = {
 	/** WordPress posts' own excerpt (`wp.posts` kinds): core's `excerpt`, not a meta field. */
 	excerpt?: string;
 	storage?: string;
+	ui?: KindUi;
 	access: Row;
 };
 export type Schema = {
 	collections: Record<string, Collection>;
-	globals: Record<string, { label: string; fields: Columns; access: Row }>;
+	globals: Record<string, { label: string; fields: Columns; ui?: GlobalUi; access: Row }>;
 };
 function isRow(value: unknown): value is Row {
 	return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -133,6 +148,34 @@ export function columns(value: unknown): Columns {
 		})
 	);
 }
+function parseKindUi(value: unknown): KindUi | undefined {
+	if (!isRow(value)) return undefined;
+	const ui: KindUi = {};
+	const icon = text(value.icon);
+	if (icon) ui.icon = icon;
+	const singular = text(value.singularLabel);
+	if (singular) ui.singularLabel = singular;
+	const description = text(value.description);
+	if (description) ui.description = description;
+	const group = text(value.group);
+	if (group) ui.group = group;
+	const defaultColumns = strings(value.defaultColumns);
+	if (defaultColumns.length) ui.defaultColumns = defaultColumns;
+	if (value.hidden === true) ui.hidden = true;
+	return Object.keys(ui).length ? ui : undefined;
+}
+function parseGlobalUi(value: unknown): GlobalUi | undefined {
+	if (!isRow(value)) return undefined;
+	const ui: GlobalUi = {};
+	const icon = text(value.icon);
+	if (icon) ui.icon = icon;
+	const description = text(value.description);
+	if (description) ui.description = description;
+	const group = text(value.group);
+	if (group) ui.group = group;
+	if (value.hidden === true) ui.hidden = true;
+	return Object.keys(ui).length ? ui : undefined;
+}
 export function parseSchema(value: unknown): Schema {
 	const s = object(value);
 	return {
@@ -151,6 +194,7 @@ export function parseSchema(value: unknown): Schema {
 						slug: text(c.slug),
 						excerpt: text(c.excerpt),
 						storage: text(c.storage) ?? text(c.kind),
+						ui: parseKindUi(c.ui),
 						access: map(c.access),
 					},
 				];
@@ -164,6 +208,7 @@ export function parseSchema(value: unknown): Schema {
 					{
 						label: text(g.label) ?? label(name),
 						fields: columns(g.fields),
+						ui: parseGlobalUi(g.ui),
 						access: map(g.access),
 					},
 				];
@@ -175,6 +220,73 @@ export function label(name: string): string {
 	return name
 		.replace(/([a-z])([A-Z])/g, '$1 $2')
 		.replace(/^./, (s) => s.toUpperCase());
+}
+/** Singular display label for CTA buttons ("New Doc") and form titles ("Edit Doc"). */
+export function singularLabel(c: Collection): string {
+	if (c.ui?.singularLabel) return c.ui.singularLabel;
+	const raw = c.label.trim();
+	if (!raw) return 'Record';
+	const words = raw.split(/\s+/);
+	const last = words[words.length - 1];
+	let singular = last;
+	if (/[^aeiou]ies$/i.test(last) && last.length > 3) {
+		singular = last.slice(0, -3) + (last.endsWith('IES') ? 'Y' : 'y');
+	} else if (/(ses|xes|zes|ches|shes)$/i.test(last) && last.length > 4) {
+		singular = last.slice(0, -2);
+	} else if (/s$/i.test(last) && !/(ss|us|is)$/i.test(last) && last.length > 2) {
+		singular = last.slice(0, -1);
+	}
+	words[words.length - 1] = singular;
+	return words.join(' ');
+}
+const HEAVY_COLUMN_TYPES = new Set([
+	'richText',
+	'blocks',
+	'repeater',
+	'group',
+	'json',
+	'mediaList',
+	'media',
+]);
+/**
+ * Default secondary columns for a collection's DataViews table.
+ * Never includes `titleField` (DataViews already renders `titleField` as the primary column)
+ * and skips raw HTML / blob columns unless explicitly selected in `ui.defaultColumns`.
+ */
+export function defaultListColumns(c: Collection, titleField: string): string[] {
+	if (c.ui?.defaultColumns?.length) {
+		return c.ui.defaultColumns.filter(
+			(id) => id !== titleField && id in c.columns
+		);
+	}
+	const candidates = Object.entries(c.columns).filter(([id, col]) => {
+		if (id === titleField || id === c.primaryKey) return false;
+		if (id === c.content || id === c.excerpt) return false;
+		if (HEAVY_COLUMN_TYPES.has(col.type) || col.multiline) return false;
+		return true;
+	});
+	const priority = (id: string, col: Column): number => {
+		if (id === 'status') return 0;
+		if (id === c.slug || id === 'slug') return 1;
+		if (col.options.length > 0 || col.type === 'enum') return 2;
+		if (col.type === 'boolean') return 3;
+		if (col.type === 'date' || col.type === 'timestamp' || col.type === 'datetime') return 4;
+		if (col.reference) return 5;
+		if (col.type === 'integer' || col.type === 'number' || col.type === 'email' || col.type === 'url') return 6;
+		return 7;
+	};
+	return candidates
+		.sort(([idA, colA], [idB, colB]) => priority(idA, colA) - priority(idB, colB))
+		.slice(0, 4)
+		.map(([id]) => id);
+}
+/** Strip HTML tags and normalize whitespace for table cell previews. */
+export function stripHtml(input: string): string {
+	return input
+		.replace(/<!--[\s\S]*?-->/g, ' ')
+		.replace(/<[^>]+>/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
 }
 export function allowed(rule: unknown, role: string): boolean {
 	if (rule === false) return false;

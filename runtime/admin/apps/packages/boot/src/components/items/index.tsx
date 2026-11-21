@@ -1,7 +1,9 @@
 import { isValidElement } from 'react';
 import { Icon } from '@wordpress/ui';
 import { Dashicon } from '@wordpress/components';
+import { page } from '@wordpress/icons';
 import { SVG } from '@wordpress/primitives';
+import { resolveNamedIcon } from '../../icons';
 import type { IconType } from '../../store/types';
 
 type DesignSystemIcon = React.ComponentProps< typeof Icon >[ 'icon' ];
@@ -20,8 +22,9 @@ function isSvg( element: unknown ): element is DesignSystemIcon {
 
 /**
  * Converts the given IconType into:
- * - a Dashicon string into a Dashicon component,
- * - a JSX element into a Design System Icon component..
+ * - a named SpacePress or Dashicon string into a Design System SVG Icon (or Dashicon fallback),
+ * - a data URL into an `<img>`,
+ * - a JSX SVG element into a Design System Icon component.
  *
  * @param icon                  The icon to convert.
  * @param shouldShowPlaceholder Whether to show placeholder when no icon is provided.
@@ -35,36 +38,47 @@ export function wrapIcon(
 		return <Icon icon={ icon } />;
 	}
 
-	if ( typeof icon === 'string' && icon.startsWith( 'dashicons-' ) ) {
-		const iconKey = icon.replace(
-			/^dashicons-/,
-			''
-		) as React.ComponentProps< typeof Dashicon >[ 'icon' ];
+	if ( typeof icon === 'string' ) {
+		// Handle data URLs (SVG images)
+		if ( icon.startsWith( 'data:' ) ) {
+			return (
+				<img
+					src={ icon }
+					alt=""
+					aria-hidden="true"
+					style={ {
+						width: '20px',
+						height: '20px',
+						display: 'block',
+						padding: '2px',
+					} }
+				/>
+			);
+		}
 
-		return (
-			<Dashicon
-				style={ { padding: '2px' } }
-				icon={ iconKey }
-				aria-hidden="true"
-			/>
-		);
-	}
+		const resolved = resolveNamedIcon( icon );
+		if ( isSvg( resolved ) ) {
+			return <Icon icon={ resolved } />;
+		}
 
-	// Handle data URLs (SVG images)
-	if ( typeof icon === 'string' && icon.startsWith( 'data:' ) ) {
-		return (
-			<img
-				src={ icon }
-				alt=""
-				aria-hidden="true"
-				style={ {
-					width: '20px',
-					height: '20px',
-					display: 'block',
-					padding: '2px',
-				} }
-			/>
-		);
+		if ( icon.startsWith( 'dashicons-' ) ) {
+			const iconKey = icon.replace(
+				/^dashicons-/,
+				''
+			) as React.ComponentProps< typeof Dashicon >[ 'icon' ];
+
+			return (
+				<Dashicon
+					style={ { padding: '2px' } }
+					icon={ iconKey }
+					aria-hidden="true"
+				/>
+			);
+		}
+
+		if ( icon.trim().length > 0 ) {
+			return <Icon icon={ page } />;
+		}
 	}
 
 	// If icon is provided and valid, return it as-is

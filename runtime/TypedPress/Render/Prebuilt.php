@@ -333,8 +333,8 @@ final class Prebuilt
             }
         }
         $seen = [];
-        $urls = array_values(array_filter($urls, static function (array $u) use (&$seen): bool {
-            if (isset($seen[$u['path']])) {
+        $urls = array_values(array_filter($urls, static function (array $u) use (&$seen, $plugin): bool {
+            if (isset($seen[$u['path']]) || \TypedPress\Commerce\Module::privatePath($plugin, $u['path'])) {
                 return false;
             }
             return $seen[$u['path']] = true;
@@ -387,6 +387,8 @@ final class Prebuilt
         do {
             $where = $after === null ? [] : [$pk => ['gt' => $after]];
             $rows = Seam::asViewer($viewer, static fn () => \TypedPress\Db::instance()->findMany($kind, ['where' => $where, 'orderBy' => [$pk => 'asc'], 'limit' => 500], $viewer));
+            // The batch's posts and their meta (`_wp_old_slug`, a field in the URL) in two reads, not two per item.
+            _prime_post_caches(array_map(static fn (array $row): int => (int) $row[$pk], $rows), false, true);
             foreach ($rows as $row) {
                 $after = $row[$pk];
                 $post = get_post((int) $row[$pk]);
@@ -535,6 +537,9 @@ final class Prebuilt
         }
         $markdown = str_ends_with($path, '.md');
         $html = $markdown ? (substr($path, 0, -3) === '/index' ? '/' : substr($path, 0, -3)) : $path;
+        if (self::$plugin !== null && \TypedPress\Commerce\Module::privatePath(self::$plugin, $html)) {
+            return;
+        }
         // A page only at its one address (`/about/`, AppRouter::address): the other spelling reaches
         // the router, which redirects it. A twin is `/about.md` only, so `/about/.md` is rejected below.
         if (!$markdown) {

@@ -511,6 +511,28 @@ final class KindUrls
         return '/' . implode('/', $parts);
     }
 
+    /**
+     * Loads what path() reads for each of $ids in one pass, before a loop that asks for many: the
+     * posts, and their meta when the pattern holds a stored field (`:brand`). A hierarchical kind's
+     * parents are posts of the same list in nearly every tree; one that is not is read on its own,
+     * as before. A term's slug (`:topics.slug`) is read per item either way: core does not cache it.
+     *
+     * @param list<int> $ids
+     */
+    public function prime(string $name, array $ids): void
+    {
+        $columns = Plugin::instance()?->schema->collection($name)['columns'] ?? [];
+        $meta = false;
+        foreach ($this->kinds[$name]['segments'] ?? [] as $segment) {
+            if (!str_starts_with($segment, ':') || in_array($segment, [':slug', ':path', ':id', ':year', ':month', ':day'], true)) {
+                continue;
+            }
+            [$column, $through] = array_pad(explode('.', substr($segment, 1), 2), 2, null);
+            $meta = $meta || !($through === 'slug' && PostMeta::terms($columns[$column] ?? []));
+        }
+        _prime_post_caches($ids, false, $meta);
+    }
+
     private function build(string $name, \WP_Post $post): ?string
     {
         $path = $this->path($name, $post);

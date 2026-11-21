@@ -223,6 +223,56 @@ eq('without typedpress-identity, an "anyone" action runs anonymously', req('POST
 isProblem('without typedpress-identity, an "authenticated" action refuses anonymous', req('POST', '/actions/signedInCount'), 401, 'unauthenticated');
 eq('without typedpress-identity, a WordPress user is authenticated', req('POST', '/actions/signedInCount', as: 'sub')[0], 200);
 
+// The persistent hint skips the scan when no password is set. A stale hint still applies the
+// password predicate in the row query. Unrestricted scope checks use the database directly.
+$subscriber = new \TypedPress\Viewer($wp->user('sub'));
+$locked = $db->insert('openNotes', ['title' => 'Soon locked'], true)[0];
+$visible = static fn (\TypedPress\Viewer $reader): array => array_column(
+    $db->findMany('openNotes', ['where' => ['id' => $locked['id']]], $reader), 'id',
+);
+$probe = static function () use ($visible, $subscriber): array {
+    \TypedPress\Wp\CoreAccess::flush();
+    $scans = 0;
+    \TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$scans): void {
+        $scans += (int) str_starts_with($sql, 'SELECT ID, post_password FROM ');
+    };
+    try {
+        return [$visible($subscriber), $scans];
+    } finally {
+        \TypedPress\Wp\Connection::$observer = null;
+    }
+};
+eq('the first signed-in read checks for protected posts', $probe(), [[$locked['id']], 1]);
+eq('the next read uses the negative hint', $probe(), [[$locked['id']], 0]);
+$wp->sql("UPDATE {prefix}posts SET post_password = ? WHERE ID = ?", ['bypassed-core', $locked['id']]);
+eq('a stale negative hint cannot expose a protected row', [$probe(), $visible($anonymous)], [[[], 0], []]);
+wp_update_post(['ID' => $locked['id'], 'post_password' => 'saved-through-core']);
+eq('a core write drops the hint and an editor of the row can still read it', $probe(), [[$locked['id']], 1]);
+eq('the same protected row is hidden from a visitor', $visible($anonymous), []);
+wp_update_post(['ID' => $locked['id'], 'post_password' => '']);
+eq('clearing the password repopulates the hint', [$probe(), $probe()], [[[$locked['id']], 1], [[$locked['id']], 0]]);
+try {
+    $db->transaction(static function () use ($locked, $visible, $anonymous): void {
+        wp_update_post(['ID' => $locked['id'], 'post_password' => 'never-committed']);
+        eq('inside a transaction that sets a password, the public read is already filtered', $visible($anonymous), []);
+        throw new \RuntimeException('undo');
+    });
+} catch (\RuntimeException) {
+}
+eq('a rolled-back password leaves the row readable', $visible($anonymous), [$locked['id']]);
+$db->transaction(static function () use ($locked): void {
+    wp_update_post(['ID' => $locked['id'], 'post_password' => 'committed']);
+});
+eq('a committed password hides the row from visitors', $visible($anonymous), []);
+// Each editor save builds a store (Plugin::fillEditorDefaults); the stamp listener is the connection's, added once.
+$listeners = static fn (): int => count($GLOBALS['wp_filter']['clean_post_cache']->callbacks[10] ?? []);
+$heard = $listeners();
+foreach (['one', 'two', 'three'] as $title) {
+    wp_update_post(['ID' => $locked['id'], 'post_title' => $title]);
+}
+eq('editor saves add no clean_post_cache listener', $listeners(), $heard);
+$db->delete('openNotes', ['id' => $locked['id']]);
+
 // Native post passwords constrain every viewer-bound read before selection, not just its rendered body.
 $protected = $db->insert('posts', ['title' => 'Protected native post', 'body' => '<p>native-password-secret</p>'], true)[0];
 $public = $db->insert('posts', ['title' => 'Public next page'], true)[0];

@@ -4,7 +4,7 @@
 npm run dev
 ```
 
-Open the **Website** URL printed in the terminal. Edit the heading in `tp/app/page.tsx`, save, then refresh the page after TypedPress finishes rebuilding.
+Open the **Website** URL printed in the terminal. Edit the heading in `tp/app/page.tsx` and save: the page reloads when TypedPress finishes rebuilding.
 
 | To change | Edit |
 | --- | --- |

@@ -59,12 +59,12 @@ final class Live
     }
 
     /** Render the HTTP page once and seed its regions from the exact HTML and reads it produced. */
-    public static function page(\TypedPress\Db $db, ?\TypedPress\Viewer $viewer, callable $render, ?array &$reads = null): array
+    public static function page(\TypedPress\Db $db, ?\TypedPress\Viewer $viewer, callable $render, ?array &$reads = null, ?array &$also = null): array
     {
         $previous = self::$page;
         self::$page = $viewer === null ? null : ['regions' => [], 'notices' => []];
         try {
-            [$head, $body] = Reads::during($render, $reads);
+            [$head, $body] = Reads::during($render, $reads, $also);
             if ($viewer === null || self::$page['regions'] === []) {
                 return [$head, $body];
             }

@@ -285,6 +285,8 @@ pub enum Builtin {
     DefineRelations,
     DefineConfig,
     DefinePlugin,
+    /// `destructiveMigrations(options?)` from `"typedpress/danger"`.
+    DestructiveMigrations,
     /// `adminScreen({ ... })` from "typedpress".
     AdminScreen,
     /// `adminWidget({ ... })` from "typedpress".
@@ -585,6 +587,9 @@ pub enum FnForm {
     /// One configuration object: `adminScreen`, `definePlugin`, and a 0.3.0 capture's
     /// `action({ input, handler })`, `job({ input, handler })` and `route()`.
     Object,
+    /// A built-in plugin shipped inside TypedPress itself (e.g. `destructiveMigrations()` from
+    /// `"typedpress/danger"`). Skips npm package isolation because it has no user-authored code.
+    BuiltinPlugin,
 }
 
 impl ActionVal {
@@ -593,6 +598,15 @@ impl ActionVal {
             config,
             span,
             form: FnForm::Object,
+            handler: Value::Undef,
+        }
+    }
+
+    pub fn builtin_plugin(config: Value, span: Span) -> Self {
+        ActionVal {
+            config,
+            span,
+            form: FnForm::BuiltinPlugin,
             handler: Value::Undef,
         }
     }

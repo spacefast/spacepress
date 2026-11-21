@@ -52,12 +52,12 @@ Since TypedPress is pre-release with no external production deployments yet, we 
   - Physical renames via `.was()` are removed from core DDL; diagnostics guide authors to `.column()` / `storageName` (zero-downtime) or the opt-in destructive plugin.
 - **Dedicated join-table namespace:** `ref().many()` join tables move from `{prefix}tp_<owner>_<field>` to `{prefix}tp__join_<owner>_<field>`, eliminating collisions with user tables.
 
-### 3. Separate Opt-In Destructive Escape Hatch (`@typedpress/destructive-migrations`)
+### 3. Opt-In Destructive Escape Hatch (`typedpress/danger`)
 
-- Destructive operations (`DROP COLUMN` / `DROP TABLE` on already-retired items, lossy type narrowing, physical purge of soft-deleted rows, raw escape-hatch SQL) live in a separate plugin package `packages/destructive-migrations` (`@typedpress/destructive-migrations`).
+- Destructive operations (`DROP COLUMN` / `DROP TABLE` on already-retired items, lossy type narrowing, physical purge of soft-deleted rows, raw escape-hatch SQL) live behind an explicit opt-in subpath `typedpress/danger` (never exported from the main `typedpress` barrel).
 - Opted in explicitly in `typedpress.config.ts`:
   ```ts
-  import { destructiveMigrations } from "@typedpress/destructive-migrations";
+  import { destructiveMigrations } from "typedpress/danger";
   export default defineConfig({ use: [destructiveMigrations()] });
   ```
 - Plugs into `Wp\Migrator`'s `MigrationProvider` registry, **CLI-only** (never auto-runs on HTTP boot or plugin activation).

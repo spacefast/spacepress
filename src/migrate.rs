@@ -16,7 +16,7 @@
 //!   emitting `DROP COLUMN` or `DROP TABLE`.
 //! - Lossy type narrowing and adding/tightening required columns without a literal default are
 //!   refused at build time.
-//! - Explicit destructive cleanup lives in the opt-in `@typedpress/destructive-migrations` plugin.
+//! - Explicit destructive cleanup lives behind the opt-in `typedpress/danger` subpath.
 
 use crate::diag::{Code, Diag, Span};
 use crate::schema::{Collection, Column, DefaultKind, Schema};
@@ -954,7 +954,7 @@ pub fn fold(entries: &[(String, Json)]) -> Result<FoldedState, Diag> {
                                 "conflicting parallel migrations: `{prev_id}` retired table `{t}` while `{id}` creates it"
                             ),
                         )
-                        .help("choose a distinct `storageName`, or purge the retired table with `@typedpress/destructive-migrations` first")
+                        .help("choose a distinct `storageName`, or purge the retired table with `typedpress/danger` (`wp typedpress danger drop-table`) first")
                         .code(Code::Schema));
                     }
                     if let Some(cols) = def["columns"].as_object() {
@@ -1175,7 +1175,7 @@ pub fn plan_forward_only(
                 format!("table `{t}` was retired in an earlier migration and still exists in the database"),
             )
             .help(format!(
-                "give the new table a distinct `storageName`, or purge the retired table first with `@typedpress/destructive-migrations`"
+                "give the new table a distinct `storageName`, or purge the retired table first with `typedpress/danger`"
             ))
             .code(Code::Schema));
         }
@@ -1252,7 +1252,7 @@ pub fn plan_forward_only(
                                 ),
                             )
                             .help(format!(
-                                "choose a new physical column name with `.column(\"{k}_v2\")`, or purge the retired column with `@typedpress/destructive-migrations` first"
+                                "choose a new physical column name with `.column(\"{k}_v2\")`, or purge the retired column with `typedpress/danger` first"
                             ))
                             .code(Code::Schema));
                         }
@@ -1306,7 +1306,7 @@ pub fn plan_forward_only(
                                     "narrowing `{t}.{k}` from `{psql}` to `{sql}` can lose or corrupt existing data and is refused by forward-only migrations"
                                 ),
                             )
-                            .help("add a new column and backfill via a data migration, or install `@typedpress/destructive-migrations` for an explicit narrowing migration")
+                            .help("add a new column and backfill via a data migration, or opt into `typedpress/danger` for an explicit narrowing migration")
                             .code(Code::Schema));
                         }
                         let tightens = required && prev_col["notNull"] != true;
@@ -1354,7 +1354,7 @@ pub fn plan_forward_only(
                 }
                 ops.push(json!({ "op": "retireColumn", "table": t, "column": k }));
                 warnings.push(format!(
-                    "retiring column \"{t}\".\"{k}\" (data preserved; purge later with @typedpress/destructive-migrations)"
+                    "retiring column \"{t}\".\"{k}\" (data preserved; purge later with typedpress/danger)"
                 ));
             }
         }
@@ -1396,7 +1396,7 @@ pub fn plan_forward_only(
     for t in prev_t.keys().filter(|t| !next_t.contains_key(*t)) {
         ops.push(json!({ "op": "retireTable", "table": t }));
         warnings.push(format!(
-            "retiring table \"{t}\" (data preserved; purge later with @typedpress/destructive-migrations)"
+            "retiring table \"{t}\" (data preserved; purge later with typedpress/danger)"
         ));
     }
 

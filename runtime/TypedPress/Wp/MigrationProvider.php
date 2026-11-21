@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace TypedPress\Wp;
 
 /**
- * Contract for opt-in migration plugins (such as `@typedpress/destructive-migrations`) that plug
+ * Contract for opt-in migration plugins (such as `typedpress/danger`) that plug
  * into {@see Migrator}. Core schema migrations remain strictly forward-only; providers that execute
  * destructive operations must declare `cliOnly() === true` so they never run on HTTP boot.
  */

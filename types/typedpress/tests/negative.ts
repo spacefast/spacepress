@@ -224,6 +224,8 @@ void v1Queries; void authors; void comments; void settings;
 export { fetch } from "typedpress";
 // @ts-expect-error "typedpress" has no crypto
 export { crypto } from "typedpress";
+// @ts-expect-error destructiveMigrations lives only on "typedpress/danger", never the main barrel
+export { destructiveMigrations } from "typedpress";
 // @ts-expect-error a many-ref's links go with a deleted target, or refuse it: no setNull
 ref(locations).many().onDelete("setNull");
 // @ts-expect-error a many-ref takes no default

@@ -29,7 +29,7 @@ pub(crate) fn cli(rest: &[String]) -> ExitCode {
 }
 
 /// Inspects `tp/_generated/migrations/*/ops.json` locally and reports whether the app opted into
-/// `@typedpress/destructive-migrations`, along with retired columns and tables eligible for phase-2 cleanup.
+/// `typedpress/danger`, along with retired columns and tables eligible for phase-2 cleanup.
 pub(crate) fn local_plan(rest: &[String]) -> ExitCode {
     let mut project = PathBuf::from(".");
     let mut as_json = false;
@@ -52,11 +52,11 @@ pub(crate) fn local_plan(rest: &[String]) -> ExitCode {
                 let opted_in = report["enabled"].as_bool().unwrap_or(false);
                 if !opted_in {
                     println!(
-                        "WARNING: @typedpress/destructive-migrations is NOT enabled in this project.\n\
-                         Install it and add `use: [destructiveMigrations()]` to typedpress.config.ts before running destructive CLI commands."
+                        "WARNING: typedpress/danger (destructiveMigrations) is NOT enabled in this project.\n\
+                         Import `destructiveMigrations` from \"typedpress/danger\" and add `use: [destructiveMigrations()]` to typedpress.config.ts before running destructive CLI commands."
                     );
                 } else {
-                    println!("Destructive migrations provider: ENABLED (@typedpress/destructive-migrations, CLI-only)");
+                    println!("Destructive migrations provider: ENABLED (typedpress/danger, CLI-only)");
                 }
                 let cols = report["retiredColumns"].as_array().map(Vec::as_slice).unwrap_or(&[]);
                 let tbls = report["retiredTables"].as_array().map(Vec::as_slice).unwrap_or(&[]);
@@ -192,18 +192,11 @@ mod tests {
     fn destructive_migrations_plugin_registers_provider_in_schema_and_php() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        // Install @typedpress/destructive-migrations inside node_modules of the temp project.
-        let pkg_dir = root.join("node_modules/@typedpress/destructive-migrations");
-        std::fs::create_dir_all(&pkg_dir).unwrap();
-        let repo_pkg = Path::new(env!("CARGO_MANIFEST_DIR")).join("packages/destructive-migrations");
-        for f in ["package.json", "index.ts", "index.d.ts"] {
-            std::fs::copy(repo_pkg.join(f), pkg_dir.join(f)).unwrap();
-        }
         std::fs::write(
             root.join("typedpress.config.ts"),
             r#"
 import { defineConfig, table, text } from "typedpress";
-import { destructiveMigrations } from "@typedpress/destructive-migrations";
+import { destructiveMigrations } from "typedpress/danger";
 
 export const notes = table({
   body: text(),

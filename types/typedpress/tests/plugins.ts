@@ -1,4 +1,5 @@
 import { collection, defineConfig, definePlugin, text, type Plugin, mutation } from "typedpress";
+import { destructiveMigrations } from "typedpress/danger";
 
 const posts = collection({ title: text(), summary: text().optional() }, { title: "title" });
 
@@ -13,7 +14,10 @@ function seo(options: { suffix: string }): Plugin {
   });
 }
 
-defineConfig({ use: [seo({ suffix: " | Site" })] });
+defineConfig({ use: [seo({ suffix: " | Site" }), destructiveMigrations(), destructiveMigrations({ requireArchive: true, allowRawSql: false })] });
+
+// @ts-expect-error requireArchive must be boolean
+destructiveMigrations({ requireArchive: "yes" });
 
 // @ts-expect-error `use` takes plugins, not package pins.
 defineConfig({ use: ["typedpress-plugin-seo"] });

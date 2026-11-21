@@ -1066,6 +1066,16 @@ impl<'p> Evaluator<'p> {
         if source == WORDPRESS_MODULE {
             return wordpress_export(name, span);
         }
+        if source == crate::loader::DANGER_MODULE {
+            return match name {
+                "destructiveMigrations" | "default" => Ok(Value::Builtin(Builtin::DestructiveMigrations)),
+                "DestructiveMigrationsOptions" => Ok(Value::Undef),
+                _ => Err(Ctl::Err(
+                    Diag::new(span, format!("\"typedpress/danger\" has no export named `{name}`"))
+                        .help("import `{ destructiveMigrations }` from \"typedpress/danger\""),
+                )),
+            };
+        }
         if source == crate::loader::CLIENT_MODULE {
             return crate::client_component::HOOKS
                 .iter()
@@ -3232,6 +3242,52 @@ impl<'p> Evaluator<'p> {
                     "pass the plugin definition as an object literal",
                 ),
             },
+            Builtin::DestructiveMigrations => {
+                let (require_archive, allow_raw_sql) = match arg(0) {
+                    Value::Undef => (false, false),
+                    Value::Object(ref o) => {
+                        let o = o.borrow();
+                        for k in o.keys() {
+                            if !matches!(k.as_str(), "requireArchive" | "allowRawSql") {
+                                return err_help(
+                                    span,
+                                    format!("destructiveMigrations() has no option `{k}`"),
+                                    "supported options are `requireArchive` and `allowRawSql`",
+                                );
+                            }
+                        }
+                        let bool_opt = |k: &str| -> R<bool> {
+                            match o.get(k) {
+                                None | Some(Value::Undef) => Ok(false),
+                                Some(Value::Bool(b)) => Ok(*b),
+                                Some(other) => err_help(
+                                    span,
+                                    format!("destructiveMigrations().{k} must be a boolean, not {}", other.describe()),
+                                    format!("pass `{k}: true` or `{k}: false`"),
+                                ),
+                            }
+                        };
+                        (bool_opt("requireArchive")?, bool_opt("allowRawSql")?)
+                    }
+                    other => {
+                        return err_help(
+                            span,
+                            format!("destructiveMigrations() takes an optional options object, not {}", other.describe()),
+                            "call `destructiveMigrations()` or `destructiveMigrations({ requireArchive: true })`",
+                        );
+                    }
+                };
+                let mut mp = IndexMap::new();
+                mp.insert("id".to_string(), Value::Str(Rc::from("destructive-migrations")));
+                mp.insert("cliOnly".to_string(), Value::Bool(true));
+                mp.insert("requireArchive".to_string(), Value::Bool(require_archive));
+                mp.insert("allowRawSql".to_string(), Value::Bool(allow_raw_sql));
+                let mut cfg = IndexMap::new();
+                cfg.insert("name".to_string(), Value::Str(Rc::from("destructive_migrations")));
+                cfg.insert("migrationProvider".to_string(), Value::object(mp));
+                let config = Value::object(cfg);
+                Ok(Value::Plugin(Rc::new(ActionVal::builtin_plugin(config, span))))
+            }
             Builtin::Env => match arg(0) {
                 Value::Str(n) if crate::compile::reserved_env_name(&n) => {
                     crate::compile::reserved_env_error(span, &n).map_err(Ctl::Err)

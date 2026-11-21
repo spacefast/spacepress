@@ -21,6 +21,9 @@
       ],
       "typedpress/app": [
         "../app.d.ts"
+      ],
+      "typedpress/danger": [
+        "../danger.d.ts"
       ]
     }
   },

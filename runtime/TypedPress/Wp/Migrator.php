@@ -29,7 +29,7 @@ final class Migrator
     /** @var array<string, MigrationProvider> */
     private static array $providers = [];
 
-    /** Register an opt-in migration provider (e.g., `@typedpress/destructive-migrations`). */
+    /** Register an opt-in migration provider (e.g., `typedpress/danger`). */
     public static function registerProvider(MigrationProvider $provider): void
     {
         self::$providers[$provider->id()] = $provider;
@@ -66,7 +66,7 @@ final class Migrator
         if (preg_match('/\b(DROP\s+TABLE|DROP\s+COLUMN|TRUNCATE\s+TABLE|RENAME\s+TABLE|RENAME\s+COLUMN|CHANGE\s+COLUMN)\b/i', $clean, $m)) {
             $ctx = $migrationId !== '' ? " in migration $migrationId" : '';
             throw new \RuntimeException(
-                "Refusing destructive DDL ({$m[1]})$ctx: core TypedPress migrations are strictly forward-only. Use @typedpress/destructive-migrations via CLI for explicit destructive cleanup."
+                "Refusing destructive DDL ({$m[1]})$ctx: core TypedPress migrations are strictly forward-only. Opt into `typedpress/danger` and run `wp typedpress danger` via CLI for explicit destructive cleanup."
             );
         }
     }

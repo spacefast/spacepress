@@ -27,6 +27,8 @@ pub const APP_MODULE: &str = "typedpress/app";
 pub const CONTENT_MODULE: &str = "typedpress/content";
 /// Hooks for `"use client"` components (docs/decisions/2026-11-08-tsx-to-php.md, generator B).
 pub const CLIENT_MODULE: &str = "typedpress/client";
+/// Opt-in CLI-only destructive migration escape hatch (ADR 2026-11-21 §3).
+pub const DANGER_MODULE: &str = "typedpress/danger";
 /// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
 pub const WORDPRESS_MODULE: &str = "php/wordpress";
 /// The app's kinds, by registered name (docs/spec/spec.md §2.1); typed by `tp/_generated/db.d.ts`.
@@ -41,6 +43,7 @@ pub fn builtin_module(spec: &str) -> bool {
         || spec == APP_MODULE
         || spec == CONTENT_MODULE
         || spec == CLIENT_MODULE
+        || spec == DANGER_MODULE
         || crate::builtins::module(spec).is_some()
 }
 

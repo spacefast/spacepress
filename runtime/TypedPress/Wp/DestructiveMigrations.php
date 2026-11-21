@@ -8,7 +8,7 @@ use TypedPress\HttpError;
 use TypedPress\Js;
 
 /**
- * Opt-in CLI-only destructive migration provider (`@typedpress/destructive-migrations`, ADR 2026-11-21 §3).
+ * Opt-in CLI-only destructive migration provider (`typedpress/danger`, ADR 2026-11-21 §3).
  *
  * Core TypedPress migrations are strictly forward-only and never drop columns, drop tables, or purge
  * data. This provider plugs into {@see Migrator}'s provider registry only when the app opts in via
@@ -45,7 +45,7 @@ final class DestructiveMigrations implements MigrationProvider
         return 'CLI-only destructive cleanup escape hatch (drop retired columns/tables, purge soft-deleted rows, audited raw SQL)';
     }
 
-    /** Register this provider with Migrator when the app's compiled schema opted into `@typedpress/destructive-migrations`. */
+    /** Register this provider with Migrator when the app's compiled schema opted into `typedpress/danger`. */
     public static function registerFor(Plugin $plugin): ?self
     {
         $cfg = self::providerConfig($plugin);
@@ -95,7 +95,7 @@ final class DestructiveMigrations implements MigrationProvider
             throw new HttpError(
                 403,
                 'destructive_migrations_disabled',
-                'Destructive migrations are not enabled for this app. Install `@typedpress/destructive-migrations` and opt in via `defineConfig({ use: [destructiveMigrations()] })`.',
+                'Destructive migrations are not enabled for this app. Import `destructiveMigrations` from `typedpress/danger` and opt in via `defineConfig({ use: [destructiveMigrations()] })`.',
             );
         }
 

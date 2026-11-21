@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
- * Slice 4 end-to-end verification of `@typedpress/destructive-migrations` (`DestructiveMigrations` +
+ * Slice 4 end-to-end verification of `typedpress/danger` (`DestructiveMigrations` +
  * `MigrationProvider` registry + CLI-only guard + two-phase retirement prerequisite + exact row-count
  * confirmation + JSONL archival + `tp__migrations` audit rows + `raw-sql` opt-in guard).
  */
@@ -66,7 +66,7 @@ unset($disabledSchema['migrationProviders']);
     $this->schema = new \TypedPress\Schema($disabledSchema);
     $this->dir = $plugin->dir;
 })->call($disabledPlugin);
-problem('refused when @typedpress/destructive-migrations is not opted into',
+problem('refused when typedpress/danger is not opted into',
     static fn () => DestructiveMigrations::status($disabledPlugin, null, cliContext: true), 403, 'destructive_migrations_disabled');
 
 // 4. Prepare physical retired column & retired table + folder migrations (`ops.json`)

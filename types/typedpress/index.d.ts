@@ -1699,7 +1699,7 @@ export declare function definePlugin<TSchema extends Schema = Schema>(definition
   hooks?: Hooks<TSchema>;
   actions?: Record<string, AnyAction>;
   jobs?: Record<string, AnyJob>;
-  /** Optional CLI-only migration provider (e.g. `@typedpress/destructive-migrations`). */
+  /** Optional CLI-only migration provider (e.g. `typedpress/danger`). */
   migrationProvider?: MigrationProviderConfig;
 }): Plugin;
 

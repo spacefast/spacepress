@@ -1553,15 +1553,20 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
                     .help("use letters, digits and underscores, like \"seo\""),
             );
         }
-        if out.uses.iter().any(|u| u.name == name) {
-            return Err(Diag::new(p.span, format!("two plugins are both named \"{name}\""))
-                .help("each plugin is registered once"));
-        }
-        let plugin = crate::plugins::identify(ev.program(), &name, p.span)?;
-        let index = out.uses.len();
-        out.uses.push(plugin);
+        let is_builtin = p.form == FnForm::BuiltinPlugin;
         let first = out.roots.len();
-        let owner = Some((index, name.as_str()));
+        let owner = if is_builtin {
+            None
+        } else {
+            if out.uses.iter().any(|u| u.name == name) {
+                return Err(Diag::new(p.span, format!("two plugins are both named \"{name}\""))
+                    .help("each plugin is registered once"));
+            }
+            let plugin = crate::plugins::identify(ev.program(), &name, p.span)?;
+            let index = out.uses.len();
+            out.uses.push(plugin);
+            Some((index, name.as_str()))
+        };
         if let Some(h) = o.get("hooks").filter(|v| !matches!(v, Value::Undef)) {
             hooks(h, ev.key_span(&p.config, "hooks").unwrap_or(p.span), ev, out, owner)?;
         }
@@ -1627,8 +1632,10 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
                 allow_raw_sql,
             });
         }
-        for root in &mut out.roots[first..] {
-            root.plugin = Some(index);
+        if let Some((index, _)) = owner {
+            for root in &mut out.roots[first..] {
+                root.plugin = Some(index);
+            }
         }
     }
     crate::plugins::isolate(ev.program(), &mut out.uses)
@@ -2226,7 +2233,7 @@ fn collection_options(
                 span("was"),
                 "`was` is gone: forward-only migrations never rename SQL tables in place",
             )
-            .help("keep the existing physical table under a new TypeScript export with `storageName: \"<old_name>\"`, or use `@typedpress/destructive-migrations` for an explicit physical rename"));
+            .help("keep the existing physical table under a new TypeScript export with `storageName: \"<old_name>\"`, or opt into `typedpress/danger` for an explicit physical rename"));
         }
         Some(Value::Str(name)) if c.kind == StorageKind::Table && valid_ident(name) => Some(name.to_string()),
         _ => {
@@ -3067,7 +3074,7 @@ fn column(
                 b.span_of("was"),
                 "`.was()` is gone: forward-only migrations never rename columns in place",
             )
-            .help("use `.column(\"<old_name>\")` to map this field to the existing SQL column with zero DDL (and `.alias(\"<old_name>\")` to keep accepting the old API name), or use `@typedpress/destructive-migrations` for a physical rename"));
+            .help("use `.column(\"<old_name>\")` to map this field to the existing SQL column with zero DDL (and `.alias(\"<old_name>\")` to keep accepting the old API name), or opt into `typedpress/danger` for a physical rename"));
         }
         if place != Place::Top {
             return Err(Diag::new(

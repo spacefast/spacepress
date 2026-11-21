@@ -76,6 +76,9 @@ final class Plugin
         // A site that installs TypedPress as plugins installs identity on boot; a build mounted from the
         // store installs nothing until the host initializes it (install()).
         if (!self::managed()) {
+            // The install checks below and provisionPasswordHash() read these on every request, and
+            // none is autoloaded: one query instead of one each.
+            wp_prime_option_caches([Legacy\ZeroNames::DONE, "tp_identity_schema_version", ...Accounts::INSTALL_OPTIONS]);
             add_action("plugins_loaded", [Accounts::class, "provisionPasswordHash"]);
         }
         add_filter('cron_schedules', static function (array $schedules): array {
@@ -754,6 +757,17 @@ final class Plugin
             header("Access-Control-Allow-Credentials: true");
         }
     }
+    /**
+     * Keep this response out of Batcache. It stores what a request without a WordPress cookie printed
+     * whatever its `Cache-Control` says, and the hosted screens and the API answer for the session
+     * in the identity cookie, which it doesn't know.
+     */
+    public static function uncached(): void
+    {
+        if (function_exists("batcache_cancel")) {
+            batcache_cancel();
+        }
+    }
     private static function json(array $data, int $status = 200): never
     {
         status_header($status);
@@ -811,6 +825,8 @@ final class Plugin
             if ($route === "/jwks") {
                 self::json(Keys::jwks());
             }
+            // Discovery and the keys are the same for everyone; everything below answers for a browser.
+            self::uncached();
             if (in_array($route, ["/token", "/revoke", "/handoff"], true)) {
                 // Public clients call these from their own origin: no cookies, no credentials.
                 self::cors(false);

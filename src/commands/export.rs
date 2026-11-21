@@ -167,7 +167,7 @@ fn run(flags: Flags) -> Result<(), String> {
             super::build::emit_project(&project, &built).map_err(|e| format!("couldn't write tp/_generated: {e}"))?;
             let content = super::build::emit_wp_content(&project, &project.join(crate::layout::WP_CONTENT), &built)
                 .map_err(|e| format!("couldn't write wp-content: {e}"))?;
-            let seeds = crate::bundle::seed_records(&crate::loader::Disk, &project, &built.schema)
+            let seeds = crate::bundle::seed_records(&crate::loader::Disk, &project, &built.schema, true)
                 .map_err(|d| crate::diag::render(&d, &project).trim_end().to_string())?;
             let local = Local::start(&content, &seeds)?;
             let site = local.url.clone();

@@ -161,7 +161,7 @@ pub(crate) fn plugin_vars(schema: &schema::Schema, schema_php: &str) -> Vec<(&'s
         ("phpVersion", platform::PHP.to_string()),
         (
             "requires",
-            platform::plugins(schema.locales.is_some())
+            platform::app_plugins(schema.locales.is_some(), schema.store.is_some())
                 .into_iter()
                 .map(|p| p.slug)
                 .chain(["typedpress-runtime".to_string()])

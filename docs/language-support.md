@@ -748,7 +748,7 @@ WordPress function arguments are checked against the catalog's types, from the p
 
 Status: **supported**.
 
-Allowlisted WordPress functions compile to TypedPress\Wp\Functions::call(name, [args]): a direct PHP call through the value conversions. WP_Post and WP_User results become the same read-only views hook arguments are, and a WP_Error result throws an HttpError with its own status (422 when it has none).
+Allowlisted WordPress functions compile to TypedPress\Wp\Functions::call(name, [args]): a direct PHP call through the value conversions. WP_Post and WP_User results become the same read-only views hook arguments are, and a WP_Error result throws an HttpError with its own status (422 when it has none). A function that answers "or false" (get_userdata: WP_User | false, get_permalink: string | false) is narrowed by `=== false`, `!== false` or truthiness, and stays narrowed across the calls that follow, as a null check does.
 
 [Evidence](../tests/compiler_contracts.rs) (`wordpress_functions_run_as_the_signed_in_user`)
 
@@ -1188,7 +1188,7 @@ SVG `animate`/`set` can rewrite their target's attributes: they never target URL
 
 Status: **supported**.
 
-A .tsx file under tp/components/ that starts with "use client" (after comments and other directives such as "use strict") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState, useLive (a list read the server seeds and the page keeps current), server action calls, keyed lists (`items.map((item) => <li key={item.id}>…</li>)`) and reactive `&&` and `?:` over elements compile; the browser re-renders lists and conditionals from `<template>`s.
+A .tsx file under tp/components/ that starts with "use client" (after comments and other directives such as "use strict") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef (attached to one element of the component with `ref={name}`; `name.current` is that element in handlers and effects), sharedState, useLive (a list read the server seeds and the page keeps current), server action calls, keyed lists (`items.map((item) => <li key={item.id}>…</li>)`) and reactive `&&` and `?:` over elements compile; the browser re-renders lists and conditionals from `<template>`s.
 
 [Evidence](../tests/app_router.rs) (`client_components_compile_to_interactivity_stores`)
 

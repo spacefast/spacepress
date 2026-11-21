@@ -241,6 +241,7 @@ Rulings for `taxonomy()` and `terms()` (spec §2.1, §2.4, §2.6, §2.7). They d
     Cost: an app that wants core's categories on its own collection declares its own taxonomy for now.
 
 32. **Translations and sync.** Neither is built for taxonomies in the first PR, and each refusal is explicit so the later default changes nothing silently.
+    Term sync and synced term assignments were subsequently implemented with [WooCommerce support](../woocommerce.md); the sync refusals below describe the first PR only. Translation groups remain deferred.
     - **`locales` set:** a taxonomy must say `translations: false`. It is then one vocabulary shared by every locale, and First keeps it out of Polylang's taxonomy list. Without the option the build fails with "taxonomy translations aren't built yet; add `translations: false`". Ruling 7's default (translated) arrives with term translation groups.
     - **Term set per translation:** each translation of an item has its own term set. `.shared()` on a `terms` field or on a taxonomy's field is a build error for now.
     - **`sync` on a taxonomy** is a build error (the option is for collections and tables).

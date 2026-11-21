@@ -71,6 +71,12 @@ fn column(c: &Column, ctx: Ctx, indent: usize) -> String {
     if c.omit {
         parts.push("'omit' => true".into());
     }
+    if c.required {
+        parts.push("'required' => true".into());
+    }
+    if let Some(shape) = &c.shape {
+        parts.push(format!("'shape' => {}", php_json(shape)));
+    }
     if c.unique && top {
         parts.push("'unique' => true".into());
     }

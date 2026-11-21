@@ -125,6 +125,8 @@ async function describeLoans(owner: number, entries: Loan[]) {
 }
 
 export const markOverdue = job({ retries: 3 }, async ({ loanId, ownerId }: { loanId: number; ownerId: number }) => {
+  if (!Number.isInteger(loanId)) throw new HttpError(422, "invalid_input", "loanId must be an integer", "/loanId");
+  if (!Number.isInteger(ownerId)) throw new HttpError(422, "invalid_input", "ownerId must be an integer", "/ownerId");
   const today = new Date().toISOString().slice(0, 10);
   await db.update(loans).set({ overdueAt: new Date().toISOString() }).where({
     id: loanId, ownerId, dueOn: { lt: today },
@@ -149,6 +151,8 @@ export const find = query({ access: "authenticated" }, async ({ query }: { query
 });
 
 export const lend = mutation({ access: "authenticated", idempotent: true }, async (input: { thingId: number; personId: number; dueOn: string; lentOn?: string }, ctx) => {
+  if (!Number.isInteger(input.thingId)) throw new HttpError(422, "invalid_input", "thingId must be an integer", "/thingId");
+  if (!Number.isInteger(input.personId)) throw new HttpError(422, "invalid_input", "personId must be an integer", "/personId");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dueOn)) throw new HttpError(422, "invalid_input", "dueOn must be a date (YYYY-MM-DD)", "/dueOn");
   if (input.lentOn !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(input.lentOn)) throw new HttpError(422, "invalid_input", "lentOn must be a date (YYYY-MM-DD)", "/lentOn");
   const [loan] = await db.insert(loans).values({ ...input, ownerId: actorId(ctx) }).returning();
@@ -156,6 +160,7 @@ export const lend = mutation({ access: "authenticated", idempotent: true }, asyn
 });
 
 export const giveBack = mutation({ access: "authenticated" }, async ({ loanId, returnedOn = new Date().toISOString().slice(0, 10) }: { loanId: number; returnedOn?: string }, ctx) => {
+  if (!Number.isInteger(loanId)) throw new HttpError(422, "invalid_input", "loanId must be an integer", "/loanId");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(returnedOn)) throw new HttpError(422, "invalid_input", "returnedOn must be a date (YYYY-MM-DD)", "/returnedOn");
   const owner = actorId(ctx);
   const loan = await db.query.loans.findFirst({ where: { id: loanId, ownerId: owner } });
@@ -174,6 +179,7 @@ export const overdue = query({ access: "authenticated" }, async (input: {}, ctx)
 });
 
 export const whoHas = query({ access: "authenticated" }, async ({ personId }: { personId: number }, ctx) => {
+  if (!Number.isInteger(personId)) throw new HttpError(422, "invalid_input", "personId must be an integer", "/personId");
   const owner = actorId(ctx);
   const person = await db.query.people.findFirst({ where: { id: personId, ownerId: owner } });
   if (!person) throw new HttpError(404, "not_found", "Person not found in your drawer.");

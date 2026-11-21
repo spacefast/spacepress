@@ -21,8 +21,16 @@ export const hookNotes = table({ title: text() },
   { access: { create: "editor", read: "editor" } });
 
 export const refsEnqueue = mutation({ access: "editor" }, async (input: { noteId: number; meta: unknown }) => {
+  if (!Number.isInteger(input.noteId)) throw new HttpError(422, "invalid_input", "noteId must be an integer", "/noteId");
   const queued = await stamp.enqueue({ noteId: input.noteId, meta: input.meta, info: {}, rows: [{}] });
   return { id: queued.id, sent: JSON.stringify(input.meta) };
+});
+
+// Ten calls a minute per caller, held open for a moment so concurrent calls overlap in the database.
+export const jobsLimited = mutation({ access: "editor", rateLimit: "10/min" }, async ({ wait }: { wait: number }) => {
+  const until = Date.now() + wait;
+  while (Date.now() < until) { /* hold the caller's transaction open */ }
+  return 1;
 });
 
 export const jobsOnce = mutation({ access: "editor", idempotent: true }, async (input: { note: string }) => {
@@ -50,6 +58,7 @@ export const jobsInbound = mutation({ signature: { secret: env("TP_WP_INBOUND_SE
 
 // Also the `blog/job-stamp` ability (lane F).
 export const stamp = job({ retries: 2, agents: true }, async (input: { noteId: number; fail?: boolean; meta?: unknown; info?: {}; rows?: {}[] }, ctx) => {
+  if (!Number.isInteger(input.noteId)) throw new HttpError(422, "invalid_input", "noteId must be an integer", "/noteId");
   if (input.info !== undefined && Object.keys(input.info).length !== 0) throw new Error("empty group changed");
   if (input.rows !== undefined && input.rows.length > 0 && Object.keys(input.rows[0]!).length !== 0) throw new Error("empty repeater item changed");
   if (input.fail) {

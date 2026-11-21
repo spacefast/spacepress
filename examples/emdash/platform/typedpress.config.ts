@@ -1,6 +1,6 @@
 import {
   blocks, boolean, collection, db, defineConfig, env, group, integer, job, json, media, repeater, richText, slug,
-  table, text, ref, mutation,
+  table, text, ref, mutation, HttpError
 } from "typedpress";
 
 const access = { read: "anyone", create: "editor", update: "editor", delete: "editor" };
@@ -35,6 +35,7 @@ export const guides = collection({ title: text(), body: richText().optional(), s
 export const deliveries = table({ message: text() }, { access: { read: "editor" } });
 
 export const processTask = job({}, async ({ taskId }: { taskId: number }) => {
+  if (!Number.isInteger(taskId)) throw new HttpError(422, "invalid_input", "taskId must be an integer", "/taskId");
   await db.update(tasks).set({ processed: true }).where({ id: taskId });
 });
 

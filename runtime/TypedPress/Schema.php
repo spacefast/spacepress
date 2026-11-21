@@ -426,7 +426,7 @@ final class Schema
     /** True when a create must receive this column (no default, not generated). */
     public static function isRequired(array $col): bool
     {
-        return ($col['notNull'] ?? false) && !isset($col['default']) && !($col['omit'] ?? false) && !($col['autoIncrement'] ?? false) && !($col['readOnly'] ?? false)
+        return (($col['notNull'] ?? false) || ($col['required'] ?? false)) && !isset($col['default']) && !($col['omit'] ?? false) && !($col['autoIncrement'] ?? false) && !($col['readOnly'] ?? false)
             && !($col['type'] === 'slug' && isset($col['source'])); // derived when left out
     }
 
@@ -503,7 +503,7 @@ final class Schema
             'boolean' => is_bool($v) ? $v : throw $bad(),
             'timestamp' => self::timestamp($v) ?? throw $bad(),
             'date' => is_string($v) && self::isDate($v) ? $v : throw $bad(),
-            'json' => self::jsonValue($v) ?? throw $bad(),
+            'json' => isset($col['shape']) ? self::shaped($col['shape'], $v, $name, $pointer) : (self::jsonValue($v) ?? throw $bad()),
             'mediaList' => self::idList($v, $name, $pointer) ?? throw $bad(),
             'refList' => self::refList($v, $name, $pointer) ?? throw $bad(),
             'select' => self::selectList($col, $v, $name, $pointer) ?? throw $bad(),
@@ -557,7 +557,7 @@ final class Schema
                 } elseif ($f['omit'] ?? false) {
                     // An optional field of a typed input (`limit?: number`): left out, it stays out.
                     continue;
-                } elseif ($f['notNull'] ?? false) {
+                } elseif (($f['notNull'] ?? false) || ($f['required'] ?? false)) {
                     throw HttpError::invalidInput("$name is required", $ptr);
                 } else {
                     $out[$name] = null;
@@ -651,6 +651,14 @@ final class Schema
                 throw HttpError::invalidInput("$name has a duplicate value '$item'", "$pointer/$i");
             }
         }
+
+        return $v;
+    }
+
+    /** A typed input's structured value, checked against the shape its parameter type gives it. */
+    private static function shaped(array $shape, mixed $v, string $name, string $pointer): mixed
+    {
+        InputShape::check($shape, $v, $name, $pointer);
 
         return $v;
     }

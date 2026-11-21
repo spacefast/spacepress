@@ -1410,6 +1410,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let saved = self.fx.replace(fx);
+        // A function compiled while compiling a class (a method, the constructor, an initializer)
+        // runs when the class is used: the class reaches it in the call graph.
+        if self.current.starts_with("%class") {
+            let class = self.current.clone();
+            self.calls.entry(class).or_default().insert(name.to_string());
+        }
         let caller = std::mem::replace(&mut self.current, name.to_string());
         let result = self.compile_function_body(&f, name, &param_tys, slot);
         self.current = caller;
@@ -8612,6 +8618,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 v.php
             }
         };
+        if !self.abilities.readonly.contains(ability.as_str()) {
+            self.writes(name_expr.span, "calls an ability that isn't read-only");
+        }
         self.use_wordpress(WordPressKind::Ability, ability, name_expr.span);
         Ok(Out::atom(
             format!("\\TypedPress\\Wp\\Abilities\\Call::run({}, {input})", php_str(ability)),
@@ -8623,6 +8632,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// `TypedPress\Wp\Functions::call` with the catalog's fixed arguments appended.
     fn wp_function_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         let f = crate::wordpress::function(name).expect("only catalog functions are imported");
+        if matches!(name, "update_option" | "delete_option" | "wp_insert_post") {
+            self.writes(span, "calls a WordPress function that writes");
+        }
         if self.fx().no_db {
             return err_help(
                 span,

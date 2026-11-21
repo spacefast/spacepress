@@ -28,6 +28,7 @@ export const records = table({
 export const echo = query({ access: "editor" }, ({ message }: { message: string }) => { if (message.length < 1) throw new HttpError(422, "invalid_input", "message must be at least 1 character", "/message"); if (message.length > 200) throw new HttpError(422, "invalid_input", "message must be at most 200 characters", "/message"); return ({ message, length: message.length }); });
 
 export const advance = mutation({ access: "editor" }, async ({ id }: { id: number }) => {
+  if (!Number.isInteger(id)) throw new HttpError(422, "invalid_input", "id must be an integer", "/id");
   await db.update(records).set({ state: "processing" }).where({ id });
   return await db.query.records.findFirst({ where: { id } });
 });

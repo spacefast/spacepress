@@ -16,6 +16,7 @@ export const addTask = mutation({ access: "anyone" }, async ({ title }: { title:
 });
 
 export const setDone = mutation({ access: "anyone" }, async ({ id, done }: { id: number; done: boolean }) => {
+  if (!Number.isInteger(id)) throw new HttpError(422, "invalid_input", "id must be an integer", "/id");
   const [task] = await db.update(tasks).set({ done }).where({ id }).returning();
   if (!task) throw new HttpError(404, "not_found", `No task ${id}`);
   return task;

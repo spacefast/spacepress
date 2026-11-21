@@ -1664,24 +1664,27 @@ export const like = mutation({ access: "subscriber", rateLimit: "10/min" },
 ```
 
 The input is the handler's first parameter type. The site validates each call against it before
-the handler runs: `number`, `string`, `boolean` and string literal unions are checked as such, and
-arrays and objects of those as JSON. An optional property (`limit?: number`) may be left out, and
-the destructuring default applies; `T | null` accepts null. A function, `Date`, `bigint`, `Map`
-or class instance can't be an input (JSON can't carry it) and fails the build at the parameter.
-A check beyond the type is the handler's: `throw new HttpError(422, "invalid_input", message,
-"/field")` names the field, so a form shows the message beside it.
+the handler runs, at every depth: `number`, `string`, `boolean`, literal unions, and arrays, tuples
+and objects of those (an object takes only the keys its type declares). `unknown` takes any JSON
+value. An optional property (`limit?: number`) may be left out, and the destructuring default
+applies; `T | null` must be sent, as `null` or a `T`. A function, `Date`, `bigint`, `Map`, class
+instance or union of object types can't be an input and fails the build at the parameter. The
+same schema is the Ability's input schema and the OpenAPI request body. A check beyond the type
+(a whole number, a length, a format) is the handler's: `throw new HttpError(422, "invalid_input",
+message, "/field")` names the field, so a form shows the message beside it.
 
-A query may not write. A write in its handler, or in any function it calls (a kind's
+A query may not write. A write in its handler, or in any function or class it uses (a kind's
 `create`/`update`/`delete`, `db.insert`/`update`/`delete`, a global update, `x.enqueue()`,
-`mail.send()`, `once()`), fails the build at that line, with the fix. Its Ability is annotated
-`readonly`, so core runs it over `GET`.
+`mail.send()`, `once()`, `update_option`/`delete_option`/`wp_insert_post`, an ability that isn't
+annotated read-only, a `fetch` that isn't a `GET` or `HEAD`), fails the build at that line, with
+the fix. Its Ability is annotated `readonly`, so core runs it over `GET`, and no form posts to it.
 
 Options:
 
 - `access` (default `"editor"`): a role, `"anyone"`, `"authenticated"`, or a function of `ctx`.
 - `rateLimit: "10/min"`: at most that many calls per second (`s`, `sec`), minute (`m`, `min`),
   hour (`h`) or day (`d`), per user, or per address when signed out; over the limit is
-  `429 rate_limited`. A mutation open to `"anyone"` gets `"30/min"` unless it sets one;
+  `429 rate_limited`. Concurrent calls each count, and a call that fails still counts. A mutation open to `"anyone"` gets `"30/min"` unless it sets one;
   `rateLimit: false` turns that off.
 - `agents: false` keeps it out of MCP and the abilities' public REST
   discovery; it stays callable over the app's own API.
@@ -2193,12 +2196,14 @@ duplicates still waiting. A handler that throws is retried with backoff up to
 is. Each job is handed to Action Scheduler (cron, or `wp action-scheduler run`);
 `wp typedpress jobs list|retry|cancel` manage the queue.
 
-`cron("0 7 * * 1", handler)` (five fields, UTC, or `@daily` and its siblings) and
+`cron("0 7 * * 1", handler)` (five fields in UTC, each checked at build time, or `@daily` and its siblings) and
 `job({ every: "1h" }, handler)` (`s`, `m`, `h`, `d` or `w`, at least a minute) also run on a
 schedule, as Action Scheduler cron and recurring actions (`tp_job_schedule` in Tools > Scheduled
 Actions). Each run queues the job with the key `schedule`, so a run still waiting takes the next
 one's place. A scheduled job takes no input: a handler that requires one fails the build. Each
-deploy schedules the build's schedules once and unschedules the ones the build no longer has.
+deploy schedules the build's schedules once and unschedules the ones the build no longer has; an
+instance stored for a dropped schedule (one that was running during the deploy) is cancelled as it
+is stored, and another app's schedule never runs this app's jobs.
 
 `job({ input, handler })` and `jobs.<name>.enqueue()` are gone: the build refuses them and names
 the new form.

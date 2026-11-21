@@ -106,10 +106,12 @@ export const settings = global({
 
 // Runs after the comment's request commits, on the queue (Action Scheduler on WordPress).
 export const notifyEditors = job({ retries: 3 }, async ({ commentId }: { commentId: number }) => {
+  if (!Number.isInteger(commentId)) throw new HttpError(422, "invalid_input", "commentId must be an integer", "/commentId");
   await db.update(comments).set({ notifiedAt: new Date().toISOString() }).where({ id: commentId });
 });
 
 export const approveComment = mutation({ access: "editor" }, async ({ id }: { id: number }) => {
+  if (!Number.isInteger(id)) throw new HttpError(422, "invalid_input", "id must be an integer", "/id");
   const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
   if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
   return row;

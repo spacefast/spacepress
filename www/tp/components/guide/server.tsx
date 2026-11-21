@@ -5,7 +5,7 @@ export function Server() {
     <>
       <Section id="server" />
       <h3>Queries and mutations</h3>
-      <p><Built /> A query reads, a mutation writes. The input is the handler's own parameter type: the site validates every call against it before the handler runs.</p>
+      <p><Built /> A query reads, a mutation writes. The input is the handler's own parameter type: the site validates every call against it, at every depth, before the handler runs.</p>
       <Code lang="ts">{`import { query, mutation, job, cron, HttpError } from "typedpress";
 
 export const popular = query({ access: "anyone" },

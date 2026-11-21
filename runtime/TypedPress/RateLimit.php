@@ -11,42 +11,50 @@ use function TypedPress\db;
  * signed-in user, or per address when signed out. A call over the limit answers 429 `rate_limited`, and
  * the message says how many seconds are left in the window.
  *
- * Windows are fixed and counted with transients, the store core keeps for short-lived values (the options
- * table, or the persistent object cache when the site has one). The count is taken inside the call's
- * transaction; a call that fails rolls it back, so the count is written again after the rollback: a
- * failed call still counts. Forwarded-for headers are not an identity source: REMOTE_ADDR is what the
- * server saw.
+ * Each (function, caller, window) has one row in `tp__rates`, created or incremented by one upsert. It
+ * holds the row's lock until the call's transaction ends, so concurrent calls count one after the other
+ * and none is lost (no read-then-write). A call that fails rolls its increment back with everything else; it still
+ * counted, so the increment is made again after the rollback (relative, so it never overwrites a count
+ * another call made meanwhile). Rows of windows long past are removed as new ones are written: they are
+ * counters, not data. Forwarded-for headers are not an identity source: REMOTE_ADDR is what the server saw.
  */
 final class RateLimit
 {
+    public static function register(): void
+    {
+        SystemTables::register('__tp_rates', [
+            'CREATE TABLE IF NOT EXISTS `{prefix}tp__rates` (`id` CHAR(64) NOT NULL, `ends` BIGINT NOT NULL, `used` INT NOT NULL, PRIMARY KEY (`id`), KEY `ends` (`ends`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin',
+        ]);
+    }
+
     /** @param array{count: int, window: int} $limit */
     public static function check(string $action, array $limit, ?array $user): void
     {
-        if (!function_exists('get_transient')) {
-            return; // no WordPress (the standalone runtime and its tests): nothing to count in
+        $store = db()->store();
+        if (!$store instanceof Wp\CompositeStore) {
+            return; // the standalone runtime (its tests) has no site to count on
         }
+        $connection = $store->db;
+        $table = '`' . $connection->prefix() . 'tp__rates`';
         $window = max(1, (int) $limit['window']);
         $now = time();
         $bucket = intdiv($now, $window);
+        $ends = ($bucket + 1) * $window;
         $who = $user !== null ? 'u' . $user['id'] : 'a' . ($_SERVER['REMOTE_ADDR'] ?? 'local');
-        $key = 'tp_rate_' . substr(hash('sha256', $action . "\0" . $who . "\0" . $window . "\0" . $bucket), 0, 32);
-        $used = (int) get_transient($key);
-        if ($used >= (int) $limit['count']) {
-            $retry = ($bucket + 1) * $window - $now;
+        $id = hash('sha256', $action . "\0" . $who . "\0" . $window . "\0" . $bucket);
+        // One statement creates or increments the row and takes its lock: concurrent calls queue on it.
+        $count = static function () use ($connection, $table, $id, $ends): int {
+            $connection->run("INSERT INTO $table (`id`, `ends`, `used`) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE `used` = `used` + 1", [$id, $ends]);
+
+            return (int) ($connection->run("SELECT `used` FROM $table WHERE `id` = ?", [$id])[0]['used'] ?? 0);
+        };
+        if ($count() > (int) $limit['count']) {
+            $retry = $ends - $now;
             throw new HttpError(429, 'rate_limited', 'Too many requests. Try again in ' . $retry . ' second' . ($retry === 1 ? '' : 's') . '.');
         }
-        set_transient($key, $used + 1, $window + 1);
-        // Without a persistent object cache the transient is an option row, written in the call's
-        // transaction. After a rollback, the option cache still holds the count the database lost:
-        // forget it, then write the count again.
-        $store = db()->store();
-        if ($store instanceof \TypedPress\Wp\CompositeStore) {
-            $store->db->onRollback(static function () use ($key, $used, $window): void {
-                foreach (["_transient_$key", "_transient_timeout_$key", 'alloptions', 'notoptions'] as $cached) {
-                    wp_cache_delete($cached, 'options');
-                }
-                set_transient($key, $used + 1, $window + 1);
-            });
+        $connection->onRollback(static fn () => $count());
+        if (random_int(0, 99) === 0) {
+            $connection->run("DELETE FROM $table WHERE `ends` < ?", [$now - 86400]);
         }
     }
 }

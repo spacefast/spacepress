@@ -138,6 +138,7 @@ export const settings = global({
 }, { label: "Site settings" });
 
 export const subscribeReader = job({ agents: false }, async ({ email, postId }: { email: string; postId?: number }) => {
+  if (postId !== undefined && !Number.isInteger(postId)) throw new HttpError(422, "invalid_input", "postId must be an integer", "/postId");
   if (email.length > 191) throw new HttpError(422, "invalid_input", "email must be at most 191 characters", "/email");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(422, "invalid_input", "email must be an email address", "/email");
   if (await db.query.subscribers.findFirst({ where: { email } })) return;
@@ -147,11 +148,13 @@ export const subscribeReader = job({ agents: false }, async ({ email, postId }: 
 
 // Runs after the publishing request commits, on the queue (Action Scheduler on WordPress).
 export const notifyReaders = job({ retries: 3 }, async ({ postId }: { postId: number }, ctx) => {
+  if (!Number.isInteger(postId)) throw new HttpError(422, "invalid_input", "postId must be an integer", "/postId");
   const readers = await db.query.subscribers.findMany({ columns: { id: true } });
   await db.insert(announcements).values({ postId, recipients: readers.length, attempt: ctx.attempt });
 });
 
 export const subscribeNewsletter = mutation({ access: "anyone" }, async ({ email, postId }: { email: string; postId?: number }) => {
+  if (postId !== undefined && !Number.isInteger(postId)) throw new HttpError(422, "invalid_input", "postId must be an integer", "/postId");
   if (email.length > 191) throw new HttpError(422, "invalid_input", "email must be at most 191 characters", "/email");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(422, "invalid_input", "email must be an email address", "/email");
   const normalized = email.toLowerCase();
@@ -161,12 +164,14 @@ export const subscribeNewsletter = mutation({ access: "anyone" }, async ({ email
 
 // Editors may remove posts and detach private subscriptions; no subscription data is returned.
 export const removePost = mutation({ access: "editor" }, async ({ id }: { id: number }) => {
+  if (!Number.isInteger(id)) throw new HttpError(422, "invalid_input", "id must be an integer", "/id");
   const [gone] = await db.delete(posts).where({ id }).returning();
   if (!gone) throw new HttpError(404, "not_found", `No post ${id}`);
   return { id: gone.id };
 });
 
 export const moderateComment = mutation({ access: "editor" }, async ({ id, decision }: { id: number; decision: "approve" | "reject" }) => {
+  if (!Number.isInteger(id)) throw new HttpError(422, "invalid_input", "id must be an integer", "/id");
   if (decision === "reject") {
     const [gone] = await db.delete(comments).where({ id }).returning();
     if (!gone) throw new HttpError(404, "not_found", `No comment ${id}`);

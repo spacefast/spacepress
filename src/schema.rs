@@ -216,6 +216,10 @@ pub struct Column {
     pub omit: bool,
     /// An input field typed by the handler's parameter type: the TypeScript type of a `json` field.
     pub inferred: Option<crate::types::Ty>,
+    /// With `inferred`: that type as the JSON Schema the site validates the value against.
+    pub shape: Option<Json>,
+    /// A nullable input field that must still be sent (`name: string | null`, not `name?:`).
+    pub required: bool,
 }
 
 impl Column {
@@ -250,6 +254,8 @@ impl Column {
             was: None,
             omit: false,
             inferred: None,
+            shape: None,
+            required: false,
         }
     }
 
@@ -281,7 +287,7 @@ impl Column {
 
     /// Writers may omit it on insert.
     pub fn optional_on_insert(&self) -> bool {
-        !self.not_null
+        (!self.not_null && !self.required)
             || self.omit
             || self.default.is_some()
             || self.auto_increment

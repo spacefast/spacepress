@@ -124,6 +124,7 @@ async function scheduleOverdue(task: InferSelectModel<typeof tasks>) {
 }
 
 export const dueNext = query({ access: "authenticated" }, async ({ days = 30 }: { days?: number }, ctx) => {
+  if (!Number.isInteger(days)) throw new HttpError(422, "invalid_input", "days must be an integer", "/days");
   if (days < 0) throw new HttpError(422, "invalid_input", "days must be at least 0", "/days");
   if (days > 366) throw new HttpError(422, "invalid_input", "days must be at most 366", "/days");
   if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
@@ -137,6 +138,8 @@ export const dueNext = query({ access: "authenticated" }, async ({ days = 30 }: 
 });
 
 export const markDone = mutation({ access: "authenticated", idempotent: true }, async ({ taskId, notes, costCents }: { taskId: number; notes?: string; costCents?: number }, ctx) => {
+  if (!Number.isInteger(taskId)) throw new HttpError(422, "invalid_input", "taskId must be an integer", "/taskId");
+  if (costCents !== undefined && !Number.isInteger(costCents)) throw new HttpError(422, "invalid_input", "costCents must be an integer", "/costCents");
   if (notes !== undefined && notes.length > 10000) throw new HttpError(422, "invalid_input", "notes must be at most 10000 characters", "/notes");
   if (costCents !== undefined && costCents < 0) throw new HttpError(422, "invalid_input", "costCents must be at least 0", "/costCents");
   if (costCents !== undefined && costCents > 100000000) throw new HttpError(422, "invalid_input", "costCents must be at most 100000000", "/costCents");
@@ -155,6 +158,7 @@ export const markDone = mutation({ access: "authenticated", idempotent: true }, 
 });
 
 export const yearCost = query({ access: "authenticated" }, async ({ year }: { year: number }, ctx) => {
+  if (!Number.isInteger(year)) throw new HttpError(422, "invalid_input", "year must be an integer", "/year");
   if (year < 1900) throw new HttpError(422, "invalid_input", "year must be at least 1900", "/year");
   if (year > 9998) throw new HttpError(422, "invalid_input", "year must be at most 9998", "/year");
   if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
@@ -171,6 +175,8 @@ export const yearCost = query({ access: "authenticated" }, async ({ year }: { ye
 });
 
 export const flagOverdue = job({ retries: 3 }, async ({ taskId, ownerId: userId, dueOn }: { taskId: number; ownerId: number; dueOn: string }) => {
+  if (!Number.isInteger(taskId)) throw new HttpError(422, "invalid_input", "taskId must be an integer", "/taskId");
+  if (!Number.isInteger(userId)) throw new HttpError(422, "invalid_input", "ownerId must be an integer", "/ownerId");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dueOn)) throw new HttpError(422, "invalid_input", "dueOn must be a date (YYYY-MM-DD)", "/dueOn");
   const task = await db.query.tasks.findFirst({ where: { id: taskId, ownerId: userId } });
   if (!task) return;

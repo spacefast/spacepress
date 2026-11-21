@@ -18555,7 +18555,7 @@
       "default": [],
       "properties": {
         "id": {
-          "type": "integer"
+          "type": "number"
         }
       },
       "required": [
@@ -18641,7 +18641,10 @@
       "mcp": {
         "public": true
       },
-      "annotations": [],
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
       "typedpress": {
         "action": "publishedCount",
         "op": "run"
@@ -18658,8 +18661,7 @@
       "default": [],
       "properties": {
         "note": {
-          "type": "string",
-          "maxLength": 200
+          "type": "string"
         }
       },
       "required": [

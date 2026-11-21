@@ -46,15 +46,18 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Require
    });
    ```
 
-2. The input is the handler's first parameter type. TypedPress validates the input against it
-   before the handler runs: `number`, `string`, `boolean`, string literal unions, and arrays and
-   objects of those. An optional property (`limit?: number`) may be left out; give it a default in
-   the destructuring. Checks beyond the type go in the handler: throw
+2. The input is the handler's first parameter type. TypedPress validates the input against it,
+   at every depth, before the handler runs: `number`, `string`, `boolean`, literal unions, and
+   arrays and objects of those; `unknown` takes any JSON. An optional property (`limit?: number`)
+   may be left out; give it a default in the destructuring. `T | null` must be sent. Checks beyond
+   the type (a whole number: `Number.isInteger`, a length, a format) go in the handler: throw
    `new HttpError(422, "invalid_input", message, "/field")` so a form shows the message beside the
    field. The handler's return value is the response.
 
-3. A `query()` may not write: the build refuses a write in it, or in anything it calls, at the
-   line that writes. Its Ability is marked read-only. A `mutation()` runs in one transaction.
+3. A `query()` may not write: the build refuses a write in it, or in anything it calls (a
+   class, a WordPress function that writes, an ability that isn't read-only, a `fetch` that isn't
+   a `GET`), at the line that writes. Its Ability is marked read-only, and no form posts to it. A
+   `mutation()` runs in one transaction.
 
 4. Import kinds from `"typedpress:db"`. In a query or mutation they read and write as the caller, so
    the kind's access rules apply: `list`, `get`, `count`, `paginate`, `create`, `update`, `delete`.

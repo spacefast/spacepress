@@ -1257,13 +1257,50 @@ fn cron_schedule(spec: &str, span: Span) -> Result<String> {
         return Ok(spec.to_string());
     }
     let fields: Vec<&str> = spec.split_whitespace().collect();
-    let names = |f: &str| {
-        f.chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '*' | ',' | '/' | '-' | '?' | 'L' | 'W' | '#'))
+    let bad = || {
+        Diag::new(span, format!("\"{spec}\" isn't a cron schedule"))
+            .help("write five fields, minute hour day month weekday, in UTC: \"0 3 * * *\" runs at 03:00 every day; each is `*`, a number, a range `1-5`, a list `1,15` or a step `*/10`")
     };
-    if fields.len() != 5 || !fields.iter().all(|f| names(f)) {
-        return Err(Diag::new(span, format!("\"{spec}\" isn't a cron schedule"))
-            .help("write five fields, minute hour day month weekday, in UTC: \"0 3 * * *\" runs at 03:00 every day"));
+    if fields.len() != 5 {
+        return Err(bad());
+    }
+    // minute, hour, day of month, month, day of week (0 and 7 are Sunday), with the names Action
+    // Scheduler's cron parser reads.
+    const RANGES: [(u32, u32); 5] = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 7)];
+    const MONTHS: [&str; 12] = [
+        "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+    ];
+    const DAYS: [&str; 7] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+    for (i, field) in fields.iter().enumerate() {
+        let (lo, hi) = RANGES[i];
+        let value = |v: &str| -> Option<u32> {
+            let lower = v.to_ascii_lowercase();
+            let named = match i {
+                3 => MONTHS.iter().position(|m| *m == lower).map(|p| p as u32 + 1),
+                4 => DAYS.iter().position(|d| *d == lower).map(|p| p as u32),
+                _ => None,
+            };
+            named.or_else(|| v.parse().ok()).filter(|n| (lo..=hi).contains(n))
+        };
+        for part in field.split(',') {
+            let (range, step) = match part.split_once('/') {
+                Some((r, s)) => (r, Some(s)),
+                None => (part, None),
+            };
+            if let Some(step) = step
+                && !step.parse::<u32>().is_ok_and(|s| (1..=hi.max(1)).contains(&s))
+            {
+                return Err(bad());
+            }
+            let ok = range == "*"
+                || match range.split_once('-') {
+                    Some((a, b)) => matches!((value(a), value(b)), (Some(a), Some(b)) if a <= b),
+                    None => value(range).is_some(),
+                };
+            if !ok {
+                return Err(bad());
+            }
+        }
     }
     Ok(fields.join(" "))
 }
@@ -2917,6 +2954,8 @@ fn column(
         was: b.was.clone(),
         omit: false,
         inferred: None,
+        shape: None,
+        required: false,
     })
 }
 

@@ -5384,6 +5384,41 @@ fn server_function_mistakes_are_refused_with_the_new_spelling() {
             "0 3 * * *",
         ),
         (
+            "import { cron } from \"typedpress\";\nexport const a = cron(\"99 88 77 66 55\", async () => {});",
+            "\"99 88 77 66 55\" isn't a cron schedule",
+            "a range `1-5`",
+        ),
+        (
+            "import { cron } from \"typedpress\";\nexport const a = cron(\"0 9 * * 7-1\", async () => {});",
+            "isn't a cron schedule",
+            "",
+        ),
+        (
+            "import { query } from \"typedpress\";\nimport { update_option } from \"php/wordpress\";\nexport const a = query({}, async () => { update_option(\"x\", 1); return 1; });",
+            "`a` is a query, so it can't write: this calls a WordPress function that writes",
+            "make it a mutation",
+        ),
+        (
+            "import { query } from \"typedpress\";\nexport const a = query({}, async () => (await fetch(\"https://api.example.com/x\", { method: \"POST\" })).status);",
+            "`a` is a query, so it can't write: this sends a request that isn't a GET",
+            "make it a mutation",
+        ),
+        (
+            "import { query, mutation } from \"typedpress\";\nimport { abilities } from \"php/wordpress\";\nexport const w = mutation({}, async () => 1);\nexport const a = query({}, async () => await abilities.call(\"m/w\", {}));",
+            "`a` is a query, so it can't write: this calls an ability that isn't read-only",
+            "make it a mutation",
+        ),
+        (
+            "import { query, table, text } from \"typedpress\";\nexport const notes = table({ title: text() });\nclass Writer { async run(id: number) { await notes.update(id, { title: \"x\" }); } }\nexport const a = query({}, async ({ id }: { id: number }) => { await new Writer().run(id); return 1; });",
+            "`a` is a query, so it can't write: this updates a row (in a function the query calls)",
+            "make it a mutation",
+        ),
+        (
+            "import { query } from \"typedpress\";\nexport const a = query({}, async (input: { pick: { kind: \"a\"; n: number } | { kind: \"b\"; s: string } }) => 1);",
+            "has no JSON shape the site can check",
+            "`kind` field",
+        ),
+        (
             "import { job } from \"typedpress\";\nexport const a = job({ every: \"1h\" }, async ({ id }: { id: number }) => {});",
             "a job on a schedule runs with no input",
             "make every field optional",
@@ -5462,4 +5497,34 @@ fn the_pantry_example_runs_its_query_mutation_job_and_schedule_on_wordpress() {
         "{stdout}{}",
         String::from_utf8_lossy(&out.stderr)
     );
+}
+
+/// A query, a read, is never a form's action: a page form posting to one fails the build.
+#[test]
+fn a_form_posts_to_a_mutation_not_a_query() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join("tp/app")).unwrap();
+    std::fs::write(
+        tmp.path().join("typedpress.config.ts"),
+        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"f\" });\n",
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("tp/server.ts"),
+        "import { query } from \"typedpress\";\nexport const read = query({ access: \"anyone\" }, async () => 1);\n",
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("tp/app/page.tsx"),
+        "import { read } from \"../server\";\nexport default function Home() {\n  return <form action={read}><button>Go</button></form>;\n}\n",
+    )
+    .unwrap();
+    let out = first().arg("check").arg(tmp.path()).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("`read` is a query, which a form can't post to"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("--> tp/app/page.tsx:3:"), "{stderr}");
 }

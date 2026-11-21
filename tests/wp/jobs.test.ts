@@ -168,6 +168,14 @@ test("an agents: true job is the blog/job-stamp ability: editors enqueue it, AS 
   assert.deepEqual(sql(`SELECT stamped FROM wp_tp_job_notes WHERE id = ${note.id}`), [{ stamped: `${r.json.id}:1` }]);
 });
 
+test("concurrent calls to a rate-limited mutation on MariaDB: exactly the limit is accepted", async () => {
+  // Fourteen calls at once against "10/min", each holding its transaction open: every call counts.
+  const statuses = await Promise.all(
+    Array.from({ length: 14 }, () => http("POST", `${api}/actions/jobsLimited`, { as: "editor", body: { wait: 300 } }).then((r) => r.status)),
+  );
+  assert.deepEqual([statuses.filter((s) => s === 200).length, statuses.filter((s) => s === 429).length], [10, 4], JSON.stringify(statuses));
+});
+
 test("concurrent same-key enqueues on MariaDB agree on one job", async () => {
   const key = `race-${run}`;
   const ids = await contend(`return \\TypedPress\\Jobs\\Jobs::enqueue('stamp', ['noteId' => 0], ['key' => '${key}'])['id'];`, "INSERT IGNORE INTO `wp_tp__jobs`");

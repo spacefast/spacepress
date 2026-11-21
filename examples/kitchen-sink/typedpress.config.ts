@@ -80,6 +80,7 @@ export const settings = global({
 }, { label: "Site settings", access: { read: "anyone", update: "admin" } });
 
 export const recordPage = job({ retries: 3 }, async ({ pageId }: { pageId: number }) => {
+  if (!Number.isInteger(pageId)) throw new HttpError(422, "invalid_input", "pageId must be an integer", "/pageId");
   await db.insert(activity).values({ pageId, message: "Page created" });
 });
 
@@ -89,6 +90,7 @@ export const publishPage = mutation({ access: "editor" }, async ({ title, body }
 });
 
 export const renameMember = mutation({ access: "admin" }, async ({ id, name }: { id: number; name: string }) => {
+  if (!Number.isInteger(id)) throw new HttpError(422, "invalid_input", "id must be an integer", "/id");
   const [member] = await db.update(members).set({ name }).where({ id }).returning();
   if (!member) throw new HttpError(404, "not_found", "Member not found");
   return member;

@@ -48,7 +48,7 @@ pub fn column(c: &Column, output: bool) -> Value {
         ColType::Timestamp => json!({ "type": ["string", "integer"] }),
         ColType::Date if output => json!({ "type": "string", "format": "date" }),
         ColType::Date => json!({ "type": "string" }),
-        ColType::Json => json!({ "type": ANY }),
+        ColType::Json => c.shape.clone().unwrap_or_else(|| json!({ "type": ANY })),
         ColType::Media | ColType::File => media(),
         ColType::MediaList => json!({ "type": "array", "items": media() }),
         // `ref(kind).many()`: target ids; a `with` load puts the rows in their place.

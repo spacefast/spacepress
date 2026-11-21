@@ -8,6 +8,8 @@ import { drives, stockMovements } from "./schema";
 // A fake checkout: no payment is taken. Anyone may buy; a signed-in buyer finds the order again
 // under "My orders".
 export const buy = mutation({ access: "anyone" }, async (input: { drive: number; quantity?: number; buyerName: string; buyerEmail: string }, ctx) => {
+  if (!Number.isInteger(input.drive)) throw new HttpError(422, "invalid_input", "drive must be an integer", "/drive");
+  if (input.quantity !== undefined && !Number.isInteger(input.quantity)) throw new HttpError(422, "invalid_input", "quantity must be an integer", "/quantity");
   if (input.quantity !== undefined && input.quantity < 1) throw new HttpError(422, "invalid_input", "quantity must be at least 1", "/quantity");
   if (input.quantity !== undefined && input.quantity > 5) throw new HttpError(422, "invalid_input", "quantity must be at most 5", "/quantity");
   if (input.buyerName.length < 1) throw new HttpError(422, "invalid_input", "buyerName must be at least 1 character", "/buyerName");
@@ -24,6 +26,8 @@ export const buy = mutation({ access: "anyone" }, async (input: { drive: number;
 
 // Staff only: put drives back on the shelf.
 export const restock = mutation({ access: "editor" }, async ({ drive, quantity, note }: { drive: number; quantity: number; note?: string }) => {
+  if (!Number.isInteger(drive)) throw new HttpError(422, "invalid_input", "drive must be an integer", "/drive");
+  if (!Number.isInteger(quantity)) throw new HttpError(422, "invalid_input", "quantity must be an integer", "/quantity");
   if (quantity < 1) throw new HttpError(422, "invalid_input", "quantity must be at least 1", "/quantity");
   if (quantity > 500) throw new HttpError(422, "invalid_input", "quantity must be at most 500", "/quantity");
   if (note !== undefined && note.length > 200) throw new HttpError(422, "invalid_input", "note must be at most 200 characters", "/note");
@@ -37,6 +41,7 @@ export const restock = mutation({ access: "editor" }, async ({ drive, quantity, 
 
 // Staff only: an order leaves the warehouse.
 export const markShipped = mutation({ access: "editor" }, async ({ order }: { order: number }) => {
+  if (!Number.isInteger(order)) throw new HttpError(422, "invalid_input", "order must be an integer", "/order");
   const row = await orders.get(order);
   if (!row) throw new HttpError(404, "not_found", "No order has that id.");
   if (row.status !== "placed") throw new HttpError(409, "conflict", `Order ${row.code} is already ${row.status}.`);

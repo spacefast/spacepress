@@ -2,6 +2,7 @@ import { boolean, db, email, HttpError, mutation } from "typedpress";
 import { entries } from "./schema";
 
 export const subscribe = mutation({ access: "anyone" }, async ({ email, seats, weekly, note }: { email: string; seats: number; weekly: boolean; note?: string }) => {
+  if (!Number.isInteger(seats)) throw new HttpError(422, "invalid_input", "seats must be an integer", "/seats");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(422, "invalid_input", "email must be an email address", "/email");
   if (seats > 5) throw new HttpError(422, "too_many", "Five seats at most");
   return { email, seats, weekly, note: note ?? null };
@@ -26,6 +27,7 @@ export const sign = mutation({ access: "anyone" }, async ({ name }: { name: stri
 
 // Removes the entry the page at /entries/:id shows: the page the form comes back to is a 404 now.
 export const remove = mutation({ access: "anyone" }, async ({ id }: { id: number }) => {
+  if (!Number.isInteger(id)) throw new HttpError(422, "invalid_input", "id must be an integer", "/id");
   await db.delete(entries).where({ id });
   return id;
 });

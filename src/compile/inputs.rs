@@ -152,8 +152,26 @@ impl Compiler<'_, '_> {
                         "use string, number, boolean, null, or arrays and objects of those",
                     );
                 }
+                // `unknown` is any JSON value; every other type is checked against its JSON Schema.
+                let shape = if base == Ty::Unknown {
+                    None
+                } else {
+                    let Some(shape) = crate::wordpress::abilities::input_schema(&base) else {
+                        return err_help(
+                            span,
+                            format!(
+                                "input field `{}` is {}, which has no JSON shape the site can check",
+                                field.name,
+                                base.describe()
+                            ),
+                            "use string, number, boolean, null, arrays, objects, a union of scalars, or `unknown` for any JSON; for a union of objects, take one object type with a `kind` field",
+                        );
+                    };
+                    Some(shape)
+                };
                 let mut c = Column::new(&field.name, ColType::Json);
                 c.inferred = Some(base.clone());
+                c.shape = shape;
                 c
             }
         };
@@ -162,6 +180,8 @@ impl Compiler<'_, '_> {
         // default applies.
         col.not_null = !nullable;
         col.omit = field.optional;
+        // `name: string | null` must be sent, as null or a string; only `name?:` may be left out.
+        col.required = nullable && !field.optional;
         Ok(col)
     }
 }

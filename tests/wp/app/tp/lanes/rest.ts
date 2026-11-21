@@ -269,6 +269,7 @@ export const jotWrite = mutation({ access: "anyone" }, async ({ tag, step }: { t
 });
 
 export const vaultPeek = query({ access: "anyone" }, async ({ title, system }: { title: string; system?: number }) => {
+  if (system !== undefined && !Number.isInteger(system)) throw new HttpError(422, "invalid_input", "system must be an integer", "/system");
   if (system !== 1) return (await vaultKind.get({ title }))?.title ?? null;
   const trusted = await vaultKind.system.get({ title });
   return { system: trusted === null ? null : trusted.title, count: await vaultKind.system.count({ where: { title } }) };

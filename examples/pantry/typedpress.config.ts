@@ -58,10 +58,13 @@ async function restock(itemId: number, name: string, quantity: number, lowStockA
 
 // A real pantry would push a notification here; this one stamps the list entry.
 export const notifyLowStock = job({ retries: 2 }, async ({ itemId }: { itemId: number }) => {
+  if (!Number.isInteger(itemId)) throw new HttpError(422, "invalid_input", "itemId must be an integer", "/itemId");
   await db.update(shoppingList).set({ notifiedAt: new Date().toISOString() }).where({ itemId });
 });
 
 export const consume = mutation({}, async ({ itemId, amount = 1 }: { itemId: number; amount?: number }) => {
+  if (!Number.isInteger(itemId)) throw new HttpError(422, "invalid_input", "itemId must be an integer", "/itemId");
+  if (!Number.isInteger(amount)) throw new HttpError(422, "invalid_input", "amount must be an integer", "/amount");
   const item = await db.query.items.findFirst({ where: { id: itemId } });
   if (!item) throw new HttpError(404, "not_found", `No item ${itemId}`);
   const [updated] = await db
@@ -74,6 +77,7 @@ export const consume = mutation({}, async ({ itemId, amount = 1 }: { itemId: num
 });
 
 export const expiringSoon = query({}, async ({ days = 3 }: { days?: number }) => {
+  if (!Number.isInteger(days)) throw new HttpError(422, "invalid_input", "days must be an integer", "/days");
   const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
   const soon = await db.query.items.findMany({
     where: { expiresOn: { lte: cutoff }, quantity: { gt: 0 } },

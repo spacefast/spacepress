@@ -86,15 +86,39 @@ final class ActionSchedulerQueue
             if ($plugin === null || $plugin->unavailable() !== null || $plugin->app() === null) {
                 return; // no app, or storage behind the build: the schedule fires again
             }
+            // Another app's schedule (a site that ran another TypedPress app) never runs this one's job.
+            if (self::$group !== self::group($plugin)) {
+                return;
+            }
             if ((self::wanted($plugin)[$job] ?? null) !== $schedule) {
-                // The build no longer has this schedule; the next install would remove it too.
-                as_unschedule_all_actions(self::SCHEDULE, [$job, $schedule], self::group($plugin));
-
+                // The build no longer has this schedule: its next instance is cancelled as it is stored.
                 return;
             }
             // One run at a time: a run still waiting from the last firing takes this one's place.
             \TypedPress\Jobs\Jobs::enqueue($job, [], ['key' => 'schedule']);
         }, 10, 2);
+        // Action Scheduler stores a recurring action's next instance after the current one runs, also
+        // when the build changed while it ran. An instance of this app's schedules that the build doesn't
+        // have, or a second pending one of a schedule it has, is cancelled as soon as it is stored.
+        add_action('action_scheduler_stored_action', static function (int $actionId): void {
+            $plugin = Runtime::plugin();
+            if ($plugin === null || !\ActionScheduler::is_initialized()) {
+                return;
+            }
+            $action = \ActionScheduler::store()->fetch_action($actionId);
+            if ($action->get_hook() !== self::SCHEDULE || $action->get_group() !== self::group($plugin)) {
+                return;
+            }
+            $args = array_values($action->get_args());
+            $job = (string) ($args[0] ?? '');
+            $schedule = (string) ($args[1] ?? '');
+            $pending = as_get_scheduled_actions(['hook' => self::SCHEDULE, 'args' => $args, 'group' => self::group($plugin),
+                'status' => \ActionScheduler_Store::STATUS_PENDING, 'per_page' => 2, 'orderby' => 'none'], 'ids');
+            $duplicate = array_filter($pending, static fn ($id): bool => (int) $id !== $actionId) !== [];
+            if ((self::wanted($plugin)[$job] ?? null) !== $schedule || $duplicate) {
+                \ActionScheduler::store()->cancel_action($actionId);
+            }
+        });
         add_action(self::MAINTAIN, static function (): void {
             // Maintenance mutates jobs and receipts: skip it while storage is behind; it recurs.
             $plugin = Runtime::plugin();

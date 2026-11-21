@@ -3,6 +3,8 @@ import { feedings, stock, shoppingList } from "./tp/lib/schema";
 import { DAY_MS, WINDOW_DAYS, ownerId, ownFood, ownPet, projection, queueStockCheck, usableStock } from "./tp/lib/pantry";
 
 export const feed = mutation({ access: "subscriber", idempotent: true }, async (input: { petId: number; foodId: number; grams: number; fedAt?: string }, ctx) => {
+  if (!Number.isInteger(input.petId)) throw new HttpError(422, "invalid_input", "petId must be an integer", "/petId");
+  if (!Number.isInteger(input.foodId)) throw new HttpError(422, "invalid_input", "foodId must be an integer", "/foodId");
   if (input.grams < 0.01) throw new HttpError(422, "invalid_input", "grams must be at least 0.01", "/grams");
   const owner = ownerId(ctx);
   await ownPet(input.petId, owner);
@@ -34,9 +36,10 @@ export const feed = mutation({ access: "subscriber", idempotent: true }, async (
   return { feeding, grams: input.grams };
 });
 
-export const runsOutOn = query({ access: "subscriber" }, async (input: { foodId: number }, ctx) => { return await projection(input.foodId, ownerId(ctx)); });
+export const runsOutOn = query({ access: "subscriber" }, async (input: { foodId: number }, ctx) => { if (!Number.isInteger(input.foodId)) throw new HttpError(422, "invalid_input", "foodId must be an integer", "/foodId"); return await projection(input.foodId, ownerId(ctx)); });
 
 export const costPerMonth = query({ access: "subscriber" }, async (input: { petId: number }, ctx) => {
+  if (!Number.isInteger(input.petId)) throw new HttpError(422, "invalid_input", "petId must be an integer", "/petId");
   const owner = ownerId(ctx);
   await ownPet(input.petId, owner);
   const now = Date.now();

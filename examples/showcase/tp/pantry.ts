@@ -138,7 +138,7 @@ async function changeStock(itemId: number, amount: number, consuming: boolean) {
 }
 
 export const consume = mutation({ access: "editor" }, async ({ itemId, amount = 1 }: { itemId: number; amount?: number }) =>
-  { if (itemId < 1) throw new HttpError(422, "invalid_input", "itemId must be at least 1", "/itemId"); if (amount < 1) throw new HttpError(422, "invalid_input", "amount must be at least 1", "/amount"); return await changeStock(itemId, amount, true); });
+  { if (!Number.isInteger(itemId)) throw new HttpError(422, "invalid_input", "itemId must be an integer", "/itemId"); if (!Number.isInteger(amount)) throw new HttpError(422, "invalid_input", "amount must be an integer", "/amount"); if (itemId < 1) throw new HttpError(422, "invalid_input", "itemId must be at least 1", "/itemId"); if (amount < 1) throw new HttpError(422, "invalid_input", "amount must be at least 1", "/amount"); return await changeStock(itemId, amount, true); });
 
 export const restock = mutation({ access: "editor" }, async ({ itemId, amount }: { itemId: number; amount: number }) =>
-  { if (itemId < 1) throw new HttpError(422, "invalid_input", "itemId must be at least 1", "/itemId"); if (amount < 1) throw new HttpError(422, "invalid_input", "amount must be at least 1", "/amount"); return await changeStock(itemId, amount, false); });
+  { if (!Number.isInteger(itemId)) throw new HttpError(422, "invalid_input", "itemId must be an integer", "/itemId"); if (!Number.isInteger(amount)) throw new HttpError(422, "invalid_input", "amount must be an integer", "/amount"); if (itemId < 1) throw new HttpError(422, "invalid_input", "itemId must be at least 1", "/itemId"); if (amount < 1) throw new HttpError(422, "invalid_input", "amount must be at least 1", "/amount"); return await changeStock(itemId, amount, false); });

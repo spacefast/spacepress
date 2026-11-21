@@ -74,10 +74,21 @@ impl Compiler<'_, '_> {
     /// it names one.
     pub(super) fn action_named(&mut self, e: &Expr) -> Result<Option<String>> {
         let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
-        Ok(match self.resolve(n, e.span)? {
+        let name = match self.resolve(n, e.span)? {
             Resolved::Value(Value::Action(a), _) => self.action_values.get(&(Rc::as_ptr(&a) as usize)).cloned(),
             _ => None,
-        })
+        };
+        // A form posts a write: a query reads, so it is no form's action.
+        if let Some(name) = &name
+            && self.schema.actions[name].query
+        {
+            return err_help(
+                e.span,
+                format!("`{name}` is a query, which a form can't post to"),
+                format!("a form runs a mutation: make it `export const {name} = mutation({{ ... }}, ...)`"),
+            );
+        }
+        Ok(name)
     }
 
     /// `useFormState(subscribe)`: what the last submit of that action's form left for

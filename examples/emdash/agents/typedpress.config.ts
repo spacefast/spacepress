@@ -32,6 +32,7 @@ export const privateSettings = global({
 export const echo = query({ access: "subscriber" }, ({ message }: { message: string }) => { if (message.length < 1) throw new HttpError(422, "invalid_input", "message must be at least 1 character", "/message"); if (message.length > 200) throw new HttpError(422, "invalid_input", "message must be at most 200 characters", "/message"); return ({ message, length: message.length }); });
 
 export const publishArticle = mutation({ access: "editor" }, async ({ id }: { id: number }) => {
+  if (!Number.isInteger(id)) throw new HttpError(422, "invalid_input", "id must be an integer", "/id");
   const [article] = await db.update(articles).set({ status: "published" }).where({ id }).returning();
   if (!article) throw new HttpError(404, "not_found", "Article not found");
   return article;
@@ -40,6 +41,7 @@ export const publishArticle = mutation({ access: "editor" }, async ({ id }: { id
 export const operatorNote = query({ agents: false, access: "admin" }, ({ note }: { note: string }) => ({ note }));
 
 export const review = job({ agents: true }, async ({ articleId }: { articleId: number }) => {
+  if (!Number.isInteger(articleId)) throw new HttpError(422, "invalid_input", "articleId must be an integer", "/articleId");
   await db.update(articles).set({ reviewed: true }).where({ id: articleId });
 });
 

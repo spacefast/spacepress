@@ -34,3 +34,8 @@ export const hourly = job({ every: "1h" }, async () => {
 export const nightly = cron("0 3 * * *", async () => {
   await ticks.system.create({ by: "cron" });
 });
+
+// Structured input: the site checks it against the parameter type, not only the scalars.
+export const tag = mutation({ access: "anyone", rateLimit: false },
+  async ({ who, tags, note }: { who: { name: string; age?: number }; tags: string[]; note: string | null }) =>
+    `${who.name}:${tags.join(",")}:${note ?? "none"}`);

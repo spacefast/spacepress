@@ -104,6 +104,7 @@ async function scheduleReminder(row: Subscription) {
 }
 
 export const remindRenewal = job({ retries: 2 }, async ({ subscriptionId, renewal }: { subscriptionId: number; renewal: string }) => {
+  if (!Number.isInteger(subscriptionId)) throw new HttpError(422, "invalid_input", "subscriptionId must be an integer", "/subscriptionId");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(renewal)) throw new HttpError(422, "invalid_input", "renewal must be a date (YYYY-MM-DD)", "/renewal");
   const row = await db.query.subscriptions.findFirst({ where: { id: subscriptionId, nextRenewal: renewal, status: "active" } });
   if (!row || row.remindedAt !== null) return;
@@ -133,6 +134,7 @@ export const monthlyBurn = query({ access: "authenticated" }, async (_input: {},
 });
 
 export const renewingSoon = query({ access: "authenticated" }, async ({ days = 7 }: { days?: number }, ctx) => {
+  if (!Number.isInteger(days)) throw new HttpError(422, "invalid_input", "days must be an integer", "/days");
   if (days < 0) throw new HttpError(422, "invalid_input", "days must be at least 0", "/days");
   if (days > 366) throw new HttpError(422, "invalid_input", "days must be at most 366", "/days");
   const user = ctx.user;
@@ -146,6 +148,7 @@ export const renewingSoon = query({ access: "authenticated" }, async ({ days = 7
 });
 
 export const logCharge = mutation({ access: "authenticated", idempotent: true }, async ({ subscriptionId }: { subscriptionId: number }, ctx) => {
+  if (!Number.isInteger(subscriptionId)) throw new HttpError(422, "invalid_input", "subscriptionId must be an integer", "/subscriptionId");
   const user = ctx.user;
   if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");
   const row = await db.query.subscriptions.findFirst({ where: { id: subscriptionId, ownerId: user.id } });
@@ -159,6 +162,7 @@ export const logCharge = mutation({ access: "authenticated", idempotent: true },
 });
 
 export const cancel = mutation({ access: "authenticated" }, async ({ subscriptionId }: { subscriptionId: number }, ctx) => {
+  if (!Number.isInteger(subscriptionId)) throw new HttpError(422, "invalid_input", "subscriptionId must be an integer", "/subscriptionId");
   const user = ctx.user;
   if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");
   const row = await db.query.subscriptions.findFirst({ where: { id: subscriptionId, ownerId: user.id } });

@@ -41,6 +41,8 @@ pub struct Locked {
     pub name: String,
     pub input: Value,
     pub output: Value,
+    /// The ability's `readonly` annotation when it was pulled.
+    pub readonly: bool,
 }
 
 /// Every ability a call can name: the app's own and the lock's. Own abilities win a name clash: the
@@ -48,6 +50,8 @@ pub struct Locked {
 #[derive(Debug, Default, Clone)]
 pub struct Catalog {
     pub abilities: BTreeMap<String, (Ty, Ty)>,
+    /// The abilities annotated read-only: the only ones a `query()` may call.
+    pub readonly: std::collections::BTreeSet<String>,
 }
 
 impl Catalog {
@@ -62,8 +66,11 @@ impl Catalog {
                 ),
             );
         }
+        let mut readonly: std::collections::BTreeSet<String> =
+            locked.iter().filter(|a| a.readonly).map(|a| a.name.clone()).collect();
+        readonly.extend(own_readonly(schema));
         abilities.extend(own(schema));
-        Catalog { abilities }
+        Catalog { abilities, readonly }
     }
 }
 
@@ -91,6 +98,7 @@ pub fn parse_lock(text: &str) -> Result<Vec<Locked>, String> {
                 name: name.to_string(),
                 input: a["input_schema"].clone(),
                 output: a["output_schema"].clone(),
+                readonly: a["readonly"] == Value::Bool(true),
             })
         })
         .collect()
@@ -189,11 +197,23 @@ pub fn schema_ty(s: &Value, warnings: &mut Vec<String>, at: &str) -> Ty {
 /// (`unknown`, functions, unions of objects): the Ability then publishes no output schema, so core
 /// never refuses a result the type system allowed. Every node keeps the `type` core's validator needs.
 pub fn ty_schema(t: &Ty) -> Option<Value> {
+    schema_of(t, false)
+}
+
+/// A handler's input type as the JSON Schema the site checks a call against: like [`ty_schema`],
+/// except that a `number` is a number (an input is what JSON sends, never NaN).
+pub fn input_schema(t: &Ty) -> Option<Value> {
+    schema_of(t, true)
+}
+
+fn schema_of(t: &Ty, input: bool) -> Option<Value> {
     use serde_json::json;
     const MAX_SAFE: f64 = 9_007_199_254_740_992.0; // 2^53
+    let ty_schema = |t: &Ty| schema_of(t, input);
     let t = types::json_wire_type(t);
     Some(match &t {
         Ty::Instance(_, fields) => return ty_schema(fields),
+        Ty::Num | Ty::FreshNumLit(_) if input => json!({ "type": "number" }),
         // A computed number may be NaN or ±Infinity, which the wire encodes as null.
         Ty::Num | Ty::FreshNumLit(_) => json!({ "type": ["number", "null"] }),
         // An integer literal is an `integer` only where the cast is exact (|n| <= 2^53); beyond that
@@ -321,6 +341,38 @@ fn pointer(at: &str) -> String {
 
 fn escape(key: &str) -> String {
     key.replace('~', "~0").replace('/', "~1")
+}
+
+/// The app's own abilities that only read, as `Register` annotates them `readonly`: kind and media
+/// reads, revisions, staged reads, sync reads, global reads, and every `query()`.
+fn own_readonly(schema: &Schema) -> Vec<String> {
+    const READS: &[&str] = &[
+        "-list",
+        "-get",
+        "-revisions",
+        "-staged-get",
+        "-staged-compare",
+        "-sync-read",
+    ];
+    let actions: std::collections::BTreeSet<String> = schema
+        .actions
+        .values()
+        .map(|a| format!("{}/{}", kebab(&schema.name), kebab(&a.name)))
+        .collect();
+    own(schema)
+        .into_iter()
+        .map(|(name, _)| name)
+        .filter(|name| {
+            if actions.contains(name) {
+                schema
+                    .actions
+                    .values()
+                    .any(|a| a.readonly && *name == format!("{}/{}", kebab(&schema.name), kebab(&a.name)))
+            } else {
+                READS.iter().any(|r| name.ends_with(r))
+            }
+        })
+        .collect()
 }
 
 /// The app's own abilities, typed from the schema: one entry per operation
@@ -532,7 +584,7 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
 /// `Schema::isRequired`: a NOT NULL column without a default or auto-increment, that a typed input
 /// doesn't mark optional.
 fn required(col: &crate::schema::Column) -> bool {
-    col.not_null && col.default.is_none() && !col.auto_increment && !col.omit
+    (col.not_null || col.required) && col.default.is_none() && !col.auto_increment && !col.omit
 }
 
 /// An action's or job's input as `JsonSchema::input` publishes it: every field, required ones as

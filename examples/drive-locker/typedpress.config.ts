@@ -149,11 +149,16 @@ async function checkUsage(driveId: number, owner: number, usedGb: number, except
 }
 
 export const stampReplacement = job({ retries: 2 }, async ({ driveId, ownerId, flaggedAt }: { driveId: number; ownerId: number; flaggedAt: string }) => {
+  if (!Number.isInteger(driveId)) throw new HttpError(422, "invalid_input", "driveId must be an integer", "/driveId");
+  if (!Number.isInteger(ownerId)) throw new HttpError(422, "invalid_input", "ownerId must be an integer", "/ownerId");
   await db.update(drives).set({ replacementNeededAt: flaggedAt })
     .where({ id: driveId, ownerId, replacementNeededAt: { isNull: true } });
 });
 
 export const logHealth = mutation({ access: "authenticated" }, async (input: { driveId: number; readOn: string; powerOnHours: number; wearPercent: number; reallocatedSectors: number; tempC: number }, ctx) => {
+  if (!Number.isInteger(input.driveId)) throw new HttpError(422, "invalid_input", "driveId must be an integer", "/driveId");
+  if (!Number.isInteger(input.powerOnHours)) throw new HttpError(422, "invalid_input", "powerOnHours must be an integer", "/powerOnHours");
+  if (!Number.isInteger(input.reallocatedSectors)) throw new HttpError(422, "invalid_input", "reallocatedSectors must be an integer", "/reallocatedSectors");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.readOn)) throw new HttpError(422, "invalid_input", "readOn must be a date (YYYY-MM-DD)", "/readOn");
   if (input.powerOnHours < 0) throw new HttpError(422, "invalid_input", "powerOnHours must be at least 0", "/powerOnHours");
   if (input.wearPercent < 0) throw new HttpError(422, "invalid_input", "wearPercent must be at least 0", "/wearPercent");
@@ -222,6 +227,7 @@ export const capacityReport = query({ access: "authenticated" }, async (_input: 
 });
 
 export const warrantyExpiring = query({ access: "authenticated" }, async ({ days = 30 }: { days?: number }, ctx) => {
+  if (!Number.isInteger(days)) throw new HttpError(422, "invalid_input", "days must be an integer", "/days");
   if (days < 0) throw new HttpError(422, "invalid_input", "days must be at least 0", "/days");
   if (days > 3650) throw new HttpError(422, "invalid_input", "days must be at most 3650", "/days");
   const today = new Date().toISOString().slice(0, 10);
@@ -233,6 +239,7 @@ export const warrantyExpiring = query({ access: "authenticated" }, async ({ days
 });
 
 export const retire = mutation({ access: "authenticated" }, async ({ driveId }: { driveId: number }, ctx) => {
+  if (!Number.isInteger(driveId)) throw new HttpError(422, "invalid_input", "driveId must be an integer", "/driveId");
   const ownerId = actor(ctx.user?.id);
   await requireDrive(driveId, ownerId);
   const [drive] = await db.update(drives).set({ status: "retired" }).where({ id: driveId, ownerId }).returning();

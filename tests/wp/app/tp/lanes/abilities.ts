@@ -17,7 +17,8 @@ export const refsPurge = mutation({ access: "editor", destructive: true, idempot
 });
 
 /** Computed numbers that can't be finite (NaN, Infinity, 2^70): null on the wire; 1e20 literal kept. */
-export const refsRatio = query({ access: "anyone" }, ({ n }: { n: number }): => { ratio: number; big: 1e20; huge: number } {
+export const refsRatio = query({ access: "anyone" }, ({ n }: { n: number }): { ratio: number; big: 1e20; huge: number } => {
+  if (!Number.isInteger(n)) throw new HttpError(422, "invalid_input", "n must be an integer", "/n");
   return { ratio: n / n, big: 1e20, huge: 2 ** (n * 70) };
 });
 

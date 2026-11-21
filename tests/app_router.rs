@@ -1615,6 +1615,9 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     assert_eq!(seen["bare about"], json!([301, false]));
     // A render that began before forget() leaves no file behind.
     assert_eq!(seen["forget race"], json!([false, false]));
+    // A prebuilt address longer than the read index holds can't be recorded, so no write would
+    // rebuild its file: neither the page nor its twin is written, and it renders per request.
+    assert_eq!(seen["long address"], json!([false, false, 200, false, 200, false]));
     assert_eq!(
         seen["public script updated"],
         json!([true, true, true, 200, false, true])
@@ -3470,6 +3473,13 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         seen["missing"],
         serde_json::json!({ "status": 404, "cache": private, "edge": "no-cache", "batcache": "cancel" })
     );
+    // `//notes/other/` renders the note (the router reads the path as WordPress does) but no purge
+    // names that URL: private, and filed under no other page (`/other/` on the host `notes`).
+    assert_eq!(
+        seen["double slash"],
+        serde_json::json!({ "status": 200, "cache": private, "edge": "no-cache", "batcache": "cancel" })
+    );
+    assert_eq!(seen["double slash index"], serde_json::json!([]));
     // TypedPress's API and Identity's answer for whoever asks: Batcache never keeps them, signed in
     // by an application password or not, nor Identity's own API, which finds its session from its
     // cookie without WordPress setting the user.

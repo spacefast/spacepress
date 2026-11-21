@@ -175,9 +175,16 @@ foreach ([
     ['/notes/?q=' . str_repeat('a', 600), ['q'], false],
     ['/notes/?q=' . str_repeat('a', 200), ['q'], false],
     ['/' . str_repeat('a', 200) . '/', [], false],
+    // The router serves `//products/mug/` as the page `/products/mug/` (AppRouter::requestPath), but
+    // a cache keeps it as a URL of its own that no purge names: never shared.
+    ['//products/mug/', [], false], ['//notes/?page=2', ['page'], false], ['notes/', [], false],
 ] as [$uri, $declared, $want]) {
     eq("shareable: $uri", \TypedPress\Render\Cache::shareable($uri, $declared), $want);
 }
+eq('a `//` URI records nothing, under neither page', [
+    \TypedPress\Render\Cache::record('//products/mug/', ['posts' => ['ids' => [1], 'listed' => false]]),
+    $log('/mug/'), $log('/products/mug/'),
+], [false, [], []]);
 eq('an undeclared parameter records nothing', [\TypedPress\Render\Cache::record('/x/?junk=1', ['posts' => ['ids' => [1], 'listed' => false]]), $log('/x/?junk=1')], [false, []]);
 // A search page can render without reading any data. Its query variants still count.
 $limit = \TypedPress\Render\Cache::MAX_VARIANTS;
@@ -186,4 +193,22 @@ for ($i = 0; $i <= $limit; $i++) {
     $admitted += (int) \TypedPress\Render\Cache::record("/empty/?q=$i", [], [], ['q']);
 }
 eq('even empty reads admit at most MAX_VARIANTS query URLs', $admitted, $limit);
+// The variants' named lock fails outright (here: its SQLite lock file can't be opened, as GET_LOCK
+// answering NULL would on MySQL): the page has rendered, so it is answered privately, not as a 500.
+$store = \TypedPress\db()->store();
+$bucket = crc32('/locked/') % 16;
+$lock = 'tp:page-variants:' . substr(hash('sha256', DB_NAME . ':' . $store->db->prefix() . ':' . $bucket), 0, 40);
+$lockFile = DB_PATH . '.' . substr(hash('sha256', $lock), 0, 16) . '.lock';
+@unlink($lockFile);
+mkdir($lockFile); // a directory where the lock file goes: fopen() fails
+set_error_handler(static fn (): bool => true);
+try {
+    $recorded = \TypedPress\Render\Cache::record('/locked/?q=1', ['posts' => ['ids' => [1], 'listed' => false]], [], ['q']);
+} catch (\Throwable $e) {
+    $recorded = get_class($e) . ': ' . $e->getMessage();
+} finally {
+    restore_error_handler();
+    rmdir($lockFile);
+}
+eq('a failed variants lock records nothing and throws nothing', [$recorded, $log('/locked/?q=1')], [false, []]);
 finish('page_reads');

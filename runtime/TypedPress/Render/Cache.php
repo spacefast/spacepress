@@ -145,6 +145,12 @@ final class Cache
      */
     public static function shareable(string $uri, array $declared): bool
     {
+        // A cache keeps the URI as sent, and a purge names the path the router served: `//shop/a/`
+        // is the page `/shop/a/` to the router (AppRouter::requestPath) but another URL to a cache,
+        // so no purge would reach that copy. Only a URI that starts with its own path is shared.
+        if (!str_starts_with($uri, '/') || str_starts_with($uri, '//')) {
+            return false;
+        }
         $query = (string) (wp_parse_url($uri, PHP_URL_QUERY) ?? '');
         if ($query === '') {
             // `/about/?` is another URL to a cache, and the index records it as `/about/`.
@@ -196,6 +202,11 @@ final class Cache
         try {
             return $store->db->locked($lock, 0, static fn (): bool => self::recordUrl($url, $reads, $also, true));
         } catch (LockBusy) {
+            return false;
+        } catch (\RuntimeException $error) {
+            // The lock itself failed (GET_LOCK answered NULL, the SQLite lock file can't be opened or
+            // locked): the page has rendered, so it is answered, privately, rather than as an error.
+            error_log('TypedPress: could not record the reads of ' . $url . ' for page cache purges: ' . $error->getMessage());
             return false;
         }
     }
@@ -360,7 +371,8 @@ final class Cache
     private static function path(string $uri): string
     {
         $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
-        $path = (string) (wp_parse_url($uri, PHP_URL_PATH) ?? '/');
+        // The path the router served (`requestPath`), so a record is never filed under another page.
+        $path = \TypedPress\Wp\AppRouter::requestPath($uri);
         $query = (string) (wp_parse_url($uri, PHP_URL_QUERY) ?? '');
         if ($base !== '' && str_starts_with($path, $base)) {
             $path = substr($path, strlen($base)) ?: '/';

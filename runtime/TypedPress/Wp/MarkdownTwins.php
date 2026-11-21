@@ -321,6 +321,8 @@ final class MarkdownTwins
                 if (function_exists('batcache_cancel')) {
                     batcache_cancel();
                 }
+                // Nor a prebuilt twin file, which no write would know to rebuild.
+                \TypedPress\Render\Prebuilt::unrecorded();
             }
             self::emit($status, $headers, $body);
         }

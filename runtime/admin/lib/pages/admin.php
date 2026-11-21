@@ -77,16 +77,23 @@ wp_add_inline_script(
  * @return array
  */
 function tp_admin_get_boot_context() {
+	$plugin = class_exists( '\\TypedPress\\Wp\\Runtime' ) ? \TypedPress\Wp\Runtime::plugin() : null;
 	return apply_filters(
 		'tp_admin_boot_context',
 		array_merge( tp_admin_get_dashboard_context(), array(
-			'logout_url' => html_entity_decode( wp_logout_url() ),
-			'dashboard_widget_types' => tp_admin_get_dashboard_widgets(),
+			'logout_url'               => html_entity_decode( wp_logout_url() ),
+			'dashboard_widget_types'   => tp_admin_get_dashboard_widgets(),
 			'dashboard_default_layout' => apply_filters( 'tp_admin_dashboard_widgets', array() ),
+			'declarative_widgets'      => function_exists( 'tp_admin_get_declarative_widgets' ) ? tp_admin_get_declarative_widgets() : array(),
+			'dashboards'               => function_exists( 'tp_admin_get_dashboards' ) ? tp_admin_get_dashboards() : array(),
+			'managed'                  => class_exists( '\\TypedPress\\Wp\\Runtime' ) && \TypedPress\Wp\Runtime::managed(),
+			'sealed'                   => $plugin !== null && $plugin->schema->sealed() !== null,
+			'has_store'                => $plugin !== null && $plugin->schema->store() !== null,
+			'identity_active'          => class_exists( '\\TypedPress\\Identity\\Plugin' ),
 			// Where this admin is mounted and where wp-admin is: a WordPress installed below the
 			// origin root (`/blog/`) routes and frames correctly only if the app learns both here.
-			'mount_url'  => tp_admin_url( '/' ),
-			'admin_url'  => admin_url(),
+			'mount_url'                => tp_admin_url( '/' ),
+			'admin_url'                => admin_url(),
 		) )
 	);
 }

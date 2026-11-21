@@ -397,6 +397,30 @@ export interface CommentOptions {
   types?: readonly [];
 }
 
+/** Admin presentation options for a collection or table. */
+export interface KindUi<TCol extends string = string> {
+  /** Icon name (e.g. `"post"`, `"page"`, `"table"`, `"store"`, `"globe"`) or a `dashicons-*` name. */
+  icon?: string;
+  /** Singular label used on create buttons (e.g. `"Doc"` → `"New Doc"`). */
+  singularLabel?: string;
+  /** Short subtitle shown under the collection title in TypedPress Admin. */
+  description?: string;
+  /** Optional sidebar section/group override. */
+  group?: string;
+  /** Default visible columns in the admin table view (excluding the primary title column). */
+  defaultColumns?: readonly TCol[];
+  /** Hide this kind from the default admin sidebar (route remains accessible). */
+  hidden?: boolean;
+}
+
+/** Admin presentation options for a global. */
+export interface GlobalUi {
+  icon?: string;
+  description?: string;
+  group?: string;
+  hidden?: boolean;
+}
+
 /** Options shared by the `collection()` signatures; `T` is the collection being defined. */
 export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Physical resource name, without prefixes. Defaults to the registry key in snake_case.
@@ -417,6 +441,8 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   agents?: boolean;
   /** Shown in wp-admin menus and the typed client docs. */
   label?: string;
+  /** Admin presentation options (icon, singularLabel, description, group, defaultColumns, hidden). */
+  ui?: KindUi<keyof ColumnsOf<T> & string>;
   /**
    * The item URL, one pattern for incoming URLs and outgoing links: `"/blog/:slug"`. It starts with a
    * literal segment. Placeholders are `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required
@@ -585,7 +611,7 @@ type PostFields = ColumnsConfig & { [K in keyof PostColumns | keyof DraftColumns
 type PostKind<TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined> =
   Collection<string, StoredColumns<PostColumns & TCols, TUid, TSync> & DraftColumns>;
 /** Options a `wp.posts` kind takes: comments are on unless `comments: false`. */
-type PostOptions<T extends AnyCollection> = Pick<CollectionOptions<T>, "url" | "comments" | "access" | "label" | "sync" | "uid" | "agents" | "api" | "staged">;
+type PostOptions<T extends AnyCollection> = Pick<CollectionOptions<T>, "url" | "comments" | "access" | "label" | "ui" | "sync" | "uid" | "agents" | "api" | "staged">;
 
 /**
  * WordPress's own kinds. `wp.posts` is WordPress's posts: the block editor, comments, drafts, revisions,
@@ -1262,6 +1288,7 @@ export declare function global<TFields extends FieldsConfig>(
   fields: TFields,
   options?: {
     label?: string;
+    ui?: GlobalUi;
     agents?: boolean;
     access?: { read?: GateRule<never>; update?: GateRule<Partial<SelectShape<TFields>>> };
   },
@@ -1440,7 +1467,7 @@ interface ScreenBase<TActions extends readonly AnyAction[]> {
   /** Where wp-admin lists it (`parent`: a menu slug such as `"tools.php"`); `false` keeps it out of wp-admin. */
   classic?: false | { parent?: string; icon?: string; position?: number };
   /** Where TypedPress Admin's sidebar lists it; `false` keeps it out (its route still works). */
-  menu?: false | { parent?: string; icon?: string };
+  menu?: false | { parent?: string; icon?: string; section?: string };
   /** Item actions, each one a TypedPress action run as its Ability. */
   actions?: { [K in keyof TActions]: ScreenAction<TActions[K]> };
   /** Fixed lines shown above the body. */
@@ -1468,6 +1495,82 @@ export declare function adminScreen<
   const TActions extends readonly AnyAction[] = [],
   TSubmit extends AnyAction = AnyAction,
 >(definition: AdminScreenDefinition<F, TSource, TActions, TSubmit>): AdminScreen;
+
+declare const widgetBrand: unique symbol;
+declare const dashboardBrand: unique symbol;
+
+/** An `adminWidget()` value: registered by its export and placeable on any admin dashboard. */
+export interface AdminWidget { readonly [widgetBrand]: true }
+
+/** An `adminDashboard()` value: registered by its export as a custom dashboard or Home layout. */
+export interface AdminDashboard { readonly [dashboardBrand]: true }
+
+/** Built-in SpacePress / TypedPress dashboard widget types. */
+export type BuiltinWidgetId =
+  | "tp/content-overview"
+  | "tp/recent-activity"
+  | "tp/drafts-queue"
+  | "tp/app-status"
+  | "tp/store-pulse";
+
+export interface WidgetMetric {
+  id?: string;
+  label: string;
+  /** Dot path into the readonly action's response (e.g. `"totals.orders"`). */
+  path: string;
+  format?: "number" | "currency" | "percent" | "text";
+}
+
+export interface WidgetField {
+  label?: string;
+  type?: "text" | "integer" | "number" | "boolean" | "datetime";
+  description?: string;
+}
+
+export type AdminWidgetDefinition<A extends AnyAction = AnyAction> = ScreenAccess & {
+  title: string;
+  description?: string;
+  info?: string;
+  /** A `readonly: true` action that supplies the widget's data. */
+  action: A;
+  input?: ActionInputOf<A>;
+  display?: "metrics" | "list" | "table" | "summary";
+  /** Dot path to the list rows in the action's response (for `list` / `table` widgets). */
+  items?: string;
+  fields?: Record<string, WidgetField>;
+  metrics?: readonly WidgetMetric[];
+  /** Default grid column span (1–4). */
+  width?: 1 | 2 | 3 | 4;
+  /** Default grid row span (1–4). */
+  height?: 1 | 2 | 3 | 4;
+  link?: { label: string; to: string };
+};
+
+/** Declare a reusable dashboard widget backed by a readonly action. */
+export declare function adminWidget<A extends AnyAction>(definition: AdminWidgetDefinition<A>): AdminWidget;
+
+export type DashboardWidgetPlacement =
+  | AdminWidget
+  | BuiltinWidgetId
+  | {
+      widget: AdminWidget | BuiltinWidgetId;
+      width?: 1 | 2 | 3 | 4;
+      height?: 1 | 2 | 3 | 4;
+      fullWidth?: boolean;
+    };
+
+export type AdminDashboardDefinition = ScreenAccess & {
+  title: string;
+  description?: string;
+  /** Set `home: true` to customize the default Home (`/`) dashboard instead of adding a new route. */
+  home?: boolean;
+  /** Where TypedPress Admin's sidebar lists it; `false` hides it from the sidebar. */
+  menu?: false | { icon?: string; section?: string };
+  widgets: readonly [DashboardWidgetPlacement, ...DashboardWidgetPlacement[]];
+};
+
+/** Declare a custom admin dashboard (or override the default Home dashboard with `home: true`). */
+export declare function adminDashboard(definition: AdminDashboardDefinition): AdminDashboard;
 
 declare const pluginBrand: unique symbol;
 /** A plugin package's definition: `export default (options) => definePlugin({ ... })`. */

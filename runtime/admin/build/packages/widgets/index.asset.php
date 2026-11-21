@@ -1,0 +1,1 @@
+<?php return array('name' => '@typedpress-admin/widgets', 'dependencies' => array('react', 'wp-api-fetch', 'wp-components', 'wp-data', 'wp-element', 'wp-primitives'), 'moduleDependencies' => array('@typedpress-admin/admin-toolkit', '@typedpress-admin/boot', '@typedpress-admin/dashboard', '@typedpress-admin/schema'), 'version' => 'ca0dccbba2ec7010ffde');

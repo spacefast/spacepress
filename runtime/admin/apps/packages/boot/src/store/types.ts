@@ -145,6 +145,8 @@ export interface FlatMenuItem {
 	badge?: string | number | null;
 	parent?: string;
 	parent_type?: 'drilldown' | 'dropdown' | 'submenu';
+	section?: string;
+	sectionLabel?: string;
 	callback?: ( event: React.MouseEvent ) => void;
 }
 
@@ -160,6 +162,8 @@ export interface MenuItem {
 	badge?: string | number | null;
 	children?: MenuItem[];
 	parent_type?: 'drilldown' | 'dropdown' | 'submenu';
+	section?: string;
+	sectionLabel?: string;
 	callback?: (
 		event: React.MouseEvent
 	) => void | Promise< void > | Promise< unknown >;
@@ -234,11 +238,64 @@ export interface DashboardNoticeConfig
 }
 
 /**
+ * Declarative admin widget declared via `adminWidget()` in the app schema.
+ */
+export interface DeclarativeWidgetMetric {
+	key: string;
+	label: string;
+	format?: 'number' | 'currency' | 'percent' | 'text';
+}
+
+export interface DeclarativeWidgetField {
+	key: string;
+	label: string;
+	format?: 'text' | 'number' | 'date' | 'badge';
+}
+
+export interface DeclarativeWidgetDefinition {
+	id: string;
+	type: string;
+	title: string;
+	description?: string;
+	info?: string;
+	capability?: string;
+	action: string;
+	ability?: string;
+	input?: Record< string, unknown >;
+	display?: 'metrics' | 'list' | 'table' | 'summary';
+	items?: string;
+	fields?: DeclarativeWidgetField[];
+	metrics?: DeclarativeWidgetMetric[];
+	width?: number;
+	height?: number;
+	link?: { label: string; to: string };
+}
+
+/**
+ * Custom dashboard declared via `adminDashboard()` in the app schema.
+ */
+export interface CustomDashboardDefinition {
+	id: string;
+	title: string;
+	description?: string;
+	capability?: string;
+	home?: boolean;
+	menu?: false | { icon?: string; section?: string };
+	widgets: DashboardWidget< unknown >[];
+}
+
+/**
  * Dashboard context data from plugins via filter.
  */
 export interface DashboardContext {
 	dashboard_widget_types?: RegisteredDashboardWidgetType[];
 	dashboard_default_layout?: DashboardWidget<unknown>[];
+	declarative_widgets?: DeclarativeWidgetDefinition[];
+	dashboards?: CustomDashboardDefinition[];
+	managed?: boolean;
+	sealed?: boolean;
+	has_store?: boolean;
+	identity_active?: boolean;
 	logout_url: string;
 	overrideRoute?: string;
 	partner: { slug: string; dashboard_url: string; dashboard_name: string };

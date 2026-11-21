@@ -1,0 +1,1 @@
+<?php return array('name' => 'identity', 'dependencies' => array('react', 'wp-api-fetch', 'wp-components', 'wp-i18n'), 'moduleDependencies' => array('@typedpress-admin/admin-toolkit'), 'version' => '8f16d51cdccc443bcea9');

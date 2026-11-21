@@ -41,6 +41,8 @@ fn registry(value: &Value) -> Option<&'static str> {
         Value::Action(_) => "actions",
         Value::Job(_) => "jobs",
         Value::Screen(_) => "screens",
+        Value::Widget(_) => "widgets",
+        Value::Dashboard(_) => "dashboards",
         _ => return None,
     })
 }
@@ -54,7 +56,9 @@ fn same(a: &Value, b: &Value) -> bool {
         (Value::FileBucket(a), Value::FileBucket(b)) => Rc::ptr_eq(a, b),
         (Value::Action(a), Value::Action(b))
         | (Value::Job(a), Value::Job(b))
-        | (Value::Screen(a), Value::Screen(b)) => Rc::ptr_eq(a, b),
+        | (Value::Screen(a), Value::Screen(b))
+        | (Value::Widget(a), Value::Widget(b))
+        | (Value::Dashboard(a), Value::Dashboard(b)) => Rc::ptr_eq(a, b),
         _ => false,
     }
 }
@@ -65,7 +69,7 @@ fn span_of(value: &Value) -> Span {
         Value::Store(a) => a.span,
         Value::Global(g) => g.span,
         Value::FileBucket(b) => b.span,
-        Value::Action(a) | Value::Job(a) | Value::Screen(a) => a.span,
+        Value::Action(a) | Value::Job(a) | Value::Screen(a) | Value::Widget(a) | Value::Dashboard(a) => a.span,
         _ => Span::NONE,
     }
 }
@@ -209,6 +213,8 @@ fn noun(value: &Value) -> &'static str {
         Value::FileBucket(_) => "a file bucket",
         Value::Action(_) => "an action",
         Value::Screen(_) => "an admin screen",
+        Value::Widget(_) => "an admin widget",
+        Value::Dashboard(_) => "an admin dashboard",
         _ => "a job",
     }
 }
@@ -222,6 +228,8 @@ fn builder(value: &Value) -> &'static str {
         Value::FileBucket(_) => "files",
         Value::Action(_) => "action",
         Value::Screen(_) => "adminScreen",
+        Value::Widget(_) => "adminWidget",
+        Value::Dashboard(_) => "adminDashboard",
         _ => "job",
     }
 }
@@ -237,8 +245,8 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
             if let Some(d) = removed_key(ev, program, config, key) {
                 return Err(d);
             }
-            // `screens` is the registry exports fill, never a config option.
-            if key == "screens" {
+            // `screens`, `widgets` and `dashboards` are registries exports fill, never config options.
+            if matches!(key.as_str(), "screens" | "widgets" | "dashboards") {
                 let span = ev.key_span(config, key).map_or(
                     Span {
                         file: program.modules[program.entry].file,
@@ -247,8 +255,13 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
                     },
                     |value| crate::diag::key_of(value, key),
                 );
-                return Err(Diag::new(span, "defineConfig() has no option `screens`: a screen registers by its export")
-                    .help("write `export const pendingOrders = adminScreen({ ... })` in typedpress.config.ts or any file under tp/; the export name is its id"));
+                let (noun, example) = match key.as_str() {
+                    "widgets" => ("a widget", "export const salesWidget = adminWidget({ ... })"),
+                    "dashboards" => ("a dashboard", "export const opsDashboard = adminDashboard({ ... })"),
+                    _ => ("a screen", "export const pendingOrders = adminScreen({ ... })"),
+                };
+                return Err(Diag::new(span, format!("defineConfig() has no option `{key}`: {noun} registers by its export"))
+                    .help(format!("write `{example}` in typedpress.config.ts or any file under tp/; the export name is its id")));
             }
         }
     }
@@ -370,6 +383,8 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
             "actions",
             "jobs",
             "screens",
+            "widgets",
+            "dashboards",
         ] {
             let Some(Value::Object(entries)) = cfg.borrow().get(registry).cloned() else {
                 continue;

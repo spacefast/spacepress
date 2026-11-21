@@ -1459,9 +1459,9 @@
       "sha256": "f5e6548625771ef226ae24d367fcde422d3f41bbd76871d437126471993d9ffc",
       "path": "lib/api/menu-items.php",
       "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "7f466f082b3394989e5adedb1817946acf0b4933f3479ea99a294edbaeacc2ad",
+      "adaptedSha256": "ec779ec965893b4d3d05fbf1589c61646673154a12172fa416dcfbb2c3e10d43",
       "normalizedSha256": "7f466f082b3394989e5adedb1817946acf0b4933f3479ea99a294edbaeacc2ad",
-      "retainedSourcePath": "lib/api/menu-items.php"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/lib/api/menu-items.php"
     },
     {
       "source": "lib/api/routes.php",
@@ -1495,7 +1495,7 @@
       "sha256": "5f847d298bf0f63c44038b7865623b3b860d99ee145edd2fa865e975b0016a55",
       "path": "lib/classic-route.php",
       "adaptation": "TypedPress integration: renamed to the classic route (/classic/<slug>); review adapter patch",
-      "adaptedSha256": "e2a8b85f1cc823e1d3f45384475b9907dfe0a860507839c9c2a2cd296c6ccbc0",
+      "adaptedSha256": "40ee16c37dc925162c961d7fd4012d79c0d76383befbb3ea0cc4eff928ae01b4",
       "normalizedSha256": "27d81348a2c9482202a514f3dc2f34080b0bce722575b1a94d7ba49fef110630",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/legacy-route.php"
     },
@@ -1504,7 +1504,7 @@
       "sha256": "8a781c03a3f83c87ffb87ac714e77df6a44ab75b57eca45558b3b838ada2b8dd",
       "path": "lib/load-libs.php",
       "adaptation": "TypedPress registration APIs, screens, build integration and on-demand REST controllers",
-      "adaptedSha256": "017b4a380e2f93fc91ce36faa09e535f57172f098a3c747a0233876dc86fbdd9",
+      "adaptedSha256": "c623e75c2bce02d63155c09d96f924e8a543b70892a7657f484aa0ac1c749aa1",
       "normalizedSha256": "3ad86290c58390db19e9af3b4adf7c2f9c9bfb9c3767d044c9adf6c817a37029",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/load-libs.php"
     },
@@ -1513,7 +1513,7 @@
       "sha256": "65f227f123e66a297df391daeacb4a1eb57110b44be290e3a223fa622bfc2c64",
       "path": "lib/typedpress-admin-menu.php",
       "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "3e976066dc067d6933f69aa90e40b66ae30e74f3a3773244181aa95e3eab623d",
+      "adaptedSha256": "730411df03087a0e569c0a7befd1319c130f1bef65f9b67abddbd4581674f9c7",
       "normalizedSha256": "3eee912c993199ce7c6c3ccd994750a7457e201631a42608a615e720395f6910",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/next-admin-menu.php"
     },
@@ -1522,7 +1522,7 @@
       "sha256": "4ee77e2840097e35aaf3e71552ec27f95995df31fca41766e9fadf05cc155c84",
       "path": "lib/pages/admin.php",
       "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "3613198e22028c7748acd9e899ce90dff569cccb98cd3bc9fb13830a35852876",
+      "adaptedSha256": "d1cbb84c74501fdbd56c6a0e912c42c568bdcc27f1d219d74a3587b484e69bd7",
       "normalizedSha256": "a52a5f84bd89933a49bbfcac90a69d8fee37d8a47c3eb2f23ca073e3aa09c81f",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/pages/admin.php"
     },
@@ -2377,9 +2377,9 @@
       "sha256": "03bcda2a84b9f424a88c790c7e3b94be7a532dd69f2e9752beb7883404948c92",
       "path": "apps/packages/boot/src/components/items/index.tsx",
       "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "5a5862ed0dcda9217676e95444645de03b8954ba09f8116d45b596c7299406b0",
+      "adaptedSha256": "d3d3f9a3f4f5cb712d9ae4b4ad18549f6d6324f709d60dd43a3f4901726875c8",
       "normalizedSha256": "5a5862ed0dcda9217676e95444645de03b8954ba09f8116d45b596c7299406b0",
-      "retainedSourcePath": "apps/packages/boot/src/components/items/index.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/src/components/items/index.tsx"
     },
     {
       "source": "packages/boot/src/components/media-modal/index.tsx",
@@ -2530,7 +2530,7 @@
       "sha256": "6312fb67e37bd5384db4e9e90a4dad155f1b6ca86f0987fbb498f99ba3b507e5",
       "path": "apps/packages/boot/src/components/sidebar/index.tsx",
       "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "d4426e11f44737eadb996a070463cf969cb1ca8c4e3e5cf04a34ed85599b94c4",
+      "adaptedSha256": "632718aaef4e3109750c1feb43e4b5fc3a0d5c9741a7ffade2789433a91bbb0e",
       "normalizedSha256": "3b42760243e84c999e148749eb7e5059772eea8a09f524fdb98d069c62214cc9",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/src/components/sidebar/index.tsx"
     },
@@ -2557,7 +2557,7 @@
       "sha256": "d90fac6f1022a4239bc88351975d2c8b5aaf25832d7ec76b89723f9d1d03e2a3",
       "path": "apps/packages/boot/src/components/sidebar/style.scss",
       "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "1ab1085dbea1c839e3f1257fce9d44efc0157fe51f94d21279a4ece7e86dfced",
+      "adaptedSha256": "7d40e274d6fadb0fed6e458bf3cbba2135adf979571d7d55a66702e2d7da1439",
       "normalizedSha256": "431f23673c79f1c17592fefc12ae09309cfce738753a00179569cbe4e405f115",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/src/components/sidebar/style.scss"
     },
@@ -2728,16 +2728,16 @@
       "sha256": "cda496f2765091a0d5af0599a3edf24b65afc9d14854cb0fde157dad818ddb82",
       "path": "apps/packages/boot/src/icons.ts",
       "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "cda496f2765091a0d5af0599a3edf24b65afc9d14854cb0fde157dad818ddb82",
+      "adaptedSha256": "cd06bbbb91f576ef706d83af33c88d5a5ced466d18d8e3d5805803c6abe6118e",
       "normalizedSha256": "cda496f2765091a0d5af0599a3edf24b65afc9d14854cb0fde157dad818ddb82",
-      "retainedSourcePath": "apps/packages/boot/src/icons.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/src/icons.ts"
     },
     {
       "source": "packages/boot/src/index.tsx",
       "sha256": "1dd28753160ccc539ee69ca17efed8c8c7c42b83f8995cae37ee7ffb3b579255",
       "path": "apps/packages/boot/src/index.tsx",
       "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "7e29c88d86fa0e20398076e9bed8fd481e39c9f217c6d6e9548e1be942df9f4e",
+      "adaptedSha256": "189d0ca2c49617806e267a6c4ca2f90d057c44eec1ab4fa7cd692bc85aa30de7",
       "normalizedSha256": "1dd28753160ccc539ee69ca17efed8c8c7c42b83f8995cae37ee7ffb3b579255",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/src/index.tsx"
     },
@@ -2791,7 +2791,7 @@
       "sha256": "e56b447d1ee3f0013c35fdccf11eb5e2e0af7292e1f6ff0e7b8ea793330ff3bc",
       "path": "apps/packages/boot/src/store/types.ts",
       "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "07161cbfdb6a7c410c4709321f1c5e9ecbe657ea55d63c56236602b805fd8272",
+      "adaptedSha256": "9216c2393aa872a83058d2034f63e2b9170096d393684f7c7aba8f9b05fa9559",
       "normalizedSha256": "026610000af56884d18fad14c5d823d6333a465e071e21fa707cb17877a5c155",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/src/store/types.ts"
     },
@@ -2800,9 +2800,9 @@
       "sha256": "b25eb88a40e5e6522bd5f15b72ac91a2cc473fb318878eb0c87528718ed323a7",
       "path": "apps/packages/boot/src/utils/menu-tree.ts",
       "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "b25eb88a40e5e6522bd5f15b72ac91a2cc473fb318878eb0c87528718ed323a7",
+      "adaptedSha256": "022c421b0fb296013017b61d6171fae7e01256d05116004f4a6c986a0e701bb2",
       "normalizedSha256": "b25eb88a40e5e6522bd5f15b72ac91a2cc473fb318878eb0c87528718ed323a7",
-      "retainedSourcePath": "apps/packages/boot/src/utils/menu-tree.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/src/utils/menu-tree.ts"
     },
     {
       "source": "packages/boot/src/utils/sitemap-context.ts",
@@ -3250,9 +3250,9 @@
       "sha256": "37ad0443e0dac7917222a4477d7e035bcff390c823833134df2ca4de2c9d0539",
       "path": "apps/packages/dashboard/src/components/widget-render/index.tsx",
       "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "37ad0443e0dac7917222a4477d7e035bcff390c823833134df2ca4de2c9d0539",
+      "adaptedSha256": "c28e9c4b9ad3bd2b45340be6733beb4657ef44b0f3a04a5a35f607914b4a59af",
       "normalizedSha256": "37ad0443e0dac7917222a4477d7e035bcff390c823833134df2ca4de2c9d0539",
-      "retainedSourcePath": "apps/packages/dashboard/src/components/widget-render/index.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/dashboard/src/components/widget-render/index.tsx"
     },
     {
       "source": "packages/dashboard/src/global.d.ts",
@@ -3286,9 +3286,9 @@
       "sha256": "a26383197eef204688181c317a641107ddadc50c65fee9b15bbafedd431184c2",
       "path": "apps/packages/dashboard/src/types.ts",
       "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "da4a5bf9e70f5db6bb38fb440d2a6e812036adee977b791e1bf7a9f2b55a0487",
+      "adaptedSha256": "ceb78489032bb86d1dd83ee7a932c8f6938c88f9ca5b10aa7c36d67d22dd770d",
       "normalizedSha256": "da4a5bf9e70f5db6bb38fb440d2a6e812036adee977b791e1bf7a9f2b55a0487",
-      "retainedSourcePath": "apps/packages/dashboard/src/types.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/dashboard/src/types.ts"
     },
     {
       "source": "packages/dashboard/src/utils/factory.ts",
@@ -7381,16 +7381,16 @@
       "sha256": "a9fc5bc9055ebeaafc095108d90b03ad65bc703d51cff156d9542d21b0d07a9b",
       "path": "apps/routes/dashboard/hooks/use-dashboard-layout/use-dashboard-layout.ts",
       "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "74b2a7218b9fc81e830dab3d2493c69e23b7432e703cb2ce2ab3f8f1626b33e8",
+      "adaptedSha256": "b196141efab550b12e01c1a6712cec64873ea930ac6d740d94afa07d57dc46d6",
       "normalizedSha256": "74b2a7218b9fc81e830dab3d2493c69e23b7432e703cb2ce2ab3f8f1626b33e8",
-      "retainedSourcePath": "apps/routes/dashboard/hooks/use-dashboard-layout/use-dashboard-layout.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/dashboard/hooks/use-dashboard-layout/use-dashboard-layout.ts"
     },
     {
       "source": "routes/dashboard/package.json",
       "sha256": "361785c8ecec11c32b3a585c7cabcaa86127a51184b8066af137c7318601cfcf",
       "path": "apps/routes/dashboard/package.json",
       "adaptation": "pinned dependency catalog and TypedPress module/route integration",
-      "adaptedSha256": "39b6ee18daa2bbbef0c0778ce0b649686a505e17512afc7dbdd645afaa249be7",
+      "adaptedSha256": "3e9c00481a87c5703c225d2ae30eb2e47929815f47316322a3fb6930b189720a",
       "normalizedSha256": "8917a2fb7ed2638164ff129496522c4e27915aa0af75fc8e6f8cf761c1f3b9e9",
       "retainedSourcePath": "upstream-metadata/adapter-originals/routes/dashboard/package.json"
     },
@@ -7408,18 +7408,18 @@
       "sha256": "5d167bf9f432e39e441845d559ef50dd9f944fd013be54c975432350de853814",
       "path": "apps/routes/dashboard/stage.tsx",
       "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "3b0e30fe6dd4dd7fc449e5d414b8d3064901a4911815ac669225a8eef741a282",
+      "adaptedSha256": "c04df3043fa3332a12cc543371b92f5d64e71d1c5996b07d168e701ddcce34a8",
       "normalizedSha256": "3b0e30fe6dd4dd7fc449e5d414b8d3064901a4911815ac669225a8eef741a282",
-      "retainedSourcePath": "apps/routes/dashboard/stage.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/dashboard/stage.tsx"
     },
     {
       "source": "routes/dashboard/test/use-dashboard-layout.test.ts",
       "sha256": "c480f92539376ea785d8f0948a4687e48bb695b303c370802f0ed559625adb08",
       "path": "apps/routes/dashboard/test/use-dashboard-layout.test.ts",
       "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "523384839141bca5b38fcdbdc27fb3810caad3ad590b74b4552cef532c48862f",
+      "adaptedSha256": "c67aad98e64181ab6d3b6813132f7e6aed5ec6ce668aa84b3650cbfad95c573e",
       "normalizedSha256": "523384839141bca5b38fcdbdc27fb3810caad3ad590b74b4552cef532c48862f",
-      "retainedSourcePath": "apps/routes/dashboard/test/use-dashboard-layout.test.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/dashboard/test/use-dashboard-layout.test.ts"
     },
     {
       "source": "routes/design-navigation/package.json",
@@ -9685,7 +9685,7 @@
       "sha256": "a743c1ed634d431a400dad4f4c531822075f40280d0ea53fd0750849bba080e3",
       "path": "apps/routes/user-profile/package.json",
       "adaptation": "pinned dependency catalog and TypedPress module/route integration",
-      "adaptedSha256": "787aaeb9d073c9f96013fdf392825e95aee88272c505dc1be5b9d2acf881d51e",
+      "adaptedSha256": "199e695859f7d7263e325fa8323c6d612543ea98ab9d1e109b5f4158af02c477",
       "normalizedSha256": "b5e887be666c6c68db93c1ea7c81c9736fa55c34775c288f8ca2ee403f97d704",
       "retainedSourcePath": "upstream-metadata/adapter-originals/routes/user-profile/package.json"
     },
@@ -9703,18 +9703,18 @@
       "sha256": "abef852de34bdc3c455318f425835dc964a3f63d75972f7be59fde7f4755cd47",
       "path": "apps/routes/user-profile/stage.tsx",
       "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "f4ef887d2f24a1ea8a3e60650ed86ae88bfb20926d0c0f4884aac3e337e43617",
+      "adaptedSha256": "606fc4080116cce21923a0882e3ff60db5c9a6f51b8cc06c6db4aa5dc1f29d1f",
       "normalizedSha256": "f4ef887d2f24a1ea8a3e60650ed86ae88bfb20926d0c0f4884aac3e337e43617",
-      "retainedSourcePath": "apps/routes/user-profile/stage.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/user-profile/stage.tsx"
     },
     {
       "source": "routes/user-profile/style.scss",
       "sha256": "1008ebba85f2d5f4a94b4e0d376d1c9def295bed7def2b06c250a39608cdc6de",
       "path": "apps/routes/user-profile/style.scss",
       "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "1008ebba85f2d5f4a94b4e0d376d1c9def295bed7def2b06c250a39608cdc6de",
+      "adaptedSha256": "f76a358321854db9a9fb00b73004674b6939be35676d5a5133dbbb02f684bb35",
       "normalizedSha256": "1008ebba85f2d5f4a94b4e0d376d1c9def295bed7def2b06c250a39608cdc6de",
-      "retainedSourcePath": "apps/routes/user-profile/style.scss"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/user-profile/style.scss"
     },
     {
       "source": "routes/user-profile/test/stage.test.tsx",

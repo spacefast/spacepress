@@ -4,13 +4,19 @@ export {};
 
 declare module "typedpress/app" {
   interface Routes {
+    "docs/operations/deploy-pressable": { path: `/docs/operations/deploy-pressable`; params: {  } };
+    "docs/operations/deploy-wordpress-com": { path: `/docs/operations/deploy-wordpress-com`; params: {  } };
     "api/examples.json": { path: `/api/examples.json`; params: {  } };
     "blog/[slug]": { path: `/blog/${string}`; params: { slug: string }; item: import("typedpress").RegisteredKinds extends { posts: { $inferSelect: infer R } } ? R : Record<string, unknown> };
     "docs/[...path]": { path: `/docs/${string}`; params: { path: string[] }; item: import("typedpress").RegisteredKinds extends { docs: { $inferSelect: infer R } } ? R : Record<string, unknown> };
     "blog": { path: `/blog`; params: {  } };
+    "changelog": { path: `/changelog`; params: {  } };
     "docs": { path: `/docs`; params: {  } };
     "examples": { path: `/examples`; params: {  } };
+    "guide": { path: `/guide`; params: {  } };
+    "handbook": { path: `/handbook`; params: {  } };
     "play": { path: `/play`; params: {  } };
+    "quick-start": { path: `/quick-start`; params: {  } };
     "/": { path: `/`; params: {  } };
   }
 }

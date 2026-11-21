@@ -28,6 +28,8 @@ pub struct Built {
     pub routes_ts: Option<String>,
     /// Destructive steps in the new migrations.
     pub warnings: Vec<String>,
+    /// Compile-time OXC AST lint warnings (e.g. `capital_P_dangit`), with auto-fix spans.
+    pub lint_warnings: Vec<crate::lint::Warning>,
     /// Declared WordPress plugins outside `wp_plugins/supported.json`; they still install.
     pub unsupported_plugins: Vec<String>,
     pub hints: Vec<String>,
@@ -520,6 +522,7 @@ pub fn build(
         .is_some()
         .then(|| crate::runtime_schema::references(&schema, &program.root));
     let theme_css = crate::theme::tokens(theme.as_ref().unwrap_or(&serde_json::Value::Null));
+    let lint_warnings = crate::lint::check_project(root);
     Ok(Built {
         theme,
         theme_css,
@@ -535,6 +538,7 @@ pub fn build(
         gen_ts,
         routes_ts,
         warnings,
+        lint_warnings,
         hints: ext.hints,
         plugin_lock: settled.lock,
         plugin_changes: settled.changes,

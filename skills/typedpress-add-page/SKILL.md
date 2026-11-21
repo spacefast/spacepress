@@ -89,8 +89,8 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 
 ## Escalation
 
-- Anything `docs/pages.md` does not describe (client-side interactivity, prerendering): search the
+- Anything `www/content/docs/core/pages-and-islands.md` does not describe (client-side interactivity, prerendering): search the
   documentation first, and do not invent an API for it.
 
-Reference: `docs/pages.md` (the folder rules, metadata, guards, links) and `docs/config-api.md`,
-section "HTTP routes".
+Reference: `www/content/docs/core/pages-and-islands.md` (the folder rules, metadata, guards, links) and
+`www/content/docs/core/actions-jobs-routes.md` (HTTP routes).

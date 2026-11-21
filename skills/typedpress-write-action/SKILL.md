@@ -86,5 +86,5 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 - An action that takes money, sends mail to real people or deletes data: confirm the access rule
   and the `destructive` flag with the owner before it ships.
 
-Reference: `docs/config-api.md`, sections "Actions", "Jobs and webhooks", "Querying a kind" and
-"The subset (enforced at build time)".
+Reference: `www/content/docs/core/actions-jobs-routes.md`, `www/content/docs/core/queries-and-access.md`, and
+`www/content/docs/reference/language-support.md`.

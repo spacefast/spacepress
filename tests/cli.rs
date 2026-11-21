@@ -1301,28 +1301,32 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
     let mut mcp = Mcp::initialized(&agent_kit(), &[]);
     let found = mcp.ok(
         "docs_search",
-        serde_json::json!({ "query": "compiler diagnostics envelope", "limit": 5 }),
+        serde_json::json!({ "query": "tested compiler compatibility", "limit": 5 }),
     );
     let results = found["results"].as_array().unwrap();
     assert!(!results.is_empty() && results.len() <= 5, "{found}");
     let hit = results
         .iter()
-        .find(|hit| hit["path"] == "docs/compiler-diagnostics.md")
-        .unwrap_or_else(|| panic!("the diagnostics page among {found}"));
-    assert_eq!(hit["title"], "Compiler diagnostics");
+        .find(|hit| hit["path"] == "www/content/docs/reference/language-support.md")
+        .unwrap_or_else(|| panic!("the compatibility page among {found}"));
+    assert_eq!(hit["title"], "Tested Compiler Compatibility");
     assert!(!hit["snippet"].as_str().unwrap().is_empty());
     // Words no page has: no results, not an error.
     let nothing = mcp.ok("docs_search", serde_json::json!({ "query": "zzqqxxyy" }));
     assert_eq!(nothing["results"], serde_json::json!([]));
 
-    // A page as committed, whole, with its outline.
-    let on_disk = std::fs::read_to_string(root().join("docs/compiler-diagnostics.md")).unwrap();
+    // A short page as committed, whole (without front matter), with its outline.
+    let on_disk = std::fs::read_to_string(root().join("www/content/docs/operations/mcp-and-agents.md")).unwrap();
+    let body = on_disk
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.split_once("\n---\n").map(|(_, b)| b.trim_start()))
+        .unwrap_or(&on_disk);
     let page = mcp.ok(
         "docs_read",
-        serde_json::json!({ "path": "docs/compiler-diagnostics.md" }),
+        serde_json::json!({ "path": "www/content/docs/operations/mcp-and-agents.md" }),
     );
-    assert_eq!(page["title"], "Compiler diagnostics");
-    assert_eq!(page["text"], on_disk);
+    assert_eq!(page["title"], "MCP & AI Agents");
+    assert_eq!(page["text"], body);
     assert!(page.get("truncated").is_none());
     // One section by its heading (in any letter case): that heading first, and only text of the page.
     let section = |mcp: &mut Mcp, path: &str, name: &str, committed: &str| {
@@ -1337,18 +1341,22 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
         assert!(text.len() < committed.len());
     };
     let last = page["sections"].as_array().unwrap().last().unwrap().as_str().unwrap();
-    section(&mut mcp, "docs/compiler-diagnostics.md", last, &on_disk);
+    section(&mut mcp, "www/content/docs/operations/mcp-and-agents.md", last, body);
     // A long page read whole answers with its opening and its outline, to read one section at a time.
     let listed = mcp.result("resources/list", serde_json::json!({}));
     let resources = listed["resources"].as_array().unwrap();
     let long = resources
         .iter()
-        .filter(|page| page["name"].as_str().unwrap().starts_with("docs/"))
+        .filter(|page| page["name"].as_str().unwrap().starts_with("www/content/docs/"))
         .max_by_key(|page| page["size"].as_u64().unwrap())
         .unwrap()["name"]
         .as_str()
         .unwrap();
-    let committed = std::fs::read_to_string(root().join(long)).unwrap();
+    let committed_raw = std::fs::read_to_string(root().join(long)).unwrap();
+    let committed = committed_raw
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.split_once("\n---\n").map(|(_, b)| b.trim_start()))
+        .unwrap_or(&committed_raw);
     let opening = mcp.ok("docs_read", serde_json::json!({ "path": long }));
     assert_eq!(opening["truncated"], true, "{long}");
     let text = opening["text"].as_str().unwrap();
@@ -1362,7 +1370,7 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
         &mut mcp,
         long,
         sections[sections.len() / 2].as_str().unwrap(),
-        &committed,
+        committed,
     );
     // A section as long as a page is capped the same way, with its subsections to read next.
     let title = committed.lines().next().unwrap().trim_start_matches('#').trim();
@@ -1373,65 +1381,60 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
     // A heading of the query outranks a long section that only mentions its words; whole words only.
     let access = mcp.ok(
         "docs_search",
-        serde_json::json!({ "query": "access rules owner", "limit": 3 }),
+        serde_json::json!({ "query": "declarative access rules", "limit": 3 }),
     );
     assert!(
         access["results"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|hit| hit["path"] == "docs/config-api.md" && hit["section"] == "Access"),
+            .any(|hit| hit["path"] == "www/content/docs/core/queries-and-access.md"
+                && hit["section"] == "Declarative access rules"),
         "{access}"
     );
     assert!(
-        mcp.refused("docs_read", serde_json::json!({ "path": "docs/nope.md" }))
-            .starts_with("no documentation page docs/nope.md")
+        mcp.refused("docs_read", serde_json::json!({ "path": "www/content/docs/nope.md" }))
+            .starts_with("no documentation page www/content/docs/nope.md")
     );
     assert!(
         mcp.refused(
             "docs_read",
-            serde_json::json!({ "path": "docs/agents.md", "section": "No such heading" })
+            serde_json::json!({ "path": "www/content/docs/operations/mcp-and-agents.md", "section": "No such heading" })
         )
-        .starts_with("docs/agents.md has no section \"No such heading\"; its sections are: ")
+        .starts_with(
+            "www/content/docs/operations/mcp-and-agents.md has no section \"No such heading\"; its sections are: "
+        )
     );
 
-    // The same pages are the server's resources. Design proposals are not documentation of what ships.
+    // The same pages are the server's resources.
     let uris: Vec<&str> = resources.iter().map(|r| r["uri"].as_str().unwrap()).collect();
-    assert!(uris.contains(&"typedpress-docs:///docs/agents.md"), "{uris:?}");
     assert!(
-        uris.contains(&"typedpress-docs:///docs-site/docs/getting-started.mdx"),
-        "{uris:?}"
-    );
-    // The site's copy of a docs/ page is not a second page to search.
-    assert!(
-        !uris.contains(&"typedpress-docs:///docs-site/docs/agents.mdx"),
+        uris.contains(&"typedpress-docs:///www/content/docs/operations/mcp-and-agents.md"),
         "{uris:?}"
     );
     assert!(
-        !uris
-            .iter()
-            .any(|uri| uri.contains("/design-") || uri.contains("/spec/")),
+        uris.contains(&"typedpress-docs:///www/content/docs/getting-started/installation.md"),
         "{uris:?}"
     );
     let started = resources
         .iter()
-        .find(|r| r["name"] == "docs-site/docs/getting-started.mdx")
+        .find(|r| r["name"] == "www/content/docs/getting-started/installation.md")
         .unwrap();
-    assert_eq!(started["title"], "Get started");
+    assert_eq!(started["title"], "Installation & Setup");
     assert_eq!(started["mimeType"], "text/markdown");
-    assert!(started["description"].as_str().unwrap().contains("TypedPress site"));
+    assert!(started["description"].as_str().unwrap().contains("WordPress"));
     let read = mcp.result(
         "resources/read",
-        serde_json::json!({ "uri": "typedpress-docs:///docs/compiler-diagnostics.md" }),
+        serde_json::json!({ "uri": "typedpress-docs:///www/content/docs/operations/mcp-and-agents.md" }),
     );
     assert_eq!(
         read["contents"],
-        serde_json::json!([{ "uri": "typedpress-docs:///docs/compiler-diagnostics.md", "mimeType": "text/markdown", "text": on_disk }])
+        serde_json::json!([{ "uri": "typedpress-docs:///www/content/docs/operations/mcp-and-agents.md", "mimeType": "text/markdown", "text": on_disk }])
     );
     // Through 2025-11-25 a missing resource is -32002.
     let missing = mcp.request(
         "resources/read",
-        serde_json::json!({ "uri": "typedpress-docs:///docs/nope.md" }),
+        serde_json::json!({ "uri": "typedpress-docs:///www/content/docs/nope.md" }),
     );
     assert_eq!(missing["error"]["code"], -32002, "{missing}");
     assert_eq!(
@@ -3047,17 +3050,19 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
         }
         // Every documentation page it points to is one `typedpress mcp`'s `docs_read` serves, unless the
         // skill says it is not.
-        for (at, _) in every_file.match_indices("`docs") {
-            let path: &str = every_file[at + 1..].split('`').next().unwrap();
-            if path.ends_with(".md") || path.ends_with(".mdx") {
-                assert!(root().join(path).is_file(), "{name} points to {path}");
-                let line = every_file[at..].lines().next().unwrap();
-                if !line.contains("not served by `docs_read`") {
-                    let read = embedded.call("docs_read", serde_json::json!({ "path": path }));
-                    assert_eq!(
-                        read["isError"], false,
-                        "{name} points to {path}, which docs_read does not serve"
-                    );
+        for prefix in ["`docs", "`www/content/docs"] {
+            for (at, _) in every_file.match_indices(prefix) {
+                let path: &str = every_file[at + 1..].split('`').next().unwrap();
+                if path.ends_with(".md") || path.ends_with(".mdx") {
+                    assert!(root().join(path).is_file(), "{name} points to {path}");
+                    let line = every_file[at..].lines().next().unwrap();
+                    if !line.contains("not served by `docs_read`") {
+                        let read = embedded.call("docs_read", serde_json::json!({ "path": path }));
+                        assert_eq!(
+                            read["isError"], false,
+                            "{name} points to {path}, which docs_read does not serve"
+                        );
+                    }
                 }
             }
         }
@@ -3071,10 +3076,14 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
             "typedpress-add-kind",
             "typedpress-add-page",
             "typedpress-connect-mcp",
+            "typedpress-deploy",
             "typedpress-dev-site",
             "typedpress-fix-diagnostic",
+            "typedpress-markdown-sync",
             "typedpress-migrate",
             "typedpress-migrate-astro",
+            "typedpress-security-audit",
+            "typedpress-woocommerce",
             "typedpress-write-action"
         ]
     );
@@ -3102,7 +3111,7 @@ fn the_code_in_the_skills_compiles_as_one_project() {
             };
             // Every block says its language, so a TypeScript sample is never skipped for lack of a tag.
             assert!(!language.trim().is_empty(), "{skill}: a code block without a language");
-            if !matches!(language.trim(), "ts" | "tsx") {
+            if !matches!(language.trim(), "ts" | "tsx" | "md") {
                 continue;
             }
             // Blocks sit inside a numbered list: drop the list's indentation.
@@ -3111,17 +3120,32 @@ fn the_code_in_the_skills_compiles_as_one_project() {
                 .map(|line| line.strip_prefix("   ").unwrap_or(line))
                 .collect::<Vec<_>>()
                 .join("\n");
-            let path = code
-                .lines()
-                .next()
-                .and_then(|first| first.strip_prefix("// "))
-                .map(|rest| rest.split([' ', ':']).next().unwrap())
-                .filter(|path| path.starts_with("tp/"))
-                .unwrap_or_else(|| panic!("{skill}: a ts block names its file in its first line:\n{code}"));
+            let (path, body) = if language.trim() == "md" {
+                let Some(path) = code
+                    .lines()
+                    .next()
+                    .and_then(|first| first.strip_prefix("<!-- "))
+                    .and_then(|rest| rest.strip_suffix(" -->"))
+                    .filter(|path| path.starts_with("tp/"))
+                else {
+                    continue;
+                };
+                let rest = code.split_once('\n').map(|(_, r)| r).unwrap_or("");
+                (path, rest.to_string())
+            } else {
+                let path = code
+                    .lines()
+                    .next()
+                    .and_then(|first| first.strip_prefix("// "))
+                    .map(|rest| rest.split([' ', ':']).next().unwrap())
+                    .filter(|path| path.starts_with("tp/"))
+                    .unwrap_or_else(|| panic!("{skill}: a ts block names its file in its first line:\n{code}"));
+                (path, code.clone())
+            };
             let target = project.path().join(path);
             assert!(!target.exists(), "{skill}: {path} is written by two blocks");
             std::fs::create_dir_all(target.parent().unwrap()).unwrap();
-            std::fs::write(&target, code.clone() + "\n").unwrap();
+            std::fs::write(&target, body + "\n").unwrap();
             written.push(path.to_string());
         }
     }

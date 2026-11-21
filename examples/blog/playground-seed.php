@@ -1,5 +1,5 @@
 <?php
-// Sample data for WordPress Playground (docs-site/scripts/build-showcase.ts puts it in the blueprint).
+// Sample data for WordPress Playground (www/scripts/build-showcase.ts puts it in the blueprint).
 // The posts in content/posts/ are already on the site: the blueprint seeds them first, as
 // `wp typedpress seed` does, so hello-typedpress is published and typed-content-plain-files is a draft, as
 // their files say. This adds an author, one more published post, three comments and the settings,

@@ -65,7 +65,7 @@ test('a new project includes the starter sources and the README names an existin
   // Every `typedpress add <module>` command the README shows is a module in the compiler's command table.
   const readme = await readFile(join(app, 'README.md'), 'utf8');
   const shown = [...readme.matchAll(/^npx typedpress add ([\w-]+)$|`(?:npx )?typedpress add ([\w-]+)`/gm)].map((match) => match[1] ?? match[2]);
-  assert.deepEqual([...new Set(shown)], ['db']);
+  assert.deepEqual([...new Set(shown)], ['shop', 'db', 'api-reference']);
   const table = JSON.parse(await readFile(new URL('../../../runtime/TypedPress/Cli/commands.json', import.meta.url), 'utf8'));
   const add = table.build.find((row) => row.name === 'add');
   assert.ok(add, 'the command table has `add`');

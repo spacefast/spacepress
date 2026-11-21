@@ -42,11 +42,24 @@ export interface PrivateFile {
 }
 export interface RevisionSummary {
 	id: number;
+	version: number;
+	op: "create" | "update" | "delete" | "restore" | "purge";
 	at: string;
 	user: {
 		id: number;
 		name: string;
 	} | null;
+	schemaMigration: string | null;
+	changed: string[] | null;
+}
+export interface RevisionDiff<T = Record<string, unknown>> {
+	from: number;
+	to: number;
+	changes: {
+		field: keyof T & string;
+		from: unknown;
+		to: unknown;
+	}[];
 }
 export type Status = "draft" | "published" | "scheduled";
 export type Locale = never;
@@ -3186,6 +3199,30 @@ export interface PurgeWorkshopInput {
 export type PurgeWorkshopOutput = {
 	id: number;
 };
+export interface WorkshopHistoryInput {
+	id: number;
+}
+export type WorkshopHistoryOutput = {
+	count: number;
+	firstTitle: string | null;
+	diff: {
+		from: number;
+		to: number;
+		changes: ({
+			field: string;
+			from?: unknown;
+			to?: unknown;
+		})[];
+	} | null;
+};
+export interface RevertWorkshopInput {
+	id: number;
+	version: number;
+}
+export type RevertWorkshopOutput = {
+	id: number;
+	title: string;
+};
 export interface PostAnnouncementInput {
 	announcement?: string;
 }
@@ -3349,6 +3386,14 @@ export interface Actions {
 		input: PurgeWorkshopInput;
 		output: PurgeWorkshopOutput;
 	};
+	workshopHistory: {
+		input: WorkshopHistoryInput;
+		output: WorkshopHistoryOutput;
+	};
+	revertWorkshop: {
+		input: RevertWorkshopInput;
+		output: RevertWorkshopOutput;
+	};
 	postAnnouncement: {
 		input: PostAnnouncementInput;
 		output: PostAnnouncementOutput;
@@ -3456,7 +3501,7 @@ export declare const SCHEMA: {
 			readonly path: "registrations";
 			readonly primaryKey: "id";
 			readonly drafts: false;
-			readonly revisions: false;
+			readonly revisions: true;
 			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
@@ -3479,7 +3524,7 @@ export declare const SCHEMA: {
 			readonly path: "activity";
 			readonly primaryKey: "id";
 			readonly drafts: false;
-			readonly revisions: false;
+			readonly revisions: true;
 			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
@@ -3602,7 +3647,7 @@ export declare const SCHEMA: {
 		};
 	};
 	readonly globals: readonly ["settings"];
-	readonly actions: readonly ["bookSeats", "cancelSeats", "upcoming", "closeRegistration", "scheduleAgain", "cancelWorkshop", "restoreWorkshop", "purgeWorkshop", "postAnnouncement", "draftRecap", "checkSchedule", "scheduleMetrics"];
+	readonly actions: readonly ["bookSeats", "cancelSeats", "upcoming", "closeRegistration", "scheduleAgain", "cancelWorkshop", "restoreWorkshop", "purgeWorkshop", "workshopHistory", "revertWorkshop", "postAnnouncement", "draftRecap", "checkSchedule", "scheduleMetrics"];
 	readonly buckets: readonly ["handouts"];
 };
 export type SchemaDescriptor = typeof SCHEMA;
@@ -3734,6 +3779,8 @@ export interface CollectionClient<K extends CollectionKey> {
 		/** Newest first. Needs `update` access on the row. */
 		list(id: IdOf<K>): Promise<RevisionSummary[]>;
 		get(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
+		/** Diffs two revisions (by version or revision id) as this viewer may read them. */
+		diff(id: IdOf<K>, fromVersion: number, toVersion: number): Promise<RevisionDiff<Row<K>>>;
 		/** Runs the update pipeline with the revision as the patch; returns the updated row. */
 		restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
 	};

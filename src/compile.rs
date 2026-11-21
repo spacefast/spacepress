@@ -3494,6 +3494,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "`<kind>.system` can't be stored in a variable",
                 "call it directly: `posts.system.list(...)`",
             ),
+            Ty::KindRevisions(_, _) => err_help(
+                span,
+                "`<kind>.revisions` can't be stored in a variable",
+                "call it directly: `posts.revisions.list(id)`",
+            ),
             Ty::Db | Ty::DbQuery | Ty::QueryColl(_) | Ty::DbGlobals | Ty::DbGlobal(_) => {
                 err(span, "`db` can't be stored in a variable; call it directly")
             }
@@ -4166,9 +4171,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         let database_receiver = match &out.ty {
-            Ty::Db | Ty::DbQuery | Ty::QueryColl(_) | Ty::KindSystem(_) | Ty::DbGlobals | Ty::DbGlobal(_) => {
-                Some("\\TypedPress\\db()")
-            }
+            Ty::Db
+            | Ty::DbQuery
+            | Ty::QueryColl(_)
+            | Ty::KindSystem(_)
+            | Ty::KindRevisions(_, _)
+            | Ty::DbGlobals
+            | Ty::DbGlobal(_) => Some("\\TypedPress\\db()"),
             Ty::Builder(_) => Some(""),
             _ => None,
         };
@@ -6728,6 +6737,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         match &o.ty {
             Ty::Collection(t) if prop == "system" => {
                 return Ok(Out::atom("\\TypedPress\\db()", Ty::KindSystem(t.clone())));
+            }
+            Ty::Collection(t) if prop == "revisions" => {
+                return Ok(Out::atom("\\TypedPress\\db()", Ty::KindRevisions(t.clone(), false)));
+            }
+            Ty::KindSystem(t) if prop == "revisions" => {
+                return Ok(Out::atom("\\TypedPress\\db()", Ty::KindRevisions(t.clone(), true)));
             }
             Ty::Db if prop == "query" => return Ok(Out::atom("\\TypedPress\\db()", Ty::DbQuery)),
             Ty::Db if prop == "globals" => return Ok(Out::atom("\\TypedPress\\db()", Ty::DbGlobals)),
@@ -9910,6 +9925,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::QueryColl(table) => return self.query_call(&table, m, args, span, m_span),
             Ty::Collection(table) => return self.kind_call(&table, false, m, args, span, m_span),
             Ty::KindSystem(table) => return self.kind_call(&table, true, m, args, span, m_span),
+            Ty::KindRevisions(table, system) => {
+                return self.kind_revisions_call(&table, system, m, args, span, m_span);
+            }
             Ty::Db => return self.db_call(m, args, span, m_span),
             Ty::Builder(b) => return self.builder_call(*b, m, args, span, m_span),
             Ty::DbQuery => return err(m_span, format!("use `db.query.<collection>.{m}(...)`")),
@@ -10764,6 +10782,158 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         php_str(table)
                     ),
                     row,
+                )
+            }
+        };
+        Ok(Out::atom(php, Ty::Promise(Box::new(ty))))
+    }
+
+    /// `posts.revisions.{list,get,diff,restore}` (and `.system.revisions.*`): unified native revision API.
+    fn kind_revisions_call(
+        &mut self,
+        table: &str,
+        system: bool,
+        m: &str,
+        args: &[ArrEl],
+        span: Span,
+        m_span: Span,
+    ) -> Result<Out> {
+        const METHODS: [&str; 4] = ["list", "get", "diff", "restore"];
+        if !METHODS.contains(&m) {
+            let mut d = Diag::new(m_span, format!("`revisions` has no method `{m}`"));
+            if let Some(s) = suggest(m, METHODS) {
+                d = d.help(format!("did you mean `{s}`?"));
+            } else {
+                d = d.help("use list, get, diff or restore");
+            }
+            return Err(d);
+        }
+        let key = self.schema.collections[table].key.clone();
+        self.uses(if m == "restore" { "write" } else { "read" }, key.clone(), m_span);
+        if m == "restore" {
+            self.writes(m_span, "restores a revision");
+        }
+        let mut plain = Vec::new();
+        for a in args {
+            match a {
+                ArrEl::Item(x) => plain.push(x),
+                ArrEl::Spread(x) => return err(x.span, "spread arguments aren't supported here"),
+            }
+        }
+        let (want_n, want) = match m {
+            "list" => (1, "an id"),
+            "get" | "restore" => (2, "an id and a version number"),
+            _ => (3, "an id, fromVersion, and toVersion"),
+        };
+        if plain.len() != want_n {
+            return err(span, format!("`{key}.revisions.{m}` takes {want}"));
+        }
+        let trusted = if system { "true" } else { "false" };
+        let row = types::row(self.schema, table);
+        let pk_ty = self.schema.collections[table]
+            .primary_key()
+            .map(|c| types::col_base(c, &types::json_ty, true))
+            .unwrap_or(Ty::Num);
+        let mut arg_id = |e: &Expr| -> Result<String> {
+            let v = self.expr(e)?;
+            let v = self.finish_value(v, e.span)?;
+            if !assignable(&v.ty, &pk_ty) {
+                return err(
+                    e.span,
+                    format!(
+                        "`{key}.revisions.{m}` needs the row's id ({}), not {}",
+                        pk_ty.describe(),
+                        v.ty.describe()
+                    ),
+                );
+            }
+            Ok(v.php)
+        };
+        let target = arg_id(plain[0])?;
+        let mut arg_num = |e: &Expr, label: &str| -> Result<String> {
+            let v = self.expr(e)?;
+            let v = self.finish_value(v, e.span)?;
+            if !assignable(&v.ty, &Ty::Num) {
+                return err(
+                    e.span,
+                    format!("`{key}.revisions.{m}` needs a numeric {label}, not {}", v.ty.describe()),
+                );
+            }
+            Ok(v.php)
+        };
+        let (php, ty) = match m {
+            "list" => {
+                let mut user_fields = IndexMap::new();
+                user_fields.insert("id".into(), (Ty::Num, false));
+                user_fields.insert("name".into(), (Ty::Str, false));
+                let mut summary = IndexMap::new();
+                summary.insert("id".into(), (Ty::Num, false));
+                summary.insert("version".into(), (Ty::Num, false));
+                summary.insert(
+                    "op".into(),
+                    (
+                        Ty::Union(vec![
+                            Ty::StrLit("create".into()),
+                            Ty::StrLit("update".into()),
+                            Ty::StrLit("delete".into()),
+                            Ty::StrLit("restore".into()),
+                            Ty::StrLit("purge".into()),
+                        ]),
+                        false,
+                    ),
+                );
+                summary.insert("at".into(), (Ty::Str, false));
+                summary.insert("user".into(), (Ty::Obj(user_fields).nullable(), false));
+                summary.insert("schemaMigration".into(), (Ty::Str.nullable(), false));
+                summary.insert(
+                    "changed".into(),
+                    (Ty::Array(Box::new(Ty::Str)).nullable(), false),
+                );
+                (
+                    format!(
+                        "\\TypedPress\\Seam::kindRevisionsList({}, {target}, {trusted})",
+                        php_str(table)
+                    ),
+                    Ty::Array(Box::new(Ty::Obj(summary))),
+                )
+            }
+            "get" => {
+                let ver = arg_num(plain[1], "version")?;
+                (
+                    format!(
+                        "\\TypedPress\\Seam::kindRevisionsGet({}, {target}, {ver}, {trusted})",
+                        php_str(table)
+                    ),
+                    row,
+                )
+            }
+            "restore" => {
+                let ver = arg_num(plain[1], "version")?;
+                (
+                    format!(
+                        "\\TypedPress\\Seam::kindRevisionsRestore({}, {target}, {ver}, {trusted})",
+                        php_str(table)
+                    ),
+                    row,
+                )
+            }
+            _ => {
+                let from_v = arg_num(plain[1], "fromVersion")?;
+                let to_v = arg_num(plain[2], "toVersion")?;
+                let mut change = IndexMap::new();
+                change.insert("field".into(), (Ty::Str, false));
+                change.insert("from".into(), (Ty::Unknown, false));
+                change.insert("to".into(), (Ty::Unknown, false));
+                let mut diff = IndexMap::new();
+                diff.insert("from".into(), (Ty::Num, false));
+                diff.insert("to".into(), (Ty::Num, false));
+                diff.insert("changes".into(), (Ty::Array(Box::new(Ty::Obj(change))), false));
+                (
+                    format!(
+                        "\\TypedPress\\Seam::kindRevisionsDiff({}, {target}, {from_v}, {to_v}, {trusted})",
+                        php_str(table)
+                    ),
+                    Ty::Obj(diff),
                 )
             }
         };
@@ -11953,6 +12123,7 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::DbQuery
         | Ty::QueryColl(_)
         | Ty::KindSystem(_)
+        | Ty::KindRevisions(_, _)
         | Ty::DbGlobals
         | Ty::DbGlobal(_)
         | Ty::Builder(_) => {
@@ -12249,6 +12420,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::DbQuery
         | Ty::QueryColl(_)
         | Ty::KindSystem(_)
+        | Ty::KindRevisions(_, _)
         | Ty::DbGlobals
         | Ty::DbGlobal(_)
         | Ty::Builder(_) => t.clone(),

@@ -390,6 +390,81 @@ final class Seam
         return self::rowToJs($collection, $row ?? throw HttpError::notFound("No $collection row with $pk " . Js::str($id)));
     }
 
+    /** Lists saved revisions of a row, newest first. */
+    public static function kindRevisionsList(string $collection, mixed $id, bool $trusted): JsArray
+    {
+        $db = Db::instance();
+        $revs = $db->revisions($collection, self::toPhp($id), self::as($trusted));
+
+        return new JsArray(array_map(static function (array $r): JsObject {
+            $user = null;
+            if ($r['userId'] !== null && $r['userId'] > 0 && function_exists('get_userdata')) {
+                $u = get_userdata($r['userId']);
+                if ($u instanceof \WP_User) {
+                    $user = new JsObject(['id' => (int) $u->ID, 'name' => (string) $u->display_name]);
+                }
+            }
+
+            return new JsObject([
+                'id' => $r['id'],
+                'version' => $r['version'],
+                'op' => $r['op'],
+                'at' => $r['at'],
+                'user' => $user,
+                'schemaMigration' => $r['schemaMigration'],
+                'changed' => $r['changed'] === null ? null : new JsArray($r['changed']),
+            ]);
+        }, $revs));
+    }
+
+    /** Reads a single revision snapshot by version number. */
+    public static function kindRevisionsGet(string $collection, mixed $id, mixed $version, bool $trusted): JsObject
+    {
+        $ver = is_int($version) || is_float($version) ? (int) $version : throw HttpError::invalidInput('version must be an integer');
+
+        return self::rowToJs($collection, Db::instance()->revision($collection, self::toPhp($id), $ver, self::as($trusted), byVersion: true));
+    }
+
+    /** Diffs two revisions of a row by version number. */
+    public static function kindRevisionsDiff(string $collection, mixed $id, mixed $fromVersion, mixed $toVersion, bool $trusted): JsObject
+    {
+        $from = is_int($fromVersion) || is_float($fromVersion) ? (int) $fromVersion : throw HttpError::invalidInput('fromVersion must be an integer');
+        $to = is_int($toVersion) || is_float($toVersion) ? (int) $toVersion : throw HttpError::invalidInput('toVersion must be an integer');
+        $diff = Db::instance()->diffRevisions($collection, self::toPhp($id), $from, $to, self::as($trusted), byVersion: true);
+
+        return new JsObject([
+            'from' => $diff['from'],
+            'to' => $diff['to'],
+            'changes' => new JsArray(array_map(
+                static fn (array $c): JsObject => new JsObject([
+                    'field' => $c['field'],
+                    'from' => self::valueToJs($c['from']),
+                    'to' => self::valueToJs($c['to']),
+                ]),
+                $diff['changes'],
+            )),
+        ]);
+    }
+
+    /** Restores a row to a prior revision by version number. */
+    public static function kindRevisionsRestore(string $collection, mixed $id, mixed $version, bool $trusted): JsObject
+    {
+        $ver = is_int($version) || is_float($version) ? (int) $version : throw HttpError::invalidInput('version must be an integer');
+
+        return self::rowToJs($collection, Db::instance()->restoreRevision($collection, self::toPhp($id), $ver, self::as($trusted), byVersion: true));
+    }
+
+    private static function valueToJs(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return array_is_list($value)
+                ? new JsArray(array_map(self::valueToJs(...), $value))
+                : new JsObject(array_map(self::valueToJs(...), $value));
+        }
+
+        return $value;
+    }
+
     public static function globalGet(string $name): JsObject
     {
         $db = Db::instance();

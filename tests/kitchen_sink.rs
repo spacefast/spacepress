@@ -659,7 +659,7 @@ fn unused(types: &Path, app: &Path) -> BTreeSet<String> {
                 Reach::Import(module) => used
                     .member_calls
                     .iter()
-                    .any(|(m, _, path)| m == module && path.as_slice() == [method.clone()]),
+                    .any(|(m, _, path)| m == module && path.first() == Some(method)),
                 Reach::SystemOf(module) => used
                     .member_calls
                     .iter()

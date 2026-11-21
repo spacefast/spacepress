@@ -174,7 +174,7 @@ return [
             'label' => 'Votes',
             'editor' => false,
             'drafts' => false,
-            'revisions' => false,
+            'revisions' => true,
             'softDelete' => true,
             'comments' => false,
             'uid' => false,

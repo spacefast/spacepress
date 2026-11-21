@@ -344,6 +344,25 @@ eq('an admin can restore and then permanently purge a soft-deleted workshop',
     [$site->call('POST', '/actions/restoreWorkshop', ['id' => $again['id'] ?? 0], as: 'admin')[0], get_post_status((int) ($again['id'] ?? 0)),
         $site->call('POST', '/actions/purgeWorkshop', ['id' => $again['id'] ?? 0], as: 'admin')[0], get_post((int) ($again['id'] ?? 0))],
     [200, 'draft', 200, null]);
+// Native revisions + table _rev optimistic concurrency end-to-end on real WordPress:
+[$status, $hist] = $site->call('POST', '/actions/workshopHistory', ['id' => $eventId], as: 'host');
+check('workshopHistory exercises kind.revisions.{list,get,diff} on real WordPress',
+    $status === 200 && ($hist['count'] ?? 0) >= 2 && ($hist['firstTitle'] ?? '') === 'Bread basics' && is_array($hist['diff']['changes'] ?? null),
+    [$status, $hist]);
+[$status, $actRow] = $site->call('GET', '/activity', as: 'host', query: ['limit' => '1']);
+$actId = $actRow[0]['id'] ?? 0;
+$actRev = $actRow[0]['_rev'] ?? '';
+check('table() rows carry _rev token on REST reads', $status === 200 && $actId > 0 && is_string($actRev) && $actRev !== '', [$status, $actRow[0] ?? null]);
+[$s1, $u1] = $site->call('PATCH', "/activity/$actId", ['summary' => 'Updated once', '_rev' => $actRev], as: 'admin');
+[$s2, $u2] = $site->call('PATCH', "/activity/$actId", ['summary' => 'Stale write', '_rev' => $actRev], as: 'admin');
+eq('table() PATCH accepts fresh _rev and refuses stale _rev with 409 stale_revision',
+    [$s1, $u1['summary'] ?? null, $s2, $u2['code'] ?? null],
+    [200, 'Updated once', 409, 'stale_revision']);
+[$s3, $tRevs] = $site->call('GET', "/activity/$actId/revisions", as: 'admin');
+[$s4, $tDiff] = $site->call('GET', "/activity/$actId/revisions/diff", as: 'admin', query: ['from' => '1', 'to' => '2']);
+check('table() exposes /revisions and /revisions/diff over REST',
+    $s3 === 200 && count($tRevs) >= 2 && $s4 === 200 && array_column($tDiff['changes'] ?? [], 'field') === ['summary'],
+    [$s3, $tRevs, $s4, $tDiff]);
 [$status, $recap] = $site->call('POST', '/actions/draftRecap', ['id' => $eventId], as: 'host');
 eq('the schedule screen\'s recap action drafts a WordPress post', [$status, $recap['title'] ?? null, $recap['status'] ?? null, get_post_type((int) ($recap['postId'] ?? 0))], [200, 'Recap: Bread basics', 'draft', 'post']);
 

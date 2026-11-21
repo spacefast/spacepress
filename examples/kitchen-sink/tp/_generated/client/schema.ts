@@ -98,7 +98,7 @@ export const SCHEMA = {
       "path": "registrations",
       "primaryKey": "id",
       "drafts": false,
-      "revisions": false,
+      "revisions": true,
       "softDelete": true,
       "localized": false,
       "relations": {
@@ -121,7 +121,7 @@ export const SCHEMA = {
       "path": "activity",
       "primaryKey": "id",
       "drafts": false,
-      "revisions": false,
+      "revisions": true,
       "softDelete": true,
       "localized": false,
       "relations": {
@@ -259,6 +259,8 @@ export const SCHEMA = {
     "cancelWorkshop",
     "restoreWorkshop",
     "purgeWorkshop",
+    "workshopHistory",
+    "revertWorkshop",
     "postAnnouncement",
     "draftRecap",
     "checkSchedule",

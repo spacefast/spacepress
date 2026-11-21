@@ -452,7 +452,7 @@ fn cols_insert(table: &mut Json, name: &str, col: Json) {
     }
 }
 
-/// The revisions system table definition.
+/// The enriched revisions system table definition (ADR 2026-11-21 §5).
 fn revisions_table_def() -> Json {
     let mut cols = Map::new();
     let c = |ty: &str, not_null: bool| {
@@ -466,11 +466,22 @@ fn revisions_table_def() -> Json {
     collection["max"] = json!(64);
     cols.insert("collection".into(), collection);
     let mut pk = c("text", true);
-    pk["max"] = json!(64);
+    pk["max"] = json!(191);
     cols.insert("pk".into(), pk);
+    let mut version = c("integer", true);
+    version["default"] = json!(1);
+    cols.insert("version".into(), version);
+    let mut op = c("text", true);
+    op["max"] = json!(16);
+    op["default"] = json!("update");
+    cols.insert("op".into(), op);
     cols.insert("at".into(), c("timestamp", true));
     cols.insert("userId".into(), c("integer", false));
+    let mut schema_migration = c("text", false);
+    schema_migration["max"] = json!(191);
+    cols.insert("schemaMigration".into(), schema_migration);
     cols.insert("row".into(), c("json", true));
+    cols.insert("changed".into(), c("json", false));
     json!({ "editor": false, "drafts": false, "system": true, "columns": cols })
 }
 
@@ -684,6 +695,13 @@ fn indexes(t: &str, def: &Json) -> Vec<(String, bool, Vec<String>)> {
     }
     if def["system"].as_bool() == Some(true) && t == REVISIONS {
         out.push(("row".into(), false, vec!["collection".into(), "pk".into()]));
+        if cols.contains_key("version") {
+            out.push((
+                "row_version".into(),
+                true,
+                vec!["collection".into(), "pk".into(), "version".into()],
+            ));
+        }
     }
     for ix in def["indexes"].as_array().into_iter().flatten() {
         let mut fields: Vec<String> = ix["columns"]

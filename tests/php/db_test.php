@@ -998,7 +998,7 @@ $byName = static fn (array $rows) => array_column($rows, null, 'name');
 
 // read: shorthand rules once per page, function rules per row; hidden keys are removed, not nulled.
 $anon = $byName($as(null, 'GET', '/profiles')[1]);
-eq('anonymous rows lack every column it may not read, at every level', [array_keys($anon['Alice']), $anon['Alice']['notes']], [['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId'], ['public' => 'hi', 'pinned' => true, 'tag' => null]]);
+eq('anonymous rows lack every column it may not read, at every level', [array_keys($anon['Alice']), $anon['Alice']['notes']], [['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId', '_rev'], ['public' => 'hi', 'pinned' => true, 'tag' => null]]);
 $alice = $byName($as('fa_alice', 'GET', '/profiles')[1]);
 eq('a function read rule runs per row (author sees only her own salary)', [$alice['Alice']['salary'] ?? 'hidden', $alice['Bob']['salary'] ?? 'hidden', isset($alice['Alice']['email'])], [10, 'hidden', false]);
 $editor = $as('fa_ed', 'GET', "/profiles/{$theirs['id']}")[1];
@@ -1697,6 +1697,106 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('Retention blocks wp_scheduled_delete for softDelete post types', \TypedPress\Wp\Retention::blocksWpScheduledDelete($sdSchema, 'tp_sd_articles'), true);
     eq('Retention reads configured deletedSeconds', \TypedPress\Wp\Retention::deletedSeconds($sdSchema, 'sd_parents'), 86400);
     $db->setActor(null);
+})();
+
+// ================================================================ Slice 3: native revisions, diff, schema-aware decode, table _rev
+(static function () use ($wp): void {
+    $revSchema = new \TypedPress\Schema([
+        'name' => 'rev_test',
+        'collections' => [
+            'docs' => [
+                'primaryKey' => 'id', 'editor' => false, 'table' => 'tp_rev_docs',
+                'revisions' => true, 'softDelete' => true,
+                'access' => [
+                    'read' => ['role' => 'anyone'],
+                    'create' => ['role' => 'anyone'],
+                    'update' => ['role' => 'anyone'],
+                    'delete' => ['role' => 'anyone'],
+                    'restore' => ['role' => 'anyone'],
+                    'purge' => ['role' => 'anyone'],
+                ],
+                'columns' => [
+                    'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                    'summary' => ['type' => 'text', 'notNull' => true, 'column' => 'legacy_title', 'aliases' => ['oldTitle']],
+                    'note' => ['type' => 'text', 'default' => ['value' => 'default-note']],
+                    'secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]],
+                    'author' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => ['now' => true], 'readOnly' => true, 'system' => true],
+                    'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => ['now' => true], 'onUpdate' => ['now' => true], 'readOnly' => true, 'system' => true],
+                    'deletedAt' => ['type' => 'timestamp', 'readOnly' => true, 'system' => true],
+                    'deletedBy' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'deletedGroup' => ['type' => 'text', 'rules' => ['max' => 36], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                    '_live' => ['type' => 'boolean', 'default' => ['value' => true], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                ],
+                'relations' => [], 'hooks' => [],
+            ],
+        ],
+    ]);
+    $wp->exec('DROP TABLE IF EXISTS {prefix}tp_rev_docs');
+    $wp->exec("CREATE TABLE {prefix}tp_rev_docs (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `legacy_title` LONGTEXT NOT NULL, `note` LONGTEXT DEFAULT ('default-note'), `secret` LONGTEXT, `author` BIGINT, `createdAt` CHAR(24) NOT NULL, `updatedAt` CHAR(24) NOT NULL, `deletedAt` CHAR(24), `deletedBy` BIGINT, `deletedGroup` VARCHAR(36), `_live` TINYINT(1) DEFAULT 1, PRIMARY KEY (`id`)) ENGINE=InnoDB");
+    $wp->exec("DELETE FROM {prefix}tp__migrations WHERE `app` = 'rev_test'");
+    $wp->exec("INSERT INTO {prefix}tp__migrations (`app`, `id`, `kind`, `applied_at`) VALUES ('rev_test', '20261121180000_aaaaaa_init', 'schema', '2026-11-21T18:00:00.000Z')");
+
+    $store = \TypedPress\Wp\CompositeStore::create($revSchema, $wp->connection());
+    $rdb = new \TypedPress\Db($store, $revSchema, \TypedPress\db()->media());
+
+    // 1. Create -> update -> soft delete -> restore -> purge all emit monotonic versioned revisions with op, changed, schemaMigration.
+    $doc = $rdb->insert('docs', ['summary' => 'V1', 'secret' => 's1'], true)[0];
+    $rdb->update('docs', ['summary' => 'V2', 'secret' => 's2'], ['id' => $doc['id']], true);
+    $rdb->delete('docs', ['id' => $doc['id']], true);
+    $rdb->restore('docs', ['id' => $doc['id']], true);
+
+    $list = $rdb->revisions('docs', $doc['id']);
+    eq('table revisions record create/update/delete/restore with monotonic versions',
+        array_map(static fn (array $r) => [$r['version'], $r['op'], $r['schemaMigration']], $list),
+        [
+            [4, 'restore', '20261121180000_aaaaaa_init'],
+            [3, 'delete', '20261121180000_aaaaaa_init'],
+            [2, 'update', '20261121180000_aaaaaa_init'],
+            [1, 'create', '20261121180000_aaaaaa_init'],
+        ]);
+    eq('update revision lists changed non-hidden fields', $list[2]['changed'], ['summary', 'secret']);
+
+    // 2. Diff between v1 and v2 masks hidden fields for non-admin viewer.
+    $guest = new \TypedPress\Viewer(null);
+    $admin = new \TypedPress\Viewer(['id' => 1, 'role' => 'admin']);
+    $diffGuest = $rdb->diffRevisions('docs', $doc['id'], 1, 2, $guest, byVersion: true);
+    $diffAdmin = $rdb->diffRevisions('docs', $doc['id'], 1, 2, $admin, byVersion: true);
+    eq('diff masks restricted fields from non-admin viewer',
+        array_column($diffGuest['changes'], 'field'), ['summary']);
+    eq('diff shows all changed fields to admin',
+        $diffAdmin['changes'], [
+            ['field' => 'summary', 'from' => 'V1', 'to' => 'V2'],
+            ['field' => 'secret', 'from' => 's1', 'to' => 's2'],
+        ]);
+
+    // 3. Restore by version restores V1 cleanly.
+    $restored = $rdb->restoreRevision('docs', $doc['id'], 1, $admin, byVersion: true);
+    eq('restoreRevision by version restores v1 values', [$restored['summary'], $restored['secret']], ['V1', 's1']);
+
+    // 4. Schema-aware revision decoding handles aliased column names, physical column names, retired columns, and newly added defaulted columns.
+    $decoded = \TypedPress\Db::decodeRevisionPayload($revSchema->collection('docs'), [
+        'id' => 99,
+        'oldTitle' => 'From Alias',
+        'retired_col' => 'should be dropped',
+        'createdAt' => '2026-01-01T00:00:00.000Z',
+        'updatedAt' => '2026-01-01T00:00:00.000Z',
+    ]);
+    eq('schema-aware decode resolves alias, fills default for newly added column, and drops retired columns',
+        [$decoded['summary'], $decoded['note'], array_key_exists('retired_col', $decoded)],
+        ['From Alias', 'default-note', false]);
+    $decodedPhys = \TypedPress\Db::decodeRevisionPayload($revSchema->collection('docs'), [
+        'id' => 100,
+        'legacy_title' => 'From Physical',
+        'createdAt' => '2026-01-01T00:00:00.000Z',
+        'updatedAt' => '2026-01-01T00:00:00.000Z',
+    ]);
+    eq('schema-aware decode resolves physical column name to logical field name', $decodedPhys['summary'], 'From Physical');
+
+    // 5. Purge records a final purge revision that survives row deletion.
+    $rdb->purge('docs', ['id' => $doc['id']], true);
+    $afterPurge = $store->revisions('docs', $doc['id']);
+    eq('purge writes a final audit revision in tp__revisions', $afterPurge[0]['op'], 'purge');
 })();
 
 finish('db_test');

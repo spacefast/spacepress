@@ -740,18 +740,55 @@ final class WpPostStore implements Store
 
     // ================================================================ revisions (§4.7): WP revisions + SCF meta
 
+    private const REV_META = '_tp_rev_meta';
+
     public function revisions(string $collection, int|string $pk): array
     {
         $rows = $this->rowsWhere($collection, "r.post_type = 'revision' AND r.post_parent = ? AND r.post_name NOT LIKE '%autosave%'", [(int) $pk]);
+        $entries = array_map(fn (array $row) => $this->revisionEntry($collection, (int) $pk, $row), $rows);
+        // Backfill monotonic 1-based version numbers oldest-to-newest for any WP-core-created revision lacking `_tp_rev_meta`.
+        $total = count($entries);
+        for ($i = 0; $i < $total; $i++) {
+            if ($entries[$i]['version'] === 0) {
+                $entries[$i]['version'] = $total - $i;
+            }
+        }
 
-        return array_map(fn (array $row) => $this->revisionEntry($collection, (int) $pk, $row), $rows);
+        return $entries;
     }
 
-    public function revision(string $collection, int|string $pk, int $revisionId): ?array
+    public function revision(string $collection, int|string $pk, int $revisionId, bool $byVersion = false): ?array
     {
+        if ($byVersion) {
+            foreach ($this->revisions($collection, $pk) as $entry) {
+                if ($entry['version'] === $revisionId) {
+                    return $entry;
+                }
+            }
+        }
         $rows = $this->rowsWhere($collection, "r.post_type = 'revision' AND r.post_parent = ? AND r.ID = ?", [(int) $pk, $revisionId]);
+        if ($rows !== []) {
+            $entry = $this->revisionEntry($collection, (int) $pk, $rows[0]);
+            if ($entry['version'] === 0) {
+                foreach ($this->revisions($collection, $pk) as $listed) {
+                    if ($listed['id'] === $entry['id']) {
+                        $entry['version'] = $listed['version'];
+                        break;
+                    }
+                }
+            }
 
-        return $rows === [] ? null : $this->revisionEntry($collection, (int) $pk, $rows[0]);
+            return $entry;
+        }
+        if (!$byVersion) {
+            foreach ($this->revisions($collection, $pk) as $entry) {
+                if ($entry['version'] === $revisionId) {
+                    return $entry;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -771,6 +808,15 @@ final class WpPostStore implements Store
             $system += array_intersect_key($this->rowsWhere($collection, 'r.ID = ?', [$pk])[0] ?? [], $keys);
         }
         $row = array_replace($row, array_intersect_key($system, $keys));
+        $meta = json_decode((string) get_metadata('post', $rid, self::REV_META, true), true);
+        $meta = is_array($meta) ? $meta : [];
+        if (isset($meta['links']) && is_array($meta['links'])) {
+            foreach ($meta['links'] as $col => $ids) {
+                if (isset($spec['columns'][$col]) && $spec['columns'][$col]['type'] === 'refList') {
+                    $row[$col] = $ids;
+                }
+            }
+        }
         if ($spec['localized'] ?? false) { // a revision post has no language: its group is the parent's
             $row['translations'] = Js::jsonStringify(Polylang::group($pk, $this->schema->locales()['all'] ?? []) ?: new \stdClass());
         }
@@ -779,8 +825,12 @@ final class WpPostStore implements Store
 
         return [
             'id' => $rid,
+            'version' => isset($meta['version']) && is_int($meta['version']) ? $meta['version'] : 0,
+            'op' => isset($meta['op']) && is_string($meta['op']) ? $meta['op'] : 'update',
             'at' => str_replace(' ', 'T', (string) $at) . '.000Z',
             'userId' => $post instanceof \WP_Post && (int) $post->post_author > 0 ? (int) $post->post_author : null,
+            'schemaMigration' => isset($meta['schemaMigration']) && is_string($meta['schemaMigration']) && $meta['schemaMigration'] !== '' ? $meta['schemaMigration'] : null,
+            'changed' => isset($meta['changed']) && is_array($meta['changed']) ? array_values($meta['changed']) : null,
             'row' => $row,
         ];
     }
@@ -823,9 +873,16 @@ final class WpPostStore implements Store
     }
 
     /** A WP revision of the post as it is now (snapshotRevision fills in its fields, keep-all, §4.7). */
-    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId): void
+    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = []): void
     {
         $id = (int) $pk;
+        $existing = $this->revisions($collection, $id);
+        $nextVersion = 1;
+        foreach ($existing as $e) {
+            if (($e['version'] ?? 0) >= $nextVersion) {
+                $nextVersion = $e['version'] + 1;
+            }
+        }
         $rid = $this->db->core(static fn () => _wp_put_post_revision($id));
         if ($rid instanceof \WP_Error || !$rid) {
             throw new \RuntimeException('Could not save a revision of post ' . $id);
@@ -835,6 +892,23 @@ final class WpPostStore implements Store
         if ($userId !== null) {
             $this->db->run('UPDATE `' . $this->db->wpdb()->posts . '` SET post_author = ? WHERE ID = ?', [$userId, $rid]);
         }
+        $spec = $this->schema->collection($collection);
+        $links = [];
+        foreach ($spec['columns'] as $col => $def) {
+            if (($def['type'] ?? null) === 'refList' && array_key_exists($col, $encodedRow)) {
+                $links[$col] = $encodedRow[$col];
+            }
+        }
+        $revMeta = [
+            'version' => $nextVersion,
+            'op' => (string) ($meta['op'] ?? 'update'),
+            'schemaMigration' => is_string($meta['schemaMigration'] ?? null) ? $meta['schemaMigration'] : null,
+            'changed' => array_key_exists('changed', $meta) && is_array($meta['changed']) ? array_values($meta['changed']) : null,
+        ];
+        if ($links !== []) {
+            $revMeta['links'] = $links;
+        }
+        $this->db->core(static fn () => update_metadata('post', $rid, self::REV_META, wp_slash(Js::jsonStringify($revMeta))));
         clean_post_cache($rid);
     }
 

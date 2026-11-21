@@ -968,9 +968,7 @@ final class Db
             throw $this->store->mapError($e);
         }
         [$row, $raw] = $this->readByPk($collection, $spec, $pk);
-        if ($spec['revisions'] ?? false) {
-            $this->store->revisionWrite($collection, $pk, $raw, $this->actor['id'] ?? null);
-        }
+        $this->recordRevision($collection, $spec, $pk, $raw, 'create', null, $row);
         $this->hook($collection, $spec, 'afterCreate', $row);
         $this->published($collection, $spec, $row, null);
         Extensions::written('create', $collection, $row, null);
@@ -1068,9 +1066,7 @@ final class Db
             throw $this->store->mapError($e);
         }
         [$row, $raw] = $this->readByPk($collection, $spec, $pkValue);
-        if ($spec['revisions'] ?? false) {
-            $this->store->revisionWrite($collection, $pkValue, $raw, $this->actor['id'] ?? null);
-        }
+        $this->recordRevision($collection, $spec, $pkValue, $raw, 'update', $previous, $row);
         $this->hook($collection, $spec, 'afterUpdate', $row, $previous);
         $this->published($collection, $spec, $row, $previous);
         Extensions::written('update', $collection, $row, $previous);
@@ -1111,6 +1107,10 @@ final class Db
             if (array_key_exists('_live', $row)) {
                 $row['_live'] = null;
             }
+            if ($spec['revisions'] ?? false) {
+                [, $rawDeleted] = $this->readByPk($collection, $spec, $pkValue, deleted: 'include');
+                $this->recordRevision($collection, $spec, $pkValue, $rawDeleted, 'delete', $existing, $row);
+            }
             $this->hook($collection, $spec, 'afterDelete', $row);
             Extensions::written('delete', $collection, $row, $existing);
 
@@ -1142,7 +1142,8 @@ final class Db
         if ($cascadeChildren && $group !== null) {
             $this->restoreGroupChildren($collection, $pkValue, $group, $viewer);
         }
-        [$restored] = $this->readByPk($collection, $spec, $pkValue);
+        [$restored, $rawRestored] = $this->readByPk($collection, $spec, $pkValue);
+        $this->recordRevision($collection, $spec, $pkValue, $rawRestored, 'restore', $row, $restored);
         $this->hook($collection, $spec, 'afterRestore', $restored);
         Extensions::written('update', $collection, $restored, $row);
 
@@ -1173,9 +1174,14 @@ final class Db
         $spec = $this->schema->collection($collection);
         $existing = $row;
         $this->hook($collection, $spec, 'beforePurge', $row);
+        $pkValue = $this->pkValue($spec, $row);
+        if ($spec['revisions'] ?? false) {
+            [, $rawPurged] = $this->readByPk($collection, $spec, $pkValue, deleted: 'include');
+            $this->recordRevision($collection, $spec, $pkValue, $rawPurged, 'purge', $existing, null);
+        }
         $this->referentialActions($collection, $row, $viewer, purge: true);
         try {
-            $this->store->delete($collection, $this->pkValue($spec, $row));
+            $this->store->delete($collection, $pkValue);
         } catch (\Throwable $e) {
             throw $this->store->mapError($e);
         }
@@ -1748,9 +1754,13 @@ final class Db
     }
 
     /** @return array{array, array} [decoded row, storage-form row] */
-    private function readByPk(string $collection, array $spec, int|string $pk): array
+    private function readByPk(string $collection, array $spec, int|string $pk, string $deleted = 'exclude'): array
     {
-        $q = Sql::select($this->schema, $this->store, $collection, ['where' => [$spec['primaryKey'] => $pk], 'limit' => 1]);
+        $opts = ['where' => [$spec['primaryKey'] => $pk], 'limit' => 1];
+        if ($deleted !== 'exclude') {
+            $opts['deleted'] = $deleted;
+        }
+        $q = Sql::select($this->schema, $this->store, $collection, $opts);
         $raw = $this->withLinks($collection, $this->store->select($collection, $q))[0] ?? throw new \RuntimeException("Row $collection/$pk vanished after write");
         $raw = array_intersect_key($raw, $spec['columns']);
 
@@ -1867,40 +1877,162 @@ final class Db
         }
     }
 
-    // ================================================================ revisions (§6.4)
+    // ================================================================ revisions (§6.4 / ADR 2026-11-21 §5)
 
-    /** @return list<array{id: int, at: string, userId: ?int}> newest first; needs update access on the row */
+    private ?string $latestMigration = null;
+    private bool $latestMigrationLoaded = false;
+
+    private function recordRevision(
+        string $collection,
+        array $spec,
+        int|string $pk,
+        array $raw,
+        string $op,
+        ?array $previous = null,
+        ?array $current = null,
+    ): void {
+        if (!($spec['revisions'] ?? false)) {
+            return;
+        }
+        $changed = null;
+        if ($previous !== null && $current !== null) {
+            $diff = [];
+            foreach ($spec['columns'] as $name => $col) {
+                $name = (string) $name;
+                if (($col['hidden'] ?? false) || isset($col['onUpdate'])) {
+                    continue;
+                }
+                if (Js::jsonStringify($previous[$name] ?? null) !== Js::jsonStringify($current[$name] ?? null)) {
+                    $diff[] = $name;
+                }
+            }
+            $changed = $diff;
+        }
+        $this->store->revisionWrite($collection, $pk, $raw, $this->actor['id'] ?? null, [
+            'op' => $op,
+            'schemaMigration' => $this->latestSchemaMigration(),
+            'changed' => $changed,
+        ]);
+    }
+
+    private function latestSchemaMigration(): ?string
+    {
+        if (!$this->latestMigrationLoaded) {
+            $this->latestMigrationLoaded = true;
+            $this->latestMigration = method_exists($this->store, 'latestSchemaMigration')
+                ? $this->store->latestSchemaMigration()
+                : null;
+        }
+
+        return $this->latestMigration;
+    }
+
+    /** @return list<array{id: int, version: int, op: string, at: string, userId: ?int, schemaMigration: ?string, changed: ?list<string>}> newest first; needs update access on the row */
     public function revisions(string $collection, int|string $pk, ?Viewer $viewer = null): array
     {
         $this->requireRevisable($collection, $pk, $viewer);
 
         return array_map(
-            static fn (array $r) => ['id' => $r['id'], 'at' => $r['at'], 'userId' => $r['userId']],
+            static fn (array $r) => [
+                'id' => $r['id'],
+                'version' => (int) ($r['version'] ?? 1),
+                'op' => (string) ($r['op'] ?? 'update'),
+                'at' => $r['at'],
+                'userId' => $r['userId'],
+                'schemaMigration' => $r['schemaMigration'] ?? null,
+                'changed' => $r['changed'] ?? null,
+            ],
             $this->current(fn () => $this->store->revisions($collection, $pk)),
         );
     }
 
     /** The full decoded row at a revision. */
-    public function revision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
+    public function revision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null, bool $byVersion = false): array
     {
-        return $this->current(fn (): array => $this->revisionAt($collection, $pk, $revisionId, $viewer));
+        return $this->current(fn (): array => $this->revisionAt($collection, $pk, $revisionId, $viewer, $byVersion));
     }
 
-    private function revisionAt(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer): array
+    private function revisionAt(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer, bool $byVersion = false): array
     {
         $this->requireRevisable($collection, $pk, $viewer);
 
-        return $this->present([$this->revisionRow($collection, $pk, $revisionId)], $collection, $viewer)[0]
+        return $this->present([$this->revisionRow($collection, $pk, $revisionId, $byVersion)], $collection, $viewer)[0]
             ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");
     }
 
-    /** The decoded row a revision (or autosave) holds, trusted: no access checks. */
-    public function revisionRow(string $collection, int|string $pk, int $revisionId): array
+    /**
+     * The decoded row a revision (or autosave) holds, trusted: no access checks.
+     * Schema-aware decoding maps aliased or physical column names to the current logical schema,
+     * drops retired columns, and fills columns added in later forward-only migrations with their defaults.
+     */
+    public function revisionRow(string $collection, int|string $pk, int $revisionId, bool $byVersion = false): array
     {
-        $rev = $this->current(fn () => $this->store->revision($collection, $pk, $revisionId))
+        $rev = $this->current(fn () => $this->store->revision($collection, $pk, $revisionId, $byVersion))
             ?? throw HttpError::notFound("No revision $revisionId for $collection $pk");
 
-        return Schema::decodeRow($this->schema->collection($collection)['columns'], $rev['row']);
+        return self::decodeRevisionPayload($this->schema->collection($collection), is_array($rev['row'] ?? null) ? $rev['row'] : []);
+    }
+
+    /** Schema-aware decoding of a historical revision snapshot across forward-only migrations and column aliases. */
+    public static function decodeRevisionPayload(array $spec, array $raw): array
+    {
+        $columns = $spec['columns'];
+        // 1. Resolve logical aliases (e.g. `.alias("old_name")`).
+        $mapped = Schema::resolveAliases($spec, $raw);
+        // 2. Map physical SQL column names (e.g. `.column("physical_col")`) to their logical field names.
+        foreach ($columns as $name => $col) {
+            $name = (string) $name;
+            $phys = is_string($col['column'] ?? null) && $col['column'] !== '' ? $col['column'] : null;
+            if ($phys !== null && $phys !== $name && !array_key_exists($name, $mapped) && array_key_exists($phys, $mapped)) {
+                $mapped[$name] = $mapped[$phys];
+            }
+        }
+        // 3. Drop retired/unknown columns and fill columns added after this revision was captured.
+        $aligned = [];
+        foreach ($columns as $name => $col) {
+            $name = (string) $name;
+            if (array_key_exists($name, $mapped)) {
+                $aligned[$name] = $mapped[$name];
+            } elseif (isset($col['default']) && is_array($col['default']) && array_key_exists('value', $col['default'])) {
+                $aligned[$name] = Schema::store($col, $col['default']['value']);
+            } else {
+                $aligned[$name] = null;
+            }
+        }
+
+        return Schema::decodeRow($columns, $aligned);
+    }
+
+    /**
+     * Diff two revisions of a row, masked as $viewer may read them.
+     *
+     * @return array{from: int, to: int, changes: list<array{field: string, from: mixed, to: mixed}>}
+     */
+    public function diffRevisions(string $collection, int|string $pk, int $fromVersion, int $toVersion, ?Viewer $viewer = null, bool $byVersion = true): array
+    {
+        return $this->current(function () use ($collection, $pk, $fromVersion, $toVersion, $viewer, $byVersion): array {
+            $this->requireRevisable($collection, $pk, $viewer);
+            $spec = $this->schema->collection($collection);
+            $fromRow = $this->revisionAt($collection, $pk, $fromVersion, $viewer, $byVersion);
+            $toRow = $this->revisionAt($collection, $pk, $toVersion, $viewer, $byVersion);
+            $changes = [];
+            foreach ($spec['columns'] as $name => $col) {
+                $name = (string) $name;
+                if (($col['hidden'] ?? false) || isset($col['onUpdate'])) {
+                    continue;
+                }
+                if (!array_key_exists($name, $fromRow) && !array_key_exists($name, $toRow)) {
+                    continue;
+                }
+                $a = $fromRow[$name] ?? null;
+                $b = $toRow[$name] ?? null;
+                if (Js::jsonStringify($a) !== Js::jsonStringify($b)) {
+                    $changes[] = ['field' => $name, 'from' => $a, 'to' => $b];
+                }
+            }
+
+            return ['from' => $fromVersion, 'to' => $toVersion, 'changes' => $changes];
+        });
     }
 
     /**
@@ -1910,12 +2042,12 @@ final class Db
      * rules pass: it sends nothing for them, so nothing about them can be probed, and a restore never
      * leaves part of the row at a later state. The answer is masked like every read.
      */
-    public function restoreRevision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
+    public function restoreRevision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null, bool $byVersion = false): array
     {
-        return $this->current(function () use ($collection, $pk, $revisionId, $viewer): array {
+        return $this->current(function () use ($collection, $pk, $revisionId, $viewer, $byVersion): array {
             $spec = $this->schema->collection($collection);
             $this->requireRevisable($collection, $pk, $viewer);
-            $row = $this->revisionRow($collection, $pk, $revisionId);
+            $row = $this->revisionRow($collection, $pk, $revisionId, $byVersion);
             $opts = ['where' => [$spec['primaryKey'] => $pk]];
             $current = $this->selectDecoded($collection, $opts, '', null)[0] ?? throw HttpError::notFound("No $collection row $pk");
             $patch = $hidden = [];

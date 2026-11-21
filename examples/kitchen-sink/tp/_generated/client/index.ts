@@ -5,7 +5,7 @@
 // bundlers run it as-is. Wire format: design §4.8 / §7.
 
 import { SCHEMA } from "./schema.ts";
-import type { Actions, Collections, Globals, Locale, Media, PrivateFile, RevisionSummary, Status, User } from "./types.ts";
+import type { Actions, Collections, Globals, Locale, Media, PrivateFile, RevisionDiff, RevisionSummary, Status, User } from "./types.ts";
 
 export type * from "./types.ts";
 export { SCHEMA };
@@ -141,6 +141,8 @@ export interface CollectionClient<K extends CollectionKey> {
     /** Newest first. Needs `update` access on the row. */
     list(id: IdOf<K>): Promise<RevisionSummary[]>;
     get(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
+    /** Diffs two revisions (by version or revision id) as this viewer may read them. */
+    diff(id: IdOf<K>, fromVersion: number, toVersion: number): Promise<RevisionDiff<Row<K>>>;
     /** Runs the update pipeline with the revision as the patch; returns the updated row. */
     restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
   };
@@ -1402,7 +1404,9 @@ export function createClient(options: ClientOptions = {}): Client {
           return all;
         },
         get: (id: string | number, rid: number) => request("GET", `${one(id)}/revisions/${seg(rid)}`),
-        restore: (id: string | number, rid: number) => request("POST", `${one(id)}/revisions/${seg(rid)}/restore`),
+        diff: (id: string | number, from: number, to: number) =>
+          request("GET", `${one(id)}/revisions/diff`, { query: new URLSearchParams({ from: String(from), to: String(to) }) }),
+        restore: (id: string | number, rid: number) => wrote(request("POST", `${one(id)}/revisions/${seg(rid)}/restore`), key),
       },
       stage: (id: string | number, patch: unknown) => request("PATCH", `${one(id)}/staged`, { json: patch }),
       staged: (id: string | number) => request("GET", `${one(id)}/staged`),

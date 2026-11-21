@@ -6,7 +6,8 @@ export type Role = "guest" | "subscriber" | "author" | "editor" | "admin";
 export interface User { id: number; name: string; role: Role; member?: Member | null }
 export interface Media { id: number; url: string; mime: string; size: number; width: number | null; height: number | null; alt: string | null; filename: string; createdAt: string; sizes: Record<string, { url: string; width: number; height: number }>; focal: { x: number; y: number } | null; author: number | null; caption: string }
 export interface PrivateFile { id: number; bucket: string; filename: string; mime: string; size: number; ownerId: number | null; createdAt: string; url: string }
-export interface RevisionSummary { id: number; at: string; user: { id: number; name: string } | null }
+export interface RevisionSummary { id: number; version: number; op: "create" | "update" | "delete" | "restore" | "purge"; at: string; user: { id: number; name: string } | null; schemaMigration: string | null; changed: string[] | null }
+export interface RevisionDiff<T = Record<string, unknown>> { from: number; to: number; changes: { field: keyof T & string; from: unknown; to: unknown }[] }
 export type Status = "draft" | "published" | "scheduled";
 export type Locale = never;
 
@@ -121,6 +122,12 @@ export type RestoreWorkshopOutput = { id: number };
 export interface PurgeWorkshopInput { id: number }
 export type PurgeWorkshopOutput = { id: number };
 
+export interface WorkshopHistoryInput { id: number }
+export type WorkshopHistoryOutput = { count: number; firstTitle: string | null; diff: { from: number; to: number; changes: ({ field: string; from?: unknown; to?: unknown })[] } | null };
+
+export interface RevertWorkshopInput { id: number; version: number }
+export type RevertWorkshopOutput = { id: number; title: string };
+
 export interface PostAnnouncementInput { announcement?: string }
 export type PostAnnouncementOutput = { announcement: string | null };
 
@@ -161,6 +168,8 @@ export interface Actions {
   cancelWorkshop: { input: CancelWorkshopInput; output: CancelWorkshopOutput };
   restoreWorkshop: { input: RestoreWorkshopInput; output: RestoreWorkshopOutput };
   purgeWorkshop: { input: PurgeWorkshopInput; output: PurgeWorkshopOutput };
+  workshopHistory: { input: WorkshopHistoryInput; output: WorkshopHistoryOutput };
+  revertWorkshop: { input: RevertWorkshopInput; output: RevertWorkshopOutput };
   postAnnouncement: { input: PostAnnouncementInput; output: PostAnnouncementOutput };
   draftRecap: { input: DraftRecapInput; output: DraftRecapOutput };
   checkSchedule: { input: CheckScheduleInput; output: CheckScheduleOutput };

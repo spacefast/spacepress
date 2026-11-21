@@ -68,6 +68,22 @@ final class TableController extends \WP_REST_Controller
             'args' => $id,
             ['methods' => \WP_REST_Server::DELETABLE, 'callback' => [$this, 'purge_item'], 'permission_callback' => '__return_true', 'args' => []],
         ]);
+        register_rest_route($this->namespace, '/' . $this->rest_base . '/(?P<id>[^/]+)/revisions', [
+            'args' => $id,
+            ['methods' => \WP_REST_Server::READABLE, 'callback' => [$this, 'get_revisions'], 'permission_callback' => '__return_true', 'args' => []],
+        ]);
+        register_rest_route($this->namespace, '/' . $this->rest_base . '/(?P<id>[^/]+)/revisions/diff', [
+            'args' => $id,
+            ['methods' => \WP_REST_Server::READABLE, 'callback' => [$this, 'diff_revisions'], 'permission_callback' => '__return_true', 'args' => []],
+        ]);
+        register_rest_route($this->namespace, '/' . $this->rest_base . '/(?P<id>[^/]+)/revisions/(?P<rid>\d+)', [
+            'args' => $id,
+            ['methods' => \WP_REST_Server::READABLE, 'callback' => [$this, 'get_revision'], 'permission_callback' => '__return_true', 'args' => []],
+        ]);
+        register_rest_route($this->namespace, '/' . $this->rest_base . '/(?P<id>[^/]+)/revisions/(?P<rid>\d+)/restore', [
+            'args' => $id,
+            ['methods' => \WP_REST_Server::CREATABLE, 'callback' => [$this, 'restore_revision'], 'permission_callback' => '__return_true', 'args' => []],
+        ]);
     }
 
     // Access is TypedPress's rules, decided inside each callback by the pipeline (one decision, one place):
@@ -140,8 +156,10 @@ final class TableController extends \WP_REST_Controller
     public function update_item($request)
     {
         return $this->run('update', $request, function (Viewer $viewer) use ($request): \WP_REST_Response {
-            $row = $this->db()->update($this->collection, $this->input($request), [$this->pk() => $this->id($request)], true, $viewer)[0]
-                ?? throw $this->missing($request);
+            [$patch, $rev, $takeover] = Rev::split($this->input($request));
+            $id = $this->id($request);
+            $row = Rev::guarded($this->collection, $id, $rev, $takeover, $viewer,
+                fn () => $this->db()->update($this->collection, $patch, [$this->pk() => $id], true, $viewer)[0] ?? throw $this->missing($request), $patch);
 
             return $this->prepare_item_for_response($row, $request);
         });
@@ -150,8 +168,9 @@ final class TableController extends \WP_REST_Controller
     public function delete_item($request)
     {
         return $this->run('delete', $request, function (Viewer $viewer) use ($request): \WP_REST_Response {
-            $row = $this->db()->delete($this->collection, [$this->pk() => $this->id($request)], true, $viewer)[0]
-                ?? throw $this->missing($request);
+            $id = $this->id($request);
+            $row = Rev::guarded($this->collection, $id, $request->get_param(Rev::FIELD), ($request->get_param(Rev::TAKEOVER) ?? '') === '1', $viewer,
+                fn () => $this->db()->delete($this->collection, [$this->pk() => $id], true, $viewer)[0] ?? throw $this->missing($request));
             return rest_ensure_response(['deleted' => true, 'previous' => $this->prepare_item_for_response($row, $request)->get_data()]);
         });
     }
@@ -173,6 +192,56 @@ final class TableController extends \WP_REST_Controller
                 ?? throw $this->missing($request);
 
             return rest_ensure_response(['purged' => true, 'previous' => $this->prepare_item_for_response($row, $request)->get_data()]);
+        });
+    }
+
+    public function get_revisions($request)
+    {
+        return $this->run('update', $request, function (Viewer $viewer) use ($request): \WP_REST_Response {
+            $revs = $this->db()->revisions($this->collection, $this->id($request), $viewer);
+            $out = array_map(static function (array $r): array {
+                $user = $r['userId'] !== null && $r['userId'] > 0 ? get_userdata($r['userId']) : null;
+
+                return [
+                    'id' => $r['id'],
+                    'version' => $r['version'],
+                    'op' => $r['op'],
+                    'at' => $r['at'],
+                    'user' => $user instanceof \WP_User ? ['id' => (int) $user->ID, 'name' => (string) $user->display_name] : null,
+                    'schemaMigration' => $r['schemaMigration'],
+                    'changed' => $r['changed'],
+                ];
+            }, $revs);
+
+            return rest_ensure_response($out);
+        });
+    }
+
+    public function diff_revisions($request)
+    {
+        return $this->run('update', $request, function (Viewer $viewer) use ($request): \WP_REST_Response {
+            $from = preg_match('/^\d{1,18}$/D', (string) ($request['from'] ?? '')) ? (int) $request['from'] : throw HttpError::invalidQuery('from must be an integer', '/from');
+            $to = preg_match('/^\d{1,18}$/D', (string) ($request['to'] ?? '')) ? (int) $request['to'] : throw HttpError::invalidQuery('to must be an integer', '/to');
+
+            return rest_ensure_response($this->db()->diffRevisions($this->collection, $this->id($request), $from, $to, $viewer, byVersion: true));
+        });
+    }
+
+    public function get_revision($request)
+    {
+        return $this->run('update', $request, function (Viewer $viewer) use ($request): \WP_REST_Response {
+            $row = $this->db()->revision($this->collection, $this->id($request), (int) $request['rid'], $viewer);
+
+            return $this->prepare_item_for_response($row, $request);
+        });
+    }
+
+    public function restore_revision($request)
+    {
+        return $this->run('update', $request, function (Viewer $viewer) use ($request): \WP_REST_Response {
+            $row = $this->db()->restoreRevision($this->collection, $this->id($request), (int) $request['rid'], $viewer);
+
+            return $this->prepare_item_for_response($row, $request);
         });
     }
 

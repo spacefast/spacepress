@@ -159,14 +159,27 @@ final class CompositeStore implements Store, Links
         return $this->for($collection)->revisions($collection, $pk);
     }
 
-    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId): void
+    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = []): void
     {
-        $this->for($collection)->revisionWrite($collection, $pk, $encodedRow, $userId);
+        if (($meta['op'] ?? null) === 'purge' && $this->isPostBacked($collection)) {
+            // Permanent wp_delete_post removes all WP child revisions, so persist the purge audit snapshot in tp__revisions.
+            if ($this->tables->hasRevisionsTable()) {
+                $this->tables->revisionWrite($collection, $pk, $encodedRow, $userId, $meta);
+            }
+
+            return;
+        }
+        $this->for($collection)->revisionWrite($collection, $pk, $encodedRow, $userId, $meta);
     }
 
-    public function revision(string $collection, int|string $pk, int $revisionId): ?array
+    public function revision(string $collection, int|string $pk, int $revisionId, bool $byVersion = false): ?array
     {
-        return $this->for($collection)->revision($collection, $pk, $revisionId);
+        return $this->for($collection)->revision($collection, $pk, $revisionId, $byVersion);
+    }
+
+    public function latestSchemaMigration(): ?string
+    {
+        return $this->tables->latestSchemaMigration();
     }
 
     public function promoteDue(string $collection, string $nowIso): array

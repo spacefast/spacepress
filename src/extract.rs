@@ -2172,12 +2172,8 @@ fn collection_options(
         None => editor,
     };
     let revisions = match flag("revisions")? {
-        Some(false) if editor => {
-            return Err(Diag::new(span("revisions"), "collections always have native revisions")
-                .help("remove this option; use table() for application data"));
-        }
         Some(r) => r,
-        None => editor,
+        None => !auth && !ev.legacy(),
     };
     let soft_delete = match flag("softDelete")? {
         Some(true) if auth => {
@@ -2215,8 +2211,14 @@ fn collection_options(
                 ),
             );
         }
+        Some(true) if !revisions => {
+            return Err(
+                Diag::new(span("staged"), "staged versions require `revisions: true`")
+                    .help("remove `revisions: false`, or set `staged: false`"),
+            );
+        }
         Some(on) => on,
-        None => editor,
+        None => editor && revisions,
     };
     // spec.md §2.3: `comments: true | { guests?, moderation?, threaded?, closeAfterDays?, types? }`;
     // comments are off on every kind that doesn't turn them on.

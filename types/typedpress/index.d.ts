@@ -1050,6 +1050,24 @@ type KindListOptions<TSchema extends Schema, TRels, K extends keyof TSchema, TCo
   with?: TWith;
 };
 
+export type RevisionOp = "create" | "update" | "delete" | "restore" | "purge";
+
+export interface RevisionSummary {
+  id: number;
+  version: number;
+  op: RevisionOp;
+  at: string;
+  user: { id: number; name: string } | null;
+  schemaMigration: string | null;
+  changed: string[] | null;
+}
+
+export interface RevisionDiff<TRow = Record<string, unknown>> {
+  from: number;
+  to: number;
+  changes: { field: keyof TRow & string; from: unknown; to: unknown }[];
+}
+
 /**
  * The query API of one kind (spec §3), on what `import { posts } from "typedpress:db"` gives you. Every
  * call runs as the visitor the request runs as: access rules, draft visibility and field masks
@@ -1078,6 +1096,13 @@ export interface KindApi<TSchema extends Schema, TRels, K extends keyof TSchema>
   restore(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<TSchema[K]["$inferSelect"]>;
   /** Permanently deletes a row (active or soft-deleted). Default access is `"system"`. */
   purge(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<TSchema[K]["$inferSelect"]>;
+  /** Native revision history (default ON for both `collection()` and `table()`). */
+  readonly revisions: {
+    list(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<RevisionSummary[]>;
+    get(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never, version: number): Promise<TSchema[K]["$inferSelect"]>;
+    diff(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never, fromVersion: number, toVersion: number): Promise<RevisionDiff<TSchema[K]["$inferSelect"]>>;
+    restore(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never, version: number): Promise<TSchema[K]["$inferSelect"]>;
+  };
 }
 
 /** The app's kinds by registered name: what `import { posts } from "typedpress:db"` gives you. */

@@ -228,7 +228,7 @@ final class Facade
 
             return self::list($kind, $query);
         }
-        if ($kind['type'] === 'post' && ($segments[2] ?? null) === 'revisions' && count($segments) <= 5) {
+        if (in_array($kind['type'], ['post', 'table'], true) && ($segments[2] ?? null) === 'revisions' && count($segments) <= 5) {
             self::gate($kind, 'update');
 
             return self::revisions($kind, $method, self::id($kind, $segments[1]), array_slice($segments, 3), $query, $body);
@@ -271,7 +271,7 @@ final class Facade
         $item = "$base/" . rawurlencode((string) $id);
         if ($method === 'PATCH') {
             // `_rev` and `takeover` are the write's conditions ({@see Rev}), not fields.
-            [$patch, $rev, $takeover] = $kind['type'] === 'post' ? Rev::split(self::body($body)) : [self::body($body), null, false];
+            [$patch, $rev, $takeover] = in_array($kind['type'], ['post', 'table'], true) ? Rev::split(self::body($body)) : [self::body($body), null, false];
             $row = Rev::guarded((string) $kind['name'], $id, $rev, $takeover, CoreAccess::viewer(),
                 fn () => self::outside($kind, 'update', $id, fn () => self::dispatch('POST', $item, self::context($kind), Kinds::input($kind, $patch)), $patch), $patch);
 
@@ -766,7 +766,7 @@ final class Facade
     /** An item of a post kind as the API answers it: with its live `_rev` ({@see Rev}). */
     private static function rev(array $kind, mixed $row): mixed
     {
-        return $kind['type'] === 'post' ? Rev::attach((string) $kind['name'], $row) : $row;
+        return in_array($kind['type'], ['post', 'table'], true) ? Rev::attach((string) $kind['name'], $row) : $row;
     }
 
     /**
@@ -862,6 +862,65 @@ final class Facade
         if ($viewer === null) {
             throw HttpError::notFound("No $collection row $id");
         }
+        $formatUser = static function (?int $uid): ?array {
+            if ($uid === null || $uid <= 0) {
+                return null;
+            }
+            $user = get_userdata($uid);
+
+            return $user instanceof \WP_User ? ['id' => (int) $user->ID, 'name' => (string) $user->display_name] : null;
+        };
+        if ($kind['type'] === 'table') {
+            if ($rest === []) {
+                \TypedPress\App::allow($method, ['GET', 'HEAD']);
+                [$limit, $offset] = self::paging($query);
+                $all = $db->revisions($collection, $id, $viewer);
+                $slice = array_slice($all, $offset, $limit);
+                $out = array_map(static fn (array $r): array => [
+                    'id' => $r['id'],
+                    'version' => $r['version'],
+                    'op' => $r['op'],
+                    'at' => $r['at'],
+                    'user' => $formatUser($r['userId']),
+                    'schemaMigration' => $r['schemaMigration'],
+                    'changed' => $r['changed'],
+                ], $slice);
+
+                return self::json(200, ['data' => $out, 'cursor' => self::cursor($offset + $limit, count($all))]);
+            }
+            if ($rest[0] === 'diff' && count($rest) === 1) {
+                \TypedPress\App::allow($method, ['GET', 'HEAD']);
+                $from = isset($query['from']) && preg_match('/^\d{1,18}$/D', (string) $query['from']) ? (int) $query['from'] : throw HttpError::invalidQuery('from must be a revision version or id', '/from');
+                $to = isset($query['to']) && preg_match('/^\d{1,18}$/D', (string) $query['to']) ? (int) $query['to'] : throw HttpError::invalidQuery('to must be a revision version or id', '/to');
+
+                return self::json(200, ['data' => $db->diffRevisions($collection, $id, $from, $to, $viewer, byVersion: true)]);
+            }
+            if (!preg_match('/^\d{1,18}$/D', $rest[0])) {
+                throw HttpError::notFound("No revision {$rest[0]}");
+            }
+            $rid = (int) $rest[0];
+            if (count($rest) === 1) {
+                \TypedPress\App::allow($method, ['GET', 'HEAD']);
+
+                return self::json(200, ['data' => $db->revision($collection, $id, $rid, $viewer)]);
+            }
+            if ($rest[1] !== 'restore' || count($rest) !== 2) {
+                throw HttpError::notFound('No such revisions route');
+            }
+            \TypedPress\App::allow($method, ['POST']);
+            [, $rev, $takeover] = Rev::split(self::body($body));
+            $restored = Rev::guarded($collection, $id, $rev, $takeover, $viewer, static fn (): array => $db->transaction(static function () use ($db, $collection, $id, $rid, $viewer): array {
+                $previous = $db->actor();
+                $db->setActor($viewer->user);
+                try {
+                    return $db->restoreRevision($collection, $id, $rid, $viewer);
+                } finally {
+                    $db->setActor($previous);
+                }
+            }));
+
+            return self::json(200, ['data' => self::rev($kind, PostMeta::values($collection, $restored, array_map('strval', array_keys($restored))))]);
+        }
         if ($rest === []) {
             \TypedPress\App::allow($method, ['GET', 'HEAD']);
             // A page of core's revisions route, newest first, as `{ data, cursor }` like every list.
@@ -882,14 +941,34 @@ final class Facade
             } finally {
                 remove_filter('rest_revision_query', $noAutosaves);
             }
+            $coreRows = (array) $hidden(static fn () => self::unwrap($response));
+            $metaById = [];
+            foreach ($db->revisions($collection, $id, $viewer) as $entry) {
+                $metaById[$entry['id']] = $entry;
+            }
             $out = [];
-            foreach ((array) $hidden(static fn () => self::unwrap($response)) as $r) {
-                $user = (int) ($r['author'] ?? 0) > 0 ? get_userdata((int) $r['author']) : null;
-                $out[] = ['id' => (int) $r['id'], 'at' => self::isoGmt((string) ($r['date_gmt'] ?? '')),
-                    'user' => $user instanceof \WP_User ? ['id' => (int) $user->ID, 'name' => (string) $user->display_name] : null];
+            foreach ($coreRows as $r) {
+                $rid = (int) $r['id'];
+                $m = $metaById[$rid] ?? null;
+                $out[] = [
+                    'id' => $rid,
+                    'version' => $m['version'] ?? 1,
+                    'op' => $m['op'] ?? 'update',
+                    'at' => self::isoGmt((string) ($r['date_gmt'] ?? '')),
+                    'user' => $formatUser((int) ($r['author'] ?? 0) ?: null),
+                    'schemaMigration' => $m['schemaMigration'] ?? null,
+                    'changed' => $m['changed'] ?? null,
+                ];
             }
 
             return self::json(200, ['data' => $out, 'cursor' => self::cursor($offset + $limit, (int) ($response->get_headers()['X-WP-Total'] ?? 0))]);
+        }
+        if ($rest[0] === 'diff' && count($rest) === 1) {
+            \TypedPress\App::allow($method, ['GET', 'HEAD']);
+            $from = isset($query['from']) && preg_match('/^\d{1,18}$/D', (string) $query['from']) ? (int) $query['from'] : throw HttpError::invalidQuery('from must be a revision version or id', '/from');
+            $to = isset($query['to']) && preg_match('/^\d{1,18}$/D', (string) $query['to']) ? (int) $query['to'] : throw HttpError::invalidQuery('to must be a revision version or id', '/to');
+
+            return self::json(200, ['data' => $db->diffRevisions($collection, $id, $from, $to, $viewer, byVersion: true)]);
         }
         if (!preg_match('/^\d{1,18}$/D', $rest[0])) {
             throw HttpError::notFound("No revision {$rest[0]}");

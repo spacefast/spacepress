@@ -433,12 +433,14 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
         if c.api.create {
             out.push((format!("{app}/{k}-create"), (create_input(schema, c), row.clone())));
         }
-        // As Register::collection: a kind with staged versions takes `_rev` and `takeover` on its
-        // update and delete (docs/staged.md).
+        // As Register::collection: kinds with staged versions or table revisions take `_rev` (and `takeover` for posts).
         let staged = c.editor && c.revisions && c.staged;
+        let has_rev = staged || (!c.editor && !c.auth && c.revisions);
         let conditions = |mut fields: Vec<(&'static str, Ty, bool)>| {
             if staged {
                 fields.extend([("_rev", Ty::Str, true), ("takeover", Ty::Bool, true)]);
+            } else if has_rev {
+                fields.push(("_rev", Ty::Str, true));
             }
             opt(&fields)
         };
@@ -460,7 +462,15 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
         }
         if c.revisions {
             let user = opt(&[("id", Ty::Num, false), ("name", Ty::Str, false)]).nullable();
-            let revision = opt(&[("id", Ty::Num, false), ("at", Ty::Str, false), ("user", user, false)]);
+            let revision = opt(&[
+                ("id", Ty::Num, false),
+                ("version", Ty::Num, false),
+                ("op", Ty::Str, false),
+                ("at", Ty::Str, false),
+                ("user", user, false),
+                ("schemaMigration", Ty::Str.nullable(), false),
+                ("changed", Ty::Array(Box::new(Ty::Str)).nullable(), false),
+            ]);
             out.push((
                 format!("{app}/{k}-revisions"),
                 (id(), opt(&[("revisions", Ty::Array(Box::new(revision)), false)])),

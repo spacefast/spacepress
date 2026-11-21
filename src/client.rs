@@ -240,6 +240,7 @@ pub const RESERVED_TYPE_NAMES: &[&str] = &[
     "Media",
     "PrivateFile",
     "RevisionSummary",
+    "RevisionDiff",
     "Status",
     "Locale",
     "Collections",
@@ -442,7 +443,10 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
     s.push_str("export interface Media { id: number; url: string; mime: string; size: number; width: number | null; height: number | null; alt: string | null; filename: string; createdAt: string; sizes: Record<string, { url: string; width: number; height: number }>; focal: { x: number; y: number } | null; author: number | null; caption: string }\n");
     s.push_str("export interface PrivateFile { id: number; bucket: string; filename: string; mime: string; size: number; ownerId: number | null; createdAt: string; url: string }\n");
     s.push_str(
-        "export interface RevisionSummary { id: number; at: string; user: { id: number; name: string } | null }\n",
+        "export interface RevisionSummary { id: number; version: number; op: \"create\" | \"update\" | \"delete\" | \"restore\" | \"purge\"; at: string; user: { id: number; name: string } | null; schemaMigration: string | null; changed: string[] | null }\n",
+    );
+    s.push_str(
+        "export interface RevisionDiff<T = Record<string, unknown>> { from: number; to: number; changes: { field: keyof T & string; from: unknown; to: unknown }[] }\n",
     );
     s.push_str("export type Status = \"draft\" | \"published\" | \"scheduled\";\n");
     let _ = writeln!(s, "export type Locale = {};\n", locale_ts(schema));

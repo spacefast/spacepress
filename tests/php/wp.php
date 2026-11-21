@@ -661,8 +661,10 @@ function wpDdl(array $schema): string
     }
     array_push($statements, ...$joins);
     if ($revisions) {
-        $statements[] = "CREATE TABLE `{prefix}tp__revisions` (\n\t`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n\t`collection` VARCHAR(64) NOT NULL,\n\t`pk` VARCHAR(64) NOT NULL,"
-            . "\n\t`at` CHAR(24) NOT NULL,\n\t`userId` BIGINT,\n\t`row` LONGTEXT NOT NULL,\n\tPRIMARY KEY (`id`),\n\tKEY `row` (`collection`, `pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+        $statements[] = "CREATE TABLE `{prefix}tp__revisions` (\n\t`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n\t`collection` VARCHAR(64) NOT NULL,\n\t`pk` VARCHAR(191) NOT NULL,"
+            . "\n\t`version` BIGINT UNSIGNED NOT NULL DEFAULT 1,\n\t`op` VARCHAR(16) NOT NULL DEFAULT 'update',"
+            . "\n\t`at` CHAR(24) NOT NULL,\n\t`userId` BIGINT UNSIGNED NULL,\n\t`schemaMigration` VARCHAR(191) NULL,"
+            . "\n\t`row` LONGTEXT NOT NULL,\n\t`changed` LONGTEXT NULL,\n\tPRIMARY KEY (`id`),\n\tKEY `row` (`collection`, `pk`),\n\tUNIQUE KEY `row_version` (`collection`, `pk`, `version`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
     }
 
     return implode("\n--> statement-breakpoint\n", $statements) . ($statements === [] ? '' : "\n");

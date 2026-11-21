@@ -82,7 +82,7 @@ export const SCHEMA = {
 			"path": "registrations",
 			"primaryKey": "id",
 			"drafts": false,
-			"revisions": false,
+			"revisions": true,
 			"softDelete": true,
 			"localized": false,
 			"relations": {
@@ -105,7 +105,7 @@ export const SCHEMA = {
 			"path": "activity",
 			"primaryKey": "id",
 			"drafts": false,
-			"revisions": false,
+			"revisions": true,
 			"softDelete": true,
 			"localized": false,
 			"relations": { "eventId": {
@@ -227,6 +227,8 @@ export const SCHEMA = {
 		"cancelWorkshop",
 		"restoreWorkshop",
 		"purgeWorkshop",
+		"workshopHistory",
+		"revertWorkshop",
 		"postAnnouncement",
 		"draftRecap",
 		"checkSchedule",
@@ -1280,7 +1282,11 @@ export function createClient(options = {}) {
 					return all;
 				},
 				get: (id, rid) => request("GET", `${one(id)}/revisions/${seg(rid)}`),
-				restore: (id, rid) => request("POST", `${one(id)}/revisions/${seg(rid)}/restore`)
+				diff: (id, from, to) => request("GET", `${one(id)}/revisions/diff`, { query: new URLSearchParams({
+					from: String(from),
+					to: String(to)
+				}) }),
+				restore: (id, rid) => wrote(request("POST", `${one(id)}/revisions/${seg(rid)}/restore`), key)
 			},
 			stage: (id, patch) => request("PATCH", `${one(id)}/staged`, { json: patch }),
 			staged: (id) => request("GET", `${one(id)}/staged`),

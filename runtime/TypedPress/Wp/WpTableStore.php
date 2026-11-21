@@ -233,31 +233,76 @@ final class WpTableStore implements Store, Links
 
     // ================================================================ revisions (§4.7, custom tables)
 
+    public function hasRevisionsTable(): bool
+    {
+        return $this->db->run('SHOW TABLES LIKE ?', [$this->db->prefix() . 'tp__revisions']) !== [];
+    }
+
+    public function latestSchemaMigration(): ?string
+    {
+        $ledger = $this->db->prefix() . 'tp__migrations';
+        if ($this->db->run('SHOW TABLES LIKE ?', [$ledger]) === []) {
+            return null;
+        }
+        $rows = $this->db->run(
+            "SELECT `id` FROM `$ledger` WHERE `app` = ? AND `id` NOT LIKE '%:%' ORDER BY `id` DESC LIMIT 1",
+            [$this->schema->name()],
+        );
+
+        return isset($rows[0]['id']) ? (string) $rows[0]['id'] : null;
+    }
+
     public function revisions(string $collection, int|string $pk): array
     {
-        $rows = $this->db->run('SELECT * FROM `' . $this->db->prefix() . 'tp__revisions` WHERE `collection` = ? AND `pk` = ? ORDER BY `id` DESC', [$collection, (string) $pk]);
+        $rows = $this->db->run(
+            'SELECT * FROM `' . $this->db->prefix() . 'tp__revisions` WHERE `collection` = ? AND `pk` = ? ORDER BY `version` DESC, `id` DESC',
+            [$collection, (string) $pk],
+        );
 
         return array_map(self::revisionRow(...), $rows);
     }
 
-    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId): void
+    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = []): void
     {
+        $table = '`' . $this->db->prefix() . 'tp__revisions`';
+        $max = $this->db->run("SELECT MAX(`version`) AS v FROM $table WHERE `collection` = ? AND `pk` = ?", [$collection, (string) $pk]);
+        $version = ((int) ($max[0]['v'] ?? 0)) + 1;
+        $op = (string) ($meta['op'] ?? 'update');
+        $schemaMigration = is_string($meta['schemaMigration'] ?? null) && $meta['schemaMigration'] !== '' ? $meta['schemaMigration'] : null;
+        $changed = array_key_exists('changed', $meta) && is_array($meta['changed']) ? Js::jsonStringify(array_values($meta['changed'])) : null;
         $this->db->run(
-            'INSERT INTO `' . $this->db->prefix() . 'tp__revisions` (`collection`, `pk`, `at`, `userId`, `row`) VALUES (?, ?, ?, ?, ?)',
-            [$collection, (string) $pk, Js::iso(Js::now()), $userId, Js::jsonStringify($encodedRow)],
+            "INSERT INTO $table (`collection`, `pk`, `version`, `op`, `at`, `userId`, `schemaMigration`, `row`, `changed`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [$collection, (string) $pk, $version, $op, Js::iso(Js::now()), $userId, $schemaMigration, Js::jsonStringify($encodedRow), $changed],
         );
     }
 
-    public function revision(string $collection, int|string $pk, int $revisionId): ?array
+    public function revision(string $collection, int|string $pk, int $revisionId, bool $byVersion = false): ?array
     {
-        $rows = $this->db->run('SELECT * FROM `' . $this->db->prefix() . 'tp__revisions` WHERE `collection` = ? AND `pk` = ? AND `id` = ?', [$collection, (string) $pk, $revisionId]);
+        $table = '`' . $this->db->prefix() . 'tp__revisions`';
+        $primary = $byVersion ? 'version' : 'id';
+        $fallback = $byVersion ? 'id' : 'version';
+        $rows = $this->db->run("SELECT * FROM $table WHERE `collection` = ? AND `pk` = ? AND `$primary` = ? LIMIT 1", [$collection, (string) $pk, $revisionId]);
+        if ($rows === []) {
+            $rows = $this->db->run("SELECT * FROM $table WHERE `collection` = ? AND `pk` = ? AND `$fallback` = ? LIMIT 1", [$collection, (string) $pk, $revisionId]);
+        }
 
         return $rows === [] ? null : self::revisionRow($rows[0]);
     }
 
     private static function revisionRow(array $r): array
     {
-        return ['id' => (int) $r['id'], 'at' => (string) $r['at'], 'userId' => $r['userId'] === null ? null : (int) $r['userId'], 'row' => json_decode((string) $r['row'], true)];
+        $changed = isset($r['changed']) && is_string($r['changed']) ? json_decode($r['changed'], true) : null;
+
+        return [
+            'id' => (int) $r['id'],
+            'version' => (int) ($r['version'] ?? 1),
+            'op' => (string) ($r['op'] ?? 'update'),
+            'at' => (string) $r['at'],
+            'userId' => $r['userId'] === null ? null : (int) $r['userId'],
+            'schemaMigration' => isset($r['schemaMigration']) && $r['schemaMigration'] !== '' ? (string) $r['schemaMigration'] : null,
+            'changed' => is_array($changed) ? array_values($changed) : null,
+            'row' => json_decode((string) $r['row'], true),
+        ];
     }
 
     public function promoteDue(string $collection, string $nowIso): array

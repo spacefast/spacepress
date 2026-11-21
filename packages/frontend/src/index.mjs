@@ -54,11 +54,26 @@ function running(pid) {
   }
 }
 
+const holderOf = async (file) => {
+  const pid = Number.parseInt(await readFile(file, 'utf8').catch(() => ''), 10);
+  return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+};
+
 // The lock file names the process that holds it. It is linked into place whole, so a reader never
-// sees it without that process ID, and a lock whose process is gone (or one from before the file
-// held an ID) is taken over.
+// sees it without that process ID. A lock whose process is gone (or a directory, from before the
+// file held an ID) is taken over: renamed aside first, which only one process can do to a given
+// file, then read again where it landed. A live lock renamed aside by a process that read the stale
+// one before it was replaced is put back, never removed.
 async function lock(file) {
-  const mine = `${file}-${process.pid}-${randomUUID()}`;
+  const directory = path.dirname(file);
+  const base = `${path.basename(file)}-`;
+  const scratch = () => `${file}-${process.pid}-${randomUUID()}`;
+  // A process that crashed between writing its own file and removing it left `<lock>-<pid>-<id>`.
+  for (const name of await readdir(directory)) {
+    const pid = name.startsWith(base) ? Number.parseInt(name.slice(base.length), 10) : NaN;
+    if (Number.isInteger(pid) && pid > 0 && !running(pid)) await rm(path.join(directory, name), { recursive: true, force: true });
+  }
+  const mine = scratch();
   await writeFile(mine, `${process.pid}\n`);
   try {
     for (;;) {
@@ -68,15 +83,34 @@ async function lock(file) {
       } catch (error) {
         if (error.code !== 'EEXIST') throw error;
       }
-      const holder = Number.parseInt(await readFile(file, 'utf8').catch(() => ''), 10);
-      if (Number.isInteger(holder) && holder > 0 && running(holder)) {
-        throw new Error(`Frontend build already running (process ${holder}). If no such build is running, remove ${file}.`);
+      const busy = (holder) => new Error(`Frontend build already running (process ${holder}). If no such build is running, remove ${file}.`);
+      const holder = await holderOf(file);
+      if (holder && running(holder)) throw busy(holder);
+      const aside = scratch();
+      try {
+        await rename(file, aside);
+      } catch (error) {
+        // Another process took it over first.
+        if (error.code === 'ENOENT') continue;
+        throw error;
       }
-      await rm(file, { recursive: true, force: true });
+      const moved = await holderOf(aside);
+      if (moved && running(moved)) {
+        // Another process took the stale lock over and holds this one: put it back.
+        await link(aside, file).catch((error) => { if (error.code !== 'EEXIST') throw error; })
+          .finally(() => rm(aside, { force: true }));
+        throw busy(moved);
+      }
+      await rm(aside, { recursive: true, force: true });
     }
   } finally {
     await rm(mine, { force: true });
   }
+}
+
+// Only a lock this process still holds is removed.
+async function unlock(file) {
+  if (await holderOf(file) === process.pid) await rm(file, { force: true });
 }
 
 async function entryMetadata(manifest, name, source, output) {
@@ -364,7 +398,7 @@ async function publishFrontend({ root, inputs, directory, frameworks, logLevel =
     }
     return output;
   } finally {
-    await rm(held, { force: true });
+    await unlock(held);
   }
 }
 

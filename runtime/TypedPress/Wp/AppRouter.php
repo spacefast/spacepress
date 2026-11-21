@@ -1284,7 +1284,8 @@ final class AppRouter
                             }
                             ksort($key);
                         }
-                        $key = json_encode($key);
+                        // Invalid UTF-8 is substituted, not a failed encoding every such link would share.
+                        $key = json_encode($key, JSON_INVALID_UTF8_SUBSTITUTE) ?: serialize($key);
                         if (!isset($seen[$key])) {
                             $seen[$key] = true;
                             $out['links'][] = $link;

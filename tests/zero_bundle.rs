@@ -65,6 +65,19 @@ fn ported(work: &Path) -> PathBuf {
     app
 }
 
+/// `functions.php` with each "callback at `<file>:<line>`" doc comment reduced to "callback".
+fn without_source_positions(php: &[u8]) -> String {
+    String::from_utf8(php.to_vec())
+        .unwrap()
+        .lines()
+        .map(|line| match line.split_once(" callback at `") {
+            Some((head, rest)) if rest.ends_with("`.") => format!("{head} callback."),
+            _ => line.to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn manifest(dir: &Path) -> serde_json::Value {
     serde_json::from_slice(&fs::read(dir.join("manifest.json")).unwrap()).unwrap()
 }
@@ -89,8 +102,12 @@ fn a_zero_source_bundle_compiles_like_the_same_app_captured_as_first() {
     }
     let (mut a, mut b) = (tree(&compiled_legacy), tree(&compiled_first));
     // The manifests name their own source hashes; the archive keeps each capture's ledger as sent.
+    // Each compiled function's doc comment names its own source position, and the port moved
+    // `lib/` to `tp/lib/` and the actions to top-level exports.
     for t in [&mut a, &mut b] {
         t.remove("manifest.json");
+        let functions = t.get_mut("plugins/typedpress-app-notes/tp/app/functions.php").unwrap();
+        *functions = without_source_positions(functions).into_bytes();
     }
     let differing: Vec<_> = a
         .keys()
@@ -381,9 +398,21 @@ fn every_0_3_authoring_form_recompiles_to_the_schema_0_3_served() {
     assert_eq!(
         differences,
         [
+            // schema.php was reset to version 5, the only version the runtime loads
+            // (runtime/TypedPress/Schema.php); a 0.3.0 build is recompiled, never served as built.
+            "/version: 3 became 5",
             // `routes` moved onto the first/app/ route table (`app`, asserted below and served in
             // a_recompiled_zero_bundle_serves_its_routes_as_0_3_did).
             "/routes is gone",
+            // Compiled PHP functions are snake_case. The schema names the function the same build's
+            // functions.php defines, so each hook and `$onUpdate` runs the same code.
+            "/collections/posts/hooks/beforeCreate: \"posts__beforeCreate__chain\" became \"posts__before_create__chain\"",
+            "/collections/posts/hooks/afterCreate: \"posts__afterCreate\" became \"posts__after_create\"",
+            "/collections/posts/hooks/beforeUpdate: \"posts__beforeUpdate\" became \"posts__before_update\"",
+            "/collections/posts/hooks/afterUpdate: \"posts__afterUpdate\" became \"posts__after_update\"",
+            "/collections/posts/hooks/beforeDelete: \"posts__beforeDelete\" became \"posts__before_delete\"",
+            "/collections/posts/hooks/afterDelete: \"posts__afterDelete\" became \"posts__after_delete\"",
+            "/collections/things/columns/touched/onUpdate/fn: \"things__onUpdate__touched\" became \"things__on_update__touched\"",
             // The timestamped scheme was renamed with the product; it verifies the same header.
             "/actions/hook/signature/scheme: \"zero\" became \"typedpress\"",
         ],

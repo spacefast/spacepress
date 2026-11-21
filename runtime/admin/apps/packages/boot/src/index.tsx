@@ -15,7 +15,12 @@ export { store } from './store';
 export type {
 	StoreSelectors,
 	Nudge,
+	DashboardContext,
 	DashboardNoticeConfig,
+	DeclarativeWidgetDefinition,
+	DeclarativeWidgetField,
+	DeclarativeWidgetMetric,
+	CustomDashboardDefinition,
 	EntityDependency,
 	RegisteredModal,
 } from './store/types';

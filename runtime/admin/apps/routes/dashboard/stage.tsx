@@ -1,7 +1,8 @@
 /**
  * External dependencies
  */
-import { Dashboard, useWidgetTypes } from '@typedpress-admin/dashboard';
+import { Dashboard } from '@typedpress-admin/dashboard';
+import { useSpacePressWidgetTypes } from '@typedpress-admin/widgets';
 import { Page } from '@typedpress-admin/admin-toolkit';
 import {
 	store as tpAdminStore,
@@ -99,12 +100,27 @@ function trackWidgetAttributeChanges(
 export default function DashboardRoute() {
 	const [ layout, onChange, resetLayout ] = useDashboardLayout();
 
-	const registeredWidgetTypes = useSelect(
-		( select ) => select( tpAdminStore ).getDashboardWidgetTypes(),
+	const { registeredWidgetTypes, dashboardContext } = useSelect(
+		( select ) => {
+			const selectors = select( tpAdminStore ) as StoreSelectors;
+			return {
+				registeredWidgetTypes: selectors.getDashboardWidgetTypes(),
+				dashboardContext: selectors.getDashboardContext(),
+			};
+		},
 		[]
 	);
 
-	const widgetTypes = useWidgetTypes( registeredWidgetTypes );
+	const widgetTypes = useSpacePressWidgetTypes(
+		registeredWidgetTypes,
+		dashboardContext?.declarative_widgets ?? [],
+		dashboardContext
+	);
+
+	const homeDashboard = useMemo(
+		() => dashboardContext?.dashboards?.find( ( d ) => d.home ),
+		[ dashboardContext ]
+	);
 
 	// Fire page_view once when widget types finish resolving.
 	const isLoading = ! widgetTypes.length;
@@ -220,7 +236,10 @@ export default function DashboardRoute() {
 			onNoticeAction={ handleNoticeAction }
 		>
 			<Page
-				title={ __( 'Dashboard', 'typedpress-admin' ) }
+				title={
+					homeDashboard?.title || __( 'Home', 'typedpress-admin' )
+				}
+				subTitle={ homeDashboard?.description || undefined }
 				actions={
 					<>
 						<Dashboard.Actions />

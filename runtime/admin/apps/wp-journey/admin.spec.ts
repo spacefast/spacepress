@@ -138,7 +138,8 @@ if (!subdir) {
 		expect(author.status(), await author.text()).toBe(201);
 		const authorId = (await author.json()).data.id;
 		await login(page, 'editor');
-		await page.getByRole('link', { name: 'Posts', exact: true }).last().click();
+		// Home's Content Overview widget also has a Posts link; open the sidebar's.
+		await page.locator('.typedpress-admin-sidebar__content').getByRole('link', { name: 'Posts', exact: true }).click();
 		await page.getByRole('button', { name: 'New Post', exact: true }).click();
 		const title = `Browser journey ${Date.now()}`;
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill(title);
@@ -547,10 +548,12 @@ if (!subdir) {
 		const headers = {
 			Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}`,
 		};
-		await page.getByRole('link', { name: 'Globals', exact: true }).click();
+		// One to three readable globals are links directly under Site; a Globals group appears only for four or more.
 		await page
+			.locator('.typedpress-admin-sidebar__content')
 			.getByRole('link', { name: 'Site settings', exact: true })
 			.click();
+		await expect(page).toHaveURL(`${site}/wp-admin/new/globals/settings`);
 		await page
 			.getByRole('textbox', { name: 'Tagline', exact: true })
 			.fill(`Saved from the browser ${Date.now()}`);
@@ -575,6 +578,8 @@ if (!subdir) {
 		);
 		await page.getByRole('link', { name: 'Media', exact: true }).click();
 		const name = `browser-${Date.now()}`;
+		// Each library item links twice, by thumbnail and by title; open it by its title.
+		const mediaLink = page.locator('a.typedpress-schema-title-link', { hasText: name });
 		const uploaded = page.waitForResponse(
 				(r) =>
 					r.url().includes('/wp-json/typedpress/v1/media') && r.request().method() === 'POST' && r.status() === 201
@@ -601,7 +606,7 @@ if (!subdir) {
 		const mediaId = (await uploadResponse.json()).data.id;
 		await expect(page.locator('.components-notice.is-error'))
 			.toContainText(/not allowed|invalid|file type|mime|upload/i);
-		await page.getByRole('link', { name, exact: true }).click();
+		await mediaLink.click();
 		await expect(page).toHaveURL(`${site}/wp-admin/new/media/${mediaId}`);
 		await page
 			.getByRole('textbox', { name: 'Alt text', exact: true })
@@ -669,13 +674,13 @@ if (!subdir) {
 			window.dispatchEvent(event);
 			return event.defaultPrevented;
 		})).toBe(false);
-		await page.getByRole('link', { name, exact: true }).click();
+		await mediaLink.click();
 		await expect(alt).toHaveValue('Saved on media leave');
 		await alt.fill('Discard this media draft');
 		await page.getByRole('link', { name: 'Back to Media', exact: true }).click();
 		await leave.getByRole('button', { name: 'Discard changes', exact: true }).click();
 		await expect(page).toHaveURL(`${site}/wp-admin/new/media`);
-		await page.getByRole('link', { name, exact: true }).click();
+		await mediaLink.click();
 		await expect(alt).toHaveValue('Saved on media leave');
 		await page.screenshot({ path: test.info().outputPath('media-details.png') });
         // The complete native image editor remains available beside TypedPress details.
@@ -737,10 +742,13 @@ test('restored native WordPress routes persist settings and published content an
     await page.goto(`${site}/wp-admin/new/dashboard`);
     await expect(page).toHaveURL(`${site}/wp-admin/new/`);
     await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Add widgets', exact: true }).click();
-    await expect(page.getByRole('dialog').getByText('Content Overview', { exact: true })).toBeVisible();
+    // Home starts with the built-in widgets, so widgets are added from Customize, not the empty-layout button.
+    await page.getByRole('button', { name: 'Customize', exact: true }).click();
+    await page.getByRole('button', { name: 'Add widget', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Add widget' }).getByText('Content Overview', { exact: true }).first()).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('native-dashboard-widgets.png') });
     await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.goto(`${site}/wp-admin/new/settings/general`);
     const description = `Saved through native settings ${Date.now()}`;
     await page.getByRole('textbox', { name: 'Site description', exact: true }).fill(description);

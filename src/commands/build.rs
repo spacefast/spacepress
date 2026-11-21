@@ -13,6 +13,17 @@ pub(super) fn compile(project: &Path) -> Result<crate::schema::Schema, Diag> {
 
 /// Runs the whole pipeline in memory.
 pub(super) fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
+    build_with(project, frozen, false)
+}
+
+/// [`build`] for a command that writes the site (`build`, `export`): every stylesheet
+/// `@typedpress/frontend` builds must be in `public/`. `check`, `init` and `add` compile without
+/// them, so a fresh clone checks before its first frontend build.
+pub(super) fn build_site(project: &Path, frozen: bool) -> Result<Built, Diag> {
+    build_with(project, frozen, true)
+}
+
+fn build_with(project: &Path, frozen: bool, site: bool) -> Result<Built, Diag> {
     let entry = project.join("typedpress.config.ts");
     if !entry.is_file() {
         return Err(Diag::new(
@@ -21,7 +32,9 @@ pub(super) fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
         ));
     }
     let program = loader::load(&entry)?;
-    crate::assets::require_frontend_styles(&program, |file| project.join("public").join(file).is_file())?;
+    if site {
+        crate::assets::require_frontend_styles(&program, |file| project.join("public").join(file).is_file())?;
+    }
     build_program(project, &program, frozen)
 }
 
@@ -582,7 +595,8 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     } else {
         None
     };
-    let built = match build(&project, frozen).and_then(|built| check_seed(&project, &built).map(|()| built)) {
+    let compile = if args.command == "build" { build_site } else { build };
+    let built = match compile(&project, frozen).and_then(|built| check_seed(&project, &built).map(|()| built)) {
         Ok(b) => b,
         Err(d) => {
             report(std::slice::from_ref(&d));

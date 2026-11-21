@@ -175,21 +175,29 @@ pub fn dedupe(assets: &mut [&mut Asset]) {
     }
 }
 
-/// The route graph can refer to stylesheets that the frontend build put in public/.
+/// The URL a stylesheet `@typedpress/frontend` builds has before its first build, followed by
+/// its source path. Nothing is ever served there: [`require_frontend_styles`] refuses it.
+pub(crate) const UNBUILT_STYLE: &str = "/typedpress-styles/unbuilt/";
+
+/// The route graph can refer to stylesheets that the frontend build put in public/. A command that
+/// writes the site checks they are there; `check` compiles without them.
 pub(crate) fn require_frontend_styles(program: &crate::loader::Program, present: impl Fn(&str) -> bool) -> Result<()> {
     let missing = program
         .assets
         .values()
-        .filter(|asset| asset.file.starts_with('/') && !present(&asset.file[1..]))
-        .map(|asset| &asset.file)
-        .min();
-    if let Some(file) = missing {
-        return Err(Diag::new(
-            Span::NONE,
-            format!("frontend stylesheet {file} is missing from public/"),
-        )
-        .help("Build and capture the project with its installed frontend dependency before publishing.")
-        .code(crate::diag::Code::Import));
+        .filter(|asset| {
+            asset.file.starts_with('/') && (asset.file.starts_with(UNBUILT_STYLE) || !present(&asset.file[1..]))
+        })
+        .min_by(|a, b| a.file.cmp(&b.file));
+    if let Some(asset) = missing {
+        let message = if asset.file.starts_with(UNBUILT_STYLE) {
+            format!("frontend stylesheet {} has not been built", asset.source)
+        } else {
+            format!("frontend stylesheet {} is missing from public/", asset.file)
+        };
+        return Err(Diag::new(Span::NONE, message)
+            .help("Build and capture the project with its installed frontend dependency before publishing.")
+            .code(crate::diag::Code::Import));
     }
     Ok(())
 }

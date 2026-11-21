@@ -1271,15 +1271,25 @@ final class AppRouter
                     continue;
                 }
                 if ($key === 'links' && is_array($value)) {
-                    // Compare stylesheet links with their default type omitted, keeping the first link as written.
+                    // Each link once, the first as written. Two links are the same whatever order
+                    // their keys are in, and a stylesheet's default type is left out of the comparison.
                     $links = [...($out['links'] ?? []), ...array_values($value)];
-                    $normalized = array_map(static function ($link) {
-                        if (is_array($link) && ($link['rel'] ?? null) === 'stylesheet' && ($link['type'] ?? null) === 'text/css') {
-                            unset($link['type']);
+                    $seen = [];
+                    $out['links'] = [];
+                    foreach ($links as $link) {
+                        $key = $link;
+                        if (is_array($key)) {
+                            if (($key['rel'] ?? null) === 'stylesheet' && ($key['type'] ?? null) === 'text/css') {
+                                unset($key['type']);
+                            }
+                            ksort($key);
                         }
-                        return $link;
-                    }, $links);
-                    $out['links'] = array_values(array_intersect_key($links, array_unique($normalized, SORT_REGULAR)));
+                        $key = json_encode($key);
+                        if (!isset($seen[$key])) {
+                            $seen[$key] = true;
+                            $out['links'][] = $link;
+                        }
+                    }
                     continue;
                 }
                 if (($key === 'openGraph' || $key === 'twitter') && is_array($value)) {

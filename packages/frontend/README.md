@@ -116,8 +116,11 @@ While Vite serves the entries, `typedpress dev` does not rewrite
 `typedpress export` build the entries again before they read `public/`, with the
 entry list and framework options of the last frontend build
 (`.tp/frontend-dev.json`), so they never ship a bundle from before your edits.
-A checkout with no `.tp/` has no such record: run the frontend build there
-first, as a deployment's build script does.
+An entry whose source file you deleted is left out, and a record with no entry
+left is removed. A checkout with no `.tp/` has no such record: run the frontend
+build there first, as a deployment's build script does. `typedpress check`
+compiles a fresh checkout before any frontend build; `typedpress build` and
+`typedpress export` build the imported stylesheets first.
 
 ### Open the dev site from another machine
 

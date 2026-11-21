@@ -237,7 +237,10 @@ fn compile_request(request: Request) -> String {
     let entry = project.join("typedpress.config.ts");
     let built = match loader::load_from(Rc::new(Memory::new(files)), &entry) {
         Err(diagnostics) => Err(diagnostics),
-        Ok(program) => pipeline::build(&project, &program, previous, |_| None).map_err(|d| vec![d]),
+        // This writes the app plugin: a stylesheet the frontend build has not built yet is refused.
+        Ok(program) => crate::assets::require_frontend_styles(&program, |_| true)
+            .and_then(|()| pipeline::build(&project, &program, previous, |_| None))
+            .map_err(|d| vec![d]),
     };
     let mut snapshot = None;
     let (diagnostics, output) = match built {

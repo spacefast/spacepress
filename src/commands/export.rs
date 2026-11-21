@@ -142,7 +142,7 @@ fn run(flags: Flags) -> Result<(), String> {
         .map_err(|e| format!("{}: {e}", flags.project.display()))?;
     let _frontend = crate::frontend::prepare_styles(&project)
         .map_err(|d| crate::diag::render(&d, &project).trim_end().to_string())?;
-    let built = super::build::build(&project, super::build::frozen(false))
+    let built = super::build::build_site(&project, super::build::frozen(false))
         .map_err(|d| crate::diag::render(&d, &project).trim_end().to_string())?;
     if built.schema.output != crate::schema::Output::Static {
         return Err(

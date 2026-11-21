@@ -5,7 +5,8 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-/// Keep this lock alive until the caller finishes consuming the generated assets.
+/// Builds the project's frontend assets and answers the lock that keeps another build from
+/// rewriting them: keep it alive until the caller has read `public/`.
 pub(crate) fn prepare_styles(project: &Path) -> Result<Option<File>> {
     let error = |message: String| Diag::new(Span::NONE, message).code(crate::diag::Code::Import);
     if !project.join("typedpress.config.ts").is_file() {
@@ -30,7 +31,8 @@ pub(crate) fn prepare_styles(project: &Path) -> Result<Option<File>> {
     rebuild_entries(project)?;
     let styles = crate::loader::stylesheet_inputs(project)?;
     if styles.is_empty() && !project.join(crate::loader::FRONTEND_STYLES).is_file() {
-        return Ok(None);
+        // The browser entries were just rebuilt into public/: the lock still covers reading them.
+        return Ok(Some(guard));
     }
 
     let input = serde_json::to_vec(&styles).expect("paths are strings");

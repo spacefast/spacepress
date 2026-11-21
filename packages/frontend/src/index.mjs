@@ -1,4 +1,4 @@
-import { lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { createServer as createHttpServer } from 'node:http';
 import { createRequire } from 'node:module';
@@ -40,6 +40,42 @@ async function ensureDirectory(directory) {
     if (!(await lstat(directory)).isDirectory()) {
       throw new Error(`Expected a directory at ${directory}.`);
     }
+  }
+}
+
+// A process that has exited (killed by Ctrl+C, say) holds no lock. EPERM is a live process of
+// another user's.
+function running(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
+  }
+}
+
+// The lock file names the process that holds it. It is linked into place whole, so a reader never
+// sees it without that process ID, and a lock whose process is gone (or one from before the file
+// held an ID) is taken over.
+async function lock(file) {
+  const mine = `${file}-${process.pid}-${randomUUID()}`;
+  await writeFile(mine, `${process.pid}\n`);
+  try {
+    for (;;) {
+      try {
+        await link(mine, file);
+        return;
+      } catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+      }
+      const holder = Number.parseInt(await readFile(file, 'utf8').catch(() => ''), 10);
+      if (Number.isInteger(holder) && holder > 0 && running(holder)) {
+        throw new Error(`Frontend build already running (process ${holder}). If no such build is running, remove ${file}.`);
+      }
+      await rm(file, { recursive: true, force: true });
+    }
+  } finally {
+    await rm(mine, { force: true });
   }
 }
 
@@ -153,8 +189,16 @@ export async function rebuildFrontend({ root = process.cwd() } = {}) {
     if (error.code === 'ENOENT') return false;
     throw error;
   }
-  const entries = Object.entries(recorded.entries ?? {}).map(([name, entry]) => [name, entry.source]);
-  if (!entries.length) return false;
+  // An entry whose source was deleted since it was recorded is no longer built. With none left
+  // the record is stale: it goes, and the build reads public/ as it is.
+  const entries = [];
+  for (const [name, entry] of Object.entries(recorded.entries ?? {})) {
+    if (typeof entry?.source === 'string' && await statIfPresent(path.resolve(root, entry.source))) entries.push([name, entry.source]);
+  }
+  if (!entries.length) {
+    await rm(path.join(root, record), { force: true });
+    return false;
+  }
   await buildFrontend({ root, entries: Object.fromEntries(entries), frameworks: recorded.frameworks ?? {}, logLevel: 'warn' });
   return true;
 }
@@ -298,11 +342,8 @@ async function publishFrontend({ root, inputs, directory, frameworks, logLevel =
   await ensureDirectory(typedpress);
   await ensureDirectory(generated);
 
-  const lock = path.join(generated, `.${directory}-lock`);
-  await mkdir(lock).catch((error) => {
-    if (error.code !== 'EEXIST') throw error;
-    throw new Error(`Frontend build already running. If it stopped unexpectedly, check ${lock} before removing the lock.`);
-  });
+  const held = path.join(generated, `.${directory}-lock`);
+  await lock(held);
   try {
     const output = await compileFrontend({ root, inputs, publicDir, generated, directory, plugins, logLevel });
     if (frameworks) {
@@ -323,7 +364,7 @@ async function publishFrontend({ root, inputs, directory, frameworks, logLevel =
     }
     return output;
   } finally {
-    await rm(lock, { recursive: true });
+    await rm(held, { force: true });
   }
 }
 
@@ -346,7 +387,17 @@ async function compileFrontend({ root, inputs, publicDir, generated, directory, 
     }
   }
 
-  const staging = await mkdtemp(path.join(generated, '.frontend-'));
+  // A build that was stopped (Ctrl+C) leaves its staging directory. Under the lock no other build
+  // of this directory is running, so one is removed unless it holds the previous build it could
+  // not put back. `.frontend-` is the name 0.1.0 gave either kind.
+  const prefix = `.${directory}-build-`;
+  for (const name of await readdir(generated)) {
+    const leftover = path.join(generated, name);
+    if ((name.startsWith(prefix) || name.startsWith('.frontend-')) && !(await statIfPresent(path.join(leftover, 'previous')))) {
+      await rm(leftover, { recursive: true, force: true });
+    }
+  }
+  const staging = await mkdtemp(path.join(generated, prefix));
   const output = path.join(staging, 'assets');
   const backup = path.join(staging, 'previous');
   let preserveBackup = false;

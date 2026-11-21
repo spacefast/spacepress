@@ -184,6 +184,9 @@ pub struct Program {
     /// module id: the evaluator binds their import to a URL or a class map (`crate::assets`).
     pub assets: HashMap<usize, crate::assets::Asset>,
     frontend_styles: HashMap<String, String>,
+    /// `@typedpress/frontend` builds the authored plain stylesheets (Tailwind's `@import
+    /// "tailwindcss"`), so the compiler never reads them as CSS it copies.
+    frontend: bool,
     discover_styles: bool,
 }
 
@@ -251,10 +254,10 @@ fn load_with_styles(fs: Rc<dyn Fs>, entry: &Path, discover_styles: bool) -> std:
         .map_err(|e| vec![Diag::new(Span::NONE, format!("{}: {e}", entry.display())).code(diag::Code::Import)])?;
     let root = entry.parent().expect("entry has a directory").to_path_buf();
     let manifest = root.join(FRONTEND_STYLES);
-    let frontend_styles = if !discover_styles
-        && fs.is_file(&manifest)
-        && (fs.frozen_capture() || frontend_enabled(&*fs, &root).map_err(|diag| vec![diag])?)
-    {
+    // A live project that names the package builds its plain stylesheets with it, and has no
+    // manifest before its first build (a fresh clone). A stored capture took its manifest along.
+    let frontend = !fs.frozen_capture() && frontend_enabled(&*fs, &root).map_err(|diag| vec![diag])?;
+    let frontend_styles = if !discover_styles && fs.is_file(&manifest) && (fs.frozen_capture() || frontend) {
         fs.read_to_string(&manifest)
             .and_then(|text| {
                 serde_json::from_str::<StylesManifest>(&text)
@@ -270,6 +273,7 @@ fn load_with_styles(fs: Rc<dyn Fs>, entry: &Path, discover_styles: bool) -> std:
     let mut program = Program {
         root,
         frontend_styles,
+        frontend,
         discover_styles,
         modules: Vec::new(),
         resolved: HashMap::new(),
@@ -853,12 +857,14 @@ fn load_asset(
     by_path.insert(path.to_path_buf(), id);
     let authored_css = kind == crate::assets::Kind::Css && authored_stylesheet(&relative);
     let bundled_url = authored_css.then(|| program.frontend_styles.get(&relative)).flatten();
-    let bytes = if authored_css && (program.discover_styles || bundled_url.is_some()) {
-        Vec::new()
-    } else {
-        text.into_bytes()
-    };
+    let built = authored_css && (program.frontend || program.discover_styles || bundled_url.is_some());
+    let bytes = if built { Vec::new() } else { text.into_bytes() };
     let mut asset = crate::assets::Asset::new(&relative, kind, bytes, file)?;
+    if built && bundled_url.is_none() && !program.discover_styles {
+        // Not built yet (a fresh clone, or a stylesheet added since the last build). The program
+        // still compiles for `check`; a command that writes the site refuses the missing file.
+        asset.file = format!("{}{relative}", crate::assets::UNBUILT_STYLE);
+    }
     if let Some(url) = bundled_url {
         if !url.strip_prefix("/typedpress-styles/assets/").is_some_and(|file| {
             file.ends_with(".css")

@@ -39,6 +39,10 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --lib
+      # examples/kitchen-sink uses every authoring feature the type declarations offer. This half
+      # of tests/kitchen_sink.rs only parses files (well under a second); the half that builds the
+      # example and drives it on WordPress runs with the other test targets on main.
+      - run: cargo test --locked --test kitchen_sink -- --skip kitchen_sink_renders_every_route_on_wordpress
       - name: Install generated PHP layout tooling
         run: |
           sudo apt-get update
@@ -172,6 +176,11 @@ jobs:
           npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
           npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
           node --test examples/migrate-astro/migrated.test.mjs
+      - name: Scaffolder on WordPress
+        if: matrix.shard == 'rest'
+        env:
+          TP_BIN: ${{ github.workspace }}/target/debug/typedpress
+        run: npm test --prefix packages/create-typedpress
       - name: Docker-free local development acceptance
         if: matrix.shard == 'rest'
         run: node --test scripts/dev/acceptance.test.mjs
@@ -347,10 +356,11 @@ jobs:
           key: wordpress-catalog-${{ hashFiles('scripts/wordpress-catalog.py') }}
       - run: python3 scripts/wordpress-catalog.py --check
       - run: tsc -p examples/pantry
+      - run: tsc -p examples/kitchen-sink
       - run: tsc -p examples/blog
       - run: tsc -p examples/showcase
       - run: tsc -p examples/blog/client-tests
-      - run: node --test runtime/client/index.test.ts runtime/client/committed.test.ts
+      - run: node --test runtime/client/*.test.ts
       - run: node --test examples/showcase/build-app.test.mjs examples/showcase/rebuild-service.test.mjs
       - run: node --test scripts/dev/studio.test.mjs
       - run: node --test packages/cli/test/*.test.mjs packages/create-typedpress/test/*.test.mjs scripts/release/archive.test.mjs

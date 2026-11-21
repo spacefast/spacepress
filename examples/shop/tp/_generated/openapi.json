@@ -1,0 +1,4484 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Shop API",
+    "version": "v1",
+    "description": "The HTTP API of the `shop` app, built with TypedPress and served under `/__tp/api/v1` on its WordPress site.\n\nEach request is dispatched to the WordPress REST route behind it, which enforces the app's access rules, field rules, validation and hooks; this API gives the requests and answers one plain shape.\n\nA successful answer is JSON with the result under `data`; a list also has `cursor`, the next page's cursor or null. An error is an RFC 9457 problem document, `application/problem+json`, with `type`, `title`, `status`, `code` and `detail`, and `pointer` when one field is at fault.\n\nRequests sign in as WordPress core accepts: the logged-in cookie with an `X-WP-Nonce` header, an application password, or a TypedPress Identity access token. Each operation says who may call it. A field the caller may not read is left out of rows, and can't be filtered or sorted on.\n\n`typedpress build` writes this document from the app's schema, with the typed client in `tp/_generated/client/` and the app's WordPress Abilities; a component here has the name of the client's type for the same value."
+  },
+  "servers": [
+    { "url": "/__tp/api/v1", "description": "The app's WordPress site." }
+  ],
+  "security": [
+    { "cookie": [], "nonce": [] },
+    { "applicationPassword": [] },
+    { "bearer": [] }
+  ],
+  "tags": [
+    { "name": "Products", "description": "A table of the app's own." },
+    {
+      "name": "Sync",
+      "description": "What `typedpress sync` calls to keep content files and rows in step, for kinds with `sync`."
+    },
+    {
+      "name": "Categories",
+      "description": "A taxonomy: WordPress terms of their own taxonomy, attached to collections. Assigning terms is a write to the item."
+    },
+    {
+      "name": "Tags",
+      "description": "A taxonomy: WordPress terms of their own taxonomy, attached to collections. Assigning terms is a write to the item."
+    },
+    { "name": "Orders", "description": "A table of the app's own." },
+    {
+      "name": "WordPress",
+      "description": "WordPress's own content, in TypedPress's field names. WordPress core decides access, as it does for every other client of these routes."
+    },
+    { "name": "Media", "description": "The WordPress media library." },
+    { "name": "Account", "description": "The signed-in user and their session." },
+    {
+      "name": "Live",
+      "description": "Reads a page is subscribed to, kept current without a push transport."
+    },
+    { "name": "Search", "description": "One search over every kind with a searchable field." },
+    { "name": "Schema", "description": "The app described to its clients." }
+  ],
+  "paths": {
+    "/products": {
+      "get": {
+        "tags": ["Products"],
+        "operationId": "products.list",
+        "summary": "List products",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The products rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Anyone may do this, signed in or not.",
+        "parameters": [
+          {
+            "name": "where",
+            "in": "query",
+            "description": "A filter, as JSON: a value or operators per field, with `AND`, `OR` and `NOT`. A filter on a field the caller may not read is refused.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProductFilter" }
+              }
+            }
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `uid`, `name`, `slug`, `description`, `sku`, `shortDescription`, `price`, `status`, `images`, `virtual`, `downloadable`, `downloads`, `type`, `purchasable`, `availability`, `url`, `categories`, `tags`.",
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
+            "schema": { "type": "string", "maxLength": 200 }
+          },
+          {
+            "name": "with",
+            "in": "query",
+            "description": "What to load with each row, comma-separated or as a JSON object: `categories`, `tags`, `images`. A relation holds only rows the caller may read.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Product" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["Products"],
+        "operationId": "products.create",
+        "summary": "Create in products",
+        "x-typedpress-access": "admin",
+        "description": "Creates one products row and returns it.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The new row's fields.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProductInsert" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Product" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/products/{id}": {
+      "get": {
+        "tags": ["Products"],
+        "operationId": "products.get",
+        "summary": "Get one of products",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "One products row.\n\nAccess: Anyone may do this, signed in or not.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "with",
+            "in": "query",
+            "description": "What to load with each row, comma-separated or as a JSON object: `categories`, `tags`, `images`. A relation holds only rows the caller may read.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Product" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "tags": ["Products"],
+        "operationId": "products.update",
+        "summary": "Update in products",
+        "x-typedpress-access": "admin",
+        "description": "Changes the fields sent on one products row and returns the row.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to change.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProductPatch" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The row after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Product" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "delete": {
+        "tags": ["Products"],
+        "operationId": "products.delete",
+        "summary": "Delete from products",
+        "x-typedpress-access": "admin",
+        "description": "Deletes one products row for good and returns the row as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The deleted row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Product" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/products": {
+      "get": {
+        "tags": ["Sync"],
+        "operationId": "sync.products.read",
+        "summary": "Read products for sync",
+        "x-typedpress-access": "admin",
+        "description": "Rows as sync records with their digests, in pages by id.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Only rows with an id above this one.",
+            "schema": { "type": "integer", "minimum": 0 }
+          },
+          {
+            "name": "first",
+            "in": "query",
+            "description": "How many records to return, at most 100.",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of records, and the id to pass as `after` for the next page, or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "records": {
+                          "type": "array",
+                          "items": { "type": "object" }
+                        },
+                        "next": { "type": ["integer", "null"] }
+                      },
+                      "required": ["records", "next"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.products.apply",
+        "summary": "Apply a products sync record",
+        "x-typedpress-access": "admin",
+        "description": "Creates or updates one row from a content file, when the row still matches `expect`. A row that changed since answers 409 `sync_stale`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The record and the digest it expects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "record": { "type": "object" },
+                  "expect": {
+                    "type": "string",
+                    "pattern": "^(absent|sha256:[0-9a-f]{64})$",
+                    "description": "The digest the caller last saw, or `absent` for a row it believes does not exist."
+                  }
+                },
+                "required": ["record", "expect"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The outcome: the row was updated, or was already as sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uid": { "type": "string" },
+                        "status": { "type": "string", "enum": ["applied", "normalized", "unchanged"] },
+                        "digest": { "type": "string" },
+                        "record": { "type": "object", "description": "The record as stored, when the site normalized what was sent." }
+                      },
+                      "required": ["uid", "status"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The outcome: the record created a row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uid": { "type": "string" },
+                        "status": { "type": "string", "enum": ["applied", "normalized", "unchanged"] },
+                        "digest": { "type": "string" },
+                        "record": { "type": "object", "description": "The record as stored, when the site normalized what was sent." }
+                      },
+                      "required": ["uid", "status"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/products/trash": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.products.trash",
+        "summary": "Trash a synced products row",
+        "x-typedpress-access": "admin",
+        "description": "Moves the row of a deleted content file to the trash, when the row still matches `expect`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The row's uid and the digest it expects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": { "type": "string", "pattern": "^zr_[0-9a-f]{20}$" },
+                  "expect": {
+                    "type": "string",
+                    "pattern": "^(absent|sha256:[0-9a-f]{64})$",
+                    "description": "The digest the caller last saw, or `absent` for a row it believes does not exist."
+                  }
+                },
+                "required": ["uid", "expect"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The outcome.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/products/convert": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.products.convert",
+        "summary": "Convert products content between formats",
+        "x-typedpress-access": "admin",
+        "description": "Converts a body between block markup, Markdown and HTML, as the site's own converters do. One item, or up to a batch under `records`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The text and the direction.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": { "type": "string" },
+                      "direction": { "type": "string", "enum": ["toMarkdown", "toBlocks", "toHtml", "fromHtml"] }
+                    },
+                    "required": ["text", "direction"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "records": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "text": { "type": "string" },
+                            "direction": { "type": "string", "enum": ["toMarkdown", "toBlocks", "toHtml", "fromHtml"] }
+                          },
+                          "required": ["text", "direction"]
+                        }
+                      }
+                    },
+                    "required": ["records"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The converted text, or one result per item under `records`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/products/merge": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.products.merge",
+        "summary": "Three-way merge products content",
+        "x-typedpress-access": "admin",
+        "description": "Merges two versions of a body over their common base. One item, or up to a batch under `records`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The base and the two versions.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "base": { "type": "string" },
+                      "ours": { "type": "string" },
+                      "theirs": { "type": "string" }
+                    },
+                    "required": ["base", "ours", "theirs"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "records": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "base": { "type": "string" },
+                            "ours": { "type": "string" },
+                            "theirs": { "type": "string" }
+                          },
+                          "required": ["base", "ours", "theirs"]
+                        }
+                      }
+                    },
+                    "required": ["records"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The merged text and whether it has conflicts, or one result per item under `records`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/categories": {
+      "get": {
+        "tags": ["Categories"],
+        "operationId": "categories.list",
+        "summary": "List categories",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The categories rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Anyone may do this, signed in or not.",
+        "parameters": [
+          {
+            "name": "where",
+            "in": "query",
+            "description": "A filter, as JSON: a value or operators per field, with `AND`, `OR` and `NOT`. A filter on a field the caller may not read is refused.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CategoryFilter" }
+              }
+            }
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `uid`, `name`, `slug`, `description`, `parent`, `count`, `url`.",
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
+            "schema": { "type": "string", "maxLength": 200 }
+          },
+          {
+            "name": "with",
+            "in": "query",
+            "description": "What to load with each row, comma-separated or as a JSON object: `products`. A relation holds only rows the caller may read.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Category" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["Categories"],
+        "operationId": "categories.create",
+        "summary": "Create in categories",
+        "x-typedpress-access": "admin",
+        "description": "Creates one categories row and returns it.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The new row's fields.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CategoryInsert" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Category" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/categories/{id}": {
+      "get": {
+        "tags": ["Categories"],
+        "operationId": "categories.get",
+        "summary": "Get one of categories",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "One categories row.\n\nAccess: Anyone may do this, signed in or not.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "with",
+            "in": "query",
+            "description": "What to load with each row, comma-separated or as a JSON object: `products`. A relation holds only rows the caller may read.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Category" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "tags": ["Categories"],
+        "operationId": "categories.update",
+        "summary": "Update in categories",
+        "x-typedpress-access": "admin",
+        "description": "Changes the fields sent on one categories row and returns the row.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to change.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CategoryPatch" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The row after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Category" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "delete": {
+        "tags": ["Categories"],
+        "operationId": "categories.delete",
+        "summary": "Delete from categories",
+        "x-typedpress-access": "admin",
+        "description": "Deletes one categories row for good and returns the row as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The deleted row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Category" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/categories": {
+      "get": {
+        "tags": ["Sync"],
+        "operationId": "sync.categories.read",
+        "summary": "Read categories for sync",
+        "x-typedpress-access": "admin",
+        "description": "Rows as sync records with their digests, in pages by id.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Only rows with an id above this one.",
+            "schema": { "type": "integer", "minimum": 0 }
+          },
+          {
+            "name": "first",
+            "in": "query",
+            "description": "How many records to return, at most 100.",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of records, and the id to pass as `after` for the next page, or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "records": {
+                          "type": "array",
+                          "items": { "type": "object" }
+                        },
+                        "next": { "type": ["integer", "null"] }
+                      },
+                      "required": ["records", "next"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.categories.apply",
+        "summary": "Apply a categories sync record",
+        "x-typedpress-access": "admin",
+        "description": "Creates or updates one row from a content file, when the row still matches `expect`. A row that changed since answers 409 `sync_stale`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The record and the digest it expects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "record": { "type": "object" },
+                  "expect": {
+                    "type": "string",
+                    "pattern": "^(absent|sha256:[0-9a-f]{64})$",
+                    "description": "The digest the caller last saw, or `absent` for a row it believes does not exist."
+                  }
+                },
+                "required": ["record", "expect"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The outcome: the row was updated, or was already as sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uid": { "type": "string" },
+                        "status": { "type": "string", "enum": ["applied", "normalized", "unchanged"] },
+                        "digest": { "type": "string" },
+                        "record": { "type": "object", "description": "The record as stored, when the site normalized what was sent." }
+                      },
+                      "required": ["uid", "status"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The outcome: the record created a row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uid": { "type": "string" },
+                        "status": { "type": "string", "enum": ["applied", "normalized", "unchanged"] },
+                        "digest": { "type": "string" },
+                        "record": { "type": "object", "description": "The record as stored, when the site normalized what was sent." }
+                      },
+                      "required": ["uid", "status"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/categories/trash": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.categories.trash",
+        "summary": "Trash a synced categories row",
+        "x-typedpress-access": "admin",
+        "description": "Moves the row of a deleted content file to the trash, when the row still matches `expect`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The row's uid and the digest it expects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": { "type": "string", "pattern": "^zr_[0-9a-f]{20}$" },
+                  "expect": {
+                    "type": "string",
+                    "pattern": "^(absent|sha256:[0-9a-f]{64})$",
+                    "description": "The digest the caller last saw, or `absent` for a row it believes does not exist."
+                  }
+                },
+                "required": ["uid", "expect"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The outcome.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/categories/convert": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.categories.convert",
+        "summary": "Convert categories content between formats",
+        "x-typedpress-access": "admin",
+        "description": "Converts a body between block markup, Markdown and HTML, as the site's own converters do. One item, or up to a batch under `records`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The text and the direction.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": { "type": "string" },
+                      "direction": { "type": "string", "enum": ["toMarkdown", "toBlocks", "toHtml", "fromHtml"] }
+                    },
+                    "required": ["text", "direction"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "records": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "text": { "type": "string" },
+                            "direction": { "type": "string", "enum": ["toMarkdown", "toBlocks", "toHtml", "fromHtml"] }
+                          },
+                          "required": ["text", "direction"]
+                        }
+                      }
+                    },
+                    "required": ["records"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The converted text, or one result per item under `records`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/categories/merge": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.categories.merge",
+        "summary": "Three-way merge categories content",
+        "x-typedpress-access": "admin",
+        "description": "Merges two versions of a body over their common base. One item, or up to a batch under `records`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The base and the two versions.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "base": { "type": "string" },
+                      "ours": { "type": "string" },
+                      "theirs": { "type": "string" }
+                    },
+                    "required": ["base", "ours", "theirs"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "records": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "base": { "type": "string" },
+                            "ours": { "type": "string" },
+                            "theirs": { "type": "string" }
+                          },
+                          "required": ["base", "ours", "theirs"]
+                        }
+                      }
+                    },
+                    "required": ["records"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The merged text and whether it has conflicts, or one result per item under `records`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/tags": {
+      "get": {
+        "tags": ["Tags"],
+        "operationId": "tags.list",
+        "summary": "List tags",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The tags rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Anyone may do this, signed in or not.",
+        "parameters": [
+          {
+            "name": "where",
+            "in": "query",
+            "description": "A filter, as JSON: a value or operators per field, with `AND`, `OR` and `NOT`. A filter on a field the caller may not read is refused.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TagFilter" }
+              }
+            }
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `uid`, `name`, `slug`, `description`, `count`, `url`.",
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
+            "schema": { "type": "string", "maxLength": 200 }
+          },
+          {
+            "name": "with",
+            "in": "query",
+            "description": "What to load with each row, comma-separated or as a JSON object: `products`. A relation holds only rows the caller may read.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Tag" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["Tags"],
+        "operationId": "tags.create",
+        "summary": "Create in tags",
+        "x-typedpress-access": "admin",
+        "description": "Creates one tags row and returns it.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The new row's fields.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TagInsert" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Tag" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/tags/{id}": {
+      "get": {
+        "tags": ["Tags"],
+        "operationId": "tags.get",
+        "summary": "Get one of tags",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "One tags row.\n\nAccess: Anyone may do this, signed in or not.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "with",
+            "in": "query",
+            "description": "What to load with each row, comma-separated or as a JSON object: `products`. A relation holds only rows the caller may read.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Tag" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "tags": ["Tags"],
+        "operationId": "tags.update",
+        "summary": "Update in tags",
+        "x-typedpress-access": "admin",
+        "description": "Changes the fields sent on one tags row and returns the row.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to change.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TagPatch" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The row after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Tag" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "delete": {
+        "tags": ["Tags"],
+        "operationId": "tags.delete",
+        "summary": "Delete from tags",
+        "x-typedpress-access": "admin",
+        "description": "Deletes one tags row for good and returns the row as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The deleted row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Tag" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/tags": {
+      "get": {
+        "tags": ["Sync"],
+        "operationId": "sync.tags.read",
+        "summary": "Read tags for sync",
+        "x-typedpress-access": "admin",
+        "description": "Rows as sync records with their digests, in pages by id.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Only rows with an id above this one.",
+            "schema": { "type": "integer", "minimum": 0 }
+          },
+          {
+            "name": "first",
+            "in": "query",
+            "description": "How many records to return, at most 100.",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of records, and the id to pass as `after` for the next page, or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "records": {
+                          "type": "array",
+                          "items": { "type": "object" }
+                        },
+                        "next": { "type": ["integer", "null"] }
+                      },
+                      "required": ["records", "next"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.tags.apply",
+        "summary": "Apply a tags sync record",
+        "x-typedpress-access": "admin",
+        "description": "Creates or updates one row from a content file, when the row still matches `expect`. A row that changed since answers 409 `sync_stale`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The record and the digest it expects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "record": { "type": "object" },
+                  "expect": {
+                    "type": "string",
+                    "pattern": "^(absent|sha256:[0-9a-f]{64})$",
+                    "description": "The digest the caller last saw, or `absent` for a row it believes does not exist."
+                  }
+                },
+                "required": ["record", "expect"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The outcome: the row was updated, or was already as sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uid": { "type": "string" },
+                        "status": { "type": "string", "enum": ["applied", "normalized", "unchanged"] },
+                        "digest": { "type": "string" },
+                        "record": { "type": "object", "description": "The record as stored, when the site normalized what was sent." }
+                      },
+                      "required": ["uid", "status"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The outcome: the record created a row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uid": { "type": "string" },
+                        "status": { "type": "string", "enum": ["applied", "normalized", "unchanged"] },
+                        "digest": { "type": "string" },
+                        "record": { "type": "object", "description": "The record as stored, when the site normalized what was sent." }
+                      },
+                      "required": ["uid", "status"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/tags/trash": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.tags.trash",
+        "summary": "Trash a synced tags row",
+        "x-typedpress-access": "admin",
+        "description": "Moves the row of a deleted content file to the trash, when the row still matches `expect`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The row's uid and the digest it expects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": { "type": "string", "pattern": "^zr_[0-9a-f]{20}$" },
+                  "expect": {
+                    "type": "string",
+                    "pattern": "^(absent|sha256:[0-9a-f]{64})$",
+                    "description": "The digest the caller last saw, or `absent` for a row it believes does not exist."
+                  }
+                },
+                "required": ["uid", "expect"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The outcome.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/tags/convert": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.tags.convert",
+        "summary": "Convert tags content between formats",
+        "x-typedpress-access": "admin",
+        "description": "Converts a body between block markup, Markdown and HTML, as the site's own converters do. One item, or up to a batch under `records`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The text and the direction.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": { "type": "string" },
+                      "direction": { "type": "string", "enum": ["toMarkdown", "toBlocks", "toHtml", "fromHtml"] }
+                    },
+                    "required": ["text", "direction"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "records": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "text": { "type": "string" },
+                            "direction": { "type": "string", "enum": ["toMarkdown", "toBlocks", "toHtml", "fromHtml"] }
+                          },
+                          "required": ["text", "direction"]
+                        }
+                      }
+                    },
+                    "required": ["records"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The converted text, or one result per item under `records`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/tags/merge": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.tags.merge",
+        "summary": "Three-way merge tags content",
+        "x-typedpress-access": "admin",
+        "description": "Merges two versions of a body over their common base. One item, or up to a batch under `records`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The base and the two versions.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "base": { "type": "string" },
+                      "ours": { "type": "string" },
+                      "theirs": { "type": "string" }
+                    },
+                    "required": ["base", "ours", "theirs"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "records": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "base": { "type": "string" },
+                            "ours": { "type": "string" },
+                            "theirs": { "type": "string" }
+                          },
+                          "required": ["base", "ours", "theirs"]
+                        }
+                      }
+                    },
+                    "required": ["records"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The merged text and whether it has conflicts, or one result per item under `records`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/orders": {
+      "get": {
+        "tags": ["Orders"],
+        "operationId": "orders.list",
+        "summary": "List orders",
+        "x-typedpress-access": "admin",
+        "description": "The orders rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "where",
+            "in": "query",
+            "description": "A filter, as JSON: a value or operators per field, with `AND`, `OR` and `NOT`. A filter on a field the caller may not read is refused.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrderFilter" }
+              }
+            }
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `status`, `currency`, `precision`, `createdAt`, `updatedAt`, `paidAt`, `completedAt`, `customer`, `paymentMethod`, `paymentTitle`, `total`, `subtotal`, `discountTotal`, `shippingTotal`, `taxTotal`, `billing`, `shipping`, `lines`, `shippingLines`, `taxLines`, `feeLines`, `couponLines`, `refunds`.",
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
+            "schema": { "type": "string", "maxLength": 200 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Order" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/orders/{id}": {
+      "get": {
+        "tags": ["Orders"],
+        "operationId": "orders.get",
+        "summary": "Get one of orders",
+        "x-typedpress-access": "admin",
+        "description": "One orders row.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Order" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/posts": {
+      "get": {
+        "tags": ["WordPress"],
+        "operationId": "posts.list",
+        "summary": "List posts",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "WordPress's posts, one page at a time. The route's other WordPress filters (`status`, `author`, `parent`, ...) pass through.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Text to find, as WordPress core searches this route.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/WordPressPost" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["WordPress"],
+        "operationId": "posts.create",
+        "summary": "Create in posts",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Creates one of WordPress's posts and returns it.\n\nAccess: WordPress core's own rules for this route decide.",
+        "requestBody": {
+          "required": true,
+          "description": "The fields to set. Any other field is refused.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "content": { "type": "string" },
+                  "slug": { "type": "string" },
+                  "excerpt": { "type": "string" },
+                  "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "private"] },
+                  "publishedAt": { "type": "string", "format": "date-time" },
+                  "author": { "type": "integer" },
+                  "categories": {
+                    "type": "array",
+                    "items": { "type": "integer" }
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": { "type": "integer" }
+                  },
+                  "featuredImage": { "type": "integer" },
+                  "sticky": { "type": "boolean" },
+                  "parent": { "type": "integer" },
+                  "order": { "type": "integer" },
+                  "template": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/WordPressPost" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/posts/{id}": {
+      "get": {
+        "tags": ["WordPress"],
+        "operationId": "posts.get",
+        "summary": "Get one of posts",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "One of WordPress's posts.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id, or `slug:<slug>`.",
+            "schema": {
+              "anyOf": [
+                { "type": "integer" },
+                { "type": "string", "pattern": "^slug:." }
+              ]
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "`md` answers with the row as Markdown (`text/markdown`).",
+            "schema": { "type": "string", "enum": ["md"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/WordPressPost" }
+                  },
+                  "required": ["data"]
+                }
+              },
+              "text/markdown": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "tags": ["WordPress"],
+        "operationId": "posts.update",
+        "summary": "Update one of posts",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Changes the fields sent and returns the row.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id, or `slug:<slug>`.",
+            "schema": {
+              "anyOf": [
+                { "type": "integer" },
+                { "type": "string", "pattern": "^slug:." }
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to set. Any other field is refused.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "content": { "type": "string" },
+                  "slug": { "type": "string" },
+                  "excerpt": { "type": "string" },
+                  "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "private"] },
+                  "publishedAt": { "type": "string", "format": "date-time" },
+                  "author": { "type": "integer" },
+                  "categories": {
+                    "type": "array",
+                    "items": { "type": "integer" }
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": { "type": "integer" }
+                  },
+                  "featuredImage": { "type": "integer" },
+                  "sticky": { "type": "boolean" },
+                  "parent": { "type": "integer" },
+                  "order": { "type": "integer" },
+                  "template": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/WordPressPost" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "delete": {
+        "tags": ["WordPress"],
+        "operationId": "posts.delete",
+        "summary": "Delete one of posts",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Deletes the row for good and returns it as it was.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id, or `slug:<slug>`.",
+            "schema": {
+              "anyOf": [
+                { "type": "integer" },
+                { "type": "string", "pattern": "^slug:." }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/WordPressPost" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/pages": {
+      "get": {
+        "tags": ["WordPress"],
+        "operationId": "pages.list",
+        "summary": "List pages",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "WordPress's pages, one page at a time. The route's other WordPress filters (`status`, `author`, `parent`, ...) pass through.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Text to find, as WordPress core searches this route.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/WordPressPage" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["WordPress"],
+        "operationId": "pages.create",
+        "summary": "Create in pages",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Creates one of WordPress's pages and returns it.\n\nAccess: WordPress core's own rules for this route decide.",
+        "requestBody": {
+          "required": true,
+          "description": "The fields to set. Any other field is refused.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "content": { "type": "string" },
+                  "slug": { "type": "string" },
+                  "excerpt": { "type": "string" },
+                  "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "private"] },
+                  "publishedAt": { "type": "string", "format": "date-time" },
+                  "author": { "type": "integer" },
+                  "categories": {
+                    "type": "array",
+                    "items": { "type": "integer" }
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": { "type": "integer" }
+                  },
+                  "featuredImage": { "type": "integer" },
+                  "sticky": { "type": "boolean" },
+                  "parent": { "type": "integer" },
+                  "order": { "type": "integer" },
+                  "template": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/WordPressPage" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/pages/{id}": {
+      "get": {
+        "tags": ["WordPress"],
+        "operationId": "pages.get",
+        "summary": "Get one of pages",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "One of WordPress's pages.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id, or `slug:<slug>`.",
+            "schema": {
+              "anyOf": [
+                { "type": "integer" },
+                { "type": "string", "pattern": "^slug:." }
+              ]
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "`md` answers with the row as Markdown (`text/markdown`).",
+            "schema": { "type": "string", "enum": ["md"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/WordPressPage" }
+                  },
+                  "required": ["data"]
+                }
+              },
+              "text/markdown": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "tags": ["WordPress"],
+        "operationId": "pages.update",
+        "summary": "Update one of pages",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Changes the fields sent and returns the row.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id, or `slug:<slug>`.",
+            "schema": {
+              "anyOf": [
+                { "type": "integer" },
+                { "type": "string", "pattern": "^slug:." }
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to set. Any other field is refused.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "content": { "type": "string" },
+                  "slug": { "type": "string" },
+                  "excerpt": { "type": "string" },
+                  "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "private"] },
+                  "publishedAt": { "type": "string", "format": "date-time" },
+                  "author": { "type": "integer" },
+                  "categories": {
+                    "type": "array",
+                    "items": { "type": "integer" }
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": { "type": "integer" }
+                  },
+                  "featuredImage": { "type": "integer" },
+                  "sticky": { "type": "boolean" },
+                  "parent": { "type": "integer" },
+                  "order": { "type": "integer" },
+                  "template": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/WordPressPage" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "delete": {
+        "tags": ["WordPress"],
+        "operationId": "pages.delete",
+        "summary": "Delete one of pages",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Deletes the row for good and returns it as it was.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id, or `slug:<slug>`.",
+            "schema": {
+              "anyOf": [
+                { "type": "integer" },
+                { "type": "string", "pattern": "^slug:." }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/WordPressPage" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/comments": {
+      "get": {
+        "tags": ["WordPress"],
+        "operationId": "comments.list",
+        "summary": "List comments",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "WordPress's comments, one page at a time. The route's other WordPress filters (`status`, `author`, `parent`, ...) pass through.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Text to find, as WordPress core searches this route.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/WordPressComment" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["WordPress"],
+        "operationId": "comments.create",
+        "summary": "Create in comments",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Creates one of WordPress's comments and returns it.\n\nAccess: WordPress core's own rules for this route decide.",
+        "requestBody": {
+          "required": true,
+          "description": "The fields to set. Any other field is refused.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "on": { "type": "integer" },
+                  "parent": { "type": "integer" },
+                  "content": { "type": "string" },
+                  "authorName": { "type": "string" },
+                  "authorEmail": { "type": "string" },
+                  "type": { "type": "string" },
+                  "status": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/WordPressComment" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/comments/{id}": {
+      "get": {
+        "tags": ["WordPress"],
+        "operationId": "comments.get",
+        "summary": "Get one of comments",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "One of WordPress's comments.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/WordPressComment" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "tags": ["WordPress"],
+        "operationId": "comments.update",
+        "summary": "Update one of comments",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Changes the fields sent and returns the row.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to set. Any other field is refused.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "on": { "type": "integer" },
+                  "parent": { "type": "integer" },
+                  "content": { "type": "string" },
+                  "authorName": { "type": "string" },
+                  "authorEmail": { "type": "string" },
+                  "type": { "type": "string" },
+                  "status": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/WordPressComment" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "delete": {
+        "tags": ["WordPress"],
+        "operationId": "comments.delete",
+        "summary": "Delete one of comments",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Deletes the row for good and returns it as it was.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/WordPressComment" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/media": {
+      "get": {
+        "tags": ["Media"],
+        "operationId": "media.list",
+        "summary": "List media",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Media library items, one page at a time.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Text to find, as WordPress core searches this route.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Media" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["Media"],
+        "operationId": "media.upload",
+        "summary": "Upload media",
+        "x-typedpress-access": "author",
+        "description": "Uploads one file to the media library.\n\nAccess: Users with the `author` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The file, as the multipart field `file`, with optional alt text.",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": { "type": "string", "format": "binary" },
+                  "alt": { "type": "string" }
+                },
+                "required": ["file"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new media item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Media" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "413": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/media/{id}": {
+      "get": {
+        "tags": ["Media"],
+        "operationId": "media.get",
+        "summary": "Get a media item",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "One media item.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The media item's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The media item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Media" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "tags": ["Media"],
+        "operationId": "media.update",
+        "summary": "Update a media item",
+        "x-typedpress-access": "editor",
+        "description": "Changes the alt text, the caption or the focal point. Any other field is refused.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The media item's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to change.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "alt": { "type": ["string", "null"] },
+                  "caption": { "type": "string" },
+                  "focal": {
+                    "type": ["object", "null"],
+                    "properties": {
+                      "x": { "type": "number" },
+                      "y": { "type": "number" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The media item after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Media" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "delete": {
+        "tags": ["Media"],
+        "operationId": "media.delete",
+        "summary": "Delete a media item",
+        "x-typedpress-access": "editor",
+        "description": "Deletes the item and its files. Fields that pointed at it become null.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The media item's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The deleted media item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Media" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": ["WordPress"],
+        "operationId": "users.list",
+        "summary": "List users",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "WordPress's users, as WordPress shows them to the caller: authors of public content to everyone, every user to those who may list users.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Text to find, as WordPress core searches this route.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/WordPressUser" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/users/{id}": {
+      "get": {
+        "tags": ["WordPress"],
+        "operationId": "users.get",
+        "summary": "Get a user",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "One WordPress user, as WordPress shows them to the caller.\n\nAccess: WordPress core's own rules for this route decide.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The user's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/WordPressUser" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/menus": {
+      "get": {
+        "tags": ["WordPress"],
+        "operationId": "menus.list",
+        "summary": "List menus",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The menu in each theme location, as a tree.\n\nAccess: Anyone may do this, signed in or not.",
+        "responses": {
+          "200": {
+            "description": "The menus.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Menu" }
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/menus/{location}": {
+      "get": {
+        "tags": ["WordPress"],
+        "operationId": "menus.get",
+        "summary": "Get a menu",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The menu in one theme location.\n\nAccess: Anyone may do this, signed in or not.",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "description": "The theme location, for example `primary`.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The menu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Menu" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/settings": {
+      "get": {
+        "tags": ["WordPress"],
+        "operationId": "settings.get",
+        "summary": "Read site settings",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The site's title, tagline, timezone, locale, icon, logo and front page.\n\nAccess: Anyone may do this, signed in or not.",
+        "responses": {
+          "200": {
+            "description": "The settings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/SiteSettings" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "tags": ["WordPress"],
+        "operationId": "settings.update",
+        "summary": "Update site settings",
+        "x-typedpress-access": "admin",
+        "description": "Changes the fields sent. Any other field is refused.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The fields to change.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "tagline": { "type": "string" },
+                  "timezone": { "type": "string" },
+                  "locale": { "type": "string" },
+                  "icon": { "type": ["integer", "null"] },
+                  "logo": { "type": ["integer", "null"] },
+                  "frontPage": { "type": ["integer", "null"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The settings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/SiteSettings" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "tags": ["Account"],
+        "operationId": "auth.me",
+        "summary": "The signed-in user",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The user making the request, with their role; null when nobody is signed in.\n\nAccess: Anyone may do this, signed in or not.",
+        "responses": {
+          "200": {
+            "description": "The user, or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "anyOf": [
+                        { "$ref": "#/components/schemas/CurrentUser" },
+                        { "type": "null" }
+                      ]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/auth/config": {
+      "get": {
+        "tags": ["Account"],
+        "operationId": "auth.config",
+        "summary": "Sign-in settings",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Where TypedPress Identity signs users in (null without it), and whether guests are allowed.\n\nAccess: Anyone may do this, signed in or not.",
+        "responses": {
+          "200": {
+            "description": "The settings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "issuer": { "type": ["string", "null"] },
+                        "guests": { "type": "boolean" }
+                      },
+                      "required": ["issuer", "guests"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/auth/guest": {
+      "post": {
+        "tags": ["Account"],
+        "operationId": "auth.guest",
+        "summary": "Start a guest session",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Creates a guest user and signs them in. A 404 when TypedPress Identity is not installed or guests are off.\n\nAccess: Anyone may do this, signed in or not.",
+        "responses": {
+          "201": {
+            "description": "The guest's tokens and user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "accessToken": { "type": "string" },
+                        "refreshToken": { "type": "string" },
+                        "expiresIn": { "type": "integer" },
+                        "clientId": { "type": "string" },
+                        "user": { "$ref": "#/components/schemas/User" }
+                      },
+                      "required": ["accessToken", "refreshToken", "expiresIn", "clientId", "user"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/auth/session": {
+      "delete": {
+        "tags": ["Account"],
+        "operationId": "auth.signOut",
+        "summary": "Sign out",
+        "x-typedpress-access": "authenticated",
+        "description": "Ends the TypedPress Identity session the request's access token belongs to. A cookie or application password signs out through WordPress instead, and is refused here.\n\nAccess: Any signed-in user may do this.",
+        "responses": {
+          "200": {
+            "description": "True.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "boolean" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/_live": {
+      "post": {
+        "tags": ["Live"],
+        "operationId": "live.refresh",
+        "summary": "Refresh subscribed reads",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Takes up to 20 reads, each with the `token` of the answer the caller last got, and answers each one as the caller, with every access rule and field rule applied. The typed client's `subscribe` calls it. An answer never says that something changed which the caller may not read.\n\nAccess: Anyone may do this, signed in or not.",
+        "requestBody": {
+          "required": true,
+          "description": "The subscribed reads.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "queries": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": ["products", "categories", "tags", "orders"],
+                          "description": "The kind, by the name the typed client uses."
+                        },
+                        "op": { "type": "string", "enum": ["list", "paginate", "get", "count"] },
+                        "args": {
+                          "type": "object",
+                          "description": "The arguments of that call on the kind: `where`, `orderBy`, `limit`, `offset` or `cursor`, `with`, `search`, `locale`."
+                        },
+                        "id": { "type": ["integer", "string"], "description": "The row of a `get`; or give `args.where`." },
+                        "token": { "type": "string", "description": "What the previous answer to the same read returned. Opaque." }
+                      },
+                      "required": ["kind", "op"]
+                    },
+                    "minItems": 1,
+                    "maxItems": 20
+                  }
+                },
+                "required": ["queries"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One result per read, in order, and the wait the client keeps between two requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "description": "`{ changed: true, token, data }` with the read's result as the caller reads it; `{ changed: false, token }` when what the caller holds is current; `{ error }` with the read's problem; `{ pending: true }` when the request ran out of time (ask again).",
+                            "properties": {
+                              "changed": { "type": "boolean" },
+                              "token": { "type": "string" },
+                              "data": {},
+                              "error": { "$ref": "#/components/schemas/Problem" },
+                              "pending": { "type": "boolean" }
+                            }
+                          }
+                        },
+                        "poll": {
+                          "type": "object",
+                          "properties": {
+                            "minMs": { "type": "integer" },
+                            "maxMs": { "type": "integer" }
+                          },
+                          "required": ["minMs", "maxMs"]
+                        }
+                      },
+                      "required": ["results", "poll"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "405": { "$ref": "#/components/responses/Problem" },
+          "413": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/search": {
+      "get": {
+        "tags": ["Search"],
+        "operationId": "search",
+        "summary": "Search the site",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Runs the kinds' `search` on every kind with a searchable field, as the caller. A kind the caller may not read is left out, and so is a `kinds` name that is not a searchable kind.\n\nAccess: Anyone may do this, signed in or not.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "The words to find.",
+            "schema": { "type": "string", "maxLength": 200 }
+          },
+          {
+            "name": "kinds",
+            "in": "query",
+            "description": "Only these kinds, comma-separated: `products`, `categories`, `tags`, `orders`.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Rows per kind: 10 unless given, and never more than 50.",
+            "schema": { "type": "integer", "minimum": 1, "default": 10 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The matching rows, by kind; a kind with none is absent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "q": { "type": "string" },
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "kind": { "type": "string", "enum": ["products", "categories", "tags", "orders"] },
+                              "rows": {
+                                "type": "array",
+                                "items": {
+                                  "anyOf": [
+                                    { "$ref": "#/components/schemas/Product" },
+                                    { "$ref": "#/components/schemas/Category" },
+                                    { "$ref": "#/components/schemas/Tag" },
+                                    { "$ref": "#/components/schemas/Order" }
+                                  ]
+                                }
+                              }
+                            },
+                            "required": ["kind", "rows"]
+                          }
+                        }
+                      },
+                      "required": ["q", "results"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": ["Schema"],
+        "operationId": "schema",
+        "summary": "Describe the app",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The app's kinds with the WordPress route behind each, their fields and access rules, its globals and its actions. `typedpress sync` and `typedpress doctor` read it.\n\nAccess: Anyone may do this, signed in or not.",
+        "responses": {
+          "200": {
+            "description": "The app's schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "name": { "type": "string" },
+                        "runtime": {
+                          "type": "object",
+                          "description": "The TypedPress runtime series and the WordPress, PHP, database and plugin versions under it."
+                        },
+                        "site": { "type": "object", "description": "The site's id, for `typedpress sync`." },
+                        "locales": { "type": ["object", "null"] },
+                        "media": { "type": "object" },
+                        "files": { "type": "object" },
+                        "auth": { "type": "object" },
+                        "kinds": {
+                          "type": "object",
+                          "description": "Each kind by name: the WordPress route behind it, its fields, relations and access rules."
+                        },
+                        "globals": { "type": "object" },
+                        "actions": { "type": "object" }
+                      },
+                      "required": ["name", "kinds", "globals", "actions"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/store": {
+      "get": {
+        "tags": ["Store"],
+        "operationId": "store-get",
+        "summary": "Store information",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Currency, precision, origin and checkout URL. No shopper state.\n\nAccess: Anyone may do this, signed in or not.",
+        "responses": {
+          "200": {
+            "description": "Store information.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "currency": { "type": "string" },
+                        "precision": { "type": "integer" },
+                        "country": { "type": "string" },
+                        "checkout": { "type": "string" },
+                        "cart": { "type": "string" }
+                      },
+                      "required": ["currency", "precision", "country", "checkout", "cart"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "tags": ["Schema"],
+        "operationId": "openapi",
+        "summary": "This document",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The app's API as an OpenAPI 3.1 document: what `typedpress build` wrote to `tp/_generated/openapi.json`, with this site's address as its server.\n\nAccess: Anyone may do this, signed in or not.",
+        "responses": {
+          "200": {
+            "description": "The OpenAPI document.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "description": "An RFC 9457 problem document.",
+        "properties": {
+          "type": { "type": "string", "description": "Always `about:blank`: `code` names the problem." },
+          "title": { "type": "string", "description": "The problem in a few words." },
+          "status": { "type": "integer", "description": "The HTTP status." },
+          "code": {
+            "type": "string",
+            "description": "A stable name for the problem, such as `unauthenticated`, `forbidden`, `not_found`, `invalid_input`, `invalid_query`, `invalid_json`, `method_not_allowed`, `unique_violation`, `reference_violation`, `stale_revision` or `locked`."
+          },
+          "detail": { "type": "string", "description": "What went wrong, for a person." },
+          "pointer": {
+            "type": "string",
+            "description": "A JSON pointer to the field of the request at fault, when there is one."
+          },
+          "_rev": { "type": "string", "description": "`stale_revision`: the row's current token." },
+          "changed": {
+            "type": "object",
+            "description": "`stale_revision`: what changed since your read.",
+            "properties": {
+              "fields": {
+                "type": ["array", "null"],
+                "items": { "type": "string" },
+                "description": "The fields that differ, as you may read them; null when there is no revision to compare with."
+              },
+              "staged": {
+                "type": "boolean",
+                "description": "Whether someone else changed the staged version (a staged version's token only)."
+              }
+            }
+          },
+          "holder": {
+            "type": "object",
+            "description": "`locked`: who holds the edit lock.",
+            "properties": {
+              "id": { "type": "integer" },
+              "name": { "type": "string" }
+            }
+          }
+        },
+        "required": ["type", "title", "status", "code", "detail"]
+      },
+      "RevisionSummary": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "at": { "type": "string", "format": "date-time" },
+          "user": {
+            "type": ["object", "null"],
+            "properties": {
+              "id": { "type": "integer" },
+              "name": { "type": "string" }
+            }
+          }
+        },
+        "required": ["id", "at", "user"]
+      },
+      "Media": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "url": { "type": "string" },
+          "mime": { "type": "string" },
+          "size": { "type": "integer" },
+          "width": { "type": ["integer", "null"] },
+          "height": { "type": ["integer", "null"] },
+          "alt": { "type": ["string", "null"] },
+          "filename": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "sizes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "url": { "type": "string" },
+                "width": { "type": "integer" },
+                "height": { "type": "integer" }
+              }
+            }
+          },
+          "focal": {
+            "type": ["object", "null"],
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" }
+            }
+          },
+          "author": { "type": ["integer", "null"] },
+          "caption": { "type": ["string", "null"] }
+        },
+        "required": ["id", "url", "mime"]
+      },
+      "Product": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "uid": { "type": ["string", "null"] },
+          "name": { "type": "string" },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "description": { "type": "string" },
+          "sku": { "type": ["string", "null"] },
+          "shortDescription": { "type": ["string", "null"] },
+          "price": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "private"] },
+          "images": {
+            "type": "array",
+            "items": { "type": ["integer", "object"] }
+          },
+          "virtual": { "type": "boolean" },
+          "downloadable": { "type": "boolean" },
+          "downloads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "file": { "type": "string" }
+              }
+            }
+          },
+          "type": { "type": "string" },
+          "purchasable": { "type": "boolean" },
+          "availability": { "type": "string" },
+          "url": { "type": ["string", "null"] },
+          "categories": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": { "type": ["integer", "object"] },
+                "uniqueItems": true
+              },
+              {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/Category" }
+              }
+            ]
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": { "type": ["integer", "object"] },
+                "uniqueItems": true
+              },
+              {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/Tag" }
+              }
+            ]
+          }
+        }
+      },
+      "ProductInsert": {
+        "type": "object",
+        "properties": {
+          "uid": { "type": ["string", "null"] },
+          "name": { "type": "string" },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "description": { "type": "string" },
+          "sku": { "type": ["string", "null"] },
+          "shortDescription": { "type": ["string", "null"] },
+          "price": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "private"] },
+          "images": {
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "virtual": { "type": "boolean" },
+          "downloadable": { "type": "boolean" },
+          "downloads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "file": { "type": "string" }
+              },
+              "required": ["id", "name", "file"]
+            }
+          },
+          "categories": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "uniqueItems": true
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "uniqueItems": true
+          }
+        },
+        "required": ["name"]
+      },
+      "ProductPatch": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "description": { "type": "string" },
+          "sku": { "type": ["string", "null"] },
+          "shortDescription": { "type": ["string", "null"] },
+          "price": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "private"] },
+          "images": {
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "virtual": { "type": "boolean" },
+          "downloadable": { "type": "boolean" },
+          "downloads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "file": { "type": "string" }
+              },
+              "required": ["id", "name", "file"]
+            }
+          },
+          "categories": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "uniqueItems": true
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "uniqueItems": true
+          }
+        }
+      },
+      "IntegerFilter": {
+        "type": ["integer", "object", "null"],
+        "properties": {
+          "eq": { "type": ["integer", "null"] },
+          "ne": { "type": ["integer", "null"] },
+          "isNull": { "type": "boolean" },
+          "isNotNull": { "type": "boolean" },
+          "gt": { "type": "integer" },
+          "gte": { "type": "integer" },
+          "lt": { "type": "integer" },
+          "lte": { "type": "integer" },
+          "in": {
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "notIn": {
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "NOT": { "type": "object" },
+          "OR": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "AND": {
+            "type": "array",
+            "items": { "type": "object" }
+          }
+        }
+      },
+      "StringFilter": {
+        "type": ["string", "object", "null"],
+        "properties": {
+          "eq": { "type": ["string", "null"] },
+          "ne": { "type": ["string", "null"] },
+          "isNull": { "type": "boolean" },
+          "isNotNull": { "type": "boolean" },
+          "gt": { "type": "string" },
+          "gte": { "type": "string" },
+          "lt": { "type": "string" },
+          "lte": { "type": "string" },
+          "in": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "notIn": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "like": { "type": "string" },
+          "notLike": { "type": "string" },
+          "ilike": { "type": "string" },
+          "notIlike": { "type": "string" },
+          "NOT": { "type": "object" },
+          "OR": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "AND": {
+            "type": "array",
+            "items": { "type": "object" }
+          }
+        }
+      },
+      "IntegerListFilter": {
+        "type": ["array", "object", "null"],
+        "items": { "type": "integer" },
+        "properties": {
+          "has": { "type": "integer" },
+          "eq": {
+            "type": ["array", "null"],
+            "items": { "type": "integer" }
+          },
+          "ne": {
+            "type": ["array", "null"],
+            "items": { "type": "integer" }
+          },
+          "isNull": { "type": "boolean" },
+          "isNotNull": { "type": "boolean" },
+          "NOT": { "type": "object" },
+          "OR": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "AND": {
+            "type": "array",
+            "items": { "type": "object" }
+          }
+        }
+      },
+      "BooleanFilter": {
+        "type": ["boolean", "object", "null"],
+        "properties": {
+          "eq": { "type": ["boolean", "null"] },
+          "ne": { "type": ["boolean", "null"] },
+          "isNull": { "type": "boolean" },
+          "isNotNull": { "type": "boolean" },
+          "NOT": { "type": "object" },
+          "OR": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "AND": {
+            "type": "array",
+            "items": { "type": "object" }
+          }
+        }
+      },
+      "ProductFilter": {
+        "type": "object",
+        "properties": {
+          "id": { "$ref": "#/components/schemas/IntegerFilter" },
+          "uid": { "$ref": "#/components/schemas/StringFilter" },
+          "name": { "$ref": "#/components/schemas/StringFilter" },
+          "slug": { "$ref": "#/components/schemas/StringFilter" },
+          "description": { "$ref": "#/components/schemas/StringFilter" },
+          "sku": { "$ref": "#/components/schemas/StringFilter" },
+          "shortDescription": { "$ref": "#/components/schemas/StringFilter" },
+          "price": { "$ref": "#/components/schemas/StringFilter" },
+          "status": { "$ref": "#/components/schemas/StringFilter" },
+          "images": { "$ref": "#/components/schemas/IntegerListFilter" },
+          "virtual": { "$ref": "#/components/schemas/BooleanFilter" },
+          "downloadable": { "$ref": "#/components/schemas/BooleanFilter" },
+          "type": { "$ref": "#/components/schemas/StringFilter" },
+          "purchasable": { "$ref": "#/components/schemas/BooleanFilter" },
+          "availability": { "$ref": "#/components/schemas/StringFilter" },
+          "url": { "$ref": "#/components/schemas/StringFilter" },
+          "categories": { "$ref": "#/components/schemas/IntegerListFilter" },
+          "tags": { "$ref": "#/components/schemas/IntegerListFilter" },
+          "AND": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ProductFilter" }
+          },
+          "OR": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ProductFilter" }
+          },
+          "NOT": { "$ref": "#/components/schemas/ProductFilter" }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "uid": { "type": ["string", "null"] },
+          "name": { "type": "string" },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "description": { "type": "string" },
+          "parent": { "type": ["integer", "null"] },
+          "count": { "type": "integer" },
+          "url": { "type": ["string", "null"] },
+          "products": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Product" },
+            "description": "Present when the request asks for it with `with`."
+          }
+        }
+      },
+      "CategoryInsert": {
+        "type": "object",
+        "properties": {
+          "uid": { "type": ["string", "null"] },
+          "name": { "type": "string" },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "description": { "type": "string" },
+          "parent": { "type": ["integer", "null"] }
+        },
+        "required": ["name"]
+      },
+      "CategoryPatch": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "description": { "type": "string" },
+          "parent": { "type": ["integer", "null"] }
+        }
+      },
+      "CategoryFilter": {
+        "type": "object",
+        "properties": {
+          "id": { "$ref": "#/components/schemas/IntegerFilter" },
+          "uid": { "$ref": "#/components/schemas/StringFilter" },
+          "name": { "$ref": "#/components/schemas/StringFilter" },
+          "slug": { "$ref": "#/components/schemas/StringFilter" },
+          "description": { "$ref": "#/components/schemas/StringFilter" },
+          "parent": { "$ref": "#/components/schemas/IntegerFilter" },
+          "count": { "$ref": "#/components/schemas/IntegerFilter" },
+          "url": { "$ref": "#/components/schemas/StringFilter" },
+          "products": { "type": "object", "description": "A filter on the related rows." },
+          "AND": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CategoryFilter" }
+          },
+          "OR": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CategoryFilter" }
+          },
+          "NOT": { "$ref": "#/components/schemas/CategoryFilter" }
+        }
+      },
+      "Tag": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "uid": { "type": ["string", "null"] },
+          "name": { "type": "string" },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "description": { "type": "string" },
+          "count": { "type": "integer" },
+          "url": { "type": ["string", "null"] },
+          "products": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Product" },
+            "description": "Present when the request asks for it with `with`."
+          }
+        }
+      },
+      "TagInsert": {
+        "type": "object",
+        "properties": {
+          "uid": { "type": ["string", "null"] },
+          "name": { "type": "string" },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "description": { "type": "string" }
+        },
+        "required": ["name"]
+      },
+      "TagPatch": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "description": { "type": "string" }
+        }
+      },
+      "TagFilter": {
+        "type": "object",
+        "properties": {
+          "id": { "$ref": "#/components/schemas/IntegerFilter" },
+          "uid": { "$ref": "#/components/schemas/StringFilter" },
+          "name": { "$ref": "#/components/schemas/StringFilter" },
+          "slug": { "$ref": "#/components/schemas/StringFilter" },
+          "description": { "$ref": "#/components/schemas/StringFilter" },
+          "count": { "$ref": "#/components/schemas/IntegerFilter" },
+          "url": { "$ref": "#/components/schemas/StringFilter" },
+          "products": { "type": "object", "description": "A filter on the related rows." },
+          "AND": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/TagFilter" }
+          },
+          "OR": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/TagFilter" }
+          },
+          "NOT": { "$ref": "#/components/schemas/TagFilter" }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "status": { "type": "string" },
+          "currency": { "type": "string" },
+          "precision": { "type": "integer" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "paidAt": { "type": ["string", "null"], "format": "date-time" },
+          "completedAt": { "type": ["string", "null"], "format": "date-time" },
+          "customer": { "type": ["integer", "null"] },
+          "paymentMethod": { "type": "string" },
+          "paymentTitle": { "type": "string" },
+          "total": { "type": "string" },
+          "subtotal": { "type": "string" },
+          "discountTotal": { "type": "string" },
+          "shippingTotal": { "type": "string" },
+          "taxTotal": { "type": "string" },
+          "billing": {
+            "type": "object",
+            "properties": {
+              "first_name": { "type": "string" },
+              "last_name": { "type": "string" },
+              "company": { "type": "string" },
+              "address_1": { "type": "string" },
+              "address_2": { "type": "string" },
+              "city": { "type": "string" },
+              "state": { "type": "string" },
+              "postcode": { "type": "string" },
+              "country": { "type": "string" },
+              "email": { "type": ["string", "null"] },
+              "phone": { "type": ["string", "null"] }
+            }
+          },
+          "shipping": {
+            "type": "object",
+            "properties": {
+              "first_name": { "type": "string" },
+              "last_name": { "type": "string" },
+              "company": { "type": "string" },
+              "address_1": { "type": "string" },
+              "address_2": { "type": "string" },
+              "city": { "type": "string" },
+              "state": { "type": "string" },
+              "postcode": { "type": "string" },
+              "country": { "type": "string" },
+              "email": { "type": ["string", "null"] },
+              "phone": { "type": ["string", "null"] }
+            }
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" },
+                "product": { "type": "integer" },
+                "variation": { "type": ["integer", "null"] },
+                "quantity": { "type": "integer" },
+                "subtotal": { "type": "string" },
+                "subtotalTax": { "type": "string" },
+                "total": { "type": "string" },
+                "totalTax": { "type": "string" },
+                "taxes": { "type": ["object", "array", "string", "number", "integer", "boolean", "null"] }
+              }
+            }
+          },
+          "shippingLines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" },
+                "method_id": { "type": "string" },
+                "instance_id": { "type": "string" },
+                "total": { "type": "string" },
+                "total_tax": { "type": "string" },
+                "taxes": { "type": ["object", "array", "string", "number", "integer", "boolean", "null"] }
+              }
+            }
+          },
+          "taxLines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" },
+                "rate_id": { "type": "integer" },
+                "label": { "type": "string" },
+                "compound": { "type": "boolean" },
+                "tax_total": { "type": "string" },
+                "shipping_tax_total": { "type": "string" }
+              }
+            }
+          },
+          "feeLines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" },
+                "total": { "type": "string" },
+                "total_tax": { "type": "string" },
+                "taxes": { "type": ["object", "array", "string", "number", "integer", "boolean", "null"] }
+              }
+            }
+          },
+          "couponLines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" },
+                "code": { "type": "string" },
+                "discount": { "type": "string" },
+                "discount_tax": { "type": "string" }
+              }
+            }
+          },
+          "refunds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "amount": { "type": "string" },
+                "reason": { "type": "string" },
+                "createdAt": { "type": "string", "format": "date-time" }
+              }
+            }
+          }
+        }
+      },
+      "OrderInsert": { "type": "object" },
+      "OrderPatch": {
+        "type": "object",
+        "properties": {}
+      },
+      "OrderFilter": {
+        "type": "object",
+        "properties": {
+          "id": { "$ref": "#/components/schemas/IntegerFilter" },
+          "status": { "$ref": "#/components/schemas/StringFilter" },
+          "currency": { "$ref": "#/components/schemas/StringFilter" },
+          "precision": { "$ref": "#/components/schemas/IntegerFilter" },
+          "createdAt": { "$ref": "#/components/schemas/StringFilter" },
+          "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "paidAt": { "$ref": "#/components/schemas/StringFilter" },
+          "completedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "customer": { "$ref": "#/components/schemas/IntegerFilter" },
+          "paymentMethod": { "$ref": "#/components/schemas/StringFilter" },
+          "paymentTitle": { "$ref": "#/components/schemas/StringFilter" },
+          "total": { "$ref": "#/components/schemas/StringFilter" },
+          "subtotal": { "$ref": "#/components/schemas/StringFilter" },
+          "discountTotal": { "$ref": "#/components/schemas/StringFilter" },
+          "shippingTotal": { "$ref": "#/components/schemas/StringFilter" },
+          "taxTotal": { "$ref": "#/components/schemas/StringFilter" },
+          "AND": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/OrderFilter" }
+          },
+          "OR": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/OrderFilter" }
+          },
+          "NOT": { "$ref": "#/components/schemas/OrderFilter" }
+        }
+      },
+      "WordPressPost": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "title": { "type": ["string", "null"] },
+          "content": { "type": ["string", "null"] },
+          "slug": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "private"] },
+          "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+          "url": { "type": ["string", "null"] },
+          "author": { "type": ["integer", "null"] },
+          "createdAt": { "type": ["string", "null"], "format": "date-time" },
+          "updatedAt": { "type": ["string", "null"], "format": "date-time" },
+          "excerpt": { "type": ["string", "null"] },
+          "categories": {
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "featuredImage": { "type": ["integer", "null"] },
+          "sticky": { "type": "boolean" }
+        }
+      },
+      "WordPressPage": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "title": { "type": ["string", "null"] },
+          "content": { "type": ["string", "null"] },
+          "slug": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "private"] },
+          "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+          "url": { "type": ["string", "null"] },
+          "author": { "type": ["integer", "null"] },
+          "createdAt": { "type": ["string", "null"], "format": "date-time" },
+          "updatedAt": { "type": ["string", "null"], "format": "date-time" },
+          "parent": { "type": ["integer", "null"] },
+          "order": { "type": "integer" },
+          "template": { "type": "string" }
+        }
+      },
+      "WordPressComment": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "on": { "type": ["integer", "null"] },
+          "parent": { "type": ["integer", "null"] },
+          "author": { "type": ["integer", "null"] },
+          "authorName": { "type": ["string", "null"] },
+          "authorEmail": { "type": ["string", "null"] },
+          "content": { "type": ["string", "null"] },
+          "status": { "type": ["string", "null"] },
+          "type": { "type": "string" },
+          "createdAt": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "WordPressUser": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "email": { "type": "string" },
+          "name": { "type": ["string", "null"] },
+          "username": { "type": "string" },
+          "roles": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "avatar": { "type": ["string", "null"] },
+          "url": { "type": ["string", "null"] },
+          "locale": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "MenuItem": {
+        "type": "object",
+        "properties": {
+          "label": { "type": ["string", "null"] },
+          "url": { "type": ["string", "null"] },
+          "item": {
+            "type": ["object", "null"],
+            "properties": {
+              "kind": { "type": "string" },
+              "id": { "type": "integer" }
+            }
+          },
+          "children": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MenuItem" }
+          }
+        }
+      },
+      "Menu": {
+        "type": "object",
+        "properties": {
+          "location": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MenuItem" }
+          }
+        },
+        "required": ["location", "items"]
+      },
+      "SiteSettings": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "tagline": { "type": "string" },
+          "timezone": { "type": "string" },
+          "locale": { "type": "string" },
+          "icon": { "type": ["integer", "null"] },
+          "logo": { "type": ["integer", "null"] },
+          "frontPage": { "type": ["integer", "null"] }
+        },
+        "required": ["title", "tagline", "timezone", "locale", "icon", "logo", "frontPage"]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "role": { "type": "string", "enum": ["guest", "subscriber", "author", "editor", "admin"] }
+        },
+        "required": ["id", "name", "role"]
+      },
+      "CurrentUser": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "email": { "type": "string" },
+          "name": { "type": "string" },
+          "username": { "type": "string" },
+          "roles": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "avatar": { "type": ["string", "null"] },
+          "url": { "type": ["string", "null"] },
+          "locale": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "role": { "type": "string", "enum": ["guest", "subscriber", "author", "editor", "admin"] }
+        },
+        "required": ["id", "name", "role"]
+      }
+    },
+    "parameters": {
+      "limit": {
+        "name": "limit",
+        "in": "query",
+        "description": "How many rows to return: 50 unless given, and never more than 100.",
+        "schema": { "type": "integer", "minimum": 1, "default": 50 }
+      },
+      "offset": {
+        "name": "offset",
+        "in": "query",
+        "description": "How many rows to skip.",
+        "schema": { "type": "integer", "minimum": 0 }
+      },
+      "cursor": {
+        "name": "cursor",
+        "in": "query",
+        "description": "The `cursor` of the previous page, to read the next one. It replaces `offset`.",
+        "schema": { "type": "string" }
+      }
+    },
+    "responses": {
+      "Problem": {
+        "description": "An error, as an RFC 9457 problem document.",
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/Problem" }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "cookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "wordpress_logged_in_{hash}",
+        "description": "WordPress's logged-in cookie, as a browser holds it after signing in. A request with it must also carry `X-WP-Nonce`."
+      },
+      "nonce": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-WP-Nonce",
+        "description": "A WordPress REST nonce (`wp_create_nonce('wp_rest')`) for the cookie's session."
+      },
+      "applicationPassword": {
+        "type": "http",
+        "scheme": "basic",
+        "description": "A WordPress user name and one of the user's application passwords."
+      },
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "A TypedPress Identity access token."
+      }
+    }
+  }
+}

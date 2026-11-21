@@ -415,7 +415,7 @@ final class AppRouter
         if ($path === null || $this->reserved($path)) {
             return;
         }
-        $match = $this->matchPath($path);
+        $match = $this->matchPath(\TypedPress\Commerce\Module::routePath($this->plugin, $path));
         $page = $match === null ? null : ($match['route']['page'] ?? null);
         if ($page === null) {
             // A URL WordPress resolved itself (a post, an archive, search) keeps its theme
@@ -456,6 +456,9 @@ final class AppRouter
         // A static route's code Page ({@see RoutePages}) is the queried object while it renders,
         // as WordPress's own page template would have it: menus, SEO plugins and `the_ID()` see it.
         $id = RoutePages::instance()?->pages()[(string) $match['route']['id']] ?? null;
+        if ($id === null && $this->plugin->schema->commerce() !== null) {
+            $id = ContentPages::pageId((string) $match['route']['id']);
+        }
         if ($id !== null) {
             self::query(get_post($id));
         }
@@ -595,7 +598,7 @@ final class AppRouter
             return;
         }
         $query = new \WP_Query();
-        $query->query = ['page_id' => $post->ID];
+        $query->query = ['page_id' => $post->ID] + array_intersect_key($GLOBALS['wp']->query_vars ?? [], array_flip(['order-received', 'order-pay']));
         $query->query_vars = $query->fill_query_vars($query->query + ['fields' => 'all']);
         $query->queried_object = $post;
         $query->queried_object_id = $post->ID;
@@ -804,10 +807,12 @@ final class AppRouter
             exit;
         }
         // Cache policy and purges (rendering.md §6.1, §6.2): an anonymous visitor's render of a
-        // page without a guard is shared; what it read decides which writes purge its URL.
+        // page without a guard is shared, unless the request carries a cookie a render may read (a
+        // comment author's name, an unlocked post's password); what it read decides which writes
+        // purge its URL.
         // A page a form came back to (`?_flash=`), or one that ran a search, shows that visitor's
         // result: never shared, never recorded for purges.
-        [$this->cacheControl, $shared] = \TypedPress\Render\Cache::policy($status, $viewer->user === null && !\TypedPress\Render\Forms::marked() && !\TypedPress\Render\SearchView::marked() && !\TypedPress\Render\LoginView::private(), $guards !== []);
+        [$this->cacheControl, $shared] = \TypedPress\Render\Cache::policy($status, $viewer->user === null && !\TypedPress\Render\Cache::viewerCookie() && !\TypedPress\Commerce\Module::privatePath($this->plugin, (string) wp_parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH)) && !\TypedPress\Render\Forms::marked() && !\TypedPress\Render\SearchView::marked() && !\TypedPress\Render\LoginView::private(), $guards !== []);
         if ($shared) {
             \TypedPress\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         }
@@ -833,7 +838,7 @@ final class AppRouter
         foreach ($kind['params'] as $field => $param) {
             if ($field === 'id' && ctype_digit($value($param))) {
                 $where = [$spec['primaryKey'] => (int) $value($param)];
-            } elseif ($field === 'path' && ($spec['hierarchical'] ?? false)) {
+            } elseif ($field === 'path' && ($spec['hierarchical'] ?? false) && empty($spec['taxonomy'])) {
                 // The whole path, parent by parent: a slug is unique among its siblings only.
                 $post = get_page_by_path($value($param), OBJECT, (string) $spec['wp']['postType']);
                 if (!$post instanceof \WP_Post) {
@@ -867,12 +872,19 @@ final class AppRouter
             return null;
         }
         // The URL must be the item's own: other placeholders (`:year`, a field) have to agree.
-        $post = get_post((int) ($row->p[$spec['primaryKey']] ?? 0));
+        $id = (int) ($row->p[$spec['primaryKey']] ?? 0);
         $urls = KindUrls::instance();
-        if ($post instanceof \WP_Post && $urls !== null) {
+        if ($urls !== null) {
             // Both sides without the home path: under a subdirectory install the request path
             // starts with it (`/blog/notes/a`), and the item's path never does (`/notes/a`).
-            $want = $urls->path($name, $post);
+            if (!empty($spec['taxonomy'])) {
+                $term = get_term($id, $spec['wp']['taxonomy']);
+                if (!$term instanceof \WP_Term) { return null; }
+                $want = $urls->termPath($name, $term);
+            } else {
+                $post = get_post($id);
+                $want = $post instanceof \WP_Post ? $urls->path($name, $post) : null;
+            }
             $have = '/' . trim((string) ($path ?? $this->path()), '/');
             if ($want !== null && rawurldecode($have) !== rawurldecode($want)) {
                 return null;
@@ -944,7 +956,7 @@ final class AppRouter
         if ($base !== '' && str_starts_with($path, $base)) {
             $path = substr($path, strlen($base)) ?: '/';
         }
-        if ($this->reserved($path)) {
+        if ($this->reserved($path) || \TypedPress\Commerce\Module::privatePath($this->plugin, $path)) {
             return null;
         }
         $match = $this->matchPath($path);
@@ -1283,7 +1295,7 @@ final class AppRouter
                     $src = implode('#', $parts);
                 }
             }
-            wp_register_script_module($handle, self::absolute($src), [], null);
+            wp_register_script_module($handle, self::absolute($src), Plugin::instance()?->schema->commerce() !== null && \TypedPress\Islands::registerClient() ? [\TypedPress\Islands::CLIENT] : [], null);
             wp_enqueue_script_module($handle);
         }
     }
@@ -1425,7 +1437,7 @@ final class AppRouter
         if (str_starts_with($this->cacheControl, 'private')) {
             self::privateResponse();
         }
-        header('Cache-Control: ' . $this->cacheControl);
+        \TypedPress\Render\Cache::send($this->cacheControl);
         if (\TypedPress\Render\Prebuilt::prerendering()) {
             // The prebuild writes a file only from an answer the router rendered for it.
             header('X-TypedPress-Prerendered: 1');
@@ -1436,7 +1448,7 @@ final class AppRouter
         remove_action('wp_head', '_block_template_render_title_tag', 1);
         remove_action('wp_head', 'rel_canonical');
         $robots = $head['robots'] ?? null;
-        if (\TypedPress\Render\SearchView::marked()) {
+        if (\TypedPress\Render\SearchView::marked() || \TypedPress\Commerce\Module::privatePath($this->plugin, (string) wp_parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH))) {
             // A results page is no page to index: as the header and the meta tag.
             $robots = ['index' => false] + (is_array($robots) ? $robots : []);
             header('X-Robots-Tag: noindex');
@@ -1492,7 +1504,7 @@ final class AppRouter
         }
         $this->cacheControl = 'private, no-store, max-age=0';
         nocache_headers();
-        header('Cache-Control: ' . $this->cacheControl);
+        \TypedPress\Render\Cache::send($this->cacheControl);
         if (function_exists('batcache_cancel')) {
             batcache_cancel();
         }

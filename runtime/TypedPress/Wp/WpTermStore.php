@@ -87,6 +87,7 @@ final class WpTermStore implements Store, Links
             $type = $def['type'];
             $refs[$col] = match (true) {
                 $col === $spec['primaryKey'] => new ColumnRef('{a}.term_id', '', '', 'scalar'),
+                $col === 'uid' && ($def['system'] ?? false) => new ColumnRef($v, "LEFT JOIN `{$wpdb->termmeta}` {j} ON {j}.term_id = {a}.term_id AND {j}.meta_key = '_tp_uid'", $v, 'scalar'),
                 $col === 'name' => new ColumnRef('{j}.name', $terms, '', 'scalar'),
                 $col === 'slug' => new ColumnRef('{j}.slug', $terms, '', 'scalar'),
                 $col === 'description' => new ColumnRef('{a}.description', '', '', 'scalar'),
@@ -201,6 +202,7 @@ final class WpTermStore implements Store, Links
         if (array_key_exists($spec['primaryKey'], $values)) {
             throw HttpError::invalidInput('A term\'s id is given by WordPress', HttpError::seg($spec['primaryKey']));
         }
+        $this->checkUid($spec, $values, 0);
         $taxonomy = $spec['wp']['taxonomy'];
         $name = (string) ($values['name'] ?? '');
         $done = $this->db->core(static fn () => wp_insert_term(wp_slash($name), $taxonomy, wp_slash(self::core($values))));
@@ -218,6 +220,7 @@ final class WpTermStore implements Store, Links
     {
         $spec = $this->schema->collection($collection);
         $taxonomy = $spec['wp']['taxonomy'];
+        $this->checkUid($spec, $values, (int) $pk);
         self::checkParent($taxonomy, $values);
         if ((int) ($values['parent'] ?? 0) === (int) $pk) {
             throw new HttpError(409, 'reference_violation', 'A term can\'t be its own parent', '/parent');
@@ -243,12 +246,35 @@ final class WpTermStore implements Store, Links
         }
     }
 
+    /** Managed term UIDs have the same transaction-scoped ownership check as post-backed UIDs. */
+    private function checkUid(array $spec, array $values, int $self): void
+    {
+        if (!isset($values['uid']) || !($spec['columns']['uid']['system'] ?? false)) {
+            return;
+        }
+        $wpdb = $this->db->wpdb();
+        $hit = $this->db->run(
+            "SELECT m.term_id FROM `{$wpdb->termmeta}` m JOIN `{$wpdb->term_taxonomy}` t ON t.term_id = m.term_id WHERE m.meta_key = '_tp_uid' AND m.meta_value = ? AND t.taxonomy = ? AND m.term_id <> ? LIMIT 1 FOR UPDATE",
+            [(string) $values['uid'], $spec['wp']['taxonomy'], $self],
+        );
+        if ($hit !== []) {
+            throw new HttpError(409, 'unique_violation', 'A row with this uid already exists', '/uid');
+        }
+    }
+
     private function writeMeta(array $spec, int $id, array $values): void
     {
         Scf::$io++;
         try {
             foreach ($values as $col => $stored) {
                 $col = (string) $col;
+                if ($col === 'uid' && ($spec['columns'][$col]['system'] ?? false)) {
+                    $this->db->core(static fn () => update_term_meta($id, '_tp_uid', $stored));
+                    if (get_term_meta($id, '_tp_uid', true) !== $stored) {
+                        throw new \RuntimeException('Could not persist the term UID');
+                    }
+                    continue;
+                }
                 if (!self::isMeta($spec, $col)) {
                     continue;
                 }
@@ -317,8 +343,24 @@ final class WpTermStore implements Store, Links
     public function setLinks(string $join, int|string $owner, array $targets): void
     {
         $taxonomy = $this->linkTaxonomy($join);
+        $targets = array_values(array_map('intval', $targets));
         $this->db->touchPost((int) $owner);
-        $done = $this->db->core(static fn () => wp_set_object_terms((int) $owner, array_values(array_map('intval', $targets)), $taxonomy, false));
+        if (in_array($taxonomy, ['product_cat', 'product_tag'], true) && get_post_type((int) $owner) === 'product') {
+            $product = wc_get_product((int) $owner);
+            $product->{$taxonomy === 'product_cat' ? 'set_category_ids' : 'set_tag_ids'}($targets);
+            $this->db->core(static fn () => $product->save());
+            // Woo owns membership; keep list positions on this product without changing taxonomy-wide sorting.
+            $wpdb = $this->db->wpdb();
+            foreach ($targets as $position => $target) {
+                $this->db->run(
+                    "UPDATE `{$wpdb->term_relationships}` SET term_order = ? WHERE object_id = ? AND term_taxonomy_id IN (SELECT term_taxonomy_id FROM `{$wpdb->term_taxonomy}` WHERE taxonomy = ? AND term_id = ?)",
+                    [$position, (int) $owner, $taxonomy, $target],
+                );
+            }
+            clean_object_term_cache((int) $owner, 'product');
+            return;
+        }
+        $done = $this->db->core(static fn () => wp_set_object_terms((int) $owner, $targets, $taxonomy, false));
         if ($done instanceof \WP_Error) {
             throw new HttpError(400, (string) $done->get_error_code(), $done->get_error_message());
         }

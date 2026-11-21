@@ -49,6 +49,7 @@ final class Plugin
         }
         self::$instance = $this;
         $this->mainFile = $mainFile;
+        if ($this->schema->commerce() !== null) { \TypedPress\Commerce\Module::register($this); }
         Hardening::apply($schema);
         Sealed::apply($schema);
         if (!Runtime::managed()) {
@@ -146,6 +147,10 @@ final class Plugin
         // A plugin updated by copying files in has no activation; the first request of any kind
         // (REST, front end, cron, CLI, admin) applies its pending migrations before TypedPress serves it.
         add_action('init', [$this, 'maybeMigrate'], 1);
+        if (!Runtime::managed() && is_file($this->dir . '/tp/app/seed-version.php')) {
+            // Commerce finishes setting up its kinds at init 20.
+            add_action('init', [$this, 'installSeed'], 21);
+        }
 
         // Editor saves (wp-admin, core /wp/v2/<type>): hooks run after the post and its fields are saved.
         // Generated values are filled before core snapshots its revision (wp_after_insert_post, 9).
@@ -331,6 +336,7 @@ final class Plugin
     public function activate(): void
     {
         InstallMarker::forget();
+        \TypedPress\Sync\Seed::retry($this);
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         try {
             $this->migrateLocked();
@@ -386,6 +392,26 @@ final class Plugin
                 throw new \RuntimeException($this->remember($refused), 0, $refused);
             }
         });
+    }
+
+    public function installSeed(): void
+    {
+        if ($this->unavailable() !== null) {
+            return;
+        }
+        try {
+            // A refusal an earlier request found for this build: reported, not run again.
+            $problem = \TypedPress\Sync\Seed::install($this, $this->dir . '/tp/app/seed-version.php');
+            if ($problem === null) {
+                return;
+            }
+        } catch (\Throwable $error) {
+            $problem = $error->getMessage();
+            InstallMarker::forget();
+            error_log('[typedpress] ' . $problem);
+        }
+        $this->refuse($problem);
+        $this->notice($problem);
     }
 
     /** Keeps a refusal for this build and ledger, with the command that confirms it; returns the report. */
@@ -673,6 +699,7 @@ final class Plugin
     private function registerTaxonomies(): void
     {
         foreach ($this->schema->taxonomies() as $name => $spec) {
+            if (isset($spec['commerce'])) { continue; }
             $label = (string) ($spec['label'] ?? $name);
             $taxonomy = (string) $spec['wp']['taxonomy'];
             $types = array_values(array_map(fn (string $kind): string => (string) $this->schema->collection($kind)['wp']['postType'], $spec['wp']['on'] ?? []));

@@ -27,6 +27,7 @@ oxc_semantic = "=0.158.0"
 oxc_transformer = "=0.158.0"
 # Minifies the client modules the app plugin ships (src/minify.rs). Pinned with the other oxc crates.
 oxc_minifier = "=0.158.0"
+pulldown-cmark = { version = "0.13.4", default-features = false }
 regex = "1.13.1"
 ryu-js = "1.0.3"
 serde = { version = "1.0.229", features = ["derive"] }

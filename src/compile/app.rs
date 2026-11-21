@@ -358,6 +358,9 @@ impl Compiler<'_, '_> {
             }
         }
         let allowed: &[&str] = match name {
+            "EmailHtml" => &["lang", "children"],
+            "EmailBody" | "EmailText" => &["children"],
+            "EmailButton" => &["href", "children"],
             "Content" | "Html" => &["value"],
             "Comments" => &["for", "className"],
             "Live" => &["id", "children"],
@@ -391,6 +394,39 @@ impl Compiler<'_, '_> {
         }
         let get = |k: &str| named.iter().find(|(n, _)| *n == k).map(|(_, v)| *v);
         match name {
+            "EmailHtml" | "EmailBody" | "EmailText" | "EmailButton" => {
+                let attr = match name {
+                    "EmailHtml" => Some("lang"),
+                    "EmailButton" => Some("href"),
+                    _ => None,
+                };
+                let attr = match attr.and_then(get) {
+                    Some(value) => {
+                        let out = self.expr(value)?;
+                        let out = self.finish_value(out, value.span)?;
+                        if !assignable(&out.ty, &Ty::Str) {
+                            return err(value.span, "this email attribute must be a string");
+                        }
+                        out.php
+                    }
+                    None => "null".into(),
+                };
+                let children = if let Some(value) = get("children") {
+                    let out = self.expr(value)?;
+                    let out = self.finish_value(out, value.span)?;
+                    self.jsx_child_type(&out.ty, value.span)?;
+                    out.php
+                } else {
+                    "null".into()
+                };
+                Ok(Out::atom(
+                    format!(
+                        "\\TypedPress\\Render\\Email::component({}, {attr}, {children})",
+                        php_str(name)
+                    ),
+                    Ty::Html,
+                ))
+            }
             "Comments" => self.comments_component(get("for"), get("className"), span),
             "Live" => {
                 // The id names the region to the subscription endpoint, so it is written in the

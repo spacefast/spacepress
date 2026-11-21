@@ -51,6 +51,10 @@ pub enum Slot {
     Component {
         name: String,
     },
+    /// The default export of an `emails/` template, by its app-relative path.
+    Email {
+        file: String,
+    },
     /// The default export of a `tp/app/` route file (page, layout, not-found, error): a component
     /// whose props the router supplies, typed from the route.
     AppPage {
@@ -141,6 +145,7 @@ const CONFIG_KEYS: &[&str] = &[
     "frontend",
     "output",
     "runtimeSchema",
+    "seed",
 ];
 /// `wp.posts.extend(fields, options)`: what may change about WordPress's own posts.
 const POST_OPTIONS: &[&str] = &[
@@ -189,6 +194,11 @@ const COLLECTION_OPTIONS: &[&str] = &[
 /// The registries `crate::pipeline` fills from the app's exports (a 0.3.0 capture's config writes
 /// them itself): the model extraction reads, never an option a current config can set.
 const REGISTRIES: &[&str] = &[
+    "stores",
+    "products",
+    "productCategories",
+    "productTags",
+    "orders",
     "collections",
     "tables",
     "users",
@@ -216,6 +226,8 @@ const TAXONOMY_OPTIONS: &[&str] = &[
     "url",
     "on",
     "translations",
+    "sync",
+    "agents",
 ];
 /// A term row's own fields (ruling 27), and the names no authored term field may take.
 const TERM_FIELDS: &[&str] = &[
@@ -319,6 +331,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .help("it becomes the WordPress plugin slug `typedpress-<name>`"));
         }
     };
+    out.schema.seed = bool_option(&cfg_map, "seed", false, span_of(ev, config, "seed", config_span))?;
     out.schema.admin = bool_option(&cfg_map, "admin", true, span_of(ev, config, "admin", config_span))?;
     out.schema.public_authors = bool_option(
         &cfg_map,
@@ -416,6 +429,10 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         StorageKind::Table,
         StorageKind::UserProjection,
         StorageKind::Taxonomy,
+        StorageKind::Product,
+        StorageKind::ProductCategory,
+        StorageKind::ProductTag,
+        StorageKind::Order,
     ] {
         let registry = kind.registry();
         let Some(registry_val) = cfg_map.get(registry) else {
@@ -544,7 +561,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     localized: false,
                     url: None,
                     hierarchical: false,
-                    taxonomy: (kind == StorageKind::Taxonomy).then(|| Taxonomy { on: Vec::new() }),
+                    taxonomy: kind.term().then(|| Taxonomy { on: Vec::new() }),
+                    commerce: kind.commerce().then(|| kind.builder().to_string()),
                     indexes: Vec::new(),
                     api: Api {
                         list: true,
@@ -557,9 +575,38 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             );
         }
     }
+    crate::commerce::store(&cfg_map, &mut out.schema, config_span)?;
     let mut url_shapes: Vec<(String, Vec<crate::kind_url::Segment>, Span)> = Vec::new();
     let attached = taxonomy_on(ev, &out)?;
     for c in out.collections.clone() {
+        if c.kind.commerce() {
+            crate::commerce::kind(&c, &mut out.schema)?;
+            let kind = &out.schema.collections[c.table()];
+            if let Some(pattern) = &kind.url {
+                let shape = crate::kind_url::check(
+                    pattern,
+                    &crate::kind_url::UrlKind {
+                        columns: &kind.columns,
+                        dated: false,
+                        hierarchical: kind.hierarchical,
+                        public_slug: &|_| false,
+                    },
+                )
+                .map_err(|e| Diag::new(c.span, e.message))?;
+                let root = |s: &[crate::kind_url::Segment]| matches!(s, [crate::kind_url::Segment::Path]);
+                if let Some((other, ..)) = url_shapes
+                    .iter()
+                    .find(|(_, s, _)| crate::kind_url::overlaps(s, &shape) && root(s) == root(&shape))
+                {
+                    return Err(Diag::new(
+                        c.span,
+                        format!("\"{pattern}\" can match the same URLs as {other}'s url"),
+                    ));
+                }
+                url_shapes.push((format!("`{}`", kind.key), shape, c.span));
+            }
+            continue;
+        }
         if c.kind == StorageKind::Taxonomy {
             taxonomy_kind(&c, ev, &mut out, &mut url_shapes)?;
             continue;
@@ -731,6 +778,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             coll.columns.insert("publishedAt".into(), published_at);
         }
     }
+    crate::commerce::relations(&mut out.schema);
     // Each taxonomy registers for the union of its `on` and every kind with a `terms()` field for it.
     let attachments: Vec<(String, String)> = out
         .schema
@@ -1340,11 +1388,7 @@ fn taxonomy_kind(
                 "keep the stored name under a new export with `storageName: \"<old name>\"`, which moves nothing"
                     .to_string(),
             ),
-            "sync" => (
-                "a taxonomy can't sync: `sync` is for collections and tables".to_string(),
-                "remove `sync`; create terms through the API or wp-admin".to_string(),
-            ),
-            "agents" | "abilities" | "search" => (
+            "abilities" | "search" => (
                 format!("`{k}` on a taxonomy isn't built yet"),
                 "remove the option".to_string(),
             ),
@@ -1567,7 +1611,26 @@ fn taxonomy_kind(
     coll.drafts = false;
     coll.revisions = false;
     coll.staged = false;
-    coll.agents = false;
+    coll.agents = flag("agents")?.unwrap_or(false);
+    let sync = match o.get("sync") {
+        None | Some(Value::Undef) => None,
+        Some(Value::Str(pattern)) => Some(sync_config(pattern, span("sync"))?),
+        _ => {
+            return Err(Diag::new(
+                span("sync"),
+                "sync must be a project-relative *.md or *.json pattern",
+            ));
+        }
+    };
+    if let Some(sync) = sync {
+        coll.sync = Some(sync);
+        coll.uid = true;
+        coll.content = Some("description".into());
+        let mut uid = system_column("uid", ColType::Text);
+        uid.unique = true;
+        uid.rules.max = Some(23.0);
+        coll.columns.insert("uid".into(), uid);
+    }
     coll.access = access;
     coll.hierarchical = hierarchical;
     coll.url = url;
@@ -1654,7 +1717,7 @@ fn collection_options(
                     StorageKind::UserProjection => {
                         "storage follows the builder: userProjection() is always WordPress users; remove the option"
                     }
-                    StorageKind::Taxonomy => unreachable!("taxonomy options are checked by taxonomy_kind"),
+                    _ => unreachable!("other kinds have their own options"),
                 });
             } else if let Some(s) = suggest(k, COLLECTION_OPTIONS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
@@ -2504,11 +2567,11 @@ fn column(
                         .help("export the kind it refers to, e.g. `export const authors = collection({ ... })`"),
                 );
             }
-            if b.terms && kind.kind != StorageKind::Taxonomy {
+            if b.terms && !kind.kind.term() {
                 return Err(Diag::new(*span, format!("terms() takes a taxonomy() export, not the {}() `{}`", kind.kind.builder(), kind.table()))
                     .help("declare `export const topics = taxonomy({}, { on: [posts] })` and write `terms(topics)`; core's categories and tags wait for the wp.* built-ins"));
             }
-            if kind.kind == StorageKind::Taxonomy && !b.terms {
+            if kind.kind.term() && !b.terms {
                 return Err(Diag::new(
                     *span,
                     format!("`{name}` refers to a taxonomy with `ref()`, which isn't built yet"),
@@ -3751,7 +3814,7 @@ fn phase2_config(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, 
     Ok(())
 }
 
-fn sync_config(pattern: &str, span: Span) -> Result<Json> {
+pub(crate) fn sync_config(pattern: &str, span: Span) -> Result<Json> {
     // `content/docs/**/*.md`: every file in the folder and the folders below it; a hierarchical kind
     // takes each folder as the parent of the files in it.
     let (pattern, nested) = match pattern.rsplit_once("/**/") {
@@ -4041,6 +4104,9 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
             if let Some(join) = col.references.as_ref().and_then(|r| r.join.as_ref())
                 && is_term_join(join)
             {
+                if out.schema.collections[&col.references.as_ref().unwrap().collection].uid {
+                    continue;
+                }
                 // Declared with `terms()`, or added by the taxonomy's `on`.
                 let span = builder.columns.get(&col.name).map_or(builder.span, |b| b.span);
                 return Err(Diag::new(

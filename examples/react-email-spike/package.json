@@ -1,0 +1,19 @@
+{
+  "name": "typedpress-react-email-spike",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "tsx verify.ts",
+    "email:dev": "email dev --dir transport/emails"
+  },
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-email": "6.11.16"
+  },
+  "devDependencies": {
+    "@react-email/ui": "6.11.16",
+    "tsx": "4.23.15"
+  }
+}

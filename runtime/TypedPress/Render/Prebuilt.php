@@ -511,10 +511,8 @@ final class Prebuilt
         if (str_contains(strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? '')), 'text/markdown')) {
             return;
         }
-        foreach (array_keys($_COOKIE) as $name) {
-            if (preg_match('/^(wordpress_logged_in_|wordpress_sec_|wp-postpass_|comment_author_|wp_lang$|zi_session$|__Host-zi_session$)/', (string) $name) === 1) {
-                return;
-            }
+        if (Cache::viewerCookie()) {
+            return;
         }
         $request = (string) ($_SERVER['REQUEST_URI'] ?? '/');
         // `//x` is a scheme-relative URL to wp_parse_url(), not a path: not a prebuilt page's URL.
@@ -584,7 +582,7 @@ final class Prebuilt
             return;
         }
         [$control] = Cache::policy(200, true, false);
-        header('Cache-Control: ' . $control);
+        Cache::send($control);
         header('X-TypedPress-Prebuilt: 1');
         if ($markdown) {
             header('Content-Type: ' . MarkdownTwins::CONTENT_TYPE);

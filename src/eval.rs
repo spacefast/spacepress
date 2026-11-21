@@ -5061,6 +5061,29 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
                 );
             }
         },
+        "column" => match arg(0) {
+            Value::Str(col) => c.storage_name = Some(col.to_string()),
+            other => {
+                return err(
+                    span,
+                    format!("`.column()` needs the physical column name, not {}", other.describe()),
+                );
+            }
+        },
+        "alias" => match arg(0) {
+            Value::Str(alias) => {
+                let s = alias.to_string();
+                if !c.aliases.contains(&s) {
+                    c.aliases.push(s);
+                }
+            }
+            other => {
+                return err(
+                    span,
+                    format!("`.alias()` needs an alias name string, not {}", other.describe()),
+                );
+            }
+        },
         "unique" => c.unique = true,
         "min" | "max" => {
             let n = match arg(0) {
@@ -5205,6 +5228,8 @@ const MODIFIERS: &[&str] = &[
     "ui",
     "localized",
     "was",
+    "column",
+    "alias",
 ];
 
 /// A modifier the authoring surface deleted: (message, fix).
@@ -5316,6 +5341,8 @@ impl ColBuilder {
             localized: false,
             bucket: None,
             was: None,
+            storage_name: None,
+            aliases: Vec::new(),
             span,
             mods: Vec::new(),
         }

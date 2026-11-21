@@ -89,13 +89,24 @@ final class WpTableStore implements Store, Links
         return [];
     }
 
+    private function physicalColumn(string $collection, string $name): string
+    {
+        $cols = $this->schema->collection($collection)['columns'];
+
+        return (string) ($cols[$name]['column'] ?? $name);
+    }
+
     public function insert(string $collection, array $values): int|string
     {
         $q = $this->dialect->quote(...);
-        $sql = 'INSERT INTO ' . $q($this->table($collection)) . ($values === []
+        $physical = [];
+        foreach ($values as $col => $val) {
+            $physical[$this->physicalColumn($collection, (string) $col)] = $val;
+        }
+        $sql = 'INSERT INTO ' . $q($this->table($collection)) . ($physical === []
             ? ' () VALUES ()'
-            : ' (' . implode(', ', array_map($q, array_keys($values))) . ') VALUES (' . implode(', ', array_fill(0, count($values), '?')) . ')');
-        $this->db->run($sql, array_values($values));
+            : ' (' . implode(', ', array_map($q, array_keys($physical))) . ') VALUES (' . implode(', ', array_fill(0, count($physical), '?')) . ')');
+        $this->db->run($sql, array_values($physical));
         $pk = $this->schema->collection($collection)['primaryKey'];
 
         return $values[$pk] ?? $this->db->insertId();
@@ -107,9 +118,10 @@ final class WpTableStore implements Store, Links
             return;
         }
         $q = $this->dialect->quote(...);
-        $assign = implode(', ', array_map(static fn ($c) => $q((string) $c) . ' = ?', array_keys($values)));
+        $assign = implode(', ', array_map(fn ($c) => $q($this->physicalColumn($collection, (string) $c)) . ' = ?', array_keys($values)));
+        $pkCol = $this->physicalColumn($collection, $this->schema->collection($collection)['primaryKey']);
         $this->db->run(
-            'UPDATE ' . $q($this->table($collection)) . " SET $assign WHERE " . $q($this->schema->collection($collection)['primaryKey']) . ' = ?',
+            'UPDATE ' . $q($this->table($collection)) . " SET $assign WHERE " . $q($pkCol) . ' = ?',
             [...array_values($values), $pk],
         );
     }
@@ -117,14 +129,15 @@ final class WpTableStore implements Store, Links
     public function delete(string $collection, int|string $pk): void
     {
         $q = $this->dialect->quote(...);
-        $this->db->run('DELETE FROM ' . $q($this->table($collection)) . ' WHERE ' . $q($this->schema->collection($collection)['primaryKey']) . ' = ?', [$pk]);
+        $pkCol = $this->physicalColumn($collection, $this->schema->collection($collection)['primaryKey']);
+        $this->db->run('DELETE FROM ' . $q($this->table($collection)) . ' WHERE ' . $q($pkCol) . ' = ?', [$pk]);
     }
 
     // ================================================================ many-ref links
 
     public function linkTable(string $join): string
     {
-        return $this->dialect->quote($this->db->prefix() . 'tp_' . $join);
+        return $this->dialect->quote($this->db->prefix() . 'tp__join_' . $join);
     }
 
     public function links(string $join, string $by, array $ids): array

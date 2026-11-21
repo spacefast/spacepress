@@ -351,7 +351,7 @@ function names(array $rows): array
 // ================================================================ boot + migrate
 
 eq('activation applied the init migration and recorded it in the per-app ledger',
-    $wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), [['id' => '0001_init']]);
+    $wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), [['id' => '20261121000000_000000_init']]);
 eq('the app plugin is active with current storage', [$wp->plugin()->unavailable(), $wp->plugin()->pendingMigrations()], [null, []]);
 eq('the runtime describes its database as SQLite through the official plugin', \TypedPress\Wp\Platform::versions()['database']['kind'], 'sqlite');
 eq('platform problems accept SQLite Database Integration', \TypedPress\Wp\Platform::problems(), []);
@@ -601,21 +601,33 @@ eq('runtime FK cascade is on', $db->findFirst('items', ['where' => ['id' => $lam
 
 // ================================================================ migrations: a later file, the ledger, a failing statement
 
-// An app update ships 0002: adding a column to a table with rows. `wp typedpress migrate` applies it in
-// order, records it per app, and the next request sees current storage.
+// An app update ships a second sortable folder migration: adding a column to a table with rows.
+$writeMig = static function (string $id, string $sql) use ($wp): void {
+    $dir = $wp->plugin()->dir . "/tp/app/migrations/$id";
+    if (!is_dir($dir)) {
+        mkdir($dir, 0777, true);
+    }
+    file_put_contents("$dir/migration.sql", $sql);
+};
+$rmMig = static function (string $id) use ($wp): void {
+    $dir = $wp->plugin()->dir . "/tp/app/migrations/$id";
+    @unlink("$dir/migration.sql");
+    @unlink("$dir/ops.json");
+    @rmdir($dir);
+};
 $childrenBefore = $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]);
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0002_note.sql', 'ALTER TABLE `{prefix}tp_locations` ADD COLUMN `note` LONGTEXT;');
-eq('`wp typedpress migrate` applies the pending file', $wp->wpCli(['migrate']), [0, ['data' => ['applied' => ['0002_note']]]]);
+$writeMig('20261121000001_000001_note', 'ALTER TABLE `{prefix}tp_locations` ADD COLUMN `note` LONGTEXT;');
+eq('`wp typedpress migrate` applies the pending folder', $wp->wpCli(['migrate']), [0, ['data' => ['applied' => ['20261121000001_000001_note']]]]);
 eq('child rows survive the parent change (no cascade fired)', $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]), $childrenBefore);
-eq('the table has the new column and the ledger the file', [
+eq('the table has the new column and the ledger the migration', [
     $wp->scalar('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$wp->connection()->prefix() . 'tp_locations', 'note']),
     array_column($wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), 'id'),
-], [1, ['0001_init', '0002_note']]);
+], [1, ['20261121000000_000000_init', '20261121000001_000001_note']]);
 problem('the unique index still holds', fn () => $db->insert('locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
 // Migration text is SQL as the compiler or an operator writes it: a leading comment, a `?` inside a
 // literal default, and a constraint over rows that break it.
-$migrate = static function (string $id, string $sql) use ($wp): ?array {
-    file_put_contents($wp->plugin()->dir . "/tp/app/migrations/$id.sql", $sql);
+$migrate = static function (string $id, string $sql) use ($wp, $writeMig): ?array {
+    $writeMig($id, $sql);
 
     return $wp->wpCli(['migrate'])[1]['data']['applied'] ?? null;
 };
@@ -638,7 +650,7 @@ eq('a comment between the keywords', $alter('ALTER /* inline */ TABLE `{prefix}t
 eq('a line comment ending in a carriage return', $alter("-- note\rALTER TABLE `{prefix}tp_rf_parent` ADD COLUMN `c3` LONGTEXT", 'c3'), [1, 1]);
 eq('an executable comment this server\'s version satisfies is the statement', $alter('/*!80000 ALTER TABLE `{prefix}tp_rf_parent` ADD COLUMN `c4` LONGTEXT */', 'c4'), [1, 1]);
 eq('an executable comment for a newer server is a comment, and the ALTER behind it still keeps the children', $alter('/*!99999 SELECT 1 */ ALTER TABLE `{prefix}tp_rf_parent` ADD COLUMN `c5` LONGTEXT', 'c5'), [1, 1]);
-eq('a migration file carrying such a statement reaches the same path', [$migrate('0002b_commented', "/* adds */ ALTER /* inline */ TABLE `{prefix}tp_locations` ADD COLUMN `prompt` VARCHAR(191) DEFAULT 'Continue?';"), $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]) === $childrenBefore, $wp->scalar('SELECT `prompt` FROM {prefix}tp_locations WHERE `name` = ?', ['Garage'])], [['0002b_commented'], true, 'Continue?']);
+eq('a migration file carrying such a statement reaches the same path', [$migrate('20261121000002_000002_commented', "/* adds */ ALTER /* inline */ TABLE `{prefix}tp_locations` ADD COLUMN `prompt` VARCHAR(191) DEFAULT 'Continue?';"), $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]) === $childrenBefore, $wp->scalar('SELECT `prompt` FROM {prefix}tp_locations WHERE `name` = ?', ['Garage'])], [['20261121000002_000002_commented'], true, 'Continue?']);
 eq('`--` without a space is subtraction', $wp->sql('SELECT 1--? AS n', [1])[0]['n'], 2);
 eq('a parameter inside an executable comment this server reads is bound', $wp->sql('SELECT /*!80000 ? */ AS n', [42])[0]['n'], 42);
 eq('a `?` inside an executable comment for a newer server is text, not a parameter', $wp->sql('SELECT 3 AS n /*!99999 , ? AS m */')[0], ['n' => 3]);
@@ -648,14 +660,14 @@ eq('an odd run of backslashes escapes the quote: the `?` inside stays text', $wp
 $wp->exec('INSERT INTO {prefix}tp_logs (`message`, `at`) VALUES (?, ?)', ['orphan', '2026-01-01T00:00:00.000Z']);
 $wp->exec('ALTER TABLE {prefix}tp_logs ADD COLUMN `itemId` BIGINT UNSIGNED');
 $wp->exec('UPDATE {prefix}tp_logs SET `itemId` = 424242 WHERE `message` = ?', ['orphan']);
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0002c_fk.sql', 'ALTER TABLE `{prefix}tp_logs` ADD CONSTRAINT `tp_logs_itemId_fk` FOREIGN KEY (`itemId`) REFERENCES `{prefix}tp_items` (`id`) ON DELETE SET NULL;');
+$writeMig('20261121000003_000003_fk', 'ALTER TABLE `{prefix}tp_logs` ADD CONSTRAINT `tp_logs_itemId_fk` FOREIGN KEY (`itemId`) REFERENCES `{prefix}tp_items` (`id`) ON DELETE SET NULL;');
 putenv('TP_DEBUG=1');
 [$code, $out] = $wp->wpCli(['migrate']);
 putenv('TP_DEBUG');
 check('a constraint added over rows that break it fails the migration and changes nothing', $code === 1 && str_contains($out['error']['detail'] ?? '', 'foreign key constraint fails')
     && $wp->scalar('SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?', [$wp->connection()->prefix() . 'tp_logs', 'tp_logs_itemId_fk']) === 0, $out);
 $wp->exec('DELETE FROM {prefix}tp_logs WHERE `message` = ?', ['orphan']);
-eq('with the orphan gone the same file applies', $wp->wpCli(['migrate'])[1]['data']['applied'] ?? null, ['0002c_fk']);
+eq('with the orphan gone the same file applies', $wp->wpCli(['migrate'])[1]['data']['applied'] ?? null, ['20261121000003_000003_fk']);
 // Migrations run under one site-wide lock across processes: while this process holds it, another
 // process can't take it (and gives up at its timeout); once released, it can.
 file_put_contents($wp->dir . '/lock.php', <<<'PHP'
@@ -674,61 +686,34 @@ eq('a second process can\'t take a held migration lock, and can once it is relea
 eq('the lock is per name', $wp->connection()->locked('first:other', 1, $other), 'held');
 
 // A statement that fails stops the file; what ran before it is recorded step by step, nothing after it runs.
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0003_broken.sql', "DELETE FROM `{prefix}tp_logs` WHERE `message` = 'hello';\n--> statement-breakpoint\nALTER TABLE `{prefix}tp_nope` ADD COLUMN `x` LONGTEXT;\n--> statement-breakpoint\nDELETE FROM `{prefix}tp_logs`;");
-putenv('TP_DEBUG=1'); // the problem's detail carries the migration's own message, as the operator sees it in the log
+$writeMig('20261121000004_000004_broken', "DELETE FROM `{prefix}tp_logs` WHERE `message` = 'hello';\n--> statement-breakpoint\nALTER TABLE `{prefix}tp_nope` ADD COLUMN `x` LONGTEXT;\n--> statement-breakpoint\nDELETE FROM `{prefix}tp_logs`;");
+putenv('TP_DEBUG=1');
 [$code, $out] = $wp->wpCli(['migrate']);
 putenv('TP_DEBUG');
-check('a failing statement fails the command and names its position', $code === 1 && str_contains($out['error']['detail'] ?? '', '0003_broken failed at statement 2'), $out);
+check('a failing statement fails the command and names its position', $code === 1 && str_contains($out['error']['detail'] ?? '', '20261121000004_000004_broken failed at statement 2'), $out);
 eq('the statements before it ran and are recorded; the ones after it did not run', [
     count($db->findMany('logs', ['where' => ['message' => 'hello']])), count($db->findMany('logs')) > 0,
-    array_column($wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ? ORDER BY `id`', ['dbtest', '0003%']), 'id'),
-], [0, true, ['0003_broken:1']]);
-unlink($wp->plugin()->dir . '/tp/app/migrations/0003_broken.sql');
-$wp->exec('DELETE FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ?', ['dbtest', '0003%']);
-eq('with the file gone, migrate is a no-op and the CLI serves again', [$wp->wpCli(['migrate'])[1], $wp->wpCli(['find', 'items', '{"where":{"name":"Hammer"},"columns":{"name":true}}'])[1]],
+    array_column($wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ? ORDER BY `id`', ['dbtest', '20261121000004%']), 'id'),
+], [0, true, ['20261121000004_000004_broken:1']]);
+$rmMig('20261121000004_000004_broken');
+$wp->exec('DELETE FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ?', ['dbtest', '20261121000004%']);
+eq('with the folder gone, migrate is a no-op and the CLI serves again', [$wp->wpCli(['migrate'])[1], $wp->wpCli(['find', 'items', '{"where":{"name":"Hammer"},"columns":{"name":true}}'])[1]],
     [['data' => ['applied' => []]], ['data' => [['name' => 'Hammer']]]]);
 
-// ================================================================ migrations: the deploy-time schema check on SQLite (spec §2.9)
+// ================================================================ forward-only runtime guard & unified audit ledger
 
-// Statements as `typedpress build` plans a `was` rename and a drop. The SQLite driver has no RENAME TABLE and
-// its RENAME COLUMN loses values, so the migrator copies the table and changes the column instead:
-// rows, the auto-increment, and a child's foreign key (dropped and added back as the plan does) survive.
-$wp->exec('CREATE TABLE {prefix}tp_sc_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `body` LONGTEXT, `state` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
-$wp->exec('CREATE TABLE {prefix}tp_sc_kids (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `noteId` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `tp_sc_kids_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES {prefix}tp_sc_notes (`id`) ON DELETE CASCADE) ENGINE=InnoDB');
-$wp->exec("INSERT INTO {prefix}tp_sc_notes (`body`, `state`) VALUES ('first', 'open'), ('second', NULL)");
-$wp->exec('INSERT INTO {prefix}tp_sc_kids (`noteId`) VALUES (1)');
-$checked = static fn (array $check, string $sql): string => '-- typedpress-check ' . json_encode($check, JSON_UNESCAPED_SLASHES) . "\n" . $sql;
-$p = '{prefix}';
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0004_rename.sql', implode("\n--> statement-breakpoint\n", [
-    "ALTER TABLE `{$p}tp_sc_kids` DROP FOREIGN KEY `tp_sc_kids_noteId_fk`;",
-    $checked(['check' => 'rename', 'table' => "{$p}tp_sc_notes", 'to' => "{$p}tp_sc_memos"], "RENAME TABLE `{$p}tp_sc_notes` TO `{$p}tp_sc_memos`;"),
-    $checked(['check' => 'rename', 'name' => 'sc_memos.body', 'table' => "{$p}tp_sc_notes", 'column' => 'body', 'to' => 'text', 'definition' => '`text` LONGTEXT', 'adopted' => false],
-        "ALTER TABLE `{$p}tp_sc_memos` RENAME COLUMN `body` TO `text`;"),
-    "ALTER TABLE `{$p}tp_sc_kids` ADD CONSTRAINT `tp_sc_kids_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES `{$p}tp_sc_memos` (`id`) ON DELETE CASCADE;",
-]));
-// A second pending file drops a column under the new name: its check counts the rows still in sc_notes.
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0005_drop.sql', $checked(
-    ['check' => 'drop', 'name' => 'sc_memos.state', 'table' => "{$p}tp_sc_memos", 'column' => 'state', 'adopted' => false],
-    "ALTER TABLE `{$p}tp_sc_memos` DROP COLUMN `state`;",
-));
+$writeMig('20261121000005_000005_drop', 'ALTER TABLE `{prefix}tp_locations` DROP COLUMN `note`;');
+putenv('TP_DEBUG=1');
 [$code, $out] = $wp->wpCli(['migrate']);
-eq('a drop pending behind a rename is counted under the old name, and refused with nothing run', [$code, $out['error']['code'] ?? null,
-    array_map(static fn (array $r): array => [$r['code'], $r['name'], $r['rows']], $out['error']['refusals'] ?? []), $out['error']['drop'] ?? null,
-    (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}tp_sc_notes')],
-    [1, 'schema_refused', [['drop_has_rows', 'sc_memos.state', 1]], ['sc_memos.state=1'], 2]);
-eq('a bare --drop is refused, not ignored', $wp->wpCli(['migrate'], ['drop' => true])[1]['error']['code'] ?? null, 'invalid_drop');
-eq('--drop with the live count applies both files', $wp->wpCli(['migrate'], ['drop' => 'sc_memos.state=1'])[1]['data']['applied'] ?? null, ['0004_rename', '0005_drop']);
-eq('the renamed table kept its rows, values and auto-increment, and its child kept its row and key', [
-    $wp->sql('SELECT `id`, `text` FROM {prefix}tp_sc_memos ORDER BY `id`'),
-    $wp->scalar('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$wp->connection()->prefix() . 'tp_sc_notes']),
-    $wp->sql('SELECT `noteId` FROM {prefix}tp_sc_kids'),
-], [[['id' => 1, 'text' => 'first'], ['id' => 2, 'text' => 'second']], 0, [['noteId' => 1]]]);
-$wp->exec("INSERT INTO {prefix}tp_sc_memos (`text`) VALUES ('third')");
-eq('the copy keeps counting ids where the table left off', (int) $wp->scalar('SELECT MAX(`id`) FROM {prefix}tp_sc_memos'), 3);
-$wp->exec('DELETE FROM {prefix}tp_sc_memos WHERE `id` = 1');
-eq('the child key points at the renamed table (ON DELETE CASCADE fires)', (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}tp_sc_kids'), 0);
-$wp->exec('DROP TABLE {prefix}tp_sc_kids');
-$wp->exec('DROP TABLE {prefix}tp_sc_memos');
+putenv('TP_DEBUG');
+check('core Migrator refuses destructive DROP COLUMN in forward-only schema migrations',
+    $code === 1 && str_contains($out['error']['detail'] ?? '', 'Refusing destructive DDL'), $out);
+$rmMig('20261121000005_000005_drop');
+$migrator = new \TypedPress\Wp\Migrator($wp->connection(), $wp->plugin()->dir . '/tp/app/migrations', $wp->plugin()->schema);
+$migrator->recordAudit('20261121000006_000006_purge', 'destructive', str_repeat('a', 64), 'admin', 'cleanup retired column', 0);
+$audit = $wp->sql('SELECT `kind`, `actor`, `reason`, `rows_affected` FROM {prefix}tp__migrations WHERE `app` = ? AND `id` = ?', ['dbtest', '20261121000006_000006_purge']);
+eq('unified ledger records destructive audit metadata', $audit, [['kind' => 'destructive', 'actor' => 'admin', 'reason' => 'cleanup retired column', 'rows_affected' => 0]]);
+$wp->exec('DELETE FROM {prefix}tp__migrations WHERE `app` = ? AND `id` = ?', ['dbtest', '20261121000006_000006_purge']);
 
 // ================================================================ CLI
 
@@ -1531,7 +1516,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $anon = new \TypedPress\Viewer(null);
     $member = new \TypedPress\Viewer(['id' => 1, 'name' => 'm', 'role' => 'subscriber']);
     [$red, $green, $blue, $hidden] = $db->insert('labels', [['name' => 'red'], ['name' => 'green'], ['name' => 'blue'], ['name' => 'hidden', 'secret' => true]], true);
-    $links = static fn (string $table) => array_map(static fn (array $r) => array_map('intval', $r), $wp->sql("SELECT `owner_id`, `target_id`, `position` FROM {prefix}tp_$table ORDER BY `owner_id`, `position`"));
+    $links = static fn (string $table) => array_map(static fn (array $r) => array_map('intval', $r), $wp->sql("SELECT `owner_id`, `target_id`, `position` FROM {prefix}tp__join_$table ORDER BY `owner_id`, `position`"));
 
     $card = $db->insert('cards', ['title' => 'one', 'labels' => [$blue['id'], $red['id']]], true)[0];
     eq('a many-ref reads back as its ids in write order; an omitted optional one is []', [$card['labels'], $card['pinned']], [[$blue['id'], $red['id']], []]);
@@ -1571,10 +1556,10 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     problem('restrict refuses deleting a target that is still linked', fn () => $db->delete('labels', ['id' => $green['id']]), 409, 'reference_violation');
     eq('… and keeps it and its links', [count($db->findMany('labels', ['where' => ['id' => $green['id']]])), $db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels']], [1, [$red['id'], $green['id']]]);
     $db->delete('labels', ['id' => $red['id']]);
-    eq('deleting a target removes the links pointing at it', [$db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels'], count($wp->sql('SELECT 1 FROM {prefix}tp_cards_labels WHERE `target_id` = ?', [$red['id']]))], [[$green['id']], 0]);
+    eq('deleting a target removes the links pointing at it', [$db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels'], count($wp->sql('SELECT 1 FROM {prefix}tp__join_cards_labels WHERE `target_id` = ?', [$red['id']]))], [[$green['id']], 0]);
     $db->update('cards', ['pinned' => []], ['id' => $two['id']]);
     $db->delete('cards', ['id' => $two['id']]);
-    eq('deleting the owner removes its links', count($wp->sql('SELECT 1 FROM {prefix}tp_cards_labels WHERE `owner_id` = ?', [$two['id']])), 0);
+    eq('deleting the owner removes its links', count($wp->sql('SELECT 1 FROM {prefix}tp__join_cards_labels WHERE `owner_id` = ?', [$two['id']])), 0);
     $db->delete('labels', ['id' => $green['id']]);
     eq('with the last link gone, restrict lets the target go', $db->findFirst('cards', ['where' => ['id' => $card['id']]])['labels'], [$blue['id']]);
 

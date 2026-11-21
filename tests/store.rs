@@ -261,10 +261,11 @@ fn every_build_keeps_a_baseline_and_describes_its_storage() {
         let app = root.join("app").join(&built.app_hash);
         let hashes: serde_json::Map<String, serde_json::Value> =
             serde_json::from_slice(&fs::read(baseline.join("hashes.json")).unwrap()).unwrap();
-        assert_eq!(
-            hashes.keys().cloned().collect::<Vec<_>>(),
-            ["migrations/0001_init.sql", "snapshot.json", "storage.json"]
-        );
+        let keys: Vec<String> = hashes.keys().cloned().collect();
+        assert_eq!(keys.len(), 4, "{keys:?}");
+        assert!(keys[0].starts_with("migrations/") && keys[0].ends_with("_init/migration.sql"), "{keys:?}");
+        assert!(keys[1].starts_with("migrations/") && keys[1].ends_with("_init/ops.json"), "{keys:?}");
+        assert_eq!(&keys[2..], ["snapshot.json", "storage.json"]);
         for (rel, hash) in &hashes {
             let bytes = fs::read(baseline.join(rel)).unwrap();
             assert_eq!(bytes, fs::read(app.join(rel)).unwrap(), "{rel} is the app tree's");

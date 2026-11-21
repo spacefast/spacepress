@@ -26,6 +26,50 @@ namespace TypedPress\Wp;
  */
 final class Migrator
 {
+    /** @var array<string, MigrationProvider> */
+    private static array $providers = [];
+
+    /** Register an opt-in migration provider (e.g., `@typedpress/destructive-migrations`). */
+    public static function registerProvider(MigrationProvider $provider): void
+    {
+        self::$providers[$provider->id()] = $provider;
+    }
+
+    /** @return array<string, MigrationProvider> */
+    public static function providers(): array
+    {
+        return self::$providers;
+    }
+
+    /** Clear registered providers (for tests). */
+    public static function resetProviders(): void
+    {
+        self::$providers = [];
+    }
+
+    /**
+     * Asserts that a core forward-only schema statement contains no destructive DDL.
+     * Destructive operations must go through an explicit CLI-only MigrationProvider.
+     */
+    public static function assertForwardOnly(string $statement, string $migrationId = ''): void
+    {
+        $sql = SchemaCheck::sql($statement);
+        // Strip leading `-- ...` SQL comments before inspecting the DDL verb.
+        $lines = array_filter(
+            explode("\n", $sql),
+            static fn (string $line): bool => !str_starts_with(ltrim($line), '--'),
+        );
+        $clean = trim(implode("\n", $lines));
+        if ($clean === '') {
+            return;
+        }
+        if (preg_match('/\b(DROP\s+TABLE|DROP\s+COLUMN|TRUNCATE\s+TABLE|RENAME\s+TABLE|RENAME\s+COLUMN|CHANGE\s+COLUMN)\b/i', $clean, $m)) {
+            $ctx = $migrationId !== '' ? " in migration $migrationId" : '';
+            throw new \RuntimeException(
+                "Refusing destructive DDL ({$m[1]})$ctx: core TypedPress migrations are strictly forward-only. Use @typedpress/destructive-migrations via CLI for explicit destructive cleanup."
+            );
+        }
+    }
 
     /** @param array<string, int> $drops `--drop` confirmations for the schema check (SchemaCheck::drops) */
     public function __construct(
@@ -36,12 +80,38 @@ final class Migrator
     ) {
     }
 
+    /** Lists `<id>/migration.sql` folders under `$this->dir`, returning sorted `id => path`. */
+    private function migrationFiles(): array
+    {
+        $found = [];
+        foreach (glob($this->dir . '/*/migration.sql') ?: [] as $file) {
+            $id = basename(dirname($file));
+            if ($id !== '' && $id !== '.' && $id !== '..') {
+                $found[$id] = $file;
+            }
+        }
+        ksort($found, SORT_STRING);
+
+        return $found;
+    }
+
     /** The statements of a migration file: split on the compiler's `--> statement-breakpoint` lines. */
     public static function statements(string $sql): array
     {
         $parts = preg_split('/-->[ \t]*statement-breakpoint/', $sql) ?: [];
 
-        return array_values(array_filter(array_map('trim', $parts), static fn ($s) => $s !== ''));
+        return array_values(array_filter(array_map('trim', $parts), static function (string $s): bool {
+            if ($s === '') {
+                return false;
+            }
+            // Skip pure comment-only blocks (e.g., metadata-only retire migrations).
+            $nonComment = array_filter(
+                explode("\n", $s),
+                static fn (string $line): bool => trim($line) !== '' && !str_starts_with(ltrim($line), '--'),
+            );
+
+            return $nonComment !== [];
+        }));
     }
 
     /**
@@ -51,19 +121,17 @@ final class Migrator
     public function markApplied(string $step): void
     {
         if (!preg_match('/^(.+):([1-9]\\d*)$/', $step, $m)) {
-            throw \TypedPress\HttpError::invalidInput('--mark-applied takes <migration id>:<statement number>, e.g. 0002_update:1', '/mark-applied');
+            throw \TypedPress\HttpError::invalidInput('--mark-applied takes <migration id>:<statement number>, e.g. 20261121180000_7k9m2x_init:1', '/mark-applied');
         }
         [, $id, $n] = $m;
-        // Marking a step skips it, so the tables it would touch are checked as migrate() checks them.
         $this->guardBindings();
         ['migrations' => $migrations, 'done' => $done] = $this->read();
         $this->guardAdoptions($migrations, $done);
-        // Only a migration file of this app, named exactly as `pending()` names it (no paths).
-        $files = array_map(static fn (string $f): string => basename($f, '.sql'), glob($this->dir . '/*.sql') ?: []);
-        if (!in_array($id, $files, true)) {
+        $files = $this->migrationFiles();
+        if (!isset($files[$id])) {
             throw new \TypedPress\HttpError(409, 'not_pending', "$id is not a pending migration of this app");
         }
-        $file = $this->dir . '/' . $id . '.sql';
+        $file = $files[$id];
         $ledger = $this->ledger();
         $done = array_flip($this->done());
         if (!is_file($file) || isset($done[$id])) {
@@ -77,7 +145,7 @@ final class Migrator
         if ((int) $n !== $next || $next > $count) {
             throw new \TypedPress\HttpError(409, 'not_pending', "the next pending statement of $id is $next of $count; only that one can be marked");
         }
-        $this->db->run("INSERT INTO `$ledger` (`app`, `id`, `applied_at`) VALUES (?, ?, ?)", [$this->schema->name(), $step, gmdate('Y-m-d\\TH:i:s.000\\Z')]);
+        $this->db->run("INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`) VALUES (?, ?, 'schema', ?)", [$this->schema->name(), $step, gmdate('Y-m-d\\TH:i:s.000\\Z')]);
     }
 
     /**
@@ -121,12 +189,9 @@ final class Migrator
      */
     private function read(): array
     {
-        $files = glob($this->dir . '/*.sql') ?: [];
-        sort($files, SORT_STRING);
         $migrations = [];
         $hashes = [];
-        foreach ($files as $file) {
-            $id = basename($file, '.sql');
+        foreach ($this->migrationFiles() as $id => $file) {
             $raw = (string) file_get_contents($file);
             $hashes[$id] = hash('sha256', $raw);
             $migrations[$id] = self::statements(str_replace('{prefix}', $this->db->prefix(), $raw));
@@ -189,13 +254,14 @@ final class Migrator
                     continue;
                 }
                 try {
+                    self::assertForwardOnly($statement, (string) $id);
                     $this->execute($statement);
                 } catch (DbError $e) {
                     throw new \RuntimeException("Migration $id failed at statement " . ($i + 1) . ': ' . $e->getMessage(), 0, $e);
                 }
-                $this->db->run("INSERT INTO `$ledger` (`app`, `id`, `applied_at`) VALUES (?, ?, ?)", [$app, $step, gmdate('Y-m-d\TH:i:s.000\Z')]);
+                $this->db->run("INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`) VALUES (?, ?, 'schema', ?)", [$app, $step, gmdate('Y-m-d\TH:i:s.000\Z')]);
             }
-            $this->db->run("INSERT INTO `$ledger` (`app`, `id`, `applied_at`, `sql`) VALUES (?, ?, ?, ?)", [$app, $id, gmdate('Y-m-d\TH:i:s.000\Z'), $hashes[$id]]);
+            $this->db->run("INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`, `sql`) VALUES (?, ?, 'schema', ?, ?)", [$app, $id, gmdate('Y-m-d\TH:i:s.000\Z'), $hashes[$id]]);
             $this->db->run("DELETE FROM `$ledger` WHERE `app` = ? AND `id` LIKE ?", [$app, $this->db->wpdb()->esc_like($id . ':') . '%']);
             $applied[] = $id;
         }
@@ -447,7 +513,7 @@ final class Migrator
     public function ledger(): string
     {
         $ledger = $this->table('tp__migrations');
-        if ($this->keyed() && $this->hashed()) {
+        if ($this->keyed() && $this->hashed() && $this->hasUnifiedColumns()) {
             return $ledger;
         }
         self::locked($this->db, 'tp__migrations', fn () => $this->createOrConvert($ledger));
@@ -455,10 +521,35 @@ final class Migrator
         return $ledger;
     }
 
+    /** Records an audit row (for data or destructive CLI migrations) in the unified ledger. */
+    public function recordAudit(
+        string $id,
+        string $kind,
+        ?string $sqlHash = null,
+        ?string $actor = null,
+        ?string $reason = null,
+        ?int $rowsAffected = null,
+    ): void {
+        if (!in_array($kind, ['schema', 'data', 'destructive'], true)) {
+            throw new \InvalidArgumentException("Invalid migration kind: $kind");
+        }
+        $ledger = $this->ledger();
+        $this->db->run(
+            "INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`, `sql`, `actor`, `reason`, `rows_affected`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [$this->schema->name(), $id, $kind, gmdate('Y-m-d\\TH:i:s.000\\Z'), $sqlHash, $actor, $reason, $rowsAffected],
+        );
+    }
+
     /** Whether the ledger has the `sql` column (rows recording the hash of what they applied). */
     private function hashed(): bool
     {
         return $this->db->run('SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$this->table('tp__migrations'), 'sql']) !== [];
+    }
+
+    /** Whether the ledger has the unified audit columns (`kind`, `actor`, `reason`, `rows_affected`). */
+    private function hasUnifiedColumns(): bool
+    {
+        return $this->db->run('SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$this->table('tp__migrations'), 'rows_affected']) !== [];
     }
 
     /**
@@ -482,7 +573,7 @@ final class Migrator
     {
         $exists = $this->db->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$ledger]) !== [];
         if (!$exists) {
-            $this->db->run("CREATE TABLE `$ledger` (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, `sql` CHAR(64) NULL, PRIMARY KEY (`app`, `id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            $this->db->run("CREATE TABLE `$ledger` (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `kind` VARCHAR(16) NOT NULL DEFAULT 'schema', `applied_at` CHAR(24) NOT NULL, `sql` CHAR(64) NULL, `actor` VARCHAR(191) NULL, `reason` TEXT NULL, `rows_affected` BIGINT NULL, PRIMARY KEY (`app`, `id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
             return;
         }
@@ -495,8 +586,22 @@ final class Migrator
             $this->db->run("ALTER TABLE `$ledger` ALTER COLUMN `app` DROP DEFAULT");
         }
         if (!$this->hashed()) {
-            // Additive: rows already there keep a null hash and count by id only.
             $this->db->run("ALTER TABLE `$ledger` ADD COLUMN `sql` CHAR(64) NULL");
+        }
+        if (!$this->hasUnifiedColumns()) {
+            $cols = array_column($this->db->run('SELECT COLUMN_NAME AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$ledger]), 'n');
+            if (!in_array('kind', $cols, true)) {
+                $this->db->run("ALTER TABLE `$ledger` ADD COLUMN `kind` VARCHAR(16) NOT NULL DEFAULT 'schema'");
+            }
+            if (!in_array('actor', $cols, true)) {
+                $this->db->run("ALTER TABLE `$ledger` ADD COLUMN `actor` VARCHAR(191) NULL");
+            }
+            if (!in_array('reason', $cols, true)) {
+                $this->db->run("ALTER TABLE `$ledger` ADD COLUMN `reason` TEXT NULL");
+            }
+            if (!in_array('rows_affected', $cols, true)) {
+                $this->db->run("ALTER TABLE `$ledger` ADD COLUMN `rows_affected` BIGINT NULL");
+            }
         }
     }
 
@@ -556,9 +661,9 @@ final class Migrator
     public function pending(): array
     {
         $done = $this->keyed() ? $this->done() : [];
-        $files = array_map(static fn (string $file): string => basename($file, '.sql'), glob($this->dir . '/*.sql') ?: []);
-        sort($files, SORT_STRING);
-        return array_values(array_diff($files, $done));
+        $ids = array_keys($this->migrationFiles());
+
+        return array_values(array_diff($ids, $done));
     }
 
     /**

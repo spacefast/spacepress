@@ -205,7 +205,10 @@ final class WpSite
         file_put_contents("$plugin/tp/app/functions.php", $functions);
         $migration = $fixture['migration'] ?? wpDdl($fixture['schema']);
         if ($migration !== '') {
-            file_put_contents("$plugin/tp/app/migrations/0001_init.sql", $migration);
+            $initDir = "$plugin/tp/app/migrations/20261121000000_000000_init";
+            mkdir($initDir, 0777, true);
+            file_put_contents("$initDir/migration.sql", $migration);
+            file_put_contents("$initDir/ops.json", json_encode(['version' => 1, 'id' => '20261121000000_000000_init', 'ops' => []]));
         }
     }
 
@@ -583,7 +586,7 @@ function wpDdl(array $schema): string
                 $join = $def['references']['join'];
                 $fk = static fn (string $side, string $c) => isset($tables[$c]) && isset($tables[$def['references']['collection']])
                     ? ",\n\tCONSTRAINT `tp_{$join}_{$side}_fk` FOREIGN KEY (`$side`) REFERENCES `{prefix}{$tables[$c]}` (`id`) ON DELETE CASCADE" : '';
-                $joins[] = "CREATE TABLE `{prefix}tp_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
+                $joins[] = "CREATE TABLE `{prefix}tp__join_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
                     . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)" . $fk('owner_id', $name) . $fk('target_id', $def['references']['collection']) . "\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
                 continue;
             }
@@ -651,7 +654,7 @@ function wpDdl(array $schema): string
             // A `terms` field's links are core's term relationships (`term:<taxonomy>`): no table.
             if (($def['type'] ?? null) === 'refList' && !str_starts_with($def['references']['join'], 'term:')) {
                 $join = $def['references']['join'];
-                $joins[] = "CREATE TABLE `{prefix}tp_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
+                $joins[] = "CREATE TABLE `{prefix}tp__join_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
                     . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
             }
         }

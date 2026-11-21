@@ -205,6 +205,7 @@ final class Sql
             throw HttpError::invalidQuery('orderBy must be an object', $ptr);
         }
         $spec = $this->schema->collection($collection);
+        $orderBy = Schema::resolveAliases($spec, $orderBy, $ptr);
         $out = [];
         foreach ($orderBy as $col => $dir) {
             $col = (string) $col;
@@ -255,6 +256,7 @@ final class Sql
             throw HttpError::invalidQuery('Filter must be an object', $ptr);
         }
         $spec = $this->schema->collection($collection);
+        $where = Schema::resolveAliases($spec, $where, $ptr);
         $parts = [];
         foreach ($where as $key => $value) {
             $kptr = $ptr . HttpError::seg($key);

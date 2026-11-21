@@ -718,6 +718,7 @@ final class Db
                 if (!is_array($data) || ($data !== [] && array_is_list($data))) {
                     throw HttpError::invalidInput('Each row must be an object', '');
                 }
+                $data = Schema::resolveAliases($spec, $data);
                 // One instant per row: every `now` default, nested ones and publishedAt included.
                 $out[] = Js::atInstant(fn () => $this->createOne($collection, $spec, $data, $viewer, $around));
             }
@@ -732,6 +733,7 @@ final class Db
         [$set, $where] = [Seam::container($set), Seam::filter($collection, $where, $this->schema)];
         // Flattened before the access rule sees the patch: rules get plain arrays outside json() values.
         $set = Seam::toPhp($set, $this->schema->collection($collection)['columns']);
+        $set = Schema::resolveAliases($this->schema->collection($collection), $set);
         return $this->nested(function () use ($collection, $set, $where, $returning, $viewer, $errorViewer) {
             $spec = $this->schema->collection($collection);
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $set);

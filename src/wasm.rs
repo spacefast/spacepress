@@ -43,10 +43,6 @@ struct Request {
     name: String,
     files: BTreeMap<String, String>,
     #[serde(default)]
-    previous: Option<serde_json::Value>,
-    #[serde(default)]
-    migration_files: Vec<String>,
-    #[serde(default)]
     frozen: bool,
 }
 
@@ -222,6 +218,16 @@ fn compile_request(request: Request) -> String {
     };
     let public = under("public/");
     let ledger = under(&format!("{}/", pipeline::LEDGER));
+    let mut prev_entries = Vec::new();
+    for (rel, bytes) in &ledger {
+        if let Some((id, file)) = rel.split_once('/')
+            && file == "ops.json"
+            && !id.is_empty()
+            && !file.contains('/')
+        {
+            prev_entries.push((id.to_string(), bytes.clone()));
+        }
+    }
     let files = request
         .files
         .into_iter()
@@ -229,8 +235,13 @@ fn compile_request(request: Request) -> String {
         .collect();
     let frozen = request.frozen;
     let previous = || {
-        let mut previous =
-            pipeline::Previous::from_project(request.previous, request.migration_files.iter().map(String::as_str))?;
+        let mut parsed = Vec::with_capacity(prev_entries.len());
+        for (id, bytes) in prev_entries {
+            let ops: serde_json::Value = serde_json::from_slice(&bytes)
+                .map_err(|e| diag::Diag::new(diag::Span::NONE, format!("{}/{id}/ops.json is not valid JSON: {e}", pipeline::LEDGER)))?;
+            parsed.push((id, ops));
+        }
+        let mut previous = pipeline::Previous::from_entries(parsed)?;
         previous.frozen = frozen;
         Ok(previous)
     };
@@ -245,13 +256,18 @@ fn compile_request(request: Request) -> String {
         Ok(built) => {
             snapshot = Some(built.snapshot.clone());
             let schema_php = crate::schema_php::render(&built.schema);
-            // The ledger's SQL from the request, then this compile's new files, as `typedpress build`
-            // writes the new ones into the ledger and packs all of it.
+            let mut new_migration_files: Vec<(String, String)> = Vec::new();
+            for entry in &built.migrations {
+                new_migration_files.push((
+                    format!("{}/ops.json", entry.id),
+                    serde_json::to_string_pretty(&entry.ops).expect("ops serialize") + "\n",
+                ));
+                new_migration_files.push((format!("{}/migration.sql", entry.id), entry.sql.clone()));
+            }
             let migrations = ledger.into_iter().chain(
-                built
-                    .migrations
+                new_migration_files
                     .iter()
-                    .map(|(name, sql)| (name.clone(), sql.clone().into_bytes())),
+                    .map(|(rel, text)| (rel.clone(), text.clone().into_bytes())),
             );
             let app_plugin = crate::app_plugin::files(&built, &schema_php, migrations, public)
                 .into_iter()
@@ -282,7 +298,7 @@ fn compile_request(request: Request) -> String {
                 wordpress_plugins,
                 schema_php,
                 functions_php: built.functions_php,
-                migrations: built.migrations,
+                migrations: new_migration_files,
                 snapshot: built.snapshot,
                 client,
                 gen_ts: built.gen_ts,
@@ -380,7 +396,6 @@ pub fn operation(operation: &str, request: &str) -> String {
                 }
                 "check" => {
                     let root = fs.canonicalize(&project).map_err(|e| e.to_string())?;
-                    let previous = root.join(pipeline::LEDGER).join("snapshot.json");
                     let built = loader::load_from(fs.clone(), &root.join("typedpress.config.ts")).and_then(|program| {
                         pipeline::build(
                             &root,
@@ -389,30 +404,25 @@ pub fn operation(operation: &str, request: &str) -> String {
                                 if fs.exists(&root.join(pipeline::OLD_LEDGER)) {
                                     return Err(pipeline::moved_ledger());
                                 }
-                                let snapshot = if fs.exists(&previous) {
-                                    Some(
-                                        serde_json::from_str(
-                                            &fs.read_to_string(&previous)
-                                                .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?,
-                                        )
-                                        .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?,
-                                    )
-                                } else {
-                                    None
-                                };
                                 let dir = root.join(pipeline::LEDGER);
-                                let paths = if fs.is_dir(&dir) {
-                                    fs.read_dir(&dir)
+                                let mut entries = Vec::new();
+                                if fs.is_dir(&dir) {
+                                    for path in fs
+                                        .read_dir(&dir)
                                         .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?
-                                } else {
-                                    vec![]
-                                };
-                                let names: Vec<_> = paths
-                                    .iter()
-                                    .map(|p| p.file_name().unwrap_or_default().to_string_lossy())
-                                    .collect();
-                                let mut previous =
-                                    pipeline::Previous::from_project(snapshot, names.iter().map(|s| s.as_ref()))?;
+                                    {
+                                        if fs.is_dir(&path) {
+                                            let id = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                                            let text = fs
+                                                .read_to_string(&path.join("ops.json"))
+                                                .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?;
+                                            let ops: serde_json::Value = serde_json::from_str(&text)
+                                                .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?;
+                                            entries.push((id, ops));
+                                        }
+                                    }
+                                }
+                                let mut previous = pipeline::Previous::from_entries(entries)?;
                                 previous.frozen = request["frozen"].as_bool().unwrap_or(false);
                                 Ok(previous)
                             },

@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "id": "20261121182304_51vkna_init",
+  "ops": [
+    {
+      "op": "createTable",
+      "table": "registrations",
+      "def": {
+        "editor": false,
+        "drafts": false,
+        "columns": {
+          "id": {
+            "type": "integer",
+            "notNull": true,
+            "primaryKey": true,
+            "autoIncrement": true,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": null
+          },
+          "eventId": {
+            "type": "integer",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": {
+              "table": "events",
+              "column": "id",
+              "onDelete": "restrict",
+              "onUpdate": null,
+              "unsigned": true
+            }
+          },
+          "memberId": {
+            "type": "integer",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": {
+              "table": "members",
+              "column": "id",
+              "onDelete": "restrict",
+              "onUpdate": null,
+              "unsigned": true
+            }
+          },
+          "seats": {
+            "type": "integer",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": 1,
+            "references": null
+          },
+          "code": {
+            "type": "text",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": true,
+            "max": 36.0,
+            "enum": null,
+            "default": null,
+            "references": null
+          },
+          "preferences": {
+            "type": "json",
+            "notNull": false,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": null
+          },
+          "bookedOn": {
+            "type": "date",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": null
+          },
+          "updatedAt": {
+            "type": "timestamp",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": null
+          }
+        },
+        "queried": [
+          "eventId",
+          "memberId"
+        ],
+        "indexes": [
+          {
+            "columns": [
+              "eventId",
+              "memberId"
+            ],
+            "unique": true
+          }
+        ]
+      }
+    },
+    {
+      "op": "createTable",
+      "table": "activity",
+      "def": {
+        "editor": false,
+        "drafts": false,
+        "columns": {
+          "id": {
+            "type": "integer",
+            "notNull": true,
+            "primaryKey": true,
+            "autoIncrement": true,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": null
+          },
+          "eventId": {
+            "type": "integer",
+            "notNull": false,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": {
+              "table": "events",
+              "column": "id",
+              "onDelete": "set null",
+              "onUpdate": null,
+              "unsigned": true
+            }
+          },
+          "message": {
+            "type": "text",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": null
+          },
+          "createdAt": {
+            "type": "timestamp",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": null
+          }
+        },
+        "queried": [
+          "createdAt"
+        ]
+      }
+    },
+    {
+      "op": "createTable",
+      "table": "tp__revisions",
+      "def": {
+        "editor": false,
+        "drafts": false,
+        "system": true,
+        "columns": {
+          "id": {
+            "type": "integer",
+            "notNull": true,
+            "primaryKey": true,
+            "autoIncrement": true,
+            "unique": false,
+            "max": null,
+            "default": null,
+            "references": null
+          },
+          "collection": {
+            "type": "text",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": 64,
+            "default": null,
+            "references": null
+          },
+          "pk": {
+            "type": "text",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": 64,
+            "default": null,
+            "references": null
+          },
+          "at": {
+            "type": "timestamp",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "default": null,
+            "references": null
+          },
+          "userId": {
+            "type": "integer",
+            "notNull": false,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "default": null,
+            "references": null
+          },
+          "row": {
+            "type": "json",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "default": null,
+            "references": null
+          }
+        }
+      }
+    }
+  ]
+}

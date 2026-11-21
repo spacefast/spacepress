@@ -53,17 +53,22 @@ fn read_tree(root: &Path) -> std::io::Result<Vec<(String, Vec<u8>)>> {
     Ok(out)
 }
 
-/// The ledger's `.sql` files, by name.
-fn read_sql(dir: &Path) -> std::io::Result<Vec<(String, Vec<u8>)>> {
+/// The ledger's migration folders (`<id>/migration.sql` and `<id>/ops.json`), by relative path.
+fn read_migrations(dir: &Path) -> std::io::Result<Vec<(String, Vec<u8>)>> {
     let mut out = Vec::new();
     if dir.is_dir() {
-        for entry in std::fs::read_dir(dir)? {
-            let entry = entry?;
-            if entry.path().extension().is_some_and(|e| e == "sql") {
-                out.push((
-                    entry.file_name().to_string_lossy().into_owned(),
-                    std::fs::read(entry.path())?,
-                ));
+        let mut entries = std::fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            let path = entry.path();
+            if path.is_dir() {
+                let id = entry.file_name().to_string_lossy().into_owned();
+                for file in ["migration.sql", "ops.json"] {
+                    let f = path.join(file);
+                    if f.is_file() {
+                        out.push((format!("{id}/{file}"), std::fs::read(&f)?));
+                    }
+                }
             }
         }
     }
@@ -221,7 +226,7 @@ pub(crate) type Files = Vec<(String, Vec<u8>)>;
 /// were made with.
 pub(crate) fn app_files(project: &Path, migrations: &Path, built: &Built) -> std::io::Result<(String, Files)> {
     let schema_php = schema_php::render(&built.schema);
-    let mut files = crate::app_plugin::files(built, &schema_php, read_sql(migrations)?, public_files(project)?);
+    let mut files = crate::app_plugin::files(built, &schema_php, read_migrations(migrations)?, public_files(project)?);
     if built.schema.ships_seed() {
         let seeds = crate::bundle::seed_records(&crate::loader::Disk, project, &built.schema, true)
             .map_err(|e| std::io::Error::other(e.message))?;

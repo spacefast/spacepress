@@ -580,7 +580,7 @@ fn convert(
     let sql = built
         .migrations
         .iter()
-        .map(|(_, sql)| sql.as_str())
+        .map(|m| m.sql.as_str())
         .collect::<Vec<_>>()
         .join("\n");
     report.adoption_sql = Some(sql.clone());

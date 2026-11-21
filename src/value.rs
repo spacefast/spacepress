@@ -386,8 +386,12 @@ pub struct ColBuilder {
     pub localized: bool,
     /// `file(decks)`: the bucket, by value; a 0.3.0 capture names it (`file({ bucket: "decks" })`).
     pub bucket: Option<BucketRef>,
-    /// `.was("old")`: the stored name this field had before a rename.
+    /// `.was("old")`: only in frozen 0.3.0 captures.
     pub was: Option<String>,
+    /// `.column("physical_name")`: decouples the TypeScript field name from the physical SQL column name.
+    pub storage_name: Option<String>,
+    /// `.alias("old_name")`: accepted API/filter aliases that map to this field.
+    pub aliases: Vec<String>,
     pub span: Span,
     /// Where each modifier was applied (`unique`, `references`, ...), for precise errors.
     pub mods: Vec<(&'static str, Span)>,

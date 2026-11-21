@@ -209,8 +209,12 @@ pub struct Column {
     pub read_only: bool,
     /// `json<T>()` annotation, module and call position.
     pub ts_type: Option<(crate::ir::TyAnn, usize, crate::diag::Span)>,
-    /// `.was("old")`: the stored name before a rename (spec §2.5).
+    /// `.was("old")`: only in frozen 0.3.0 captures.
     pub was: Option<String>,
+    /// `.column("physical_name")`: physical SQL column name when different from the logical field name.
+    pub storage_name: Option<String>,
+    /// `.alias("old_name")`: accepted API/filter aliases that map to this field.
+    pub aliases: Vec<String>,
     /// An input field from an optional property (`limit?: number`): left out, it stays out, so the
     /// handler reads `undefined` and its destructuring default applies.
     pub omit: bool,
@@ -252,11 +256,18 @@ impl Column {
             read_only: false,
             ts_type: None,
             was: None,
+            storage_name: None,
+            aliases: Vec::new(),
             omit: false,
             inferred: None,
             shape: None,
             required: false,
         }
+    }
+
+    /// Physical SQL column name (from `.column(...)`, defaulting to the logical field name).
+    pub fn physical_name(&self) -> &str {
+        self.storage_name.as_deref().unwrap_or(&self.name)
     }
 
     /// §7.3: translated per locale when it or any sub-field is `.localized()`; otherwise synced.

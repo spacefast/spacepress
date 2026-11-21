@@ -159,6 +159,17 @@ fn column(c: &Column, ctx: Ctx, indent: usize) -> String {
     if let Some(b) = &c.bucket {
         parts.push(format!("'bucket' => {}", php_str(b)));
     }
+    if let Some(col) = &c.storage_name
+        && col != &c.name
+    {
+        parts.push(format!("'column' => {}", php_str(col)));
+    }
+    if !c.aliases.is_empty() {
+        parts.push(format!(
+            "'aliases' => [{}]",
+            c.aliases.iter().map(|a| php_str(a)).collect::<Vec<_>>().join(", ")
+        ));
+    }
     if c.derived {
         parts.push("'derived' => true".into());
     }

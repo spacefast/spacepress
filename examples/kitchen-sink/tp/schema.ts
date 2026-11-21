@@ -120,9 +120,9 @@ export const registrations = table({
 export const activity = table({
   // Optional, so the log keeps its rows after a workshop is deleted (the reference is set to null).
   eventId: ref(events).optional(),
-  // `.was()` only does something between two builds: the first build of this app stored the column
-  // as `message`, and tp/_generated/migrations/0002 renames it and keeps its values.
-  summary: text().was("message"),
+  // `.column()` decouples the TypeScript field name from the physical SQL column with zero DDL,
+  // and `.alias()` keeps accepting the old API/filter name during transitions.
+  summary: text().column("message").alias("message"),
   createdAt: timestamp().defaultNow(),
 }, { agents: false, access: { read: "editor", create: "admin", update: "admin", delete: "admin" } });
 

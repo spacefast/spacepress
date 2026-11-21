@@ -71,6 +71,8 @@ final class Builtins
         'column.$default' => null,
         'column.$onUpdate' => null,
         'column.was' => null,
+        'column.column' => null,
+        'column.alias' => null,
         'column.onDelete' => null,
         'column.reverse' => null,
         'column.references' => null,

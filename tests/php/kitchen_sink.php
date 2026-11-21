@@ -306,19 +306,21 @@ eq('the form refuses a bad address', [$status, json_decode($problem, true)['code
 eq('beforeCreate trims the title', [$status, $class['title'] ?? null], [201, 'Knife skills']);
 drain();
 eq('afterCreate queued the job, which ran once: the option and the log entry', [(bool) get_option('kitchen_has_workshops'),
-    (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `summary` = ?', [$class['id'], 'Workshop created'])], [true, 1]);
-eq('afterPublish logs the publication', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `summary` = ?', [$class['id'], 'Workshop published']), 1);
+    (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `message` = ?', [$class['id'], 'Workshop created'])], [true, 1]);
+eq('afterPublish logs the publication', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `message` = ?', [$class['id'], 'Workshop published']), 1);
 [$status, $problem] = $site->call('PATCH', "/events/{$class['id']}", ['registrationOpen' => true], as: 'host');
 eq('beforeUpdate refuses to reopen a past workshop', [$status, $problem['code'] ?? null], [409, 'workshop_over']);
 $body = '{"desk":"front"}';
 [$status] = visit('/api/registration?workshop=' . rawurlencode('Bread Basics'), ['x-kitchen-signature: ' . hash_hmac('sha256', $body, 'local-test-registration-key'), 'Content-Type: application/json'], $body);
 eq('the signed route closes registration, finding the workshop by its title', [$status, (bool) get_post_meta($eventId, 'tp_registrationOpen', true)], [204, false]);
-eq('afterUpdate logs the closing', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `summary` = ?', [$eventId, 'Registration closed']), 1);
+eq('afterUpdate logs the closing', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `message` = ?', [$eventId, 'Registration closed']), 1);
 [$status, $problem] = $site->call('DELETE', "/events/$eventId", as: 'admin');
 eq('beforeDelete keeps a workshop that has reservations', [$status, $problem['code'] ?? null, get_post($eventId) !== null], [409, 'has_registrations', true]);
 eq('an admin deletes a workshop that has none', $site->call('DELETE', "/events/{$class['id']}", as: 'admin')[0], 200);
 eq('afterDelete logs the deletion, and the log keeps its rows without the workshop',
-    $site->sql('SELECT `eventId`, `summary` FROM {prefix}tp_activity WHERE `summary` LIKE ?', ['Workshop deleted%']), [['eventId' => null, 'summary' => 'Workshop deleted: Knife skills']]);
+    $site->sql('SELECT `eventId`, `message` FROM {prefix}tp_activity WHERE `message` LIKE ?', ['Workshop deleted%']), [['eventId' => null, 'message' => 'Workshop deleted: Knife skills']]);
+$aliasRows = \TypedPress\Db::instance()->findMany('activity', ['where' => ['message' => 'Workshop published']]);
+eq('column alias works in where filters and returns the canonical field name', $aliasRows[0]['summary'] ?? null, 'Workshop published');
 eq('the deleted workshop\'s earlier entries stay, unlinked', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` IS NULL'), 3);
 
 [$status, $staff] = submit('/staff/', 'Check the schedule', [], 'host');

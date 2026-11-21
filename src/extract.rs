@@ -645,12 +645,43 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 )
                 .help("WordPress keeps one term set per item and taxonomy; keep one of the two fields"));
             }
-            if col.was.is_some() && c.kind != StorageKind::Table {
+            if col.storage_name.is_some() && c.kind != StorageKind::Table {
                 return Err(Diag::new(
-                    b.span_of("was"),
-                    "`.was()` renames a column of a table(); this kind stores its fields elsewhere",
+                    b.span_of("column"),
+                    "`.column()` maps a physical SQL column on a table()",
                 )
-                .help("rename the field without `.was()` and move its values yourself, or keep the old name"));
+                .help("remove `.column()` on non-table kinds, or use `.alias()` for API field aliasing"));
+            }
+            if let Some((other, _)) = columns
+                .iter()
+                .find(|(_, o): &(&String, &Column)| o.physical_name() == col.physical_name())
+            {
+                return Err(Diag::new(
+                    b.span_of("column"),
+                    format!(
+                        "`{name}` and `{other}` both map to physical column `{}`",
+                        col.physical_name()
+                    ),
+                )
+                .help("give each field a distinct physical `.column(...)` name"));
+            }
+            for alias in &col.aliases {
+                if columns.contains_key(alias)
+                    || columns.values().any(|o| o.aliases.iter().any(|a| a == alias))
+                {
+                    return Err(Diag::new(
+                        b.span_of("alias"),
+                        format!("alias `{alias}` on `{name}` collides with another field or alias"),
+                    )
+                    .help("choose a unique alias name"));
+                }
+            }
+            if columns.values().any(|o| o.aliases.iter().any(|a| a == name)) {
+                return Err(Diag::new(
+                    b.span,
+                    format!("field `{name}` collides with an `.alias(\"{name}\")` on another field"),
+                )
+                .help("rename the field or remove the conflicting alias"));
             }
             columns.insert(name.clone(), col);
         }
@@ -2017,13 +2048,20 @@ fn collection_options(
     };
     let was = match o.get("was") {
         None | Some(Value::Undef) => None,
+        Some(_) if !ev.legacy() => {
+            return Err(Diag::new(
+                span("was"),
+                "`was` is gone: forward-only migrations never rename SQL tables in place",
+            )
+            .help("keep the existing physical table under a new TypeScript export with `storageName: \"<old_name>\"`, or use `@typedpress/destructive-migrations` for an explicit physical rename"));
+        }
         Some(Value::Str(name)) if c.kind == StorageKind::Table && valid_ident(name) => Some(name.to_string()),
         _ => {
             return Err(Diag::new(
                 span("was"),
                 "`was` takes the table's old storage name, and only on table()",
             )
-            .help("write `was: \"old_name\"`: the name in tp/_generated/migrations/snapshot.json"));
+            .help("use `storageName: \"old_name\"` instead"));
         }
     };
     if let Some(name) = &existing_table
@@ -2697,12 +2735,60 @@ fn column(
         return Err(Diag::new(b.span, format!("\"{name}\" isn't a valid column name"))
             .help("use letters, digits, and underscores, starting with a letter"));
     }
-    if b.was.is_some() && place != Place::Top {
-        return Err(Diag::new(
-            b.span_of("was"),
-            "`.was()` renames a stored column; only a kind's own fields have one",
-        )
-        .help("remove `.was()` here"));
+    if b.was.is_some() {
+        if !ev.legacy() {
+            return Err(Diag::new(
+                b.span_of("was"),
+                "`.was()` is gone: forward-only migrations never rename columns in place",
+            )
+            .help("use `.column(\"<old_name>\")` to map this field to the existing SQL column with zero DDL (and `.alias(\"<old_name>\")` to keep accepting the old API name), or use `@typedpress/destructive-migrations` for a physical rename"));
+        }
+        if place != Place::Top {
+            return Err(Diag::new(
+                b.span_of("was"),
+                "`.was()` renames a stored column; only a kind's own fields have one",
+            )
+            .help("remove `.was()` here"));
+        }
+    }
+    if let Some(col) = &b.storage_name {
+        if place != Place::Top {
+            return Err(Diag::new(
+                b.span_of("column"),
+                "`.column()` maps a stored SQL column; only a kind's own top-level fields have one",
+            )
+            .help("remove `.column()` here"));
+        }
+        if !valid_ident(col) || col.len() > 64 {
+            return Err(Diag::new(
+                b.span_of("column"),
+                format!("`{col}` isn't a valid physical SQL column name"),
+            )
+            .help("use an ASCII identifier of at most 64 characters, starting with a letter"));
+        }
+    }
+    for alias in &b.aliases {
+        if place != Place::Top {
+            return Err(Diag::new(
+                b.span_of("alias"),
+                "`.alias()` is only allowed on a kind's top-level fields",
+            )
+            .help("remove `.alias()` here"));
+        }
+        if !valid_ident(alias) {
+            return Err(Diag::new(
+                b.span_of("alias"),
+                format!("`{alias}` isn't a valid field alias"),
+            )
+            .help("use letters, digits, and underscores, starting with a letter"));
+        }
+        if alias == name {
+            return Err(Diag::new(
+                b.span_of("alias"),
+                format!("`.alias(\"{alias}\")` duplicates the field's own name"),
+            )
+            .help("remove the redundant alias"));
+        }
     }
     let mut path = parent.to_vec();
     path.push(name.to_string());
@@ -3140,6 +3226,8 @@ fn column(
         hidden: false,
         ts_type: b.ts_type.clone(),
         was: b.was.clone(),
+        storage_name: b.storage_name.clone(),
+        aliases: b.aliases.clone(),
         omit: false,
         inferred: None,
         shape: None,

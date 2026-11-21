@@ -234,12 +234,10 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
     assert_ne!(source, duplicate);
     std::fs::write(shop, duplicate).unwrap();
     success(cli("build", project.path()));
-    let snapshot: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(project.path().join("tp/_generated/migrations/snapshot.json")).unwrap())
-            .unwrap();
+    let mig_dir = project.path().join("tp/_generated/migrations");
     assert!(
-        snapshot["tables"].as_object().unwrap().is_empty(),
-        "Woo owns all commerce storage: {snapshot}"
+        !mig_dir.exists() || std::fs::read_dir(&mig_dir).unwrap().next().is_none(),
+        "Woo owns all commerce storage: no SQL migrations should be emitted"
     );
     let manifest: serde_json::Value = serde_json::from_slice(
         &std::fs::read(project.path().join("tp/dist/wp-content/typedpress-manifest.json")).unwrap(),

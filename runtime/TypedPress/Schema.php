@@ -92,6 +92,40 @@ final class Schema
         return array_map('strtolower', (array) ($this->raw['reserved'] ?? $this->raw['app']['reserved'] ?? self::RESERVED));
     }
 
+    /**
+     * Resolves `.alias(...)` field names in an input, patch, filter, or orderBy object to their
+     * canonical column names. Throws 422 if both a canonical field and its alias are provided.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    public static function resolveAliases(array $spec, array $data, string $ptr = ''): array
+    {
+        $map = [];
+        foreach ($spec['columns'] ?? [] as $name => $col) {
+            foreach ($col['aliases'] ?? [] as $alias) {
+                $map[(string) $alias] = (string) $name;
+            }
+        }
+        if ($map === []) {
+            return $data;
+        }
+        $out = [];
+        foreach ($data as $k => $v) {
+            $key = (string) $k;
+            $canonical = $map[$key] ?? $key;
+            if ($canonical !== $key && array_key_exists($canonical, $data)) {
+                throw HttpError::invalidInput("Cannot provide both '$canonical' and its alias '$key'", $ptr . HttpError::seg($key));
+            }
+            if (array_key_exists($canonical, $out)) {
+                throw HttpError::invalidInput("Duplicate aliased field for '$canonical'", $ptr . HttpError::seg($key));
+            }
+            $out[$canonical] = $v;
+        }
+
+        return $out;
+    }
+
     /** @return array<string, array> */
     public function collections(): array
     {

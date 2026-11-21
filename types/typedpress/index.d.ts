@@ -161,8 +161,10 @@ export interface ColumnBuilder<
     : TKind extends "integer"
       ? ColumnBuilder<"refList", number[], TNotNull, THasDefault, TLocalized, TPrimary>
       : ColumnBuilder<"select", TData[], TNotNull, THasDefault, TLocalized, TPrimary>;
-  /** Declares a rename: this field was stored as `old`. The deploy renames the column and keeps its values. */
-  was(old: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
+  /** Maps this TypeScript field to an existing physical SQL column name with zero DDL. */
+  column(physicalName: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
+  /** Accepts an old API/filter field name as an alias during field renames. */
+  alias(oldName: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** SQL `DEFAULT value` (a constant; arrays/objects for list and structured columns). */
   default(
     this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
@@ -429,9 +431,6 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Bind table() to an already existing SQL table, without adding any prefix.
    * The first migration checks its columns; it never creates or copies this table. */
   existingTable?: string;
-  /** Declares a rename: this table was stored as `old` (its name in tp/_generated/migrations/snapshot.json).
-   * The deploy renames the table and keeps its rows. table() only. */
-  was?: string;
   /** Project-relative Markdown/JSON files; implies uid: true. A `**` folder before the file pattern (`content/docs/` then `**` then `/*.md`) reads a folder tree into a hierarchical collection. */
   sync?: `${string}/*.md` | `${string}/*.json`;
   /** Items nest like WordPress Pages: adds `parent` and `order`, and `:path` in `url` is the parent chain. collection() only. */

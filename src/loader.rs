@@ -73,6 +73,9 @@ pub trait Fs {
         false
     }
     fn read_to_string(&self, path: &Path) -> std::io::Result<String>;
+    fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+        self.read_to_string(path).map(String::into_bytes)
+    }
     fn is_file(&self, path: &Path) -> bool;
     fn is_dir(&self, path: &Path) -> bool;
     /// Whether anything at all (a file, a directory, a dangling link) is at `path`.
@@ -113,6 +116,13 @@ impl Fs for Generated<'_> {
             self.inner.read_to_string(path)
         }
     }
+    fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+        if path == self.path {
+            Ok(self.source.as_bytes().to_vec())
+        } else {
+            self.inner.read(path)
+        }
+    }
     fn is_file(&self, path: &Path) -> bool {
         path == self.path || self.inner.is_file(path)
     }
@@ -143,6 +153,9 @@ impl Fs for Disk {
     }
     fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
         std::fs::read_to_string(path)
+    }
+    fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+        std::fs::read(path)
     }
     fn is_file(&self, path: &Path) -> bool {
         path.is_file()
@@ -756,11 +769,10 @@ fn load_module(
     Ok(id)
 }
 
-/// A stylesheet or image import: no code, so its module has an empty body, and the file itself is
-/// read into `program.assets`. Sources travel to a host as text (the source bundle), so an image is
-/// imported only when it is text (SVG); a binary image belongs in public/. Only components, pages and
-/// `"use client"` files import assets: they render HTML that links the file. The config, hooks and
-/// actions run on the server, where a stylesheet means nothing.
+/// A stylesheet or static asset import: no code, so its module has an empty body, and the file
+/// itself is read into `program.assets` (copied to `tp/app/assets/<stem>-<hash>.<ext>`). For
+/// stylesheets, any relative `url(...)` references are resolved, bundled alongside the stylesheet,
+/// and rewritten to `./<hashed-file>` so every asset serves from `wp-content/` with an immutable URL.
 fn load_asset(
     fs: &dyn Fs,
     path: &Path,
@@ -777,18 +789,88 @@ fn load_asset(
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/");
-    let text = fs.read_to_string(path).map_err(|e| {
-        let d = Diag::new(span, format!("can't import {relative}: {e}")).code(diag::Code::Import);
-        if e.kind() == std::io::ErrorKind::InvalidData {
-            d.help("components import text files only (CSS, SVG): put a binary image in public/ and write its URL, e.g. `<img src=\"/photo.png\">`")
-        } else {
-            d
+    let (file, bytes) = match kind {
+        crate::assets::Kind::File => {
+            let bytes = fs
+                .read(path)
+                .map_err(|e| Diag::new(span, format!("can't import {relative}: {e}")).code(diag::Code::Import))?;
+            (diag::register_file(path, ""), bytes)
         }
-    })?;
-    let file = diag::register_file(path, &text);
+        crate::assets::Kind::Css | crate::assets::Kind::CssModule => {
+            let text = fs
+                .read_to_string(path)
+                .map_err(|e| Diag::new(span, format!("can't import {relative}: {e}")).code(diag::Code::Import))?;
+            let file = diag::register_file(path, &text);
+            let scanned = crate::css::scan(&text, kind == crate::assets::Kind::CssModule).map_err(|r| {
+                Diag::new(
+                    Span {
+                        file,
+                        start: r.at as u32,
+                        end: r.at as u32 + 1,
+                    },
+                    r.message,
+                )
+                .help(r.help)
+                .code(diag::Code::Import)
+            })?;
+            let rewritten = if scanned.urls.is_empty() {
+                text
+            } else {
+                let mut replacements = Vec::with_capacity(scanned.urls.len());
+                for rel in &scanned.urls {
+                    let url_span = Span {
+                        file,
+                        start: rel.at as u32,
+                        end: (rel.at + 4) as u32,
+                    };
+                    let split = rel.target.find(['?', '#']).unwrap_or(rel.target.len());
+                    let (raw_path, suffix) = (&rel.target[..split], &rel.target[split..]);
+                    let decoded = percent_decode_url(raw_path).ok_or_else(|| {
+                        Diag::new(url_span, format!("invalid percent-encoding in `url({})`", rel.target))
+                            .code(diag::Code::Import)
+                    })?;
+                    let candidate = path.parent().expect("stylesheet has a directory").join(&decoded);
+                    if !fs.is_file(&candidate) {
+                        return Err(Diag::new(
+                            url_span,
+                            format!("can't find \"{raw_path}\" referenced by `url({})`", rel.target),
+                        )
+                        .help("check the path relative to this stylesheet, or put the file in public/ and write `url(/name)`")
+                        .code(diag::Code::Import));
+                    }
+                    let canonical = fs
+                        .canonicalize(&candidate)
+                        .map_err(|e| Diag::new(url_span, e.to_string()).code(diag::Code::Import))?;
+                    let target = if fs.frozen_capture() {
+                        canonical
+                    } else {
+                        let spec = if decoded.starts_with('.') {
+                            decoded.clone()
+                        } else {
+                            format!("./{decoded}")
+                        };
+                        fence(&program.root, path, &spec, canonical, url_span)?
+                    };
+                    if crate::assets::kind(&target) != Some(crate::assets::Kind::File) {
+                        return Err(Diag::new(
+                            url_span,
+                            format!("can't bundle \"{raw_path}\" from `url({})`", rel.target),
+                        )
+                        .help("relative CSS `url(...)` supports static assets (images, fonts, media, etc.)")
+                        .code(diag::Code::Import));
+                    }
+                    let target_id = load_asset(fs, &target, crate::assets::Kind::File, program, by_path, url_span)?;
+                    let target_file = &program.assets[&target_id].file;
+                    replacements.push((rel.start, rel.end, format!("./{target_file}{suffix}")));
+                }
+                crate::css::rewrite_ranges(&text, &replacements)
+            };
+            (file, rewritten.into_bytes())
+        }
+    };
+    let asset = crate::assets::Asset::new(&relative, kind, bytes, file)?;
     let id = program.modules.len();
     by_path.insert(path.to_path_buf(), id);
-    let asset = crate::assets::Asset::new(&relative, kind, text.into_bytes(), file)?;
     program.modules.push(Rc::new(Module {
         id,
         file,
@@ -802,6 +884,30 @@ fn load_asset(
     }));
     program.assets.insert(id, asset);
     Ok(id)
+}
+
+fn percent_decode_url(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = |b: u8| match b {
+                b'0'..=b'9' => Some(b - b'0'),
+                b'a'..=b'f' => Some(b - b'a' + 10),
+                b'A'..=b'F' => Some(b - b'A' + 10),
+                _ => None,
+            };
+            let hi = hex(*bytes.get(i + 1)?)?;
+            let lo = hex(*bytes.get(i + 2)?)?;
+            out.push((hi << 4) | lo);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
 }
 
 /// App source loads code only from `tp/` (docs/spec/spec.md §1, `F1210`): a relative import from
@@ -1736,7 +1842,7 @@ fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<Pa
             format!("can't import \"{spec}\": expected TypeScript or JavaScript source"),
         )
         .help(format!(
-            "components and pages import {}; other files (a binary image, a font) belong in public/, by their URL",
+            "components and pages import {}; other files belong in public/ at their root URL",
             crate::assets::EXTENSIONS.join(", ")
         )));
     }

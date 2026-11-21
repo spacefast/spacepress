@@ -153,11 +153,11 @@ pub fn analyse(
                 a.bindings
                     .insert(local.clone(), Binding::Static(format!("{{ {} }}", fields.join(", "))));
             }
-            crate::assets::Kind::Image => {
+            crate::assets::Kind::File => {
                 return Err(refuse(
                     f.span,
                     format!("a \"use client\" component can't import {}", asset.source),
-                    "import the image in the server component that renders this one and pass its URL as a prop",
+                    "import the asset in the server component that renders this one and pass its URL as a prop",
                 ));
             }
             crate::assets::Kind::Css => {}

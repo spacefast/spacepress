@@ -46,3 +46,6 @@ add_action('wp_abilities_api_categories_init', [Deployments::class, 'category'])
 add_action('wp_abilities_api_init', [Deployments::class, 'abilities']);
 add_action('tp_admin_screens', [Deployments::class, 'screen']);
 register_activation_hook(__FILE__, [Setup::class, 'activated']);
+register_deactivation_hook(__FILE__, static function (): void {
+    class_exists(\TypedPress\Wp\PublicFiles::class) && \TypedPress\Wp\PublicFiles::removeSymlinks();
+});

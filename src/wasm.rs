@@ -244,7 +244,6 @@ fn compile_request(request: Request) -> String {
         Err(diagnostics) => (diagnostics, None),
         Ok(built) => {
             snapshot = Some(built.snapshot.clone());
-            let schema_php = crate::schema_php::render(&built.schema);
             // The ledger's SQL from the request, then this compile's new files, as `typedpress build`
             // writes the new ones into the ledger and packs all of it.
             let migrations = ledger.into_iter().chain(
@@ -253,7 +252,8 @@ fn compile_request(request: Request) -> String {
                     .iter()
                     .map(|(name, sql)| (name.clone(), sql.clone().into_bytes())),
             );
-            let app_plugin = crate::app_plugin::files(&built, &schema_php, migrations, public)
+            let (schema_php, packaged) = crate::app_plugin::package(&built, migrations, public);
+            let app_plugin = packaged
                 .into_iter()
                 .map(|(path, bytes)| (path, String::from_utf8_lossy(&bytes).into_owned()))
                 .collect();
@@ -600,14 +600,18 @@ mod tests {
         let plugin = &output["appPlugin"];
         assert_eq!(plugin["typedpress-app-packaged/tp/app/functions.php"], functions);
         assert_eq!(plugin["typedpress-app-packaged/public/modules/example.mjs"], source);
-        let map = plugin["typedpress-app-packaged/tp/app/public-script-versions.json"]
+        let map = plugin["typedpress-app-packaged/tp/app/public-files.json"]
             .as_str()
             .unwrap();
         use sha2::Digest;
-        let version = crate::hex(sha2::Sha256::digest(source));
+        let version = crate::hex(&sha2::Sha256::digest(source)[..6]);
+        let svg_version = crate::hex(&sha2::Sha256::digest("<svg/>")[..6]);
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(map).unwrap(),
-            serde_json::json!({ "modules/example.mjs": version })
+            serde_json::json!({
+                "image.svg": svg_version,
+                "modules/example.mjs": version,
+            })
         );
         assert!(!functions.contains(&version));
     }

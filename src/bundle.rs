@@ -26,7 +26,58 @@ pub const MANIFEST_FILE: &str = "manifest.json";
 #[serde(deny_unknown_fields)]
 pub struct SourceBundle {
     pub files: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub binary: BTreeMap<String, String>,
     pub canonical: BTreeMap<String, String>,
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let a = chunk[0];
+        let b = chunk.get(1).copied().unwrap_or(0);
+        let c = chunk.get(2).copied().unwrap_or(0);
+        let n = (u32::from(a) << 16) | (u32::from(b) << 8) | u32::from(c);
+        out.push(TABLE[((n >> 18) & 63) as usize] as char);
+        out.push(TABLE[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+#[cfg(feature = "host")]
+fn base64_decode(text: &str) -> Option<Vec<u8>> {
+    let val = |b: u8| match b {
+        b'A'..=b'Z' => Some(b - b'A'),
+        b'a'..=b'z' => Some(b - b'a' + 26),
+        b'0'..=b'9' => Some(b - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    };
+    let bytes = text.as_bytes();
+    if bytes.len() % 4 != 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
+    for chunk in bytes.chunks_exact(4) {
+        let a = val(chunk[0])?;
+        let b = val(chunk[1])?;
+        out.push((a << 2) | (b >> 4));
+        if chunk[2] != b'=' {
+            let c = val(chunk[2])?;
+            out.push((b << 4) | (c >> 2));
+            if chunk[3] != b'=' {
+                let d = val(chunk[3])?;
+                out.push((c << 6) | d);
+            }
+        } else if chunk[3] != b'=' {
+            return None;
+        }
+    }
+    Some(out)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -99,6 +150,13 @@ impl Fs for Recording {
         self.files.borrow_mut().insert(relative(&self.root, path)?);
         self.files.borrow_mut().insert(relative(&self.root, &real)?);
         Ok(text)
+    }
+    fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+        let real = self.canonicalize(path)?;
+        let bytes = self.fs.read(&real)?;
+        self.files.borrow_mut().insert(relative(&self.root, path)?);
+        self.files.borrow_mut().insert(relative(&self.root, &real)?);
+        Ok(bytes)
     }
     fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
         let real = self.fs.canonicalize(path)?;
@@ -173,9 +231,15 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
     for path in recording.files.borrow().iter() {
         safe_input(path)?;
         let bundle = if is_vendor(path) { &mut vendor } else { &mut app };
-        bundle
-            .files
-            .insert(path.clone(), fs.read_to_string(&project.join(path)).map_err(io)?);
+        let bytes = fs.read(&project.join(path)).map_err(io)?;
+        match String::from_utf8(bytes) {
+            Ok(text) => {
+                bundle.files.insert(path.clone(), text);
+            }
+            Err(err) => {
+                bundle.binary.insert(path.clone(), base64_encode(&err.into_bytes()));
+            }
+        }
     }
     for (path, canonical) in recording.canonical.borrow().iter() {
         safe_input(path)?;
@@ -389,6 +453,7 @@ impl Fs for CapturedFs {
             .sources
             .files
             .keys()
+            .chain(self.sources.binary.keys())
             .chain(self.sources.canonical.keys())
             .filter_map(|p| p.strip_prefix(&prefix))
             .filter_map(|p| p.split('/').next())
@@ -405,22 +470,44 @@ impl Fs for CapturedFs {
             .cloned()
             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "module not captured"))
     }
+    fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+        let real = self.canonicalize(path)?;
+        let key = self.key(&real).unwrap();
+        if let Some(text) = self.sources.files.get(&key) {
+            return Ok(text.as_bytes().to_vec());
+        }
+        if let Some(encoded) = self.sources.binary.get(&key) {
+            return base64_decode(encoded)
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid base64 in source bundle"));
+        }
+        Err(std::io::Error::new(std::io::ErrorKind::NotFound, "module not captured"))
+    }
     fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
         let key = self
             .key(path)
             .ok_or_else(|| std::io::Error::other("input escapes source bundle"))?;
         let canonical = self.sources.canonical.get(&key).unwrap_or(&key);
-        if !self.sources.files.contains_key(canonical) && !self.is_dir(&self.root.join(canonical)) {
+        if !self.sources.files.contains_key(canonical)
+            && !self.sources.binary.contains_key(canonical)
+            && !self.is_dir(&self.root.join(canonical))
+        {
             return Err(std::io::Error::new(std::io::ErrorKind::NotFound, key));
         }
         Ok(self.root.join(canonical))
     }
     fn is_file(&self, path: &Path) -> bool {
-        self.key(path).is_some_and(|p| self.sources.files.contains_key(&p))
+        self.key(path)
+            .is_some_and(|p| self.sources.files.contains_key(&p) || self.sources.binary.contains_key(&p))
     }
     fn is_dir(&self, path: &Path) -> bool {
-        self.key(path)
-            .is_some_and(|p| self.sources.files.keys().any(|f| f.starts_with(&(p.clone() + "/"))))
+        self.key(path).is_some_and(|p| {
+            let prefix = p + "/";
+            self.sources
+                .files
+                .keys()
+                .chain(self.sources.binary.keys())
+                .any(|f| f.starts_with(&prefix))
+        })
     }
     fn exists(&self, path: &Path) -> bool {
         self.is_file(path) || self.is_dir(path)
@@ -463,6 +550,7 @@ pub(crate) fn check_bundles(files: [(&str, Vec<u8>, &String); 2]) -> Result<Sour
         for path in bundle
             .files
             .keys()
+            .chain(bundle.binary.keys())
             .chain(bundle.canonical.keys())
             .chain(bundle.canonical.values())
         {
@@ -471,12 +559,14 @@ pub(crate) fn check_bundles(files: [(&str, Vec<u8>, &String); 2]) -> Result<Sour
         if bundle
             .files
             .keys()
+            .chain(bundle.binary.keys())
             .chain(bundle.canonical.keys())
             .any(|p| is_vendor(p) != vendor)
         {
             return Err(failure("app and vendor module ownership mismatch"));
         }
         sources.files.extend(bundle.files);
+        sources.binary.extend(bundle.binary);
         sources.canonical.extend(bundle.canonical);
     }
     Ok(sources)
@@ -920,6 +1010,11 @@ pub(crate) fn compile_tree(
                 .files
                 .into_iter()
                 .map(|(path, text)| (crate::layout::current(&path), text))
+                .collect(),
+            binary: captured
+                .binary
+                .into_iter()
+                .map(|(path, data)| (crate::layout::current(&path), data))
                 .collect(),
             canonical: captured
                 .canonical

@@ -199,7 +199,7 @@ final class Prebuilt
             foreach (self::COMPILED_FILES as $file) {
                 $key[] = [@filesize($root . $file), @filemtime($root . $file)];
             }
-            $mapHash = PublicFiles::scriptMapHash(self::$plugin) ?? '-';
+            $mapHash = PublicFiles::manifestHash(self::$plugin) ?? '-';
             $key[] = $mapHash;
         }
         $key = md5((string) wp_json_encode($key));
@@ -223,7 +223,7 @@ final class Prebuilt
                 $path = self::$plugin->dir . '/tp/app/' . $file;
                 hash_update($hash, $file . ':' . (is_file($path) ? (string) hash_file('sha256', $path) : '-') . "\n");
             }
-            hash_update($hash, 'public-script-versions:' . $mapHash . "\n");
+            hash_update($hash, 'public-files:' . $mapHash . "\n");
             hash_update($hash, 'runtime:' . (defined('TP_RUNTIME_HASH') ? TP_RUNTIME_HASH : \TypedPress\Wp\Runtime::VERSION) . "\n");
         }
         // WordPress, the theme and the active plugins write the document's head and assets.

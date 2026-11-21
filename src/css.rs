@@ -2,9 +2,10 @@
 //!
 //! The compiler doesn't parse CSS into rules; it scans tokens far enough to do three things:
 //! - find the class selectors of a CSS module (`x.module.css`), so they can be renamed;
-//! - refuse what a copied stylesheet can't keep: `@import` (the imported file would not travel) and
-//!   a relative `url(...)` (the stylesheet is served from another folder than its source);
-//! - refuse the CSS-module features TypedPress doesn't implement (`:global`, `:local`, `composes`).
+//! - collect relative `url(...)` references so the loader copies the target assets into
+//!   `tp/app/assets/` and rewrites them to sibling hashed URLs;
+//! - refuse `@import` and the CSS-module features TypedPress doesn't implement (`:global`, `:local`,
+//!   `composes`).
 //!
 //! Strings, comments and `url(...)` bodies are skipped as tokens, so a `.x` inside them is never
 //! taken for a class.
@@ -17,10 +18,24 @@ pub struct Refusal {
     pub help: &'static str,
 }
 
-/// What a scan found: each class selector's byte range (without the `.`) and name, in order.
+/// A relative `url(...)` reference inside a stylesheet, to be bundled alongside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelativeUrl {
+    /// Byte offset of `url(` in the stylesheet (for diagnostics).
+    pub at: usize,
+    /// Byte range of the inner target (excluding quotes and outer whitespace).
+    pub start: usize,
+    pub end: usize,
+    /// The unquoted target string (may include `?query` or `#fragment`).
+    pub target: String,
+}
+
+/// What a scan found: each class selector's byte range (without the `.`) and name, in order, and
+/// each relative `url(...)` reference.
 #[derive(Debug, Default)]
 pub struct Scanned {
     pub classes: Vec<(usize, usize, String)>,
+    pub urls: Vec<RelativeUrl>,
 }
 
 fn ident_start(c: u8) -> bool {
@@ -95,27 +110,43 @@ pub fn scan(text: &str, module: bool) -> Result<Scanned, Refusal> {
             _ => {}
         }
         let in_declarations = blocks.last().is_some_and(|rules| !rules);
-        // `url(` anywhere: its body is one token, and a relative one would point at the wrong folder.
+        // `url(` anywhere: its body is one token; relative URLs are collected to bundle beside the CSS.
         if (c == b'u' || c == b'U')
             && text[i..].len() >= 4
             && text[i..i + 4].eq_ignore_ascii_case("url(")
             && (i == 0 || !ident_char(b[i - 1]))
         {
             let start = i + 4;
-            let (end, target) = url_body(text, start);
-            let target = target.trim().trim_matches(['"', '\'']);
+            let (end, body) = url_body(text, start);
+            let lead = body.len() - body.trim_start().len();
+            let trail = body.len() - body.trim_end().len();
+            let trimmed = body.trim();
+            let (inner_start, inner_end, target) = if trimmed.len() >= 2
+                && ((trimmed.starts_with('"') && trimmed.ends_with('"'))
+                    || (trimmed.starts_with('\'') && trimmed.ends_with('\'')))
+            {
+                (
+                    start + lead + 1,
+                    start + body.len() - trail - 1,
+                    &trimmed[1..trimmed.len() - 1],
+                )
+            } else {
+                (start + lead, start + body.len() - trail, trimmed)
+            };
+            let lower = target.to_ascii_lowercase();
             let absolute = target.is_empty()
                 || target.starts_with('/')
                 || target.starts_with('#')
                 || target.contains("://")
-                || target.to_ascii_lowercase().starts_with("data:");
+                || lower.starts_with("data:")
+                || lower.starts_with("blob:")
+                || lower.starts_with("about:");
             if !absolute {
-                return Err(Refusal {
+                out.urls.push(RelativeUrl {
                     at: i,
-                    message: format!(
-                        "`url({target})` is relative to the stylesheet, which is served from another folder"
-                    ),
-                    help: "use an absolute URL (put the file in public/ and write `url(/name.svg)`), or import the image in TSX and pass its URL",
+                    start: inner_start,
+                    end: inner_end,
+                    target: target.to_string(),
                 });
             }
             i = end;
@@ -209,6 +240,22 @@ pub fn rename(text: &str, scanned: &Scanned, name: impl Fn(&str) -> String) -> S
     out
 }
 
+/// Splices non-overlapping `(start, end, replacement)` byte edits (in ascending order) into `text`.
+pub fn rewrite_ranges(text: &str, replacements: &[(usize, usize, String)]) -> String {
+    if replacements.is_empty() {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut at = 0;
+    for (start, end, replacement) in replacements {
+        out.push_str(&text[at..*start]);
+        out.push_str(replacement);
+        at = *end;
+    }
+    out.push_str(&text[at..]);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,12 +299,49 @@ mod tests {
     fn refusals_name_what_to_do() {
         let refused = |t: &str, module: bool| scan(t, module).unwrap_err().message;
         assert!(refused("@import \"x.css\";", false).contains("@import"));
-        assert!(refused(".a { background: url(./x.png) }", false).contains("relative"));
-        assert!(refused(".a { background: url('img/x.png') }", false).contains("relative"));
         assert!(refused(":global(.a) {}", true).contains(":global"));
         assert!(refused(".a { composes: b; }", true).contains("composes"));
         // A plain stylesheet keeps its selectors as written, :global included.
         assert!(scan(":global(.a) { background: url(data:image/png;base64,AA) }", false).is_ok());
         assert!(scan(".a { background: url(\"https://x.test/a.png\") }", false).is_ok());
+    }
+
+    #[test]
+    fn relative_urls_are_collected_and_rewritten_outside_comments_and_strings() {
+        let css = r#"/* url(./ignored.png) */
+.a { content: "url(./ignored.png)"; background: url(./hero.png); }
+.b { background: url("../fonts/inter.woff2?v=1#f") format("woff2"); }
+.c { background: url('img/logo.svg#mark'); }
+.d { background: url(/public.png); }
+.e { background: url(https://cdn.example/hero.png); }
+.f { background: url(data:image/png;base64,AA); }
+"#;
+        let scanned = scan(css, false).unwrap();
+        let targets: Vec<&str> = scanned.urls.iter().map(|u| u.target.as_str()).collect();
+        assert_eq!(targets, ["./hero.png", "../fonts/inter.woff2?v=1#f", "img/logo.svg#mark"]);
+        let edits: Vec<(usize, usize, String)> = scanned
+            .urls
+            .iter()
+            .map(|u| {
+                let next = match u.target.as_str() {
+                    "./hero.png" => "./hero-1111.png",
+                    "../fonts/inter.woff2?v=1#f" => "./inter-2222.woff2?v=1#f",
+                    "img/logo.svg#mark" => "./logo-3333.svg#mark",
+                    _ => unreachable!(),
+                };
+                (u.start, u.end, next.to_string())
+            })
+            .collect();
+        assert_eq!(
+            rewrite_ranges(css, &edits),
+            r#"/* url(./ignored.png) */
+.a { content: "url(./ignored.png)"; background: url(./hero-1111.png); }
+.b { background: url("./inter-2222.woff2?v=1#f") format("woff2"); }
+.c { background: url('./logo-3333.svg#mark'); }
+.d { background: url(/public.png); }
+.e { background: url(https://cdn.example/hero.png); }
+.f { background: url(data:image/png;base64,AA); }
+"#
+        );
     }
 }

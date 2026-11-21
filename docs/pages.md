@@ -502,14 +502,22 @@ import compass from "./compass.svg";
   `styles.dek` is that name. If two modules define the same class name, the
   later one by path gets a number (`note_dek2`). A `"use client"` component may
   import a CSS module, and its class can depend on state.
-- `import logo from "./x.svg"` gives the file's URL.
-- Every file is copied into the app plugin under `tp/app/assets/`, named by a
-  hash of its bytes, with a year's cache. A changed file gets a new URL.
+- `import hero from "./hero.png"` (or `.svg`, `.webp`, `.woff2`, `.mp4`, `.pdf`,
+  and other static assets) gives the file's URL.
+- Relative `url(...)` references inside imported stylesheets (`url("./bg.png")`,
+  `url("../fonts/inter.woff2")`) are copied alongside the stylesheet and
+  rewritten to their hashed sibling names.
+- Every imported file is copied into the app plugin under `tp/app/assets/`,
+  named by a hash of its bytes, with a year's immutable cache under
+  `wp-content/`. A changed file gets a new URL.
 - These are refused at the line, with the fix: `@import` (import each file from
-  TSX), a relative `url(...)` (put the file in `public/` and write
-  `url(/name.png)`), `:global`, `:local` and `composes` in a module, and an SVG
-  imported by a `"use client"` component (pass the URL as a prop). Other files,
-  binary images and fonts among them, go in `public/`, by their URL.
+  TSX), missing or non-asset relative `url(...)`, `:global`, `:local` and
+  `composes` in a module, and a static asset imported by a `"use client"`
+  component (pass the URL as a prop).
+- Files that must live at a fixed root URL (`/favicon.ico`, `/ads.txt`,
+  `/.well-known/*`) go in `public/`: TypedPress ships them under `wp-content/`
+  and symlinks them into the document root (`ABSPATH`) so the web server serves
+  them directly without booting PHP (only `/.well-known/*` is served through PHP).
 
 ## Scripts
 

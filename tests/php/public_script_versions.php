@@ -10,12 +10,9 @@ function metadataScripts(string $html): array
     return array_map('html_entity_decode', $matches[1]);
 }
 
-function moduleResponse(string $url, bool $managed = false, string $method = 'GET', ?string $conditional = null): array
+function moduleResponse(string $url, bool $managed = false, string $method = 'GET'): array
 {
     $headers = $managed ? ['X-TP-Test-Managed: 1'] : [];
-    if ($conditional !== null) {
-        $headers[] = 'If-None-Match: ' . $conditional;
-    }
     $out = [];
     $c = curl_init($url);
     curl_setopt_array($c, [CURLOPT_RETURNTRANSFER => true, CURLOPT_NOBODY => $method === 'HEAD', CURLOPT_HTTPHEADER => $headers,
@@ -30,8 +27,15 @@ function moduleResponse(string $url, bool $managed = false, string $method = 'GE
     return [curl_getinfo($c, CURLINFO_RESPONSE_CODE), $out, $body];
 }
 
+// Mirror the compiled store tree into wp-content/typedpress-assets, as TypedPressPlugin\Trees::mirror does.
+$mirror = static function (string $store, string $assets, string $appHash): void {
+    $src = "$store/app/$appHash/plugins";
+    $dst = "$assets/app/$appHash/plugins";
+    wpCopy($src, $dst);
+};
+
 // Boot and initialize the loose copy normally. Requests with the fixture header mount the
-// immutable compiler output through the real Loader instead of activating the loose plugins.
+// immutable compiler output through the real Loader with `url` pointing at wp-content/typedpress-assets.
 $mount = sprintf(<<<'PHP'
     <?php
     if (!isset($_SERVER['HTTP_X_TP_TEST_MANAGED'])) {
@@ -42,7 +46,10 @@ $mount = sprintf(<<<'PHP'
     )));
     $root = %s;
     require $root . '/runtime/' . %s . '/typedpress-loader.php';
-    \TypedPress\Loader\Loader::load($root, %s);
+    \TypedPress\Loader\Loader::load($root, %s, [
+        'url' => content_url('typedpress-assets'),
+        'assetsDir' => WP_CONTENT_DIR . '/typedpress-assets',
+    ]);
     header_register_callback(static function (): void {
         foreach (get_included_files() as $file) {
             if (str_ends_with($file, '/tp/app/functions.php')) {
@@ -53,38 +60,34 @@ $mount = sprintf(<<<'PHP'
     });
     PHP, var_export($argv[2], true), var_export($argv[3], true), var_export($argv[4], true));
 $site = wpSite('public-script-versions', ['wpContent' => $argv[1], 'muPlugins' => ['managed-preview' => $mount]]);
+$manifest = json_decode((string) file_get_contents($argv[2] . '/build/' . $argv[4] . '.json'), true, 16, JSON_THROW_ON_ERROR);
+$mirror($argv[2], $site->content . '/typedpress-assets', (string) $manifest['app']);
 $site->startServer();
 $base = $site->url();
-$scripts = metadataScripts(file_get_contents("$base/"));
-$loose = moduleResponse($scripts[0]);
+
+$looseScripts = metadataScripts((string) file_get_contents("$base/"));
+$managedPage = moduleResponse("$base/", true);
+$managedScripts = metadataScripts($managedPage[2]);
+
+$loose = moduleResponse($looseScripts[0]);
+$managed = moduleResponse($managedScripts[0], true);
+$managedHead = moduleResponse($managedScripts[0], true, 'HEAD');
 $body = $loose[2];
-$digest = hash('sha256', $body);
-$etag = '"sha256-' . $digest . '"';
-$long = 'public, max-age=31536000, s-maxage=300, immutable';
-$short = 'public, max-age=300';
-$bare = "$base/scripts/module%20name.mjs";
-$check = static function (array $response, int $status, string $cache, string $body, ?string $etag = null, ?string $length = null): void {
-    if ($response[0] !== $status || ($response[1]['cache-control'] ?? null) !== $cache || $response[2] !== $body
-        || isset($response[1]['x-test-app-code-loaded'])
-        || ($etag !== null && ($response[1]['etag'] ?? null) !== $etag)
-        || ($length !== null && ($response[1]['content-length'] ?? null) !== $length)) {
-        throw new RuntimeException('Unexpected module response: ' . json_encode($response, JSON_THROW_ON_ERROR));
+
+foreach ([$loose, $managed] as $resp) {
+    if ($resp[0] !== 200 || $resp[2] !== $body || isset($resp[1]['x-test-app-code-loaded'])) {
+        throw new RuntimeException('Unexpected module response: ' . json_encode($resp, JSON_THROW_ON_ERROR));
     }
-};
-$check($loose, 200, $short, $body);
-$check(moduleResponse($scripts[0], true), 200, $long, $body, $etag, (string) strlen($body));
-$check(moduleResponse($scripts[0], true, 'HEAD'), 200, $long, '', $etag, (string) strlen($body));
-$check(moduleResponse($scripts[0], true, 'GET', 'W/' . $etag), 304, $long, '', $etag);
-$check(moduleResponse($bare, true), 200, $short, $body);
-$wrong = $argv[5] === '' ? str_repeat('0', 64) : $argv[5];
-foreach (["tpv=$wrong", "tpv=$digest&tpv=$wrong", "tpv=$digest&%74pv=$digest", "tpv=$digest&tpv%5B%5D=$digest", "tpv=$digest&mode=a;tpv=$wrong", 'tpv=' . substr($digest, 0, 16)] as $query) {
-    $check(moduleResponse("$bare?$query", true), 200, $short, $body);
 }
-$check(moduleResponse("$base/notes.txt?tpv=$digest", true), 200, $short, $body);
+if ($managedHead[0] !== 200 || $managedHead[2] !== '' || ($managedHead[1]['content-length'] ?? null) !== (string) strlen($body)) {
+    throw new RuntimeException('Unexpected HEAD response: ' . json_encode($managedHead, JSON_THROW_ON_ERROR));
+}
+
 echo json_encode([
     'base' => $base,
-    'scripts' => $scripts,
-    'plain' => metadataScripts(file_get_contents("$base/plain/")),
+    'scripts' => $looseScripts,
+    'managedScripts' => $managedScripts,
+    'plain' => metadataScripts((string) file_get_contents("$base/plain/")),
     'body' => $body,
 ], JSON_THROW_ON_ERROR), "\n";
 $site->destroy();

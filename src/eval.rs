@@ -849,7 +849,7 @@ impl<'p> Evaluator<'p> {
                 crate::assets::Kind::CssModule => Some(Value::object(
                     asset.classes.iter().map(|(k, v)| (k.clone(), Value::str(v))).collect(),
                 )),
-                crate::assets::Kind::Image => Some(Value::Asset(Rc::from(asset.file.as_str()))),
+                crate::assets::Kind::File => Some(Value::Asset(Rc::from(asset.file.as_str()))),
                 crate::assets::Kind::Css => None,
             };
             if let Some(default) = default {

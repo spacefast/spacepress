@@ -918,7 +918,9 @@ impl Builder<'_> {
                             &tag,
                             format!("{key}.purge"),
                             format!("Purge a {table} row"),
-                            format!("Permanently deletes one {table} row (bypasses soft delete) and returns it as it was."),
+                            format!(
+                                "Permanently deletes one {table} row (bypasses soft delete) and returns it as it was."
+                            ),
                         )
                         .rule(purge)
                         .params([id.clone()])
@@ -930,7 +932,11 @@ impl Builder<'_> {
         }
         // Revisions need the update rule, and the API serves them only while updates are on.
         if c.revisions && c.api.update {
-            let revision = path_param("revision", "The revision's id or version.", json!({ "type": "integer" }));
+            let revision = path_param(
+                "revision",
+                "The revision's id or version.",
+                json!({ "type": "integer" }),
+            );
             let needs = "Needs the kind's update rule on the row; a row outside it is a 404.";
             self.paths.add(
                 &format!("{item}/revisions"),
@@ -960,7 +966,11 @@ impl Builder<'_> {
                 .note(needs)
                 .params([
                     id.clone(),
-                    query("from", "The starting revision id or version (optional).", json!({ "type": "integer" })),
+                    query(
+                        "from",
+                        "The starting revision id or version (optional).",
+                        json!({ "type": "integer" }),
+                    ),
                     query("to", "The target revision id or version.", json!({ "type": "integer" })),
                 ])
                 .ok(200, envelope("The changed fields.", self.own_ref("RevisionDiff")))
@@ -1899,7 +1909,9 @@ pub fn document(schema: &Schema, services: Option<&Value>) -> Value {
         "schemaMigration": { "type": ["string", "null"] },
         "changed": { "type": ["array", "null"], "items": { "type": "string" } },
     }, "required": ["id", "version", "op", "at", "user", "schemaMigration", "changed"] }));
-    b.define("RevisionDiff", json!({ "type": "object", "properties": {
+    b.define(
+        "RevisionDiff",
+        json!({ "type": "object", "properties": {
         "from": { "type": ["integer", "null"] },
         "to": { "type": "integer" },
         "changes": { "type": "array", "items": {
@@ -1907,7 +1919,8 @@ pub fn document(schema: &Schema, services: Option<&Value>) -> Value {
             "properties": { "field": { "type": "string" }, "from": {}, "to": {} },
             "required": ["field", "from", "to"],
         } },
-    }, "required": ["from", "to", "changes"] }));
+    }, "required": ["from", "to", "changes"] }),
+    );
     let size = json!({ "type": "object", "properties": {
         "url": { "type": "string" }, "width": { "type": "integer" }, "height": { "type": "integer" },
     } });

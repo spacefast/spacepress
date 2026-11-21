@@ -49,26 +49,88 @@ final class Migrator
 
     /**
      * Asserts that a core forward-only schema statement contains no destructive DDL.
+     * Strips comments, single-quoted string literals, and backtick identifiers before checking
+     * verbs so string defaults (e.g. `DEFAULT 'Drop table'`) never trigger false positives.
      * Destructive operations must go through an explicit CLI-only MigrationProvider.
      */
     public static function assertForwardOnly(string $statement, string $migrationId = ''): void
     {
         $sql = SchemaCheck::sql($statement);
-        // Strip leading `-- ...` SQL comments before inspecting the DDL verb.
-        $lines = array_filter(
-            explode("\n", $sql),
-            static fn (string $line): bool => !str_starts_with(ltrim($line), '--'),
-        );
-        $clean = trim(implode("\n", $lines));
+        $clean = self::stripSqlLiteralsAndComments($sql);
         if ($clean === '') {
             return;
         }
-        if (preg_match('/\b(DROP\s+TABLE|DROP\s+COLUMN|TRUNCATE\s+TABLE|RENAME\s+TABLE|RENAME\s+COLUMN|CHANGE\s+COLUMN)\b/i', $clean, $m)) {
+        if (preg_match('/\b(DROP\s+TABLE|DROP\s+COLUMN|TRUNCATE\s+(?:TABLE\s+)?|RENAME\s+TABLE|RENAME\s+COLUMN|CHANGE\s+COLUMN)\b/i', $clean, $m)) {
+            $verb = trim($m[1]);
             $ctx = $migrationId !== '' ? " in migration $migrationId" : '';
             throw new \RuntimeException(
-                "Refusing destructive DDL ({$m[1]})$ctx: core TypedPress migrations are strictly forward-only. Opt into `typedpress/danger` and run `wp typedpress danger` via CLI for explicit destructive cleanup."
+                "Refusing destructive DDL ($verb)$ctx: core TypedPress migrations are strictly forward-only. Opt into `typedpress/danger` and run `wp typedpress danger` via CLI for explicit destructive cleanup."
             );
         }
+    }
+
+    /** Strip `--` comments, `/* ... *\/` comments, single-quoted strings, and backtick identifiers. */
+    private static function stripSqlLiteralsAndComments(string $sql): string
+    {
+        $out = '';
+        $len = strlen($sql);
+        $i = 0;
+        while ($i < $len) {
+            $ch = $sql[$i];
+            if ($ch === '-' && $i + 1 < $len && $sql[$i + 1] === '-') {
+                $nl = strpos($sql, "\n", $i);
+                $i = $nl === false ? $len : $nl + 1;
+                $out .= ' ';
+                continue;
+            }
+            if ($ch === '/' && $i + 1 < $len && $sql[$i + 1] === '*') {
+                $end = strpos($sql, '*/', $i + 2);
+                $i = $end === false ? $len : $end + 2;
+                $out .= ' ';
+                continue;
+            }
+            if ($ch === '\'' || $ch === '"') {
+                $quote = $ch;
+                $i++;
+                while ($i < $len) {
+                    if ($sql[$i] === '\\' && $i + 1 < $len) {
+                        $i += 2;
+                        continue;
+                    }
+                    if ($sql[$i] === $quote) {
+                        if ($i + 1 < $len && $sql[$i + 1] === $quote) {
+                            $i += 2;
+                            continue;
+                        }
+                        $i++;
+                        break;
+                    }
+                    $i++;
+                }
+                $out .= " '' ";
+                continue;
+            }
+            if ($ch === '`') {
+                $i++;
+                while ($i < $len) {
+                    if ($sql[$i] === '`') {
+                        if ($i + 1 < $len && $sql[$i + 1] === '`') {
+                            $i += 2;
+                            continue;
+                        }
+                        $i++;
+                        break;
+                    }
+                    $i++;
+                }
+                $out .= ' `` ';
+                continue;
+            }
+            $out .= $ch;
+            $i++;
+        }
+
+        return trim($out);
     }
 
     /** @param array<string, int> $drops `--drop` confirmations for the schema check (SchemaCheck::drops) */
@@ -95,10 +157,10 @@ final class Migrator
         return $found;
     }
 
-    /** The statements of a migration file: split on the compiler's `--> statement-breakpoint` lines. */
+    /** The statements of a migration file: split on standalone `--> statement-breakpoint` lines. */
     public static function statements(string $sql): array
     {
-        $parts = preg_split('/-->[ \t]*statement-breakpoint/', $sql) ?: [];
+        $parts = preg_split('/(?:^|\R)[ \t]*-->[ \t]*statement-breakpoint[ \t]*(?:\R|$)/', $sql) ?: [];
 
         return array_values(array_filter(array_map('trim', $parts), static function (string $s): bool {
             if ($s === '') {
@@ -219,6 +281,7 @@ final class Migrator
                 if (isset($done[$id . ':' . ($i + 1)])) {
                     $applied[] = $statement;
                 } else {
+                    self::assertForwardOnly($statement, (string) $id);
                     $pending[$id][] = $statement;
                 }
             }
@@ -278,7 +341,7 @@ final class Migrator
      */
     private function execute(string $statement): void
     {
-        $sql = SchemaCheck::sql($statement);
+        $sql = self::scopeForeignKeys(SchemaCheck::sql($statement), $this->db->prefix());
         $check = SchemaCheck::parse($statement);
         if (!$this->db->sqlite() || ($check['check'] ?? null) !== 'rename') {
             $this->db->run($sql);
@@ -307,6 +370,34 @@ final class Migrator
             $dbh->query('ROLLBACK');
             throw new DbError($e->getMessage() . " [$sql]", 0);
         }
+    }
+
+    /**
+     * On WordPress multisite (or non-default table prefixes), scope InnoDB FK constraint names
+     * with a bounded prefix hash so blogs sharing one database never collide on FK symbols.
+     */
+    private static function scopeForeignKeys(string $sql, string $prefix): string
+    {
+        if ($prefix === '' || $prefix === 'wp_') {
+            return $sql;
+        }
+        $tag = 'm' . substr(hash('sha256', $prefix), 0, 7) . '_';
+
+        return (string) preg_replace_callback(
+            '/\b(CONSTRAINT|DROP\s+FOREIGN\s+KEY)\s+`(tp_[^`]+)`/i',
+            static function (array $m) use ($tag): string {
+                $scoped = substr($tag . $m[2], 0, 64);
+
+                return $m[1] . ' `' . $scoped . '`';
+            },
+            $sql,
+        );
+    }
+
+    /** Ensure `{prefix}tp__migrations` exists and is upgraded to the unified ledger schema. */
+    public static function ensureLedger(Connection $db, \TypedPress\Schema $schema): string
+    {
+        return (new self($db, '', $schema))->ledger();
     }
 
     private function requireCompatibleTables(): void

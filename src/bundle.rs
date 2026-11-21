@@ -999,8 +999,7 @@ pub(crate) fn compile_tree(
             if path.is_dir() {
                 let id = entry.file_name().to_string_lossy().into_owned();
                 let ops_bytes = std::fs::read(path.join("ops.json")).map_err(io)?;
-                let ops: serde_json::Value =
-                    serde_json::from_slice(&ops_bytes).map_err(|e| failure(e.to_string()))?;
+                let ops: serde_json::Value = serde_json::from_slice(&ops_bytes).map_err(|e| failure(e.to_string()))?;
                 prev_entries.push((id.clone(), ops));
                 prev_folders.push(id);
             }

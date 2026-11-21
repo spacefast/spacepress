@@ -168,7 +168,9 @@ fn a_new_filter_plans_an_inferred_index_and_stores_the_same() {
     typedpress::bundle::compile(&sources, &output, &sources, Some(&fixture.join("baseline"))).unwrap();
     let added: Vec<String> = migrations(&output.join("migrations"))
         .into_iter()
-        .filter(|(file, _)| file.ends_with("/migration.sql") && !fixture.join("baseline/migrations").join(file).exists())
+        .filter(|(file, _)| {
+            file.ends_with("/migration.sql") && !fixture.join("baseline/migrations").join(file).exists()
+        })
         .map(|(_, sql)| sql)
         .collect();
     assert_eq!(

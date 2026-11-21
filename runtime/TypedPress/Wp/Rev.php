@@ -300,7 +300,7 @@ final class Rev
             }
             $revs = [];
             $revTable = $db->prefix() . 'tp__revisions';
-            if ($db->run('SHOW TABLES LIKE ?', [$revTable]) !== []) {
+            if ($db->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$revTable]) !== []) {
                 $strIds = array_map('strval', array_keys($rows));
                 foreach ($db->run("SELECT `pk`, MAX(`id`) AS id FROM `$revTable` WHERE `collection` = ? AND `pk` IN ({$in($strIds)}) GROUP BY `pk`", [$collection, ...$strIds]) as $r) {
                     $k = $intPk ? (int) $r['pk'] : (string) $r['pk'];

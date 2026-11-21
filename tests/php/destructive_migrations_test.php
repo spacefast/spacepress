@@ -96,6 +96,15 @@ $mkdir('20261121180001_bbbbbb_retire', [
     ['op' => 'retireTable', 'table' => 'old_archive'],
 ]);
 
+// 4b. Unapplied retirement migration is refused until `wp typedpress migrate` applies it
+problem('unapplied retirement migration is refused before migrate applies it',
+    static fn () => DestructiveMigrations::dropColumn($plugin, 'items', 'legacy_note', ['confirmRows' => 2, 'reason' => 'too early', 'archiveTo' => sys_get_temp_dir() . '/nope-' . getmypid() . '.jsonl'], $migDir, cliContext: true),
+    409, 'retirement_not_applied');
+
+// Record the retirement migration as applied in tp__migrations
+$ledger = Migrator::ensureLedger($conn, $plugin->schema);
+$conn->run("INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`) VALUES (?, ?, 'schema', ?)", ['danger_site', '20261121180001_bbbbbb_retire', '2026-11-21T18:00:01.000Z']);
+
 // 5. Status reports retired column (2 non-null values) and retired table (2 rows)
 $st = DestructiveMigrations::status($plugin, $migDir, cliContext: true);
 eq('status lists retired column with live non-null count', [$st['retiredColumns'][0]['column'], $st['retiredColumns'][0]['nonNullRows']], ['legacy_note', 2]);
@@ -148,7 +157,7 @@ $resTbl = DestructiveMigrations::dropTable($plugin, 'old_archive', [
 ], $migDir, cliContext: true);
 eq('drop-table archives 2 rows and drops table', [$resTbl['rowsAffected'], $resTbl['archived']['rows']], [2, 2]);
 eq('archived table JSONL has 2 rows', count(file($tblArchive, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES)), 2);
-eq('old_archive table is physically gone', $conn->run('SHOW TABLES LIKE ?', ['wp_tp_old_archive']), []);
+eq('old_archive table is physically gone', $conn->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', ['wp_tp_old_archive']), []);
 
 // 11. purge-deleted permanently purges soft-deleted rows with archive & audit
 $purgeArchive = sys_get_temp_dir() . '/typedpress-danger-purge-' . getmypid() . '.jsonl';

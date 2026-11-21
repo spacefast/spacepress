@@ -65,19 +65,6 @@ fn ported(work: &Path) -> PathBuf {
     app
 }
 
-/// `functions.php` with each "callback at `<file>:<line>`" doc comment reduced to "callback".
-fn without_source_positions(php: &[u8]) -> String {
-    String::from_utf8(php.to_vec())
-        .unwrap()
-        .lines()
-        .map(|line| match line.split_once(" callback at `") {
-            Some((head, rest)) if rest.ends_with("`.") => format!("{head} callback."),
-            _ => line.to_owned(),
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 fn manifest(dir: &Path) -> serde_json::Value {
     serde_json::from_slice(&fs::read(dir.join("manifest.json")).unwrap()).unwrap()
 }

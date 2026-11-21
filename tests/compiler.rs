@@ -225,8 +225,7 @@ export default defineConfig({ name: "exported" });
         .collect();
     folders.sort();
     assert_eq!(folders.len(), 1, "expected 1 migration folder: {folders:?}");
-    let ops: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(folders[0].join("ops.json")).unwrap()).unwrap();
+    let ops: serde_json::Value = serde_json::from_slice(&std::fs::read(folders[0].join("ops.json")).unwrap()).unwrap();
     let created_tables: Vec<&str> = ops["ops"]
         .as_array()
         .unwrap()
@@ -1421,10 +1420,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             String::from_utf8_lossy(&result.stderr)
         );
         let actual = migration_dirs(&persisted.join("tp/_generated/migrations"));
-        assert_eq!(
-            actual, original,
-            "{example}: no new migration for an unchanged build"
-        );
+        assert_eq!(actual, original, "{example}: no new migration for an unchanged build");
     }
     // Historical storage-upgrade fixture keeps its committed migrations unchanged on rebuild.
     let upgraded = tmp.join("storage-upgrade");
@@ -1447,10 +1443,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             );
         }
     }
-    assert_eq!(
-        migration_dirs(&upgraded.join("tp/_generated/migrations")).len(),
-        1
-    );
+    assert_eq!(migration_dirs(&upgraded.join("tp/_generated/migrations")).len(), 1);
 
     // Neither camel-case names nor canonical names behind aliases may be silently replaced.
     let conflict = tmp.join("name-conflict");
@@ -1459,7 +1452,10 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     let built = first().arg("build").arg(&conflict).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     let init_id = migration_dirs(&conflict.join("tp/_generated/migrations"))[0].clone();
-    let ledger = conflict.join("tp/_generated/migrations").join(&init_id).join("ops.json");
+    let ledger = conflict
+        .join("tp/_generated/migrations")
+        .join(&init_id)
+        .join("ops.json");
     let canonical: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
     // Pinning `storageName` keeps an existing physical table under a new TypeScript export with no new migration.
     for stored_name in ["stockItems", "inventory"] {
@@ -1486,10 +1482,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         );
         let actual: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
         assert_eq!(actual, legacy);
-        assert_eq!(
-            migration_dirs(&conflict.join("tp/_generated/migrations")).len(),
-            1
-        );
+        assert_eq!(migration_dirs(&conflict.join("tp/_generated/migrations")).len(), 1);
     }
 
     // Writes default to editor access: the site's editor signs in with an application password.
@@ -2311,11 +2304,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         String::from_utf8_lossy(&out.stderr)
     );
     let plugin = project.join("tp/dist/wp-content/plugins/typedpress-app-blog");
-    for rel in [
-        "typedpress-app-blog.php",
-        "tp/app/functions.php",
-        "tp/app/migrations",
-    ] {
+    for rel in ["typedpress-app-blog.php", "tp/app/functions.php", "tp/app/migrations"] {
         assert!(plugin.join(rel).exists(), "plugin is missing {rel}");
     }
     let init_mig_dir = std::fs::read_dir(plugin.join("tp/app/migrations"))
@@ -2323,7 +2312,10 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         .map(|e| e.unwrap().path())
         .find(|p| p.is_dir())
         .expect("plugin is missing initial migration directory");
-    assert!(init_mig_dir.join("migration.sql").is_file(), "plugin is missing migration.sql");
+    assert!(
+        init_mig_dir.join("migration.sql").is_file(),
+        "plugin is missing migration.sql"
+    );
     assert!(
         project
             .join("tp/dist/wp-content/plugins/typedpress-app-blog.zip")
@@ -3563,7 +3555,11 @@ fn a_stored_table_declared_with_collection_is_refused_before_anything_is_written
         .filter(|p| p.is_dir())
         .collect();
     dirs.sort();
-    assert_eq!(dirs.len(), 2, "switching collection() to table() plans a new table migration: {dirs:?}");
+    assert_eq!(
+        dirs.len(),
+        2,
+        "switching collection() to table() plans a new table migration: {dirs:?}"
+    );
     let sql = std::fs::read_to_string(dirs[1].join("migration.sql")).unwrap();
     assert!(sql.contains("CREATE TABLE `{prefix}tp_memos`"), "{sql}");
 }
@@ -5350,14 +5346,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
         b"",
         200,
     );
-    check(
-        "DELETE",
-        &format!("/authors/{second_id}"),
-        Some("admin"),
-        &[],
-        b"",
-        200,
-    );
+    check("DELETE", &format!("/authors/{second_id}"), Some("admin"), &[], b"", 200);
     check(
         "POST",
         &format!("/authors/{second_id}/restore"),

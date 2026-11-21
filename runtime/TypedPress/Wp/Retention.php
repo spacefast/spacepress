@@ -87,7 +87,12 @@ final class Retention
         $purged = 0;
         $revisionsPruned = 0;
 
+        $budget = max(1, $batchSize);
+
         foreach ($schema->collections() as $name => $spec) {
+            if ($purged >= $budget) {
+                break;
+            }
             $name = (string) $name;
             if (!($spec['softDelete'] ?? false)) {
                 continue;
@@ -98,45 +103,124 @@ final class Retention
             }
             $cutoff = Js::iso($nowMs - ($deletedSeconds * 1000));
             $pk = $spec['primaryKey'];
+            $remaining = $budget - $purged;
             $expired = $db->findMany($name, [
                 'deleted' => 'only',
                 'where' => ['deletedAt' => ['lte' => $cutoff]],
                 'columns' => [$pk => true],
-                'limit' => $batchSize,
+                'limit' => $remaining,
             ]);
             foreach ($expired as $row) {
-                $db->purge($name, [$pk => $row[$pk]]);
-                $purged++;
+                if ($purged >= $budget) {
+                    break;
+                }
+                // Recheck `deleted = 'only'` and the cutoff inside the purge transaction so a row
+                // restored or re-deleted after selection is never purged.
+                $gone = $db->transaction(static fn (): array => $db->purge(
+                    $name,
+                    [$pk => $row[$pk], 'deletedAt' => ['lte' => $cutoff]],
+                    returning: true,
+                    onlyDeleted: true,
+                ) ?? []);
+                $purged += count($gone);
             }
         }
 
         $conn = $plugin->connection();
-        $revTable = '`' . $conn->prefix() . 'tp__revisions`';
-        $hasRevTable = $conn->run('SHOW TABLES LIKE ?', [$conn->prefix() . 'tp__revisions']) !== [];
-        if ($hasRevTable) {
-            foreach ($schema->collections() as $name => $spec) {
-                $name = (string) $name;
-                $policy = self::revisionsPolicy($schema, $name);
-                if ($policy === null) {
-                    continue;
-                }
+        $revTableName = $conn->prefix() . 'tp__revisions';
+        $revTable = '`' . $revTableName . '`';
+        $hasRevTable = $conn->run(
+            'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+            [$revTableName],
+        ) !== [];
+        $postsTable = '`' . $conn->wpdb()->posts . '`';
+
+        foreach ($schema->collections() as $name => $spec) {
+            if ($revisionsPruned >= $budget) {
+                break;
+            }
+            $name = (string) $name;
+            $policy = self::revisionsPolicy($schema, $name);
+            if ($policy === null) {
+                continue;
+            }
+            if (isset($spec['wp']['postType'])) {
+                $postType = (string) $spec['wp']['postType'];
                 if (is_int($policy['maxAgeSeconds'] ?? null)) {
-                    $cutoff = Js::iso($nowMs - ($policy['maxAgeSeconds'] * 1000));
-                    $old = $conn->run("SELECT `id` FROM $revTable WHERE `collection` = ? AND `at` <= ? LIMIT $batchSize", [$name, $cutoff]);
+                    $remaining = $budget - $revisionsPruned;
+                    $cutoffMysql = gmdate('Y-m-d H:i:s', (int) floor(($nowMs - ($policy['maxAgeSeconds'] * 1000)) / 1000));
+                    $old = $conn->run(
+                        "SELECT r.ID FROM $postsTable r JOIN $postsTable p ON p.ID = r.post_parent WHERE p.post_type = ? AND r.post_type = 'revision' AND r.post_status = 'inherit' AND r.post_name NOT LIKE '%autosave%' AND r.post_date_gmt <> '0000-00-00 00:00:00' AND r.post_date_gmt <= ? LIMIT $remaining",
+                        [$postType, $cutoffMysql],
+                    );
                     foreach ($old as $r) {
-                        $conn->run("DELETE FROM $revTable WHERE `id` = ?", [(int) $r['id']]);
-                        $revisionsPruned++;
-                    }
-                }
-                if (is_int($policy['keepLast'] ?? null) && $policy['keepLast'] >= 1) {
-                    $keep = (int) $policy['keepLast'];
-                    $pks = $conn->run("SELECT `pk` FROM $revTable WHERE `collection` = ? GROUP BY `pk` HAVING COUNT(*) > ? LIMIT $batchSize", [$name, $keep]);
-                    foreach ($pks as $p) {
-                        $rows = $conn->run("SELECT `id` FROM $revTable WHERE `collection` = ? AND `pk` = ? ORDER BY `id` DESC LIMIT $batchSize OFFSET $keep", [$name, (string) $p['pk']]);
-                        foreach ($rows as $r) {
-                            $conn->run("DELETE FROM $revTable WHERE `id` = ?", [(int) $r['id']]);
+                        if ($revisionsPruned >= $budget) {
+                            break;
+                        }
+                        if ($conn->core(static fn () => wp_delete_post_revision((int) $r['ID']))) {
                             $revisionsPruned++;
                         }
+                    }
+                }
+                if ($revisionsPruned < $budget && is_int($policy['keepLast'] ?? null) && $policy['keepLast'] >= 1) {
+                    $keep = (int) $policy['keepLast'];
+                    $remaining = $budget - $revisionsPruned;
+                    $parents = $conn->run(
+                        "SELECT r.post_parent FROM $postsTable r JOIN $postsTable p ON p.ID = r.post_parent WHERE p.post_type = ? AND r.post_type = 'revision' AND r.post_status = 'inherit' AND r.post_name NOT LIKE '%autosave%' GROUP BY r.post_parent HAVING COUNT(*) > ? LIMIT $remaining",
+                        [$postType, $keep],
+                    );
+                    foreach ($parents as $parent) {
+                        if ($revisionsPruned >= $budget) {
+                            break;
+                        }
+                        $rem = $budget - $revisionsPruned;
+                        $rows = $conn->run(
+                            "SELECT ID FROM $postsTable WHERE post_type = 'revision' AND post_parent = ? AND post_status = 'inherit' AND post_name NOT LIKE '%autosave%' ORDER BY ID DESC LIMIT $rem OFFSET $keep",
+                            [(int) $parent['post_parent']],
+                        );
+                        foreach ($rows as $r) {
+                            if ($revisionsPruned >= $budget) {
+                                break;
+                            }
+                            if ($conn->core(static fn () => wp_delete_post_revision((int) $r['ID']))) {
+                                $revisionsPruned++;
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+            if (!$hasRevTable) {
+                continue;
+            }
+            if (is_int($policy['maxAgeSeconds'] ?? null)) {
+                $remaining = $budget - $revisionsPruned;
+                $cutoff = Js::iso($nowMs - ($policy['maxAgeSeconds'] * 1000));
+                $old = $conn->run("SELECT `id` FROM $revTable WHERE `collection` = ? AND `at` <= ? LIMIT $remaining", [$name, $cutoff]);
+                foreach ($old as $r) {
+                    if ($revisionsPruned >= $budget) {
+                        break;
+                    }
+                    $conn->run("DELETE FROM $revTable WHERE `id` = ?", [(int) $r['id']]);
+                    $revisionsPruned++;
+                }
+            }
+            if ($revisionsPruned < $budget && is_int($policy['keepLast'] ?? null) && $policy['keepLast'] >= 1) {
+                $keep = (int) $policy['keepLast'];
+                $remaining = $budget - $revisionsPruned;
+                $pks = $conn->run("SELECT `pk` FROM $revTable WHERE `collection` = ? GROUP BY `pk` HAVING COUNT(*) > ? LIMIT $remaining", [$name, $keep]);
+                foreach ($pks as $p) {
+                    if ($revisionsPruned >= $budget) {
+                        break;
+                    }
+                    $rem = $budget - $revisionsPruned;
+                    $rows = $conn->run("SELECT `id` FROM $revTable WHERE `collection` = ? AND `pk` = ? ORDER BY `id` DESC LIMIT $rem OFFSET $keep", [$name, (string) $p['pk']]);
+                    foreach ($rows as $r) {
+                        if ($revisionsPruned >= $budget) {
+                            break;
+                        }
+                        $conn->run("DELETE FROM $revTable WHERE `id` = ?", [(int) $r['id']]);
+                        $revisionsPruned++;
                     }
                 }
             }

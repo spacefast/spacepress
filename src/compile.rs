@@ -10795,10 +10795,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             "purge" => {
                 let target = id(self, plain[0])?;
                 (
-                    format!(
-                        "\\TypedPress\\Seam::kindPurge({}, {target}, {trusted})",
-                        php_str(table)
-                    ),
+                    format!("\\TypedPress\\Seam::kindPurge({}, {target}, {trusted})", php_str(table)),
                     row,
                 )
             }
@@ -10913,10 +10910,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 summary.insert("at".into(), (Ty::Str, false));
                 summary.insert("user".into(), (Ty::Obj(user_fields).nullable(), false));
                 summary.insert("schemaMigration".into(), (Ty::Str.nullable(), false));
-                summary.insert(
-                    "changed".into(),
-                    (Ty::Array(Box::new(Ty::Str)).nullable(), false),
-                );
+                summary.insert("changed".into(), (Ty::Array(Box::new(Ty::Str)).nullable(), false));
                 (
                     format!(
                         "\\TypedPress\\Seam::kindRevisionsList({}, {target}, {trusted})",
@@ -11106,7 +11100,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let mut d = Diag::new(v.span, format!("query options have no `{other}`"));
                     if let Some(s) = suggest(
                         other,
-                        ["where", "orderBy", "limit", "offset", "columns", "with", "locale", "deleted"],
+                        [
+                            "where", "orderBy", "limit", "offset", "columns", "with", "locale", "deleted",
+                        ],
                     ) {
                         d = d.help(format!("did you mean `{s}`?"));
                     }

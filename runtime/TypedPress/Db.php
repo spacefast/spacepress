@@ -24,6 +24,10 @@ final class Db
     private ?array $actor = null;
     /** @var list<BulkUpdate> open updates, innermost last */
     private array $bulk = [];
+    /** Active cascade soft-delete group inherited by viewer-checked child deletes. */
+    private ?string $activeDeleteGroup = null;
+    /** Prevents re-entering group child restore while restoring children of a deletedGroup. */
+    private bool $restoringGroup = false;
 
     public function __construct(
         private readonly Store $store,
@@ -411,6 +415,9 @@ final class Db
             if (!in_array($deleted, ['exclude', 'include', 'only'], true)) {
                 throw HttpError::invalidQuery("deleted must be 'exclude', 'include', or 'only'", $ptr . '/deleted');
             }
+            if ($deleted !== 'exclude' && !($spec['softDelete'] ?? false)) {
+                throw HttpError::invalidQuery("`$collection` does not use softDelete", $ptr . '/deleted');
+            }
             if ($deleted !== 'exclude' && $viewer !== null) {
                 $restoreRule = Access::collectionRules($spec)['restore'];
                 $allowed = $this->current(fn () => Access::evaluate($restoreRule, $viewer, 'restore', null, $spec['columns'], $collection));
@@ -421,38 +428,42 @@ final class Db
                     $guards[] = $allowed;
                 }
             }
-            if ($viewer !== null) {
-                array_push($guards, ...$this->readGuards($collection, $viewer, forSelect: true, deleted: $deleted));
-            }
-            if ($publishedOnly !== null && Render\Reads::recording() && ($spec['drafts'] ?? false)) {
-                // Reuse the applied read guard. Calling an authored rule again could produce a
-                // different filter or repeat its side effects.
-                foreach ([$opts['where'] ?? null, ...$guards] as $filter) {
-                    if (is_array($filter) && in_array($filter['status'] ?? null, ['published', ['eq' => 'published']], true)) {
-                        $publishedOnly = true;
-                        break;
+            $build = function () use ($collection, &$opts, $ptr, $viewer, $partition, &$guards, $filterViewer, $prune, &$only, &$publishedOnly, $spec, $deleted): array {
+                if ($viewer !== null) {
+                    array_push($guards, ...$this->readGuards($collection, $viewer, forSelect: true, deleted: $deleted));
+                }
+                if ($publishedOnly !== null && Render\Reads::recording() && ($spec['drafts'] ?? false)) {
+                    // Reuse the applied read guard. Calling an authored rule again could produce a
+                    // different filter or repeat its side effects.
+                    foreach ([$opts['where'] ?? null, ...$guards] as $filter) {
+                        if (is_array($filter) && in_array($filter['status'] ?? null, ['published', ['eq' => 'published']], true)) {
+                            $publishedOnly = true;
+                            break;
+                        }
                     }
                 }
-            }
-            $filterViewer ??= $viewer;
-            // `search`: the rows whose searchable fields this reader may read hold every word, as one
-            // more condition on this same read (docs/decisions/2026-11-13-search-index.md).
-            if (array_key_exists('search', $opts)) {
-                $search = $opts['search'];
-                unset($opts['search']);
-                if ($search !== null && !is_string($search)) {
-                    throw HttpError::invalidQuery('search must be a string', $ptr . '/search');
+                $fv = $filterViewer ?? $viewer;
+                // `search`: the rows whose searchable fields this reader may read hold every word, as one
+                // more condition on this same read (docs/decisions/2026-11-13-search-index.md).
+                if (array_key_exists('search', $opts)) {
+                    $search = $opts['search'];
+                    unset($opts['search']);
+                    if ($search !== null && !is_string($search)) {
+                        throw HttpError::invalidQuery('search must be a string', $ptr . '/search');
+                    }
+                    if (is_string($search) && trim($search) !== '') {
+                        array_push($guards, ...Search\Module::guard($collection, $search, $fv, $opts['searchFields'] ?? null));
+                    }
                 }
-                if (is_string($search) && trim($search) !== '') {
-                    array_push($guards, ...Search\Module::guard($collection, $search, $filterViewer, $opts['searchFields'] ?? null));
-                }
-            }
-            unset($opts['searchFields']);
-            // After the query extensions: they may consume options (`with` on a file column) the selection reads.
-            $only = $prune ? $this->selected($collection, $opts, $viewer, $partition) : null;
+                unset($opts['searchFields']);
+                // After the query extensions: they may consume options (`with` on a file column) the selection reads.
+                $only = $prune ? $this->selected($collection, $opts, $viewer, $partition) : null;
 
-            return Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
-                $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer, forSelect: true), $only);
+                return Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
+                    $fv === null ? null : fn (string $target): array => $this->readGuards($target, $fv, forSelect: true), $only);
+            };
+
+            return $deleted !== 'exclude' ? $this->withTrashFor($collection, $build) : $build();
         });
     }
 
@@ -926,12 +937,16 @@ final class Db
      *
      * @return ?list<array>
      */
-    public function purge(string $collection, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null): ?array
+    public function purge(string $collection, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null, bool $onlyDeleted = false): ?array
     {
         $where = Seam::filter($collection, $where, $this->schema);
-        return $this->nested(function () use ($collection, $where, $returning, $viewer) {
+        return $this->nested(function () use ($collection, $where, $returning, $viewer, $onlyDeleted) {
+            $spec = $this->schema->collection($collection);
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'purge', $viewer, null);
-            $opts = ['where' => $where, 'deleted' => 'include'];
+            $opts = ['where' => $where];
+            if ($spec['softDelete'] ?? false) {
+                $opts['deleted'] = $onlyDeleted ? 'only' : 'include';
+            }
             $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
             foreach ($rows as $row) {
                 $this->purgeOne($collection, $row, $viewer);
@@ -1182,7 +1197,7 @@ final class Db
         Extensions::write('delete', $collection, $row, $existing, $viewer, $existing);
         $this->hook($collection, $spec, 'beforeDelete', $row);
         if (($spec['softDelete'] ?? false) && method_exists($this->store, 'softDelete')) {
-            $group ??= self::uuid();
+            $group ??= $this->activeDeleteGroup ?? self::uuid();
             $this->softReferentialActions($collection, $row, $group, $viewer);
             $at = Js::iso(Js::now());
             $userId = $this->actor['id'] ?? null;
@@ -1232,7 +1247,7 @@ final class Db
         } catch (\Throwable $e) {
             throw $this->store->mapError($e);
         }
-        if ($cascadeChildren && $group !== null) {
+        if ($cascadeChildren && !$this->restoringGroup && $group !== null) {
             $this->restoreGroupChildren($collection, $pkValue, $group, $viewer);
         }
         [$restored, $rawRestored] = $this->readByPk($collection, $spec, $pkValue);
@@ -1246,19 +1261,37 @@ final class Db
     /** Restore any soft-deleted children across kinds that were cascade-deleted under the same deletedGroup. */
     private function restoreGroupChildren(string $parentCollection, int|string $parentPk, string $group, ?Viewer $viewer): void
     {
-        foreach ($this->schema->kinds() as $child => $cspec) {
-            if (!($cspec['softDelete'] ?? false) || !isset($cspec['columns']['deletedGroup'])) {
-                continue;
-            }
-            $opts = ['where' => ['deletedGroup' => $group], 'deleted' => 'only'];
-            $dependents = $this->selectDecoded((string) $child, $opts, '', null);
-            $cpk = $cspec['primaryKey'];
-            foreach ($dependents as $dep) {
-                if ((string) $child === $parentCollection && (string) $dep[$cpk] === (string) $parentPk) {
+        $prev = $this->restoringGroup;
+        $this->restoringGroup = true;
+        try {
+            foreach ($this->schema->kinds() as $child => $cspec) {
+                if (!($cspec['softDelete'] ?? false) || !isset($cspec['columns']['deletedGroup'])) {
                     continue;
                 }
-                $this->nested(fn () => $this->restoreOne((string) $child, $dep, $viewer, cascadeChildren: false));
+                $opts = ['where' => ['deletedGroup' => $group], 'deleted' => 'only'];
+                $dependents = $this->selectDecoded((string) $child, $opts, '', null);
+                $cpk = $cspec['primaryKey'];
+                foreach ($dependents as $dep) {
+                    if ((string) $child === $parentCollection && (string) $dep[$cpk] === (string) $parentPk) {
+                        continue;
+                    }
+                    if ($viewer !== null) {
+                        try {
+                            $restored = $this->restore((string) $child, [$cpk => $dep[$cpk]], true, $viewer) ?? [];
+                        } catch (\Throwable $e) {
+                            error_log('[typedpress] a restore side effect refused: ' . $e::class . ': ' . $e->getMessage());
+                            throw self::hiddenReference();
+                        }
+                        if (count($restored) !== 1) {
+                            throw self::hiddenReference();
+                        }
+                    } else {
+                        $this->nested(fn () => $this->restoreOne((string) $child, $dep, null, cascadeChildren: false));
+                    }
+                }
             }
+        } finally {
+            $this->restoringGroup = $prev;
         }
     }
 
@@ -1317,15 +1350,58 @@ final class Db
                 $opts = ['where' => $where, 'limit' => 1];
                 $action = strtolower($ref['onDelete'] ?? 'no action');
                 if ($action === 'cascade') {
-                    $this->nested(function () use ($child, $where, $group, $viewer): void {
-                        $opts = ['where' => $where];
-                        foreach ($this->selectDecoded((string) $child, $opts, '', null) as $dependent) {
-                            $this->deleteOne((string) $child, $dependent, $viewer, $group);
+                    $depOpts = ['where' => $where];
+                    $dependents = $this->selectDecoded((string) $child, $depOpts, '', null);
+                    if ($viewer !== null) {
+                        $cpk = $cspec['primaryKey'];
+                        $prevGroup = $this->activeDeleteGroup;
+                        $this->activeDeleteGroup = $group;
+                        $written = 0;
+                        try {
+                            foreach ($dependents as $dependent) {
+                                $written += count($this->delete((string) $child, [$cpk => $dependent[$cpk]], true, $viewer) ?? []);
+                            }
+                        } catch (\Throwable $e) {
+                            error_log('[typedpress] a soft-delete cascade refused: ' . $e::class . ': ' . $e->getMessage());
+                            throw self::hiddenReference();
+                        } finally {
+                            $this->activeDeleteGroup = $prevGroup;
                         }
-                    });
+                        if ($written !== count($dependents)) {
+                            throw self::hiddenReference();
+                        }
+                    } else {
+                        $this->nested(function () use ($child, $dependents, $group): void {
+                            foreach ($dependents as $dependent) {
+                                $this->deleteOne((string) $child, $dependent, null, $group);
+                            }
+                        });
+                    }
                 } elseif ($action === 'set null' || $action === 'set default') {
-                    $value = $action === 'set default' && isset($c['default']) ? Schema::generate($c['default'], $c) : null;
-                    $this->update((string) $child, [$col => $value], $where, errorViewer: $viewer);
+                    $depOpts = ['where' => $where];
+                    $dependents = $this->selectDecoded((string) $child, $depOpts, '', null);
+                    if ($dependents === []) {
+                        continue;
+                    }
+                    if ($viewer !== null) {
+                        $cpk = $cspec['primaryKey'];
+                        $written = 0;
+                        try {
+                            foreach ($dependents as $dependent) {
+                                $value = $action === 'set default' && isset($c['default']) ? Schema::generate($c['default'], $c) : null;
+                                $written += count($this->update((string) $child, [$col => $value], [$cpk => $dependent[$cpk]], true, $viewer) ?? []);
+                            }
+                        } catch (\Throwable $e) {
+                            error_log('[typedpress] a soft-delete set-null/default refused: ' . $e::class . ': ' . $e->getMessage());
+                            throw self::hiddenReference();
+                        }
+                        if ($written !== count($dependents)) {
+                            throw self::hiddenReference();
+                        }
+                    } else {
+                        $value = $action === 'set default' && isset($c['default']) ? Schema::generate($c['default'], $c) : null;
+                        $this->update((string) $child, [$col => $value], $where);
+                    }
                 } elseif ($this->selectDecoded((string) $child, $opts, '', null) !== []) {
                     throw new HttpError(409, 'reference_violation', "Rows in $child still reference this row");
                 }
@@ -2201,17 +2277,28 @@ final class Db
     public function revisions(string $collection, int|string $pk, ?Viewer $viewer = null): array
     {
         $this->requireRevisable($collection, $pk, $viewer);
+        $columns = $this->schema->collection($collection)['columns'];
 
         return array_map(
-            static fn (array $r) => [
-                'id' => $r['id'],
-                'version' => (int) ($r['version'] ?? 1),
-                'op' => (string) ($r['op'] ?? 'update'),
-                'at' => $r['at'],
-                'userId' => $r['userId'],
-                'schemaMigration' => $r['schemaMigration'] ?? null,
-                'changed' => $r['changed'] ?? null,
-            ],
+            static function (array $r) use ($columns, $viewer): array {
+                $changed = $r['changed'] ?? null;
+                if ($viewer !== null && is_array($changed)) {
+                    $changed = array_values(array_filter(
+                        $changed,
+                        static fn (string $f): bool => isset($columns[$f]) && !FieldAccess::mayHide($columns[$f], $viewer),
+                    ));
+                }
+
+                return [
+                    'id' => $r['id'],
+                    'version' => (int) ($r['version'] ?? 1),
+                    'op' => (string) ($r['op'] ?? 'update'),
+                    'at' => $r['at'],
+                    'userId' => $r['userId'],
+                    'schemaMigration' => $r['schemaMigration'] ?? null,
+                    'changed' => $changed,
+                ];
+            },
             $this->current(fn () => $this->store->revisions($collection, $pk)),
         );
     }

@@ -223,7 +223,10 @@ fn a_declared_index_is_created_and_listed() {
         .find(|p| p.is_dir())
         .expect("init migration folder");
     let sql = std::fs::read_to_string(init_dir.join("migration.sql")).unwrap();
-    assert!(sql.contains("UNIQUE KEY `idx_post_author` (`post`, `author`, `_live`)"), "{sql}");
+    assert!(
+        sql.contains("UNIQUE KEY `idx_post_author` (`post`, `author`, `_live`)"),
+        "{sql}"
+    );
 
     write_app(
         tmp.path().join("tp/schema.ts"),
@@ -359,16 +362,8 @@ export { notes }; export default defineConfig({ name: "presentation" });"#;
     )
     .unwrap();
     build_wp(tmp.path());
-    assert_eq!(
-        ledger(),
-        before,
-        "presentation changes cannot change storage"
-    );
-    assert_eq!(
-        ledger().len(),
-        1,
-        "a presentation change planned a migration"
-    );
+    assert_eq!(ledger(), before, "presentation changes cannot change storage");
+    assert_eq!(ledger().len(), 1, "a presentation change planned a migration");
 }
 
 #[test]
@@ -4807,9 +4802,7 @@ fn was_renames_only_what_a_table_stores() {
         ),
         entries.clone(),
     );
-    assert!(
-        was_table.err().unwrap_or_default().contains("`was` is gone"),
-    );
+    assert!(was_table.err().unwrap_or_default().contains("`was` is gone"),);
     // Changing storageName onto an existingTable binding is refused.
     let onto = build(
         &format!(
@@ -4817,18 +4810,18 @@ fn was_renames_only_what_a_table_stores() {
         ),
         entries.clone(),
     );
-    assert!(
-        onto.err()
-            .unwrap_or_default()
-            .contains("existingTable binding"),
-    );
+    assert!(onto.err().unwrap_or_default().contains("existingTable binding"),);
     // Keeping the same physical table under a new TS export via `storageName` needs no DDL rename or drop.
     let kept = build(
         &format!("{head} const memos = table({{}}, {{ storageName: 'notes' }}); export {{ memos }}; export default defineConfig({{}});"),
         entries,
     )
     .unwrap();
-    assert!(kept.migrations.is_empty(), "expected no DDL migration when keeping storageName: {:?}", kept.migrations);
+    assert!(
+        kept.migrations.is_empty(),
+        "expected no DDL migration when keeping storageName: {:?}",
+        kept.migrations
+    );
 }
 
 /// A Zero 0.8 table's name ends in a digest over the 0.8 table name, which the converter gives the
@@ -4911,7 +4904,8 @@ fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
     assert!(!sql.contains("DROP TABLE"), "{sql}");
     let ops = removed.migrations[0].ops["ops"].as_array().expect("ops array");
     assert!(
-        ops.iter().any(|op| op["op"] == "retireTable" && op["table"] == "my_tasks"),
+        ops.iter()
+            .any(|op| op["op"] == "retireTable" && op["table"] == "my_tasks"),
         "expected retireTable op for my_tasks: {ops:?}"
     );
 }

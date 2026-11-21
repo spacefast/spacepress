@@ -3262,7 +3262,10 @@ impl<'p> Evaluator<'p> {
                                 Some(Value::Bool(b)) => Ok(*b),
                                 Some(other) => err_help(
                                     span,
-                                    format!("destructiveMigrations().{k} must be a boolean, not {}", other.describe()),
+                                    format!(
+                                        "destructiveMigrations().{k} must be a boolean, not {}",
+                                        other.describe()
+                                    ),
                                     format!("pass `{k}: true` or `{k}: false`"),
                                 ),
                             }
@@ -3272,7 +3275,10 @@ impl<'p> Evaluator<'p> {
                     other => {
                         return err_help(
                             span,
-                            format!("destructiveMigrations() takes an optional options object, not {}", other.describe()),
+                            format!(
+                                "destructiveMigrations() takes an optional options object, not {}",
+                                other.describe()
+                            ),
                             "call `destructiveMigrations()` or `destructiveMigrations({ requireArchive: true })`",
                         );
                     }

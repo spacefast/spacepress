@@ -63,11 +63,21 @@ fn read_migrations(dir: &Path) -> std::io::Result<Vec<(String, Vec<u8>)>> {
             let path = entry.path();
             if path.is_dir() {
                 let id = entry.file_name().to_string_lossy().into_owned();
+                if !crate::migrate::is_migration_id(&id) {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("{}: invalid migration folder name", path.display()),
+                    ));
+                }
                 for file in ["migration.sql", "ops.json"] {
                     let f = path.join(file);
-                    if f.is_file() {
-                        out.push((format!("{id}/{file}"), std::fs::read(&f)?));
+                    if !f.is_file() {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            format!("{}: incomplete migration folder (missing {file})", path.display()),
+                        ));
                     }
+                    out.push((format!("{id}/{file}"), std::fs::read(&f)?));
                 }
             }
         }

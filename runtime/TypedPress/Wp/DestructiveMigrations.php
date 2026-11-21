@@ -75,10 +75,12 @@ final class DestructiveMigrations implements MigrationProvider
         ];
     }
 
-    /** Refuse unless running under WP-CLI (or explicit CLI test harness). */
+    /** Refuse unless running under WP-CLI (or explicit CLI test harness under CLI SAPI). */
     public static function requireCli(bool $cliContext = false): void
     {
-        if (!$cliContext && !(defined('WP_CLI') && WP_CLI)) {
+        $isWpCli = defined('WP_CLI') && WP_CLI;
+        $isCliTest = $cliContext && PHP_SAPI === 'cli';
+        if (!$isWpCli && !$isCliTest) {
             throw new HttpError(
                 403,
                 'cli_only',
@@ -126,7 +128,7 @@ final class DestructiveMigrations implements MigrationProvider
 
         $retiredColumns = [];
         $retiredTables = [];
-        $storageNames = [];
+        $physicalNames = [];
 
         foreach ($byId as $id => $file) {
             $doc = json_decode((string) file_get_contents($file), true);
@@ -142,7 +144,16 @@ final class DestructiveMigrations implements MigrationProvider
                     case 'createTable':
                         if ($t !== '') {
                             $def = is_array($op['def'] ?? null) ? $op['def'] : [];
-                            $storageNames[$t] = is_string($def['storageName'] ?? null) && $def['storageName'] !== '' ? $def['storageName'] : $t;
+                            if (is_string($op['physicalTable'] ?? null) && $op['physicalTable'] !== '') {
+                                $physicalNames[$t] = $op['physicalTable'];
+                            } elseif (is_string($def['existingTable'] ?? null) && $def['existingTable'] !== '') {
+                                $physicalNames[$t] = $def['existingTable'];
+                            } elseif (is_array($def['join'] ?? null)) {
+                                $physicalNames[$t] = '{prefix}tp__join_' . $t;
+                            } else {
+                                $storage = is_string($def['storageName'] ?? null) && $def['storageName'] !== '' ? $def['storageName'] : $t;
+                                $physicalNames[$t] = '{prefix}tp_' . $storage;
+                            }
                             unset($retiredTables[$t]);
                         }
                         break;
@@ -164,6 +175,9 @@ final class DestructiveMigrations implements MigrationProvider
                         break;
                     case 'retireTable':
                         if ($t !== '') {
+                            if (is_string($op['physicalTable'] ?? null) && $op['physicalTable'] !== '') {
+                                $physicalNames[$t] = $op['physicalTable'];
+                            }
                             $retiredTables[$t] = ['table' => $t, 'retiredIn' => (string) $id];
                             foreach (array_keys($retiredColumns) as $k) {
                                 if (str_starts_with($k, "$t.")) {
@@ -183,7 +197,7 @@ final class DestructiveMigrations implements MigrationProvider
         return [
             'retiredColumns' => $retiredColumns,
             'retiredTables' => $retiredTables,
-            'tableStorageNames' => $storageNames,
+            'tableStorageNames' => $physicalNames,
         ];
     }
 
@@ -257,7 +271,15 @@ final class DestructiveMigrations implements MigrationProvider
         }
 
         $conn = $plugin->connection();
+        $retiredIn = $state['retiredColumns']["$table.$column"]['retiredIn'];
         $physTable = self::physicalTable($plugin, $table, $state['tableStorageNames']);
+        if (self::isActivePhysicalColumn($plugin, $physTable, $column)) {
+            throw new HttpError(
+                409,
+                'active_column',
+                "Refusing to drop column `$physTable.$column`: it is still bound by an active collection in the compiled schema.",
+            );
+        }
         if (!self::columnExists($conn, $physTable, $column)) {
             throw HttpError::notFound("Column `$physTable.$column` does not exist in the database (already dropped).");
         }
@@ -280,30 +302,35 @@ final class DestructiveMigrations implements MigrationProvider
             ];
         }
 
+        self::requireAppliedRetirement($plugin, $retiredIn, "column `$table.$column`");
         self::requireConfirmation($liveCount, $opts['confirmRows'] ?? null, "dropping column `$physTable.$column` ($liveCount non-null values)");
         $reason = self::requireReason($opts['reason'] ?? null);
         $archivePath = self::resolveArchive($cfg, $opts['archiveTo'] ?? null);
 
-        $archived = 0;
-        if ($archivePath !== null) {
-            $rows = $conn->run("SELECT * FROM $qTable WHERE $qCol IS NOT NULL");
-            $archived = self::writeJsonl($archivePath, $rows);
-        }
+        return Migrator::locked($conn, $plugin->schemaLock(), static function () use ($plugin, $conn, $table, $physTable, $column, $qTable, $qCol, $ddl, $opts, $reason, $archivePath): array {
+            $liveCount = self::countNonNull($conn, $physTable, $column);
+            self::requireConfirmation($liveCount, $opts['confirmRows'] ?? null, "dropping column `$physTable.$column` ($liveCount non-null values)");
+            $archived = 0;
+            if ($archivePath !== null) {
+                $rows = $conn->run("SELECT * FROM $qTable WHERE $qCol IS NOT NULL");
+                $archived = self::writeJsonl($archivePath, $rows);
+            }
+            $id = self::beginAudit($plugin, "drop_col_{$table}_{$column}", $ddl, $opts['actor'] ?? null, $reason, $liveCount);
+            $conn->run($ddl);
+            self::finishAudit($plugin, $id, $liveCount);
 
-        $conn->run($ddl);
-        $id = self::recordAudit($plugin, "drop_col_{$table}_{$column}", $ddl, $opts['actor'] ?? null, $reason, $liveCount);
-
-        return [
-            'id' => $id,
-            'kind' => 'destructive',
-            'operation' => 'drop-column',
-            'table' => $table,
-            'physicalTable' => $physTable,
-            'column' => $column,
-            'rowsAffected' => $liveCount,
-            'archived' => $archivePath !== null ? ['path' => $archivePath, 'rows' => $archived] : null,
-            'sql' => $ddl,
-        ];
+            return [
+                'id' => $id,
+                'kind' => 'destructive',
+                'operation' => 'drop-column',
+                'table' => $table,
+                'physicalTable' => $physTable,
+                'column' => $column,
+                'rowsAffected' => $liveCount,
+                'archived' => $archivePath !== null ? ['path' => $archivePath, 'rows' => $archived] : null,
+                'sql' => $ddl,
+            ];
+        });
     }
 
     /**
@@ -333,8 +360,18 @@ final class DestructiveMigrations implements MigrationProvider
         }
 
         $conn = $plugin->connection();
+        $retiredIn = $state['retiredTables'][$table]['retiredIn'];
         $physTable = self::physicalTable($plugin, $table, $state['tableStorageNames']);
-        if (!str_starts_with($physTable, $conn->prefix() . 'tp_') || str_starts_with($physTable, $conn->prefix() . 'tp__')) {
+        if (self::isActivePhysicalTable($plugin, $physTable)) {
+            throw new HttpError(
+                409,
+                'active_table',
+                "Refusing to drop table `$physTable`: it is still owned by an active collection in the compiled schema.",
+            );
+        }
+        $isManaged = str_starts_with($physTable, $conn->prefix() . 'tp_') && !str_starts_with($physTable, $conn->prefix() . 'tp__');
+        $isJoin = str_starts_with($physTable, $conn->prefix() . 'tp__join_');
+        if (!$isManaged && !$isJoin) {
             throw new HttpError(403, 'protected_table', "Refusing to drop non-app or system table `$physTable`.");
         }
         if (!self::tableExists($conn, $physTable)) {
@@ -357,29 +394,34 @@ final class DestructiveMigrations implements MigrationProvider
             ];
         }
 
+        self::requireAppliedRetirement($plugin, $retiredIn, "table `$table`");
         self::requireConfirmation($liveCount, $opts['confirmRows'] ?? null, "dropping table `$physTable` ($liveCount rows)");
         $reason = self::requireReason($opts['reason'] ?? null);
         $archivePath = self::resolveArchive($cfg, $opts['archiveTo'] ?? null);
 
-        $archived = 0;
-        if ($archivePath !== null) {
-            $rows = $conn->run("SELECT * FROM $qTable");
-            $archived = self::writeJsonl($archivePath, $rows);
-        }
+        return Migrator::locked($conn, $plugin->schemaLock(), static function () use ($plugin, $conn, $table, $physTable, $qTable, $ddl, $opts, $reason, $archivePath): array {
+            $liveCount = self::countRows($conn, $physTable);
+            self::requireConfirmation($liveCount, $opts['confirmRows'] ?? null, "dropping table `$physTable` ($liveCount rows)");
+            $archived = 0;
+            if ($archivePath !== null) {
+                $rows = $conn->run("SELECT * FROM $qTable");
+                $archived = self::writeJsonl($archivePath, $rows);
+            }
+            $id = self::beginAudit($plugin, "drop_tbl_{$table}", $ddl, $opts['actor'] ?? null, $reason, $liveCount);
+            $conn->run($ddl);
+            self::finishAudit($plugin, $id, $liveCount);
 
-        $conn->run($ddl);
-        $id = self::recordAudit($plugin, "drop_tbl_{$table}", $ddl, $opts['actor'] ?? null, $reason, $liveCount);
-
-        return [
-            'id' => $id,
-            'kind' => 'destructive',
-            'operation' => 'drop-table',
-            'table' => $table,
-            'physicalTable' => $physTable,
-            'rowsAffected' => $liveCount,
-            'archived' => $archivePath !== null ? ['path' => $archivePath, 'rows' => $archived] : null,
-            'sql' => $ddl,
-        ];
+            return [
+                'id' => $id,
+                'kind' => 'destructive',
+                'operation' => 'drop-table',
+                'table' => $table,
+                'physicalTable' => $physTable,
+                'rowsAffected' => $liveCount,
+                'archived' => $archivePath !== null ? ['path' => $archivePath, 'rows' => $archived] : null,
+                'sql' => $ddl,
+            ];
+        });
     }
 
     /**
@@ -430,27 +472,42 @@ final class DestructiveMigrations implements MigrationProvider
         self::requireConfirmation($liveCount, $opts['confirmRows'] ?? null, "purging $liveCount soft-deleted rows from `$kind`");
         $reason = self::requireReason($opts['reason'] ?? null);
         $archivePath = self::resolveArchive($cfg, $opts['archiveTo'] ?? null);
+        $conn = $plugin->connection();
+        $cutoff = isset($query['where']['deletedAt']['lte']) ? (string) $query['where']['deletedAt']['lte'] : null;
 
-        $archived = 0;
-        if ($archivePath !== null) {
-            $archived = self::writeJsonl($archivePath, $rows);
-        }
+        return Migrator::locked($conn, $plugin->schemaLock(), static function () use ($plugin, $db, $kind, $spec, $query, $olderThan, $cutoff, $opts, $reason, $archivePath): array {
+            $rows = $db->findMany($kind, $query);
+            $liveCount = count($rows);
+            self::requireConfirmation($liveCount, $opts['confirmRows'] ?? null, "purging $liveCount soft-deleted rows from `$kind`");
 
-        $pk = $spec['primaryKey'];
-        foreach ($rows as $row) {
-            $db->purge($kind, [$pk => $row[$pk]]);
-        }
-        $summarySql = "-- purge-deleted $kind ($liveCount rows" . ($olderThan ? ", olderThan=$olderThan" : '') . ')';
-        $id = self::recordAudit($plugin, "purge_{$kind}", $summarySql, $opts['actor'] ?? null, $reason, $liveCount);
+            $archived = 0;
+            if ($archivePath !== null) {
+                $archived = self::writeJsonl($archivePath, $rows);
+            }
 
-        return [
-            'id' => $id,
-            'kind' => 'destructive',
-            'operation' => 'purge-deleted',
-            'collection' => $kind,
-            'rowsAffected' => $liveCount,
-            'archived' => $archivePath !== null ? ['path' => $archivePath, 'rows' => $archived] : null,
-        ];
+            $summarySql = "-- purge-deleted $kind ($liveCount rows" . ($olderThan ? ", olderThan=$olderThan" : '') . ')';
+            $id = self::beginAudit($plugin, "purge_{$kind}", $summarySql, $opts['actor'] ?? null, $reason, $liveCount);
+            $pk = $spec['primaryKey'];
+            $purged = 0;
+            foreach ($rows as $row) {
+                $where = [$pk => $row[$pk]];
+                if ($cutoff !== null) {
+                    $where['deletedAt'] = ['lte' => $cutoff];
+                }
+                $gone = $db->transaction(static fn (): array => $db->purge($kind, $where, returning: true, onlyDeleted: true) ?? []);
+                $purged += count($gone);
+            }
+            self::finishAudit($plugin, $id, $purged);
+
+            return [
+                'id' => $id,
+                'kind' => 'destructive',
+                'operation' => 'purge-deleted',
+                'collection' => $kind,
+                'rowsAffected' => $purged,
+                'archived' => $archivePath !== null ? ['path' => $archivePath, 'rows' => $archived] : null,
+            ];
+        });
     }
 
     /**
@@ -487,17 +544,21 @@ final class DestructiveMigrations implements MigrationProvider
             ];
         }
         $reason = self::requireReason($opts['reason'] ?? null);
-        $conn->run($rendered);
-        $rowsAffected = max(0, (int) ($opts['confirmRows'] ?? 0));
-        $id = self::recordAudit($plugin, 'raw_sql', $trimmed, $opts['actor'] ?? null, $reason, $rowsAffected);
 
-        return [
-            'id' => $id,
-            'kind' => 'destructive',
-            'operation' => 'raw-sql',
-            'sql' => $rendered,
-            'rowsAffected' => $rowsAffected,
-        ];
+        return Migrator::locked($conn, $plugin->schemaLock(), static function () use ($plugin, $conn, $trimmed, $rendered, $opts, $reason): array {
+            $id = self::beginAudit($plugin, 'raw_sql', $trimmed, $opts['actor'] ?? null, $reason, 0);
+            $conn->run($rendered);
+            $rowsAffected = max(0, $conn->changes());
+            self::finishAudit($plugin, $id, $rowsAffected);
+
+            return [
+                'id' => $id,
+                'kind' => 'destructive',
+                'operation' => 'raw-sql',
+                'sql' => $rendered,
+                'rowsAffected' => $rowsAffected,
+            ];
+        });
     }
 
     /**
@@ -561,9 +622,12 @@ final class DestructiveMigrations implements MigrationProvider
 
     // ================================================================ internals
 
-    private static function physicalTable(Plugin $plugin, string $table, array $storageNames): string
+    private static function physicalTable(Plugin $plugin, string $table, array $physicalNames): string
     {
         $prefix = $plugin->connection()->prefix();
+        if (isset($physicalNames[$table]) && is_string($physicalNames[$table]) && $physicalNames[$table] !== '') {
+            return str_replace('{prefix}', $prefix, $physicalNames[$table]);
+        }
         if ($plugin->schema->hasCollection($table)) {
             $spec = $plugin->schema->collection($table);
             if (is_string($spec['existingTable'] ?? null) && $spec['existingTable'] !== '') {
@@ -573,17 +637,91 @@ final class DestructiveMigrations implements MigrationProvider
                 return $prefix . $spec['table'];
             }
         }
-        $slug = $storageNames[$table] ?? $table;
-        if (str_starts_with($slug, 'tp_')) {
-            return $prefix . $slug;
+
+        // Compiler always prepends `tp_` for managed tables (even when storageName starts with `tp_`).
+        return $prefix . 'tp_' . $table;
+    }
+
+    private static function isActivePhysicalTable(Plugin $plugin, string $physTable): bool
+    {
+        $prefix = $plugin->connection()->prefix();
+        foreach ($plugin->schema->collections() as $spec) {
+            $owned = null;
+            if (is_string($spec['existingTable'] ?? null) && $spec['existingTable'] !== '') {
+                $owned = $spec['existingTable'];
+            } elseif (is_string($spec['table'] ?? null) && $spec['table'] !== '') {
+                $owned = $prefix . $spec['table'];
+            }
+            if ($owned !== null && strcasecmp($owned, $physTable) === 0) {
+                return true;
+            }
+            foreach ($spec['columns'] ?? [] as $col) {
+                if (($col['type'] ?? null) === 'refList' && is_string($col['references']['join'] ?? null)) {
+                    $join = $col['references']['join'];
+                    if (!str_starts_with($join, 'term:') && strcasecmp($prefix . 'tp__join_' . $join, $physTable) === 0) {
+                        return true;
+                    }
+                }
+            }
         }
 
-        return $prefix . 'tp_' . $slug;
+        return false;
+    }
+
+    private static function isActivePhysicalColumn(Plugin $plugin, string $physTable, string $column): bool
+    {
+        $prefix = $plugin->connection()->prefix();
+        foreach ($plugin->schema->collections() as $spec) {
+            $owned = null;
+            if (is_string($spec['existingTable'] ?? null) && $spec['existingTable'] !== '') {
+                $owned = $spec['existingTable'];
+            } elseif (is_string($spec['table'] ?? null) && $spec['table'] !== '') {
+                $owned = $prefix . $spec['table'];
+            }
+            if ($owned === null || strcasecmp($owned, $physTable) !== 0) {
+                continue;
+            }
+            foreach ($spec['columns'] ?? [] as $logical => $col) {
+                $phys = is_string($col['column'] ?? null) && $col['column'] !== '' ? $col['column'] : (string) $logical;
+                if (strcasecmp($phys, $column) === 0) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static function requireAppliedRetirement(Plugin $plugin, string $retiredIn, string $target): void
+    {
+        $conn = $plugin->connection();
+        $ledger = $conn->prefix() . 'tp__migrations';
+        if (!self::tableExists($conn, $ledger)) {
+            throw new HttpError(
+                409,
+                'retirement_not_applied',
+                "Refusing to drop $target: retirement migration `$retiredIn` has not been applied to this database yet. Run `wp typedpress migrate` first.",
+            );
+        }
+        $rows = $conn->run(
+            "SELECT 1 FROM `$ledger` WHERE `app` = ? AND `id` = ? LIMIT 1",
+            [$plugin->schema->name(), $retiredIn],
+        );
+        if ($rows === []) {
+            throw new HttpError(
+                409,
+                'retirement_not_applied',
+                "Refusing to drop $target: retirement migration `$retiredIn` has not been applied to this database yet. Run `wp typedpress migrate` first.",
+            );
+        }
     }
 
     private static function tableExists(Connection $conn, string $table): bool
     {
-        return $conn->run('SHOW TABLES LIKE ?', [$table]) !== [];
+        return $conn->run(
+            'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+            [$table],
+        ) !== [];
     }
 
     private static function columnExists(Connection $conn, string $table, string $column): bool
@@ -659,18 +797,34 @@ final class DestructiveMigrations implements MigrationProvider
 
     private static function writeJsonl(string $path, array $rows): int
     {
+        if (str_contains($path, '://') || str_contains($path, "\0")) {
+            throw HttpError::invalidInput("Archive path must be a local filesystem path: `$path`.", '/archive-to');
+        }
         $dir = dirname($path);
         if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
             throw new \RuntimeException("Could not create archive directory `$dir`.");
         }
-        $lines = [];
-        foreach ($rows as $row) {
-            $lines[] = (string) Js::jsonStringify($row);
+        $fh = @fopen($path, 'xb');
+        if ($fh === false) {
+            throw new \RuntimeException("Could not create archive file `$path` (it already exists or is not writable). Choose a fresh archive filename.");
         }
-        $payload = $lines === [] ? '' : implode("\n", $lines) . "\n";
-        if (file_put_contents($path, $payload) === false) {
-            throw new \RuntimeException("Could not write archive file `$path`.");
+        try {
+            foreach ($rows as $row) {
+                $line = (string) Js::jsonStringify($row) . "\n";
+                $written = fwrite($fh, $line);
+                if ($written !== strlen($line)) {
+                    throw new \RuntimeException("Short write while archiving to `$path`.");
+                }
+            }
+            if (!fflush($fh)) {
+                throw new \RuntimeException("Could not flush archive file `$path`.");
+            }
+        } catch (\Throwable $e) {
+            fclose($fh);
+            @unlink($path);
+            throw $e;
         }
+        fclose($fh);
 
         return count($rows);
     }
@@ -685,23 +839,11 @@ final class DestructiveMigrations implements MigrationProvider
         return (int) $m[1] * $mult;
     }
 
-    private static function recordAudit(Plugin $plugin, string $slug, string $sql, ?string $actor, string $reason, int $rowsAffected): string
+    /** Record durable audit intent before executing destructive DDL/SQL. */
+    private static function beginAudit(Plugin $plugin, string $slug, string $sql, ?string $actor, string $reason, int $expectedRows): string
     {
         $conn = $plugin->connection();
-        $ledger = $conn->prefix() . 'tp__migrations';
-        $conn->run(
-            "CREATE TABLE IF NOT EXISTS `$ledger` (\n"
-            . "  `app` VARCHAR(191) NOT NULL,\n"
-            . "  `id` VARCHAR(191) NOT NULL,\n"
-            . "  `kind` VARCHAR(32) NOT NULL DEFAULT 'schema',\n"
-            . "  `applied_at` CHAR(24) NOT NULL,\n"
-            . "  `sql` CHAR(64) NULL,\n"
-            . "  `actor` VARCHAR(191) NULL,\n"
-            . "  `reason` TEXT NULL,\n"
-            . "  `rows_affected` BIGINT UNSIGNED NULL,\n"
-            . "  PRIMARY KEY (`app`, `id`)\n"
-            . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
-        );
+        $ledger = Migrator::ensureLedger($conn, $plugin->schema);
         $now = Js::iso(Js::now());
         $ts = gmdate('YmdHis');
         $hash = substr(hash('sha256', "$ts|$slug|$sql|$reason|" . random_bytes(8)), 0, 6);
@@ -712,10 +854,21 @@ final class DestructiveMigrations implements MigrationProvider
             $who = function_exists('get_current_user') ? (string) get_current_user() : 'cli';
         }
         $conn->run(
-            "INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`, `sql`, `actor`, `reason`, `rows_affected`) VALUES (?, ?, 'destructive', ?, ?, ?, ?, ?)",
-            [$plugin->schema->name(), $id, $now, hash('sha256', $sql), $who, $reason, $rowsAffected],
+            "INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`, `sql`, `actor`, `reason`, `rows_affected`) VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)",
+            [$plugin->schema->name(), $id, $now, hash('sha256', $sql), $who, $reason, $expectedRows],
         );
 
         return $id;
+    }
+
+    /** Finalize the audit row with `kind = 'destructive'` and the observed affected row count. */
+    private static function finishAudit(Plugin $plugin, string $id, int $rowsAffected): void
+    {
+        $conn = $plugin->connection();
+        $ledger = $conn->prefix() . 'tp__migrations';
+        $conn->run(
+            "UPDATE `$ledger` SET `kind` = 'destructive', `rows_affected` = ? WHERE `app` = ? AND `id` = ?",
+            [$rowsAffected, $plugin->schema->name(), $id],
+        );
     }
 }

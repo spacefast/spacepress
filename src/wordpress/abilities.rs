@@ -70,8 +70,7 @@ impl Catalog {
                 ),
             );
         }
-        let mut readonly: BTreeSet<String> =
-            locked.iter().filter(|a| a.readonly).map(|a| a.name.clone()).collect();
+        let mut readonly: BTreeSet<String> = locked.iter().filter(|a| a.readonly).map(|a| a.name.clone()).collect();
         readonly.extend(own_readonly(schema));
         let own = own(schema);
         abilities.extend(own.abilities);

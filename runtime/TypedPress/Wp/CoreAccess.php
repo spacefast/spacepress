@@ -211,6 +211,11 @@ final class CoreAccess
         }
         $op = ['read_post' => 'read', 'edit_post' => 'update', 'publish_post' => 'update', 'delete_post' => 'delete'][$cap];
         if ($post->post_status === 'trash') {
+            $spec = self::schema()->collection($collection);
+            if ($op === 'delete' && ($spec['softDelete'] ?? false)) {
+                return self::keys($collection, 'restore', $viewer) === null || self::keys($collection, 'purge', $viewer) === null;
+            }
+
             return self::keys($collection, $op, $viewer) === null;
         }
 

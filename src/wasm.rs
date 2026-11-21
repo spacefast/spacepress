@@ -237,8 +237,12 @@ fn compile_request(request: Request) -> String {
     let previous = || {
         let mut parsed = Vec::with_capacity(prev_entries.len());
         for (id, bytes) in prev_entries {
-            let ops: serde_json::Value = serde_json::from_slice(&bytes)
-                .map_err(|e| diag::Diag::new(diag::Span::NONE, format!("{}/{id}/ops.json is not valid JSON: {e}", pipeline::LEDGER)))?;
+            let ops: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| {
+                diag::Diag::new(
+                    diag::Span::NONE,
+                    format!("{}/{id}/ops.json is not valid JSON: {e}", pipeline::LEDGER),
+                )
+            })?;
             parsed.push((id, ops));
         }
         let mut previous = pipeline::Previous::from_entries(parsed)?;
@@ -412,7 +416,8 @@ pub fn operation(operation: &str, request: &str) -> String {
                                         .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?
                                     {
                                         if fs.is_dir(&path) {
-                                            let id = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                                            let id =
+                                                path.file_name().unwrap_or_default().to_string_lossy().into_owned();
                                             let text = fs
                                                 .read_to_string(&path.join("ops.json"))
                                                 .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?;

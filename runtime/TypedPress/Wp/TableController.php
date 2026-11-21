@@ -239,7 +239,14 @@ final class TableController extends \WP_REST_Controller
     public function restore_revision($request)
     {
         return $this->run('update', $request, function (Viewer $viewer) use ($request): \WP_REST_Response {
-            $row = $this->db()->restoreRevision($this->collection, $this->id($request), (int) $request['rid'], $viewer);
+            $id = $this->id($request);
+            $rid = (int) $request['rid'];
+            $params = $request->get_json_params();
+            if (!is_array($params)) {
+                $params = $request->get_body_params();
+            }
+            [, $rev, $takeover] = Rev::split(is_array($params) ? $params : []);
+            $row = Rev::guarded($this->collection, $id, $rev, $takeover, $viewer, fn (): array => $this->db()->restoreRevision($this->collection, $id, $rid, $viewer));
 
             return $this->prepare_item_for_response($row, $request);
         });

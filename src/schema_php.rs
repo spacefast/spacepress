@@ -229,9 +229,7 @@ fn opt(s: &Option<String>) -> String {
 }
 
 fn retention_php(r: &crate::schema::Retention) -> String {
-    let deleted = r
-        .deleted_seconds
-        .map_or_else(|| "null".to_string(), |s| s.to_string());
+    let deleted = r.deleted_seconds.map_or_else(|| "null".to_string(), |s| s.to_string());
     let revisions = match &r.revisions {
         None => "null".to_string(),
         Some(rr) => format!(

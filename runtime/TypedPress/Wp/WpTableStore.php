@@ -63,7 +63,9 @@ final class WpTableStore implements Store, Links
 
     public function source(string $collection): Source
     {
-        return $this->sources[$collection] ??= Source::plain(
+        $key = $this->db->prefix() . ':' . $collection;
+
+        return $this->sources[$key] ??= Source::plain(
             $this->dialect,
             $this->dialect->quote($this->table($collection)),
             $this->schema->collection($collection)['columns'],
@@ -235,17 +237,25 @@ final class WpTableStore implements Store, Links
 
     public function hasRevisionsTable(): bool
     {
-        return $this->db->run('SHOW TABLES LIKE ?', [$this->db->prefix() . 'tp__revisions']) !== [];
+        return $this->db->run(
+            'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+            [$this->db->prefix() . 'tp__revisions'],
+        ) !== [];
     }
 
     public function latestSchemaMigration(): ?string
     {
         $ledger = $this->db->prefix() . 'tp__migrations';
-        if ($this->db->run('SHOW TABLES LIKE ?', [$ledger]) === []) {
+        if ($this->db->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$ledger]) === []) {
             return null;
         }
+        $hasKind = $this->db->run(
+            'SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+            [$ledger, 'kind'],
+        ) !== [];
+        $kindClause = $hasKind ? " AND `kind` = 'schema'" : '';
         $rows = $this->db->run(
-            "SELECT `id` FROM `$ledger` WHERE `app` = ? AND `id` NOT LIKE '%:%' ORDER BY `id` DESC LIMIT 1",
+            "SELECT `id` FROM `$ledger` WHERE `app` = ? AND `id` NOT LIKE '%:%'{$kindClause} ORDER BY `applied_at` DESC, `id` DESC LIMIT 1",
             [$this->schema->name()],
         );
 
@@ -265,7 +275,8 @@ final class WpTableStore implements Store, Links
     public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = []): void
     {
         $table = '`' . $this->db->prefix() . 'tp__revisions`';
-        $max = $this->db->run("SELECT MAX(`version`) AS v FROM $table WHERE `collection` = ? AND `pk` = ?", [$collection, (string) $pk]);
+        $forUpdate = $this->db->sqlite() ? '' : ' FOR UPDATE';
+        $max = $this->db->run("SELECT MAX(`version`) AS v FROM $table WHERE `collection` = ? AND `pk` = ?$forUpdate", [$collection, (string) $pk]);
         $version = ((int) ($max[0]['v'] ?? 0)) + 1;
         $op = (string) ($meta['op'] ?? 'update');
         $schemaMigration = is_string($meta['schemaMigration'] ?? null) && $meta['schemaMigration'] !== '' ? $meta['schemaMigration'] : null;

@@ -103,10 +103,16 @@ pub fn is_migration_id(id: &str) -> bool {
     if bytes.len() < 23 || bytes[14] != b'_' || bytes[21] != b'_' {
         return false;
     }
-    let ts_ok = bytes[..14].iter().all(u8::is_ascii_digit);
-    let hash_ok = bytes[15..21]
-        .iter()
-        .all(|b| b.is_ascii_digit() || (b'a'..=b'z').contains(b));
+    if !bytes[..14].iter().all(u8::is_ascii_digit) {
+        return false;
+    }
+    let month: u32 = id[4..6].parse().unwrap_or(0);
+    let day: u32 = id[6..8].parse().unwrap_or(0);
+    let hour: u32 = id[8..10].parse().unwrap_or(99);
+    let minute: u32 = id[10..12].parse().unwrap_or(99);
+    let second: u32 = id[12..14].parse().unwrap_or(99);
+    let ts_ok = (1..=12).contains(&month) && (1..=31).contains(&day) && hour <= 23 && minute <= 59 && second <= 59;
+    let hash_ok = bytes[15..21].iter().all(|b| CROCKFORD.contains(b));
     let slug_ok = bytes[22..]
         .iter()
         .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'_');
@@ -231,10 +237,7 @@ fn now_epoch() -> u64 {
 /// Generates a sortable, collision-free migration ID guaranteed to sort strictly after every ID in
 /// `existing_ids`.
 pub fn next_id(existing_ids: &[String], ops: &[Json], slug: &str) -> String {
-    let max_existing = existing_ids
-        .iter()
-        .filter_map(|id| parse_ts_epoch(id))
-        .max();
+    let max_existing = existing_ids.iter().filter_map(|id| parse_ts_epoch(id)).max();
     let mut ts_secs = now_epoch();
     if let Some(prev) = max_existing
         && ts_secs <= prev
@@ -455,9 +458,7 @@ fn cols_insert(table: &mut Json, name: &str, col: Json) {
 /// The enriched revisions system table definition (ADR 2026-11-21 §5).
 fn revisions_table_def() -> Json {
     let mut cols = Map::new();
-    let c = |ty: &str, not_null: bool| {
-        json!({ "type": ty, "notNull": not_null, "primaryKey": false, "autoIncrement": false, "unique": false, "max": null, "default": null, "references": null })
-    };
+    let c = |ty: &str, not_null: bool| json!({ "type": ty, "notNull": not_null, "primaryKey": false, "autoIncrement": false, "unique": false, "max": null, "default": null, "references": null });
     cols.insert(
         "id".into(),
         json!({ "type": "integer", "notNull": true, "primaryKey": true, "autoIncrement": true, "unique": false, "max": null, "default": null, "references": null }),
@@ -757,6 +758,15 @@ fn drop_index(t: &str, name: &str, tables: &Map) -> String {
 }
 
 fn create_table(t: &str, def: &Json, tables: &Map) -> String {
+    create_table_with_fks(t, def, tables, None)
+}
+
+fn create_table_with_fks(
+    t: &str,
+    def: &Json,
+    tables: &Map,
+    deferred_targets: Option<&std::collections::HashSet<&str>>,
+) -> String {
     let empty = Map::new();
     let cols = def["columns"].as_object().unwrap_or(&empty);
     if def["existingTable"].is_string() {
@@ -813,6 +823,13 @@ fn create_table(t: &str, def: &Json, tables: &Map) -> String {
         ));
     }
     for (n, c) in cols {
+        if let Some(deferred) = deferred_targets
+            && let Some(target) = c["references"]["table"].as_str()
+            && target != t
+            && deferred.contains(target)
+        {
+            continue;
+        }
         if let Some(fk) = fk_sql(t, n, c, tables) {
             body.push(fk);
         }
@@ -938,11 +955,11 @@ pub fn fold(entries: &[(String, Json)]) -> Result<FoldedState, Diag> {
                     {
                         return Err(Diag::new(
                             Span::NONE,
-                            format!(
-                                "conflicting parallel migrations: `{prev_id}` and `{id}` both create table `{t}`"
-                            ),
+                            format!("conflicting parallel migrations: `{prev_id}` and `{id}` both create table `{t}`"),
                         )
-                        .help("resolve the schema conflict by removing or reconciling one of the conflicting migrations")
+                        .help(
+                            "resolve the schema conflict by removing or reconciling one of the conflicting migrations",
+                        )
                         .code(Code::Schema));
                     }
                     if let Some(prev_id) = retired_table_origin.get(&t)
@@ -988,9 +1005,7 @@ pub fn fold(entries: &[(String, Json)]) -> Result<FoldedState, Diag> {
                         )
                         .code(Code::Schema));
                     };
-                    let cols = table_def["columns"]
-                        .as_object_mut()
-                        .expect("table columns object");
+                    let cols = table_def["columns"].as_object_mut().expect("table columns object");
                     if cols.contains_key(&col) {
                         let prev_id = col_origin
                             .get(&(t.clone(), col.clone()))
@@ -1030,9 +1045,7 @@ pub fn fold(entries: &[(String, Json)]) -> Result<FoldedState, Diag> {
                         )
                         .code(Code::Schema));
                     };
-                    let cols = table_def["columns"]
-                        .as_object_mut()
-                        .expect("table columns object");
+                    let cols = table_def["columns"].as_object_mut().expect("table columns object");
                     let Some(current) = cols.get(&col) else {
                         let prev_id = col_origin
                             .get(&(t.clone(), col.clone()))
@@ -1070,7 +1083,12 @@ pub fn fold(entries: &[(String, Json)]) -> Result<FoldedState, Diag> {
                         && let Some(cols) = table_def["columns"].as_object_mut()
                         && let Some(mut old_def) = cols.shift_remove(&col)
                     {
-                        old_def["notNull"] = json!(false);
+                        // Match the actual DDL emitted on retirement: NOT NULL is relaxed only
+                        // when the column had no literal default (columns with a default keep
+                        // their NOT NULL constraint in the live database).
+                        if old_def["notNull"] == true && old_def["primaryKey"] != true && old_def["default"].is_null() {
+                            old_def["notNull"] = json!(false);
+                        }
                         old_def["unique"] = json!(false);
                         old_def["references"] = Json::Null;
                         state
@@ -1121,15 +1139,86 @@ pub fn fold(entries: &[(String, Json)]) -> Result<FoldedState, Diag> {
                         && let Some(meta) = op["meta"].as_object()
                     {
                         for (k, v) in meta {
-                            if v.is_null() {
-                                obj.shift_remove(k);
-                            } else {
-                                obj.insert(k.clone(), v.clone());
+                            match k.as_str() {
+                                "addIndexes" => {
+                                    let mut arr =
+                                        obj.get("indexes").and_then(Json::as_array).cloned().unwrap_or_default();
+                                    for item in v.as_array().into_iter().flatten() {
+                                        if !arr.contains(item) {
+                                            arr.push(item.clone());
+                                        }
+                                    }
+                                    obj.insert("indexes".into(), Json::Array(arr));
+                                }
+                                "removeIndexes" => {
+                                    let mut arr =
+                                        obj.get("indexes").and_then(Json::as_array).cloned().unwrap_or_default();
+                                    if let Some(rm) = v.as_array() {
+                                        arr.retain(|item| !rm.contains(item));
+                                    }
+                                    if arr.is_empty() {
+                                        obj.shift_remove("indexes");
+                                    } else {
+                                        obj.insert("indexes".into(), Json::Array(arr));
+                                    }
+                                }
+                                "addQueried" => {
+                                    let mut arr =
+                                        obj.get("queried").and_then(Json::as_array).cloned().unwrap_or_default();
+                                    for item in v.as_array().into_iter().flatten() {
+                                        if !arr.contains(item) {
+                                            arr.push(item.clone());
+                                        }
+                                    }
+                                    obj.insert("queried".into(), Json::Array(arr));
+                                }
+                                "removeQueried" => {
+                                    let mut arr =
+                                        obj.get("queried").and_then(Json::as_array).cloned().unwrap_or_default();
+                                    if let Some(rm) = v.as_array() {
+                                        arr.retain(|item| !rm.contains(item));
+                                    }
+                                    if arr.is_empty() {
+                                        obj.shift_remove("queried");
+                                    } else {
+                                        obj.insert("queried".into(), Json::Array(arr));
+                                    }
+                                }
+                                _ => {
+                                    if v.is_null() {
+                                        obj.shift_remove(k);
+                                    } else {
+                                        obj.insert(k.clone(), v.clone());
+                                    }
+                                }
                             }
                         }
                     }
                 }
-                "addIndex" | "dropIndex" | "addForeignKey" | "dropForeignKey" => {
+                "addIndex" => {
+                    let t = op["table"].as_str().unwrap_or("");
+                    if let Some(retired) = state.retired_columns.get(t)
+                        && let Some(ix_cols) = op["index"]["columns"].as_array()
+                    {
+                        for c in ix_cols.iter().filter_map(Json::as_str) {
+                            if retired.contains_key(c) {
+                                let prev_id = col_origin
+                                    .get(&(t.to_string(), c.to_string()))
+                                    .map(String::as_str)
+                                    .unwrap_or("an earlier migration");
+                                return Err(Diag::new(
+                                    Span::NONE,
+                                    format!(
+                                        "conflicting parallel migrations: `{prev_id}` retired `{t}.{c}` while `{id}` adds an index on it"
+                                    ),
+                                )
+                                .help("remove the index or restore the column before building")
+                                .code(Code::Schema));
+                            }
+                        }
+                    }
+                }
+                "dropIndex" | "addForeignKey" | "dropForeignKey" => {
                     // Audited in ops.json; state is carried by columns + updateTableMeta.
                 }
                 other => {
@@ -1174,12 +1263,14 @@ pub fn plan_forward_only(
                 Span::NONE,
                 format!("table `{t}` was retired in an earlier migration and still exists in the database"),
             )
-            .help(format!(
+            .help(
                 "give the new table a distinct `storageName`, or purge the retired table first with `typedpress/danger`"
-            ))
+                    .to_string(),
+            )
             .code(Code::Schema));
         }
     }
+    let mut cyclic: Vec<&String> = Vec::new();
     while !pending.is_empty() {
         let before = pending.len();
         pending.retain(|t| {
@@ -1197,12 +1288,43 @@ pub fn plan_forward_only(
             !deps_ready
         });
         if pending.len() == before {
-            created.append(&mut pending);
+            cyclic.append(&mut pending);
+            break;
         }
     }
-    for t in created {
-        ops.push(json!({ "op": "createTable", "table": t, "def": next_t[t] }));
-        statements.push(create_table(t, &next_t[t], &next_t));
+    for t in &created {
+        ops.push(json!({
+            "op": "createTable",
+            "table": t,
+            "physicalTable": physical_table_name(t, &next_t),
+            "def": next_t[*t],
+        }));
+        statements.push(create_table(t, &next_t[*t], &next_t));
+    }
+    if !cyclic.is_empty() {
+        let cyclic_set: std::collections::HashSet<&str> = cyclic.iter().map(|s| s.as_str()).collect();
+        for t in &cyclic {
+            ops.push(json!({
+                "op": "createTable",
+                "table": t,
+                "physicalTable": physical_table_name(t, &next_t),
+                "def": next_t[*t],
+            }));
+            statements.push(create_table_with_fks(t, &next_t[*t], &next_t, Some(&cyclic_set)));
+        }
+        for t in &cyclic {
+            let tbl_sql = table(t, &next_t);
+            for (k, c) in next_t[*t]["columns"].as_object().unwrap_or(&empty) {
+                if let Some(target) = c["references"]["table"].as_str()
+                    && target != t.as_str()
+                    && cyclic_set.contains(target)
+                    && let Some(fk) = fk_sql(t, k, c, &next_t)
+                {
+                    ops.push(json!({ "op": "addForeignKey", "table": t, "column": k, "name": fk_name(t, k) }));
+                    statements.push(format!("ALTER TABLE {tbl_sql} ADD {fk};"));
+                }
+            }
+        }
     }
 
     // 2. Existing SQL tables: strictly forward-only alterations + retire removed columns.
@@ -1342,9 +1464,8 @@ pub fn plan_forward_only(
         // Retired columns: NEVER drop! Relax NOT NULL without default so future inserts succeed.
         for (k, prev_col) in pc {
             if !nc.contains_key(k) {
-                let needs_relax = prev_col["notNull"] == true
-                    && prev_col["primaryKey"] != true
-                    && prev_col["default"].is_null();
+                let needs_relax =
+                    prev_col["notNull"] == true && prev_col["primaryKey"] != true && prev_col["default"].is_null();
                 if needs_relax {
                     let mut relaxed = prev_col.clone();
                     relaxed["notNull"] = json!(false);
@@ -1362,7 +1483,9 @@ pub fn plan_forward_only(
         // Added indexes.
         for ix in &n_ix {
             if !p_ix.contains(ix) {
-                ops.push(json!({ "op": "addIndex", "table": t, "index": { "name": ix.0, "unique": ix.1, "columns": ix.2 } }));
+                ops.push(
+                    json!({ "op": "addIndex", "table": t, "index": { "name": ix.0, "unique": ix.1, "columns": ix.2 } }),
+                );
                 statements.push(create_index(t, ix, &next_t));
             }
         }
@@ -1378,14 +1501,55 @@ pub fn plan_forward_only(
             }
         }
 
-        // Sync table-level non-column metadata (`drafts`, `localized`, `indexes`, `queried`).
+        // Sync table-level non-column metadata (`drafts`, `localized`, `softDelete`, and set deltas
+        // for `indexes` / `queried` so parallel branch additions fold without overwriting each other).
         let mut meta_diff = Map::new();
-        for key in ["drafts", "localized", "indexes", "queried"] {
+        for key in ["drafts", "localized", "softDelete"] {
             let prev_v = prev_def.get(key).cloned().unwrap_or(Json::Null);
             let next_v = next_def.get(key).cloned().unwrap_or(Json::Null);
             if prev_v != next_v {
                 meta_diff.insert(key.into(), next_v);
             }
+        }
+        let prev_idx = prev_def.get("indexes").and_then(Json::as_array);
+        let next_idx = next_def.get("indexes").and_then(Json::as_array);
+        let add_idx: Vec<Json> = next_idx
+            .into_iter()
+            .flatten()
+            .filter(|ix| prev_idx.is_none_or(|p| !p.contains(ix)))
+            .cloned()
+            .collect();
+        let rm_idx: Vec<Json> = prev_idx
+            .into_iter()
+            .flatten()
+            .filter(|ix| next_idx.is_none_or(|n| !n.contains(ix)))
+            .cloned()
+            .collect();
+        if !add_idx.is_empty() {
+            meta_diff.insert("addIndexes".into(), Json::Array(add_idx));
+        }
+        if !rm_idx.is_empty() {
+            meta_diff.insert("removeIndexes".into(), Json::Array(rm_idx));
+        }
+        let prev_q = prev_def.get("queried").and_then(Json::as_array);
+        let next_q = next_def.get("queried").and_then(Json::as_array);
+        let add_q: Vec<Json> = next_q
+            .into_iter()
+            .flatten()
+            .filter(|q| prev_q.is_none_or(|p| !p.contains(q)))
+            .cloned()
+            .collect();
+        let rm_q: Vec<Json> = prev_q
+            .into_iter()
+            .flatten()
+            .filter(|q| next_q.is_none_or(|n| !n.contains(q)))
+            .cloned()
+            .collect();
+        if !add_q.is_empty() {
+            meta_diff.insert("addQueried".into(), Json::Array(add_q));
+        }
+        if !rm_q.is_empty() {
+            meta_diff.insert("removeQueried".into(), Json::Array(rm_q));
         }
         if !meta_diff.is_empty() {
             ops.push(json!({ "op": "updateTableMeta", "table": t, "meta": meta_diff }));
@@ -1394,7 +1558,11 @@ pub fn plan_forward_only(
 
     // 3. Retired SQL tables: NEVER emit DROP TABLE!
     for t in prev_t.keys().filter(|t| !next_t.contains_key(*t)) {
-        ops.push(json!({ "op": "retireTable", "table": t }));
+        ops.push(json!({
+            "op": "retireTable",
+            "table": t,
+            "physicalTable": physical_table_name(t, &prev_t),
+        }));
         warnings.push(format!(
             "retiring table \"{t}\" (data preserved; purge later with typedpress/danger)"
         ));
@@ -1554,7 +1722,10 @@ mod tests {
         json!({ "type": "integer", "notNull": true, "primaryKey": true, "autoIncrement": true, "unique": false, "max": null, "default": null, "references": null })
     }
 
-    fn apply_step(history: &mut Vec<(String, Json)>, next: &Json) -> Result<Option<(MigrationEntry, Vec<String>)>, Diag> {
+    fn apply_step(
+        history: &mut Vec<(String, Json)>,
+        next: &Json,
+    ) -> Result<Option<(MigrationEntry, Vec<String>)>, Diag> {
         let folded = fold(history)?;
         let ids: Vec<String> = history.iter().map(|(id, _)| id.clone()).collect();
         let planned = plan_forward_only(&folded, next, &ids)?;
@@ -1597,14 +1768,28 @@ mod tests {
         let mut v3_bad = v2.clone();
         v3_bad["tables"]["items"]["columns"]["note"]["notNull"] = json!(true);
         let err = apply_step(&mut history, &v3_bad).unwrap_err();
-        assert!(err.message.contains("required without a literal default"), "{}", err.message);
+        assert!(
+            err.message.contains("required without a literal default"),
+            "{}",
+            err.message
+        );
 
         // Tightening with a literal default backfills and modifies safely.
         let mut v3 = v3_bad.clone();
         v3["tables"]["items"]["columns"]["note"]["default"] = json!("ready");
         let (m3, _) = apply_step(&mut history, &v3).unwrap().unwrap();
-        assert!(m3.sql.contains("UPDATE `{prefix}tp_items` SET `note` = 'ready' WHERE `note` IS NULL;"), "{}", m3.sql);
-        assert!(m3.sql.contains("MODIFY COLUMN `note` LONGTEXT DEFAULT ('ready') NOT NULL;"), "{}", m3.sql);
+        assert!(
+            m3.sql
+                .contains("UPDATE `{prefix}tp_items` SET `note` = 'ready' WHERE `note` IS NULL;"),
+            "{}",
+            m3.sql
+        );
+        assert!(
+            m3.sql
+                .contains("MODIFY COLUMN `note` LONGTEXT DEFAULT ('ready') NOT NULL;"),
+            "{}",
+            m3.sql
+        );
 
         // Removing a column and a table RETIRES them (zero DROP COLUMN / DROP TABLE).
         let mut v4 = v3.clone();
@@ -1613,9 +1798,21 @@ mod tests {
         let (m4, warnings) = apply_step(&mut history, &v4).unwrap().unwrap();
         assert!(!m4.sql.contains("DROP COLUMN"), "{}", m4.sql);
         assert!(!m4.sql.contains("DROP TABLE"), "{}", m4.sql);
-        assert!(m4.sql.contains("DROP FOREIGN KEY `tp_items_locationId_fk`"), "{}", m4.sql);
-        assert!(warnings.iter().any(|w| w.contains("retiring column \"items\".\"note\"")), "{warnings:?}");
-        assert!(warnings.iter().any(|w| w.contains("retiring table \"locations\"")), "{warnings:?}");
+        assert!(
+            m4.sql.contains("DROP FOREIGN KEY `tp_items_locationId_fk`"),
+            "{}",
+            m4.sql
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("retiring column \"items\".\"note\"")),
+            "{warnings:?}"
+        );
+        assert!(
+            warnings.iter().any(|w| w.contains("retiring table \"locations\"")),
+            "{warnings:?}"
+        );
 
         // Next build after retire is a no-op!
         assert!(apply_step(&mut history, &v4).unwrap().is_none());
@@ -1638,7 +1835,12 @@ mod tests {
         req["notNull"] = json!(true);
         add_req["tables"]["posts"]["columns"]["code"] = req;
         let err = apply_step(&mut history, &add_req).unwrap_err();
-        assert!(err.message.contains("cannot add required column `posts.code` without a literal default"), "{}", err.message);
+        assert!(
+            err.message
+                .contains("cannot add required column `posts.code` without a literal default"),
+            "{}",
+            err.message
+        );
 
         let mut narrow = v1.clone();
         narrow["tables"]["posts"]["columns"]["title"]["max"] = json!(100);
@@ -1687,13 +1889,12 @@ mod tests {
         let mut hist_c = base_history.clone();
         let (mc, _) = apply_step(&mut hist_c, &branch_c).unwrap().unwrap();
 
-        let conflict = fold(&[
-            (init.id, init.ops),
-            (ma.id.clone(), ma.ops),
-            (mc.id.clone(), mc.ops),
-        ])
-        .unwrap_err();
-        assert!(conflict.message.contains("conflicting parallel migrations"), "{}", conflict.message);
+        let conflict = fold(&[(init.id, init.ops), (ma.id.clone(), ma.ops), (mc.id.clone(), mc.ops)]).unwrap_err();
+        assert!(
+            conflict.message.contains("conflicting parallel migrations"),
+            "{}",
+            conflict.message
+        );
         assert!(conflict.message.contains(&ma.id), "{}", conflict.message);
         assert!(conflict.message.contains(&mc.id), "{}", conflict.message);
     }
@@ -1710,18 +1911,28 @@ mod tests {
                 "columns": { "owner_id": col("integer"), "target_id": col("integer"), "position": col("integer") }
             }),
         );
-        assert_eq!(physical_table_name("posts_tags", &tables), "{prefix}tp__join_posts_tags");
+        assert_eq!(
+            physical_table_name("posts_tags", &tables),
+            "{prefix}tp__join_posts_tags"
+        );
     }
 
     #[test]
     fn text_becoming_number_or_boolean_is_detected_as_lossy() {
         let text = col("text");
-        assert_eq!(fits(&text, &col("boolean")).as_deref(), Some("BINARY {col} IN ('0', '1')"));
+        assert_eq!(
+            fits(&text, &col("boolean")).as_deref(),
+            Some("BINARY {col} IN ('0', '1')")
+        );
         assert_eq!(
             fits(&text, &col("integer")).as_deref(),
             Some("BINARY CAST(CAST({col} AS SIGNED) AS CHAR) = BINARY {col}")
         );
-        assert!(fits(&text, &col("real")).unwrap().contains("LOCATE(CHAR(10), {col}) = 0"));
+        assert!(
+            fits(&text, &col("real"))
+                .unwrap()
+                .contains("LOCATE(CHAR(10), {col}) = 0")
+        );
         // Widening VARCHAR(50) -> VARCHAR(191) -> LONGTEXT is lossless.
         let mut v50 = col("text");
         v50["max"] = json!(50);
@@ -1730,5 +1941,111 @@ mod tests {
         assert!(fits(&v50, &v191).is_none());
         assert!(fits(&v191, &text).is_none());
         assert!(fits(&v191, &v50).is_some());
+    }
+
+    #[test]
+    fn parallel_independent_indexes_fold_without_duplicate_ddl() {
+        let mut a = col("text");
+        a["max"] = json!(64);
+        let mut b = col("text");
+        b["max"] = json!(64);
+        let base = snap(json!({
+            "t": { "editor": false, "drafts": false, "columns": { "id": id(), "a": a, "b": b } }
+        }));
+        let mut base_hist = Vec::new();
+        let (init, _) = apply_step(&mut base_hist, &base).unwrap().unwrap();
+
+        let mut br_a = base.clone();
+        br_a["tables"]["t"]["indexes"] = json!([{ "columns": ["a"], "unique": false }]);
+        let mut hist_a = base_hist.clone();
+        let (ma, _) = apply_step(&mut hist_a, &br_a).unwrap().unwrap();
+
+        let mut br_b = base.clone();
+        br_b["tables"]["t"]["indexes"] = json!([{ "columns": ["b"], "unique": false }]);
+        let mut hist_b = base_hist.clone();
+        let (mb, _) = apply_step(&mut hist_b, &br_b).unwrap().unwrap();
+
+        let mut merged_snap = base.clone();
+        merged_snap["tables"]["t"]["indexes"] = json!([
+            { "columns": ["a"], "unique": false },
+            { "columns": ["b"], "unique": false }
+        ]);
+        let mut merged_hist = vec![(init.id, init.ops), (ma.id, ma.ops), (mb.id, mb.ops)];
+        // Both indexes already exist in the folded state, so the merged build emits ZERO DDL.
+        assert!(apply_step(&mut merged_hist, &merged_snap).unwrap().is_none());
+    }
+
+    #[test]
+    fn enabling_soft_delete_persists_flag_and_next_build_is_noop() {
+        let mut slug = col("text");
+        slug["max"] = json!(64);
+        slug["unique"] = json!(true);
+        let v1 = snap(json!({
+            "items": { "editor": false, "drafts": false, "softDelete": false, "columns": { "id": id(), "slug": slug } }
+        }));
+        let mut history = Vec::new();
+        apply_step(&mut history, &v1).unwrap().unwrap();
+
+        let mut v2 = v1.clone();
+        v2["tables"]["items"]["softDelete"] = json!(true);
+        v2["tables"]["items"]["columns"]["deletedAt"] = col("timestamp");
+        let mut live = col("boolean");
+        live["default"] = json!(true);
+        v2["tables"]["items"]["columns"]["_live"] = live;
+        let (m2, _) = apply_step(&mut history, &v2).unwrap().unwrap();
+        assert!(m2.sql.contains("deletedAt_idx"), "{}", m2.sql);
+        // Second unchanged build MUST emit nothing (softDelete folded cleanly).
+        assert!(apply_step(&mut history, &v2).unwrap().is_none());
+    }
+
+    #[test]
+    fn retiring_required_column_with_default_then_restoring_optional_emits_modify() {
+        let mut count = col("integer");
+        count["notNull"] = json!(true);
+        count["default"] = json!(42);
+        let v1 = snap(json!({
+            "items": { "editor": false, "drafts": false, "columns": { "id": id(), "count": count } }
+        }));
+        let mut history = Vec::new();
+        apply_step(&mut history, &v1).unwrap().unwrap();
+
+        let mut v2 = v1.clone();
+        v2["tables"]["items"]["columns"]
+            .as_object_mut()
+            .unwrap()
+            .remove("count");
+        let (m2, _) = apply_step(&mut history, &v2).unwrap().unwrap();
+        assert!(!m2.sql.contains("MODIFY COLUMN"), "{}", m2.sql);
+
+        // Restore as optional with same default: DB still has NOT NULL, so MODIFY COLUMN MUST run.
+        let mut v3 = v1.clone();
+        v3["tables"]["items"]["columns"]["count"]["notNull"] = json!(false);
+        let (m3, _) = apply_step(&mut history, &v3).unwrap().unwrap();
+        assert!(
+            m3.sql.contains("MODIFY COLUMN `count` BIGINT DEFAULT 42;"),
+            "{}",
+            m3.sql
+        );
+    }
+
+    #[test]
+    fn cyclic_foreign_keys_emit_tables_before_alter_table_constraints() {
+        let mut fk_b = col("integer");
+        fk_b["references"] =
+            json!({ "table": "b", "column": "id", "onDelete": "set null", "onUpdate": null, "unsigned": true });
+        let mut fk_a = col("integer");
+        fk_a["references"] =
+            json!({ "table": "a", "column": "id", "onDelete": "set null", "onUpdate": null, "unsigned": true });
+        let v1 = snap(json!({
+            "a": { "editor": false, "drafts": false, "columns": { "id": id(), "bId": fk_b } },
+            "b": { "editor": false, "drafts": false, "columns": { "id": id(), "aId": fk_a } },
+        }));
+        let mut history = Vec::new();
+        let (m1, _) = apply_step(&mut history, &v1).unwrap().unwrap();
+        let ca = m1.sql.find("CREATE TABLE `{prefix}tp_a`").unwrap();
+        let cb = m1.sql.find("CREATE TABLE `{prefix}tp_b`").unwrap();
+        let alt_a = m1.sql.find("ALTER TABLE `{prefix}tp_a` ADD CONSTRAINT").unwrap();
+        let alt_b = m1.sql.find("ALTER TABLE `{prefix}tp_b` ADD CONSTRAINT").unwrap();
+        assert!(ca < alt_a && cb < alt_a && ca < alt_b && cb < alt_b, "{}", m1.sql);
     }
 }

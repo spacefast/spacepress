@@ -729,9 +729,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 .help("give each field a distinct physical `.column(...)` name"));
             }
             for alias in &col.aliases {
-                if columns.contains_key(alias)
-                    || columns.values().any(|o| o.aliases.iter().any(|a| a == alias))
-                {
+                if columns.contains_key(alias) || columns.values().any(|o| o.aliases.iter().any(|a| a == alias)) {
                     return Err(Diag::new(
                         b.span_of("alias"),
                         format!("alias `{alias}` on `{name}` collides with another field or alias"),
@@ -935,6 +933,61 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 coll.columns.insert("_live".into(), live);
             }
         }
+        // Validate resolved physical column names (ASCII case-insensitively) after system fields
+        // are added so user `.column(...)` overrides and case-differing fields (`meta`/`META`)
+        // cannot silently overwrite system columns or emit duplicate SQL columns.
+        let mut seen_phys: std::collections::HashMap<String, (String, bool)> = std::collections::HashMap::new();
+        for (col_name, col) in &coll.columns {
+            let phys = col.physical_name();
+            let lower = phys.to_ascii_lowercase();
+            if let Some((other, other_sys)) = seen_phys.get(&lower) {
+                let msg = if *other_sys || col.system {
+                    format!(
+                        "`{}`.{col_name} maps to physical column `{phys}`, which collides with system column `{other}`",
+                        coll.table
+                    )
+                } else {
+                    format!(
+                        "`{}`.{col_name} and `{}`.{other} both map to SQL column `{phys}` (SQL column names are case-insensitive)",
+                        coll.table, coll.table
+                    )
+                };
+                return Err(Diag::new(Span::NONE, msg)
+                    .help("give the field a distinct name or `.column(...)` override")
+                    .code(crate::diag::Code::Schema));
+            }
+            seen_phys.insert(lower, (col_name.clone(), col.system));
+        }
+    }
+    // Validate resolved SQL physical table names: forbid reserved system table namespaces (`tp__*`)
+    // and case-insensitive collisions across collections.
+    let mut seen_tables: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for coll in out.schema.collections.values() {
+        if coll.editor || coll.taxonomy.is_some() || coll.auth || coll.existing_table.is_some() {
+            continue;
+        }
+        let storage = coll.table.as_str();
+        let lower_storage = storage.to_ascii_lowercase();
+        if lower_storage == "tp__revisions" || lower_storage == "tp__migrations" || lower_storage.starts_with("tp__") {
+            return Err(Diag::new(
+                Span::NONE,
+                format!("`{}` uses reserved system table name `{storage}`", coll.key),
+            )
+            .help("choose a `storageName` outside the `tp__*` system namespace")
+            .code(crate::diag::Code::Schema));
+        }
+        if let Some(other) = seen_tables.get(&lower_storage) {
+            return Err(Diag::new(
+                Span::NONE,
+                format!(
+                    "`{}` and `{other}` both map to SQL table `tp_{storage}` (table names are case-insensitive)",
+                    coll.key
+                ),
+            )
+            .help("give each table a distinct name or `storageName`")
+            .code(crate::diag::Code::Schema));
+        }
+        seen_tables.insert(lower_storage, coll.key.clone());
     }
     crate::commerce::relations(&mut out.schema);
     // Each taxonomy registers for the union of its `on` and every kind with a `terms()` field for it.
@@ -1605,7 +1658,10 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
                 Some(other) => {
                     return Err(Diag::new(
                         mp_span,
-                        format!("migrationProvider.requireArchive must be boolean, not {}", other.describe()),
+                        format!(
+                            "migrationProvider.requireArchive must be boolean, not {}",
+                            other.describe()
+                        ),
                     ));
                 }
             };
@@ -1615,7 +1671,10 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
                 Some(other) => {
                     return Err(Diag::new(
                         mp_span,
-                        format!("migrationProvider.allowRawSql must be boolean, not {}", other.describe()),
+                        format!(
+                            "migrationProvider.allowRawSql must be boolean, not {}",
+                            other.describe()
+                        ),
                     ));
                 }
             };
@@ -1625,12 +1684,14 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
                     format!("migrationProvider \"{id}\" is already registered"),
                 ));
             }
-            out.schema.migration_providers.push(crate::schema::MigrationProviderConfig {
-                id,
-                cli_only,
-                require_archive,
-                allow_raw_sql,
-            });
+            out.schema
+                .migration_providers
+                .push(crate::schema::MigrationProviderConfig {
+                    id,
+                    cli_only,
+                    require_archive,
+                    allow_raw_sql,
+                });
         }
         if let Some((index, _)) = owner {
             for root in &mut out.roots[first..] {
@@ -2279,8 +2340,10 @@ fn collection_options(
     };
     let soft_delete = match flag("softDelete")? {
         Some(true) if auth => {
-            return Err(Diag::new(span("softDelete"), "userProjection() cannot enable softDelete")
-                .help("WordPress owns user records; remove `softDelete: true`"));
+            return Err(
+                Diag::new(span("softDelete"), "userProjection() cannot enable softDelete")
+                    .help("WordPress owns user records; remove `softDelete: true`"),
+            );
         }
         Some(true) if existing_table.is_some() => {
             return Err(Diag::new(
@@ -2297,7 +2360,9 @@ fn collection_options(
             if let Some(b) = c.columns.get(reserved) {
                 return Err(Diag::new(
                     b.span,
-                    format!("`{reserved}` is reserved: softDelete adds these (deletedAt, deletedBy, deletedGroup, _live)"),
+                    format!(
+                        "`{reserved}` is reserved: softDelete adds these (deletedAt, deletedBy, deletedGroup, _live)"
+                    ),
                 )
                 .help("remove the column, or opt out with `{ softDelete: false }`"));
             }
@@ -2314,10 +2379,8 @@ fn collection_options(
             );
         }
         Some(true) if !revisions => {
-            return Err(
-                Diag::new(span("staged"), "staged versions require `revisions: true`")
-                    .help("remove `revisions: false`, or set `staged: false`"),
-            );
+            return Err(Diag::new(span("staged"), "staged versions require `revisions: true`")
+                .help("remove `revisions: false`, or set `staged: false`"));
         }
         Some(on) => on,
         None => editor && revisions,
@@ -2676,10 +2739,11 @@ fn extract_retention(v: Option<&Value>, ev: &Evaluator<'_>, span: Span) -> Resul
         );
     }
     let Value::Object(map) = v else {
-        return Err(
-            Diag::new(span, format!("`retention` must be \"forever\" or an object, not {}", v.describe()))
-                .help("write `retention: { deleted: \"90d\", revisions: \"forever\" }`"),
-        );
+        return Err(Diag::new(
+            span,
+            format!("`retention` must be \"forever\" or an object, not {}", v.describe()),
+        )
+        .help("write `retention: { deleted: \"90d\", revisions: \"forever\" }`"));
     };
     let map = map.borrow();
     let mut ret = Retention::default();
@@ -2692,7 +2756,10 @@ fn extract_retention(v: Option<&Value>, ev: &Evaluator<'_>, span: Span) -> Resul
                 other => {
                     return Err(Diag::new(
                         kspan,
-                        format!("`retention.deleted` must be \"forever\" or a duration string, not {}", other.describe()),
+                        format!(
+                            "`retention.deleted` must be \"forever\" or a duration string, not {}",
+                            other.describe()
+                        ),
                     ));
                 }
             },
@@ -2713,7 +2780,10 @@ fn extract_retention(v: Option<&Value>, ev: &Evaluator<'_>, span: Span) -> Resul
                                 other => {
                                     return Err(Diag::new(
                                         rspan,
-                                        format!("`retention.revisions.keepLast` must be a positive integer, not {}", other.describe()),
+                                        format!(
+                                            "`retention.revisions.keepLast` must be a positive integer, not {}",
+                                            other.describe()
+                                        ),
                                     ));
                                 }
                             },
@@ -2723,16 +2793,18 @@ fn extract_retention(v: Option<&Value>, ev: &Evaluator<'_>, span: Span) -> Resul
                                 other => {
                                     return Err(Diag::new(
                                         rspan,
-                                        format!("`retention.revisions.maxAge` must be \"forever\" or a duration string, not {}", other.describe()),
+                                        format!(
+                                            "`retention.revisions.maxAge` must be \"forever\" or a duration string, not {}",
+                                            other.describe()
+                                        ),
                                     ));
                                 }
                             },
                             other => {
-                                return Err(Diag::new(
-                                    rspan,
-                                    format!("`retention.revisions` has no option `{other}`"),
-                                )
-                                .help("use `keepLast` and/or `maxAge`"));
+                                return Err(
+                                    Diag::new(rspan, format!("`retention.revisions` has no option `{other}`"))
+                                        .help("use `keepLast` and/or `maxAge`"),
+                                );
                             }
                         }
                     }
@@ -2743,7 +2815,10 @@ fn extract_retention(v: Option<&Value>, ev: &Evaluator<'_>, span: Span) -> Resul
                 other => {
                     return Err(Diag::new(
                         kspan,
-                        format!("`retention.revisions` must be \"forever\" or `{{ keepLast?, maxAge? }}`, not {}", other.describe()),
+                        format!(
+                            "`retention.revisions` must be \"forever\" or `{{ keepLast?, maxAge? }}`, not {}",
+                            other.describe()
+                        ),
                     ));
                 }
             },
@@ -3109,11 +3184,10 @@ fn column(
             .help("remove `.alias()` here"));
         }
         if !valid_ident(alias) {
-            return Err(Diag::new(
-                b.span_of("alias"),
-                format!("`{alias}` isn't a valid field alias"),
-            )
-            .help("use letters, digits, and underscores, starting with a letter"));
+            return Err(
+                Diag::new(b.span_of("alias"), format!("`{alias}` isn't a valid field alias"))
+                    .help("use letters, digits, and underscores, starting with a letter"),
+            );
         }
         if alias == name {
             return Err(Diag::new(

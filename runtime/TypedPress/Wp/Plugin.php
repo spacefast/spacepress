@@ -90,6 +90,17 @@ final class Plugin
             if ($post instanceof \WP_Post && doing_action('wp_scheduled_delete') && Retention::blocksWpScheduledDelete($this->schema, $post->post_type)) {
                 return false;
             }
+            if ($check === null && $post instanceof \WP_Post && !$this->connection()->busy() && !wp_doing_cron()
+                && (is_admin() || (defined('REST_REQUEST') && REST_REQUEST)) && get_current_user_id() > 0) {
+                $collection = $this->collectionOf($post->ID);
+                if ($collection !== null && ($this->schema->collection($collection)['softDelete'] ?? false)) {
+                    $viewer = CoreAccess::viewer();
+                    $allowed = $viewer !== null && $this->withTrash(fn () => $this->app()->db->permits($collection, 'purge', $post->ID, $viewer));
+                    if (!$allowed) {
+                        return false;
+                    }
+                }
+            }
 
             return $refuseDelete($check, $post) ?? $this->prepareDelete($check, $post);
         }, PHP_INT_MAX, 2);
@@ -97,7 +108,53 @@ final class Plugin
         add_action('wp_scheduled_delete', [EditorSave::class, 'abandonPrepared'], PHP_INT_MAX, 0);
         add_filter('pre_trash_post', $refuseDelete, PHP_INT_MAX, 2);
         // wp_untrash_post deletes the trash metadata before its update; refuse before that.
-        add_filter('pre_untrash_post', fn ($check, $post) => $this->unavailable() !== null && $post instanceof \WP_Post && $this->touchesCollection((array) $post) ? false : $check, PHP_INT_MAX, 2);
+        add_filter('pre_untrash_post', function ($check, $post) {
+            if ($this->unavailable() !== null && $post instanceof \WP_Post && $this->touchesCollection((array) $post)) {
+                return false;
+            }
+            if ($check === null && $post instanceof \WP_Post && !$this->connection()->busy()
+                && (is_admin() || (defined('REST_REQUEST') && REST_REQUEST)) && get_current_user_id() > 0) {
+                $collection = $this->collectionOf($post->ID);
+                if ($collection !== null && ($this->schema->collection($collection)['softDelete'] ?? false)) {
+                    $viewer = CoreAccess::viewer();
+                    $allowed = $viewer !== null && $this->withTrash(fn () => $this->app()->db->permits($collection, 'restore', $post->ID, $viewer));
+                    if (!$allowed) {
+                        return false;
+                    }
+                }
+            }
+
+            return $check;
+        }, PHP_INT_MAX, 2);
+        // Keep TypedPress soft-delete metadata in sync when a post is trashed or untrashed via wp-admin or core REST.
+        add_action('trashed_post', function (int $postId): void {
+            if ($this->connection()->busy()) {
+                return;
+            }
+            $collection = $this->collectionOf($postId);
+            if ($collection === null || !($this->schema->collection($collection)['softDelete'] ?? false)) {
+                return;
+            }
+            update_post_meta($postId, WpPostStore::DELETED_AT_META, \TypedPress\Js::iso(\TypedPress\Js::now()));
+            $uid = get_current_user_id();
+            if ($uid > 0) {
+                update_post_meta($postId, WpPostStore::DELETED_BY_META, (string) $uid);
+            } else {
+                delete_post_meta($postId, WpPostStore::DELETED_BY_META);
+            }
+        }, 10, 1);
+        add_action('untrashed_post', function (int $postId): void {
+            if ($this->connection()->busy()) {
+                return;
+            }
+            $collection = $this->collectionOf($postId);
+            if ($collection === null || !($this->schema->collection($collection)['softDelete'] ?? false)) {
+                return;
+            }
+            delete_post_meta($postId, WpPostStore::DELETED_AT_META);
+            delete_post_meta($postId, WpPostStore::DELETED_BY_META);
+            delete_post_meta($postId, WpPostStore::DELETED_GROUP_META);
+        }, 10, 1);
         add_filter('rest_pre_dispatch', [$this, 'refuseCoreWrites'], 10, 3);
         // wp_delete_user deletes the user (and identity its credentials) whatever happens to their
         // posts, so refuse deleting anyone who owns TypedPress posts before any of it starts.
@@ -622,13 +679,20 @@ final class Plugin
 
     private function schemaHash(): string
     {
-        return hash_file('sha256', $this->dir . '/tp/app/schema.php');
+        $parts = [(string) @hash_file('sha256', $this->dir . '/tp/app/schema.php')];
+        $migFiles = glob($this->dir . '/tp/app/migrations/*/migration.sql') ?: [];
+        sort($migFiles, SORT_STRING);
+        foreach ($migFiles as $file) {
+            $parts[] = basename(dirname($file)) . ':' . (string) @hash_file('sha256', $file);
+        }
+
+        return count($parts) === 1 ? $parts[0] : hash('sha256', implode("\n", $parts));
     }
 
     /** Identifies the compiled schema this request runs: what a runtime schema version was validated on. */
     public function buildHash(): string
     {
-        return $this->loadedHash ??= (string) @hash_file('sha256', $this->dir . '/tp/app/schema.php');
+        return $this->loadedHash ??= $this->schemaHash();
     }
 
     /** The manifest for this exact immutable app tree, when the build loader mounted it. */

@@ -90,12 +90,7 @@ const INTERFACES: &[(&str, &str, &str, &[Reach])] = &[
         "<kind> from typedpress:db",
         &[Reach::Import("typedpress:db"), Reach::SystemOf("typedpress:db")],
     ),
-    (
-        "typedpress",
-        "Job",
-        "<job>",
-        &[Reach::Chain("typedpress", "job")],
-    ),
+    ("typedpress", "Job", "<job>", &[Reach::Chain("typedpress", "job")]),
     ("typedpress", "CollectionHooks", "collection hook", &[Reach::HookKey]),
     ("typedpress", "ConfigInput", "defineConfig", &[Reach::ConfigKey]),
 ];

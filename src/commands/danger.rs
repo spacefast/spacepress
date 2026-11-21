@@ -60,7 +60,10 @@ pub(crate) fn local_plan(rest: &[String]) -> ExitCode {
                 }
                 let cols = report["retiredColumns"].as_array().map(Vec::as_slice).unwrap_or(&[]);
                 let tbls = report["retiredTables"].as_array().map(Vec::as_slice).unwrap_or(&[]);
-                println!("\nRetired columns eligible for `wp typedpress danger drop-column`: {}", cols.len());
+                println!(
+                    "\nRetired columns eligible for `wp typedpress danger drop-column`: {}",
+                    cols.len()
+                );
                 for c in cols {
                     println!(
                         "  - {}.{} (retired in {})",
@@ -69,7 +72,10 @@ pub(crate) fn local_plan(rest: &[String]) -> ExitCode {
                         c["retiredIn"].as_str().unwrap_or("")
                     );
                 }
-                println!("\nRetired tables eligible for `wp typedpress danger drop-table`: {}", tbls.len());
+                println!(
+                    "\nRetired tables eligible for `wp typedpress danger drop-table`: {}",
+                    tbls.len()
+                );
                 for t in tbls {
                     println!(
                         "  - {} (retired in {})",
@@ -122,7 +128,9 @@ pub(crate) fn inspect_project(project: &Path) -> Result<Json, String> {
                 .find(|(_, doc)| {
                     doc["ops"].as_array().is_some_and(|ops| {
                         ops.iter().any(|op| {
-                            op["op"] == "retireColumn" && op["table"] == table.as_str() && op["column"] == column.as_str()
+                            op["op"] == "retireColumn"
+                                && op["table"] == table.as_str()
+                                && op["column"] == column.as_str()
                         })
                     })
                 })
@@ -175,13 +183,7 @@ pub(crate) fn inspect_project(project: &Path) -> Result<Json, String> {
 
 fn compile_project(project: &Path) -> Result<crate::pipeline::Built, String> {
     let program = crate::loader::load(&project.join("typedpress.config.ts")).map_err(|d| d.message)?;
-    crate::pipeline::build(
-        project,
-        &program,
-        || Ok(crate::pipeline::Previous::none()),
-        |_| None,
-    )
-    .map_err(|d| d.message)
+    crate::pipeline::build(project, &program, || Ok(crate::pipeline::Previous::none()), |_| None).map_err(|d| d.message)
 }
 
 #[cfg(test)]

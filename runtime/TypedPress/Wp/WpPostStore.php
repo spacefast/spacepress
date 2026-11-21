@@ -81,7 +81,7 @@ final class WpPostStore implements Store
 
     public function source(string $collection): Source
     {
-        $key = $collection . ($this->trashVisible ? ':trash' : '');
+        $key = $this->db->prefix() . ':' . $collection . ($this->trashVisible ? ':trash' : '');
         $source = $this->sources[$key] ??= $this->buildSource($collection, $this->trashVisible);
         if (!$this->trashVisible) {
             return $source;
@@ -454,6 +454,55 @@ final class WpPostStore implements Store
             }
         }
 
+        if ($this->trashVisible && array_key_exists('deletedAt', $rows[0])) {
+            $missing = [];
+            foreach ($rows as $i => $row) {
+                if (($row['deletedAt'] ?? null) === null && isset($row[$pk])) {
+                    $missing[$i] = (int) $row[$pk];
+                }
+            }
+            if ($missing !== []) {
+                update_meta_cache('post', array_values($missing));
+                foreach ($missing as $i => $id) {
+                    $ts = get_post_meta($id, '_wp_trash_meta_time', true);
+                    if (is_numeric($ts) && (int) $ts > 0) {
+                        $rows[$i]['deletedAt'] = gmdate('Y-m-d\TH:i:s.000\Z', (int) $ts);
+                    }
+                }
+            }
+        }
+        $needsGmtCheck = (array_key_exists('createdAt', $rows[0]) || array_key_exists('updatedAt', $rows[0]))
+            && ((string) get_option('timezone_string', '') !== '' || (float) get_option('gmt_offset', 0) !== 0.0);
+        if ($needsGmtCheck) {
+            $ids = array_values(array_unique(array_map('intval', array_column($rows, $pk))));
+            if ($ids !== []) {
+                $in = implode(', ', array_fill(0, count($ids), '?'));
+                $zero = $this->db->run(
+                    'SELECT ID, post_date, post_date_gmt, post_modified, post_modified_gmt FROM `' . $this->db->wpdb()->posts . "` WHERE ID IN ($in) AND (post_date_gmt = '0000-00-00 00:00:00' OR post_modified_gmt = '0000-00-00 00:00:00')",
+                    $ids,
+                );
+                if ($zero !== []) {
+                    $byId = [];
+                    foreach ($zero as $z) {
+                        $byId[(int) $z['ID']] = $z;
+                    }
+                    foreach ($rows as &$row) {
+                        $z = $byId[(int) ($row[$pk] ?? 0)] ?? null;
+                        if ($z === null) {
+                            continue;
+                        }
+                        if (array_key_exists('createdAt', $row) && $z['post_date_gmt'] === '0000-00-00 00:00:00' && $z['post_date'] !== '0000-00-00 00:00:00') {
+                            $row['createdAt'] = str_replace(' ', 'T', get_gmt_from_date((string) $z['post_date'])) . '.000Z';
+                        }
+                        if (array_key_exists('updatedAt', $row) && $z['post_modified_gmt'] === '0000-00-00 00:00:00' && $z['post_modified'] !== '0000-00-00 00:00:00') {
+                            $row['updatedAt'] = str_replace(' ', 'T', get_gmt_from_date((string) $z['post_modified'])) . '.000Z';
+                        }
+                    }
+                    unset($row);
+                }
+            }
+        }
+
         return $rows;
     }
 
@@ -557,10 +606,34 @@ final class WpPostStore implements Store
 
     public function softDelete(string $collection, int|string $pk, string $at, ?int $userId, ?string $group): void
     {
+        if (defined('EMPTY_TRASH_DAYS') && !EMPTY_TRASH_DAYS) {
+            throw new HttpError(
+                409,
+                'trash_disabled',
+                "WordPress Trash is disabled (EMPTY_TRASH_DAYS is 0), so TypedPress refuses to soft-delete $collection rows (wp_trash_post would permanently delete them). Enable Trash or use purge().",
+            );
+        }
+        $spec = $this->schema->collection($collection);
         $id = (int) $pk;
         $this->db->touchPost($id);
+        $trashed = $this->db->core(static function () use ($id, $spec): mixed {
+            if (($spec['commerce'] ?? null) === 'product' && function_exists('wc_get_product')) {
+                $product = wc_get_product($id);
+                if (!$product) {
+                    return false;
+                }
+                $product->delete(false);
+
+                return get_post_status($id) === 'trash';
+            }
+
+            return wp_trash_post($id);
+        });
+        clean_post_cache($id);
+        if (!$trashed || get_post_status($id) !== 'trash') {
+            throw new \RuntimeException("Could not soft-delete $collection post $id (WordPress Trash refused or did not transition status to trash)");
+        }
         $this->db->core(static function () use ($id, $at, $userId, $group): void {
-            wp_trash_post($id);
             update_post_meta($id, self::DELETED_AT_META, $at);
             if ($userId !== null) {
                 update_post_meta($id, self::DELETED_BY_META, (string) $userId);
@@ -608,16 +681,22 @@ final class WpPostStore implements Store
         $this->checkUnique($collection, $check, $id);
         $this->db->touchPost($id);
         $prevStatus = get_post_meta($id, '_wp_trash_meta_status', true);
-        $this->db->core(static function () use ($id, $prevStatus): void {
+        $untrashed = $this->db->core(static function () use ($id, $prevStatus): mixed {
             $filter = static fn (string $newStatus, int $postId, string $previous): string => $postId === $id && is_string($prevStatus) && $prevStatus !== ''
                 ? $prevStatus
                 : ($postId === $id && $previous !== '' ? $previous : $newStatus);
             add_filter('wp_untrash_post_status', $filter, PHP_INT_MAX, 3);
             try {
-                wp_untrash_post($id);
+                return wp_untrash_post($id);
             } finally {
                 remove_filter('wp_untrash_post_status', $filter, PHP_INT_MAX);
             }
+        });
+        clean_post_cache($id);
+        if (!$untrashed || get_post_status($id) === 'trash') {
+            throw new \RuntimeException("Could not restore $collection post $id from WordPress Trash");
+        }
+        $this->db->core(static function () use ($id): void {
             delete_post_meta($id, self::DELETED_AT_META);
             delete_post_meta($id, self::DELETED_BY_META);
             delete_post_meta($id, self::DELETED_GROUP_META);
@@ -822,6 +901,7 @@ final class WpPostStore implements Store
     // ================================================================ revisions (§4.7): WP revisions + SCF meta
 
     private const REV_META = '_tp_rev_meta';
+    private const REV_SEQ_META = '_tp_rev_seq';
 
     public function revisions(string $collection, int|string $pk): array
     {
@@ -957,13 +1037,15 @@ final class WpPostStore implements Store
     public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = []): void
     {
         $id = (int) $pk;
-        $existing = $this->revisions($collection, $id);
-        $nextVersion = 1;
-        foreach ($existing as $e) {
-            if (($e['version'] ?? 0) >= $nextVersion) {
-                $nextVersion = $e['version'] + 1;
-            }
+        $seq = (int) get_metadata('post', $id, self::REV_SEQ_META, true);
+        if ($seq <= 0) {
+            $countRows = $this->db->run(
+                "SELECT COUNT(*) AS n FROM `{$this->db->wpdb()->posts}` WHERE post_type = 'revision' AND post_parent = ? AND post_status = 'inherit' AND post_name NOT LIKE '%autosave%'",
+                [$id],
+            );
+            $seq = (int) ($countRows[0]['n'] ?? 0);
         }
+        $nextVersion = $seq + 1;
         $rid = $this->db->core(static fn () => _wp_put_post_revision($id));
         if ($rid instanceof \WP_Error || !$rid) {
             throw new \RuntimeException('Could not save a revision of post ' . $id);
@@ -989,7 +1071,10 @@ final class WpPostStore implements Store
         if ($links !== []) {
             $revMeta['links'] = $links;
         }
-        $this->db->core(static fn () => update_metadata('post', $rid, self::REV_META, wp_slash(Js::jsonStringify($revMeta))));
+        $this->db->core(static function () use ($id, $rid, $revMeta, $nextVersion): void {
+            update_metadata('post', $rid, self::REV_META, wp_slash(Js::jsonStringify($revMeta)));
+            update_metadata('post', $id, self::REV_SEQ_META, (string) $nextVersion);
+        });
         clean_post_cache($rid);
     }
 

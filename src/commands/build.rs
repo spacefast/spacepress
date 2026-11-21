@@ -87,25 +87,52 @@ pub(crate) fn read_migrations_dir(dir: &Path) -> Result<pipeline::Previous, Diag
         if path.is_dir() && matches!(name, "wp" | "sqlite") {
             return Err(Diag::new(
                 Span::NONE,
-                format!("{ledger}/{name}/ is from an earlier layout; remove or migrate it to sortable migration folders"),
+                format!(
+                    "{ledger}/{name}/ is from an earlier layout; remove or migrate it to sortable migration folders"
+                ),
             ));
         }
         if !path.is_dir() {
             if name == "snapshot.json" || name.ends_with(".sql") {
                 return Err(Diag::new(
                     Span::NONE,
-                    format!("{ledger}/{name} is from a legacy numbered-migration layout; use folder-based migrations (<id>/{{ops.json,migration.sql}})"),
+                    format!(
+                        "{ledger}/{name} is from a legacy numbered-migration layout; use folder-based migrations (<id>/{{ops.json,migration.sql}})"
+                    ),
                 ));
             }
             continue;
         }
+        if !crate::migrate::is_migration_id(name) {
+            return Err(Diag::new(
+                Span::NONE,
+                format!(
+                    "{ledger}/{name}/ is not a valid sortable migration folder (<YYYYMMDDHHMMSS>_<6char-base32>_<slug>)"
+                ),
+            ));
+        }
         let ops_path = path.join("ops.json");
-        let text = std::fs::read_to_string(&ops_path).map_err(|e| {
-            Diag::new(Span::NONE, format!("can't read {ledger}/{name}/ops.json: {e}"))
-        })?;
-        let ops: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
-            Diag::new(Span::NONE, format!("{ledger}/{name}/ops.json is not valid JSON: {e}"))
-        })?;
+        let text = std::fs::read_to_string(&ops_path)
+            .map_err(|e| Diag::new(Span::NONE, format!("can't read {ledger}/{name}/ops.json: {e}")))?;
+        let ops: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| Diag::new(Span::NONE, format!("{ledger}/{name}/ops.json is not valid JSON: {e}")))?;
+        if let Some(doc_id) = ops.get("id").and_then(serde_json::Value::as_str)
+            && doc_id != name
+        {
+            return Err(Diag::new(
+                Span::NONE,
+                format!(
+                    "{ledger}/{name}/ops.json declares id \"{doc_id}\", which does not match folder name \"{name}\""
+                ),
+            ));
+        }
+        let sql_path = path.join("migration.sql");
+        if !sql_path.is_file() {
+            return Err(Diag::new(
+                Span::NONE,
+                format!("{ledger}/{name}/ is incomplete: missing migration.sql beside ops.json"),
+            ));
+        }
         ops_entries.push((name.to_string(), ops));
     }
     pipeline::Previous::from_entries(ops_entries)
@@ -141,11 +168,28 @@ pub(super) fn emit_project(project: &Path, built: &Built) -> std::io::Result<()>
     let migrations = migrations_dir(project);
     for entry in &built.migrations {
         let folder = migrations.join(&entry.id);
-        write_new(
-            &folder.join("ops.json"),
-            serde_json::to_string_pretty(&entry.ops)? + "\n",
-        )?;
-        write_new(&folder.join("migration.sql"), &entry.sql)?;
+        if folder.exists() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("{}: migration folder already exists", folder.display()),
+            ));
+        }
+        std::fs::create_dir_all(&migrations)?;
+        // Stage both files in a sibling directory and atomically rename into place so an
+        // interrupted write never leaves an orphaned `ops.json` without `migration.sql`.
+        let tmp = migrations.join(format!(".tmp_{}_{}", entry.id, std::process::id()));
+        if tmp.exists() {
+            let _ = std::fs::remove_dir_all(&tmp);
+        }
+        let staged = (|| -> std::io::Result<()> {
+            write_new(&tmp.join("ops.json"), serde_json::to_string_pretty(&entry.ops)? + "\n")?;
+            write_new(&tmp.join("migration.sql"), &entry.sql)?;
+            std::fs::rename(&tmp, &folder)
+        })();
+        if let Err(e) = staged {
+            let _ = std::fs::remove_dir_all(&tmp);
+            return Err(e);
+        }
     }
     write(&project.join(layout::DB_TYPES), &built.gen_ts)?;
     match &built.routes_ts {

@@ -590,9 +590,11 @@ pub struct Schema {
     pub islands: IndexMap<String, Island>,
     /// Components content may use as blocks (`export const blocks` in a component file).
     pub blocks: Vec<crate::content_blocks::Block>,
-    /// Imported stylesheets and images (`crate::assets`), by output file name below
+    /// Imported stylesheets and static assets (`crate::assets`), by output file name below
     /// `tp/app/assets/`.
     pub assets: IndexMap<String, Vec<u8>>,
+    /// Intrinsic dimensions and format for imported image assets, by output file name.
+    pub assets_meta: IndexMap<String, crate::assets::ImageMeta>,
     /// `tp/app/`: the route table and each route file's compiled exports (docs/spec/rendering.md).
     pub app: Option<App>,
     /// Hooks or WordPress functions hand `WP_Post`/`WP_User` views to compiled code.
@@ -669,6 +671,7 @@ impl Default for Schema {
             islands: IndexMap::new(),
             blocks: Vec::new(),
             assets: IndexMap::new(),
+            assets_meta: IndexMap::new(),
             wp_views: false,
             files: IndexMap::new(),
             webhooks: Vec::new(),
@@ -815,6 +818,8 @@ pub struct AppRoute {
     pub error: Option<String>,
     /// The stylesheets the page and its layouts import, in link order (`assets::stylesheets`).
     pub styles: Vec<String>,
+    /// `@font-face` fonts referenced by this route's stylesheets, emitted as `<link rel="preload">`.
+    pub preloads: Vec<crate::assets::FontPreload>,
     /// The page is prebuilt: its file says `prerender = true`, or the config says `output: "static"`.
     pub prerender: bool,
     /// The kind whose `url` this page serves (spec §2.7), with each pattern placeholder's folder
@@ -853,6 +858,18 @@ pub struct AppSearch {
     pub fields: IndexMap<String, Column>,
 }
 
+/// An imported static asset exposed to a `"use client"` store through `getConfig(ns).assets`.
+#[derive(Debug, Clone)]
+pub enum IslandAsset {
+    Url(String),
+    Meta {
+        file: String,
+        width: u32,
+        height: u32,
+        format: String,
+    },
+}
+
 /// One compiled `"use client"` component: its store module and the server actions it calls.
 #[derive(Debug, Clone)]
 pub struct Island {
@@ -864,6 +881,8 @@ pub struct Island {
     /// What the app plugin ships: `source` minified (`crate::minify`).
     pub shipped: String,
     pub actions: Vec<String>,
+    /// Static assets imported by this client component, passed via `wp_interactivity_config`.
+    pub assets: std::collections::BTreeMap<String, IslandAsset>,
     /// The store keeps `useLive` reads current: the page also loads `@typedpress/live`.
     pub live: bool,
 }

@@ -77,6 +77,8 @@ pub struct Analysis {
     pub events: Vec<(String, String, String)>,
     /// Server actions called from handlers.
     pub server_actions: BTreeSet<String>,
+    /// Static assets imported by this client component (resolved through `getConfig(ns).assets`).
+    pub assets: BTreeMap<String, crate::schema::IslandAsset>,
     /// Module-level `export const x = sharedState({...})`: (name, initial object).
     pub shared: Vec<(String, Expr)>,
     /// The props the component destructures, in order.
@@ -141,7 +143,7 @@ pub fn analyse(
         namespace,
         ..Default::default()
     };
-    // Default imports of stylesheets and images, by local name.
+    // Default imports of stylesheets and static assets, by local name.
     for (local, asset) in assets {
         match asset.kind {
             crate::assets::Kind::CssModule => {
@@ -153,12 +155,35 @@ pub fn analyse(
                 a.bindings
                     .insert(local.clone(), Binding::Static(format!("{{ {} }}", fields.join(", "))));
             }
+            crate::assets::Kind::Raw | crate::assets::Kind::Inline => {
+                if let Some(text) = &asset.text {
+                    a.bindings.insert(local.clone(), Binding::Static(js_str(text)));
+                }
+            }
             crate::assets::Kind::File => {
-                return Err(refuse(
-                    f.span,
-                    format!("a \"use client\" component can't import {}", asset.source),
-                    "import the asset in the server component that renders this one and pass its URL as a prop",
-                ));
+                a.assets
+                    .insert(local.clone(), crate::schema::IslandAsset::Url(asset.file.clone()));
+                a.bindings.insert(
+                    local.clone(),
+                    Binding::Static(format!("getConfig(ns).assets[{}]", js_str(local))),
+                );
+            }
+            crate::assets::Kind::Meta => {
+                if let Some(meta) = &asset.meta {
+                    a.assets.insert(
+                        local.clone(),
+                        crate::schema::IslandAsset::Meta {
+                            file: asset.file.clone(),
+                            width: meta.width,
+                            height: meta.height,
+                            format: meta.format.clone(),
+                        },
+                    );
+                    a.bindings.insert(
+                        local.clone(),
+                        Binding::Static(format!("getConfig(ns).assets[{}]", js_str(local))),
+                    );
+                }
             }
             crate::assets::Kind::Css => {}
         }

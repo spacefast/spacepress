@@ -55,3 +55,31 @@ declare module "*.glb" { const url: string; export default url; }
 declare module "*.gltf" { const url: string; export default url; }
 declare module "*.zip" { const url: string; export default url; }
 declare module "*.vtt" { const url: string; export default url; }
+
+// Vite-compatible asset query modifiers
+/** File contents as a compile-time UTF-8 string. */
+declare module "*?raw" {
+  const content: string;
+  export default content;
+}
+/** Explicit hashed asset URL (also works on `.css?url` without auto-enqueuing). */
+declare module "*?url" {
+  const url: string;
+  export default url;
+}
+/** Base64 `data:<mime>;base64,...` URI inlined at build time. */
+declare module "*?inline" {
+  const dataUri: string;
+  export default dataUri;
+}
+/** Imported image metadata (`{ src, width, height, format }`) for `<Image>` and layout sizing. */
+declare module "*?meta" {
+  export interface ImageMetadata {
+    readonly src: string;
+    readonly width: number;
+    readonly height: number;
+    readonly format: string;
+  }
+  const meta: ImageMetadata;
+  export default meta;
+}

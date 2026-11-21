@@ -160,6 +160,28 @@ export declare function Content(props: { value: string | null | undefined }): JS
 /** Trusted markup: a literal is placed as written; any other value goes through `wp_kses_post`. */
 export declare function Html(props: { value: string | null | undefined }): JSX.Element;
 /**
+ * An optimized `<img>`: accepts an imported image URL, a `?meta` image object (`{ src, width, height, format }`),
+ * or a WordPress media attachment object. Fills intrinsic `width`/`height` automatically, defaults to
+ * `loading="lazy"` + `decoding="async"`, emits responsive `srcset` from WordPress media sizes, and
+ * emits `<link rel="preload" as="image" fetchpriority="high">` when `priority` is true.
+ */
+export declare function Image(props: {
+  src:
+    | string
+    | { readonly src: string; readonly width?: number; readonly height?: number; readonly format?: string }
+    | { readonly url: string; readonly width?: number | null; readonly height?: number | null; readonly sizes?: Record<string, { readonly url: string; readonly width: number; readonly height?: number }> };
+  alt: string;
+  width?: number | string;
+  height?: number | string;
+  sizes?: string;
+  priority?: boolean;
+  loading?: "lazy" | "eager";
+  decoding?: "async" | "sync" | "auto";
+  className?: string;
+  id?: string;
+  style?: Record<string, string | number | undefined>;
+}): JSX.Element;
+/**
  * A link. A path on this site navigates inside the router region (`@wordpress/interactivity-router`)
  * once JavaScript runs; without it, it is an ordinary link.
  */

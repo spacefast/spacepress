@@ -387,6 +387,8 @@ final class Prebuilt
         do {
             $where = $after === null ? [] : [$pk => ['gt' => $after]];
             $rows = Seam::asViewer($viewer, static fn () => \TypedPress\Db::instance()->findMany($kind, ['where' => $where, 'orderBy' => [$pk => 'asc'], 'limit' => 500], $viewer));
+            // The batch's posts and their meta (`_wp_old_slug`, a field in the URL) in two reads, not two per item.
+            _prime_post_caches(array_map(static fn (array $row): int => (int) $row[$pk], $rows), false, true);
             foreach ($rows as $row) {
                 $after = $row[$pk];
                 $post = get_post((int) $row[$pk]);

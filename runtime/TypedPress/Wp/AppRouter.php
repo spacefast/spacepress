@@ -896,6 +896,12 @@ final class AppRouter
                 return null;
             }
         }
+        // The visitor read the item just now: what the page renders around it (its comments) need
+        // not ask the kind's read rule about it again.
+        if (($reader = Seam::viewer()) !== null && ($spec['wp']['postType'] ?? null) !== null
+            && \TypedPress\Extensions::constraintReadsSafe()) {
+            CoreAccess::readable($name, [$id], $reader);
+        }
         return $row;
     }
 

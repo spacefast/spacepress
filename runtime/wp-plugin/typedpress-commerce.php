@@ -11,12 +11,13 @@ add_filter('woocommerce_enable_hpos_by_default_for_new_shops', '__return_false',
 // Never switch an existing store's authoritative order storage on its behalf. A managed build stops
 // here, before a host exposes it. As a must-use plugin this file must not throw for it: that would
 // take wp-admin down with the shop, so the runtime reports it there (Commerce\Module::onInit).
-foreach (wp_installing() || !class_exists(\TypedPress\Loader\Loader::class, false) || \TypedPress\Loader\Loader::loaded() === null ? [] : ['woocommerce_custom_orders_table_enabled', 'woocommerce_custom_orders_table_data_sync_enabled'] as $option) {
-    $value = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $option));
+if (!wp_installing() && class_exists(\TypedPress\Loader\Loader::class, false) && \TypedPress\Loader\Loader::loaded() !== null) {
+    // Both options in one statement, from the database rather than the option cache.
+    $values = $wpdb->get_col("SELECT option_value FROM {$wpdb->options} WHERE option_name IN ('woocommerce_custom_orders_table_enabled', 'woocommerce_custom_orders_table_data_sync_enabled')");
     if ($wpdb->last_error !== '') {
         throw new RuntimeException('Unable to verify WooCommerce order storage');
     }
-    if ($value === 'yes') {
+    if (in_array('yes', $values, true)) {
         throw new RuntimeException('TypedPress commerce requires legacy order storage with HPOS synchronization disabled. Change storage in WooCommerce after completing synchronization.');
     }
 }

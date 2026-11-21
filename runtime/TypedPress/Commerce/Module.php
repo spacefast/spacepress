@@ -148,8 +148,10 @@ final class Module
     {
         $type = get_post_type_object('product'); if ($type) { $type->show_in_abilities = false; }
         try {
-            if (!Runtime::managed()) { self::checkOrderStorage(); }
-            if (Runtime::installs()) { self::initialize($plugin); }
+            if (Runtime::installs()) {
+                self::checkOrderStorage();
+                self::initialize($plugin);
+            }
         } catch (\Throwable $e) {
             $problem = $e->getMessage();
             $plugin->refuse($problem); \TypedPress\Wp\InstallMarker::forget();
@@ -178,14 +180,13 @@ final class Module
     public static function checkOrderStorage(): void
     {
         global $wpdb;
-        foreach (['woocommerce_custom_orders_table_enabled', 'woocommerce_custom_orders_table_data_sync_enabled'] as $option) {
-            $value = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $option));
-            if ($wpdb->last_error !== '') {
-                throw new \RuntimeException('Unable to verify WooCommerce order storage');
-            }
-            if ($value === 'yes') {
-                throw new \RuntimeException('TypedPress commerce requires legacy order storage with HPOS synchronization disabled. Change storage in WooCommerce after completing synchronization.');
-            }
+        // Both options in one statement, from the database rather than the option cache.
+        $values = $wpdb->get_col("SELECT option_value FROM {$wpdb->options} WHERE option_name IN ('woocommerce_custom_orders_table_enabled', 'woocommerce_custom_orders_table_data_sync_enabled')");
+        if ($wpdb->last_error !== '') {
+            throw new \RuntimeException('Unable to verify WooCommerce order storage');
+        }
+        if (in_array('yes', $values, true)) {
+            throw new \RuntimeException('TypedPress commerce requires legacy order storage with HPOS synchronization disabled. Change storage in WooCommerce after completing synchronization.');
         }
     }
 

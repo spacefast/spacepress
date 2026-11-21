@@ -230,6 +230,32 @@ That proof is scoped to the collection and explicit viewer, accepts only rows
 with the matching password, and is suspended/restored across nested requests.
 It does not authorize a later First request or borrow the ambient user's rights.
 
+A signed-in SQL read can skip the scan for protected posts when the object cache
+holds a recent negative result for the post type. The row query still checks
+the stored password. The hint expires after five minutes and uses WordPress's
+`posts` change stamp. TypedPress advances the stamp after committing a post
+write. Reads inside a transaction use the database to check for protected posts.
+Scope checks that must establish unrestricted access also use the database.
+
+## Read budgets
+
+`tests/read_budget.rs` builds drive-store, www, and the shop on WordPress with
+SQLite. It checks the largest count over five successful GETs per route and
+visitor, including anonymous requests and signed-in subscribers. Statements
+equal `$wpdb->num_queries` plus calls to `Wp\Connection::run`. The warm-cache
+run also counts single-key and multi-key object cache reads after two warmups.
+Both cache modes must produce identical response bytes.
+
+With a warm cache, the drive-store item page uses one statement. The docs
+page adds one statement for navigation. The API fixtures use six statements
+for the keys, viewer rows, stored rows, and revision state. A page
+with staged versions can take two more statements for staged data. The shop
+budget covers the seeded catalog and a full page of 24 products.
+
+Set `TP_READ_BUDGET_TRACE=1` to see the statements and cache reads. Set
+`TP_READ_BUDGET_BASELINE` to the path of an extracted `runtime/` directory to
+compare counts and response bytes against that revision on the same fixture.
+
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
 Viewer-bound writes must not answer existence questions about unreadable data.
@@ -317,7 +343,13 @@ Writes made by hooks or actions through `Db` run the same pipeline
 
 Every HTTP request and every CLI command runs in one transaction
 (`START TRANSACTION`, REPEATABLE READ). An exception before the commit rolls
-back every write of the request. Nested runtime transactions join without
+back every write of the request. A `GET` or `HEAD` route handler's transaction
+is opened lazily (`Db::reading()`, `Wp\Connection::reading()`): the database
+is told at the first statement that is not a plain `SELECT`, whether TypedPress,
+core or another plugin sends it, and a locking read (`FOR UPDATE`) counts as
+one. A handler that only reads sends neither `START TRANSACTION` nor `COMMIT`;
+its reads see committed data, as they would outside a transaction. From its
+first write on it is the same transaction as any other, rollback included. Nested runtime transactions join without
 savepoints. Any failed joined operation marks the outer transaction rollback-only,
 even if an application hook catches its exception. Attempting the outer commit
 rolls back all writes, discards after-commit callbacks, and throws. Hooks must let
@@ -515,7 +547,8 @@ transactions.
 On a plugin-installed site, the checks behind "the first request after an
 update" (the stored-name upgrade, the system tables, the app's migration ledger,
 Action Scheduler groups and recurring actions, route and content Pages, Polylang
-languages, the search index shape, the runtime-schema capability) run until one
+languages, the search index shape, the runtime-schema capability, a store's
+order storage) run until one
 request finds them all in place. That request records the autoloaded option
 `tp_installed` (`Wp\InstallMarker`): a digest of the app, the loaded
 `schema.php`, the system-tables version, the runtime version and hash, the UTC

@@ -7,8 +7,10 @@ Orders use legacy WordPress post storage. Existing stores with HPOS or order syn
 enabled are refused without changing their settings; complete synchronization and choose
 legacy storage in WooCommerce before enabling TypedPress commerce.
 On a plugin install the refusal closes the shop and its checkout and shows the reason as an
-admin notice; wp-admin stays available for changing the setting back. A managed build is refused
-before its host exposes it.
+admin notice. Use wp-admin to restore the setting. Changing either WooCommerce
+option through WordPress invalidates the install marker. The runtime checks
+order storage again on the next request, when a new build runs, or when the UTC
+day changes. A managed build checks order storage before the host exposes it.
 
 ```sh
 typedpress add shop

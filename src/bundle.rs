@@ -1,6 +1,8 @@
 //! Source-only publishing for hosts that own their compiler and WordPress platform.
 //! No package installation, plugin downloads, user PHP, or subprocesses.
 
+#[cfg(feature = "host")]
+use crate::schema::{ColType, Column};
 use crate::{
     diag::{Diag, Span},
     loader::{self, Fs},
@@ -494,19 +496,222 @@ pub(crate) struct Compiled {
     pub jobs: Vec<String>,
 }
 
+/// The line of a sync file that sets `key`: `key:` in front matter, `"key"` in JSON. Line 1 when
+/// the file doesn't name it (a missing field).
+#[cfg(feature = "host")]
+fn field_line(text: &str, key: &str) -> usize {
+    let quoted = format!("\"{key}\"");
+    text.lines()
+        .position(|line| {
+            let line = line.trim_start();
+            line.strip_prefix(key).is_some_and(|rest| rest.starts_with(':')) || line.starts_with(&quoted)
+        })
+        .map_or(1, |index| index + 1)
+}
+
+/// What the seed would refuse in one record's fields, as (field, message, help), in the runtime's
+/// own words (`Sync\Wire::decode`, `Schema::normalize`, `Schema::checkRules`, `Db::insert`).
+///
+/// Only what a file alone decides: an unknown field, a missing or null required field, a value
+/// outside an `enum`, text where a column takes text, and `min`/`max`. References, patterns,
+/// validators and nested values are checked when the record is written, and so is every value of
+/// a kind with a `beforeCreate` or `beforeUpdate` hook, which may change it first.
+#[cfg(feature = "host")]
+fn seed_field_problem(
+    collection: &crate::schema::Collection,
+    fields: &serde_json::Map<String, serde_json::Value>,
+    runtime_fields: bool,
+) -> Option<(String, String, Option<String>)> {
+    use crate::schema::HookKind;
+    use serde_json::Value;
+    let primary_key = collection.primary_key().map(|c| c.name.as_str());
+    let content = collection.content.as_deref();
+    let translations = |c: &Column| c.name == "translations" && collection.localized && c.system;
+    // `Sync\Wire::fieldNames`: the fields a record may carry.
+    let writable = |c: &Column| {
+        Some(c.name.as_str()) != primary_key
+            && Some(c.name.as_str()) != content
+            && c.name != "uid"
+            && !c.read_only
+            && c.on_update.is_none()
+            && !c.hidden
+            && (!c.derived || translations(c))
+    };
+    let hooked = [HookKind::BeforeCreate, HookKind::BeforeUpdate]
+        .iter()
+        .any(|hook| collection.hooks.contains_key(hook));
+    let count = |n: f64, unit: &str| {
+        let shown = if n.fract() == 0.0 {
+            format!("{}", n as i64)
+        } else {
+            n.to_string()
+        };
+        match unit {
+            "" => shown,
+            unit => format!("{shown} {unit}{}", if n == 1.0 { "" } else { "s" }),
+        }
+    };
+    for (name, value) in fields {
+        let Some(column) = collection.columns.get(name).filter(|c| writable(c)) else {
+            // With `runtimeSchema` the site may have fields this build doesn't declare.
+            if runtime_fields {
+                continue;
+            }
+            let names = collection
+                .columns
+                .values()
+                .filter(|c| writable(c))
+                .map(|c| c.name.as_str());
+            return Some((
+                name.clone(),
+                format!("Unknown or generated field '{name}'"),
+                crate::diag::suggest(name, names).map(|near| format!("did you mean `{near}`?")),
+            ));
+        };
+        // Drafts' own fields and references follow rules the write applies, and a hook runs
+        // before the checks below and may change the value they see.
+        if column.system || column.references.is_some() || hooked {
+            continue;
+        }
+        let stringy = column.ty.is_stringy() || column.ty == ColType::RichText;
+        if value.is_null() {
+            if column.not_null && column.default.is_none() && column.ty != ColType::Slug {
+                return Some((name.clone(), format!("{name} is required"), None));
+            }
+            continue;
+        }
+        if matches!(column.ty, ColType::Text | ColType::RichText) && !value.is_string() {
+            return Some((
+                name.clone(),
+                format!("{name} must be a string"),
+                (value.is_number() || value.is_boolean()).then(|| format!("quote it: `{name}: \"{value}\"`")),
+            ));
+        }
+        if column.ty != ColType::Select
+            && let (Some(allowed), Some(given)) = (&column.enum_values, value.as_str())
+            && !allowed.iter().any(|v| v == given)
+        {
+            return Some((
+                name.clone(),
+                format!("{name} must be one of: {}", allowed.join(", ")),
+                None,
+            ));
+        }
+        let (size, unit) = match value {
+            Value::String(text) if stringy => (text.chars().count() as f64, "character"),
+            Value::Array(items)
+                if matches!(
+                    column.ty,
+                    ColType::MediaList | ColType::Select | ColType::Repeater | ColType::Blocks
+                ) =>
+            {
+                (items.len() as f64, "item")
+            }
+            Value::Number(n) if matches!(column.ty, ColType::Integer | ColType::Real) => {
+                (n.as_f64().unwrap_or_default(), "")
+            }
+            _ => continue,
+        };
+        let verb = if unit == "item" { "have" } else { "be" };
+        if let Some(min) = column.rules.min.filter(|min| size < *min) {
+            return Some((
+                name.clone(),
+                format!("{name} must {verb} at least {}", count(min, unit)),
+                None,
+            ));
+        }
+        if let Some(max) = column.rules.max.filter(|max| size > *max) {
+            let has = match unit {
+                "" => String::new(),
+                unit => format!("it has {}", count(size, unit)),
+            };
+            return Some((
+                name.clone(),
+                format!("{name} must {verb} at most {}", count(max, unit)),
+                (!has.is_empty()).then_some(has),
+            ));
+        }
+    }
+    // A new record needs every required field (`Db::insert`); WooCommerce fills its own.
+    if collection.commerce.is_none() {
+        for column in collection.columns.values() {
+            if writable(column)
+                && !column.system
+                && !column.optional_on_insert()
+                && Some(column.name.as_str()) != collection.slug.as_deref()
+                && !collection.before_create_fills.contains(&column.name)
+                && !fields.contains_key(&column.name)
+            {
+                return Some((column.name.clone(), format!("{} is required", column.name), None));
+            }
+        }
+    }
+    None
+}
+
+/// The first HTML block of a Markdown body, as (line in the body, its opening text). The runtime
+/// reads one as a Custom HTML block (`core/html`), which `Sync\Markdown::fromBlocks` refuses to
+/// write back, so the record would be refused when it is seeded. HTML inside a line of text is
+/// kept, and code is text.
+///
+/// A body that holds serialized blocks (`<!-- wp:`) is read by WordPress's own parser, and one
+/// that writes a component's tag (`<Callout>`, when the app has components content may use) is
+/// split around its tags and judged by what it reads back as: the runtime decides both.
+#[cfg(feature = "host")]
+fn markdown_html_block(body: &str, components: bool) -> Option<(usize, String)> {
+    use pulldown_cmark::{Event, Parser, Tag};
+    if body.contains("<!-- wp:")
+        || components
+            && body.lines().any(|line| {
+                line.strip_prefix('<')
+                    .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_uppercase()))
+            })
+    {
+        return None;
+    }
+    for (event, range) in Parser::new(body).into_offset_iter() {
+        if !matches!(event, Event::Start(Tag::HtmlBlock)) {
+            continue;
+        }
+        let html = body[range.clone()].trim();
+        // pulldown-cmark's CommonMark adds `search` to the block tags; the runtime's
+        // league/commonmark doesn't, and reads `<search>` as inline HTML in a paragraph.
+        if html.get(..7).is_some_and(|tag| tag.eq_ignore_ascii_case("<search"))
+            && html[7..].starts_with(|c: char| c == '>' || c == '/' || c.is_ascii_whitespace())
+        {
+            continue;
+        }
+        let line = body[..range.start].matches('\n').count() + 1;
+        let shown = html.lines().next().unwrap_or_default();
+        let shown = match shown.char_indices().nth(60) {
+            Some((end, _)) => format!("{}…", &shown[..end]),
+            None => shown.to_string(),
+        };
+        return Some((line, shown));
+    }
+    None
+}
+
 /// Each synced kind's files as seed records (`wp typedpress seed --records`), as a publish seeds a Space:
 /// one `{collection, format, records}` document per kind, by kind name, parents before children.
+///
+/// With `check`, a file the seed would refuse on the site is an error here, at the file and the
+/// field ([`seed_field_problem`], [`markdown_html_block`]): what a project built from disk gets,
+/// where the author can fix the file. A captured source bundle is compiled without it, as before:
+/// the site answers for each record there, and one it already has is kept whatever its file says.
 #[cfg(feature = "host")]
 pub(crate) fn seed_records(
     fs: &dyn Fs,
     root: &Path,
     schema: &crate::schema::Schema,
+    check: bool,
 ) -> Result<Vec<(String, serde_json::Value)>, Diag> {
     let mut seeds = Vec::new();
     for (name, collection) in &schema.collections {
         let Some(sync) = &collection.sync else { continue };
         let mut records = Vec::new();
-        let mut uids = BTreeSet::new();
+        // uid → the file that has it, so a copied file's error names both.
+        let mut uids: BTreeMap<String, String> = BTreeMap::new();
         let nested = sync["nested"] == true;
         let sync_dir = root.join(sync["dir"].as_str().unwrap_or("."));
         // A folder tree: (record index, the file holding its parent), resolved once every file is read.
@@ -597,16 +802,48 @@ pub(crate) fn seed_records(
                     ));
                 }
             };
-            if !uids.insert(uid.clone()) {
-                return Err(diagnostic(1, format!("duplicate sync uid {uid}")));
+            let shown = relative(root, &path).map_err(io)?;
+            if let Some(other) = uids.insert(uid.clone(), shown.clone()) {
+                return Err(diagnostic(
+                    field_line(&text, "uid"),
+                    format!("{shown} and {other} have the same uid {uid}"),
+                )
+                .help("a copied file keeps its `uid` line: delete that line from the copy"));
+            }
+            // What the seed would refuse, found here so the build names the file and the field.
+            if check
+                && let Some((field, message, help)) =
+                    seed_field_problem(collection, &fields, schema.runtime_schema.is_some())
+            {
+                let problem = diagnostic(field_line(&text, &field), message);
+                return Err(match help {
+                    Some(help) => problem.help(help),
+                    None => problem,
+                });
+            }
+            if check
+                && sync["format"] == "md"
+                && collection
+                    .content
+                    .as_ref()
+                    .is_some_and(|c| collection.columns.get(c).is_some_and(|c| c.ty == ColType::RichText))
+                && let Some(body) = &body
+                && let Some((line, html)) = markdown_html_block(body, !schema.blocks.is_empty())
+            {
+                // The body is the end of the file, so its lines count from where the front matter stops.
+                let unix = text.replace("\r\n", "\n");
+                let first = unix[..unix.len() - body.len()].matches('\n').count();
+                return Err(diagnostic(
+                    first + line,
+                    format!("`{html}` is an HTML block, which a Markdown file can't hold: WordPress stores it as a Custom HTML block that can't be written back as Markdown"),
+                )
+                .help("write it in Markdown, or put the markup in a component the content may use (`export const blocks` in tp/components/) and write its tag"));
             }
             if let Some(parent) = place {
                 parents.push((records.len(), parent));
                 by_path.insert(below, uid.clone());
             }
-            records.push(
-                serde_json::json!({"uid":uid,"fields":fields,"body":body,"path":relative(root,&path).map_err(io)?}),
-            );
+            records.push(serde_json::json!({"uid":uid,"fields":fields,"body":body,"path":shown}));
         }
         if nested {
             // Each record's parent is its folder's index file, by uid; parents are seeded before
@@ -753,7 +990,7 @@ pub(crate) fn compile_tree(
     if built.plugins.as_ref().is_some_and(|p| !p.plugins.is_empty()) {
         return Err(failure("hosted apps cannot install WordPress plugins"));
     }
-    let seeds = seed_records(&*fs, &root, &built.schema)?;
+    let seeds = seed_records(&*fs, &root, &built.schema, false)?;
     public_assets(&assets.join("public"), None)?;
     std::fs::create_dir(output).map_err(io)?;
     if !source_migrations.is_empty() {
@@ -1019,5 +1256,55 @@ pub(crate) fn compile_cli(args: &[String]) -> std::process::ExitCode {
             eprintln!("{}", crate::diag::render(&e, Path::new(".")));
             std::process::ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(all(test, feature = "host"))]
+mod seed_check_tests {
+    use super::markdown_html_block;
+
+    #[test]
+    fn an_html_block_is_found_with_its_line_and_inline_html_and_code_are_not() {
+        assert_eq!(
+            markdown_html_block("Hello\n\n<iframe src=\"https://example.com\"></iframe>\n\nBye\n", false),
+            Some((3, "<iframe src=\"https://example.com\"></iframe>".into()))
+        );
+        assert_eq!(
+            markdown_html_block("- one\n- <div>two</div>\n", false),
+            Some((2, "<div>two</div>".into()))
+        );
+        assert_eq!(
+            markdown_html_block("a\n\n<!-- a note -->\n", false),
+            Some((3, "<!-- a note -->".into()))
+        );
+        for kept in [
+            "press <kbd>Ctrl</kbd> and <iframe src=\"x\"></iframe> inline\n",
+            "```html\n<iframe></iframe>\n```\n",
+            "para\n\n    <iframe></iframe>\n",
+            "use `<iframe>` here\n",
+            "see <https://example.com>\n",
+            "<em>emphasis</em> first on its line\n",
+            // A block tag only in pulldown-cmark's CommonMark version; the runtime keeps it inline.
+            "text\n\n<search>x</search> more\n",
+            "text\n<search>x</search>\n",
+            "<SEARCH role=\"search\">x</SEARCH>\n",
+        ] {
+            assert_eq!(markdown_html_block(kept, false), None, "{kept}");
+        }
+    }
+
+    #[test]
+    fn serialized_blocks_and_component_tags_are_left_to_the_runtime() {
+        assert_eq!(
+            markdown_html_block("<!-- wp:paragraph -->\n<p>hi</p>\n<!-- /wp:paragraph -->\n", false),
+            None
+        );
+        let callout = "<Callout type=\"note\">\nhi\n</Callout>\n\n<div>x</div>\n";
+        assert_eq!(markdown_html_block(callout, true), None);
+        // Without components content may use, the tag is plain HTML to WordPress.
+        assert_eq!(
+            markdown_html_block(callout, false),
+            Some((1, "<Callout type=\"note\">".into()))
+        );
     }
 }

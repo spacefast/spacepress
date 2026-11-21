@@ -1277,6 +1277,8 @@ export interface ConfigInput<TLocales extends LocalesConfig = LocalesConfig> {
   webhooks?: Webhook[];
   /** Private native forms, queued mail, publication search and server-priced checkout. */
   services?: ServicesConfig;
+  /** Import synced content when the standalone plugin starts. Existing editorial content is preserved. */
+  seed?: boolean;
   uploads?: UploadsConfig;
   media?: { sizes?: Record<string, { width: number; height?: number; fit?: "cover" | "inside" }> };
   /** Turned off for now: setting it fails the build. */

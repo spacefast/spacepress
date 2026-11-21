@@ -12,6 +12,8 @@ export default defineConfig({
   // The kitchen takes no remote publishing or pingbacks.
   xmlrpc: false,
   pings: false,
+  // A fresh install imports the synced Markdown under content/, so the pages have something to show.
+  seed: true,
   // The contact page's form: validated, saved and mailed by WordPress, with no handler to write.
   services: {
     forms: {

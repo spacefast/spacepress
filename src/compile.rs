@@ -420,6 +420,9 @@ pub struct Compiler<'a, 'p> {
     resolving_json_types: HashSet<usize>,
     /// Compiled module-level helpers, separated by whether database access is forbidden.
     helpers: HashMap<(usize, usize, bool), String>,
+    /// Failed helper compilations for the current receiver-typing scope. These survive speculative
+    /// rollbacks so a refused helper chain is not retried exponentially.
+    failed_helpers: HashMap<(usize, usize, bool), Diag>,
     helper_values: HashMap<(usize, usize), String>,
     helper_closures: HashMap<usize, Rc<Closure>>,
     helper_types: HashMap<usize, Ty>,
@@ -546,6 +549,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             named_callback: None,
             uses_jobs: false,
             helpers: HashMap::new(),
+            failed_helpers: HashMap::new(),
             helper_values: HashMap::new(),
             helper_closures: HashMap::new(),
             helper_types: HashMap::new(),
@@ -4593,17 +4597,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     )));
                 }
                 let helper_key = (self.owner(), key, self.fx().no_db);
+                if let Some(diag) = self.failed_helpers.get(&helper_key) {
+                    return Err(diag.clone());
+                }
                 let name = match self.helpers.get(&helper_key) {
                     Some(n) => n.clone(),
                     None => {
                         let name = self.unique_name(c.func.name.as_deref().unwrap_or(n));
-                        self.attempt(|this| {
+                        if let Err(diag) = self.attempt(|this| {
                             this.helpers.insert(helper_key, name.clone());
                             match &home {
                                 Some(home) => this.compile_method_now(c, home, &name, n, b, span),
                                 None => this.compile_helper_now(c, &name, None),
                             }
-                        })?;
+                        }) {
+                            self.failed_helpers.insert(helper_key, diag.clone());
+                            return Err(diag);
+                        }
                         name
                     }
                 };
@@ -5219,6 +5229,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     ) -> Result<()> {
         let typing = (self.owner(), closure_key(c));
         self.typing_this.insert(typing);
+        let outer_failures = std::mem::take(&mut self.failed_helpers);
         let home_path = path.rsplit_once('.').map_or(path, |(home, _)| home);
         let binding = Binding { ann: None, ..b.clone() };
         let result = self
@@ -5228,6 +5239,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .map_err(|d| self.this_cycle_help(d, home, path, &left_out))
             });
         self.typing_this.remove(&typing);
+        self.failed_helpers = outer_failures;
         result
     }
 
@@ -5363,17 +5375,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
             map.keys().cloned().collect()
         }
         let classes = keys(&self.classes);
+        let class_ids = keys(&self.class_ids);
         let helpers = keys(&self.helpers);
         let helper_types = keys(&self.helper_types);
         let helper_values = keys(&self.helper_values);
         let data_helpers = keys(&self.data_helpers);
+        let output_len = self.output.len();
+        let uses_len = self.uses.len();
+        let wp_uses_len = self.wordpress_uses.len();
+        let uses_jobs = self.uses_jobs;
+        let used_names = self.used_names.clone();
         let built = build(self);
         if built.is_err() {
             self.classes.retain(|k, _| classes.contains(k));
+            self.class_ids.retain(|k, _| class_ids.contains(k));
             self.helpers.retain(|k, _| helpers.contains(k));
             self.helper_types.retain(|k, _| helper_types.contains(k));
             self.helper_values.retain(|k, _| helper_values.contains(k));
             self.data_helpers.retain(|k, _| data_helpers.contains(k));
+            self.output.truncate(output_len);
+            self.uses.truncate(uses_len);
+            self.wordpress_uses.truncate(wp_uses_len);
+            self.uses_jobs = uses_jobs;
+            self.used_names = used_names;
         }
         built
     }

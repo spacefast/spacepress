@@ -3076,10 +3076,14 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
             "typedpress-add-kind",
             "typedpress-add-page",
             "typedpress-connect-mcp",
+            "typedpress-deploy",
             "typedpress-dev-site",
             "typedpress-fix-diagnostic",
+            "typedpress-markdown-sync",
             "typedpress-migrate",
             "typedpress-migrate-astro",
+            "typedpress-security-audit",
+            "typedpress-woocommerce",
             "typedpress-write-action"
         ]
     );
@@ -3107,7 +3111,7 @@ fn the_code_in_the_skills_compiles_as_one_project() {
             };
             // Every block says its language, so a TypeScript sample is never skipped for lack of a tag.
             assert!(!language.trim().is_empty(), "{skill}: a code block without a language");
-            if !matches!(language.trim(), "ts" | "tsx") {
+            if !matches!(language.trim(), "ts" | "tsx" | "md") {
                 continue;
             }
             // Blocks sit inside a numbered list: drop the list's indentation.
@@ -3116,17 +3120,32 @@ fn the_code_in_the_skills_compiles_as_one_project() {
                 .map(|line| line.strip_prefix("   ").unwrap_or(line))
                 .collect::<Vec<_>>()
                 .join("\n");
-            let path = code
-                .lines()
-                .next()
-                .and_then(|first| first.strip_prefix("// "))
-                .map(|rest| rest.split([' ', ':']).next().unwrap())
-                .filter(|path| path.starts_with("tp/"))
-                .unwrap_or_else(|| panic!("{skill}: a ts block names its file in its first line:\n{code}"));
+            let (path, body) = if language.trim() == "md" {
+                let Some(path) = code
+                    .lines()
+                    .next()
+                    .and_then(|first| first.strip_prefix("<!-- "))
+                    .and_then(|rest| rest.strip_suffix(" -->"))
+                    .filter(|path| path.starts_with("tp/"))
+                else {
+                    continue;
+                };
+                let rest = code.split_once('\n').map(|(_, r)| r).unwrap_or("");
+                (path, rest.to_string())
+            } else {
+                let path = code
+                    .lines()
+                    .next()
+                    .and_then(|first| first.strip_prefix("// "))
+                    .map(|rest| rest.split([' ', ':']).next().unwrap())
+                    .filter(|path| path.starts_with("tp/"))
+                    .unwrap_or_else(|| panic!("{skill}: a ts block names its file in its first line:\n{code}"));
+                (path, code.clone())
+            };
             let target = project.path().join(path);
             assert!(!target.exists(), "{skill}: {path} is written by two blocks");
             std::fs::create_dir_all(target.parent().unwrap()).unwrap();
-            std::fs::write(&target, code.clone() + "\n").unwrap();
+            std::fs::write(&target, body + "\n").unwrap();
             written.push(path.to_string());
         }
     }

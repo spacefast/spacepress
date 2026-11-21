@@ -59,7 +59,12 @@ class Play extends HTMLElement {
     this.outputView = undefined;
     this.replaceChildren();
     this.started = false;
-    this.classList.remove("tp-on");
+    this.classList.remove("tp-on", "is-fullscreen");
+    document.body.classList.remove("sp-no-scroll");
+    if (this.onEscKey) {
+      window.removeEventListener("keydown", this.onEscKey);
+      this.onEscKey = undefined;
+    }
     delete this.dataset.ready;
   }
 
@@ -81,7 +86,7 @@ class Play extends HTMLElement {
       this.started = true;
       this.lastSig = sig;
       if (this.hasFlag("open")) { this.start(); return; }
-      const button = el("button", { type: "button", className: "tp-go", textContent: "Launch interactive compiler" });
+      const button = el("button", { type: "button", className: "tp-go", textContent: "Boot Live WordPress in Browser →" });
       button.onclick = () => { closed.remove(); this.start(); };
       const note = el("span", { className: "tp-hint", textContent: this.getAttribute("hint") ?? "Edit TypeScript, compile to PHP & SQL in your browser, and boot it inside WordPress Playground." });
       const closed = el("div", { className: "tp-closed" }, button, note);
@@ -134,8 +139,13 @@ class Play extends HTMLElement {
     this.summary = el("span", { className: "tp-summary" });
     const bar = el("div", { className: "tp-bar" });
     if (this.hasFlag("picker")) bar.append(this.pickerEl);
-    bar.append(this.summary, button("Reset", () => { this.keepAddress = false; this.loadExample(this.name, this.source); }));
+    this.resetBtn = button("Reset", () => { this.keepAddress = false; this.loadExample(this.name, this.source); });
+    this.resetBtn.disabled = true;
+    bar.append(this.summary, this.resetBtn);
     if (this.hasFlag("share")) bar.append(button("Share", () => this.shareEdit()));
+    this.fullscreenBtn = button("Fullscreen", () => this.toggleFullscreen());
+    this.fullscreenBtn.setAttribute("aria-pressed", "false");
+    bar.append(this.fullscreenBtn);
     bar.append(button("Run in WordPress", () => this.runInWordPress(), "tp-go"));
     this.sharedNote = el("p", { className: "tp-shared", hidden: true });
 
@@ -157,14 +167,79 @@ class Play extends HTMLElement {
     };
     this.sourceDiff = button("My changes", () => { this.showSourceDiff = !this.showSourceDiff; this.showSource(); });
     this.outputDiff = button("Diff previous build", () => { this.showOutputDiff = !this.showOutputDiff; this.showOutput(); });
+    this.copyOutBtn = button("Copy", () => this.copyOutput());
     const left = pane("You write", "click in the file and edit", [this.sourceDiff]);
-    const right = pane("SpacePress compiles", "rebuilt live via WASM", [this.outputDiff, button("Download", () => this.download())]);
+    const right = pane("SpacePress compiles", "rebuilt live via WASM", [this.outputDiff, this.copyOutBtn, button("Download", () => this.download())]);
     right.section.classList.add("tp-out");
     this.about = el("p", { className: "tp-about" });
     right.section.querySelector(".tp-split").before(this.about);
     this.sourceTree = left.tree; this.sourceBox = left.file; this.outputTree = right.tree; this.outputBox = right.file;
     this.status.remove();
-    this.append(bar, this.status, this.sharedNote, this.problems, this.warningsEl, this.wordpress, el("div", { className: "tp-panes" }, left.section, right.section));
+    const divider = el("div", {
+      className: "sp-split-handle",
+      role: "separator",
+      tabIndex: 0,
+      title: "Drag to resize panes (double-click to reset)",
+    });
+    divider.setAttribute("aria-orientation", "vertical");
+    const panes = el("div", { className: "tp-panes" }, left.section, divider, right.section);
+    this.wireSplitDivider(panes, divider);
+    this.append(bar, this.status, this.sharedNote, this.problems, this.warningsEl, this.wordpress, panes);
+  }
+
+  toggleFullscreen(force) {
+    const next = typeof force === "boolean" ? force : !this.classList.contains("is-fullscreen");
+    this.classList.toggle("is-fullscreen", next);
+    document.body.classList.toggle("sp-no-scroll", next);
+    if (this.fullscreenBtn) {
+      this.fullscreenBtn.textContent = next ? "Exit fullscreen" : "Fullscreen";
+      this.fullscreenBtn.setAttribute("aria-pressed", String(next));
+    }
+    if (next && !this.onEscKey) {
+      this.onEscKey = (e) => { if (e.key === "Escape" && !e.defaultPrevented) this.toggleFullscreen(false); };
+      window.addEventListener("keydown", this.onEscKey);
+    } else if (!next && this.onEscKey) {
+      window.removeEventListener("keydown", this.onEscKey);
+      this.onEscKey = undefined;
+    }
+  }
+
+  wireSplitDivider(grid, handle) {
+    handle.ondblclick = () => grid.style.removeProperty("--split-left");
+    handle.onkeydown = (e) => {
+      if (window.innerWidth <= 980) return;
+      const cur = parseFloat(grid.style.getPropertyValue("--split-left")) || 50;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        grid.style.setProperty("--split-left", `${Math.max(25, cur - 5)}%`);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        grid.style.setProperty("--split-left", `${Math.min(75, cur + 5)}%`);
+      } else if (e.key === "Home" || e.key === "End") {
+        e.preventDefault();
+        grid.style.removeProperty("--split-left");
+      }
+    };
+    handle.onpointerdown = (e) => {
+      if (e.button !== 0 || window.innerWidth <= 980) return;
+      e.preventDefault();
+      handle.setPointerCapture?.(e.pointerId);
+      handle.classList.add("is-dragging");
+      const rect = grid.getBoundingClientRect();
+      const onMove = (ev) => {
+        const pct = Math.max(25, Math.min(75, ((ev.clientX - rect.left) / rect.width) * 100));
+        grid.style.setProperty("--split-left", `${pct.toFixed(2)}%`);
+      };
+      const onUp = () => {
+        handle.classList.remove("is-dragging");
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    };
   }
 
   compile(sources) {
@@ -209,19 +284,12 @@ class Play extends HTMLElement {
 
   tree(host, paths, selected, statuses, onSelect) {
     host.replaceChildren();
-    const rows = new Set();
-    for (const p of paths) { const parts = p.split("/"); for (let i = 1; i <= parts.length; i++) rows.add(parts.slice(0, i).join("/")); }
-    host.style.height = `${rows.size * 24 + 8}px`;
     const model = new FileTree({
       paths, initialExpansion: "open", flattenEmptyDirectories: true, density: "compact",
       icons: { set: "complete", colored: true }, initialSelectedPaths: [selected], gitStatus: statuses,
       onSelectionChange: (picked) => { if (picked.length === 1 && paths.includes(picked[0])) onSelect(picked[0]); },
     });
     model.render({ containerWrapper: host });
-    requestAnimationFrame(() => {
-      const drawn = host.querySelector("file-tree-container")?.shadowRoot?.querySelectorAll('[role="treeitem"]').length;
-      if (drawn) host.style.height = `${drawn * 24 + 8}px`;
-    });
   }
 
   renderInlineAnnotation(annotation) {
@@ -367,6 +435,7 @@ class Play extends HTMLElement {
 
   trees() {
     const edited = Object.keys(this.files).filter((file) => this.files[file] !== this.currentExample.files[file]);
+    if (this.resetBtn) this.resetBtn.disabled = edited.length === 0;
     this.tree(this.sourceTree, this.currentExample.shown, this.source, edited.map((path) => ({ path, status: "modified" })), (path) => { this.source = path; this.showSource(); this.remember(); });
     const paths = Object.keys(this.outputs);
     if (!paths.includes(this.output)) this.output = paths[0];
@@ -468,6 +537,21 @@ class Play extends HTMLElement {
       this.showSource();
       this.rebuild();
     }
+  }
+
+  copyOutput() {
+    const content = this.outputs[this.output];
+    if (!content || !this.copyOutBtn) return;
+    navigator.clipboard?.writeText(content).then(() => {
+      this.copyOutBtn.dataset.origLabel ??= this.copyOutBtn.textContent;
+      clearTimeout(this.copyOutBtn._copyTimer);
+      this.copyOutBtn.textContent = "Copied";
+      this.copyOutBtn.classList.add("is-copied");
+      this.copyOutBtn._copyTimer = setTimeout(() => {
+        this.copyOutBtn.textContent = this.copyOutBtn.dataset.origLabel;
+        this.copyOutBtn.classList.remove("is-copied");
+      }, 1400);
+    }, () => {});
   }
 
   download() {

@@ -167,12 +167,12 @@ class Sandbox extends HTMLElement {
     }
 
     const actions = el("div", { className: "sp-sb-actions" });
-    this.statusBadge = el("span", { className: "sp-sb-status", textContent: "Ready to compile" });
+    this.statusBadge = el("button", { type: "button", className: "sp-sb-status", textContent: "Ready to compile", disabled: true });
     this.statusBadge.onclick = () => {
       const diag = this.uiRoot?.querySelector(".sp-inline-diag");
       if (diag) diag.scrollIntoView({ behavior: "smooth", block: "center" });
     };
-    this.diffBtn = el("button", { type: "button", className: "sp-sb-btn", textContent: "Diff" });
+    this.diffBtn = el("button", { type: "button", className: "sp-sb-btn", textContent: "Diff", disabled: true });
     this.diffBtn.setAttribute("aria-pressed", String(this.showDiff));
     this.diffBtn.onclick = () => {
       this.showDiff = !this.showDiff;
@@ -220,22 +220,92 @@ class Sandbox extends HTMLElement {
     const outPane = el("div", { className: "sp-sb-pane sp-sb-out" });
     const outHead = el("div", { className: "sp-sb-pane-bar sp-sb-out-bar" });
     this.outTabs = el("div", { className: "sp-sb-tabs", role: "tablist" });
+    this.outTabs.addEventListener("scroll", () => this.syncTabOverflow(), { passive: true });
+    this.outTabs.addEventListener("wheel", (e) => {
+      if (this.outTabs.scrollWidth > this.outTabs.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        this.outTabs.scrollLeft += e.deltaY;
+      }
+    }, { passive: false });
+    this.outTabs.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const tabs = [...this.outTabs.querySelectorAll('[role="tab"]')];
+      const idx = tabs.indexOf(document.activeElement);
+      if (idx === -1) return;
+      e.preventDefault();
+      const next = tabs[(idx + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+      next?.focus();
+      next?.click();
+    });
     this.copyOutBtn = el("button", { type: "button", className: "sp-sb-copy", textContent: "Copy" });
     this.copyOutBtn.onclick = () => {
       const content = this.outputs[this.selectedOutput];
       if (!content) return;
       navigator.clipboard?.writeText(content).then(() => {
+        this.copyOutBtn.dataset.origLabel ??= this.copyOutBtn.textContent;
+        clearTimeout(this.copyOutBtn._copyTimer);
         this.copyOutBtn.textContent = "Copied";
-        setTimeout(() => { this.copyOutBtn.textContent = "Copy"; }, 1400);
+        this.copyOutBtn.classList.add("is-copied");
+        this.copyOutBtn._copyTimer = setTimeout(() => {
+          this.copyOutBtn.textContent = this.copyOutBtn.dataset.origLabel;
+          this.copyOutBtn.classList.remove("is-copied");
+        }, 1400);
       }, () => {});
     };
     outHead.append(this.outTabs, this.copyOutBtn);
     this.outBox = el("div", { className: "sp-sb-code" });
     outPane.append(outHead, this.outBox);
 
-    const body = el("div", { className: "sp-sb-grid" }, sourcePane, outPane);
+    const divider = el("div", {
+      className: "sp-split-handle",
+      role: "separator",
+      tabIndex: 0,
+      title: "Drag to resize panes (double-click to reset)",
+    });
+    divider.setAttribute("aria-orientation", "vertical");
+
+    const body = el("div", { className: "sp-sb-grid" }, sourcePane, divider, outPane);
+    this.wireSplitDivider(body, divider);
     this.uiRoot.append(header, this.descBar, this.problems, this.warningsEl, body);
     this.classList.add("sp-sb-ready");
+  }
+
+  wireSplitDivider(grid, handle) {
+    handle.ondblclick = () => grid.style.removeProperty("--split-left");
+    handle.onkeydown = (e) => {
+      if (window.innerWidth <= 920) return;
+      const cur = parseFloat(grid.style.getPropertyValue("--split-left")) || 50;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        grid.style.setProperty("--split-left", `${Math.max(25, cur - 5)}%`);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        grid.style.setProperty("--split-left", `${Math.min(75, cur + 5)}%`);
+      } else if (e.key === "Home" || e.key === "End") {
+        e.preventDefault();
+        grid.style.removeProperty("--split-left");
+      }
+    };
+    handle.onpointerdown = (e) => {
+      if (e.button !== 0 || window.innerWidth <= 920) return;
+      e.preventDefault();
+      handle.setPointerCapture?.(e.pointerId);
+      handle.classList.add("is-dragging");
+      const rect = grid.getBoundingClientRect();
+      const onMove = (ev) => {
+        const pct = Math.max(25, Math.min(75, ((ev.clientX - rect.left) / rect.width) * 100));
+        grid.style.setProperty("--split-left", `${pct.toFixed(2)}%`);
+      };
+      const onUp = () => {
+        handle.classList.remove("is-dragging");
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    };
   }
 
   updateDescription() {
@@ -393,8 +463,27 @@ class Sandbox extends HTMLElement {
     this.statusBadge.dataset.state = state;
     this.statusBadge.textContent = text;
     const clickable = state === "error" || state === "warn";
+    this.statusBadge.disabled = !clickable;
     this.statusBadge.classList.toggle("is-clickable", clickable);
     this.statusBadge.title = clickable ? "Jump to diagnostic" : "";
+  }
+
+  syncTabOverflow() {
+    if (!this.outTabs) return;
+    const { scrollLeft, scrollWidth, clientWidth } = this.outTabs;
+    this.outTabs.classList.toggle("has-overflow-left", scrollLeft > 2);
+    this.outTabs.classList.toggle("has-overflow-right", scrollLeft + clientWidth < scrollWidth - 2);
+  }
+
+  updateDiffState() {
+    if (!this.diffBtn) return;
+    const hasChanges = Object.keys(this.outputs).some((k) => this.outputs[k] !== (this.previousOutputs[k] ?? ""));
+    this.diffBtn.disabled = !hasChanges;
+    this.diffBtn.title = hasChanges ? "Toggle unified diff against previous build" : "Edit code to inspect diff";
+    if (!hasChanges && this.showDiff) {
+      this.showDiff = false;
+      this.diffBtn.setAttribute("aria-pressed", "false");
+    }
   }
 
   async bootCompiler() {
@@ -520,6 +609,7 @@ class Sandbox extends HTMLElement {
     } else {
       this.setStatus("ok", `Compiled in ${ms} ms · ${keys.length} outputs`);
     }
+    this.updateDiffState();
     this.renderOutputTabs();
     this.renderOutput();
   }
@@ -569,6 +659,7 @@ class Sandbox extends HTMLElement {
       };
       this.outTabs.append(btn);
     }
+    requestAnimationFrame(() => this.syncTabOverflow());
   }
 
   renderOutput() {

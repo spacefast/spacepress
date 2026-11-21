@@ -28,9 +28,8 @@ Target local dev (default) or any remote site (`--site <dir | workspace | @alias
 SpacePress runs anywhere WordPress 7.1+ and PHP 8.2+ run:
 
 - **[Deploy on Spacefast](/docs/operations/deploy-spacefast)**
-- **[Deploy on Pressable](/docs/operations/deploy-pressable)**
-- **[Deploy on WordPress.com](/docs/operations/deploy-wordpress-com)**
-- **[Deploy on Self-hosted WordPress](/docs/operations/deploy-self-hosted)**
+- **[Deploy on Pressable & WordPress.com (WP Cloud)](/docs/operations/deploy-wp-cloud)**
+- **[Deploy on Self-hosted WordPress](/docs/operations/deploy-self-hosted)** — server requirements & everywhere else
 
 ## Sealed mode & plugin lockfile
 

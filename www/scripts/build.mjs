@@ -12,6 +12,7 @@
 import { readFileSync, writeFileSync, statSync, mkdirSync, copyFileSync, existsSync, rmSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { generateAiAssets } from "./generate-ai-assets.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const site = join(here, "..");
@@ -69,5 +70,21 @@ const notice = ["@pierre/diffs", "@pierre/trees"].map((pkg) => {
 }).join("\n\n----------------------------------------\n\n");
 writeFileSync(join(out, "third-party-licenses.txt"), `This site renders code, file trees and diffs with these libraries.\nsite.js contains parts of them.\n\n${notice}\n`);
 
+const aiStats = generateAiAssets();
+let ghStars = { repo: "spacefast/spacepress", public: false, stars: null };
+try {
+  const gh = Bun.spawnSync(["gh", "api", "repos/spacefast/spacepress", "--jq", "{public:(.visibility==\"public\"),stars:.stargazers_count}"]);
+  if (gh.exitCode === 0) {
+    const parsed = JSON.parse(gh.stdout.toString().trim());
+    ghStars = {
+      repo: "spacefast/spacepress",
+      public: Boolean(parsed.public),
+      stars: parsed.public && typeof parsed.stars === "number" ? parsed.stars : null,
+    };
+  }
+} catch {}
+writeFileSync(join(out, "gh-stars.json"), JSON.stringify(ghStars));
+console.log(`   generated llms.txt, llms-full.txt, search-index.json (${aiStats.searchItems} items), and ${aiStats.docs + aiStats.posts + 3} markdown twins`);
+
 const kb = (f) => `${String(Math.round(statSync(f).size / 1024)).padStart(7)} KB  ${relative(site, f)}`;
-for (const f of [join(site, "tp", "data", "sources.ts"), join(out, "site.js"), join(out, "play-data.json"), join(out, "compiler.wasm")]) console.log(kb(f));
+for (const f of [join(site, "tp", "data", "sources.ts"), join(out, "site.js"), join(out, "play-data.json"), join(out, "compiler.wasm"), join(out, "llms.txt"), join(out, "search-index.json")]) console.log(kb(f));

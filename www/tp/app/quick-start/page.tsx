@@ -1,5 +1,6 @@
 import { Link } from "typedpress/app";
 import { Cmd, Code, Sandbox } from "../../components/Code";
+import { PageActions } from "../../components/PageActions";
 
 export const metadata = {
   title: "Quick Start",
@@ -107,19 +108,25 @@ export function ClapButton({ noteId, initial }: { noteId: number; initial: numbe
   );
 }`;
 
+const AGENT_PROMPT =
+  "Read https://spacepress.dev/start.md and https://spacepress.dev/rules.md, then help me build a SpacePress app (scaffold with `npm create typedpress@0.3.0 my-app`, verify with `npx typedpress check`, and boot local WordPress with `npm run dev`).";
+
 export default function QuickStartPage() {
   return (
     <>
       <section className="sp-page-banner">
-        <div className="sp-container-steps">
-          <h1>Quick Start</h1>
+        <div className="sp-container-narrow">
+          <div className="sp-article-head">
+            <h1>Quick Start</h1>
+            <PageActions mdPath="/md/quick-start.md" title="SpacePress Quick Start" />
+          </div>
           <p>
-            The famous 3-minute install: scaffold a TypeScript app, define collections and SQL tables, add a server action and TSX page, and launch local WordPress — no Docker or Rust toolchain required.
+            The famous 3-minute install: hand the prompt to your coding agent — or scaffold directly with the CLI — and launch local WordPress with no Docker or Rust toolchain required.
           </p>
         </div>
       </section>
 
-      <div className="sp-container-steps">
+      <div className="sp-container-narrow">
         <div className="sp-callout" style={{ marginTop: "32px" }}>
           <strong>Requirements &amp; pre-release naming:</strong> You need <strong>Node.js 22+</strong> and npm. The <code>typedpress</code> npm package downloads a prebuilt Rust compiler binary automatically. During pre-release, CLI commands, config filenames (<code>typedpress.config.ts</code>), and imports (<code>from &quot;typedpress&quot;</code>) use the <code>typedpress</code> identifier.
         </div>
@@ -128,10 +135,21 @@ export default function QuickStartPage() {
           <article className="sp-step">
             <div className="sp-step-head">
               <span className="sp-step-num">1</span>
-              <h2>Scaffold a new project</h2>
+              <h2>Start with your coding agent — or the CLI</h2>
             </div>
             <p style={{ color: "var(--ink-secondary)" }}>
-              Run the scaffolder to create a complete SpacePress starter with a schema, sample Markdown notes, TSX pages, a progressive form action, and coding-agent files (<code>AGENTS.md</code> and <code>.mcp.json</code>).
+              Paste this prompt into Claude Code, Cursor, Codex, or any coding agent. It reads{" "}
+              <a href="/start.md"><code>/start.md</code></a> and <a href="/rules.md"><code>/rules.md</code></a>, scaffolds the starter with <code>AGENTS.md</code>, 12 skills, and{" "}
+              <Link href="/docs/operations/mcp-and-agents"><code>.mcp.json</code></Link>, and boots local WordPress:
+            </p>
+            <div className="sp-cmd">
+              <code style={{ whiteSpace: "normal", lineHeight: 1.5 }}>{AGENT_PROMPT}</code>
+              <button type="button" className="sp-copy-inline" data-copy={AGENT_PROMPT}>
+                Copy prompt
+              </button>
+            </div>
+            <p style={{ color: "var(--ink-muted)", fontSize: "14px", marginTop: "18px" }}>
+              Or run the scaffolder directly in your terminal:
             </p>
             <Cmd command="npm create typedpress@0.3.0 my-app" />
             <Cmd command="cd my-app && npm run dev" />
@@ -143,7 +161,7 @@ export default function QuickStartPage() {
           <article className="sp-step">
             <div className="sp-step-head">
               <span className="sp-step-num">2</span>
-              <h2>Define your schema &amp; server action (Try it live!)</h2>
+              <h2>Define your schema &amp; server action</h2>
             </div>
             <p style={{ color: "var(--ink-secondary)" }}>
               SpacePress reads <code>typedpress.config.ts</code> (and any files it re-exports from <code>tp/</code>). Edit the starter schema below — try adding a <code>summary: text().optional()</code> field or modifying the <code>clap</code> action — and inspect the live PHP, SQL migration, and TypeScript definitions generated in your browser.
@@ -189,10 +207,13 @@ export default function QuickStartPage() {
           <article className="sp-step">
             <div className="sp-step-head">
               <span className="sp-step-num">5</span>
-              <h2>Build &amp; deploy on Spacefast, Pressable, WordPress.com, or self-hosted WordPress</h2>
+              <h2>Build &amp; deploy anywhere WordPress runs</h2>
             </div>
             <p style={{ color: "var(--ink-secondary)" }}>
-              Compile your project into standalone WordPress plugins under <code>tp/dist/wp-content/plugins/</code>, deploy directly to Spacefast, Pressable, WordPress.com, or any self-hosted WordPress site with <code>login</code> + <code>push</code>, or export a static site when <code>output: &quot;static&quot;</code> is set.
+              Compile your project into standalone WordPress plugins under <code>tp/dist/wp-content/plugins/</code>, deploy to{" "}
+              <Link href="/docs/operations/deploy-spacefast">Spacefast</Link>,{" "}
+              <Link href="/docs/operations/deploy-wp-cloud">Pressable &amp; WordPress.com (WP Cloud)</Link>, or{" "}
+              <Link href="/docs/operations/deploy-self-hosted">self-hosted WordPress</Link> with <code>login</code> + <code>push</code>, or export a static site when <code>output: &quot;static&quot;</code> is set.
             </p>
             <Cmd command="npx typedpress build" />
             <Cmd command="npx typedpress login https://example.com && npx typedpress push" />

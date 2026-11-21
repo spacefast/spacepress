@@ -12,14 +12,18 @@ export const metadata = {
     { rel: "preconnect", href: "https://fonts-api.wp.com" },
     { rel: "preconnect", href: "https://fonts.wp.com" },
     { rel: "stylesheet", href: "https://fonts-api.wp.com/css2?family=JetBrains+Mono:wght@400;500&family=Strichpunkt+Sans:wght@400..900&display=swap" },
+    { rel: "ai-catalog", type: "application/ai-catalog+json", href: "/.well-known/ai-catalog.json" },
   ],
 };
 
 export default function RootLayout({ children }: LayoutProps) {
   return (
     <div className="sp-shell">
+      <a href="#main-content" className="sp-skip-link">Skip to content</a>
       <div className="sp-wip-banner" role="status">
-        <span>v0 &ldquo;Istanbul&rdquo; · THIS IS WORK IN PROGRESS.</span>
+        <span>
+          <Link href="/changelog" className="sp-wip-link">v0 &ldquo;Istanbul&rdquo;</Link> · THIS IS WORK IN PROGRESS.
+        </span>
       </div>
 
       <header className="sp-header">
@@ -39,16 +43,28 @@ export default function RootLayout({ children }: LayoutProps) {
           </nav>
 
           <div className="sp-nav-actions">
+            <button
+              type="button"
+              className="sp-search-trigger"
+              data-search-open=""
+              aria-label="Search documentation"
+            >
+              <span>Search</span>
+              <kbd>⌘K</kbd>
+            </button>
             <a
-              className="sp-btn sp-btn-ghost sp-btn-sm sp-hide-sm"
+              className="sp-btn sp-btn-ghost sp-btn-sm sp-hide-sm sp-gh-btn"
               href="https://github.com/spacefast/spacepress"
               target="_blank"
               rel="noopener noreferrer"
+              data-gh-stars="spacefast/spacepress"
             >
-              GitHub ↗
+              <span>GitHub</span>
+              <span className="sp-gh-stars" hidden />
+              <span aria-hidden="true">↗</span>
             </a>
             <Link href="/quick-start" className="sp-btn sp-btn-primary sp-btn-sm sp-hide-sm">
-              Get Started
+              Quick Start
             </Link>
             <button
               type="button"
@@ -67,14 +83,18 @@ export default function RootLayout({ children }: LayoutProps) {
           <Link href="/examples">Examples</Link>
           <Link href="/docs">Reference</Link>
           <Link href="/blog">Blog</Link>
+          <Link href="/changelog">Changelog</Link>
           <Link href="/play">Playground</Link>
+          <a href="https://github.com/spacefast/spacepress/discussions" target="_blank" rel="noopener noreferrer">
+            Discussions ↗
+          </a>
           <a href="https://github.com/spacefast/spacepress" target="_blank" rel="noopener noreferrer">
             GitHub ↗
           </a>
         </div>
       </header>
 
-      <main>{children}</main>
+      <main id="main-content">{children}</main>
 
       <footer className="sp-footer">
         <div className="sp-container">
@@ -104,6 +124,10 @@ export default function RootLayout({ children }: LayoutProps) {
               <ul>
                 <li><Link href="/play">Browser Playground</Link></li>
                 <li><Link href="/blog">Blog</Link></li>
+                <li><a href="/start.md">start.md (Agent Playbook)</a></li>
+                <li><a href="/rules.md">rules.md (Compiler Rules)</a></li>
+                <li><a href="/llms.txt">llms.txt</a></li>
+                <li><a href="/llms-full.txt">llms-full.txt</a></li>
                 <li><a href="/api/examples.json">Examples JSON API</a></li>
                 <li><a href="/third-party-licenses.txt">Third-Party Licenses</a></li>
               </ul>
@@ -112,9 +136,11 @@ export default function RootLayout({ children }: LayoutProps) {
             <div>
               <h4>Project</h4>
               <ul>
+                <li><Link href="/changelog">Changelog (v0 &ldquo;Istanbul&rdquo;)</Link></li>
                 <li><a href="https://github.com/spacefast/spacepress" target="_blank" rel="noopener noreferrer">GitHub Repository</a></li>
+                <li><a href="https://github.com/spacefast/spacepress/discussions" target="_blank" rel="noopener noreferrer">GitHub Discussions</a></li>
+                <li><a href="https://github.com/spacefast/spacepress/releases" target="_blank" rel="noopener noreferrer">Releases</a></li>
                 <li><a href="https://github.com/spacefast/spacepress/issues" target="_blank" rel="noopener noreferrer">Issues &amp; Roadmap</a></li>
-                <li><a href="https://spacepress.dev">spacepress.dev</a></li>
               </ul>
             </div>
           </div>

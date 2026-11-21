@@ -29,7 +29,7 @@ Commit your migration ledger (`tp/_generated/migrations/`) and plugin lockfile (
 Authenticate once with your Spacefast site using WordPress Application Passwords, then inspect what the deployment will change:
 
 ```bash
-npx typedpress login https://your-site.space.fast
+npx typedpress login https://your-site.spacefast.com
 npx typedpress push --dry-run
 ```
 
@@ -48,8 +48,8 @@ npx typedpress push
 If your schema defines synced collections (`sync: "content/**/*.md"`), keep Git and your live Spacefast site in two-way sync:
 
 ```bash
-npx typedpress sync --site https://your-site.space.fast
-npx typedpress doctor --site https://your-site.space.fast --links
+npx typedpress sync --site https://your-site.spacefast.com
+npx typedpress doctor --site https://your-site.spacefast.com --links
 ```
 
 For CI pipelines, supply `TP_APP_PASSWORD="user:application-password"` as a secret environment variable instead of running `typedpress login` interactively.

@@ -43,6 +43,9 @@ export default async function PlayPage({ search }: PageProps<"play", { s?: strin
           file={search.file ?? undefined}
           shared={sharedJson}
         />
+        <p className="sp-sandbox-hint">
+          Tip: drag the center divider to resize panes (double-click to reset), toggle <strong>Diff previous build</strong> to inspect exact PHP/SQL changes, or type <code>&quot;Word{"p"}ress&quot;</code> in a string/JSX to test inline <code>capital_P_dangit</code> Auto-fix.
+        </p>
       </div>
     </>
   );

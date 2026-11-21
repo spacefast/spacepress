@@ -46,9 +46,14 @@ function drawCode(node) {
   copy.setAttribute("aria-label", `Copy ${file.name}`);
   copy.onclick = () => {
     navigator.clipboard?.writeText(file.contents).then(() => {
+      copy.dataset.origLabel ??= copy.textContent;
+      clearTimeout(copy._copyTimer);
       copy.textContent = "Copied";
       copy.classList.add("is-copied");
-      setTimeout(() => { copy.textContent = "Copy"; copy.classList.remove("is-copied"); }, 1400);
+      copy._copyTimer = setTimeout(() => {
+        copy.textContent = copy.dataset.origLabel;
+        copy.classList.remove("is-copied");
+      }, 1400);
     }, () => {});
   };
   node.append(copy);
@@ -63,13 +68,15 @@ function drawDiff(node) {
   node.classList.add("tp-drawn");
 }
 
-function tree(host, paths, notes, selected, onSelect) {
-  const rows = new Set();
-  for (const p of paths) {
-    const parts = p.replace(/\/$/, "").split("/");
-    for (let i = 1; i <= parts.length; i++) rows.add(parts.slice(0, i).join("/"));
+function tree(host, paths, notes, selected, onSelect, fixedHeight = false) {
+  if (!fixedHeight) {
+    const rows = new Set();
+    for (const p of paths) {
+      const parts = p.replace(/\/$/, "").split("/");
+      for (let i = 1; i <= parts.length; i++) rows.add(parts.slice(0, i).join("/"));
+    }
+    host.style.height = `${rows.size * 24 + 8}px`;
   }
-  host.style.height = `${rows.size * 24 + 8}px`;
   const model = new FileTree({
     paths,
     initialExpansion: "open",
@@ -81,10 +88,12 @@ function tree(host, paths, notes, selected, onSelect) {
     onSelectionChange: (picked) => { if (picked.length === 1) onSelect?.(picked[0]); },
   });
   model.render({ containerWrapper: host });
-  requestAnimationFrame(() => {
-    const drawn = host.querySelector("file-tree-container")?.shadowRoot?.querySelectorAll('[role="treeitem"]').length;
-    if (drawn) host.style.height = `${drawn * 24 + 8}px`;
-  });
+  if (!fixedHeight) {
+    requestAnimationFrame(() => {
+      const drawn = host.querySelector("file-tree-container")?.shadowRoot?.querySelectorAll('[role="treeitem"]').length;
+      if (drawn) host.style.height = `${drawn * 24 + 8}px`;
+    });
+  }
 }
 
 function drawTree(node) {
@@ -117,7 +126,7 @@ function drawExample(node) {
   const host = Object.assign(document.createElement("div"), { className: "tp-example-tree" });
   node.prepend(host);
   node.classList.add("tp-drawn");
-  tree(host, [...byPath.keys()], notes, first, show);
+  tree(host, [...byPath.keys()], notes, first, show, true);
   show(first);
 }
 

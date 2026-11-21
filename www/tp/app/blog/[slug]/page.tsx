@@ -1,4 +1,5 @@
 import { Comments, Content, Link, type PageProps } from "typedpress/app";
+import { PageActions } from "../../../components/PageActions";
 
 export const metadata = ({ item }: PageProps<"blog/[slug]">) => ({
   title: item.title,
@@ -19,9 +20,12 @@ export default function BlogPostPage({ item }: PageProps<"blog/[slug]">) {
               {item.publishedAt.slice(0, 10)}
             </time>
           )}
-          <h1 style={{ fontSize: "clamp(1.9rem, 3.8vw, 2.8rem)", margin: "0 0 12px", letterSpacing: "-0.03em", lineHeight: 1.12 }}>
-            {item.title}
-          </h1>
+          <div className="sp-article-head">
+            <h1 style={{ fontSize: "clamp(1.9rem, 3.8vw, 2.8rem)", margin: "0 0 12px", letterSpacing: "-0.03em", lineHeight: 1.12 }}>
+              {item.title}
+            </h1>
+            <PageActions mdPath={`/md/blog/${item.slug}.md`} title={item.title} />
+          </div>
           {item.excerpt && <p className="sp-docs-lead" style={{ marginBottom: 0 }}>{item.excerpt}</p>}
         </header>
 

@@ -1,4 +1,5 @@
 import { Link } from "typedpress/app";
+import { PageActions } from "../../components/PageActions";
 import { Part1Foundation } from "../../components/guide/Part1Foundation";
 import { Part2ServerAndUI } from "../../components/guide/Part2ServerAndUI";
 import { Part3Ecosystem } from "../../components/guide/Part3Ecosystem";
@@ -29,8 +30,11 @@ export default function HandbookPage() {
   return (
     <>
       <section className="sp-page-banner">
-        <div className="sp-container-wide">
-          <h1>The SpacePress Handbook</h1>
+        <div className="sp-container">
+          <div className="sp-article-head">
+            <h1>The SpacePress Handbook</h1>
+            <PageActions mdPath="/md/handbook.md" title="The SpacePress Handbook" />
+          </div>
           <p>
             A thorough, single-page engineering handbook covering every layer of SpacePress — with live, editable WebAssembly compiler sandboxes embedded throughout so you can test every feature as you read.
           </p>
@@ -42,7 +46,7 @@ export default function HandbookPage() {
         </div>
       </section>
 
-      <div className="sp-container-wide">
+      <div className="sp-container">
         <div className="sp-guide-layout">
           <aside className="sp-toc" data-toc="" aria-label="Handbook contents">
             <p className="sp-toc-title">In this handbook</p>

@@ -189,6 +189,9 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
     let mut public_files = Vec::new();
     capture_assets(&*fs, &project.join("public"), &project, &mut public_files)?;
     public_files.sort();
+    crate::assets::require_frontend_styles(&program, |file| {
+        public_files.binary_search(&format!("public/{file}")).is_ok()
+    })?;
     Ok(Capture {
         app,
         vendor,
@@ -255,6 +258,8 @@ fn capture_assets(fs: &dyn Fs, from: &Path, root: &Path, files: &mut Vec<String>
 /// Capture installed sources for the native CLI. The destination must be new.
 #[cfg(feature = "host")]
 pub fn sources(project: &Path, destination: &Path) -> Result<Manifest, Diag> {
+    #[cfg(feature = "cli")]
+    let _frontend = crate::frontend::prepare_styles(project)?;
     write_sources(project, destination, true)
 }
 
@@ -991,7 +996,9 @@ pub(crate) fn compile_tree(
         return Err(failure("hosted apps cannot install WordPress plugins"));
     }
     let seeds = seed_records(&*fs, &root, &built.schema, false)?;
-    public_assets(&assets.join("public"), None)?;
+    let public = assets.join("public");
+    public_assets(&public, None)?;
+    crate::assets::require_frontend_styles(&program, |file| public.join(file).is_file())?;
     std::fs::create_dir(output).map_err(io)?;
     if !source_migrations.is_empty() {
         let archive = output.join("source-migrations");

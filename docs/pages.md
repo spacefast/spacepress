@@ -513,9 +513,11 @@ import compass from "./compass.svg";
   imported by a `"use client"` component (pass the URL as a prop). Other files,
   binary images and fonts among them, go in `public/`, by their URL.
 
-For Tailwind and npm-backed browser scripts, use the
-[`@typedpress/frontend` build](../packages/frontend/README.md). It writes
-hashed browser assets and metadata that a route or layout can select.
+Install [`@typedpress/frontend`](../packages/frontend/README.md) and Tailwind,
+then import a plain stylesheet containing `@import "tailwindcss"` from a
+page or layout. `typedpress dev` and `typedpress build` compile it and link
+the hashed result on the routes that use it. The same package offers an
+explicit build command for npm-backed browser scripts.
 
 ## Scripts
 

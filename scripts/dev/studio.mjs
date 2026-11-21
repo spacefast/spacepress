@@ -419,11 +419,11 @@ export async function forward(host, port, upstream) {
 
 // Directory names never watched anywhere, and the project paths TypedPress writes itself.
 const IGNORED_NAMES = new Set(['.tp', '.git', 'node_modules']);
-const GENERATED = new Set(['tp/_generated', 'tp/dist']);
+const GENERATED = new Set(['tp/_generated', 'tp/dist', 'public/typedpress-styles']);
 const ignoredPath = (name) => IGNORED_NAMES.has(name.split('/').at(-1)) || GENERATED.has(name);
-// What a build reads: TypeScript, imported stylesheets and images, public files,
-// Markdown pages under tp/app/, and the project's tp/theme.json.
-const isSource = (name) => /\.(?:[cm]?[jt]sx?|css|svg)$/.test(name) || name.split('/')[0] === 'public' || /^tp\/app\/(.*\/)?page\.md$/.test(name) || name === 'tp/theme.json';
+const isSource = (name) => /\.(?:[cm]?[jt]sx?|css|svg)$/.test(name) || name.split('/')[0] === 'public' || /^tp\/app\/(.*\/)?page\.md$/.test(name) || name === 'tp/theme.json' || name === 'package.json';
+// Tailwind can scan markup and Vite can read fonts and images referenced from CSS.
+const isFrontendSource = (name) => /\.(?:html?|mdx?|png|jpe?g|gif|webp|avif|woff2?|ttf|otf)$/.test(name);
 
 // The Studio site's must-use plugin, written on every start. While `typedpress dev` watches,
 // live.json (scripts/dev/live.mjs) names the session and its build, and every document a person
@@ -488,6 +488,13 @@ ini_set('opcache.revalidate_freq', '0');
 
 export async function sourceDigest(project) {
   const digest = createHash('sha256');
+  let frontend = false;
+  try {
+    const pkg = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'));
+    frontend = ['dependencies', 'devDependencies'].some((key) => typeof pkg?.[key]?.['@typedpress/frontend'] === 'string');
+  } catch {
+    // The compiler reports a malformed package.json when it builds.
+  }
   async function visit(directory, prefix = '') {
     const entries = await readdir(directory, { withFileTypes: true });
     entries.sort((a, b) => a.name.localeCompare(b.name));
@@ -496,7 +503,7 @@ export async function sourceDigest(project) {
       if (ignoredPath(name) || entry.isSymbolicLink()) continue;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) await visit(path, `${name}/`);
-      else if (isSource(name)) {
+      else if (isSource(name) || (frontend && isFrontendSource(name))) {
         digest.update(name); digest.update(await readFile(path));
       }
     }
@@ -542,7 +549,7 @@ export async function watchSources(project, onChange, onError) {
                   // Discover new directories before notifying: files may have been created
                   // before their directory acquired its own watch handle.
                   void refresh().then(changed, failed);
-                } else if (isSource(name)) {
+                } else if (isSource(name) || isFrontendSource(name)) {
                   changed();
                 }
               });

@@ -3,6 +3,12 @@ export interface FrontendOptions {
   root?: string;
   /** Public browser entries, relative to root. Defaults to { main: "browser/index.ts" }. */
   entries?: Record<string, string>;
+  /** JSX uses React by default. Other JSX transforms are scoped to the supplied project-relative globs. */
+  frameworks?: {
+    preact?: string[];
+    solid?: string[];
+    vue?: boolean;
+  };
 }
 
 export interface EntryMetadata {

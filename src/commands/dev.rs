@@ -4,6 +4,7 @@ use std::process::{Command, ExitCode};
 
 const STUDIO: &str = "wp-studio@2.2.0";
 const TOOLS: &[(&str, &str)] = &[
+    ("frontend.mjs", include_str!("../../scripts/dev/frontend.mjs")),
     ("studio.mjs", include_str!("../../scripts/dev/studio.mjs")),
     ("setup.php", include_str!("../../scripts/dev/setup.php")),
     ("live.mjs", include_str!("../../scripts/dev/live.mjs")),
@@ -227,6 +228,9 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         }
         let mut command = command(&project, mode)?;
         if mode == "start" {
+            // The watcher is a grandchild (npx, a shell, node) that a signal to this process never
+            // reaches. It checks that this process still exists, and stops WordPress when it is gone.
+            command.env("TP_DEV_PARENT", std::process::id().to_string());
             command
                 .arg(std::env::current_exe().map_err(|e| e.to_string())?)
                 .arg(args.out.clone().unwrap_or_else(|| project.join("tp/dist/wp-content")))

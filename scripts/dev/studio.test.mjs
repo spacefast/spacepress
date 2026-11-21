@@ -7,6 +7,7 @@ import { runInNewContext } from 'node:vm';
 import { ownedState, publishPlugins, pluginPrints, sourceDigest, watchSources, lock, siteAddress, listenAddress, addressPhp, withAddressLine, settingsOffset, forward, wordpressVersion, detachedReport, DEV_PLUGIN } from './studio.mjs';
 import { liveUpdates } from './live.mjs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { viteAddress, launcherMap, FRONTEND_PLUGIN } from './frontend.mjs';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { EventEmitter, once } from 'node:events';
 import { createServer } from 'node:http';
@@ -196,7 +197,7 @@ test('watch inputs include imported TypeScript, public files and Markdown pages 
     await rename(staged, generated);
     await rm(previous, { recursive: true });
   }
-  for (const ignored of ['.git', 'node_modules', 'tp/node_modules', 'tp/dist', 'tp/_generated/client', 'public/typedpress-styles']) {
+  for (const ignored of ['.git', 'node_modules', 'tp/node_modules', 'tp/dist', 'tp/_generated/client', 'public/typedpress-styles', 'public/typedpress-assets']) {
     const directory = join(project, ignored, 'nested/generated');
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'output.ts'), 'generated');
@@ -429,6 +430,50 @@ test('--host passes connections to the loopback listener untouched and lets go o
   await assert.rejects(fetch(`http://127.0.0.1:${relay.port}/`));
   // An address that is not this machine's is refused with the address in the message.
   await assert.rejects(forward('192.0.2.1', 0, upstream.address().port), /Cannot listen on 192\.0\.2\.1:0/);
+});
+
+test('Vite is put where the browser that opens the site can reach it, or not used', async () => {
+  const vite = { host: 'localhost', listen: false, port: 5199, ping: '/__tp_vite/@typedpress/ping', token: 'tok' };
+  const local = 'http://localhost:8787';
+  const asked = [];
+  const answers = (body, ok = true) => async (url) => { asked.push(url); return { ok, text: async () => body }; };
+  const unreachable = async (url) => { asked.push(url); throw new Error('ECONNREFUSED'); };
+  // Opened on this machine: Vite's own address, and nothing is asked of the site.
+  assert.equal(await viteAddress({ ...vite, site: local, local, fetcher: unreachable }), 'http://localhost:5199');
+  assert.deepEqual(asked, []);
+  // A proxy that passes /__tp_vite/ on: the site's own address, http or https.
+  for (const site of ['https://box.example.ts.net:8443', 'http://box.example.ts.net:8080']) {
+    assert.equal(await viteAddress({ ...vite, site, local, fetcher: answers('tok\n') }), '');
+    assert.equal(asked.at(-1), `${site}/__tp_vite/@typedpress/ping`);
+  }
+  // A proxy that passes only WordPress on answers the ping with a page, a 404, or not at all:
+  // an https page may not load Vite over http, and another machine cannot reach localhost.
+  for (const fetcher of [answers('<html>WordPress</html>'), answers('tok', false), answers('other session'), unreachable]) {
+    assert.equal(await viteAddress({ ...vite, site: 'https://box.example.ts.net:8443', local, fetcher }), null);
+    assert.equal(await viteAddress({ ...vite, site: 'http://box.example.ts.net:8080', local, fetcher }), null);
+  }
+  // --url naming this machine by another loopback port (a local proxy): Vite's own address works.
+  assert.equal(await viteAddress({ ...vite, site: 'http://localhost:9000', local, fetcher: unreachable }), 'http://localhost:5199');
+  // --host: Vite listens on that address too, so an http page reaches it there, IPv6 in brackets.
+  assert.equal(await viteAddress({ ...vite, host: '10.0.0.24', listen: true, site: 'http://10.0.0.24:8787', local, fetcher: unreachable }), 'http://10.0.0.24:5199');
+  assert.equal(await viteAddress({ ...vite, host: 'fd00::24', listen: true, site: 'http://[fd00::24]:8787', local, fetcher: unreachable }), 'http://[fd00::24]:5199');
+  // --host with an https --url that passes nothing on: mixed content, so not used.
+  assert.equal(await viteAddress({ ...vite, host: '10.0.0.24', listen: true, site: 'https://box.example.ts.net', local, fetcher: unreachable }), null);
+});
+
+test('each built launcher of a served entry is replaced, and a stylesheet entry is left as built', () => {
+  const entries = {
+    main: { source: 'browser/index.ts', scripts: ['/typedpress-assets/entrypoints/main-abc.js'], links: ['/typedpress-assets/assets/main-abc.css'] },
+    style: { source: 'browser/site.css', scripts: [], links: ['/typedpress-assets/assets/style-def.css'] },
+  };
+  assert.deepEqual(launcherMap(entries, { main: '/__tp_vite/@typedpress/main.js' }), {
+    '/typedpress-assets/entrypoints/main-abc.js': '/__tp_vite/@typedpress/main.js',
+  });
+  // The filter only touches the app's own script modules on this site, and resolves a path against the site.
+  assert.match(FRONTEND_PLUGIN, /str_starts_with\(\$id, 'typedpress-app-script-'\)/);
+  assert.match(FRONTEND_PLUGIN, /str_starts_with\(\$vite, '\/'\) \? home_url\(\$vite\) : \$vite/);
+  const lint = execFileSync('php', ['-l'], { input: FRONTEND_PLUGIN, encoding: 'utf8' });
+  assert.match(lint, /No syntax errors/);
 });
 
 test('a rebuild copies only the plugins whose files changed', async (t) => {

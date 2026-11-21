@@ -138,16 +138,19 @@ fn drive_store_reads_stay_within_budget() {
     // The drives are native Woo products, so like the shop each request also runs WooCommerce's
     // own statements. Measured anonymously: the catalog is 4 through $wpdb and 1 of TypedPress's
     // own, a product page 4 and 4, an API list of the 4 drives 5 and 4.
+    // The API list is a /wp-json/ request since #561, and on one WooCommerce loads its admin
+    // features: three more option reads with no persistent cache (Analytics' two refund-data checks
+    // and the onboarding task list), 68 then, now 71.
     hold(
         "drive-store",
         &report,
         &[
-            ("catalog/anonymous", 5, 69, 86),
+            ("catalog/anonymous", 5, 66, 83),
             ("catalog/signed-in", 7, 73, 90),
-            ("product/anonymous", 8, 67, 70),
+            ("product/anonymous", 8, 64, 67),
             ("product/signed-in", 10, 72, 75),
-            ("api-list/anonymous", 9, 68, 72),
-            ("api-list/signed-in", 11, 73, 77),
+            ("api-list/anonymous", 9, 71, 73),
+            ("api-list/signed-in", 9, 73, 76),
         ],
     );
     assert_eq!(report["api-list/anonymous"]["rows"], 4, "{report:#}");
@@ -190,29 +193,32 @@ fn shop_reads_stay_within_budget() {
     // lookups for its variation-gallery migration, `ID IN (-1)` from its cache helper, and its
     // download-directory check. The two this budget removed were TypedPress's own order-storage
     // check, which now runs with the install checks.
+    // With no persistent cache, Woo's cart, checkout and my-account page ids are read with the other
+    // three of its page ids in one statement (Module::shopperPageIds, before Woo's own priming in
+    // WC_Cache_Helper::prevent_caching): 3 fewer than when each was read on its own.
     let report = measure("shop", &content, None);
     hold(
         "shop",
         &report,
         &[
-            ("catalog/anonymous", 9, 76, 76),
-            ("catalog/signed-in", 11, 81, 81),
-            ("product/anonymous", 7, 63, 66),
-            ("product/signed-in", 9, 68, 71),
+            ("catalog/anonymous", 9, 74, 74),
+            ("catalog/signed-in", 11, 79, 79),
+            ("product/anonymous", 7, 61, 64),
+            ("product/signed-in", 9, 66, 69),
         ],
     );
     // A full page of 24 products: with no persistent cache, the posts, terms and meta of the page
-    // are read together (102 statements; one product at a time it was 125), and with one, each
-    // group is asked for once (173 round trips; it was 236).
+    // are read together (100 statements; one product at a time it was 125), and with one, each
+    // group is asked for once (171 round trips; it was 236).
     let report = measure("shop-24", &content, None);
     hold(
         "shop (24 products)",
         &report,
         &[
-            ("catalog/anonymous", 9, 102, 173),
-            ("catalog/signed-in", 11, 107, 178),
-            ("product/anonymous", 7, 63, 66),
-            ("product/signed-in", 9, 68, 71),
+            ("catalog/anonymous", 9, 100, 171),
+            ("catalog/signed-in", 11, 105, 176),
+            ("product/anonymous", 7, 61, 64),
+            ("product/signed-in", 9, 66, 69),
         ],
     );
 }

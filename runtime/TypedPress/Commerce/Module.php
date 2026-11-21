@@ -475,6 +475,10 @@ final class Module
     /** @return list<int> */
     private static function shopperPageIds(): array
     {
+        // Woo's page ids are not autoloaded. isolateSharedCart() reaches here before Woo reads them all
+        // at once (WC_Cache_Helper::prevent_caching), so read the same six together: one statement, not
+        // one per wc_get_page_id(), and none left for Woo.
+        wp_prime_option_caches(array_map(static fn (string $page) => "woocommerce_{$page}_page_id", ['cart', 'checkout', 'coming_soon', 'myaccount', 'shop', 'terms']));
         return array_values(array_filter(array_map('wc_get_page_id', ['cart', 'checkout', 'myaccount']), static fn (int $id) => $id > 0));
     }
 

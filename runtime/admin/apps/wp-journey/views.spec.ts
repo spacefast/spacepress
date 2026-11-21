@@ -93,7 +93,12 @@ test('media remembers columns and sends its saved page size to WordPress after r
 	const path = '/wp-admin/new/media';
 	await page.goto(`${site}${path}`);
 	await resetView(page);
-	await hideColumn(page, 'Alt text');
+	// Media opens as a grid; columns are a table-layout setting, and the chosen layout is saved too.
+	const layoutSaved = page.waitForResponse(r => r.url().includes('/wp/v2/users/') && r.request().method() === 'POST');
+	await page.getByRole('button', { name: 'Layout', exact: true }).click();
+	await page.getByRole('menuitemradio', { name: 'Table', exact: true }).click();
+	expect((await layoutSaved).ok()).toBe(true);
+	await hideColumn(page, 'Type');
 	await page.getByRole('button', { name: 'View options', exact: true }).click();
 	const saved = page.waitForResponse(r => r.url().includes('/wp/v2/users/') && r.request().method() === 'POST');
 	const query = page.waitForResponse(r => r.url().includes('/wp/v2/media?') && new URL(r.url()).searchParams.get('per_page') === '10');
@@ -104,8 +109,9 @@ test('media remembers columns and sends its saved page size to WordPress after r
 	await page.reload();
 	expect((await reloaded).ok()).toBe(true);
 	await expect(page.getByRole('button', { name: 'View options', exact: true })).toBeVisible();
-	await expect(page.getByRole('columnheader', { name: 'Alt text', exact: true })).toHaveCount(0);
-	await newSession(browser, path, 'Alt text', true);
+	await expect(page.getByRole('columnheader', { name: 'Uploaded', exact: true })).toBeVisible();
+	await expect(page.getByRole('columnheader', { name: 'Type', exact: true })).toHaveCount(0);
+	await newSession(browser, path, 'Type', true);
 });
 
 test('custom screens share saved columns between TypedPress and classic admin', async ({ page, browser, request }) => {

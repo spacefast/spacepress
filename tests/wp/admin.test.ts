@@ -428,12 +428,14 @@ test("the classic route's earlier address /legacy/<slug> redirects to /classic/<
 test("the sidebar reaches classic-only screens through /classic/ and leaves out what the app turned off", async () => {
   const items = await sidebar(await loginCookie(site, "admin", `${site}/wp-admin/new/`));
   const to = (id: string) => items.find((i) => i.id === id)?.to;
-  // Settings pages TypedPress Admin has no screen for, and Tools, framed.
+  // Settings pages TypedPress Admin has no screen for, and Tools, framed. Tools has no entry of its
+  // own for someone who may manage options: its pages are under Settings.
   for (const page of ["options-writing.php", "options-discussion.php", "options-media.php", "options-permalink.php", "options-privacy.php"]) {
     assert.equal(to(`settings-${page.replace(/[^a-z0-9_-]/g, "")}`), `/classic/${page}`, page);
   }
   assert.equal(items.some((i) => i.parent === "settings" && i.to === "/classic/options-general.php"), false, "General has its own screen");
-  assert.equal(to("tools-site-healthphp"), "/classic/site-health.php");
+  assert.equal(to("settings-site-healthphp"), "/classic/site-health.php");
+  assert.equal(items.some((i) => i.id === "tools" || i.parent === "tools"), false, "Tools is under Settings");
   // The hardening switches refuse installs, file editors and the Customizer: none of them is offered.
   for (const item of items) {
     assert.doesNotMatch(item.to, /plugin-install\.php|theme-install\.php|theme-editor\.php|plugin-editor\.php|customize\.php|\/plugins\/install/, `${item.id} -> ${item.to}`);

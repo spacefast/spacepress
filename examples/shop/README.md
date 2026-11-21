@@ -15,7 +15,8 @@ COD does not mark a digital order paid automatically.
 
 The browser cart calls Woo's same-origin Store API with its cookie and rotating nonce.
 Checkout and receipts use full-page navigation so Woo owns payment validation and scripts.
-No cart token or TypedPress shopper session is needed.
+A storefront on another origin, or one that sets no cookies, uses the same client with
+Woo's `Cart-Token` session. [Carts without cookies](../../docs/woocommerce.md#carts-without-cookies)
 
 To rerun the full Playground proof (PHP 8.4, WordPress 7.2-beta5, SQLite 3.1.2, Woo 11.3.0):
 
@@ -30,8 +31,9 @@ pnpm exec node --test tests/playground/commerce.test.ts
 
 `CHROME_CHANNEL=chrome` selects an installed Chrome instead. The proof creates a disposable
 site, captures mail without sending it, and adds a test-only gateway to exercise payment
-decline/retry and paid downloads. It also buys through stock COD, drives the real sync CLI,
-and checks desktop/mobile layouts. It does not charge money or deploy a live store.
+decline/retry and paid downloads. It also buys through stock COD, fills a cookieless cart
+from a second origin and takes it through both checkouts, drives the real sync CLI, and
+checks desktop and mobile layouts. It does not charge money or deploy a live store.
 
 Spacefast deployment still needs the [host upgrade](../../docs/spacefast-host-checklist.md).
 A commerce site requires a table prefix of at most 20 characters, isolated preview databases,

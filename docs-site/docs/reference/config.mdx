@@ -270,6 +270,7 @@ export declare function global<TFields extends FieldsConfig>(
   fields: TFields,
   options?: {
     label?: string;
+    ui?: GlobalUi;
     agents?: boolean;
     access?: { read?: GateRule<never>; update?: GateRule<Partial<SelectShape<TFields>>> };
   },
@@ -301,6 +302,22 @@ export declare function adminScreen<
   const TActions extends readonly AnyAction[] = [],
   TSubmit extends AnyAction = AnyAction,
 >(definition: AdminScreenDefinition<F, TSource, TActions, TSubmit>): AdminScreen;
+```
+
+### `adminWidget`
+
+Declare a reusable dashboard widget backed by a readonly action.
+
+```ts
+export declare function adminWidget<A extends AnyAction>(definition: AdminWidgetDefinition<A>): AdminWidget;
+```
+
+### `adminDashboard`
+
+Declare a custom admin dashboard (or override the default Home dashboard with `home: true`).
+
+```ts
+export declare function adminDashboard(definition: AdminDashboardDefinition): AdminDashboard;
 ```
 
 ### `definePlugin`

@@ -80,6 +80,9 @@ require_once __DIR__ . '/menu.php';
 // Screens declared once for both admins.
 require_once __DIR__ . '/screens.php';
 
+// Composable dashboards and declarative widgets.
+require_once __DIR__ . '/dashboards.php';
+
 // Build output: registers the modules, routes and fields. Absent until the build is committed.
 if ( is_file( __DIR__ . '/../build/index.php' ) ) {
 	require_once __DIR__ . '/../build/index.php';

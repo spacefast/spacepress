@@ -1,4 +1,4 @@
-import type { ReactNode, ComponentProps } from 'react';
+import type { ReactNode, ComponentProps, ComponentType } from 'react';
 import type { Icon, Badge } from '@wordpress/ui';
 import type { Field } from '@typedpress-admin/dataviews';
 import type { Notice } from '@wordpress/components';
@@ -209,9 +209,15 @@ export interface DashboardWidgetType< Item > {
 	info?: string;
 
 	/**
-	 * Render module for the widget.
+	 * Render module for the widget (used for dynamically imported widget modules).
 	 */
-	render_module: string;
+	render_module?: string;
+
+	/**
+	 * Optional inline React component for built-in or declarative widgets that do not
+	 * require a separate dynamic module bundle.
+	 */
+	render?: ComponentType< WidgetRenderProps< Item > >;
 
 	/**
 	 * Optional attributes for the widget.

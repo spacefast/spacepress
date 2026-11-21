@@ -43,6 +43,8 @@ final class CoreAccess
     private static array $pending = [];
     /** @var array<string, array<int, true>> membership when individual checks use a full list */
     private static array $members = [];
+    /** @var array<string, array<int, true>> rows a read as the viewer returned ({@see readable()}) */
+    private static array $readable = [];
     private static int $generation = 0;
 
     public static function register(): void
@@ -80,7 +82,29 @@ final class CoreAccess
         self::$single = [];
         self::$pending = [];
         self::$members = [];
+        self::$readable = [];
         self::$generation++;
+    }
+
+    /**
+     * Rows of a post kind that a read as $viewer just returned. The read pipeline applied the read
+     * rule, draft visibility and the store's own guards to them, which is the question covers()
+     * asks, so it answers for these rows without another statement: a page that read its item, or a
+     * list that selected its rows, has already asked. Dropped with every other cached answer.
+     *
+     * @param list<int> $ids
+     */
+    public static function readable(string $collection, array $ids, Viewer $viewer): void
+    {
+        $key = self::key($collection, 'read', $viewer);
+        foreach ($ids as $id) {
+            self::$readable[$key][(int) $id] = true;
+        }
+    }
+
+    private static function key(string $collection, string $op, Viewer $viewer): string
+    {
+        return serialize([$collection, $op, $viewer->user, $_COOKIE['wp-postpass_' . COOKIEHASH] ?? null]);
     }
 
     public static function generation(): int
@@ -275,6 +299,9 @@ final class CoreAccess
     /** Does the viewer's $op rule cover row $pk (as stored, without a write's data)? */
     public static function covers(string $collection, string $op, int|string $pk, Viewer $viewer): bool
     {
+        if ($op === 'read' && isset(self::$readable[self::key($collection, $op, $viewer)][(int) $pk])) {
+            return true;
+        }
         $key = self::cacheKeys($collection, $op, $viewer, (int) $pk);
         $keys = self::$keys[$key];
         if ($keys === null || $keys === false || $keys === []) {
@@ -306,7 +333,7 @@ final class CoreAccess
     /** One item asks only for its own key. A collection request or a second distinct item materializes the full set once. */
     private static function cacheKeys(string $collection, string $op, Viewer $viewer, ?int $candidate, bool $scopeOnly = false): string
     {
-        $key = serialize([$collection, $op, $viewer->user, $_COOKIE['wp-postpass_' . COOKIEHASH] ?? null]);
+        $key = self::key($collection, $op, $viewer);
         try {
             if (!$scopeOnly && isset(self::$single[$key]) && self::$single[$key][0] !== $candidate) {
                 [, $all] = self::$single[$key];

@@ -2317,6 +2317,7 @@ export const nope = state.result?.nope;
             "action": "/__tp/api/v1/actions/subscribe",
             "hidden": [["_tp_return", "hidden", "/?ref=nav"]],
             "page cache": "public, max-age=0, s-maxage=300, must-revalidate",
+            "undeclared query": "private, no-store, max-age=0",
         }),
         "an anonymous page with a form stays shared and carries no nonce: {seen}"
     );
@@ -3576,6 +3577,8 @@ fn one_write_announces_its_purges_once() {
         json!(["/", "/notes/hello.md", "/notes/hello/"]),
         "{seen}"
     );
+    // The home page lists notes: a listing, though the list held one note when it rendered.
+    assert_eq!(seen["home reads"], json!(["*", "row"]), "{seen}");
     let once = |key: &str| {
         let calls = seen[key]["calls"].as_array().unwrap_or_else(|| panic!("{key}: {seen}"));
         assert_eq!(calls.len(), 1, "{key}: one call per write: {seen}");
@@ -3621,6 +3624,140 @@ fn one_write_announces_its_purges_once() {
     assert_eq!(
         seen["limit"],
         json!({ "index alone": true, "union over": true, "calls": [["/*"]], "in transaction": [false], "rebuilds": 0 }),
+        "{seen}"
+    );
+}
+
+/// What a page cache holds and what a write drops from it, on WordPress with a stand-in host
+/// listening on `tp_purge_urls` (tests/php/page_caching.php). Each purge is checked beside the page as
+/// the origin renders it after the write, so every expected path is one whose content changed.
+///
+/// - A list read is a list read whatever it returned: a filtered catalog with one row, and a page
+///   that shows the top-ranked row, are purged when a new row joins or outranks it.
+/// - A global is a dependency: a write to it (the API, or its options page) purges the pages that
+///   printed it.
+/// - A query string is shared and recorded only when every parameter is one the page declares, and
+///   a path keeps a bounded number of recorded variants.
+#[test]
+fn page_caches_drop_what_a_write_changed() {
+    let project = fixture("page-caching", "writes");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/page_caching.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    use serde_json::json;
+    let shared = "public, max-age=0, s-maxage=300, must-revalidate";
+    let private = "private, no-store, max-age=0";
+    // Before any write: one nvme drive, so the filtered catalog and the top page each show one row.
+    for key in ["catalog", "nvme", "none", "top", "drive", "about"] {
+        assert_eq!(seen["warm"][key]["status"], 200, "{key}: {seen}");
+        assert_eq!(seen["warm"][key]["cache"], shared, "{key}: {seen}");
+    }
+    assert_eq!(seen["warm"]["nvme"]["items"], json!(["Alpha"]), "{seen}");
+    assert_eq!(seen["warm"]["top"]["line"], "Gamma", "{seen}");
+    let index: Vec<&str> = seen["index"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    // Both one-row reads are recorded as listings (`*`), with the row they showed.
+    for row in [
+        "drives * /catalog/?media=nvme",
+        "drives # /catalog/?media=nvme",
+        "drives * /top/",
+        "drives * /catalog.md?media=nvme",
+        // A filter that matched nothing still depends on every write to the kind.
+        "drives * /catalog/?media=tape",
+        // The global the catalog and the drive page print.
+        "global:shop * /catalog/",
+        "global:shop * /drives/alpha/",
+    ] {
+        assert!(index.contains(&row), "{row} in {index:?}");
+    }
+    // The item a URL names is that row alone, and a page that reads nothing records nothing.
+    assert!(!index.contains(&"drives * /drives/alpha/"), "{index:?}");
+    assert!(!index.iter().any(|r| r.ends_with(" /about/")), "{index:?}");
+
+    // A second nvme drive, priced above every other: the filtered list grows from 1 to 2 and the
+    // top page shows the new drive. Both URLs, the empty filter and the twin are announced.
+    assert_eq!(
+        seen["grown"],
+        json!({
+            "announced": ["/catalog/", "/catalog/?media=nvme", "/catalog/?media=tape", "/catalog.md?media=nvme", "/top/"],
+            "nvme": ["Alpha", "Delta"],
+            "top": "Delta",
+            "twin": "# TypedPress test site\n\n- Alpha\n- Delta",
+        }),
+        "{seen}"
+    );
+    // A price and stock change: the item's page and every list of its kind, not another item's page.
+    assert_eq!(
+        seen["priced"],
+        json!({
+            "announced": ["/catalog/", "/catalog/?media=nvme", "/top/", "/drives/alpha/"],
+            "drive": "Alpha: 12.5 USD, 0 in stock",
+        }),
+        "{seen}"
+    );
+    // A rolled-back write announces nothing, and the pages still show what they showed.
+    assert_eq!(seen["rolled back"]["announced"], json!(null), "{seen}");
+    assert_eq!(seen["rolled back"]["drive"], "Alpha: 12.5 USD, 0 in stock", "{seen}");
+    assert_eq!(seen["rolled back"]["top"], "Delta", "{seen}");
+    // A write to the global purges the pages that printed it (and no other), from the API…
+    assert_eq!(
+        seen["global"],
+        json!({
+            "announced": ["/catalog/", "/catalog/?media=nvme", "/drives/alpha/", "/drives/beta/"],
+            "catalog": "EUR",
+            "drive": "Alpha: 12.5 EUR, 0 in stock",
+        }),
+        "{seen}"
+    );
+    // …and from its options page, which saves the option itself.
+    assert_eq!(
+        seen["global option"],
+        json!({ "announced": ["/catalog/", "/drives/alpha/"], "catalog": "GBP" }),
+        "{seen}"
+    );
+
+    // A parameter the page doesn't declare: answered, never shared, never recorded, never announced.
+    for (path, answer) in seen["junk"]["answers"].as_object().unwrap() {
+        assert_eq!(answer, &json!([200, private, "no-cache"]), "{path}: {seen}");
+    }
+    assert_eq!(seen["junk"]["recorded"], json!([]), "{seen}");
+    assert_eq!(seen["junk"]["announced"], json!([]), "{seen}");
+    // Declared parameters: 20 recorded variants of one path, the rest private; a write names those
+    // 20 (and their twins), not the whole host; a variant unconfirmed for two windows gives way.
+    assert_eq!(
+        seen["variants"],
+        json!({
+            "max": 20,
+            // `?media=nvme` and `?media=tape` were recorded already: 18 of the 22 new ones fit.
+            "shared": 18,
+            "private": 4,
+            "recorded": 20,
+            "announced": 20,
+            "whole host": false,
+            "recorded one": shared,
+            "over the limit": private,
+            "after two windows": shared,
+            // The 18 stale ones went; `nvme`, `tape` (rendered since) and the new one stay.
+            "recorded then": 3,
+        }),
         "{seen}"
     );
 }
@@ -4197,7 +4334,8 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         (&serde_json::json!(200), &doc, &doc),
         "{paged}"
     );
-    assert_eq!(paged["expires"], serde_json::Value::Null, "{paged}");
+    // The page declares no `page` parameter, so this URL is the visitor's own answer, not a shared one.
+    assert_eq!(paged["cache"], "private, no-store, max-age=0", "{paged}");
     assert!(
         !paged["body"]
             .as_array()
@@ -5352,10 +5490,10 @@ fn drive_store_example_sells_on_wordpress() {
         ("catalog/filter", 1),
         ("catalog/no-matches", 1),
         ("catalog/shop-notice", 1),
-        ("product/in-stock", 3),
+        ("product/in-stock", 1),
         ("product/missing", 1),
         ("product/review", 5),
-        ("product/sold-out", 3),
+        ("product/sold-out", 1),
         ("orders/guest", 0),
         ("orders/empty", 1),
         ("orders/purchased", 3),

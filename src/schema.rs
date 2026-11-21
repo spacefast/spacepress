@@ -464,6 +464,8 @@ pub struct Collection {
     pub commerce: Option<String>,
     /// `.index(fields, { unique? })`: compound indexes the author declared, as (fields, unique).
     pub indexes: Vec<(Vec<String>, bool)>,
+    /// Optional admin presentation metadata (`ui: { icon, singularLabel, description, group, defaultColumns, hidden }`).
+    pub ui: Option<Json>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -552,6 +554,8 @@ pub struct Global {
     pub fields: IndexMap<String, Column>,
     /// "read" / "update" → rule.
     pub access: IndexMap<String, Access>,
+    /// Optional admin presentation metadata (`ui: { icon, description, group, hidden }`).
+    pub ui: Option<Json>,
 }
 
 /// Where a column lives, for attaching compiled functions after evaluation.
@@ -582,6 +586,10 @@ pub struct Schema {
     /// `adminScreen()` exports by screen id (the export name in kebab case): each one the
     /// declaration `tp_admin_register_screen()` takes (`crate::admin_screen`).
     pub screens: IndexMap<String, Json>,
+    /// `adminWidget()` exports by widget id (kebab case).
+    pub widgets: IndexMap<String, Json>,
+    /// `adminDashboard()` exports by dashboard id (kebab case).
+    pub dashboards: IndexMap<String, Json>,
     /// `wp-hooks/` handlers, in registration order.
     pub wp_hooks: Vec<WpHook>,
     /// Server components (`tp/components/<file>.tsx#<export>`) → their compiled PHP function.
@@ -663,6 +671,8 @@ impl Default for Schema {
             actions: IndexMap::new(),
             jobs: IndexMap::new(),
             screens: IndexMap::new(),
+            widgets: IndexMap::new(),
+            dashboards: IndexMap::new(),
             wp_hooks: Vec::new(),
             components: IndexMap::new(),
             app: None,

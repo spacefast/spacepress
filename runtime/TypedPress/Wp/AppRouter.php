@@ -208,11 +208,12 @@ final class AppRouter
     /**
      * The request's path, as WordPress and WooCommerce read it: `//host/shop/` is the path
      * `/host/shop/`, not `/shop/` on another host. Every reader of the request path uses this one,
-     * so no two of them take the same request for different pages.
+     * so no two of them take the same request for different pages. `$uri` is a request URI other
+     * than this request's (the page cache's read index names a URL by it).
      */
-    public static function requestPath(): string
+    public static function requestPath(?string $uri = null): string
     {
-        return (string) (wp_parse_url('/' . ltrim((string) ($_SERVER['REQUEST_URI'] ?? '/'), '/'), PHP_URL_PATH) ?? '/');
+        return (string) (wp_parse_url('/' . ltrim($uri ?? (string) ($_SERVER['REQUEST_URI'] ?? '/'), '/'), PHP_URL_PATH) ?? '/');
     }
 
     private function path(): ?string
@@ -834,6 +835,10 @@ final class AppRouter
         // variant too many) can't be purged, so its response is this visitor's alone.
         if (!$shared) {
             $this->cacheControl = \TypedPress\Render\Cache::PRIVATE;
+            // Nor may it become a prebuilt file, which no write would know to rebuild.
+            if ($status === 200) {
+                \TypedPress\Render\Prebuilt::unrecorded();
+            }
         }
         do_action('tp_app_rendered', (string) $route['id'], (string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         $this->document($status, $head, $body);

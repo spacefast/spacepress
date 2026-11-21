@@ -39,6 +39,8 @@ final class Prebuilt
 {
     public const HEADER = 'X-TypedPress-Prerender';
     public const REFUSED = 'X-TypedPress-Prerender-Refused';
+    /** REFUSED's value for a prerender the page cache's read index couldn't record ({@see unrecorded()}). */
+    public const UNRECORDED = 'unrecorded';
     public const ACTION = 'tp_prebuild';
     public const ROUTE = 'prerender';
     /** URLs one action renders; the rest go to a following action. */
@@ -281,10 +283,29 @@ final class Prebuilt
     /** A viewer function ran while prerendering: the page can't be one file for everyone. */
     public static function viewerCall(string $function): void
     {
-        if (self::prerendering() && self::$refused === null) {
-            self::$refused = $function;
+        if (self::prerendering()) {
+            self::refuse($function);
+        }
+    }
+
+    /**
+     * The read index couldn't record this prerender (Cache::record said no, as for an address longer
+     * than the index holds), so no write would mark its file stale. In `output: "server"` no file is
+     * written and the URL renders per request; a static export keeps no index, so it is not refused.
+     */
+    public static function unrecorded(): void
+    {
+        if (self::prerendering() && ((self::$plugin?->schema->app()['output'] ?? 'server') === 'server')) {
+            self::refuse(self::UNRECORDED);
+        }
+    }
+
+    private static function refuse(string $why): void
+    {
+        if (self::$refused === null) {
+            self::$refused = $why;
             if (!headers_sent()) {
-                header(self::REFUSED . ': ' . $function);
+                header(self::REFUSED . ': ' . $why);
             }
         }
     }
@@ -694,7 +715,9 @@ final class Prebuilt
         if ($code !== 200 || $refused !== '') {
             @unlink($html);
             @unlink($md);
-            if ($refused !== '') {
+            if ($refused === self::UNRECORDED) {
+                error_log("TypedPress: $path is prebuilt, but the page cache's read index could not record its render (an address longer than the index holds?), so no write would rebuild its file; it renders per request instead");
+            } elseif ($refused !== '') {
                 error_log("TypedPress: $path is prebuilt, and its render called $refused; it renders per request instead");
             }
             return true;
@@ -713,7 +736,8 @@ final class Prebuilt
         $markdown = $fetch($twin, (string) (wp_parse_url($twin, PHP_URL_PATH) ?? ''));
         // The twin is written only from an answer rendered for this prerender, as the page is.
         $twinOk = !is_wp_error($markdown) && (int) wp_remote_retrieve_response_code($markdown) === 200
-            && wp_remote_retrieve_header($markdown, 'x-typedpress-prerendered') === '1';
+            && wp_remote_retrieve_header($markdown, 'x-typedpress-prerendered') === '1'
+            && (string) wp_remote_retrieve_header($markdown, strtolower(self::REFUSED)) === '';
         if (!self::write($html, (string) wp_remote_retrieve_body($page), $path, $started)) {
             return true;
         }

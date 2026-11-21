@@ -78,11 +78,14 @@ export async function start(project, mode, { onProcess = () => {} } = {}) {
   const startedAtTicks = procStat.slice(procStat.lastIndexOf(')') + 2).split(' ')[19];
   const receipt = { project, site, mode, backend, frontend, pid: child.pid, startedAtTicks, entries, media };
   await writeFile(join(project, 'official-site.json'), JSON.stringify(receipt, null, 2));
-  const end = Date.now() + 45000;
+  // Ready when the home page renders. Its first render reads the backend many times and, for the
+  // blog on a slow runner, takes longer than 2 seconds: a 2-second attempt then never succeeds, and
+  // each aborted one leaves Astro rendering. An attempt gets the 30 seconds the tests give a page.
+  const end = Date.now() + 90000;
   for (;;) {
     if (child.exitCode !== null) throw new Error(`Astro exited: ${await readFile(join(project, 'frontend.log'),'utf8')}`);
     try {
-      const response = await fetch(frontend, { signal: AbortSignal.timeout(2000) });
+      const response = await fetch(frontend, { signal: AbortSignal.timeout(30000) });
       if (response.ok) break;
       if (Date.now() >= end) throw new Error(`Astro HTTP ${response.status}: ${await response.text()}`);
     } catch (error) { if (Date.now() >= end) throw error; }

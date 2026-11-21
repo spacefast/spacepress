@@ -50,6 +50,19 @@ SELECT_HOOKS = [
     "user_register", "wp_login", "wp_logout",
     "rest_api_init", "wp_mail", "pre_get_posts", "login_message",
 ]
+# Hooks TypedPress's runtime fires itself, so no core docblock describes them. `async` admits an
+# `async` handler: its awaited TypedPress database writes run synchronously in PHP.
+OWN_HOOKS = {
+    "typedpress_woo_order_stock": {
+        "kind": "action",
+        "params": [{"name": "product_id", "type": "number"}, {"name": "order_id", "type": "number"},
+                   {"name": "change", "type": "number"}, {"name": "reason", "type": '"sale" | "return"'}],
+        "description": "Fires when WooCommerce changes a product's stock for an order: a sale lowers it, a cancelled order or a restocked refund returns it.",
+        "source": "runtime/TypedPress/Commerce/Operations.php",
+        "byReference": False,
+        "async": True,
+    },
+}
 # Classes a hook parameter may carry, as read-only views: class -> admitted public properties.
 SELECT_CLASSES = {
     "WP_Post": ["ID", "post_author", "post_date", "post_date_gmt", "post_content", "post_title", "post_excerpt",
@@ -190,7 +203,7 @@ def hooks():
             # changes it through `set`, never by replacing it.
             "byReference": h["type"] == "action_reference",
         }
-    return out
+    return out | OWN_HOOKS
 
 
 def raise_(message):
@@ -287,7 +300,7 @@ def render_types(catalog):
         throws = " Throws an HttpError when WordPress returns a WP_Error." if f["wpError"] else ""
         lines.append(f"/** WordPress `{name}()`.{throws} */")
         lines.append(f"export declare function {name}({params}): {f['returns']};")
-    lines.append("/** The WordPress hooks `tp/wp-hooks/` accepts: kind and arguments, from core's docblocks. */")
+    lines.append("/** The hooks `tp/wp-hooks/` accepts: kind and arguments, from core's docblocks and TypedPress's own. */")
     lines.append("export interface Hooks {")
     for name, h in catalog["hooks"].items():
         params = ", ".join(f"{p['name']}: {p['type']}" for p in h["params"])

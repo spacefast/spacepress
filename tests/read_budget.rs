@@ -1,5 +1,5 @@
 //! What a request reads from the database and the object cache, held to a budget on three built
-//! sites: examples/drive-store, www/ and examples/shop, each served by WordPress-on-SQLite with a
+//! sites: examples/drive-store, www/ and the shop `typedpress add shop` writes, each served by WordPress-on-SQLite with a
 //! warm persistent object cache (tests/php/read_budget.php counts; this file builds and asserts).
 //!
 //! A budget is the number measured when it was set. A change that makes a route read more fails
@@ -46,10 +46,21 @@ fn run(command: &mut Command) -> Vec<u8> {
     out.stdout
 }
 
-/// A copy of `source` built in `work`, and its seed records compiled when `seeded`.
+/// A copy of `source` (or the added shop, for "shop") built in `work`, and its seed records compiled when `seeded`.
 fn build(work: &Path, source: &str, seeded: bool) -> (PathBuf, Option<PathBuf>) {
     let project = work.join("project");
-    copy(&root().join(source), &project);
+    if source == "shop" {
+        // The shop is what `typedpress add shop` writes into an empty project.
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(
+            project.join("typedpress.config.ts"),
+            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"shop\" });\n",
+        )
+        .unwrap();
+        run(typedpress().arg("add").arg("shop").arg(&project));
+    } else {
+        copy(&root().join(source), &project);
+    }
     if source == "www" {
         // The guide's pages import the text of www/examples/ from a generated module.
         run(Command::new("node").arg(project.join("scripts/sources.mjs")));
@@ -121,23 +132,22 @@ fn same_for_everyone(app: &str, report: &serde_json::Value, route: &str) {
 #[test]
 fn drive_store_reads_stay_within_budget() {
     let work = tempfile::tempdir().unwrap();
-    let (content, seed) = build(work.path(), "examples/drive-store", true);
-    let report = measure("drive-store", &content, seed.as_deref());
-    // The catalog and a product page are one statement each: the page's own query. Before this
-    // budget a product page ran 3 (5 signed in): two lookups asked the kind's read rule about the
-    // item the page then read anyway, and one of them read every post of the type.
-    // An API list is 6 for any number of rows: the keys, the rows as the viewer reads them, the
-    // stored rows, and the page's revision tokens in three. It was 5 + 5 per row (25 for these 4).
+    // The drive store seeds its Markdown drives into WooCommerce on install, so no seed is passed.
+    let (content, _) = build(work.path(), "examples/drive-store", false);
+    let report = measure("drive-store", &content, None);
+    // The drives are native Woo products, so like the shop each request also runs WooCommerce's
+    // own statements. Measured anonymously: the catalog is 4 through $wpdb and 1 of TypedPress's
+    // own, a product page 4 and 4, an API list of the 4 drives 5 and 4.
     hold(
         "drive-store",
         &report,
         &[
-            ("catalog/anonymous", 1, 23, 30),
-            ("catalog/signed-in", 1, 26, 34),
-            ("product/anonymous", 1, 25, 33),
-            ("product/signed-in", 1, 29, 38),
-            ("api-list/anonymous", 6, 32, 29),
-            ("api-list/signed-in", 6, 35, 32),
+            ("catalog/anonymous", 5, 69, 86),
+            ("catalog/signed-in", 7, 73, 90),
+            ("product/anonymous", 8, 67, 70),
+            ("product/signed-in", 10, 72, 75),
+            ("api-list/anonymous", 9, 68, 72),
+            ("api-list/signed-in", 11, 73, 77),
         ],
     );
     assert_eq!(report["api-list/anonymous"]["rows"], 4, "{report:#}");
@@ -174,7 +184,7 @@ fn website_reads_stay_within_budget() {
 #[test]
 fn shop_reads_stay_within_budget() {
     let work = tempfile::tempdir().unwrap();
-    let (content, _) = build(work.path(), "examples/shop", false);
+    let (content, _) = build(work.path(), "shop", false);
     // Of the catalog's 9 statements, 4 are the page's own (the count, the products, their
     // categories and their tags) and 5 are WooCommerce's on every request: three Action Scheduler
     // lookups for its variation-gallery migration, `ID IN (-1)` from its cache helper, and its

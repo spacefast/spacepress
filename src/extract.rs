@@ -589,6 +589,46 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     for c in out.collections.clone() {
         if c.kind.commerce() {
             crate::commerce::kind(&c, &mut out.schema)?;
+            if c.kind == StorageKind::Product {
+                for (name, builder) in c.columns.iter().filter(|(name, _)| name.as_str() != "id") {
+                    if out.schema.collections[c.table()].columns.contains_key(name)
+                        || name == "stockQuantity"
+                        || matches!(name.as_str(), "categories" | "tags")
+                    {
+                        return Err(Diag::new(builder.span, format!("product() already defines `{name}`")));
+                    }
+                    let mut col = lock_column(name, builder, false, c.table(), ev, &mut out)?;
+                    if !matches!(
+                        col.ty,
+                        ColType::Text
+                            | ColType::Integer
+                            | ColType::Real
+                            | ColType::Boolean
+                            | ColType::Date
+                            | ColType::Email
+                            | ColType::Url
+                    ) || col.not_null
+                        || col.unique
+                        || col.references.is_some()
+                        || col.was.is_some()
+                        || col.localized
+                        || col.on_update.is_some()
+                        || col.default.is_some()
+                    {
+                        return Err(Diag::new(
+                            builder.span,
+                            "product() fields must be optional scalar metadata without defaults, references, or storage modifiers",
+                        ));
+                    }
+                    col.commerce_meta = true;
+                    out.schema
+                        .collections
+                        .get_mut(c.table())
+                        .unwrap()
+                        .columns
+                        .insert(name.clone(), col);
+                }
+            }
             let kind = &out.schema.collections[c.table()];
             if let Some(pattern) = &kind.url {
                 let shape = crate::kind_url::check(
@@ -1114,6 +1154,7 @@ fn actions(
                 destructive,
                 signature,
                 output: None,
+                personal: false,
             },
         );
     }
@@ -2880,6 +2921,7 @@ fn column(
         layouts,
         system: false,
         read_only: false,
+        commerce_meta: false,
         localized: b.localized,
         access,
         show_if,
@@ -4388,15 +4430,36 @@ fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span
                 .push(serde_json::json!({"url": url, "secret": secret, "events": normalized}));
         }
     }
+    // The store's own abilities are registered beside the app's, under the app's namespace. An app
+    // name that produced the same ability would replace the WooCommerce operation at runtime while
+    // `abilities.call` stayed typed as that operation.
+    let mut commerce: Vec<(String, &str)> = crate::wordpress::abilities::commerce_operations(&out.schema)
+        .into_iter()
+        .map(|(name, _)| (name, "product({ inventory: true })"))
+        .collect();
+    if out.schema.store.is_some() {
+        commerce.push(("store-get".into(), "store()"));
+    }
+    let app = kebab(&out.schema.name);
     let mut abilities = std::collections::HashSet::new();
     let mut add = |name: String| -> Result<()> {
+        if let Some((_, owner)) = commerce.iter().find(|(taken, _)| *taken == name) {
+            return Err(Diag::new(
+                span,
+                format!("the ability `{app}/{name}` is declared twice: {owner} adds it, and so does this app"),
+            )
+            .help(format!(
+                "rename the action, kind, global or job that becomes `{name}`; `{app}/{name}` stays the WooCommerce operation"
+            )));
+        }
         if !abilities.insert(name.clone()) {
             return Err(Diag::new(span, format!("ability kebab collision: {name}"))
                 .help("rename the colliding collection, action, global, or job"));
         }
         Ok(())
     };
-    for c in out.schema.collections.values().filter(|c| c.taxonomy.is_none()) {
+    // Taxonomies too: `Register::build` registers the same operations for every kind.
+    for c in out.schema.collections.values() {
         for op in ["list", "get", "create", "update", "delete", "revisions"] {
             add(format!("{}-{op}", kebab(&c.table)))?;
         }

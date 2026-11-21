@@ -31,10 +31,16 @@ final class Module
         });
         \TypedPress\Extensions::beforeRead(static function (string $collection, array &$opts, ?\TypedPress\Viewer $viewer) use ($plugin): void {
             if (!$plugin->schema->hasCollection($collection)) { return; }
-            $kind = $plugin->schema->collection($collection)['commerce'] ?? '';
+            $spec = $plugin->schema->collection($collection);
+            $kind = $spec['commerce'] ?? '';
             if (!in_array($kind, ['product', 'order'], true)) { return; }
             if ($kind === 'order' && !\TypedPress\Wp\AgentScope::may('personal')) { throw \TypedPress\Wp\AgentScope::refusal('personal'); }
             $fields = $kind === 'product' ? ['id', 'uid', 'name', 'slug', 'description', 'shortDescription', 'status', 'sku', 'price', 'availability', 'virtual', 'downloadable', 'categories', 'tags'] : ['id', 'status', 'createdAt', 'updatedAt', 'customer', 'total', 'currency'];
+            if ($kind === 'product') {
+                foreach ($spec['columns'] as $name => $column) {
+                    if (($column['commerceMeta'] ?? false) || $name === 'stockQuantity') { $fields[] = $name; }
+                }
+            }
             $where = static function (array $filter) use (&$where, $fields): void {
                 foreach ($filter as $key => $value) {
                     if (in_array($key, ['AND', 'OR'], true)) { foreach ($value as $part) { $where($part); } }
@@ -62,8 +68,15 @@ final class Module
                 \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', $plugin->dir . '/' . basename($plugin->dir) . '.php', false);
             }
         });
+        $reviews = false;
+        foreach ($plugin->schema->kinds() as $spec) {
+            if (($spec['commerce'] ?? '') === 'product' && ($spec['comments'] ?? false)) { $reviews = true; }
+            if (($spec['commerce'] ?? '') === 'product' && isset($spec['columns']['stockQuantity'])) {
+                Operations::register($plugin);
+            }
+        }
         $options = [
-            'woocommerce_enable_coupons' => 'no', 'woocommerce_enable_reviews' => 'no', 'woocommerce_enable_review_rating' => 'no',
+            'woocommerce_enable_coupons' => 'no', 'woocommerce_enable_reviews' => $reviews ? 'yes' : 'no', 'woocommerce_enable_review_rating' => 'no',
             'woocommerce_enable_signup_and_login_from_checkout' => 'no', 'woocommerce_enable_myaccount_registration' => 'no', 'woocommerce_enable_delayed_account_creation' => 'no',
             'woocommerce_enable_guest_checkout' => 'yes', 'woocommerce_calc_taxes' => 'no', 'woocommerce_coming_soon' => 'no',
             'woocommerce_currency' => $store['currency'], 'woocommerce_default_country' => $store['country'],
@@ -187,6 +200,8 @@ final class Module
         foreach (['woocommerce_new_product', 'woocommerce_update_product', 'woocommerce_delete_product'] as $hook) { add_action($hook, static fn ($id) => self::changed($plugin, 'product', (int) $id)); }
         foreach (['created_term', 'edited_term', 'delete_term'] as $hook) { add_action($hook, static function ($id, $tt, $taxonomy) use ($plugin): void { $kind = ['product_cat' => 'productCategory', 'product_tag' => 'productTag'][$taxonomy] ?? null; if ($kind) { self::changed($plugin, $kind, (int) $id); } }, 10, 3); }
         add_action('template_redirect', static function () use ($plugin): void {
+            // A feed of the product archive (`?feed=rss2&post_type=product`) is its own answer, not a storefront page.
+            if (is_feed()) { return; }
             $canonical = is_singular('product') ? get_permalink() : ((is_tax('product_cat') || is_tax('product_tag')) ? get_term_link(get_queried_object()) : (is_post_type_archive('product') ? home_url('/shop') : null));
             if ($canonical === null) { return; }
             if (!is_string($canonical) || !\TypedPress\Wp\AppRouter::instance()?->serves($canonical)) {

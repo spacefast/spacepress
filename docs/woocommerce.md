@@ -51,7 +51,7 @@ export const tags = productTag({sync: 'content/tags/*.md'});
 export const orders = order();
 ```
 
-Each is a fixed native kind, with at most one export per builder. Fields and access rules
+Each is a fixed native kind, with at most one export per builder. Native fields and access rules
 cannot be replaced. Products are public only while published and visible; writes require
 `admin`. Orders are read-only and require `admin`, including server-side page reads.
 Use the ordinary `db.query.products`, generated client, facade, OpenAPI and app abilities.
@@ -64,7 +64,38 @@ exact decimal `price`, ordered media `images`, category/tag references, `virtual
 `availability` and `url`. Native variable/grouped/external products identify their type;
 v1 writes accept simple products only. Schedule publication in WooCommerce, where you can set
 the future date. TypedPress reads that status as `scheduled` and preserves an existing schedule when editing the product.
-Stock is operational data managed by Woo.
+Stock is operational data managed by Woo. Set `product({ inventory: true })` to
+start new products with managed stock at zero and expose the read-only
+`stockQuantity` field. Everything in this paragraph and the next exists only
+with `inventory: true`; without it the app has no stock field, no stock or
+fulfilment ability and no stock hook.
+
+`inventory: true` adds two administrator-only abilities the app calls from its
+actions with `abilities.call`:
+
+| Ability | Input | Needs |
+| --- | --- | --- |
+| `<app>/increase-product-stock` | `{ id, quantity }`, `quantity` an integer of at least 1 | `inventory: true` |
+| `<app>/complete-order` | `{ id }` of a processing order | `inventory: true` and an exported `order()` |
+
+Both are refused with 422 for any other input. The app cannot declare an
+action, kind, global or job whose ability name would be one of these two, or
+`<app>/store-get`: `typedpress check` refuses it.
+
+The `typedpress_woo_order_stock` hook (`tp/wp-hooks/typedpress_woo_order_stock.ts`)
+receives the product ID, order ID, signed quantity and reason when Woo changes
+stock for an order. The reason is `sale` when an order reduces stock, and
+`return` when a cancelled, failed or pending order restores it or a refund is
+made with "Restock refunded items". Its handler may be `async`. A restock
+through `increase-product-stock` is not an order change and does not fire it.
+
+Use `product({ fields: { capacityGb: integer().min(1).optional() } })` to add
+typed scalar fields to Woo's product metadata. Optional fields allow the app
+to read products created in Woo admin before the fields were declared.
+A `date()` field is stored as `YYYY-MM-DD` and filters and sorts in that form.
+TypedPress Admin and Markdown sync use the same field definitions.
+Set `reviews: true` on `product()` to enable text reviews and render them
+with `<Comments for={item} />`.
 
 Category and tag lists replace the current assignments and retain their submitted order in
 TypedPress reads and sync. WooCommerce assigns its configured
@@ -103,7 +134,7 @@ are option filters, so removing a declaration restores the stored setting. Shipp
 Woo zone CRUD: a declared list owns the whole zone list, matched by name; `[]` ships nothing.
 Reconciliation is transactional: a failed replacement preserves the previous zones and methods.
 Undeclared settings remain Woo's. Gateways take credentials from their own server settings.
-Taxes, coupons, signup/accounts, reviews/ratings, sale prices and backorders stay disabled.
+Taxes, coupons, signup/accounts, star ratings, sale prices and backorders stay disabled.
 Historical order tax, coupon, item and refund snapshots remain readable.
 
 ## Cart, checkout and agents
@@ -351,13 +382,40 @@ an edge in front of Batcache that does not bypass on that cookie serves its stor
 A token cart has no cookie, so it misses nothing.
 
 Scoped agent credentials use app abilities. Product/term writes require `--write`; the
-entire order kind additionally requires `--personal`, and its tools are hidden without it.
+entire order kind additionally requires `--personal`. Without it every order ability
+(`<app>/orders-list`, `<app>/orders-get`, ...) and `<app>/complete-order` is refused when
+called, and the order kind's abilities are left out of every place abilities are listed or
+described: `GET /wp-abilities/v1/abilities`, one ability's own route, each MCP server's
+`tools/list`, and the default MCP server's `discover-abilities` and `get-ability-info`.
+
+An action is left out of the same lists when its code needs the grant. The build decides
+that from the action's code, not from what one call does. An action is marked when its
+handler, or a helper it calls:
+
+- reads an order kind (`db.query.orders`, a relation to it);
+- calls an ability that needs the grant: `abilities.call("<app>/orders-list")`, any other
+  ability of an order kind, or `abilities.call("<app>/complete-order")`;
+- calls an action that is itself marked, however long the chain of actions is.
+
+Because the mark comes from the code, it covers every branch. An action that reads orders
+only when its input asks for them is hidden as a whole. Calling it is not refused as a
+whole: the call runs until it reaches the order read or the ability, and is refused there
+with a 403 that names the grant. A call that takes a branch with neither succeeds.
+
+The build follows what the action calls, not what runs because of it. A collection hook
+that one of the action's writes fires, and a `wp-hooks/` handler, are not followed: if one
+of them reads orders, the action stays listed, and the order read is still refused for a
+credential without the grant.
+
+An action's `abilities.call` runs as the same credential. A credential limited with
+`--abilities` therefore needs the inner ability on its list as well as the action
+(`--abilities=shop/restock,shop/increase-product-stock`); the refusal names the missing one.
 The store has one read tool. Scoped credentials cannot call Woo's merchant REST namespaces,
 its core REST product/term aliases, or `woocommerce/*` abilities. Cart and checkout have no agent tools.
 
 ## Verification and hosting
 
-[The example README](../examples/shop/README.md) gives the Playground test commands.
+[The Drive Store README](../examples/drive-store/README.md) gives the Playground test commands.
 `tests/commerce.rs` checks declarations, scaffold preservation and native WordPress CRUD,
 settings, access scopes, MCP visibility, stock purges and historical order reads.
 `docs-site/tests/playground/commerce.test.ts` clicks cart/shipping/COD checkout and a dummy

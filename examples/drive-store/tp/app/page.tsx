@@ -1,23 +1,22 @@
 // The catalog: every published drive, searchable and filtered by media and condition.
-import { db, text } from "typedpress";
+import { select, text } from "typedpress";
 import { Link, type PageProps } from "typedpress/app";
 import { CONDITIONS, MEDIA } from "../schema";
 import { catalog } from "../lib/catalog";
-import { mediaName, money, size } from "./_lib/format";
+import { mediaName, money, size, stockLabel } from "./_lib/format";
 
 export const metadata = { title: "Catalog" };
-export const search = { q: text().max(200).optional(), media: text().optional(), condition: text().optional() };
+export const search = { q: text().max(200).optional(), media: select(MEDIA).optional(), condition: select(CONDITIONS).optional() };
 
-type Search = { q: string | null; media: string | null; condition: string | null };
+type Search = { q: string | null; media: (typeof MEDIA)[number] | null; condition: (typeof CONDITIONS)[number] | null };
 
 export default async function Catalog({ search }: PageProps<"/", Search>) {
-  const shop = await db.globals.shop.get();
-  const rows = await catalog(search.q ?? "", search.media ?? "", search.condition ?? "");
+  const rows = await catalog(search.q ?? "", search.media ?? null, search.condition ?? null);
   return (
     <>
       <section className="hero">
         <h1>Tested, graded, second-hand drives</h1>
-        <p className="muted">This is a demo shop: no payment is taken and nothing ships.</p>
+        <p className="muted">Shop refurbished hard drives and SSDs. Pay on delivery.</p>
       </section>
 
       <form className="filters" method="get">
@@ -37,12 +36,12 @@ export default async function Catalog({ search }: PageProps<"/", Search>) {
         {rows.map((d) => (
           <li className="card">
             <h2><Link href={`/drives/${d.slug ?? ""}`} prefetch>{d.name}</Link></h2>
-            <p className="muted">{d.brand} {d.model} · {size(d.capacityGb)} {mediaName(d.media)}</p>
-            {d.summary ? <p>{d.summary}</p> : null}
+            <p className="muted">{d.brand} {d.model} · {d.capacityGb !== null ? size(d.capacityGb) : ""} {d.media ? mediaName(d.media) : ""}</p>
+            {d.shortDescription ? <p>{d.shortDescription}</p> : null}
             <p className="row">
-              <strong className="price">{money(d.price, shop.currency)}</strong>
+              <strong className="price">{money(d.price)}</strong>
               <span className={`pill ${d.condition}`}>{d.condition}</span>
-              {d.stock > 0 ? <span className="muted">{d.stock} in stock</span> : <span className="sold">Sold out</span>}
+              <span className="muted">{stockLabel(d.stockQuantity, d.availability)}</span>
             </p>
           </li>
         ))}

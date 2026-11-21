@@ -2953,6 +2953,11 @@ impl<'p> Evaluator<'p> {
             Builtin::Collection(kind) => {
                 // `taxonomy(fields?, options)`: a taxonomy may declare no fields of its own.
                 let cols_val = match arg(0) {
+                    Value::Object(options) if *kind == StorageKind::Product => options
+                        .borrow()
+                        .get("fields")
+                        .cloned()
+                        .unwrap_or_else(|| Value::object(IndexMap::new())),
                     _ if kind.commerce() => Value::object(IndexMap::new()),
                     Value::Undef if *kind == StorageKind::Taxonomy => Value::object(IndexMap::new()),
                     v => v,

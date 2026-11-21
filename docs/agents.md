@@ -275,7 +275,10 @@ abilities of an app's users kind.
 
 An agent that has to do one of these needs an unscoped credential, which is a
 choice its owner makes on purpose. A credential limited to named abilities also
-sees only those in core's abilities list and in the MCP tool list.
+sees only those in core's abilities list and in the MCP tool list. The list
+covers what an action calls with `abilities.call` too: the inner ability runs as
+the same credential, so it is named on the list beside the action, and a refusal
+says which ability is missing.
 
 A refusal is a 403 with the code `scope` (`tp_scope` on core routes; a tool
 error over MCP) and says which grant is missing. Without `personal`, emails and

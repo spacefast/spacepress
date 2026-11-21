@@ -1,8 +1,7 @@
-export function money(amount: number, currency: string): string {
-  const fixed = amount.toFixed(2);
-  if (currency === "USD") return `$${fixed}`;
-  if (currency === "EUR") return `€${fixed}`;
-  return `${fixed} ₺`;
+
+export function money(amount: string | null): string {
+  if (amount === null) return "Price unavailable";
+  return `$${amount}`;
 }
 
 export function size(gb: number): string {
@@ -18,3 +17,7 @@ export function mediaName(media: string): string {
   }
 }
 
+export function stockLabel(quantity: number | null, availability: string): string {
+  if (availability !== "instock") return "Sold out";
+  return quantity === null ? "In stock" : `${quantity} in stock`;
+}

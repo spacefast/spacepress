@@ -132,7 +132,7 @@ export declare function esc_attr(text: string): string;
 export declare function esc_url(url: string): string;
 /** WordPress `wp_strip_all_tags()`. */
 export declare function wp_strip_all_tags(text: string): string;
-/** The WordPress hooks `tp/wp-hooks/` accepts: kind and arguments, from core's docblocks. */
+/** The hooks `tp/wp-hooks/` accepts: kind and arguments, from core's docblocks and TypedPress's own. */
 export interface Hooks {
   /** Fires after WordPress has finished loading but before any headers are sent. (wp-settings.php) */
   init: { kind: "action"; args: [] };
@@ -182,5 +182,7 @@ export interface Hooks {
   pre_get_posts: { kind: "action"; args: [query: WP_Query] };
   /** Filters the message to display above the login form. (wp-login.php) */
   login_message: { kind: "filter"; args: [message: string] };
+  /** Fires when WooCommerce changes a product's stock for an order: a sale lowers it, a cancelled order or a restocked refund returns it. (runtime/TypedPress/Commerce/Operations.php) */
+  typedpress_woo_order_stock: { kind: "action"; args: [product_id: number, order_id: number, change: number, reason: "sale" | "return"] };
 }
 // END GENERATED

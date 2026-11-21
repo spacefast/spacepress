@@ -2,7 +2,7 @@
 title: Checkout
 robots: { index: false, follow: false }
 ---
-Guest checkout. Your confirmation includes any purchased downloads.
+Checkout uses cash on delivery.
 
 <!-- wp:woocommerce/checkout -->
 <div class="wp-block-woocommerce-checkout alignwide wc-block-checkout is-loading"><!-- wp:woocommerce/checkout-fields-block -->

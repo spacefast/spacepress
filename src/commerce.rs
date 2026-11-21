@@ -229,11 +229,21 @@ pub fn kind(value: &CollectionVal, schema: &mut Schema) -> Result<()> {
     let o = match &value.options {
         None => json!({}),
         Some(options) => {
-            to_json(options).ok_or_else(|| Diag::new(value.span, "commerce options must be static data"))?
+            let Value::Object(options) = options else {
+                unreachable!("validated by evaluator")
+            };
+            let mut options = options.borrow().clone();
+            if kind == StorageKind::Product {
+                options.shift_remove("fields");
+            }
+            to_json(&Value::object(options))
+                .ok_or_else(|| Diag::new(value.span, "commerce options must be static data"))?
         }
     };
     let allowed = if kind == StorageKind::Order {
         &["api", "agents", "label"][..]
+    } else if kind == StorageKind::Product {
+        &["sync", "url", "api", "agents", "label", "inventory", "reviews"][..]
     } else {
         &["sync", "url", "api", "agents", "label"][..]
     };
@@ -244,6 +254,18 @@ pub fn kind(value: &CollectionVal, schema: &mut Schema) -> Result<()> {
     c.revisions = false;
     c.staged = false;
     c.hierarchical = kind == StorageKind::ProductCategory;
+    let flag = |name| match o.get(name) {
+        Some(Json::Bool(on)) => Ok(*on),
+        None => Ok(false),
+        _ => Err(Diag::new(value.span, format!("{name} must be a boolean"))),
+    };
+    c.comments = flag("reviews")?;
+    if c.comments {
+        c.comment_policy = Some(CommentPolicy {
+            types: vec!["review".into()],
+            ..CommentPolicy::default()
+        });
+    }
     c.uid = kind != StorageKind::Order;
     if let Some(label) = o.get("label") {
         c.label = text(Some(label), "label").map_err(|e| Diag::new(value.span, e))?.into();
@@ -542,6 +564,9 @@ pub fn kind(value: &CollectionVal, schema: &mut Schema) -> Result<()> {
             field(c, "type", ColType::Text, true, true, None);
             field(c, "purchasable", ColType::Boolean, true, true, None);
             field(c, "availability", ColType::Text, true, true, None);
+            if flag("inventory")? {
+                field(c, "stockQuantity", ColType::Integer, false, true, None);
+            }
         }
         field(c, "url", ColType::Text, false, true, None);
     }

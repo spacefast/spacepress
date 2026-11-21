@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { ownedState, publishPlugins, pluginPrints, sourceDigest, watchSources, lock, siteAddress, listenAddress, addressPhp, withAddressLine, settingsOffset, forward, wordpressVersion, detachedReport, DEV_PLUGIN } from './studio.mjs';
+import { ownedState, publishPlugins, pluginPrints, sourceDigest, watchSources, lock, siteAddress, listenAddress, addressPhp, withAddressLine, settingsOffset, forward, wordpressVersion, detachedReport, migrationHistory, DEV_PLUGIN } from './studio.mjs';
 import { liveUpdates } from './live.mjs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { viteAddress, launcherMap, FRONTEND_PLUGIN } from './frontend.mjs';
@@ -664,4 +664,27 @@ test('a reload the page cancels leaves the reload client polling', async () => {
   assert.equal(fetches, 2);
   assert.equal(reloads, 1);
   assert.equal(timers.length, 1);
+});
+
+test('migrationHistory hashes folder-based ops.json and migration.sql entries in lexicographic order', async (t) => {
+  const project = await mkdtemp(join(tmpdir(), 'typedpress-dev-migrations-'));
+  t.after(() => rm(project, { recursive: true, force: true }));
+  assert.deepEqual(await migrationHistory(project), {});
+  const dir = join(project, 'tp/_generated/migrations');
+  await mkdir(join(dir, '20261121120000_000001_init'), { recursive: true });
+  await mkdir(join(dir, '20261121120100_000002_add_col'), { recursive: true });
+  await writeFile(join(dir, '20261121120000_000001_init/ops.json'), '{"version":1,"ops":[]}\n');
+  await writeFile(join(dir, '20261121120000_000001_init/migration.sql'), 'CREATE TABLE t (id INT);\n');
+  await writeFile(join(dir, '20261121120100_000002_add_col/ops.json'), '{"version":1,"ops":[]}\n');
+  await writeFile(join(dir, '20261121120100_000002_add_col/migration.sql'), 'ALTER TABLE t ADD COLUMN a TEXT;\n');
+  const first = await migrationHistory(project);
+  assert.deepEqual(Object.keys(first), [
+    '20261121120000_000001_init/ops.json',
+    '20261121120000_000001_init/migration.sql',
+    '20261121120100_000002_add_col/ops.json',
+    '20261121120100_000002_add_col/migration.sql',
+  ]);
+  await writeFile(join(dir, '20261121120100_000002_add_col/migration.sql'), 'ALTER TABLE t ADD COLUMN b TEXT;\n');
+  const second = await migrationHistory(project);
+  assert.notEqual(second['20261121120100_000002_add_col/migration.sql'], first['20261121120100_000002_add_col/migration.sql']);
 });

@@ -2917,7 +2917,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 let tmp = self.tmp_var();
                 let _ = writeln!(out, "{p}{tmp} = {src};");
-                let _ = writeln!(out, "{p}if ({tmp} === \\TypedPress\\Js::undefined()) {{");
+                let _ = writeln!(out, "{p}if (\\TypedPress\\Js::undefined() === {tmp}) {{");
                 let _ = writeln!(out, "{}{tmp} = {};", pad(indent + 1), d.php);
                 let _ = writeln!(out, "{p}}}");
                 self.bind_pattern_types(inner, &tmp, types, mutable, out, indent)?;

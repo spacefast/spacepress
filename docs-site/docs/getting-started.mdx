@@ -27,7 +27,9 @@ The npm packages are not published yet. To run this guide from a [repository che
 
 ## Edit the home page
 
-Open `tp/app/page.tsx`. Change **Make this site yours.** inside the `<h1>` to **My walking journal**. Save the file. When the rebuild finishes, refresh the home page to see your heading.
+Open `tp/app/page.tsx`. Change **Make this site yours.** inside the `<h1>` to **My walking journal**. Save the file. The page reloads with your heading when the rebuild finishes.
+
+`typedpress dev` compiles on save and reloads open pages when the app changed: app pages, HTML files from `public/`, the login page and wp-admin. A compile error appears over the page and in the terminal, with a Dismiss button. The compiler keeps the last successful files in `tp/_generated` until the next successful compile.
 
 All the pages share the header in `tp/app/layout.tsx` and the styles in `tp/app/site.css`. The layout reads the site name from a `global()` in `typedpress.config.ts`.
 

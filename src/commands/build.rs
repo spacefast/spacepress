@@ -557,13 +557,33 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         };
     }
     let started = std::time::Instant::now();
+    // `--diagnostics-file` (typedpress dev's): the compile's envelope, written whether it compiled or
+    // not. A failure after the compile (a refused migration, a file that can't be written) is no
+    // compiler diagnostic and stays on stderr alone.
+    let report = |diagnostics: &[diag::Diag]| {
+        if let Some(path) = &args.diagnostics_file {
+            let bytes =
+                serde_json::to_vec(&diag::envelope(diagnostics, &project)).expect("diagnostic envelope serializes");
+            if let Err(error) = write(path, bytes) {
+                eprintln!("error: couldn't write diagnostics: {error}");
+            }
+        }
+    };
     let built = match build(&project, frozen).and_then(|built| check_seed(&project, &built).map(|()| built)) {
         Ok(b) => b,
         Err(d) => {
-            eprint!("{}", diag::render(&d, &project));
+            report(std::slice::from_ref(&d));
+            // `build` names the code in the heading; `check` keeps the plain `error:` others match on.
+            let render = if args.command == "build" {
+                diag::render_with_code
+            } else {
+                diag::render
+            };
+            eprint!("{}", render(&d, &project));
             return ExitCode::from(1);
         }
     };
+    report(&[]);
     for line in &built.plugin_changes {
         eprintln!("{line}");
     }

@@ -38,10 +38,8 @@ const end = () => {
   if (--forms.pending === 0) idleNow();
 };
 
-const sameSite = (event, ref) =>
+const routerLink = (ref) =>
   ref instanceof HTMLAnchorElement &&
-  event.button === 0 &&
-  !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey &&
   (ref.target === "" || ref.target === "_self") &&
   !ref.hasAttribute("download") &&
   ref.origin === window.location.origin;
@@ -149,11 +147,23 @@ const announce = () => {
   setTimeout(() => { region.textContent = text; }, 50);
 };
 
+const canPrefetch = (ref) => routerLink(ref) && sameTemplate(ref) && !getConfig("core/router")?.clientNavigationDisabled;
+
 store("tp/router", {
+  callbacks: {
+    preparePrefetch() {
+      const { ref } = getElement();
+      // Core's document speculation and its region router have separate prefetch caches.
+      if (!canPrefetch(ref) || ref.classList.contains("no-prefetch")) return;
+      ref.classList.add("no-prefetch");
+      return () => ref.classList.remove("no-prefetch");
+    },
+  },
   actions: {
     navigate: withSyncEvent(function* (event) {
       const { ref } = getElement();
-      if (!sameSite(event, ref) || !sameTemplate(ref)) return;
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey ||
+          !routerLink(ref) || !sameTemplate(ref)) return;
       event.preventDefault();
       // Counted before anything waits: a submit whose answer comes in after this click drops it.
       forms.navigations++;
@@ -162,7 +172,7 @@ store("tp/router", {
     }),
     *prefetch() {
       const { ref } = getElement();
-      if (!(ref instanceof HTMLAnchorElement) || ref.origin !== window.location.origin || !sameTemplate(ref)) return;
+      if (!canPrefetch(ref)) return;
       const { actions } = yield import("@wordpress/interactivity-router");
       yield actions.prefetch(ref.href);
     },

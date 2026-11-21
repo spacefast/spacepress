@@ -256,6 +256,11 @@ pub const TP_EXPORTS: &[&str] = &[
     "collection",
     "table",
     "userProjection",
+    "store",
+    "product",
+    "productCategory",
+    "productTag",
+    "order",
     "taxonomy",
     "terms",
     "integer",
@@ -304,6 +309,8 @@ const TP_TYPES: &[&str] = &[
     "AccessCtx",
     "ValidateCtx",
     "FieldUi",
+    "MediaRow",
+    "FileRow",
     "AccessRule",
     "AccessConfig",
     "CollectionOptions",
@@ -1079,6 +1086,22 @@ impl<'p> Evaluator<'p> {
                     Ctl::Err(d)
                 });
         }
+        if source == "react-email" && crate::loader::email_module(&self.program.root, &self.program.modules[from].path)
+        {
+            let component = match name {
+                "Html" => "EmailHtml",
+                "Body" => "EmailBody",
+                "Text" => "EmailText",
+                "Button" => "EmailButton",
+                _ => {
+                    return Err(Ctl::Err(Diag::new(
+                        span,
+                        format!("React Email component `{name}` is not supported"),
+                    )));
+                }
+            };
+            return Ok(Value::Builtin(Builtin::App(component)));
+        }
         if source == crate::loader::APP_MODULE {
             return crate::app::export(name)
                 .map(|e| Value::Builtin(Builtin::App(e)))
@@ -1169,6 +1192,11 @@ impl<'p> Evaluator<'p> {
                     Value::Builtin(Builtin::NodeCrypto(None))
                 }
                 ImportName::Namespace => {
+                    if source == "react-email"
+                        && crate::loader::email_module(&self.program.root, &self.program.modules[id].path)
+                    {
+                        return err(spec.span, "import supported React Email components by name");
+                    }
                     if source == WORDPRESS_MODULE {
                         return err_help(
                             spec.span,
@@ -2878,6 +2906,7 @@ impl<'p> Evaluator<'p> {
             Builtin::Collection(kind) => Some(kind.builder()),
             Builtin::Id => Some("id"),
             Builtin::DefineGlobal => Some("global"),
+            Builtin::Store => Some("store"),
             Builtin::DefineRelations => Some("defineRelations"),
             Builtin::Ref => Some("ref"),
             Builtin::Terms => Some("terms"),
@@ -2898,9 +2927,19 @@ impl<'p> Evaluator<'p> {
         }
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         match b {
+            Builtin::Store => {
+                let options = arg(0);
+                if !matches!(options, Value::Object(_)) {
+                    return err(span, "store() needs an options object");
+                }
+                let value = Value::Store(Rc::new(ActionVal { config: options, span }));
+                self.built.push(value.clone());
+                Ok(value)
+            }
             Builtin::Collection(kind) => {
                 // `taxonomy(fields?, options)`: a taxonomy may declare no fields of its own.
                 let cols_val = match arg(0) {
+                    _ if kind.commerce() => Value::object(IndexMap::new()),
                     Value::Undef if *kind == StorageKind::Taxonomy => Value::object(IndexMap::new()),
                     v => v,
                 };
@@ -2938,7 +2977,7 @@ impl<'p> Evaluator<'p> {
                 if !columns.contains_key("id") && !own_key {
                     columns.shift_insert(0, "id".into(), Rc::new(legacy::id(span)));
                 }
-                let options = match arg(1) {
+                let options = match arg(if kind.commerce() { 0 } else { 1 }) {
                     Value::Undef => None,
                     o @ Value::Object(_) => Some(o),
                     other => {
@@ -3029,7 +3068,7 @@ impl<'p> Evaluator<'p> {
             }
             Builtin::Terms => {
                 let taxonomy = match arg(0) {
-                    k @ Value::Collection(_) if matches!(&k, Value::Collection(c) if c.kind == StorageKind::Taxonomy) => {
+                    k @ Value::Collection(_) if matches!(&k, Value::Collection(c) if c.kind.term()) => {
                         RefTarget::Kind(k)
                     }
                     // A taxonomy declared later: checked once every kind is registered.
@@ -4373,6 +4412,11 @@ fn tp_export(name: &str, legacy: bool, span: Span) -> R<Value> {
         "table" => Builtin::Collection(StorageKind::Table),
         "userProjection" => Builtin::Collection(StorageKind::UserProjection),
         "taxonomy" => Builtin::Collection(StorageKind::Taxonomy),
+        "product" => Builtin::Collection(StorageKind::Product),
+        "productCategory" => Builtin::Collection(StorageKind::ProductCategory),
+        "productTag" => Builtin::Collection(StorageKind::ProductTag),
+        "order" => Builtin::Collection(StorageKind::Order),
+        "store" => Builtin::Store,
         "terms" => Builtin::Terms,
         // Deleted builders still resolve, so the call says what replaces them.
         "id" => Builtin::Id,
@@ -4416,7 +4460,7 @@ fn tp_export(name: &str, legacy: bool, span: Span) -> R<Value> {
             return err_help(
                 span,
                 "\"typedpress\" has no export named `route`",
-                "an HTTP route is a file: tp/app/<path>/route.ts exporting `access` (or `signature`) and GET, POST, … handlers",
+                "an HTTP route is a file: tp/app/<path>/route.ts exporting `guard` (or `signature`) and GET, POST, … handlers",
             );
         }
         "fetch" | "crypto" => {
@@ -4939,8 +4983,8 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
             }
             c.default = Some(DefaultVal::Now);
         }
-        "$default" | "$defaultFn" => c.default = Some(now_or_fn(closure_arg()?, c.ty)),
-        "$onUpdate" | "$onUpdateFn" => c.on_update = Some(now_or_fn(closure_arg()?, c.ty)),
+        "$default" => c.default = Some(now_or_fn(closure_arg()?, c.ty)),
+        "$onUpdate" => c.on_update = Some(now_or_fn(closure_arg()?, c.ty)),
         "onDelete" => {
             let Some(r) = c.references.as_mut() else {
                 return err_help(
@@ -5009,9 +5053,7 @@ const MODIFIERS: &[&str] = &[
     "defaultNow",
     "many",
     "$default",
-    "$defaultFn",
     "$onUpdate",
-    "$onUpdateFn",
     "onDelete",
     "reverse",
     "min",
@@ -5031,6 +5073,14 @@ fn removed_modifier(m: &str) -> Option<(&'static str, &'static str)> {
         "references" => (
             "`.references()` is gone: a reference is a `ref()` field, which refers to the target's `id`",
             "write `locationId: ref(locations)`, with `.onDelete(\"cascade\" | \"restrict\" | \"setNull\")` for the delete action; a reference to another column isn't supported, so keep that value as a plain field",
+        ),
+        "$defaultFn" => (
+            "`.$defaultFn()` is gone: it was a second name for `.$default()`",
+            "write `.$default(() => ...)`",
+        ),
+        "$onUpdateFn" => (
+            "`.$onUpdateFn()` is gone: it was a second name for `.$onUpdate()`",
+            "write `.$onUpdate(() => ...)`",
         ),
         "notNull" => (
             "`.notNull()` is gone: fields are required by default",
@@ -5063,12 +5113,7 @@ pub fn kind_phrase(ty: ColType) -> String {
 fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
     use ColType as T;
     let ty = c.ty;
-    if ty == T::RefList
-        && matches!(
-            m,
-            "unique" | "default" | "$default" | "$defaultFn" | "defaultNow" | "$onUpdate" | "$onUpdateFn"
-        )
-    {
+    if ty == T::RefList && matches!(m, "unique" | "default" | "$default" | "defaultNow" | "$onUpdate") {
         return Some((
             format!("`.{m}()` isn't valid on a `ref().many()` field"),
             "a many-ref is a list of links TypedPress keeps in its own table; remove the modifier".into(),
@@ -5082,7 +5127,7 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
         "pattern" => ty.is_stringy(),
         "unique" => matches!(ty, T::Integer | T::Real | T::Date | T::Timestamp) || ty.is_stringy(),
         "references" => matches!(ty, T::Integer | T::Real),
-        "default" | "$default" | "$defaultFn" => ty != T::Media,
+        "default" | "$default" => ty != T::Media,
         "defaultNow" => matches!(ty, T::Timestamp | T::Date),
         _ => true,
     };
@@ -5094,7 +5139,7 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
         ("min" | "max" | "pattern" | "unique", _) | ("references", _) => {
             "use `.validate((value) => ... )` for custom checks".to_string()
         }
-        ("default" | "$default" | "$defaultFn", T::Media) => "media columns start empty; set them on write".into(),
+        ("default" | "$default", T::Media) => "media columns start empty; set them on write".into(),
         ("defaultNow", _) => "use `.default(value)` with a literal".into(),
         _ => "remove it".into(),
     };
@@ -6155,7 +6200,14 @@ mod legacy {
     use super::*;
 
     /// Modifiers this reading accepts besides the current ones.
-    pub const MODIFIERS: &[&str] = &["notNull", "primaryKey", "$type", "references"];
+    pub const MODIFIERS: &[&str] = &[
+        "notNull",
+        "primaryKey",
+        "$type",
+        "references",
+        "$defaultFn",
+        "$onUpdateFn",
+    ];
 
     /// `"zero"` exports this reading accepts besides the current ones (for `import * as z`).
     pub const EXPORTS: &[&str] = &["id", "real", "route", "defineRelations"];
@@ -6169,6 +6221,12 @@ mod legacy {
     }
 
     pub fn modifier(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<Value> {
+        // 0.3.0's second spellings of `$default` and `$onUpdate`.
+        match m {
+            "$defaultFn" => return column_method(c, "$default", args, span),
+            "$onUpdateFn" => return column_method(c, "$onUpdate", args, span),
+            _ => {}
+        }
         if !args.is_empty() && m != "references" {
             return err(span, format!("`.{m}()` takes no arguments"));
         }

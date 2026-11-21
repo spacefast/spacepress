@@ -236,9 +236,8 @@ screen's fields and actions are already in those shapes, so:
   `wp_update_entity_fields()` and `wp_unregister_entity_*()`; an action it adds
   without an `ability` is skipped by this screen, since it would need its own
   script module.
-- On a WordPress without them the declaration is the registry. TypedPress's floor,
-  7.2-beta5, has both, so the runtime never boots where this applies; the
-  fallback stays until TypedPress Admin moves onto core's registries. The screen is
+- On a WordPress without them, such as 7.1 (TypedPress's floor), the
+  declaration is the registry. The screen is
   the same; `GET /wp-json/typedpress-admin/v1/screens/<id>` says which one served it
   in `registry`.
 

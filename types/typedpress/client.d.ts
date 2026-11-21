@@ -9,7 +9,12 @@ export declare function useEffect(effect: () => void | (() => void), deps?: read
 export declare function useMount(effect: () => void | (() => void)): void;
 /** A listener on `window` (the default) or `document` (`data-wp-on-window--<event>`). */
 export declare function useEvent<K extends keyof WindowEventMap>(event: K, listener: (event: WindowEventMap[K]) => void, target?: "window" | "document"): void;
-/** The element the ref is attached to (`getElement().ref`). */
+/**
+ * The element whose `ref={name}` attribute names this ref: `const box = useRef<HTMLDivElement>()`
+ * and `<div ref={box}>`. `current` is read in handlers and effects, in the browser; it is null
+ * while the element isn't on the page (a conditional that is off). Every ref is attached to one
+ * element of its own component.
+ */
 export declare function useRef<T extends Element = HTMLElement>(): { readonly current: T | null };
 /** State every component of this module shares: the store's global `state`. */
 export declare function sharedState<T extends object>(initial: T): T;

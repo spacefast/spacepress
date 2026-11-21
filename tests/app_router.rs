@@ -37,10 +37,70 @@ fn build(project: &Path) {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 }
 
+#[test]
+fn guarded_home_links_and_item_moves_respect_wordpress_boundaries() {
+    let project = tempfile::tempdir().unwrap();
+    let project = project.path();
+    for (file, source) in [
+        (
+            "typedpress.config.ts",
+            r#"import { collection, defineConfig, slug, text } from "typedpress";
+export const notes = collection({ title: text(), slug: slug({ source: "title" }).optional() }, {
+  title: "title", url: "/notes/:slug",
+});
+export default defineConfig({ name: "guardboundaries", admin: false });"#,
+        ),
+        (
+            "tp/app/page.tsx",
+            r#"export const guard = "subscriber";
+export default function Home() { return <p>Signed-in home</p>; }"#,
+        ),
+        (
+            "tp/app/links/page.tsx",
+            r#"import { Link } from "typedpress/app";
+export default function Links() {
+  return <main>
+    <Link href="/?s=drives" prefetch={undefined} requireAuth={undefined}>Search</Link>
+    <Link href="/?p=1#article" prefetch>Post</Link>
+    <Link href="/?feed=rss2" prefetch>Feed</Link>
+    <Link href="/?view=compact#section" prefetch>App</Link>
+  </main>;
+}"#,
+        ),
+        (
+            "tp/app/notes/[slug]/page.tsx",
+            r#"export const guard = ({ user }) => user === null;
+export default function Note() { return <p>Guarded public preview</p>; }"#,
+        ),
+    ] {
+        let path = project.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    }
+    build(project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/guarded_links_and_moves.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
 /// The router over HTTP: what each URL answers, as tests/php/app_router.php observes it.
 #[test]
 fn app_router_serves_pages_on_wordpress() {
     let project = fixture("app-router", "serve");
+    copy(
+        &root().join("tests/fixtures/page-access/tp/app"),
+        &project.join("tp/app"),
+    );
     build(&project);
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
@@ -65,6 +125,85 @@ fn app_router_serves_pages_on_wordpress() {
             p["body"].as_str().unwrap_or_default().to_string(),
         )
     };
+    let access = &seen["page access"];
+    for (link, path) in [
+        ("Office", "/office/?view=todo#queue"),
+        ("Archive", "/members/archive/2026/"),
+        ("Tools", "/members/tools/"),
+    ] {
+        assert_eq!(
+            access["links"]["guest"][link],
+            serde_json::json!([access["login"][link], false, false])
+        );
+        for viewer in ["reader", "admin"] {
+            assert_eq!(
+                access["links"][viewer][link],
+                serde_json::json!([format!("{}{path}", seen["base"].as_str().unwrap()), true, true])
+            );
+        }
+    }
+    for viewer in ["guest", "reader", "admin"] {
+        for (link, path) in [
+            ("Guests", "/guest/"),
+            ("Notes list", "/notes/"),
+            ("Onboarding", "/onboarding/"),
+        ] {
+            assert_eq!(
+                access["links"][viewer][link],
+                serde_json::json!([format!("{}{path}", seen["base"].as_str().unwrap()), true, true])
+            );
+        }
+    }
+    for (page, statuses) in [
+        ("Office records", [302, 403, 200]),
+        ("Member archive", [302, 200, 200]),
+        ("Admin tools", [302, 403, 200]),
+        ("Admin onboarding", [302, 403, 200]),
+        ("Guest preview", [200, 403, 403]),
+        ("Checkout", [302, 403, 200]),
+        ("Signed desk", [302, 403, 200]),
+    ] {
+        for (viewer, status) in ["guest", "reader", "admin"].into_iter().zip(statuses) {
+            assert_eq!(
+                access["pages"][viewer][page],
+                serde_json::json!([status, status == 200]),
+                "{viewer} {page}"
+            );
+        }
+    }
+    assert_eq!(access["direct login"][0], access["direct login"][1]);
+    assert_eq!(
+        access["guard redirect"],
+        format!("{}/guest/", seen["base"].as_str().unwrap())
+    );
+    assert_eq!(access["private pages"], serde_json::json!(["private", "private"]));
+    for (viewer, status, post_status) in [("guest", 401, 401), ("reader", 403, 201), ("admin", 200, 201)] {
+        assert_eq!(
+            access["queue"][viewer],
+            serde_json::json!([status, status == 200]),
+            "{viewer}"
+        );
+        assert_eq!(
+            access["checkout POST"][viewer],
+            serde_json::json!([post_status, post_status == 201]),
+            "{viewer}"
+        );
+    }
+    assert_eq!(
+        access["signed POST"],
+        serde_json::json!({
+            "unsigned": [401, false], "unsigned admin": [401, false], "wrong": [401, false], "signed": [202, true]
+        })
+    );
+    assert_eq!(access["checkout without nonce"], 401);
+    assert_eq!(access["private twin"], 404);
+    assert_eq!(access["live"]["guest"], serde_json::json!([401, false]));
+    assert_eq!(access["live"]["reader"], serde_json::json!([403, false]));
+    assert_eq!(access["live"]["admin"], serde_json::json!([200, true]));
+    assert_eq!(access["tools POST"]["guest"], serde_json::json!([401, false]));
+    assert_eq!(access["tools POST"]["reader"], serde_json::json!([200, true]));
+    assert_eq!(access["tools POST"]["admin"], serde_json::json!([200, true]));
+    assert_eq!(access["guest cache"], "private, no-store, max-age=0");
     // The page renders inside its layout, with the layout's title template and its reads.
     let (status, title, body) = page("home");
     assert_eq!((status, title.as_str()), (200, "Home · Field Notes"));
@@ -81,7 +220,7 @@ fn app_router_serves_pages_on_wordpress() {
     // `<Link>` to a path on the site is the router region's navigation, loaded on the page, names
     // the template its target renders in (this layout's `template = "blank"`), and is written at the
     // page's one address (`/notes/` under `/%postname%/`), never a redirect.
-    assert!(body.contains(r#"/notes/" data-wp-interactive="tp/router" data-wp-on--click="actions.navigate" data-tp-template="tp-blank" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
+    assert!(body.contains(r#"/notes/" data-wp-interactive="tp/router" data-wp-on--click="actions.navigate" data-tp-template="tp-blank" data-wp-init---tp-prefetch="callbacks.preparePrefetch" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
     assert_eq!(seen["router module"], true);
     // Reads run as the visitor: the draft is missing for anonymous visitors, masked fields absent.
     assert_eq!(page("note").0, 200);
@@ -196,10 +335,7 @@ fn app_router_serves_pages_on_wordpress() {
     assert_eq!(seen["api"], serde_json::json!([200, "[\"Hello\"]"]));
     assert_eq!(seen["api method"], 405);
     assert_eq!(seen["page POST"], serde_json::json!([303, "/notes/hello?sent=1"]));
-    assert_eq!(
-        seen["page POST anonymous"], 401,
-        "a page's handlers follow its `access`"
-    );
+    assert_eq!(seen["page POST anonymous"], 401, "a page's handlers follow their guard");
     // A signed webhook route: refused without a valid HMAC, run as the system with one (it reads
     // the draft too).
     assert_eq!(
@@ -324,6 +460,26 @@ fn app_router_serves_item_pages_under_a_subdirectory() {
             "{name}: {seen}"
         );
     }
+    let protected = &seen["auth links"];
+    let direct = serde_json::json!([
+        format!("{url}/notes/dawn-on-the-ridge/?q=tea%20time&sort=new#body"),
+        "actions.navigate",
+        "actions.prefetch",
+        false
+    ]);
+    let login = serde_json::json!([seen["login for target"], "", "", false]);
+    for name in ["protected path", "protected absolute"] {
+        assert_eq!(protected["guest"][name], login, "{name}: {seen}");
+        assert_eq!(protected["member"][name], direct, "{name}: {seen}");
+    }
+    for role in ["guest", "member"] {
+        assert_eq!(protected[role]["public path"], direct, "{role}: {seen}");
+        assert_eq!(
+            protected[role]["external"],
+            serde_json::json!(["https://example.test/notes?q=tea#body", "", "", false]),
+            "{role}: {seen}"
+        );
+    }
     assert_eq!(seen["links"]["home"]["href"], format!("{url}/"));
     assert_eq!(
         seen["links"]["without slash"],
@@ -382,6 +538,9 @@ fn generated_routes_type_links_and_params() {
 export const ok = [<Link href="/notes/anything">x</Link>, <Link href="/docs">x</Link>, <Link href="/docs/a/b">x</Link>, <Link href="https://example.com">x</Link>];
 // @ts-expect-error: no route serves /nowhere
 export const missing = <Link href="/nowhere">x</Link>;
+export const returnTo = <Link href="/docs?mode=read#intro" requireAuth prefetch>Docs</Link>;
+// @ts-expect-error: requireAuth takes a boolean
+export const invalidAuth = <Link href="/docs" requireAuth="yes">Docs</Link>;
 export function slug({ params }: PageProps<"notes/[slug]">): string {
   // @ts-expect-error: notes/[slug] binds `slug`, not `id`
   return params.id;
@@ -958,7 +1117,7 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "tp/app/api/route.ts",
-            "export const access = \"anyone\";\nexport async function GET() { return { status: \"ok\" }; }\n",
+            "export const guard = \"anyone\";\nexport async function GET() { return { status: \"ok\" }; }\n",
         )],
         "GET in app/api/route.ts returns",
         "tp/app/api/route.ts",
@@ -966,26 +1125,74 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
     rejects(
         &dir,
         &[("tp/app/api/route.ts", "export async function GET() { return {}; }\n")],
-        "app/api/route.ts has HTTP handlers but no `access`",
+        "app/api/route.ts has HTTP handlers but no `guard`",
         "tp/app/api/route.ts",
     );
     rejects(
         &dir,
         &[(
             "tp/app/api/route.ts",
-            "import { env } from \"typedpress\";\nexport const access = \"anyone\";\nexport const signature = { secret: env(\"S\"), header: \"x-sig\", scheme: \"hmac-sha256\" };\nexport async function POST() { return {}; }\n",
+            "import { env } from \"typedpress\";\nexport const guard = \"anyone\";\nexport const signature = { secret: env(\"S\"), header: \"x-sig\", scheme: \"hmac-sha256\" };\nexport async function POST() { return {}; }\n",
         )],
-        "exports both `access` and `signature`",
+        "exports both `guard` and `signature`",
         "tp/app/api/route.ts",
     );
     rejects(
         &dir,
         &[(
             "tp/app/page.tsx",
-            "export const access = \"anyone\";\nexport default function P() { return <p/>; }\n",
+            "export const signature = {};\nexport default function P() { return <p/>; }\n",
         )],
-        "exports `access` or `signature` but no HTTP handler",
+        "no HTTP handler",
         "tp/app/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/app/page.tsx",
+            "export const access = \"admin\";\nexport default function P() { return <p/>; }\n",
+        )],
+        "can't export `access`",
+        "tp/app/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/app/api/route.ts",
+            "export const access = \"admin\";\nexport async function POST() { return {}; }\n",
+        )],
+        "can't export `access`",
+        "tp/app/api/route.ts",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/app/page.tsx",
+            "export const guard = { page: \"admin\" };\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
+        )],
+        "needs a `handlers` rule",
+        "tp/app/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/app/page.tsx",
+            "export const guard = { handlers: \"admin\" };\nexport default function P() { return <p/>; }\n",
+        )],
+        "requires a page with unsigned HTTP handlers",
+        "tp/app/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[
+            (
+                "tp/app/layout.tsx",
+                "export const access = \"admin\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
+            ),
+            ("tp/app/page.tsx", page),
+        ],
+        "can't export `access`",
+        "tp/app/layout.tsx",
     );
     rejects(
         &dir,
@@ -1182,7 +1389,7 @@ fn refuses_prebuilt_pages_that_depend_on_the_request() {
             static_config,
             (
                 "tp/app/form/page.tsx",
-                "export const access = \"anyone\";\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
+                "export const guard = \"anyone\";\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
             ),
         ],
         "app/form/page.tsx has HTTP handlers, and a static site has no server to answer them",
@@ -1390,6 +1597,10 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     assert_eq!(seen["bare about"], json!([301, false]));
     // A render that began before forget() leaves no file behind.
     assert_eq!(seen["forget race"], json!([false, false]));
+    assert_eq!(
+        seen["public script updated"],
+        json!([true, true, true, 200, false, true])
+    );
 }
 
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.
@@ -1741,11 +1952,12 @@ fn client_components_compile_to_interactivity_stores() {
     build(&project);
     let plugin = project.join("tp/dist/wp-content/plugins/typedpress-app-clients");
     let schema = Command::new("php")
-        .args(["-r", "echo json_encode((require $argv[1])['islands']);"])
+        .args(["-r", "echo json_encode(require $argv[1]);"])
         .arg(plugin.join("tp/app/schema.php"))
         .output()
         .unwrap();
-    let islands: serde_json::Value = serde_json::from_slice(&schema.stdout).unwrap();
+    let schema: serde_json::Value = serde_json::from_slice(&schema.stdout).unwrap();
+    let islands = &schema["islands"];
     assert_eq!(
         islands["clients/LikeButton"]["actions"],
         serde_json::json!(["like"]),
@@ -1780,20 +1992,23 @@ fn client_components_compile_to_interactivity_stores() {
     let effects = drive("clients/Effects", "effects.mjs");
     assert_eq!(
         effects,
-        serde_json::json!({ "mounted": -1, "n": 10, "items": 2, "shown": 2, "seen": 100, "width": 777, "submitted": { "n": 0, "prevented": true } })
+        serde_json::json!({ "mounted": -1, "n": 10, "items": 2, "shown": 2, "seen": 100, "width": 777, "submitted": { "n": 0, "prevented": true },
+            "ref": { "tag": "OUTPUT", "asked": ["[data-tp-ref=\"box\"]"] }, "detached": "none" })
     );
     // The server HTML carries the directives the store answers to.
     let functions = std::fs::read_to_string(plugin.join("tp/app/functions.php")).unwrap();
     // A server component a client component renders stays a server component: Badge (in a file
     // that sorts before Switch.tsx) binds none of the Switch's state, though both have an `on`.
+    let badge_name = schema["components"]["components/Badge.tsx#Badge"].as_str().unwrap();
     let badge = functions
-        .split("function component__components_badge__Badge(")
+        .split(&format!("function {badge_name}("))
         .nth(1)
         .and_then(|rest| rest.split("\n}\n").next())
         .unwrap_or_else(|| panic!("no Badge in functions.php"));
     assert!(!badge.contains("data-wp-"), "{badge}");
     assert!(islands.get("clients/Badge").is_none(), "{islands}");
     assert!(islands["clients/Switch"]["file"].is_string(), "{islands}");
+    let directives = functions.split_whitespace().collect::<Vec<_>>().join(" ");
     for directive in [
         "'data-wp-interactive' => 'clients/LikeButton'",
         "'data-wp-bind--disabled' => 'context.busy'",
@@ -1802,8 +2017,9 @@ fn client_components_compile_to_interactivity_stores() {
         "'data-wp-watch---effect1' => 'callbacks.effect1'",
         "'data-wp-init---mount2' => 'callbacks.mount2'",
         "'data-wp-on--submit' => 'actions.submit'",
+        "'data-tp-ref' => 'box'",
     ] {
-        assert!(functions.contains(directive), "{directive}");
+        assert!(directives.contains(directive), "{directive}");
     }
     let _ = std::fs::remove_dir_all(project);
 }
@@ -1822,6 +2038,46 @@ fn refuses_client_code_outside_the_subset() {
         )],
         "a client component returns one element",
         "tp/components/A.tsx:3:",
+    );
+    let refs =
+        |body: &str| format!("\"use client\";\nimport {{ useRef, useState }} from \"typedpress/client\";\n{body}\n");
+    rejects(
+        &dir,
+        &[(
+            "tp/components/A.tsx",
+            &refs("export function A() { const box = useRef(); const [n] = useState(0); return <b>{n}</b>; }"),
+        )],
+        "`box` is a `useRef()` no element has",
+        "tp/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/components/A.tsx",
+            &refs(
+                "export function A() { const box = useRef(); const [n] = useState(0); return <b ref={box}><i ref={box}>{n}</i></b>; }",
+            ),
+        )],
+        "`box` is already attached to an element",
+        "tp/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/components/A.tsx",
+            &refs("export function A() { const [n] = useState(0); return <b ref={n}>{n}</b>; }"),
+        )],
+        "`ref` takes a `useRef()` of this component",
+        "tp/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/components/A.tsx",
+            "export function A() { return <b ref={null}>x</b>; }\n",
+        )],
+        "`ref` in a server component",
+        "tp/components/A.tsx:1:",
     );
     rejects(
         &dir,
@@ -2180,6 +2436,11 @@ fn forms_submit_in_place_in_the_browser() {
     );
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    assert_eq!(
+        seen["prefetch"],
+        serde_json::json!([["Form", true], ["Bare template", false]]),
+        "{seen}"
+    );
     assert_eq!(
         seen["directive"],
         serde_json::json!(["tp/router", "actions.submit"]),
@@ -2791,6 +3052,11 @@ fn live_regions_answer_page_reads() {
         serde_json::json!({
             // The region's own HTML, not the page's.
             // The kinds the render read come back, by the client's schema key, for its deps.
+            "page seed": [0, ["notes"]],
+            "page seed other viewer": "changed",
+            "first poll": ["unchanged", 1],
+            "unsealed page seed": [false, ["notes"], "changed", ["One"]],
+            "write before first poll": ["changed", ["One", "Two"]],
             "first": ["changed", ["One"], false, ["notes"]],
             // Asked again, unchanged: answered by counter, with no render.
             "again": { "0": "unchanged", "rendered": 0 },
@@ -2883,10 +3149,10 @@ fn live_regions_update_in_the_browser() {
     );
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
-    // One first request, before any poll, answered unchanged by counter: no render ran for it.
+    // The GET supplies the HTML. Its first subscription request checks the seed by hash once.
     assert_eq!(
         seen["first"],
-        serde_json::json!({ "requests": 1, "regions": ["board"], "answer": ["unchanged"], "beforePoll": true, "rendered": 0 }),
+        serde_json::json!({ "requests": 1, "regions": ["board"], "answer": ["unchanged"], "beforePoll": true, "rendered": 1 }),
         "{seen}"
     );
     // A cached copy taken before a write: its first request brings the region current, no poll.
@@ -3069,6 +3335,8 @@ fn client_components_hydrate_in_the_browser() {
             &serde_json::json!("40")
         )
     );
+    // `ref={box}` on the `<output>`: a handler reads that element through `box.current`.
+    assert_eq!(seen["ref"], "OUTPUT", "{seen}");
     // The CSS module's class is renamed on both sides, and the stylesheet the page links applies.
     assert_eq!(
         (&seen["toggleBefore"], &seen["toggleAfter"]),
@@ -3152,16 +3420,44 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     );
     let shared = "public, max-age=0, s-maxage=300, must-revalidate";
     let private = "private, no-store, max-age=0";
+    // WP Cloud's edge stores a PHP response only beside `A8C-Edge-Cache: cache`, and never one
+    // marked `no-cache`: the header follows the policy on every answer.
     for key in ["home", "note", "other note", "about"] {
         assert_eq!(
             seen[key],
-            serde_json::json!({ "status": 200, "cache": shared }),
+            serde_json::json!({ "status": 200, "cache": shared, "edge": "cache" }),
             "{key}"
         );
     }
-    assert_eq!(seen["as editor"]["cache"], private);
-    assert_eq!(seen["guarded"]["cache"], private);
-    assert_eq!(seen["missing"], serde_json::json!({ "status": 404, "cache": private }));
+    // A private page also cancels Batcache, which reads only `max-age` and would keep it otherwise.
+    // A cookie a render may answer for makes the page private though WordPress signs no one in
+    // (a comment author's name and email, an unlocked post, an Identity session), and so does a
+    // response that sets a cookie.
+    for key in [
+        "as editor",
+        "guarded",
+        "comment author",
+        "post password",
+        "identity session",
+        "sets a cookie",
+    ] {
+        assert_eq!(
+            seen[key],
+            serde_json::json!({ "status": 200, "cache": private, "edge": "no-cache", "batcache": "cancel" }),
+            "{key}"
+        );
+    }
+    assert_eq!(
+        seen["missing"],
+        serde_json::json!({ "status": 404, "cache": private, "edge": "no-cache", "batcache": "cancel" })
+    );
+    // TypedPress's API and Identity's answer for whoever asks: Batcache never keeps them, signed in
+    // by an application password or not, nor Identity's own API, which finds its session from its
+    // cookie without WordPress setting the user.
+    for (key, status) in [("api anonymous", 200), ("api app password", 200), ("identity api", 401)] {
+        assert_eq!(seen[key]["status"], status, "{key}");
+        assert_eq!(seen[key]["batcache"], "cancel", "{key}");
+    }
     // The index: `/` listed notes (and read both), each note page read its own row, /about nothing.
     let index: Vec<String> = seen["index"]
         .as_array()
@@ -3208,6 +3504,8 @@ fn app_pages_cache_and_purge_by_what_they_read() {
             }
         }
     }
+    // The WP Cloud edge gets every path in one purge call.
+    want.push("edge / /index.md /notes/hello/ /notes/hello.md".to_string());
     want.sort();
     assert_eq!(cleared, want);
     // A twin fetched before its page was ever rendered records what it read under its own URL, so
@@ -3218,12 +3516,17 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         seen["twin purged"],
         serde_json::json!([["/", "/index.md", "/notes/third.md"]])
     );
-    assert_eq!(seen["cleared all"], serde_json::json!(["vip *", "boost *"]));
+    assert_eq!(seen["cleared all"], serde_json::json!(["vip *", "boost *", "edge *"]));
     // Over VIP's 100 URLs a request: one site ban, and every path still for Batcache.
     assert_eq!(seen["cleared many"], serde_json::json!([1, true, 101]));
     assert_eq!(
         seen["without batcache drop-in"],
-        serde_json::json!(["vip /about", "boost /about"])
+        serde_json::json!(["vip /about", "boost /about", "edge /about"])
+    );
+    // A response made as a signed-in user is never Batcache's to keep, however the user signed in.
+    assert_eq!(
+        seen["batcache cancelled"],
+        serde_json::json!({ "anonymous": false, "signed in": true })
     );
 }
 
@@ -5007,11 +5310,15 @@ fn drive_store_example_sells_on_wordpress() {
         let out = first().args(&args).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     }
+    let profile = std::env::var_os("TP_DRIVE_PROFILE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| work.path().join("drive-profile.json"));
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/drive_store.php"))
         .arg(project.join("tp/dist/wp-content"))
         .arg(compiled.join("seed"))
+        .env("TP_DRIVE_PROFILE", &profile)
         .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
@@ -5021,6 +5328,51 @@ fn drive_store_example_sells_on_wordpress() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
+    let report: serde_json::Value = serde_json::from_slice(&std::fs::read(profile).unwrap()).unwrap();
+    for (state, max_queries) in [
+        ("catalog", 1),
+        ("catalog/search", 1),
+        ("catalog/filter", 1),
+        ("catalog/no-matches", 1),
+        ("catalog/shop-notice", 1),
+        ("product/in-stock", 3),
+        ("product/missing", 1),
+        ("product/review", 5),
+        ("product/sold-out", 3),
+        ("orders/guest", 0),
+        ("orders/empty", 1),
+        ("orders/purchased", 3),
+        ("staff/guest", 0),
+        ("staff/forbidden", 0),
+        ("staff/no-orders", 4),
+        ("staff/pending", 4),
+        ("staff/after-shipping", 5),
+        ("login", 0),
+        ("login/return", 0),
+        ("source", 0),
+        ("feed", 0),
+        ("not-found", 0),
+    ] {
+        let queries = report["states"][state]["typedpress_sql"].as_u64().unwrap();
+        assert!(
+            queries <= max_queries,
+            "{state} executed {queries} TypedPress SQL statements (budget {max_queries})"
+        );
+    }
+    for (state, max_joins) in [
+        ("catalog", 8),
+        ("orders/purchased", 0),
+        ("product/in-stock", 11),
+        ("product/missing", 11),
+        ("product/review", 11),
+        ("product/sold-out", 11),
+    ] {
+        let joins = report["states"][state]["typedpress_postmeta_joins"].as_u64().unwrap();
+        assert!(
+            joins <= max_joins,
+            "{state} used {joins} postmeta joins, budget is {max_joins}"
+        );
+    }
     let seen: serde_json::Value =
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
     use serde_json::json;
@@ -5063,8 +5415,22 @@ fn drive_store_example_sells_on_wordpress() {
         json!(seen["catalog"]["links"].as_array().unwrap().len()),
         "every product link enables region navigation and prefetch"
     );
+    assert_eq!(
+        seen["sign-in navigation"],
+        json!({"form": ["post"], "catalog": ["/"], "router": false, "enhanced": []}),
+        "{seen}"
+    );
+    assert_eq!(seen["guest staff entry"], true, "{seen}");
+    assert_eq!(seen["member staff entry"], true, "{seen}");
     assert_eq!(seen["search"], json!(["Samsung 870 EVO 1 TB"]));
     assert_eq!(seen["filter"], json!(["Crucial P3 2 TB"]));
+    assert_eq!(seen["filter beyond limit"], seen["filter"]);
+    assert_eq!(seen["invalid filter"], json!(["No drives match your search."]));
+    assert_eq!(seen["sold out"], json!([200, ["Sold out"], ["Buy"]]));
+    assert_eq!(
+        seen["missing products"],
+        json!({"unpublished-nvme": [404, ["Not found"]], "unlisted-model": [404, ["Not found"]]})
+    );
     assert_eq!(
         seen["product"],
         json!({
@@ -5111,7 +5477,18 @@ fn drive_store_example_sells_on_wordpress() {
     assert_eq!(seen["ship"], "Order CODE is shipped.");
     assert_eq!(seen["restock"], json!(["Restocked: 5 on the shelf now."]));
     assert_eq!(seen["movements"], json!(["restock", "sale", "sale"]));
+    assert_eq!(
+        seen["staff drive names"],
+        json!({
+            "orders": ["WD Red Plus 4 TB", "Samsung 870 EVO 1 TB"],
+            "movements": ["Crucial P3 2 TB", "Samsung 870 EVO 1 TB", "WD Red Plus 4 TB"],
+        })
+    );
     assert_eq!(seen["restock as customer"], 403);
+    assert_eq!(
+        seen["pending orders"],
+        json!({"editor": [200, ["Ann"]], "ann": [403, []]})
+    );
     // Reviews: a first review is held and shown to its author only.
     assert_eq!(seen["review"], json!([303, ["Arrived well packed, SMART clean."]]));
     assert_eq!(seen["review signed out"], json!([[], ["Sign in to comment"]]));
@@ -5533,10 +5910,11 @@ fn login_tsx_is_the_sign_in_page() {
         project.join("tp/dist/wp-content/plugins/typedpress-app-loginpage/tp/app/functions.php"),
     )
     .unwrap();
-    assert!(
-        functions.contains("\\TypedPress\\Render\\LoginView::form('signin-form', 'Sign in', false, null)"),
-        "{functions}"
-    );
+    let form_args = functions
+        .split_once("\\TypedPress\\Render\\LoginView::form(")
+        .and_then(|(_, call)| call.split_once(')'))
+        .map(|(args, _)| args.trim());
+    assert_eq!(form_args, Some("'signin-form', 'Sign in', false, null"), "{functions}");
     // login.tsx is not a URL of its own: no route, no Page, nothing in routes.d.ts.
     assert!(!schema.contains("'pattern' => '/login'"), "{schema}");
     let _ = std::fs::remove_dir_all(&project);
@@ -6012,27 +6390,6 @@ fn pages_render_in_block_templates() {
     let without_login = fixture("block-templates", "no-login");
     std::fs::remove_file(without_login.join("tp/app/login.tsx")).unwrap();
     build(&without_login);
-    let schema = std::fs::read_to_string(
-        project.join("tp/dist/wp-content/plugins/typedpress-app-blocktemplates/tp/app/schema.php"),
-    )
-    .unwrap();
-    // `export const template` reaches the route table; a layout placing <TemplatePart> is blank.
-    assert!(
-        schema.contains("'app/bare/page.tsx' => [") && schema.contains("'template' => 'blank'"),
-        "{schema}"
-    );
-    assert!(
-        schema
-            .lines()
-            .any(|l| l.contains("'app/studio/layout.tsx'") && l.contains("'template' => 'blank'")),
-        "{schema}"
-    );
-    assert!(
-        schema
-            .lines()
-            .any(|l| l.contains("'app/layout.tsx'") && !l.contains("'template'")),
-        "{schema}"
-    );
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/block_templates.php"))
@@ -6052,6 +6409,10 @@ fn pages_render_in_block_templates() {
     let seen: serde_json::Value =
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
     assert_eq!(seen["block theme"], true, "{seen}");
+    assert_eq!(
+        seen["compiled templates"],
+        serde_json::json!({ "app/bare/page.tsx": "blank", "app/studio/layout.tsx": "blank", "app/layout.tsx": null }),
+    );
     // The default: the theme's header and footer parts around the page, one wp-site-blocks, the
     // router region inside it, the root layout's chrome not doubled, WordPress's title and styles.
     let home = &seen["home"];
@@ -6350,6 +6711,79 @@ fn root_layout_chrome_without_a_template_is_hinted() {
     let bare = "import type { LayoutProps } from \"typedpress/app\";\nexport default function Root({ children }: LayoutProps) { return <>{children}</>; }\n";
     assert!(!check(&[("tp/app/layout.tsx", bare), page]).contains(hint));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[cfg(feature = "host")]
+#[test]
+fn public_metadata_scripts_carry_a_content_version() {
+    let project = tempfile::tempdir().unwrap();
+    let project = project.path();
+    std::fs::create_dir_all(project.join("tp/app/plain")).unwrap();
+    std::fs::create_dir_all(project.join("public/scripts")).unwrap();
+    std::fs::write(
+        project.join("typedpress.config.ts"),
+        r#"import { defineConfig } from "typedpress";
+export default defineConfig({ name: "publicmodules", admin: false });"#,
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/app/page.tsx"),
+        r#"export const metadata = () => ({ scripts: [
+  "/scripts/module%20name.mjs?mode=one&mode=two#ready",
+  "https://cdn.example/remote.js?mode=one#ready",
+] });
+export default function Page() { return <p>With scripts</p>; }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/app/plain/page.tsx"),
+        "export default function Plain() { return <p>Without scripts</p>; }",
+    )
+    .unwrap();
+
+    let content = project.join("tp/dist/wp-content");
+    let schema = content.join("plugins/typedpress-app-publicmodules/tp/app/schema.php");
+    let scripts = |body: &str, stale: Option<&str>| {
+        std::fs::write(project.join("public/scripts/module name.mjs"), body).unwrap();
+        std::fs::write(project.join("public/notes.txt"), body).unwrap();
+        build(project);
+        let package = tempfile::tempdir().unwrap();
+        let sources = package.path().join("sources");
+        let store = package.path().join("store");
+        typedpress::host::sources(project, &sources).unwrap();
+        let built = typedpress::host::compile_to_store(&sources, &store, project, None).unwrap();
+        let out = Command::new("php")
+            .args(["-d", "memory_limit=512M"])
+            .arg(root().join("tests/php/public_script_versions.php"))
+            .arg(&content)
+            .arg(&store)
+            .arg(&built.runtime_revision)
+            .arg(&built.build_id)
+            .arg(stale.unwrap_or_default())
+            .env("TP_WP_THEMES", "1")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        let base = seen["base"].as_str().unwrap();
+        use sha2::Digest;
+        let version: String = sha2::Sha256::digest(body).iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(
+            seen["scripts"],
+            serde_json::json!([
+                format!("{base}/scripts/module%20name.mjs?mode=one&mode=two&tpv={version}#ready"),
+                "https://cdn.example/remote.js?mode=one#ready",
+            ])
+        );
+        assert_eq!(seen["plain"], serde_json::json!([]));
+        assert_eq!(seen["body"], body);
+        version
+    };
+    let first = scripts("export const value = 1;\n", None);
+    let original_schema = std::fs::read(&schema).unwrap();
+    let second = scripts("export const value = 2;\n", Some(&first));
+    assert_ne!(first, second);
+    assert_eq!(std::fs::read(schema).unwrap(), original_schema);
 }
 
 /// The script modules with fixed names (`typedpress-client.js`, the runtime's `live.js` and

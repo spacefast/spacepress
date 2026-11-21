@@ -12,7 +12,7 @@ $dir = sys_get_temp_dir() . '/typedpress-hash-' . bin2hex(random_bytes(4));
 mkdir($dir);
 $sql = "CREATE TABLE `{prefix}tp_hashed_notes` (\n\t`id` BIGINT,\n\tPRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
 file_put_contents("$dir/0001_init.sql", $sql);
-$migrator = new \TypedPress\Wp\Migrator($db, $dir, new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Wp\Runtime::SERIES, 'name' => 'hashed']));
+$migrator = new \TypedPress\Wp\Migrator($db, $dir, new \TypedPress\Schema(['version' => 5, 'runtime' => \TypedPress\Wp\Runtime::SERIES, 'name' => 'hashed']));
 $out = [];
 try {
     $db->run('DROP TABLE wp_tp__migrations');

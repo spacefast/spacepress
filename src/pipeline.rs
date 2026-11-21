@@ -174,6 +174,7 @@ pub fn build(
     let blocks = components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     app::register(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::content_page::register(program, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
+    crate::commerce::pages(&ext.schema, config_span).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::runtime_schema::apply(runtime_lock.as_ref(), &mut ev, &mut ext)?;
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
@@ -243,9 +244,8 @@ pub fn build(
                     hosts.iter().map(|h| compile::php_str(h)).collect::<Vec<_>>().join(", ")
                 ),
             };
-            c.output.push_str(&format!(
-                "function {function}(): ?array\n{{\n    return {value};\n}}\n\n"
-            ));
+            c.output
+                .push_str(&format!("/**\n * Return the plugin's permitted outbound HTTP hosts.\n *\n * @return string[]|null\n */\nfunction {function}(): ?array {{\n\treturn {value};\n}}\n\n"));
         }
         (std::mem::take(&mut c.output), slots, settled)
     };
@@ -271,6 +271,9 @@ pub fn build(
             Slot::WpHook { index } => schema.wp_hooks[index].handler = name,
             Slot::Component { name: component } => {
                 schema.components.insert(component, name);
+            }
+            Slot::Email { file } => {
+                schema.components.insert(file, name);
             }
             Slot::AppPage { .. }
             | Slot::AppMetadata { .. }
@@ -395,6 +398,17 @@ pub fn build(
                     format!("`{key}` is stored as a SQL table, and collection() is always WordPress posts"),
                 )
                 .help("declare it with table() again: its rows stay where they are and no migration is written")
+                .phase(diag::Code::Schema));
+            }
+            // A commerce kind is Woo's storage and has no table in the next snapshot, so the planner
+            // would drop the SQL table that holds this name's rows.
+            if let Some(commerce) = schema.collections.get(stored).and_then(|c| c.commerce.as_deref()) {
+                let kind = ext.collections.iter().find(|c| c.table() == stored);
+                return Err(Diag::new(
+                    kind.map_or(config_span, |c| c.span),
+                    format!("`{stored}` is stored as a SQL table, and {commerce}() is always WooCommerce storage"),
+                )
+                .help("give the commerce kind another name, or remove the table in one deploy and add the commerce kind in the next")
                 .phase(diag::Code::Schema));
             }
             let canonical = crate::schema::physical_name(stored);
@@ -667,6 +681,34 @@ fn components(
             });
         }
     }
+    // Templates compile before the handlers that render them, so `mail.render()` finds their props.
+    let mut email_roots = Vec::new();
+    for (path, module) in &program.emails {
+        let exports = ev.run_module(*module)?;
+        let span = Span {
+            file: program.modules[*module].file,
+            start: 0,
+            end: 0,
+        };
+        let Some(Value::Closure(closure)) = exports.get("default") else {
+            return Err(Diag::new(span, format!("{path} needs a default component"))
+                .help("write `export default function Welcome(props: WelcomeProps) { ... }`"));
+        };
+        if closure.func.is_async || closure.func.params.len() > 1 {
+            return Err(Diag::new(
+                span,
+                "an email template is a synchronous server component with one props object",
+            ));
+        }
+        let stem = path.trim_end_matches(".tsx");
+        email_roots.push(extract::Root {
+            closure: closure.clone(),
+            slot: Slot::Email { file: path.clone() },
+            name: extract::slugify_name(stem).replace('-', "_"),
+            plugin: None,
+        });
+    }
+    ext.roots.splice(0..0, email_roots);
     ext.roots.extend(client_roots);
     ext.roots.extend(server_roots);
     Ok(blocks)
@@ -731,16 +773,25 @@ impl Built {
     pub fn summary(&self) -> String {
         let s = &self.schema;
         format!(
-            "{} collections, {} tables, {} user projections, {}{} globals, {} hooks, {} actions",
+            "{} collections, {} tables, {} user projections, {}{}{} globals, {} hooks, {} actions",
             s.collections.values().filter(|c| c.editor).count(),
             s.collections
                 .values()
-                .filter(|c| !c.editor && !c.auth && c.taxonomy.is_none())
+                .filter(|c| !c.editor && !c.auth && c.taxonomy.is_none() && c.commerce.is_none())
                 .count(),
             s.collections.values().filter(|c| c.auth).count(),
             match s.collections.values().filter(|c| c.taxonomy.is_some()).count() {
                 0 => String::new(),
                 n => format!("{n} taxonomies, "),
+            },
+            match s
+                .collections
+                .values()
+                .filter(|c| c.commerce.is_some() && c.taxonomy.is_none())
+                .count()
+            {
+                0 => String::new(),
+                n => format!("{n} commerce kinds, "),
             },
             s.globals.len(),
             s.collections.values().map(|c| c.hooks.len()).sum::<usize>(),

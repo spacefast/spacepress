@@ -16,6 +16,11 @@ require __DIR__ . '/wp.php';
 $site = wpSite('app-content', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscriber', 'chief' => 'editor'],
     'muPlugins' => ['secret' => "<?php define('APPROUTER_HOOK_SECRET', 'hook-secret');", 'host' => <<<'PHP'
         <?php
+        // Let the request reach the application's 30-second lock deadline on PHP builds
+        // whose own request timeout includes time spent sleeping.
+        if (PHP_SAPI === 'cli-server' && ($_SERVER['REQUEST_URI'] ?? '') === '/news/') {
+            set_time_limit(60);
+        }
         add_action('tp_purge_urls', static function (array $paths): void {
             $seen = get_option('test_purges', []);
             $seen[] = $paths;

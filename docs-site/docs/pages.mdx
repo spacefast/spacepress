@@ -24,15 +24,15 @@ tp/app/
 ├── notes/[slug]/page.tsx         /notes/<slug>: params.slug
 ├── docs/[[...path]]/page.tsx     /docs, /docs/a/b: params.path is a string[]
 ├── account/layout.tsx            export const guard = "subscriber"
-├── api/notes/route.ts            export const access = "anyone"; export async function GET(req) { … }
+├── api/notes/route.ts            export const guard = "anyone"; export async function GET(req) { … }
 └── _lib/                         never routed: colocated helpers
 ```
 
 | Name | Meaning |
 | --- | --- |
-| `page.tsx` | A route. It may also export `POST`, `PUT`, `PATCH` or `DELETE` handlers for its URL, with `access` |
+| `page.tsx` | A route. It may also export `POST`, `PUT`, `PATCH` or `DELETE` handlers for its URL, with `guard` |
 | `page.md` | A route whose content is a WordPress Page; see [Markdown pages](#markdown-pages) |
-| `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page, with `access` or `signature` |
+| `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page, with `guard` or `signature` |
 | `layout.tsx` | Wraps every page below it, outermost first. May export `guard` |
 | `not-found.tsx` | At the root only |
 | `login.tsx` | At the root only: renders wp-login.php's sign-in page with `<LoginForm />`, which still posts to wp-login.php, so the second factor and attempt limits apply. See [the decision](https://github.com/spacefast/zero/blob/main/docs/decisions/2026-11-15-one-sign-in-page.md) |
@@ -56,7 +56,7 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 - **Reads run as the visitor.** Every read a render makes is bound to the person viewing the page, so drafts, rows they may not read and masked fields never reach the HTML.
 - `notFound()` renders `not-found.tsx` with a 404. `redirect(url, status?)` redirects (302 by default).
 - `metadata` is an object or a function of the page's props: `title`, `description`, `canonical`, `robots: { index, follow }`, `openGraph: { title, description, image, type }`, `twitter: { card }`, `links: [{ rel, href, type }]` and `scripts: ["/app.js"]`, script modules the page loads (a file in `public/`, or an https:// URL). A layout's `title: { default, template }` wraps its pages' titles. A page overrides its layouts field by field, so it can set only `openGraph.image`; every layout's `links` and `scripts` and the page's are all in the page.
-- `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
+- Write `<Link href="/staff" prefetch>Staff</Link>`. TypedPress infers sign-in from the destination and its layouts. On request-rendered pages, guests go directly to sign-in and return to the destination afterward. Prebuilt pages link to the destination, which checks its guard. Signed-in visitors get normal navigation and hover prefetch. A callback that might allow guests runs at the destination. For a local destination whose sign-in requirement is known only to the caller, a server-rendered page can set `requireAuth` explicitly.
 - `<Pagination page={search.page} pages={n} />` links to the other pages of a listing. Each link changes only `page` (or `param`) in this URL, page 1 drops it, and long runs collapse around the current page (`1 … 4 5 6 7 8 … 12`). Without JavaScript they are plain links.
 - `<Content value>` renders a post body through `the_content`. `<Html value>` places a literal as written and runs anything else through `wp_kses_post`.
 
@@ -138,9 +138,11 @@ Code fences are highlighted on the server when the page renders, in light and da
 
 <RepoFile path="tests/fixtures/app-router/tp/app/webhooks/notify/route.ts" />
 
-A value a `search` field refuses (`?page=abc`) reads as absent. A `guard` is a role, `"authenticated"`, or `({ user }) => boolean`: a signed-out visitor goes to the login page, a signed-in one gets a 403.
+A value a `search` field refuses (`?page=abc`) reads as absent.
 
-Every HTTP handler says who may call it. `export const access` is `"anyone"`, `"authenticated"`, a role, a boolean or `({ user }) => boolean`, and the handler's reads run as the caller, like a page. `export const signature = { secret, header, scheme }` makes it a raw signed webhook: the body's HMAC is checked before the handler runs, and the handler runs as the system, so it can read what an anonymous visitor can't. A handler with neither, or with both, is a build error.
+Declare `export const guard = "admin"` on a page or layout to limit who can open it. Layout rules apply to descendants. TypedPress compiles static role requirements into links to those pages. A denied visitor goes to sign-in when signed out and gets a 403 when signed in. The same rule protects HTTP methods exported by the page. Use `guard = { page: "subscriber", handlers: "admin" }` if their permissions differ. Omitting `page` in that object keeps the HTML public subject to its enclosing layouts.
+
+A standalone HTTP handler declares its own policy. `export const guard` is `"anyone"`, `"authenticated"`, a role, a boolean or `({ user }) => boolean`, and the handler's reads run as the caller, like a page. `export const signature = { secret, header, scheme }` makes it a raw signed webhook: the body's HMAC is checked before the handler runs, and the handler runs as the system, so it can read what an anonymous visitor can't. A handler with neither, or with both, is a build error.
 
 `typedpress build` writes `tp/_generated/routes.d.ts`. With it, `<Link href>` is checked against the app's routes and `PageProps<"notes/[slug]">` types `params`. Point TypeScript at TypedPress's JSX types:
 

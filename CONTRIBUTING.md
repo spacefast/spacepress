@@ -14,7 +14,7 @@ Node 22.18+, npm, and TypeScript 5.9
 `target/release/typedpress`, stripped of debug symbols (`[profile.release]` in `Cargo.toml`).
 
 `typedpress dev` uses pinned WordPress Studio CLI 2.2.0 through npm and needs no
-Docker or host PHP. It selects WordPress's offered update from the 7.2-beta5 floor,
+Docker or host PHP. It selects the stable WordPress update offered from the 7.1 floor,
 then pins that version for the site, with PHP 8.4 and SQLite Database
 Integration 3.1.3. The host PHP requirements above are for the PHP suites.
 The reference WordPress/MariaDB suites and the separate

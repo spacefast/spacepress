@@ -2,7 +2,7 @@
 import { type RouteRequest } from "typedpress";
 import { notes } from "typedpress:db";
 
-export const access = "anyone";
+export const guard = "anyone";
 
 export async function GET(req: RouteRequest) {
   const limit = Number(req.query.get("limit") ?? "10");

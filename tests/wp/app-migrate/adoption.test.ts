@@ -125,5 +125,7 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
   }
   assert.equal(await action("count"), 3);
   assert.deepEqual(sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`), schemaBefore);
-  assert.equal(harness.wp.startsWith("7.2"), true);
+  // The stack runs TypedPress's WordPress floor (tests/fixtures/platform.json).
+  const floor: string = JSON.parse(readFileSync(new URL("../../fixtures/platform.json", import.meta.url), "utf8")).wordpress;
+  assert.equal(harness.wp.startsWith(floor), true, `${harness.wp} is the floor, ${floor}`);
 });

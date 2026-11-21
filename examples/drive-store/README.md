@@ -23,6 +23,16 @@ the Buy button places a fake order, takes no payment and ships nothing, and the 
 
 ## Run it
 
+To include the highlighted source browser, build its assets from this directory:
+
+```sh
+bun install --frozen-lockfile
+bun run build:source
+```
+
+Run `bun run build:source` again before publishing or after editing files shown on `/source`.
+The build highlights the files listed in `browser/build.mjs` and writes the previews to `public/drive-source`. Only `/source` loads them.
+
 From the repository root:
 
 ```sh
@@ -43,6 +53,7 @@ Then open `http://localhost:8931/`:
 - `/` is the catalog, with search and filters.
 - `/drives/seagate-exos-x16` is a product page. Buy one as a guest; the order code comes back on
   the page and the stock goes down. Ask for more than is left and the order is refused.
+- `/source` is a read-only browser for the project's hand-written files.
 - `/orders` lists a signed-in customer's own orders. Create a subscriber in wp-admin to try it.
 - `/staff` is for editors and admins: ship orders and restock drives that are running low.
 - Add and edit drives, moderate reviews and change the shop settings in TypedPress Admin.
@@ -57,3 +68,12 @@ with scripts off would ([`tests/php/drive_store.php`](../../tests/php/drive_stor
 and filters, buying and the stock rule, My orders, the staff page and its actions, reviews, the RSS
 feed and the settings global.
 
+
+To compare changes on the same machine, run the integration test once per build with
+`TP_DRIVE_PROFILE=/absolute/path/to/report.json`. Each named state gets one warm-up
+and five timed GETs against the disposable WordPress site. The report records the
+median response time, response bytes, included PHP files, SQL statements
+(WordPress plus the separate TypedPress connection), and joins to the WordPress
+postmeta table in TypedPress statements. Purchases, reviews, shipping,
+and restocking run once in the surrounding functional test. Compare corresponding
+states to find where a change adds or removes work.

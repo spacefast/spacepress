@@ -88,12 +88,32 @@ $functions = <<<'PHP'
         return in_array($ctx->p['user']->p['role'] ?? null, ['editor', 'admin'], true);
     }
     // Normalisation the client didn't send: titles are trimmed.
-    function notes__beforeCreate($data) { return new \TypedPress\JsObject(['title' => trim($data->p['title'])] + $data->p); }
+    function notes__beforeCreate($data) {
+        if ($data->p['title'] === 'forbidden title') { throw new \TypedPress\JsError('this title is not allowed'); }
+        return new \TypedPress\JsObject(['title' => trim($data->p['title'])] + $data->p);
+    }
     // A hook that tries to rewrite identity: the runtime must refuse it after the hook.
     // A compiled hook returning `{}` replaces the patch with nothing to change.
     function notes__beforeUpdate($patch, $existing) { return match ($patch->p['title'] ?? null) { 'steal uid' => new \TypedPress\JsObject($patch->p + ['uid' => 'zr_99999999999999999999']), 'drop it' => new \TypedPress\JsObject(), default => $patch }; }
     PHP;
 
+foreach (['seedAuthors' => 'seedArticles', 'seedArticles' => 'seedAuthors', 'aSeedItems' => 'seedAuthors'] as $name => $target) {
+    $schema['collections'][$name] = [
+        'primaryKey' => 'id', 'editor' => false, 'uid' => true, 'sync' => ['dir' => 'content/' . $name, 'format' => 'json'],
+        'access' => $editor, 'api' => $api, 'relations' => [], 'hooks' => [],
+        'columns' => [
+            'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+            'name' => ['type' => 'text', 'notNull' => true],
+            'peer' => ['type' => 'integer', 'references' => ['collection' => $target, 'column' => 'id', 'onDelete' => 'set null']],
+            'uid' => ['type' => 'text', 'unique' => true, 'system' => true, 'rules' => ['pattern' => ['source' => '^zr_[0-9a-f]{20}$', 'flags' => '']]],
+        ],
+    ];
+}
+$schema['collections']['seedNodes'] = $schema['collections']['seedAuthors'];
+$schema['collections']['seedNodes']['sync']['dir'] = 'content/seedNodes';
+$schema['collections']['seedNodes']['columns']['parent'] = $schema['collections']['seedNodes']['columns']['peer'];
+$schema['collections']['seedNodes']['columns']['parent']['references']['collection'] = 'seedNodes';
+unset($schema['collections']['seedNodes']['columns']['peer']);
 $wp = wpSite('sync', ['schema' => $schema, 'functions' => $functions, 'users' => ['ed' => 'editor', 'au' => 'author']]);
 $app = $wp->app();
 $db = \TypedPress\db();
@@ -168,6 +188,11 @@ check('site id is a uuid in /_schema', preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0
 eq('site id is stable', req('GET', '/_schema')[1]['site']['id'], $described['site']['id']);
 
 // ================================================================ push: create, unchanged, stale, normalized
+
+$nativeUid = 'zr_bbbbbbbbbbbbbbbbbbbb';
+$nativeRecord = ['uid' => $nativeUid, 'fields' => ['title' => 'Native block'], 'body' => '<!-- wp:woocommerce/checkout /-->'];
+isProblem('unrepresentable native blocks are refused before a sync insert', req('POST', '/sync/notes', ['record' => $nativeRecord, 'expect' => 'absent']), 422, 'not_representable');
+eq('the refused native block was never stored', $db->findFirst('notes', ['where' => ['uid' => $nativeUid]]), null);
 
 $noteUid = 'zr_aaaaaaaaaaaaaaaaaaaa';
 $record = ['uid' => $noteUid, 'fields' => ['title' => 'TypedPress', 'slug' => 'first', 'meta' => ['b' => 1, 'a' => [true]], 'authorId' => $ada['uid'], 'status' => 'draft', 'publishedAt' => null],
@@ -352,4 +377,132 @@ $merge = static fn (string $base, string $ours, string $theirs) => req('POST', '
 eq('independent line edits merge', $merge("a\n\nb\n\nc\n", "A\n\nb\n\nc\n", "a\n\nb\n\nC\n"), ['merged' => "A\n\nb\n\nC\n", 'conflicts' => []]);
 eq('the same line edited twice conflicts', $merge("a\n\nb\n", "a\n\nX\n", "a\n\nY\n"), ['merged' => null, 'conflicts' => [['ours' => "X\n", 'theirs' => "Y\n", 'line' => 3]]]);
 
+$seedDir = sys_get_temp_dir() . '/tp-cycle-seed-' . bin2hex(random_bytes(4)); mkdir($seedDir);
+file_put_contents($seedDir . '/.ignored.json', 'not seed input');
+file_put_contents($seedDir . '/README.txt', 'not seed input');
+$writeSeed = static function (string $name, array $records) use ($seedDir): void {
+    file_put_contents($seedDir . '/' . $name . '.json', wp_json_encode(['collection' => $name, 'format' => 'json', 'records' => $records]));
+};
+foreach (['seedAuthors', 'seedArticles'] as $name) { $writeSeed($name, []); }
+$empty = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('empty seeds do not depend on schema reference cycles', array_sum(array_column($empty, 'created')), 0);
+$authorUid = \TypedPress\Sync\Uid::mint(); $articleUid = \TypedPress\Sync\Uid::mint();
+$writeSeed('seedAuthors', [['uid' => $authorUid, 'fields' => ['name' => 'Author', 'peer' => null]]]);
+$writeSeed('seedArticles', [['uid' => $articleUid, 'fields' => ['name' => 'Article']]]);
+$created = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('nullable or omitted references can seed cyclic schemas', array_sum(array_column($created, 'created')), 2);
+$writeSeed('seedAuthors', [['uid' => $authorUid, 'fields' => ['name' => 'Author', 'peer' => $articleUid]]]);
+$writeSeed('seedArticles', [['uid' => $articleUid, 'fields' => ['name' => 'Article', 'peer' => $authorUid]]]);
+$existing = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('already-existing targets resolve when seed schemas form a cycle', [array_sum(array_column($existing, 'created')), array_sum(array_column($existing, 'updated'))], [0, 2]);
+$seedAuthor = $db->findFirst('seedAuthors', ['where' => ['uid' => $authorUid]]);
+$seedArticle = $db->findFirst('seedArticles', ['where' => ['uid' => $articleUid]]);
+eq('cyclic references are stored as their actual target identities', [$seedAuthor['peer'], $seedArticle['peer']], [$seedArticle['id'], $seedAuthor['id']]);
+$writeSeed('seedAuthors', [['uid' => \TypedPress\Sync\Uid::mint(), 'fields' => ['name' => 'Missing target', 'peer' => \TypedPress\Sync\Uid::mint()]]]);
+$writeSeed('seedArticles', []);
+problem('an actual missing seed reference is still refused', fn () => \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir), 422, 'sync_missing_reference', '/fields/peer');
+$itemUid = \TypedPress\Sync\Uid::mint(); $newAuthorUid = \TypedPress\Sync\Uid::mint();
+$item = $db->insert('aSeedItems', ['uid' => $itemUid, 'name' => 'Existing item'], true)[0];
+$writeSeed('aSeedItems', [['uid' => $itemUid, 'fields' => ['name' => 'Existing item', 'peer' => $newAuthorUid]]]);
+$writeSeed('seedAuthors', [['uid' => $newAuthorUid, 'fields' => ['name' => 'New author']]]);
+$outside = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('a dependency cycle is seeded before an outside collection that references it', [$outside['seedAuthors']['created'], $outside['aSeedItems']['updated']], [1, 1]);
+eq('the outside record resolves the new target inside the schema cycle', $db->findFirst('aSeedItems', ['where' => ['id' => $item['id']]])['peer'], $db->findFirst('seedAuthors', ['where' => ['uid' => $newAuthorUid]])['id']);
+$nodes = $db->insert('seedNodes', [['name' => 'A'], ['name' => 'B']], true);
+$writeSeed('seedNodes', [['uid' => $nodes[0]['uid'], 'fields' => ['name' => 'A', 'parent' => $nodes[0]['uid']]]]);
+$selfReference = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('an ordinary parent reference can seed an existing self-reference', $selfReference['seedNodes']['updated'], 1);
+$writeSeed('seedNodes', [['uid' => $nodes[0]['uid'], 'fields' => ['name' => 'A', 'parent' => $nodes[1]['uid']]], ['uid' => $nodes[1]['uid'], 'fields' => ['name' => 'B', 'parent' => $nodes[0]['uid']]]]);
+$parentCycle = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('ordinary parent reference cycles resolve existing targets', $parentCycle['seedNodes']['updated'], 2);
+eq('ordinary parent reference cycles store both target identities', [$db->findFirst('seedNodes', ['where' => ['id' => $nodes[0]['id']]])['parent'], $db->findFirst('seedNodes', ['where' => ['id' => $nodes[1]['id']]])['parent']], [$nodes[1]['id'], $nodes[0]['id']]);
+eq('repeating an ordinary parent cycle seed is unchanged', \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir)['seedNodes']['unchanged'], 2);
+chmod($seedDir, 0000); clearstatcache(true, $seedDir);
+try {
+    // A root test runner can still read mode-000 directories; exercise real permission errors elsewhere.
+    if (!is_readable($seedDir)) {
+        $listingFailed = false;
+        try { \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir); }
+        catch (RuntimeException $e) { $listingFailed = $e->getMessage() === 'Cannot list seed records'; }
+        check('unreadable seed contents throw instead of acknowledging an empty seed', $listingFailed);
+    }
+} finally { chmod($seedDir, 0700); }
+// ---------------------------------------------------------------- the plugin's own seed (`seed: true`)
+// A record the seed refuses names the file it was compiled from, and the refusal is kept for the
+// build: later requests report it without the lock and without running the records again.
+$own = $wp->plugin();
+$ownDir = $own->dir . '/tp/app/seed';
+$ownVersion = $own->dir . '/tp/app/seed-version.php';
+mkdir($ownDir);
+$ownUid = \TypedPress\Sync\Uid::mint();
+$writeOwn = static function (string $body) use ($ownDir, $ownVersion, $ownUid): array {
+    $php = '<?php return ' . var_export(['collection' => 'notes', 'format' => 'md', 'records' => [
+        ['uid' => $ownUid, 'fields' => ['title' => 'Seeded from a file'], 'body' => $body, 'path' => 'content/notes/embed.md'],
+    ]], true) . ';';
+    file_put_contents($ownDir . '/notes.php', $php);
+    $version = ['notes.php' => hash('sha256', $php)];
+    file_put_contents($ownVersion, '<?php return ' . var_export($version, true) . ';');
+    if (function_exists('opcache_invalidate')) { opcache_invalidate($ownDir . '/notes.php', true); opcache_invalidate($ownVersion, true); }
+
+    return $version;
+};
+$writeOwn("Hello\n\n<iframe src=\"https://example.com\"></iframe>\n");
+$seedLock = static fn (callable $fn) => \TypedPress\Wp\Migrator::locked($own->connection(), 'seed', $fn);
+$first = clone $own;
+$first->installSeed();
+$refusal = (string) $first->unavailable();
+check('a refused seed record names the file it came from', str_starts_with($refusal, 'Seed refused: content/notes/embed.md: core/html can\'t be written as Markdown'), $refusal);
+eq('a refused seed leaves no receipt', get_option('tp_notes_seed'), false);
+eq('a refused seed is kept with its message', get_option('tp_notes_seed_refused')['problem'] ?? null, $refusal);
+// While this process holds the seed lock, a request that ran the seed again would wait for it.
+$started = microtime(true);
+$again = $seedLock(static function () use ($own): string {
+    $second = clone $own;
+    $second->installSeed();
+
+    return (string) $second->unavailable();
+});
+eq('the next request reports the kept refusal', $again, $refusal);
+check('and reports it without waiting for the seed lock', microtime(true) - $started < 5, microtime(true) - $started);
+// A seed another request is still importing says so, in its own words.
+$kept = get_option('tp_notes_seed_refused');
+delete_option('tp_notes_seed_refused');
+$busy = $seedLock(static function () use ($own, $ownVersion): string {
+    try {
+        \TypedPress\Sync\Seed::install($own, $ownVersion, 1);
+    } catch (\TypedPress\Wp\LockBusy $e) {
+        return $e->getMessage();
+    }
+
+    return 'not refused';
+});
+eq('a held seed lock is reported as a seed, not as migrations', $busy, 'another request is still importing the seed content; try again shortly');
+eq('a busy seed lock is not kept as a refusal', get_option('tp_notes_seed_refused'), false);
+update_option('tp_notes_seed_refused', $kept, false);
+// A new build (another seed version) runs the seed again, and its receipt clears the refusal.
+$fixedVersion = $writeOwn("Hello\n\nNo embed here.\n");
+$fixed = clone $own;
+$fixed->installSeed();
+eq('a changed seed version runs the seed again', [$fixed->unavailable(), get_option('tp_notes_seed')], [null, $fixedVersion]);
+eq('and its receipt clears the kept refusal', get_option('tp_notes_seed_refused'), false);
+eq('the fixed record is seeded', $db->findFirst('notes', ['where' => ['uid' => $ownUid]])['title'] ?? null, 'Seeded from a file');
+// An error the app's own hook throws for a record is a refusal too, with the record's file.
+$writeOwn("Hello\n");
+$hookSeed = require $ownDir . '/notes.php';
+$hookSeed['records'][0] = ['uid' => \TypedPress\Sync\Uid::mint(), 'fields' => ['title' => 'forbidden title'], 'path' => 'content/notes/forbidden.md'];
+$hookPhp = '<?php return ' . var_export($hookSeed, true) . ';';
+file_put_contents($ownDir . '/notes.php', $hookPhp);
+file_put_contents($ownVersion, '<?php return ' . var_export(['notes.php' => hash('sha256', $hookPhp)], true) . ';');
+if (function_exists('opcache_invalidate')) { opcache_invalidate($ownDir . '/notes.php', true); opcache_invalidate($ownVersion, true); }
+$hooked = clone $own;
+$hooked->installSeed();
+check('an error a hook throws for a seed record names its file and is kept', str_starts_with((string) $hooked->unavailable(), 'Seed refused: content/notes/forbidden.md: this title is not allowed')
+    && (get_option('tp_notes_seed_refused')['problem'] ?? null) === $hooked->unavailable(), $hooked->unavailable());
+// Activating the plugin again retries a kept refusal.
+update_option('tp_notes_seed_refused', $kept, false);
+\TypedPress\Sync\Seed::retry($own);
+eq('activation forgets a kept seed refusal', get_option('tp_notes_seed_refused'), false);
+unlink($ownDir . '/notes.php'); rmdir($ownDir); unlink($ownVersion); delete_option('tp_notes_seed');
+foreach (['seedAuthors', 'seedArticles', 'aSeedItems', 'seedNodes'] as $name) { unlink($seedDir . '/' . $name . '.json'); }
+unlink($seedDir . '/.ignored.json'); unlink($seedDir . '/README.txt'); rmdir($seedDir);
 finish('sync');

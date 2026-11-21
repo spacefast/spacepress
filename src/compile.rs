@@ -445,6 +445,8 @@ pub struct Compiler<'a, 'p> {
     /// Each server component's props type (`tp/components/x.tsx#Name` → its first parameter),
     /// for the blocks Markdown pages use (`crate::content_blocks`).
     pub component_props: HashMap<String, Ty>,
+    /// Each compiled `emails/` template's function, by its closure, for `mail.render()`.
+    email_templates: HashMap<usize, String>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
     /// The `this` type for the next object-literal method compiled (the literal's own type).
@@ -550,6 +552,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             fx: None,
             action_results: HashMap::new(),
             component_props: HashMap::new(),
+            email_templates: HashMap::new(),
             plugin: None,
             current: String::new(),
             uses: Vec::new(),
@@ -950,7 +953,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.root_capabilities(root);
             // A hook given by reference (`afterCreate: restock`) reuses the helper's compiled body.
             let key = closure_key(&root.closure);
-            let no_db = matches!(root.slot, Slot::Access { .. } | Slot::FieldAccess { .. });
+            let no_db = matches!(
+                root.slot,
+                Slot::Access { .. } | Slot::FieldAccess { .. } | Slot::Email { .. }
+            );
             self.compile_function(&root.closure, &name, Some(params), Some(&root.slot), no_db)?;
             if let Some(ctx) = self.client.take() {
                 if ctx.root_pending {
@@ -960,6 +966,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "wrap what it returns in an element, e.g. `<div>…</div>`; React's fragments and components can't carry the Interactivity directives",
                     );
                 }
+                if let Some(name) = ctx.analysis.unattached_ref() {
+                    return err_help(
+                        root.closure.func.span,
+                        format!("`{name}` is a `useRef()` no element has"),
+                        format!("attach it: `<div ref={{{name}}}>`, or remove it"),
+                    );
+                }
                 self.islands.push(ctx.analysis);
             }
             if let Slot::Component { name: component } = &root.slot
@@ -967,6 +980,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             {
                 let props = params.first().cloned().unwrap_or(Ty::Obj(IndexMap::new()));
                 self.component_props.insert(component.clone(), props);
+            }
+            if let Slot::Email { .. } = &root.slot {
+                if !matches!(self.helper_types.get(&key), Some(Ty::Fn(_, ret)) if **ret == Ty::Html) {
+                    return err(root.closure.func.span, "an email template must return JSX");
+                }
+                self.email_templates.insert(key, name.clone());
             }
             if let Slot::ActionHandler { action } = &root.slot
                 && let Some(Ty::Fn(_, ret)) = self.helper_types.get(&key)
@@ -1095,9 +1114,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
             // A component's own annotation types its props (see `compile_function`); a page's
             // `metadata` function takes the same props.
             Slot::Component { .. } => vec![],
+            Slot::Email { file } if file == crate::loader::INVITATION_EMAIL => vec![Ty::Obj(
+                ["siteName", "identityUrl", "invitationCode", "expiresIn"]
+                    .into_iter()
+                    .map(|name| (name.to_owned(), (Ty::Str, false)))
+                    .collect(),
+            )],
+            // Other templates type their props with their own annotation, as components do.
+            Slot::Email { .. } => vec![],
             Slot::AppPage { file } | Slot::AppMetadata { file } => vec![self.app_props(file)],
-            Slot::AppGuard { .. } => vec![types::hook_ctx()],
-            Slot::AppAccess { .. } => vec![types::access_ctx(Ty::Map(Box::new(Ty::Unknown)))],
+            Slot::AppGuard { .. } | Slot::AppAccess { .. } => vec![types::access_ctx(Ty::Map(Box::new(Ty::Unknown)))],
             Slot::AppHandler { .. } => vec![types::route_request(), ctx],
             Slot::AppStaticParams { .. } => vec![],
             Slot::ActionHandler { action } => vec![
@@ -1205,7 +1231,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "read what you need from the handler's parameters, or from a variable it captures, instead of `this`",
             );
         }
-        if matches!(slot, Some(Slot::Component { .. })) {
+        if matches!(slot, Some(Slot::Component { .. } | Slot::Email { .. })) {
             if f.params.len() > 1 {
                 return err_help(
                     f.span,
@@ -1281,15 +1307,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // search, children), so only the named ones are checked, as TypeScript does
                     // for a non-literal argument.
                     let g = match (slot, &g, &d) {
-                        (Some(Slot::AppPage { .. } | Slot::AppMetadata { .. }), Ty::Obj(given), Ty::Obj(named)) => {
-                            Ty::Obj(
-                                given
-                                    .iter()
-                                    .filter(|(k, _)| named.contains_key(*k))
-                                    .map(|(k, v)| (k.clone(), v.clone()))
-                                    .collect(),
-                            )
-                        }
+                        (
+                            Some(Slot::AppPage { .. } | Slot::AppMetadata { .. } | Slot::Email { .. }),
+                            Ty::Obj(given),
+                            Ty::Obj(named),
+                        ) => Ty::Obj(
+                            given
+                                .iter()
+                                .filter(|(k, _)| named.contains_key(*k))
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect(),
+                        ),
                         _ => g,
                     };
                     check_parameter_argument(&g, &parameter_input_type(p, d.clone()), p.span)?;
@@ -1327,7 +1355,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if let Some(ps) = &params
             && !matches!(
                 slot,
-                Some(Slot::Component { .. } | Slot::AppPage { .. } | Slot::AppMetadata { .. })
+                Some(Slot::Component { .. } | Slot::Email { .. } | Slot::AppPage { .. } | Slot::AppMetadata { .. })
             )
             && ps.len()
                 < f.params
@@ -3012,7 +3040,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             ExprKind::Ident(_) | ExprKind::Member { .. } | ExprKind::Chain(_) => {
                 if let Some((n, t)) = self.path_ty(test) {
-                    let (yes, no) = (t.non_null(), t.clone());
+                    // A truthy value is neither nullish nor `false`.
+                    let (yes, no) = (t.non_null().without_bool(false), t.clone());
                     out.push(if negate { (n, no, yes) } else { (n, yes, no) });
                 }
             }
@@ -3141,6 +3170,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         (Ty::union(miss), Ty::union(hit))
                     };
                     out.push((n, yes, no));
+                    return;
+                }
+                // `user === false` and `user !== false` split a union on its boolean literal, as
+                // WordPress's "or false" results need (`get_userdata`, `get_permalink`).
+                let literal = match (&l.kind, &r.kind) {
+                    (_, ExprKind::Bool(value)) => Some((l, *value)),
+                    (ExprKind::Bool(value), _) => Some((r, *value)),
+                    _ => None,
+                };
+                if let Some((subject, value)) = literal
+                    && let Some((n, t)) = self.path_ty(subject)
+                    && let Ty::Union(items) = &t
+                    && items.iter().any(|item| item.bool_literal() == Some(value))
+                {
+                    let hit = Ty::union(items.iter().filter(|item| item.bool_literal() == Some(value)).cloned());
+                    let miss = t.without_bool(value);
+                    out.push(if (*op == BinOp::Eq) != negate {
+                        (n, hit, miss)
+                    } else {
+                        (n, miss, hit)
+                    });
                     return;
                 }
                 let (subject, other) = match (&l.kind, &r.kind) {
@@ -3539,8 +3589,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         parts.push(php_str(&quasis[i + 1]));
                     }
                 }
-                if parts.is_empty() {
-                    Out::atom("''", Ty::Str)
+                if exprs.len() == 1 {
+                    if parts.len() == 1 {
+                        Out::atom(format!("((string) {})", parts[0]), Ty::Str)
+                    } else {
+                        Out::atom(format!("({})", parts.join(" . ")), Ty::Str)
+                    }
                 } else {
                     Out::atom(format!("\\implode('', [{}])", parts.join(", ")), Ty::Str)
                 }
@@ -4373,6 +4427,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             )
         };
         if (exact(&a.ty) && literal_php(a)) || (exact(&b.ty) && literal_php(b)) {
+            // WordPress's standard wants the literal first when the other side is a variable.
+            // A literal has no effect to order, and `===` is symmetric, so the swap changes nothing.
+            if is_php_variable(&a.php) && literal_php(b) && !literal_php(a) {
+                return format!("{} === {}", b.wrapped(), a.wrapped());
+            }
             return format!("{} === {}", a.wrapped(), b.wrapped());
         }
         // Two typed numbers, each a numeric literal or a plain variable (read twice without effect).
@@ -4971,7 +5030,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => "",
         };
         let mut body = format!(
-            "function {name}(): \\TypedPress\\{class} {{\n\tstatic $value;\n\tif ($value === null) {{\n\t\t$value = new \\TypedPress\\{class}({arguments});\n"
+            "/**\n * Return a value the app's configuration captured.\n *\n * @return \\TypedPress\\{class}\n */\nfunction {name}(): \\TypedPress\\{class} {{\n\tstatic $value;\n\tif (null === $value) {{\n\t\t$value = new \\TypedPress\\{class}({arguments});\n"
         );
         for (key, value) in fields {
             let value = self.captured_data(&value)?;
@@ -7051,16 +7110,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             JsxKind::Fragment => {
                 let children = self.jsx_children(&jsx.children)?;
-                // A fragment of static markup is that markup.
-                if let [only] = children.as_slice()
-                    && static_markup(only).is_some()
-                {
-                    return Ok(Out::atom(only.clone(), Ty::Html));
-                }
-                Ok(Out::atom(
-                    format!("\\TypedPress\\Html::children({})", children.join(", ")),
-                    Ty::Html,
-                ))
+                Ok(Out::atom(self.fold_children(children), Ty::Html))
             }
             JsxKind::Intrinsic(tag) => self.jsx_element(tag, jsx, span),
         }
@@ -7183,6 +7233,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // In a client component, handlers and refs exist only in the browser: the
                     // directives below carry them, and the server HTML has no attribute for them.
                     let folded = name.to_ascii_lowercase();
+                    if name == "ref" && self.client.is_none() {
+                        return err_help(
+                            *span,
+                            "`ref` in a server component",
+                            "move the element into a \"use client\" component",
+                        );
+                    }
                     if self.client.is_some()
                         && (name == "ref"
                             || (folded.starts_with("on")
@@ -7440,23 +7497,43 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => children.to_vec(),
         };
         let mut parts = vec![format!("\\TypedPress\\Html::raw({})", php_str(&format!("{open}>")))];
-        // A folded child element's parts join this element's, so static runs span the boundary.
+        parts.extend(children);
+        parts.push(format!("\\TypedPress\\Html::raw({})", php_str(&format!("</{tag}>"))));
+        Some(self.fold_children(parts))
+    }
+
+    /// Flatten static runs across nested tags and fragments. Only compiler-escaped literals
+    /// enter the template. The other children keep their source evaluation order and render lazily.
+    fn fold_children(&mut self, children: Vec<String>) -> String {
+        let mut parts = Vec::new();
         for child in children {
             match self.folded_parts.remove(&child) {
                 Some(inner) => parts.extend(inner),
                 None => parts.push(child),
             }
         }
-        parts.push(format!("\\TypedPress\\Html::raw({})", php_str(&format!("</{tag}>"))));
         let parts = merge_static(parts);
-        Some(match parts.as_slice() {
-            [only] => only.clone(),
-            _ => {
-                let php = format!("\\TypedPress\\Html::children({})", parts.join(", "));
-                self.folded_parts.insert(php.clone(), parts);
-                php
+        let mut literals = vec![String::new()];
+        let mut slots = Vec::new();
+        for part in &parts {
+            if let Some(markup) = static_markup(part) {
+                literals.last_mut().unwrap().push_str(&markup);
+            } else {
+                slots.push(part.as_str());
+                literals.push(String::new());
             }
-        })
+        }
+        if slots.is_empty() {
+            return format!("\\TypedPress\\Html::raw({})", php_str(&literals[0]));
+        }
+        let php = if literals.iter().all(String::is_empty) {
+            format!("\\TypedPress\\Html::children({})", slots.join(", "))
+        } else {
+            let literals = literals.iter().map(|s| php_str(s)).collect::<Vec<_>>().join(", ");
+            format!("\\TypedPress\\Html::template([{literals}], {})", slots.join(", "))
+        };
+        self.folded_parts.insert(php.clone(), parts);
+        php
     }
 
     /// One attribute of an intrinsic element, named in the source or set by a closed spread,
@@ -8485,11 +8562,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn mail_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if name == "render" {
+            return self.mail_render(args, span);
+        }
         if name != "send" {
             return err_help(
                 span,
                 format!("`mail` has no function `{name}`"),
-                "use `mail.send(message)`",
+                "use `mail.send(message)` or `mail.render(Template, props)`",
             );
         }
         if self.fx().no_db {
@@ -8556,6 +8636,65 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(Out::atom(
             format!("\\TypedPress\\Mail::send({})", v.php),
             Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
+        ))
+    }
+
+    /// `mail.render(Template, props)`: an `emails/` template's HTML and plain text for `mail.send()`.
+    fn mail_render(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
+        let help = "import the template from emails/ and write mail.render(Welcome, { name })";
+        if args.len() != 2 {
+            return err_help(span, "mail.render() takes a template and its props", help);
+        }
+        let template = self.arg(args, 0, span, "a template")?;
+        let closure = match &template.kind {
+            ExprKind::Ident(n) => match self.resolve(n, template.span)? {
+                Resolved::Value(Value::Closure(c), _) => Some(c),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some((function, Some(Ty::Fn(params, _)))) = closure
+            .map(|c| {
+                let key = closure_key(&c);
+                (
+                    self.email_templates.get(&key).cloned(),
+                    self.helper_types.get(&key).cloned(),
+                )
+            })
+            .and_then(|(f, t)| f.map(|f| (f, t)))
+        else {
+            return err_help(
+                template.span,
+                "mail.render() renders the default export of an emails/ template",
+                help,
+            );
+        };
+        let e = self.arg(args, 1, span, "props")?;
+        let props = self.expr(e)?;
+        let props = self.finish_value(props, e.span)?;
+        let declared = params.first().cloned().unwrap_or(Ty::Obj(IndexMap::new()));
+        // The check an ordinary call makes, so `{ kind: "welcome" }` meets `kind: "welcome" | "reminder"`.
+        if !assignable(&props.ty, &declared)
+            && (props.ty.is_nullable() && !declared.is_nullable()
+                || !self.argument_constraint(e).is_some_and(|t| assignable(&t, &declared)))
+        {
+            return err(
+                e.span,
+                format!(
+                    "these props are {}, but the template expects {}",
+                    props.ty.describe(),
+                    declared.describe()
+                ),
+            );
+        }
+        self.uses("mail", "render", span);
+        Ok(Out::atom(
+            format!(
+                "\\TypedPress\\Render\\Email::message({}, {})",
+                php_str(&format!("\\TypedPressApp\\{function}")),
+                props.php
+            ),
+            types::obj_pub(&[("html", Ty::Str), ("text", Ty::Str)]),
         ))
     }
 
@@ -10678,17 +10817,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return err(e.span, "`with` keys must be relation names");
             };
             if let Some(col) = self.schema.collections[table].columns.get(rel)
-                && matches!(col.ty, ColType::Media | ColType::MediaList)
+                && matches!(col.ty, ColType::Media | ColType::MediaList | ColType::File)
             {
                 if !matches!(v.kind, ExprKind::Bool(true)) {
-                    return err(v.span, format!("`with.{rel}` loads the media row; use `true`"));
+                    return err(v.span, format!("`with.{rel}` loads the media or file row; use `true`"));
                 }
                 parts.push(format!("{} => true", php_str(rel)));
                 let m = types::media_row();
-                let t = if col.ty == ColType::MediaList {
-                    Ty::Array(Box::new(m))
-                } else {
-                    m
+                let t = match col.ty {
+                    ColType::MediaList => Ty::Array(Box::new(m)),
+                    // The id stays an id for a visitor the bucket's read rule refuses.
+                    ColType::File => Ty::union([types::file_row(), Ty::Num]),
+                    _ => m,
                 };
                 rels.push((format!("\u{0}{rel}"), if col.not_null { t } else { t.nullable() }));
                 continue;

@@ -3,7 +3,7 @@ import { db } from "typedpress";
 import escapeHtml from "escape-html";
 import ms from "ms";
 
-export const access = "anyone";
+export const guard = "anyone";
 
 export async function GET() {
   const list = await db.query.books.findMany({ columns: { title: true, minutesRead: true } });

@@ -30,7 +30,7 @@ export const restock = action({
   input: { drive: integer(), quantity: integer().min(1).max(500), note: text().max(200).optional() },
   access: "editor",
   async handler({ drive, quantity, note }) {
-    const row = await db.query.drives.findFirst({ where: { id: drive } });
+    const row = await db.query.drives.findFirst({ where: { id: drive }, columns: { id: true, stock: true } });
     if (!row) throw new HttpError(404, "not_found", "No drive has that id.");
     await db.update(drives).set({ stock: row.stock + quantity }).where({ id: row.id });
     // The movement log is written by the app only (its API create rule is admin).
@@ -44,7 +44,7 @@ export const markShipped = action({
   input: { order: integer() },
   access: "editor",
   async handler({ order }) {
-    const row = await orders.get(order);
+    const row = await orders.get(order, { columns: { code: true, status: true } });
     if (!row) throw new HttpError(404, "not_found", "No order has that id.");
     if (row.status !== "placed") throw new HttpError(409, "conflict", `Order ${row.code} is already ${row.status}.`);
     const shipped = await orders.update(order, { status: "shipped", shippedAt: new Date().toISOString() });
@@ -58,7 +58,10 @@ export const pendingOrders = action({
   access: "editor",
   readonly: true,
   async handler() {
-    const rows = await db.query.orders.findMany({ where: { status: "placed" } });
+    const rows = await db.query.orders.findMany({
+      where: { status: "placed" },
+      columns: { id: true, code: true, buyerName: true, quantity: true, total: true },
+    });
     return { rows: rows.map((o) => ({ id: o.id, code: o.code, buyer: o.buyerName, quantity: o.quantity, total: o.total })) };
   },
 });

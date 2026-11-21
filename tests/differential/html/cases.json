@@ -1,5 +1,17 @@
 [
   {
+    "component": "components/static.tsx#TemplateStrings",
+    "props": { "text": "A&B", "value": null }
+  },
+  {
+    "component": "components/static.tsx#TemplateStrings",
+    "props": { "text": "", "value": 12.5 }
+  },
+  {
+    "component": "components/static.tsx#TemplateSlots",
+    "props": { "text": "<b>Tom & Kate's</b>" }
+  },
+  {
     "component": "components/children.tsx#Values",
     "props": {
       "n": 42,

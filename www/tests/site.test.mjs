@@ -48,12 +48,20 @@ test("the guide without JavaScript still shows its code as text", async () => {
   await close();
 });
 
-test("the guide and a doc fit a phone", async () => {
-  for (const path of ["/", "/docs/guides/pages"]) {
-    const { page, close } = await open(path, { viewport: { width: 390, height: 800 } });
-    if (path === "/") await page.waitForSelector("html[data-drawn]", { timeout: 30_000 });
-    await noSidewaysScroll(page);
-    await close();
+test("the guide and a doc keep page gutters without sideways scrolling", async () => {
+  for (const width of [1280, 390, 320]) {
+    for (const path of ["/", "/docs/guides/pages"]) {
+      const { page, close } = await open(path, { viewport: { width, height: 800 } });
+      try {
+        if (path === "/") await page.waitForSelector("html[data-drawn]", { timeout: 30_000 });
+        await noSidewaysScroll(page);
+        const edges = await page.locator(path === "/" ? ".hero" : ".docs").evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return { left: box.left, right: innerWidth - box.right };
+        });
+        assert.ok(edges.left >= 16 && edges.right >= 16, `${path} has no comfortable gutter: ${JSON.stringify(edges)}`);
+      } finally { await close(); }
+    }
   }
 });
 

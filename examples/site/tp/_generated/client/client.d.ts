@@ -46,7 +46,7 @@ export interface RevisionSummary {
 	} | null;
 }
 export type Status = "draft" | "published" | "scheduled";
-export type Locale = "en" | "de";
+export type Locale = never;
 export interface Author {
 	id: number;
 	name: string;
@@ -237,10 +237,8 @@ export interface Post {
 	status: "draft" | "published" | "scheduled";
 	publishedAt: string | null;
 	uid: string | null;
-	locale: "en" | "de";
-	translations: Partial<Record<"en" | "de", number>>;
 }
-export interface PostFields {
+export interface PostInsert {
 	title: string;
 	slug?: string | null;
 	body?: string | null;
@@ -272,12 +270,7 @@ export interface PostFields {
 	status?: "draft" | "published" | "scheduled";
 	publishedAt?: string | null;
 	uid?: string | null;
-	locale?: "en" | "de";
-	translationOf?: undefined;
 }
-export type PostInsert = PostFields | (Omit<PostFields, "cover" | "manuscript" | "topics" | "featured" | "deskNotes" | "authorId" | "seo" | "related" | "sections" | "updatedAt" | "translationOf"> & Partial<Pick<PostFields, "cover" | "manuscript" | "topics" | "featured" | "deskNotes" | "authorId" | "seo" | "related" | "sections" | "updatedAt">> & {
-	translationOf: number;
-});
 export interface PostPatch {
 	title?: string;
 	slug?: string | null;
@@ -606,22 +599,6 @@ export interface PostFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	locale?: "en" | "de" | null | {
-		eq?: "en" | "de" | null;
-		ne?: "en" | "de" | null;
-		gt?: "en" | "de";
-		gte?: "en" | "de";
-		lt?: "en" | "de";
-		lte?: "en" | "de";
-		in?: ("en" | "de")[];
-		notIn?: ("en" | "de")[];
-		like?: string;
-		ilike?: string;
-		notLike?: string;
-		notIlike?: string;
-		isNull?: true;
-		isNotNull?: true;
-	};
 	comments?: true | CommentFilter;
 	subscribers?: true | SubscriberFilter;
 	announcements?: true | AnnouncementFilter;
@@ -629,7 +606,7 @@ export interface PostFilter {
 	OR?: PostFilter[];
 	NOT?: PostFilter;
 }
-export type PostOrder = Partial<Record<"id" | "title" | "slug" | "body" | "dek" | "cover" | "manuscript" | "featured" | "deskNotes" | "authorId" | "updatedAt" | "status" | "publishedAt" | "uid" | "locale", "asc" | "desc">> | string;
+export type PostOrder = Partial<Record<"id" | "title" | "slug" | "body" | "dek" | "cover" | "manuscript" | "featured" | "deskNotes" | "authorId" | "updatedAt" | "status" | "publishedAt" | "uid", "asc" | "desc">> | string;
 export interface Comment {
 	id: number;
 	postId: number;
@@ -1160,7 +1137,7 @@ export declare const SCHEMA: {
 			readonly primaryKey: "id";
 			readonly drafts: true;
 			readonly revisions: true;
-			readonly localized: true;
+			readonly localized: false;
 			readonly relations: {
 				readonly authorId: {
 					readonly kind: "one";

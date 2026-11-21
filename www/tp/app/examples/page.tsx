@@ -23,7 +23,7 @@ export default async function Examples() {
             <h2>{row.title}</h2>
             <p>{row.summary}</p>
             <p className="links">
-              <a href={`/play?example=${row.name}`}>Open in the playground</a>
+              <a href={`/play/?example=${row.name}`}>Open in the playground</a>
               <a href={`https://github.com/${row.repo}/tree/main/${row.path}`}>Code on GitHub</a>
               <span className="stars" title={row.starsAt ? `GitHub was asked on ${row.starsAt.slice(0, 10)}` : "GitHub has not been asked yet"}>{row.stars == null ? (row.starsAt ? "no public star count" : "stars not counted yet") : `★ ${row.stars}`}</span>
             </p>

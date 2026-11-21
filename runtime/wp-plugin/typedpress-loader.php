@@ -225,20 +225,25 @@ final class Loader
         \TypedPress\Env::isolate($variables);
         require_once $runtime . '/typedpress-runtime/tp/bootstrap.php';
         self::$schema = \TypedPress\Schema::load($app . '/tp/app/schema.php');
+        if (self::$schema->commerce() !== null) {
+            require_once $runtime . '/typedpress-commerce.php';
+        }
         $identity = !empty($options['users']) || (self::$schema->auth()['collection'] ?? null) !== null;
         self::$loaded['identity'] = $identity;
         $url = $options['url'] ?? null;
         if (is_string($url) && $url !== '') {
             self::mapUrls($root, rtrim($url, '/'));
         }
-        $mount = static function () use ($root, $runtime, $app, $manifest, $variables, $identity, $before): void {
+        $mount = static function () use ($runtime, $app, $manifest, $variables, $identity, $before): void {
             if ($identity) {
                 if ($before !== null) {
                     $before();
                 }
                 require_once $runtime . '/typedpress-identity/typedpress-identity.php';
             }
-            \TypedPress\Wp\Runtime::mount($runtime . '/typedpress-runtime/typedpress-runtime.php', $app, $variables);
+            // A runtime schema reads site options, including filters registered while WordPress boots.
+            $schema = self::schema();
+            \TypedPress\Wp\Runtime::mount($runtime . '/typedpress-runtime/typedpress-runtime.php', $app, $variables, method_exists($schema, 'runtimeSchema') && $schema->runtimeSchema() === null ? $schema : null);
             if ($manifest['admin']) {
                 require_once $runtime . '/typedpress-admin/typedpress-admin.php';
             }

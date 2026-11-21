@@ -78,6 +78,7 @@ const GUIDES: &[&str] = &[
     "class-compilation.md",
     "compiler-diagnostics.md",
     "config-api.md",
+    "woocommerce.md",
     "config-migration.md",
     "deployment.md",
     "examples.md",

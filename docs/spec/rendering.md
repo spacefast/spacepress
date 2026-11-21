@@ -25,7 +25,7 @@ Decisions (2026-11-08):
 | Data loading | async server component | `loader` + `useLoaderData` | `load` functions | **async server component** (it runs in PHP, so there is no separate loader) |
 | Forms | server actions | server functions | RR7/SvelteKit form actions (work without JS) | **form actions that work without JS**, upgraded by the Interactivity API (§4) |
 | Head | `metadata` / `generateMetadata` | `head()` | `<svelte:head>`, frontmatter | **`metadata` object or function** |
-| Middleware | `middleware.ts` | route and handler middleware | hooks | **`layout.tsx` may export `guard`** (§2) |
+| Middleware | `middleware.ts` | route and handler middleware | hooks | **Pages, layouts and HTTP handlers may export `guard`** (§2) |
 
 A page answers at one address: its path spelled as the permalink structure spells a post's
 (`/docs/intro/` under TypedPress's `/%postname%/`), as WordPress's `redirect_canonical()` does. The
@@ -60,7 +60,8 @@ tp/app/
 - A page whose path matches a kind's `url` pattern receives `item` and 404s for
   missing, unpublished or unreadable items. You don't export anything to bind it.
 - `export const guard = "subscriber" | (ctx) => true | redirect("/login")` on a
-  layout protects everything below it.
+  layout protects its descendant pages. On a page it protects that page, and on a
+  handler it authorizes the HTTP methods.
 - A page that exports `prerender = true` is prebuilt, and with `defineConfig({ output: "static" })`
   every page is: built, [decision](../decisions/2026-11-13-static-output.md) (§6.1).
 - `page.md` (built, [decision](../decisions/2026-11-13-content-pages.md)): the file is the first
@@ -168,7 +169,7 @@ The TSX → directive mapping, which also defines what's supported:
 | `{list.map((x) => <li key={x.id}>…)}` | `<template data-wp-each--x="…" data-wp-each-key="…">`, after the server's items marked `data-wp-each-child` |
 | `useEffect(fn, [deps])` | `data-wp-watch` (cleanup returned) |
 | `useMount(fn)` | `data-wp-init` |
-| `useRef()` | `getElement().ref` |
+| `const box = useRef()` with `<div ref={box}>` | `data-tp-ref="box"` on the element; `box.current` finds it inside the component's root (null while a conditional hides it) |
 | shared state across components: `export const cart = sharedState({ items: [] })` | the store's global `state` for that namespace |
 | `fetch` / server action calls | `fetch` to the action endpoint with the REST nonce from `getConfig()` |
 
@@ -214,6 +215,11 @@ navigation animation styles and the loading bar. The page's own HTML is not
 processed again.
 Full-page navigation is still experimental in WordPress, so it stays off until
 core marks it stable. `<Link prefetch>` uses the router's `prefetch`.
+The build records each page's ordered guards, inherited template, and whether a role
+requires a session. On a request-rendered page, a local link to such a destination
+takes guests to WordPress sign-in with the canonical destination as the return URL.
+This anchor uses full browser navigation and skips hover prefetch. Opening a URL
+directly still evaluates its guards, including callbacks, on the server.
 
 ### 4.4 Live data over Cast
 
@@ -320,7 +326,7 @@ policy for each response.
 
 | The response is | Policy |
 |---|---|
-| an anonymous visitor's 200 render of a page no layout guards | **cacheable**: Batcache stores it, and the edge caches with `public, max-age=0, s-maxage=<window>, must-revalidate`; signed-in users, previews and comment-author cookies bypass |
+| an anonymous visitor's 200 render of a page with no page or layout guard | **cacheable**: Batcache stores it, and the edge caches with `public, max-age=0, s-maxage=<window>, must-revalidate`; signed-in users, previews and comment-author cookies bypass |
 | anything else (a signed-in visitor, a guarded section, an error, a 404) | `private, no-store`; still fast, because the shell has no viewer data when the viewer part is a client component |
 
 Every read in a render is bound to the visitor, so an anonymous render is what any anonymous
@@ -329,7 +335,7 @@ visitor sees.
 **Prebuilt pages** (built, [decision](../decisions/2026-11-13-static-output.md)) need no proof that a
 route is viewer-independent: a prebuilt page is the same anonymous render, made ahead of time.
 - **Which pages.** A page opts in with `export const prerender = true`, or every page is prebuilt
-  under `output: "static"`. A page that can't be prebuilt (a layout `guard`, `search`, a viewer
+  under `output: "static"`. A page that can't be prebuilt (a page or layout `guard`, `search`, a viewer
   function, a dynamic segment with nothing to list) is a build error.
 - **On WordPress** (`output: "server"` only). An Action Scheduler action renders each prebuilt URL
   as a signed-out visitor and writes its HTML and `.md` below `wp-content/cache/typedpress-prebuilt/`.

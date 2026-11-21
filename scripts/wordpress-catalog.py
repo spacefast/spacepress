@@ -29,8 +29,8 @@ TYPES = ROOT / "types/typedpress/wordpress.d.ts"
 BEGIN, END = "// BEGIN GENERATED: scripts/wordpress-catalog.py", "// END GENERATED"
 CACHE = ROOT / "tests/wp/cache/catalog"
 
-# WordPress 7.1.x: the newest stubs php-stubs/wordpress-stubs has released. TypedPress's floor is 7.2-beta5
-# (src/platform.rs); every name the catalog takes from 7.1 is still in 7.2.
+# WordPress 7.1.x: the newest stubs php-stubs/wordpress-stubs has released. TypedPress's floor is 7.1
+# (src/platform.rs), so the catalog's names are the floor's.
 PINS = {
     "hooks": {
         "url": "https://registry.npmjs.org/@wp-hooks/wordpress-core/-/wordpress-core-1.13.0.tgz",
@@ -85,6 +85,7 @@ SELECT_FUNCTIONS = {
     "get_userdata": {"params": ["user_id"], "returns": "WP_User | false"},
     "get_permalink": {"params": ["post"], "paramTypes": {"post": "number"}},
     "home_url": {"params": ["path"]},
+    "wp_login_url": {"params": ["redirect"]},
     "sanitize_text_field": {"params": ["str"]},
     "sanitize_title": {"params": ["title"]},
     "esc_html": {"params": ["text"]},

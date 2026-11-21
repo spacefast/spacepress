@@ -117,18 +117,24 @@ foreach ([
 }
 
 // The pin fails closed before anything is sent. A local listener stands in for the target, and the
-// handle names it `localhost`, which resolves to the listener on its own: an unpinned handle would
-// reach it. When the pin can't be set, the handle must not connect there or send anything.
+// successful handle names an unresolvable host: only the explicit pin can reach the listener. The
+// failed pin uses localhost, which would reach it unpinned, and must send nothing. The listener
+// doesn't complete TLS, so libcurl may clear PRIMARY_IP on failure; observe the pin options and socket.
 $server = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
 $port = (int) substr(strrchr(stream_socket_get_name($server, false), ':'), 1);
 stream_set_blocking($server, false);
-$attempt = static function (?callable $setopt) use ($port): array {
-    $curl = curl_init("https://localhost:$port/secret?token=1");
+$attempt = static function (?callable $setopt, string $host = 'localhost') use ($port): array {
+    $curl = curl_init("https://$host:$port/secret?token=1");
     curl_setopt_array($curl, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 2, CURLOPT_CONNECTTIMEOUT => 2,
-        CURLOPT_SSL_VERIFYPEER => false, CURLOPT_POSTFIELDS => 'leak']);
-    $pinned = Fetch::pin($curl, 'localhost', $port, '127.0.0.1', $setopt);
+        CURLOPT_SSL_VERIFYPEER => false, CURLOPT_POSTFIELDS => 'leak', CURLOPT_PROXY => '']);
+    $options = [];
+    $setopt ??= curl_setopt(...);
+    $pinned = Fetch::pin($curl, $host, $port, '127.0.0.1', static function ($handle, int $option, mixed $value) use ($setopt, &$options): bool {
+        $options[$option] = $value;
+        return $setopt($handle, $option, $value);
+    });
     curl_exec($curl);
-    return [$pinned, (string) curl_getinfo($curl, CURLINFO_PRIMARY_IP), (int) curl_getinfo($curl, CURLINFO_REQUEST_SIZE)];
+    return [$pinned, (int) curl_getinfo($curl, CURLINFO_REQUEST_SIZE), $options];
 };
 $accepted = static function () use ($server): int {
     $n = 0;
@@ -138,10 +144,12 @@ $accepted = static function () use ($server): int {
     }
     return $n;
 };
-[$pinned, $ip] = $attempt(null);
-eq('a pinned handle connects to the checked address, not wherever the name resolves', [$pinned, $ip, $accepted()], [true, '127.0.0.1', 1]);
+[$pinned, , $options] = $attempt(null, 'typedpress-pin.invalid');
+eq('a pinned handle connects to the checked address over HTTPS without DNS',
+    [$pinned, $options[CURLOPT_RESOLVE], $options[CURLOPT_PROTOCOLS], $accepted()],
+    [true, ["typedpress-pin.invalid:$port:127.0.0.1"], CURLPROTO_HTTPS, 1]);
 $failing = static fn (\CurlHandle $c, int $option, mixed $value): bool => $option === CURLOPT_RESOLVE ? false : curl_setopt($c, $option, $value);
-[$pinned, $ip, $sent] = $attempt($failing);
+[$pinned, $sent] = $attempt($failing);
 eq('when the pin can\'t be set, the handle never reaches the target and sends no request', [$pinned, $accepted(), $sent], [false, 0, 0]);
 fclose($server);
 

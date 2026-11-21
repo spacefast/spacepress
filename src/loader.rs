@@ -12,6 +12,15 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub const TP_MODULE: &str = "typedpress";
+/// Email templates (docs/design-react-email.md), beside `typedpress.config.ts`.
+pub const EMAILS_DIR: &str = "emails";
+/// The template that replaces Identity's built-in organization invitation.
+pub const INVITATION_EMAIL: &str = "emails/identity/organization-invite.tsx";
+
+pub(crate) fn email_module(root: &Path, path: &Path) -> bool {
+    path.starts_with(root.join(EMAILS_DIR))
+}
+
 /// Page and layout helpers for `tp/app/` and components (docs/spec/rendering.md §2–§4).
 pub const APP_MODULE: &str = "typedpress/app";
 /// Navigation for a hierarchical kind's pages: `nav`, `pager`, `headings` (src/compile/content.rs).
@@ -168,6 +177,9 @@ pub struct Program {
     /// `tp/app/`: the route table, and each route file's module by its path relative to `tp/`.
     pub app: crate::app::Table,
     pub app_files: Vec<(String, usize)>,
+    /// `emails/` templates by their app-relative path (`emails/welcome.tsx`), outside
+    /// underscore-prefixed folders, which hold shared parts.
+    pub emails: Vec<(String, usize)>,
     /// Files components and pages import that are not code (`.css`, `.module.css`, images), by
     /// module id: the evaluator binds their import to a URL or a class map (`crate::assets`).
     pub assets: HashMap<usize, crate::assets::Asset>,
@@ -205,6 +217,7 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         components: Vec::new(),
         app: crate::app::Table::default(),
         app_files: Vec::new(),
+        emails: Vec::new(),
         assets: HashMap::new(),
     };
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
@@ -316,6 +329,34 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         }
         Err(d) => diagnostics.extend(d.into_iter().map(|d| d.phase(diag::Code::Import))),
     }
+    match component_files(&*fs, &program.root.join(EMAILS_DIR)) {
+        Ok(files) => {
+            for path in files {
+                let relative = path.strip_prefix(&program.root).unwrap_or(&path);
+                if relative
+                    .components()
+                    .any(|c| c.as_os_str().to_string_lossy().starts_with('_'))
+                {
+                    continue;
+                }
+                let relative = relative.to_string_lossy().replace('\\', "/");
+                let module = fs
+                    .canonicalize(&path)
+                    .map_err(|e| Diag::new(Span::NONE, format!("{}: {e}", path.display())))
+                    .and_then(|path| {
+                        if !email_module(&program.root, &path) {
+                            return Err(Diag::new(Span::NONE, format!("{relative} must resolve inside emails/")));
+                        }
+                        load_module(&*fs, &path, &mut program, &mut by_path, &mut diagnostics)
+                    });
+                match module {
+                    Ok(module) => program.emails.push((relative, module)),
+                    Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+                }
+            }
+        }
+        Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    }
     if diagnostics.is_empty() {
         diagnostics.extend(jsx_reachability(&program));
     }
@@ -357,6 +398,10 @@ fn jsx_reachability(program: &Program) -> Vec<Diag> {
             continue;
         }
         let module = &program.modules[id];
+        // Handlers reference email templates for `mail.render()`; their imports stay inside emails/.
+        if email_module(&program.root, &module.path) {
+            continue;
+        }
         if module.jsx {
             out.push(
                 Diag::new(
@@ -573,6 +618,26 @@ fn load_module(
         type_names,
         use_client,
     } = parse(fs, &source, path, &program.root, file, id, diagnostics)?;
+    if email_module(&program.root, path) {
+        if use_client {
+            return Err(Diag::new(
+                Span { file, start: 0, end: 0 },
+                "email templates run on the server",
+            ));
+        }
+        // React Email reads this assignment in its preview. The WordPress sender supplies props.
+        body.retain(|stmt| {
+            let Stmt::Expr(Expr {
+                kind: ExprKind::Assign { op: None, target, .. },
+                ..
+            }) = stmt
+            else {
+                return true;
+            };
+            !matches!(&target.kind, ExprKind::Member { obj, prop, optional: false, .. }
+                if prop == "PreviewProps" && matches!(obj.kind, ExprKind::Ident(_)))
+        });
+    }
     if let Some(alias) = fs.module_alias() {
         rename_module(&mut body, commonjs.as_mut(), alias);
     }
@@ -613,6 +678,7 @@ fn load_module(
             );
         }
     }
+    let is_email = email_module(&program.root, path);
     let mut imports: Vec<(String, Span)> = body.iter().filter_map(import_source).collect();
     let first_require = imports.len();
     let commonjs = commonjs.map(|CommonJs { names, requires }| {
@@ -631,6 +697,18 @@ fn load_module(
         use_client,
     }));
     for (index, (spec, span)) in imports.into_iter().enumerate() {
+        if is_email {
+            if spec == "react-email" {
+                continue;
+            }
+            if !spec.starts_with('.') {
+                diagnostics.push(
+                    Diag::new(span, "email templates can import react-email and local email modules")
+                        .code(diag::Code::Import),
+                );
+                continue;
+            }
+        }
         if builtin_module(&spec) {
             continue;
         }
@@ -657,9 +735,12 @@ fn load_module(
         } else {
             resolve(fs, path, &spec, span)
         }
-        .and_then(|target| match fs.frozen_capture() {
-            true => Ok(target),
-            false => fence(&program.root, path, &spec, target, span),
+        .and_then(|target| {
+            if fs.frozen_capture() && !is_email {
+                Ok(target)
+            } else {
+                fence(&program.root, path, &spec, target, span)
+            }
         });
         let target = target.and_then(|target| match crate::assets::kind(&target) {
             Some(kind) => load_asset(fs, &target, kind, program, by_path, span),
@@ -737,7 +818,19 @@ fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> R
         p.strip_prefix(root)
             .map_or_else(|_| in_node_modules(p), in_node_modules)
     };
-    if !spec.starts_with('.') || installed(from) || target.starts_with(root.join(crate::layout::ROOT)) {
+    if email_module(root, from) {
+        return if email_module(root, &target) {
+            Ok(target)
+        } else {
+            Err(
+                Diag::new(span, "an email template's local imports must stay inside emails/")
+                    .code(diag::Code::ImportFence),
+            )
+        };
+    }
+    // App code imports email templates to render them with `mail.render()`.
+    let template = email_module(root, &target) && target.extension().is_some_and(|e| e == "tsx");
+    if !spec.starts_with('.') || installed(from) || template || target.starts_with(root.join(crate::layout::ROOT)) {
         return Ok(target);
     }
     let importer = from.strip_prefix(root).unwrap_or(from).display().to_string();
@@ -892,7 +985,7 @@ fn jsx_admitted(path: &Path, use_client: bool) -> bool {
     let in_folder = path
         .components()
         .any(|part| matches!(part.as_os_str().to_str(), Some("components" | "pages" | "app")));
-    in_folder || use_client
+    in_folder || path.starts_with("emails") || use_client
 }
 
 /// Whether a source can be CommonJS before it's lowered: `.cjs`, or `.js` with no import/export
@@ -1597,6 +1690,10 @@ fn resolve_with(fs: &dyn Fs, from: &Path, spec: &str, span: Span, conditions: Co
 }
 
 fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<PathBuf> {
+    // An explicit asset never names same-stem TypeScript (shop.css beside shop.ts).
+    if crate::assets::kind(base).is_some() && fs.is_file(base) {
+        return fs.canonicalize(base).map_err(|e| Diag::new(span, e.to_string()));
+    }
     let stripped = base.with_extension("");
     // `./util.js` conventionally names `./util.ts` in TypeScript ESM.
     let mut candidates = Vec::new();

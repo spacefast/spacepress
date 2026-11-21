@@ -1,5 +1,5 @@
 {
-    "version": 3,
+    "version": 5,
     "runtime": "0.3",
     "name": "blog",
     "admin": true,
@@ -367,7 +367,7 @@
                 }
             },
             "hooks": {
-                "beforeCreate": "posts__beforeCreate"
+                "beforeCreate": "posts__before_create"
             },
             "beforeCreateFills": [],
             "access": {
@@ -473,7 +473,7 @@
                 }
             },
             "hooks": {
-                "afterCreate": "comments__afterCreate"
+                "afterCreate": "comments__after_create"
             },
             "beforeCreateFills": [],
             "access": {
@@ -575,7 +575,7 @@
                     "notNull": true
                 }
             },
-            "handler": "action__approveComment",
+            "handler": "action__approve_comment",
             "access": {
                 "role": "editor"
             },
@@ -624,7 +624,7 @@
         },
         "publishedCount": {
             "input": [],
-            "handler": "action__publishedCount",
+            "handler": "action__published_count",
             "access": {
                 "role": "anyone"
             },

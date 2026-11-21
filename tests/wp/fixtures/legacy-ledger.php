@@ -13,7 +13,7 @@ mkdir($dir);
 file_put_contents("$dir/0001_init.sql", "CREATE TABLE `{prefix}tp_legacy_notes` (\n\t`id` BIGINT,\n\t`body` TEXT,\n\tPRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 file_put_contents("$dir/0002_update.sql", 'ALTER TABLE `{prefix}tp_legacy_notes` DROP COLUMN `body`;');
 file_put_contents("$dir/0003_update.sql", 'ALTER TABLE `{prefix}tp_legacy_notes` ADD COLUMN `body` TEXT;');
-$migrator = static fn (string $app) => new \TypedPress\Wp\Migrator($db, $dir, new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Wp\Runtime::SERIES, 'name' => $app]));
+$migrator = static fn (string $app) => new \TypedPress\Wp\Migrator($db, $dir, new \TypedPress\Schema(['version' => 5, 'runtime' => \TypedPress\Wp\Runtime::SERIES, 'name' => $app]));
 
 /** The site as an older runtime left it: unkeyed ledger, the legacy app's tables and data. */
 $legacy = static function () use ($db): void {

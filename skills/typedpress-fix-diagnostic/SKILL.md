@@ -1,7 +1,7 @@
 ---
 name: typedpress-fix-diagnostic
 description: "Use when `typedpress check`, `typedpress build` or `typedpress dev` reports a compiler diagnostic in a TypedPress project (an `F` code such as F1002 or F4001, or a message with `file:line:col`), or after any edit to `typedpress.config.ts` or `tp/`, to read the diagnostic and fix its cause."
-compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
+compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
 ---
 
 # Fix a TypedPress compiler diagnostic

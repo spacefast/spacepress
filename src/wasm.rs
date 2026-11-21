@@ -583,6 +583,35 @@ mod tests {
         assert_eq!(rendered(), expected);
     }
 
+    #[test]
+    fn the_browser_packages_public_script_versions() {
+        let source = "export const message = 'hello';\n";
+        let request = serde_json::json!({
+            "name": "packaged",
+            "files": {
+                "typedpress.config.ts": "import { defineConfig } from 'typedpress'; export default defineConfig({ name: 'packaged' });",
+                "public/modules/example.mjs": source,
+                "public/image.svg": "<svg/>",
+            },
+        });
+        let response: serde_json::Value = serde_json::from_str(&compile(&request.to_string())).unwrap();
+        let output = &response["output"];
+        let functions = output["functionsPhp"].as_str().unwrap_or_else(|| panic!("{response}"));
+        let plugin = &output["appPlugin"];
+        assert_eq!(plugin["typedpress-app-packaged/tp/app/functions.php"], functions);
+        assert_eq!(plugin["typedpress-app-packaged/public/modules/example.mjs"], source);
+        let map = plugin["typedpress-app-packaged/tp/app/public-script-versions.json"]
+            .as_str()
+            .unwrap();
+        use sha2::Digest;
+        let version = crate::hex(sha2::Sha256::digest(source));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(map).unwrap(),
+            serde_json::json!({ "modules/example.mjs": version })
+        );
+        assert!(!functions.contains(&version));
+    }
+
     /// The browser types `abilities.call` from the lock it is sent, exactly as the command line does.
     #[test]
     fn a_locked_ability_in_the_request_types_its_call() {

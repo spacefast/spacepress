@@ -56,7 +56,7 @@ export function POST(req: RouteRequest) {
   const event = JSON.parse(req.body) as { type: string };
   return { status: 202, body: "ok " + event.type };
 }`}</Code>
-      <Code file="tp/app/api/feed.json/route.ts" note="GET /api/feed.json">{`export const access = "anyone";
+      <Code file="tp/app/api/feed.json/route.ts" note="GET /api/feed.json">{`export const guard = "anyone";
 
 export async function GET(req: RouteRequest) {
   const limit = Number(req.query.get("limit") ?? "20");
@@ -64,7 +64,7 @@ export async function GET(req: RouteRequest) {
   return { headers: { "content-type": "application/feed+json" }, body: JSON.stringify({ items: rows }) };
 }`}</Code>
       <ul>
-        <li>A route exports the methods it serves (<code>GET</code>, <code>POST</code>, …) and returns <code>{"{ status?, headers?, body }"}</code>. It has <code>access</code> or a <code>signature</code>.</li>
+        <li>A route exports the methods it serves (<code>GET</code>, <code>POST</code>, …) and returns <code>{"{ status?, headers?, body }"}</code>. It has a <code>guard</code> or a <code>signature</code>.</li>
         <li><code>req</code> has <code>method</code>, <code>url</code>, <code>path</code>, <code>params</code>, <code>query</code>, <code>headers</code> and the raw <code>body</code>.</li>
         <li>A <code>page.tsx</code> can export <code>POST</code> too.</li>
         <li><Decided /> A file such as <code>tp/app/feed.xml.ts</code> serves <code>/feed.xml</code> without a folder.</li>

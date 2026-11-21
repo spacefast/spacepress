@@ -94,7 +94,7 @@ final class WpPostStore implements Store
         return false;
     }
 
-    public function readGuards(string $collection, \TypedPress\Viewer $viewer): array
+    public function readGuards(string $collection, \TypedPress\Viewer $viewer, bool $forSelect = false): array
     {
         if ($this->visibilityGeneration !== CoreAccess::generation()) {
             $this->visibility = [];
@@ -104,23 +104,36 @@ final class WpPostStore implements Store
         if (array_key_exists($key, $this->visibility)) {
             return $this->visibility[$key];
         }
+        // An ordinary SQL read can apply the password predicate directly. Callers that
+        // use an empty guard set to prove unrestricted access still get the exact scope.
+        $inlinePassword = $forSelect && $viewer->user === null && $this->readPassword === null
+            && !isset($_COOKIE['wp-postpass_' . COOKIEHASH]);
+        if ($inlinePassword) {
+            $key .= ':select';
+            if (array_key_exists($key, $this->visibility)) {
+                return $this->visibility[$key];
+            }
+        }
         $spec = $this->schema->collection($collection);
         // WordPress's own posts: an unpublished post is read only by whom core lets read it (its author,
         // editors), whatever the app's rule says; the rule can only narrow that.
         if ($spec['native'] ?? false) {
             $native = NativePosts::readGuard($this->db, $viewer);
             if ($native !== null) {
-                return $this->visibility[$key] = [$native, ...$this->passwordGuards($collection, $viewer, $spec)];
+                return $this->visibility[$key] = [$native, ...$this->passwordGuards($collection, $viewer, $spec, $inlinePassword)];
             }
         }
-        return $this->visibility[$key] = $this->passwordGuards($collection, $viewer, $spec);
+        return $this->visibility[$key] = $this->passwordGuards($collection, $viewer, $spec, $inlinePassword);
     }
 
     /** @return list<array|\TypedPress\SqlPredicate> the password-protection guards of a post kind for $viewer */
-    private function passwordGuards(string $collection, \TypedPress\Viewer $viewer, array $spec): array
+    private function passwordGuards(string $collection, \TypedPress\Viewer $viewer, array $spec, bool $inlinePassword): array
     {
         if ($viewer->user === null) {
             $guard = $this->passwordGuard($collection, $viewer, $spec);
+            if ($inlinePassword) {
+                return [$guard];
+            }
             // Empty guards also certify unrestricted visibility to unique-write checks
             // and the native REST controller. A predicate that cannot hide a row must
             // retain that meaning without materializing every readable primary key.

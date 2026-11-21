@@ -35,6 +35,7 @@ CREATE TABLE `{prefix}tp_shopping_list` (
 	`updatedAt` CHAR(24) NOT NULL,
 	PRIMARY KEY (`id`),
 	UNIQUE KEY `itemId_unique` (`itemId`),
+	KEY `done_queried` (`done`),
 	CONSTRAINT `tp_shopping_list_itemId_fk` FOREIGN KEY (`itemId`) REFERENCES `{prefix}tp_items` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 --> statement-breakpoint

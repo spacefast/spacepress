@@ -1089,7 +1089,7 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
     assert_eq!(
         schema["routes"],
         serde_json::json!([
-            { "pattern": "/api/list", "type": "route", "file": "tp/app/api/list/route.ts", "methods": ["GET"], "access": "anyone" },
+            { "pattern": "/api/list", "type": "route", "file": "tp/app/api/list/route.ts", "methods": ["GET"], "guard": "anyone" },
             { "pattern": "/events/:slug", "type": "page", "file": "tp/app/events/[slug]/page.tsx", "kind": "cookingEvents" },
             { "pattern": "/", "type": "page", "file": "tp/app/page.tsx" },
         ])
@@ -1168,6 +1168,83 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
         mcp.refused("schema", serde_json::json!({ "kind": "recipes" })),
         "no kind recipes; this project's kinds are: cookingEvents, articles, shoppingList, substitutes"
     );
+    mcp.finish();
+}
+
+#[test]
+fn mcp_schema_reports_page_and_handler_guards() {
+    let project = tempfile::tempdir().unwrap();
+    copy_tree(&agent_kit(), project.path());
+    let page = "export default function Page() { return <p>Page</p>; }";
+    let post = "export async function POST() { return { body: \"ok\" }; }";
+    let hybrid = format!("{page}\n{post}");
+    let signature =
+        "export const signature = { secret: env('HOOK_SECRET'), header: 'x-signature', scheme: 'hmac-sha256' };";
+    for (name, file, exports) in [
+        (
+            "page-only",
+            "page.tsx",
+            format!("export const guard = 'subscriber';\n{page}"),
+        ),
+        (
+            "handler-only",
+            "route.ts",
+            format!("export const guard = 'editor';\n{post}"),
+        ),
+        (
+            "shared",
+            "page.tsx",
+            format!("export const guard = 'author';\n{hybrid}"),
+        ),
+        (
+            "split",
+            "page.tsx",
+            format!("export const guard = {{ page: 'subscriber', handlers: 'admin' }};\n{hybrid}"),
+        ),
+        (
+            "callbacks",
+            "page.tsx",
+            format!(
+                "export const guard = {{ page: (ctx) => ctx.user !== null, handlers: (ctx) => ctx.user === null }};\n{hybrid}"
+            ),
+        ),
+        (
+            "public-page",
+            "page.tsx",
+            format!("export const guard = {{ handlers: 'subscriber' }};\n{hybrid}"),
+        ),
+        (
+            "signed",
+            "page.tsx",
+            format!("import {{ env }} from 'typedpress';\nexport const guard = 'editor';\n{signature}\n{hybrid}"),
+        ),
+    ] {
+        let dir = project.path().join("tp/app").join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(file), exports).unwrap();
+    }
+
+    let mut mcp = Mcp::initialized(project.path(), &[]);
+    let schema = mcp.ok("schema", serde_json::json!({}));
+    let routes = schema["routes"].as_array().unwrap();
+    let route = |path: &str| routes.iter().find(|entry| entry["pattern"] == path).unwrap();
+    for (path, guard) in [
+        ("/page-only", serde_json::json!("subscriber")),
+        ("/handler-only", serde_json::json!("editor")),
+        ("/shared", serde_json::json!("author")),
+        ("/split", serde_json::json!({"page": "subscriber", "handlers": "admin"})),
+        (
+            "/callbacks",
+            serde_json::json!({"page": "function", "handlers": "function"}),
+        ),
+        ("/public-page", serde_json::json!({"handlers": "subscriber"})),
+        ("/signed", serde_json::json!("editor")),
+    ] {
+        let entry = route(path);
+        assert_eq!(entry["guard"], guard, "{path}");
+        assert!(entry.get("access").is_none(), "{path}");
+    }
+    assert_eq!(route("/signed")["signed"], true);
     mcp.finish();
 }
 
@@ -1342,7 +1419,7 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
         .unwrap();
     assert_eq!(started["title"], "Get started");
     assert_eq!(started["mimeType"], "text/markdown");
-    assert!(started["description"].as_str().unwrap().contains("TypedPress app"));
+    assert!(started["description"].as_str().unwrap().contains("TypedPress site"));
     let read = mcp.result(
         "resources/read",
         serde_json::json!({ "uri": "typedpress-docs:///docs/compiler-diagnostics.md" }),
@@ -1706,13 +1783,12 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
         serde_json::to_vec(&serde_json::json!({
             "extends": "./tsconfig.json",
             "compilerOptions": {
-                "types": [], "jsx": "react-jsx", "jsxImportSource": "typedpress", "skipLibCheck": true,
+                "types": [], "skipLibCheck": true,
                 "paths": {
                     "typedpress": [root().join("types/typedpress/index.d.ts")],
-                    "typedpress/app": [root().join("types/typedpress/app.d.ts")],
-                    "typedpress/content": [root().join("types/typedpress/content.d.ts")],
-                    "typedpress/jsx-runtime": [root().join("types/typedpress/jsx-runtime.d.ts")],
-                    "typedpress/jsx-dev-runtime": [root().join("types/typedpress/jsx-dev-runtime.d.ts")]
+                    "typedpress/*": [root().join("types/typedpress/*.d.ts")],
+                    "typedpress:db": [root().join("types/typedpress/db.d.cts")],
+                    "php/wordpress": [root().join("types/typedpress/wordpress.d.ts")],
                 }
             },
             "include": ["tp/**/*.ts", "tp/**/*.tsx"],
@@ -1742,12 +1818,15 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
 #[test]
 fn add_api_reference_exports_every_operation_in_a_static_site() {
     let tmp = tempfile::tempdir().unwrap();
-    let project = scaffold(tmp.path());
-    let config = project.join("typedpress.config.ts");
-    let source = std::fs::read_to_string(&config).unwrap();
-    let static_source = source.replacen("defineConfig({", "defineConfig({ output: \"static\",", 1);
-    assert_ne!(source, static_source, "the scaffold's config calls defineConfig({{");
-    std::fs::write(&config, static_source).unwrap();
+    let project = tmp.path().to_path_buf();
+    std::fs::write(
+        project.join("typedpress.config.ts"),
+        r#"import { collection, defineConfig, text } from "typedpress";
+export const notes = collection({ title: text() }, { title: "title" });
+export default defineConfig({ name: "static-api", output: "static" });
+"#,
+    )
+    .unwrap();
     let added = add(&project, &["api-reference"]);
     assert_eq!(
         added.status.code(),
@@ -1756,6 +1835,12 @@ fn add_api_reference_exports_every_operation_in_a_static_site() {
         text(&added.stdout),
         text(&added.stderr)
     );
+    // Export requires a home page for the WordPress header's home link.
+    std::fs::write(
+        project.join("tp/app/page.tsx"),
+        "export default function Home() { return <main>API documentation</main>; }\n",
+    )
+    .unwrap();
     let built = first().arg("build").arg(&project).output().unwrap();
     assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
     // The operations, from the document the pages read.
@@ -1802,6 +1887,11 @@ fn add_api_reference_exports_every_operation_in_a_static_site() {
         "{}{}",
         text(&exported.stdout),
         text(&exported.stderr)
+    );
+    assert!(
+        std::fs::read_to_string(project.join("tp/dist/static/index.html"))
+            .unwrap()
+            .contains("API documentation")
     );
     let api = project.join("tp/dist/static/api");
     let pages = std::fs::read_dir(&api)
@@ -1857,6 +1947,140 @@ fn scaffold(parent: &Path) -> PathBuf {
         .expect("node");
     assert!(created.status.success(), "{}", text(&created.stderr));
     project
+}
+
+/// A starter note the seed would refuse on the site fails the build at its file and field, in
+/// `typedpress check` too, and nothing is written for WordPress to run.
+#[test]
+fn a_seed_file_the_site_would_refuse_fails_the_build_at_its_file_and_field() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let note = project.join("content/notes/first-walk.md");
+    let original = std::fs::read_to_string(&note).unwrap();
+    let refused = |command: &str| {
+        let out = first().arg(command).arg(&project).output().unwrap();
+        assert!(!out.status.success(), "{command} accepted a note the seed refuses");
+        text(&out.stderr)
+    };
+
+    // A title over the kind's `.max(120)`.
+    std::fs::write(
+        &note,
+        original.replace("title: A first walk", &format!("title: {}", "x".repeat(130))),
+    )
+    .unwrap();
+    for command in ["build", "check"] {
+        let said = refused(command);
+        assert!(said.contains("error: title must be at most 120 characters"), "{said}");
+        assert!(said.contains("--> content/notes/first-walk.md:3:1"), "{said}");
+        assert!(said.contains("it has 130 characters"), "{said}");
+    }
+    assert!(
+        !project.join("tp/dist").exists(),
+        "a refused build wrote a plugin WordPress would run"
+    );
+
+    // An HTML block: WordPress stores it as a Custom HTML block, which Markdown can't hold.
+    std::fs::write(
+        &note,
+        format!("{original}\n<iframe src=\"https://example.com\"></iframe>\n"),
+    )
+    .unwrap();
+    let said = refused("build");
+    assert!(
+        said.contains("`<iframe src=\"https://example.com\"></iframe>` is an HTML block"),
+        "{said}"
+    );
+    assert!(said.contains("--> content/notes/first-walk.md:13:1"), "{said}");
+
+    // A field the kind doesn't have, with the one it was meant to be.
+    std::fs::write(&note, original.replace("summary:", "sumary:")).unwrap();
+    let said = refused("build");
+    assert!(said.contains("error: Unknown or generated field 'sumary'"), "{said}");
+    assert!(said.contains("--> content/notes/first-walk.md:5:1"), "{said}");
+    assert!(said.contains("did you mean `summary`?"), "{said}");
+
+    // A required field left out.
+    std::fs::write(&note, original.replace("title: A first walk\n", "")).unwrap();
+    let said = refused("build");
+    assert!(said.contains("error: title is required"), "{said}");
+    assert!(said.contains("--> content/notes/first-walk.md:"), "{said}");
+
+    // HTML inside a line of text is Markdown the site keeps, so the build takes it.
+    std::fs::write(&note, format!("{original}\nPress <kbd>Ctrl</kbd> to stop.\n")).unwrap();
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert!(built.status.success(), "{}", text(&built.stderr));
+}
+
+/// A copied note keeps its `uid` line: the error names both files and says what to delete.
+/// Only `build` and `check` check the seed files: a content typo doesn't stop a command that
+/// compiles for another reason, such as `typedpress add`.
+#[test]
+fn a_seed_file_typo_does_not_block_add() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let note = project.join("content/notes/first-walk.md");
+    let original = std::fs::read_to_string(&note).unwrap();
+    std::fs::write(
+        &note,
+        original.replace("title: A first walk", &format!("title: {}", "x".repeat(130))),
+    )
+    .unwrap();
+    let added = first().args(["add", "db"]).current_dir(&project).output().unwrap();
+    assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert!(!built.status.success(), "build accepted a note the seed refuses");
+    assert!(
+        text(&built.stderr).contains("title must be at most 120 characters"),
+        "{}",
+        text(&built.stderr)
+    );
+}
+
+#[test]
+fn two_seed_files_with_one_uid_are_both_named() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let notes = project.join("content/notes");
+    std::fs::copy(notes.join("first-walk.md"), notes.join("second-walk.md")).unwrap();
+    let out = first().arg("build").arg(&project).output().unwrap();
+    assert!(!out.status.success());
+    let said = text(&out.stderr);
+    assert!(
+        said.contains(
+            "error: content/notes/second-walk.md and content/notes/first-walk.md have the same uid zr_d2c870c681684da0b234"
+        ),
+        "{said}"
+    );
+    assert!(said.contains("--> content/notes/second-walk.md:2:1"), "{said}");
+    assert!(said.contains("delete that line from the copy"), "{said}");
+}
+
+/// `seed: true` ships the files of synced kinds; with none, the build says nothing is seeded.
+#[test]
+fn seed_without_a_synced_kind_warns_that_nothing_is_seeded() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let seeded = first().arg("build").arg(&project).output().unwrap();
+    assert!(seeded.status.success(), "{}", text(&seeded.stderr));
+    assert!(
+        !text(&seeded.stderr).contains("nothing is seeded"),
+        "{}",
+        text(&seeded.stderr)
+    );
+    let config = project.join("typedpress.config.ts");
+    let source = std::fs::read_to_string(&config).unwrap();
+    assert!(source.contains("  sync: \"content/notes/*.md\",\n"));
+    std::fs::write(&config, source.replace("  sync: \"content/notes/*.md\",\n", "")).unwrap();
+    let out = first().arg("build").arg(&project).output().unwrap();
+    let said = text(&out.stderr);
+    assert!(out.status.success(), "{said}");
+    assert!(
+        said.contains(
+            "warning: `seed: true` imports the files of synced kinds, and no kind has `sync`: nothing is seeded."
+        ),
+        "{said}"
+    );
 }
 
 fn add(project: &Path, args: &[&str]) -> Output {
@@ -1952,7 +2176,15 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
         project.join("tsconfig.test.json"),
         serde_json::to_vec(&serde_json::json!({
             "extends": "./tsconfig.json",
-            "compilerOptions": { "types": [], "paths": { "typedpress": [root().join("types/typedpress/index.d.ts")] } }
+            "compilerOptions": {
+                "types": [],
+                "paths": {
+                    "typedpress": [root().join("types/typedpress/index.d.ts")],
+                    "typedpress/*": [root().join("types/typedpress/*.d.ts")],
+                    "typedpress:db": [root().join("types/typedpress/db.d.cts")],
+                    "php/wordpress": [root().join("types/typedpress/wordpress.d.ts")],
+                }
+            }
         }))
         .unwrap(),
     )

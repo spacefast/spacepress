@@ -8,6 +8,8 @@
 #
 #   scripts/check-examples.sh [path/to/first]
 set -euo pipefail
+# Examples must build as users build them: with locales turned off (docs/decisions/2026-11-17-locales-off.md).
+unset TYPEDPRESS_LOCALES
 first=${1:-target/debug/typedpress}
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"

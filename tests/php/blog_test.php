@@ -20,15 +20,26 @@ $open['key'] = 'openNotes';
 $open['drafts'] = $open['revisions'] = false;
 $open['content'] = null;
 $open['columns'] = array_intersect_key($open['columns'], array_flip(['id', 'title', 'slug']));
+$open['columns']['rating'] = ['type' => 'integer'];
 $open['hooks'] = $open['relations'] = [];
 $open['access'] = array_fill_keys(['read', 'create', 'update', 'delete'], ['role' => 'anyone']);
 $open['wp'] = ['postType' => 'tp_open_notes', 'groupKey' => 'group_tp_open_notes', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_open_notes_'];
 $schema['collections']['openNotes'] = $open;
 // Signed-in-only action: on a site without typedpress-identity, only WordPress itself can sign anyone in.
-$schema['actions']['signedInCount'] = ['access' => ['role' => 'authenticated'], 'handler' => 'action__publishedCount'] + $schema['actions']['publishedCount'];
+$schema['actions']['signedInCount'] = ['access' => ['role' => 'authenticated']] + $schema['actions']['publishedCount'];
+$schema['collections']['posts']['access']['read'] = ['fn' => 'test_posts_access'];
 $wp = wpSite('blog', [
     'schema' => $schema,
-    'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php'),
+    'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
+
+        function test_posts_access(\TypedPress\JsObject $ctx) {
+            if (isset($GLOBALS['test_post_rule'])) {
+                ++$GLOBALS['test_post_rule_calls'];
+                return $GLOBALS['test_post_rule'];
+            }
+            return posts__access__read($ctx);
+        }
+        PHP,
     'users' => ['ed' => 'editor', 'alice' => 'author', 'bob' => 'author', 'sub' => 'subscriber'],
 ]);
 $app = $wp->app();
@@ -40,6 +51,53 @@ eq('an unprotected collection retains unrestricted storage visibility', $db->sto
 $openNote = $db->insert('openNotes', ['title' => 'Anonymous unique slug'], true, $anonymous)[0];
 eq('anonymous unique creation succeeds when password guards cannot narrow reads', $openNote['slug'], 'anonymous-unique-slug');
 eq('native unrestricted reads do not enumerate every primary key', $db->permittedKeys('openNotes', 'read', $anonymous), null);
+
+// A projection batches the pre-filter stored snapshots, including those used for nested
+// fields and third-party metadata. Ordinary REST responses keep their per-item reads.
+$db->insert('openNotes', [['title' => 'More notes'], ['title' => 'Final notes']]);
+$projected = static function (?string $fields, string $context = 'view'): array {
+    $request = new \WP_REST_Request('GET', '/wp/v2/tp_open_notes');
+    $request->set_query_params(['context' => $context, 'orderby' => 'id', 'order' => 'asc'] + ($fields === null ? [] : ['_fields' => $fields]));
+    $queries = 0;
+    \TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$queries): void {
+        if (str_contains($sql, "post_type = 'tp_open_notes'") && str_contains($sql, 'post_title AS')) {
+            ++$queries;
+        }
+    };
+    try {
+        $response = rest_do_request($request);
+        return [$response->get_status(), $response->get_data(), $queries];
+    } finally {
+        \TypedPress\Wp\Connection::$observer = null;
+    }
+};
+foreach (['id,title', 'id,title.rendered'] as $fields) {
+    [$status, $items, $queries] = $projected($fields);
+    eq("projected $fields uses the core title", [$status, $items[0]['id'], $items[0]['title']['rendered'], $queries],
+        [200, $openNote['id'], 'Anonymous unique slug', 1]);
+}
+eq('embed context respects a nested title projection', $projected('id,title.rendered', 'embed')[2], 1);
+eq('unprojected native REST reads each original row', $projected(null)[2], 3);
+eq('nested meta projection still reads the full row', $projected('id,meta.slug')[2], 1);
+$injectMeta = static function ($response) {
+    $data = $response->get_data();
+    $data['meta'] = ['from_filter' => true];
+    $response->set_data($data);
+    return $response;
+};
+add_filter('rest_prepare_tp_open_notes', $injectMeta);
+[$status, $items, $queries] = $projected('id,title');
+eq('a response filter can add meta to a projected native response', [$items[0]['meta']['from_filter'] ?? null, $queries], [true, 1]);
+remove_filter('rest_prepare_tp_open_notes', $injectMeta);
+
+// WordPress permits duplicate meta keys. Bound the bulk result, then let each original LIMIT 1
+// query choose its value. Compare the projected data with the ordinary response.
+add_post_meta($openNote['id'], 'tp_rating', '7');
+add_post_meta($openNote['id'], 'tp_rating', '11');
+$normal = $projected(null);
+$duplicate = $projected('id,meta.rating');
+eq('duplicate metadata preserves the individual selection and bounds execution', [$duplicate[1][0]['meta']['rating'], $duplicate[2]],
+    [$normal[1][0]['meta']['rating'], 4]);
 
 $users = [];
 foreach (['admin', 'ed', 'alice', 'bob', 'sub'] as $name) {
@@ -72,6 +130,52 @@ $hidden = $db->insert('authors', ['name' => 'Ghost', 'email' => 'ghost@example.c
     ['title' => 'Draft one', 'status' => 'draft', 'authorId' => $aliceProfile['id']],
 ], true);
 
+// A detail page needs one ID. A second distinct ID or a list must reuse the rule and fetch
+// all matching IDs only once, including when the first ID is denied.
+\TypedPress\Wp\CoreAccess::flush();
+$keyQueries = [];
+\TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$keyQueries): void {
+    if (str_starts_with($sql, 'SELECT t0.ID AS `id` FROM')) {
+        $keyQueries[] = str_contains($sql, 't0.ID = ?');
+    }
+};
+try {
+    $GLOBALS['test_post_rule_calls'] = 0;
+    $GLOBALS['test_post_rule'] = ['status' => 'published'];
+    eq('collection permission checks only the evaluated rule', \TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous), null);
+    $GLOBALS['test_post_rule'] = false;
+    eq('repeat permission checks retain the decision without selecting IDs',
+        [\TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous), $GLOBALS['test_post_rule_calls'], $keyQueries], [null, 1, []]);
+    foreach ([$draft['id'], $draft['id'], $pub['id'], $pub['id']] as $i => $id) {
+        eq("anonymous permission check $i", \TypedPress\Wp\CoreAccess::covers('posts', 'read', $id, $anonymous), $id === $pub['id']);
+    }
+    eq('list after both items has every readable ID', \TypedPress\Wp\CoreAccess::keys('posts', 'read', $anonymous), [$pub['id']]);
+    eq('permission queries are one exact ID then one complete set', $keyQueries, [true, false]);
+    eq('detail and list execute the original filter without invoking the callback again', $GLOBALS['test_post_rule_calls'], 1);
+    \TypedPress\Wp\CoreAccess::flush();
+    eq('a fresh outright refusal retains the guest denial', \TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous)?->get_error_data()['status'] ?? null, 401);
+    $GLOBALS['test_post_rule'] = ['unknown_probe_field' => true];
+    \TypedPress\Wp\CoreAccess::flush();
+    eq('a malformed filter still fails the permission check', \TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous)?->get_error_data()['status'] ?? null, 401);
+    $GLOBALS['test_post_rule'] = ['slug' => 'missing-permission-probe'];
+    \TypedPress\Wp\CoreAccess::flush();
+    eq('a valid empty filter permits the collection without admitting the requested row',
+        [\TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous), \TypedPress\Wp\CoreAccess::keys('posts', 'read', $anonymous)], [null, []]);
+    eq('only the explicit empty list executes SQL', $keyQueries, [true, false, false]);
+    unset($GLOBALS['test_post_rule']);
+    \TypedPress\Wp\CoreAccess::flush();
+    eq('public item after invalidation', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $pub['id'], $anonymous), true);
+    eq('a list immediately after a single item is complete', \TypedPress\Wp\CoreAccess::keys('posts', 'read', $anonymous), [$pub['id']]);
+    eq('an explicit list promotes the partial key set', $keyQueries, [true, false, false, true, false]);
+} finally {
+    \TypedPress\Wp\Connection::$observer = null;
+}
+foreach (['alice' => true, 'bob' => false] as $user => $owns) {
+    eq("$user update rule on an individual post", \TypedPress\Wp\CoreAccess::covers('posts', 'update', $pub['id'], new \TypedPress\Viewer($users[$user])), $owns);
+}
+eq('editor can read the draft the guest could not read', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $draft['id'], new \TypedPress\Viewer($users['ed'])), true);
+eq('unrestricted rule still covers an unmaterialized ID', \TypedPress\Wp\CoreAccess::covers('openNotes', 'read', PHP_INT_MAX, $anonymous), true);
+
 // ================================================================ drafts transitions (§6.1)
 
 check('status absent → published with publishedAt = now', $pub['status'] === 'published' && $pub['publishedAt'] !== null, $pub);
@@ -82,8 +186,11 @@ $dated = $db->insert('posts', ['title' => 'Dated', 'status' => 'published', 'pub
 eq('published with a future publishedAt stays published (only scheduled schedules)', [$dated['status'], $dated['publishedAt']], ['published', '2031-01-01T00:00:00.000Z']);
 $db->delete('posts', ['id' => $dated['id']]);
 $published = $db->update('posts', ['status' => 'published'], ['id' => $draft['id']], true)[0];
+eq('publishing a draft invalidates the guest permission cache', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $draft['id'], $anonymous), true);
+eq('a second published item is in the complete permission set', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $pub['id'], $anonymous), true);
 check('draft → published sets publishedAt', $published['publishedAt'] !== null, $published);
 $again = $db->update('posts', ['status' => 'draft'], ['id' => $draft['id']], true)[0];
+eq('moving back to draft invalidates the complete membership set', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $draft['id'], $anonymous), false);
 eq('published → draft keeps publishedAt', $again['publishedAt'], $published['publishedAt']);
 $db->update('posts', ['publishedAt' => null], ['id' => $draft['id']]);
 
@@ -91,6 +198,16 @@ $db->update('posts', ['publishedAt' => null], ['id' => $draft['id']]);
 
 [$s, $rows] = req('GET', '/posts', query: ['orderBy' => 'id']);
 eq('anonymous: function rule → published only', [$s, $titles($rows)], [200, ['Published one']]);
+$metaJoins = 0;
+\TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$metaJoins): void {
+    $metaJoins += preg_match_all('/\bJOIN\s+`?wp_postmeta\b/i', $sql);
+};
+try {
+    $keys = $db->permittedKeys('posts', 'read', $anonymous);
+    eq('checking published IDs skips unrelated post metadata', [array_map('intval', $keys), $metaJoins], [[$pub['id']], 0]);
+} finally {
+    \TypedPress\Wp\Connection::$observer = null;
+}
 eq('subscriber: same filter', $titles(req('GET', '/posts', as: 'sub')[1]), ['Published one']);
 eq('author: function rule returns true → drafts visible', $titles(req('GET', '/posts', as: 'alice', query: ['orderBy' => 'id'])[1]), ['Published one', 'Draft one']);
 eq('?status= shorthand', $titles(req('GET', '/posts', as: 'ed', query: ['status' => 'draft'])[1]), ['Draft one']);
@@ -112,6 +229,15 @@ $public = $db->insert('posts', ['title' => 'Public next page'], true)[0];
 wp_update_post(['ID' => $protected['id'], 'post_password' => 'native-secret']);
 $anon = new \TypedPress\Viewer(null);
 $protectedWhere = ['id' => $protected['id']];
+\TypedPress\Wp\CoreAccess::flush();
+$queries = 0;
+\TypedPress\Wp\Connection::$observer = static function () use (&$queries): void { ++$queries; };
+try {
+    $masked = $db->findMany('posts', ['where' => $protectedWhere, 'columns' => ['id' => true]], $anon);
+    eq('a projected guest read filters the password in its only SQL statement', [$masked, $queries], [[], 1]);
+} finally {
+    \TypedPress\Wp\Connection::$observer = null;
+}
 isProblem('native password masks First item', req('GET', "/posts/{$protected['id']}"), 404, 'not_found');
 eq('native password constrains body-filtered projections', $db->findMany('posts', [
     'where' => ['body' => ['like' => '%native-password-secret%']], 'columns' => ['body' => true],

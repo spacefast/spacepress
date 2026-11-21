@@ -31,7 +31,7 @@ export const restock = mutation({ access: "editor" }, async ({ drive, quantity, 
   if (quantity < 1) throw new HttpError(422, "invalid_input", "quantity must be at least 1", "/quantity");
   if (quantity > 500) throw new HttpError(422, "invalid_input", "quantity must be at most 500", "/quantity");
   if (note !== undefined && note.length > 200) throw new HttpError(422, "invalid_input", "note must be at most 200 characters", "/note");
-  const row = await db.query.drives.findFirst({ where: { id: drive } });
+  const row = await db.query.drives.findFirst({ where: { id: drive }, columns: { id: true, stock: true } });
   if (!row) throw new HttpError(404, "not_found", "No drive has that id.");
   await db.update(drives).set({ stock: row.stock + quantity }).where({ id: row.id });
   // The movement log is written by the app only (its API create rule is admin).
@@ -42,7 +42,7 @@ export const restock = mutation({ access: "editor" }, async ({ drive, quantity, 
 // Staff only: an order leaves the warehouse.
 export const markShipped = mutation({ access: "editor" }, async ({ order }: { order: number }) => {
   if (!Number.isInteger(order)) throw new HttpError(422, "invalid_input", "order must be an integer", "/order");
-  const row = await orders.get(order);
+  const row = await orders.get(order, { columns: { code: true, status: true } });
   if (!row) throw new HttpError(404, "not_found", "No order has that id.");
   if (row.status !== "placed") throw new HttpError(409, "conflict", `Order ${row.code} is already ${row.status}.`);
   const shipped = await orders.update(order, { status: "shipped", shippedAt: new Date().toISOString() });
@@ -51,7 +51,10 @@ export const markShipped = mutation({ access: "editor" }, async ({ order }: { or
 
 // Staff only: the orders still waiting to leave the warehouse, for the admin screen below.
 export const pendingOrders = query({ access: "editor" }, async () => {
-  const rows = await db.query.orders.findMany({ where: { status: "placed" } });
+  const rows = await db.query.orders.findMany({
+    where: { status: "placed" },
+    columns: { id: true, code: true, buyerName: true, quantity: true, total: true },
+  });
   return { rows: rows.map((o) => ({ id: o.id, code: o.code, buyer: o.buyerName, quantity: o.quantity, total: o.total })) };
 });
 

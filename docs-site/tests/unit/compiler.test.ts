@@ -203,28 +203,25 @@ test("finite type algebra preserves native outputs and strict client boundaries 
 type Domain = { title: string; note?: string | null; state: "draft" | "published"; items?: { label?: string }[] };
 type Payload = Required<Pick<Domain, "title">> & Partial<Omit<Domain, "title">>;
 class View { constructor(public payload: Payload) {} read(): string { return this.payload.title; } }
-export const source = table({ body: json<Payload>().localized(), label: select(["first", "second"]), slug: slug({ source: "label" }), details: group({ nullable: text().optional(), defaulted: text().default("source") }).optional() }, { uid: true });
+export const source = table({ body: json<Payload>(), label: select(["first", "second"]), slug: slug({ source: "label" }), details: group({ nullable: text().optional(), defaulted: text().default("source") }).optional() }, { uid: true });
 type Selected = InferSelectModel<typeof source>;
 type Inserted = InferInsertModel<typeof source>;
 export const members = userProjection({ email: email().unique().max(191), name: text() });
 type Member = InferSelectModel<typeof members>;
 class MemberView { constructor(public row: Member) {} read(): string { return this.row.name; } }
 class SelectedView { constructor(public payload: Selected) {} read(): string { return this.payload.body.title; } }
-type WithoutLocale = Omit<Inserted, "locale">;
 class InsertedView { constructor(public payload: Inserted) {} read(): string { return this.payload.body.title; } }
-class TranslationView { constructor(public payload: WithoutLocale) {} read(): string { return this.payload.body.title; } }
-export const documents = table({ payload: json<Payload>(), metadata: group({ payload: json<Payload>() }), selected: json<Selected>(), inserted: json<Inserted>(), translation: json<WithoutLocale>() });
+export const documents = table({ payload: json<Payload>(), metadata: group({ payload: json<Payload>() }), selected: json<Selected>(), inserted: json<Inserted>() });
 export const read = mutation({}, async () => {
   const inserted: Inserted = { body: { title: "fresh" }, label: "first" };
-  const translated: Inserted = { body: { title: "translated" }, translationOf: 1 };
   const member = await db.query.members.findFirst();
   const memberName = !member ? "" : new MemberView(member).read();
   const selected = await db.query.source.findFirst();
   const sourceTitle = !selected ? "" : new SelectedView(selected).read();
   const row = await db.query.documents.findFirst();
-  return !row ? null : memberName + sourceTitle + new InsertedView(inserted).read() + new InsertedView(translated).read() + new View(row.payload).read() + new View(row.metadata.payload).read() + new SelectedView(row.selected).read() + new InsertedView(row.inserted).read() + new TranslationView(row.translation).read();
+  return !row ? null : memberName + sourceTitle + new InsertedView(inserted).read() + new View(row.payload).read() + new View(row.metadata.payload).read() + new SelectedView(row.selected).read() + new InsertedView(row.inserted).read();
 });
-export default defineConfig({ locales: { default: "en", all: ["en", "de"] } });`;
+export default defineConfig({});`;
     writeFileSync(path.join(dir, "typedpress.config.ts"), storedSource);
     const stored = browserCheck({ name, files: { "typedpress.config.ts": storedSource } });
     assert.equal(stored.envelope, nativeCheck(dir));
@@ -235,9 +232,8 @@ export default defineConfig({ locales: { default: "en", all: ["en", "de"] } });`
 const wire: Document["payload"] = { title: "wire", state: undefined, items: [{ label: undefined }] };
 // @ts-expect-error optional string values do not admit null
 const invalidWire: Document["payload"] = { title: "wire", items: [{ label: null }] };
-const selected: Document["selected"] = { id: 1, uid: "zr_12345678901234567890", slug: "first", body: wire, label: "first", details: null, locale: "en", translations: { de: 2 } };
+const selected: Document["selected"] = { id: 1, uid: "zr_12345678901234567890", slug: "first", body: wire, label: "first", details: null };
 const inserted: Document["inserted"] = { body: wire, label: "second" };
-const translated: Document["inserted"] = { body: wire, translationOf: 1 };
 void selected; void inserted; void invalidWire;`);
     writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
       compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { typedpress: [path.join(repo, "types/typedpress/index.d.ts")] } },

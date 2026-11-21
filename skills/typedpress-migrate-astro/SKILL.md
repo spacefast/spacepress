@@ -1,7 +1,7 @@
 ---
 name: typedpress-migrate-astro
 description: "Use when moving an Astro site onto TypedPress: its content collections become kinds, its pages and layouts become `tp/app/` TSX, and its islands become \"use client\" components. Covers what to keep as it is, what to convert, what to flag for the owner, and how to check the result page by page."
-compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
+compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
 ---
 
 # Migrate an Astro site to TypedPress

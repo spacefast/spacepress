@@ -7,9 +7,9 @@ builds its disposable app under `.tp/showcase/`, leaving its sources unchanged.
 | Example | What it shows |
 | --- | --- |
 | [`examples/showcase/`](../examples/showcase/README.md) | One-command seeded demo: native admin, structured fields, SQL relations, media and a compiled class/action |
-| [`examples/drive-store/`](../examples/drive-store/README.md) | Most of TypedPress at once: a used hard-drive shop with an English/Turkish catalog, a fake checkout through a form action, stock rules in hooks, SQL order tables, reviews, an RSS feed, guarded pages, a settings global and TypedPress Admin, with a WordPress test |
+| [`examples/drive-store/`](../examples/drive-store/README.md) | Most of TypedPress at once: a used hard-drive shop with a catalog, a fake checkout through a form action, stock rules in hooks, SQL order tables, reviews, an RSS feed, guarded pages, a settings global and TypedPress Admin, with a WordPress test |
 | [`examples/reading-list/`](../examples/reading-list/README.md) | Each part of an app once: a collection, a table, owner-scoped access, hooks, an action, a job, a route and two npm packages compiled to PHP |
-| `examples/kitchen-sink/` | The playground default: native WordPress posts and users, settings, custom fields, media, translations, hooks and jobs |
+| [`examples/kitchen-sink/`](../examples/kitchen-sink/README.md) | Community Kitchen, an app that uses every authoring feature, from custom fields, hooks and React Email to guarded pages, Woo checkout and MCP; a test fails when a feature is missing from it |
 | `examples/pantry/` | Plain tables, hooks and actions, plus a background job (`notifyLowStock`) |
 | [`examples/subscriptions/`](../examples/subscriptions/README.md) | Owner-scoped subscription tables, renewal actions, an Action Scheduler reminder, and a mobile React SPA; owner deletes of referenced rows wait on [#533](https://github.com/spacefast/zero/issues/533), not verified live. [Connect an agent](agents.md). |
 | [`examples/pet-food/`](../examples/pet-food/README.md) | Personal pet pantry using stock WordPress, SCF, Gutenberg, and TypedPress Admin; owner-scoped actions and an Action Scheduler shopping list; owner deletes of referenced rows wait on [#533](https://github.com/spacefast/zero/issues/533), not verified live |
@@ -26,15 +26,7 @@ builds its disposable app under `.tp/showcase/`, leaving its sources unchanged.
 
 ## The kitchen sink
 
-Open the website's `/playground` page to edit this config and browse its generated PHP, SQL and
-TypeScript. The “Inside WordPress” buttons show the shared runtime that registers post types and
-REST routes, writes posts and users, handles media, and connects custom fields and translations.
-Runtime sources and plugin bootstrap templates are labeled separately from generated files.
-
-The example combines pages, events, member profiles, event registrations and an activity log.
-It includes options-backed site settings, English/German content, image sizes, private PDF
-handouts, a queued activity job and a pinned Classic Editor dependency. Webhooks read
-`KITCHEN_WEBHOOK_URL` and `KITCHEN_WEBHOOK_SECRET` from the server environment.
+See the [Community Kitchen README](../examples/kitchen-sink/README.md) for routes, source files, and the WordPress test.
 
 Run a normal example without Docker using `typedpress dev examples/pantry` or the
 blog commands below. Node 22+ and npm are required; WordPress Studio supplies
@@ -59,7 +51,6 @@ that:
   private files (`posts.deck`).
 - **Jobs and webhooks:** a reader's comment queues `notifyEditors`, and every
   post change goes out as a signed webhook to `BLOG_HOOK_URL`.
-- **Translations:** posts are in English and German.
 
 Build it, turn the generated client into browser JS, build again so the
 plugin ships that page, then start the persistent Studio site and
@@ -78,8 +69,8 @@ node examples/blog/build-client.mjs
 These commands assume Studio printed `http://localhost:8787`; substitute its
 actual URL in the registration and sync commands if different. The page is at
 `http://localhost:8787/wp-content/plugins/typedpress-app-blog/public/`.
-Its Sign in button goes through the first-identity screens; it switches between
-English and German and takes comments. Send its committed posts to the site with
+Its Sign in button goes through the first-identity screens, and the page takes
+comments. Send its committed posts to the site with
 `TP_APP_PASSWORD=admin:<application password> typedpress sync examples/blog`,
 using the password created above. Stop it with `typedpress dev stop examples/blog`;
 the next start retains its content and uploads. Omit `--no-watch` to keep

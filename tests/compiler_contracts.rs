@@ -180,7 +180,7 @@ fn a_validator_parameter_accepts_any_json_value() {
     let wp = build_wp(tmp.path());
     let functions = std::fs::read_to_string(wp.join("plugins/typedpress-app-tags/tp/app/functions.php")).unwrap();
     assert!(
-        functions.contains("function things__validate__tags($tags)"),
+        functions.contains("function things__validate__tags( $tags )"),
         "{functions}"
     );
     let out = php(
@@ -3728,6 +3728,9 @@ fn wordpress_functions_run_as_the_signed_in_user() {
     assert!(editor["id"].as_i64().unwrap() > 0);
     assert_eq!(editor["title"], "Fish &amp; &lt;chips&gt;");
     assert_eq!(editor["last"], "Fish & <chips>");
+    // `get_userdata` and `get_permalink` answer "or false"; both were narrowed to their values.
+    assert_eq!(editor["author"], "editor");
+    assert_eq!(editor["linked"], true);
     assert_eq!(got["subscriber"], json!([200, {"allowed": false}]));
     // An empty post is WordPress's `empty_content` WP_Error: 422 with its code; the option written
     // before it rolled back with the action's transaction.

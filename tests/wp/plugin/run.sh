@@ -154,7 +154,9 @@ out=$(push) || fail "the first deploy: $out"
 [[ $out == *"the site already has this runtime tree"* && $out == *"applied migration 0001_init"* && $out == *"live: $url now runs pluginlane"* ]] || fail "the first deploy reuses the uploaded trees and goes live: $out"
 tp_build=$(wp option get tp_live_build)
 [[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane ]] || fail "TypedPress's API answers for the deployed app"
-curl -s "$url/about" > "$work/about.html"
+[[ $(status "$url/about") == 301 ]] || fail "the page's noncanonical address redirects"
+[[ $(status "$url/about/") == 200 ]] || fail "the page's canonical address answers"
+curl -s "$url/about/" > "$work/about.html"
 [[ $(cat "$work/about.html") == *"<h1>About this app</h1>"* ]] || fail "a tp/app/ page renders"
 # The image the page imports is the app's own file: its URL is under the public copy, and answers.
 image=$(grep -o -m1 "$url/wp-content/typedpress-assets/app/[^\"' ]*\.svg" "$work/about.html" || true)

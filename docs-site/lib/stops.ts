@@ -36,7 +36,7 @@ export const tours: Tour[] = [
     example: "pantry",
     title: "The pantry: tables, hooks, actions and a job",
     intro: [
-      "examples/pantry is the quick start: three tables, a hook that cleans up a row before it is stored, two actions and a background job. This page shows each piece of its first.config.ts next to what typedpress build turned it into.",
+      "The pantry example uses three tables, a hook, two actions, and a background job. The tour shows its typedpress.config.ts beside the generated code.",
       "Everything on the right was produced from the file on the left by the same compiler that runs in this browser; nothing here is pasted by hand.",
     ],
     stops: [
@@ -76,9 +76,9 @@ export const tours: Tour[] = [
         ],
         config: { file: "typedpress.config.ts", lines: { from: "})).on({", to: "async afterUpdate(row)" } },
         outputs: [
-          { file: { artifact: "functions.php" }, lines: { from: "function items__beforeCreate", toLine: "}" } },
+          { file: { artifact: "functions.php" }, lines: { from: "function items__before_create", toLine: "}" } },
           { file: { artifact: "functions.php" }, lines: { from: "function slugify(", toLine: "}" } },
-          { file: { artifact: "schema.php" }, lines: { from: "'hooks' => ['beforeCreate' => 'items__beforeCreate'", to: "items__afterUpdate']," } },
+          { file: { artifact: "schema.php" }, lines: { from: "'hooks' => ['beforeCreate' => 'items__before_create'", to: "items__after_update']," } },
         ],
       },
       {
@@ -104,7 +104,7 @@ export const tours: Tour[] = [
         ],
         config: { file: "typedpress.config.ts", lines: { from: "export const notifyLowStock = job(", toLine: "});" } },
         outputs: [
-          { file: { artifact: "functions.php" }, lines: { from: "function job__notifyLowStock", toLine: "}" } },
+          { file: { artifact: "functions.php" }, lines: { from: "function job__notify_low_stock", toLine: "}" } },
           { file: { artifact: "schema.php" }, lines: { from: "'notifyLowStock' => ['input' => [", to: "'itemId' => ['type' => 'real', 'notNull' => true]," } },
         ],
       },
@@ -125,7 +125,7 @@ export const tours: Tour[] = [
   },
   {
     example: "blog",
-    title: "The blog: access, sync, members, media, jobs and translations",
+    title: "The blog: access, sync, members, media and jobs",
     intro: [
       "examples/blog is the CMS tour: every feature a content site needs, in one config. The stops below pick out the parts that go beyond tables and hooks.",
     ],
@@ -183,18 +183,6 @@ export const tours: Tour[] = [
         ],
         config: { file: "typedpress.config.ts", lines: { from: "webhooks: [", to: "webhooks: [" } },
         outputs: [{ file: { artifact: "schema.php" }, lines: { from: "'webhooks' => [[", to: "'webhooks' => [[" } }],
-      },
-      {
-        slug: "translations",
-        title: "Translated fields",
-        prose: [
-          "`locales` names the languages; `.localized()` marks the columns that differ per language. The other declared columns are shared by a post's translations; each translation keeps its own slug, status and dates. The migration, the REST API and the client all know which is which.",
-        ],
-        config: { file: "typedpress.config.ts", lines: { from: "locales: {", to: "locales: {" } },
-        outputs: [
-          { file: { artifact: "schema.php" }, lines: { from: "'locales' => ['default'", to: "'locales' => ['default'" } },
-          { file: { artifact: "types.ts" }, lines: { from: "export type Locale =", to: "export type Locale =" } },
-        ],
       },
     ],
   },

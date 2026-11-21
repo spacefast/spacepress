@@ -80,11 +80,24 @@ export async function POST(req: RouteRequest) {
   `title: { default, template: "%s · Site" }` wraps its pages' titles.
 - `export const search = { page: integer().default(1), q: text().optional() }`
   types the query string. A value a field refuses (`?page=abc`) reads as absent.
-- `guard` on a layout: a role (`"subscriber"`, `"editor"`, …),
-  `"authenticated"`, or `({ user }) => boolean`. A signed-out visitor goes to
-  the sign-in page (wp-login.php, or your `login.tsx`); a signed-in one gets a 403.
-- `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router
-  region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
+- Declare page access once. For example, `export const guard = "admin"` on
+  `page.tsx` protects that page. On `layout.tsx` it protects the whole section.
+  A page inherits every enclosing layout's rule. A signed-out visitor who opens
+  a protected URL goes to sign-in. A signed-in visitor without the role gets 403.
+  On a page with HTTP methods, a single `guard` applies to the page and its methods.
+  Use `guard = { page: "subscriber", handlers: "admin" }` for different permissions,
+  or `guard = { handlers: "admin" }` for a public page with a protected method.
+  A separate `route.ts` declares its own `guard` or a webhook `signature`.
+  To restrict the underlying records in the WordPress API, set their read permissions too.
+  Independently published posts can still appear in the WordPress posts sitemap.
+  Standalone plugins built with schema format 5 need the matching runtime.
+- Write `<Link href="/staff" prefetch>Staff</Link>`. The compiler records when a
+  destination requires a session. Guests go straight to sign-in and return to
+  the destination afterward. Signed-in visitors get normal navigation and
+  hover prefetch. A callback that might allow guests runs at the destination.
+  On a prebuilt page the ordinary destination link works for every visitor.
+  For a local destination whose sign-in requirement is known only to the caller,
+  `requireAuth` opts into the shortcut on a server-rendered page.
 - `<Pagination page={search.page} pages={n} />` renders numbered links to the
   other pages of a listing as a `<nav>`: each is this URL with only `page` (or
   `param`) changed, page 1 drops it, the current page is `aria-current` and not
@@ -518,6 +531,10 @@ export const metadata = { scripts: ["/app.js", "https://cdn.example.com/widget.j
 
 ## Styles from WordPress
 
+A page inherits the active WordPress theme's colors, fonts, typography and root
+spacing by default. Do not reset `body` to an app palette or font to get started.
+Changes made in the Site Editor apply to app pages too.
+
 A page prints WordPress's global styles in its head, as a block theme's own
 templates do: every `theme.json` preset as a CSS variable
 (`--wp--preset--color--<slug>`, `--wp--preset--font-size--<slug>`,
@@ -529,13 +546,37 @@ without a deploy:
 
 ```css
 /* tp/app/site.css */
-.card { background: var(--wp--preset--color--primary); font-family: var(--wp--preset--font-family--body); }
+.card {
+	background: var(--tp--color--background);
+	color: var(--tp--color--foreground);
+	padding: var(--tp--spacing--block);
+}
 ```
+
+The app's head also exposes semantic variables for the current theme. Their
+values come from WordPress's merged theme and owner settings on each request,
+so they work with an installed theme whose preset names differ from the project.
+
+| Variable | Value from WordPress |
+| --- | --- |
+| `--tp--color--background`, `--tp--color--foreground` | Body background and text color |
+| `--tp--color--link` | Link color, or the body's text color when none is set |
+| `--tp--font-family--body`, `--tp--font-size--body`, `--tp--line-height--body` | Body typography |
+| `--tp--spacing--block` | Block gap, the vertical gap when it has separate axes |
+| `--tp--spacing--page` | Root left padding |
+| `--tp--width--content`, `--tp--width--wide` | Theme content and wide widths |
+
+These variables do not restyle the body. Leave body typography inherited unless
+a component needs an explicit value. The site's browser colors and inherited
+typography remain the fallback when a theme specifies none.
 
 The values start from code. The active theme's `theme.json` (TypedPress's
 `typedpress-default` when no installed theme is active) is the base, and
 `tp/theme.json` in the project is merged over it: a theme.json document
-with `version`, `settings` and `styles` only.
+with `version`, `settings` and `styles` only. This file is an explicit choice to
+give the site app-specific theme defaults. Without it, the installed theme is
+used as-is. A component can also choose custom scoped CSS without changing the
+site's default design.
 
 ```json
 {
@@ -563,12 +604,19 @@ never pulls on its own.
 
 ### Tailwind
 
-`typedpress build` writes `tp/_generated/theme.css` from the presets of
-`typedpress-default` and `tp/theme.json`: Tailwind v4 tokens whose values are the
-WordPress variables.
+`typedpress build` always writes `tp/_generated/theme.css`, including when the
+project has no `tp/theme.json`. It contains Tailwind v4 tokens for the runtime
+roles above, plus the presets of `typedpress-default` and `tp/theme.json`.
 
 ```css
 @theme inline {
+  --color-wp-background: var(--tp--color--background);
+  --color-wp-foreground: var(--tp--color--foreground);
+  --color-wp-link: var(--tp--color--link);
+  --font-wp-body: var(--tp--font-family--body);
+  --text-wp-body: var(--tp--font-size--body);
+  --spacing-wp-block: var(--tp--spacing--block);
+  --container-wp-content: var(--tp--width--content);
   --color-primary: var(--wp--preset--color--primary);
   --font-system: var(--wp--preset--font-family--system);
   --spacing-wp-40: var(--wp--preset--spacing--40);
@@ -579,9 +627,10 @@ TypedPress doesn't run Tailwind. A project that uses it runs Tailwind's CLI and
 imports its output, a plain stylesheet, from a layout:
 
 ```css
-/* tailwind.css, the CLI's input */
-@import "tailwindcss";
+/* tailwind.css, the CLI's input: theme and utilities, without Preflight. */
+@import "tailwindcss/theme.css" layer(theme);
 @import "./tp/_generated/theme.css";
+@import "tailwindcss/utilities.css";
 @source "./tp";
 ```
 
@@ -594,9 +643,18 @@ npx @tailwindcss/cli -i tailwind.css -o tp/app/tailwind.css --watch
 import "./tailwind.css";
 ```
 
-`bg-primary` then reads `--wp--preset--color--primary`, so it follows the
-owner's color. A preset added on the site has its variable at once and a token
-after `typedpress styles pull`. Spacing tokens are `spacing-wp-<slug>` so
+Use `bg-wp-background text-wp-foreground`, `text-wp-link`, `font-wp-body`,
+`text-wp-body leading-wp-body`, `gap-wp-block`, `p-wp-page` and
+`max-w-wp-content` or `max-w-wp-wide`. They follow the active theme and owner
+edits without rebuilding Tailwind. Omit typography classes to inherit the
+surrounding text styles. Skipping Tailwind's Preflight preserves WordPress's
+heading, body and block defaults. Utilities are imported without a CSS layer so
+an explicitly applied utility can override WordPress's unlayered style rules.
+
+`bg-primary` reads `--wp--preset--color--primary`, so it follows that named
+preset's current value. A preset added on the site has its variable at once and
+a token after `typedpress styles pull`. The `wp-` semantic names above are
+reserved; use another preset slug to name a custom utility. Spacing tokens are `spacing-wp-<slug>` so
 WordPress's numbered sizes don't replace Tailwind's own scale. The decision is
 in [styles from WordPress](decisions/2026-11-15-styles-from-wordpress.md).
 
@@ -631,7 +689,7 @@ WordPress Page**, so the rest of WordPress sees the page as one of its own.
   in a `page.tsx`, or `id: notes.featured` in a `page.md`'s front matter. The old
   URL then redirects to the new one. Two pages with one ID are a build error
   at the second.
-- A route under a layout `guard` stores its Page private, so search, feeds,
+- A route with a page or layout `guard` stores its Page private, so search, feeds,
   the REST API and the sitemap never list it.
 - Code Pages are absent from the wp-admin Pages list, its counts and REST
   `context=edit` lists. `edit_post` and `delete_post` are denied on them, and a
@@ -670,6 +728,11 @@ export function CheerButton({ noteId, count: initial }: { noteId: number; count:
 
 - `useState`, values derived from state and props, handlers, `useEffect`,
   `useMount`, `useEvent`, `useRef` and `sharedState` come from `"typedpress/client"`.
+- `const field = useRef<HTMLInputElement>()` with `<input ref={field} />` gives
+  handlers and effects the element as `field.current`, in the browser. It is
+  null while a conditional hides the element. Each ref is attached to one
+  element of its own component; a ref no element has, one attached twice, and
+  `ref` on a component or in a server component are build errors.
 - `useLive(kind, query, { enabled })` is a list read the page keeps current, as
   `{ data, error, loading }`. The server answers it in the first render as the
   visitor (`TypedPress\Live\Module::evaluate`, with its token), and the page
@@ -709,7 +772,7 @@ A prebuilt page is what a signed-out visitor sees, rendered by the page's own
 compiled code. So it can't depend on the request. These are build errors at
 the page, each with its fix:
 
-- a layout `guard` above the page;
+- a `guard` protecting the page read, including one inherited from a layout (a handler-only rule is allowed);
 - `export const search`;
 - a dynamic segment the build can't list;
 - calling `is_user_logged_in`, `current_user_can` or `get_current_user_id`.

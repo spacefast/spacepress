@@ -26,7 +26,7 @@ pub(super) fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
 
 /// The in-memory pipeline over this project's last snapshot, migration numbering and plugin lock.
 fn build_program(project: &Path, program: &loader::Program, frozen: bool) -> Result<Built, Diag> {
-    pipeline::build(
+    let built = pipeline::build(
         project,
         program,
         || {
@@ -35,7 +35,18 @@ fn build_program(project: &Path, program: &loader::Program, frozen: bool) -> Res
             Ok(previous)
         },
         runtime_file,
-    )
+    )?;
+    Ok(built)
+}
+
+/// A build that ships its synced files as the seed checks them, so a file the seed would refuse
+/// on the site is a diagnostic at that file. Only `build` and `check` run it: commands that compile
+/// for another reason (`add`, `pull`, `styles`, `init`) aren't blocked by a content typo.
+fn check_seed(project: &Path, built: &Built) -> Result<(), Diag> {
+    if built.schema.ships_seed() {
+        crate::bundle::seed_records(&loader::Disk, project, &built.schema, true)?;
+    }
+    Ok(())
 }
 
 fn migrations_dir(project: &Path) -> PathBuf {
@@ -146,14 +157,7 @@ pub(super) fn emit_project(project: &Path, built: &Built) -> std::io::Result<()>
         )?;
     }
     write(&project.join(layout::OPENAPI), crate::openapi::render(&built.openapi))?;
-    match &built.theme_css {
-        Some(css) => {
-            write(&project.join(crate::theme::TOKENS), css)?;
-        }
-        None => {
-            let _ = std::fs::remove_file(project.join(crate::theme::TOKENS));
-        }
-    }
+    write(&project.join(crate::theme::TOKENS), &built.theme_css)?;
     let client_dir = project.join(layout::CLIENT);
     for (name, content) in &built.client_files {
         write(&client_dir.join(name), content)?;
@@ -193,7 +197,10 @@ fn zip_plugin(directory: &Path) -> std::io::Result<()> {
 pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Result<PathBuf> {
     let empty = wp_plugins::Config { plugins: Vec::new() };
     let config = built.plugins.as_ref().unwrap_or(&empty);
-    let plan = wp_plugins::resolve(config, &platform::plugins(built.schema.locales.is_some()))?;
+    let plan = wp_plugins::resolve(
+        config,
+        &platform::app_plugins(built.schema.locales.is_some(), built.schema.store.is_some()),
+    )?;
     let parent = root
         .parent()
         .ok_or_else(|| std::io::Error::other("output needs a parent directory"))?;
@@ -253,6 +260,15 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
         std::fs::create_dir(&stage)?;
     }
     prepared.install_into(&stage.join("plugins"))?;
+    let commerce_bootstrap = stage.join("mu-plugins/typedpress-commerce.php");
+    if built.schema.store.is_some() {
+        write(
+            &commerce_bootstrap,
+            runtime_file("wp-plugin/typedpress-commerce.php").expect("embedded commerce bootstrap"),
+        )?;
+    } else if commerce_bootstrap.is_file() {
+        std::fs::remove_file(commerce_bootstrap)?;
+    }
     let plugins = stage.join("plugins");
     let generated = crate::app_plugin::tp_plugins(&built.schema);
     let revision = crate::store::runtime_revision();
@@ -299,11 +315,15 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
     for dependency in prepared.dependencies() {
         versions.insert(dependency.slug.clone(), dependency.version.clone().into());
     }
-    let requires: serde_json::Map<String, serde_json::Value> = platform::plugins(built.schema.locales.is_some())
-        .into_iter()
-        .map(|plugin| (plugin.slug, format!(">={}", plugin.version).into()))
-        .collect();
+    let requires: serde_json::Map<String, serde_json::Value> =
+        platform::app_plugins(built.schema.locales.is_some(), built.schema.store.is_some())
+            .into_iter()
+            .map(|plugin| (plugin.slug, format!(">={}", plugin.version).into()))
+            .collect();
     let mut manifest = serde_json::json!({"typedpress":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"runtimeRevision":revision,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales});
+    if built.schema.store.is_some() {
+        manifest["maxTablePrefix"] = serde_json::json!(20);
+    }
     // Sealed mode (docs/sealed.md): the plugin slugs this site runs, for a host to enforce. No key
     // when the app isn't sealed.
     if let Some(sealed) = crate::bundle::sealed_plugins(&built.schema, crate::app_plugin::tp_plugins(&built.schema)) {
@@ -497,7 +517,9 @@ fn remove_empty_dirs(dir: &Path) -> std::io::Result<bool> {
 pub(crate) fn check(project: &Path, frozen: bool) -> (serde_json::Value, Option<Built>) {
     let built = match loader::load_all(&project.join("typedpress.config.ts")) {
         Err(diagnostics) => Err(diagnostics),
-        Ok(program) => build_program(project, &program, frozen).map_err(|d| vec![d]),
+        Ok(program) => build_program(project, &program, frozen)
+            .and_then(|built| check_seed(project, &built).map(|()| built))
+            .map_err(|d| vec![d]),
     };
     let mut envelope = diag::envelope(built.as_ref().err().map_or(&[], Vec::as_slice), project);
     if let Ok(built) = &built {
@@ -535,7 +557,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         };
     }
     let started = std::time::Instant::now();
-    let built = match build(&project, frozen) {
+    let built = match build(&project, frozen).and_then(|built| check_seed(&project, &built).map(|()| built)) {
         Ok(b) => b,
         Err(d) => {
             eprint!("{}", diag::render(&d, &project));
@@ -547,6 +569,11 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     }
     for w in &built.unsupported_plugins {
         eprintln!("warning: {w}");
+    }
+    if built.schema.seed && built.schema.collections.values().all(|c| c.sync.is_none()) {
+        eprintln!(
+            "warning: `seed: true` imports the files of synced kinds, and no kind has `sync`: nothing is seeded. Add `sync: \"content/<kind>/*.md\"` to a kind, or remove `seed`."
+        );
     }
     // A project that ran `typedpress init`: its agent files follow the config and the compiler.
     let agent_files = (!args.quiet)
@@ -649,6 +676,8 @@ mod tests {
     }
 
     #[test]
+    // APFS rejects this fixture at creation; Linux permits the filename the reader must refuse.
+    #[cfg(target_os = "linux")]
     fn a_migration_file_name_that_is_not_utf8_is_an_error_not_skipped() {
         use std::os::unix::ffi::OsStrExt as _;
         let project = tempfile::tempdir().unwrap();

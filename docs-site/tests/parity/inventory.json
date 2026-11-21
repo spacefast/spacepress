@@ -258,7 +258,7 @@
 		"/examples/blog": {
 			"title": "Blog - TypedPress",
 			"h1": "Blog",
-			"description": "A publication. Posts in two languages, authors, moderated comments, member accounts, image sizes, private files and signed webhooks.",
+			"description": "A publication. Posts, authors, moderated comments, member accounts, image sizes, private files and signed webhooks.",
 			"canonical": "/examples/blog",
 			"markdown": "/examples/blog.md",
 			"ogImage": "/og/examples/blog.png",
@@ -494,7 +494,7 @@
 		"/getting-started": {
 			"title": "Get started - TypedPress",
 			"h1": "Get started",
-			"description": "Create a TypedPress app, run it on WordPress on your machine, and call its REST API.",
+			"description": "Create a TypedPress site, run it on local WordPress, and edit its pages and content fields.",
 			"canonical": "/getting-started",
 			"markdown": "/getting-started.md",
 			"ogImage": "/og/getting-started.png",
@@ -533,15 +533,12 @@
 			"stops": [],
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/getting-started.mdx",
 			"toc": [
-				"create-the-app",
-				"check-the-config",
-				"start-the-site",
-				"add-a-note",
-				"read-it-through-the-api",
+				"create-the-site",
+				"edit-the-home-page",
+				"add-a-field-to-the-notes",
+				"add-an-about-page",
 				"stop-the-site",
-				"what-to-commit",
-				"add-a-database",
-				"next-steps"
+				"keep-building"
 			],
 			"prev": "/",
 			"next": "/compiler",
@@ -1036,6 +1033,8 @@
 				"defineconfig",
 				"item",
 				"adminscreen",
+				"adminwidget",
+				"admindashboard",
 				"defineplugin",
 				"errors",
 				"job",
@@ -1043,6 +1042,11 @@
 				"once",
 				"env",
 				"files",
+				"store",
+				"product",
+				"productcategory",
+				"producttag",
+				"order",
 				"reusable-fields"
 			],
 			"prev": "/reference",
@@ -5395,8 +5399,8 @@
 			"sidebar": true
 		},
 		"/tour/blog": {
-			"title": "The blog: access, sync, members, media, jobs and translations \u00b7 TypedPress",
-			"h1": "The blog: access, sync, members, media, jobs and translations",
+			"title": "The blog: access, sync, members, media and jobs \u00b7 TypedPress",
+			"h1": "The blog: access, sync, members, media and jobs",
 			"description": "examples/blog is the CMS tour: every feature a content site needs, in one config. The stops below pick out the parts that go beyond tables and hooks.",
 			"canonical": "/tour/blog",
 			"markdown": null,
@@ -5425,7 +5429,7 @@
 				}
 			],
 			"social": {
-				"title": "The blog: access, sync, members, media, jobs and translations \u00b7 TypedPress",
+				"title": "The blog: access, sync, members, media and jobs \u00b7 TypedPress",
 				"card": "summary"
 			},
 			"stops": [
@@ -5433,8 +5437,7 @@
 				"sync",
 				"members",
 				"media-and-files",
-				"webhooks",
-				"translations"
+				"webhooks"
 			],
 			"edit": null,
 			"toc": [],
@@ -5484,7 +5487,7 @@
 		"/tour/pantry": {
 			"title": "The pantry: tables, hooks, actions and a job \u00b7 TypedPress",
 			"h1": "The pantry: tables, hooks, actions and a job",
-			"description": "examples/pantry is the quick start: three tables, a hook that cleans up a row before it is stored, two actions and a background job. This page shows each piece of its first.config.ts next to what typedpress build turned it into.",
+			"description": "The pantry example uses three tables, a hook, two actions, and a background job. The tour shows its typedpress.config.ts beside the generated code.",
 			"canonical": "/tour/pantry",
 			"markdown": null,
 			"ogImage": null,

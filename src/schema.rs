@@ -287,7 +287,8 @@ impl Column {
 
     /// Writers may omit it on insert.
     pub fn optional_on_insert(&self) -> bool {
-        (!self.not_null && !self.required)
+        self.read_only
+            || (!self.not_null && !self.required)
             || self.omit
             || self.default.is_some()
             || self.auto_increment
@@ -473,8 +474,12 @@ pub struct Collection {
     /// `taxonomy()`: terms in core's term tables, attached to these kinds
     /// (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34).
     pub taxonomy: Option<Taxonomy>,
+    /// Native Woo resource; no TypedPress storage is registered.
+    pub commerce: Option<String>,
     /// `.index(fields, { unique? })`: compound indexes the author declared, as (fields, unique).
     pub indexes: Vec<(Vec<String>, bool)>,
+    /// Optional admin presentation metadata (`ui: { icon, singularLabel, description, group, defaultColumns, hidden }`).
+    pub ui: Option<Json>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -593,6 +598,8 @@ pub struct Global {
     pub fields: IndexMap<String, Column>,
     /// "read" / "update" → rule.
     pub access: IndexMap<String, Access>,
+    /// Optional admin presentation metadata (`ui: { icon, description, group, hidden }`).
+    pub ui: Option<Json>,
 }
 
 /// Where a column lives, for attaching compiled functions after evaluation.
@@ -623,6 +630,10 @@ pub struct Schema {
     /// `adminScreen()` exports by screen id (the export name in kebab case): each one the
     /// declaration `tp_admin_register_screen()` takes (`crate::admin_screen`).
     pub screens: IndexMap<String, Json>,
+    /// `adminWidget()` exports by widget id (kebab case).
+    pub widgets: IndexMap<String, Json>,
+    /// `adminDashboard()` exports by dashboard id (kebab case).
+    pub dashboards: IndexMap<String, Json>,
     /// `wp-hooks/` handlers, in registration order.
     pub wp_hooks: Vec<WpHook>,
     /// Server components (`tp/components/<file>.tsx#<export>`) → their compiled PHP function.
@@ -643,6 +654,9 @@ pub struct Schema {
     pub media: Json,
     pub uploads: Option<Json>,
     pub locales: Option<Json>,
+    pub store: Option<Json>,
+    /// Compile synced records into the standalone plugin for its WordPress install.
+    pub seed: bool,
     /// The build ships the `typedpress-admin` plugin (the default); `defineConfig({ admin: false })` leaves it out.
     pub admin: bool,
     /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `tp/app`.
@@ -684,6 +698,14 @@ pub struct RuntimeSchema {
     pub hash: String,
 }
 
+impl Schema {
+    /// The app plugin carries the project's synced files as its seed: `seed: true`, or a store,
+    /// whose products are seeded from their files.
+    pub fn ships_seed(&self) -> bool {
+        self.seed || self.store.is_some()
+    }
+}
+
 impl Default for Schema {
     fn default() -> Self {
         Schema {
@@ -693,6 +715,8 @@ impl Default for Schema {
             actions: IndexMap::new(),
             jobs: IndexMap::new(),
             screens: IndexMap::new(),
+            widgets: IndexMap::new(),
+            dashboards: IndexMap::new(),
             wp_hooks: Vec::new(),
             components: IndexMap::new(),
             app: None,
@@ -705,6 +729,8 @@ impl Default for Schema {
             media: serde_json::json!({"sizes": {}}),
             uploads: None,
             locales: None,
+            store: None,
+            seed: false,
             admin: true,
             frontend: None,
             output: Output::Server,
@@ -856,13 +882,14 @@ pub struct AppFile {
     pub component: Option<String>,
     /// A literal metadata object, or `{ "fn": name }` for a function.
     pub metadata: Option<Json>,
+    /// Read access for a page or layout (`export const guard`).
     pub guard: Option<Access>,
     pub search: Option<AppSearch>,
     /// HTTP method → compiled handler.
     pub methods: IndexMap<String, String>,
-    /// Who may call the handlers (`export const access`), or the signature that authenticates
-    /// them (`export const signature`, a raw signed webhook). Exactly one when there are handlers.
-    pub access: Option<Access>,
+    /// Who may call the handlers (`guard`), or the signature authenticating a raw signed webhook.
+    /// Exactly one when there are handlers.
+    pub handler_guard: Option<Access>,
     pub signature: Option<Json>,
     /// `export const prerender = true | false` (pages): `None` when the page says nothing, so it
     /// follows the config's `output`.

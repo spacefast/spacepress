@@ -399,7 +399,7 @@ fn rejects_what_wordpress_posts_do_not_take() {
 }
 
 /// tests/php/native_posts_test.php: WordPress's own posts and a clone of them, on what `typedpress build`
-/// emits for tests/fixtures/native-posts, on WordPress 7.2 with SQLite.
+/// emits for tests/fixtures/native-posts, on WordPress's floor (tests/fixtures/platform.json) with SQLite.
 #[test]
 fn native_posts_run_on_wordpress() {
     let tmp = std::env::temp_dir().join(format!("typedpress-native-posts-{}", std::process::id()));
@@ -424,6 +424,16 @@ fn native_posts_run_on_wordpress() {
 
 /// `taxonomy()` and `terms()` refusals (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34
 /// and the deferred list): each a build error at its source.
+#[test]
+fn taxonomy_sync_is_supported_with_persistent_term_identity() {
+    let out = first()
+        .arg("check")
+        .arg(root().join("tests/fixtures/taxonomy-sync"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
 #[test]
 fn rejects_what_taxonomies_and_terms_do_not_build_yet() {
     for (fixture, message, at) in [
@@ -466,11 +476,6 @@ fn rejects_what_taxonomies_and_terms_do_not_build_yet() {
             "reject-taxonomy-richtext",
             "richText() fields on a taxonomy aren't built yet (`body`)",
             "tp/schema.ts:2:40",
-        ),
-        (
-            "reject-taxonomy-sync",
-            "a taxonomy can't sync: `sync` is for collections and tables",
-            "tp/schema.ts:2:44",
         ),
         (
             "reject-taxonomy-translations",
@@ -720,6 +725,15 @@ fn mail_send_needs_recipients_a_subject_and_a_body() {
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
+fn mail_render_checks_template_props() {
+    rejects(
+        "reject-mail-render-props",
+        "these props are { name: number; kind: \"welcome\" }",
+        "typedpress.config.ts:3:",
+    );
 }
 
 #[test]
@@ -1074,7 +1088,7 @@ fn context_values_pass_through_typed_helpers() {
         .arg(
             r#"// tp/app/echo/route.ts, matched the way the app router matches it.
                $file = $wp->plugin()->schema->app()["files"]["app/echo/route.ts"];
-               $route = ["name" => "echo", "params" => [], "route" => ["handler" => $file["methods"]["POST"], "access" => $file["access"], "signature" => null]];
+               $route = ["name" => "echo", "params" => [], "route" => ["handler" => $file["methods"]["POST"], "access" => $file["handlerGuard"], "signature" => null]];
                // req.url and req.query as the WordPress transport builds them: 0.8's form, with every
                // share-link secret redacted and the share parameter kept out of the query.
                $at = fn (string $host, string $uri) => json_decode($app->serveRoute($route, "POST", "/echo",
@@ -1696,14 +1710,14 @@ fn compiled_php_matches_node_on_every_differential_case() {
     );
     let body = |name: &str| {
         functions
-            .split(&format!("function {name}("))
+            .split(&format!("function {}(", typedpress::schema::physical_name(name)))
             .nth(1)
             .expect("differential helper is emitted")
             .split("\nfunction ")
             .next()
             .unwrap()
     };
-    assert!(body("nativeParameter").contains("$input->p['n'] ?? \\TypedPress\\Js::dataGet($input, 'n')"));
+    assert!(body("nativeParameter").contains("$input->p['n'] ?? \\TypedPress\\Js::dataGet( $input, 'n' )"));
     assert!(
         body("nativeParameter")
             .lines()
@@ -1711,13 +1725,13 @@ fn compiled_php_matches_node_on_every_differential_case() {
     );
     assert!(body("nativeMissing").contains("$input->p["));
     assert!(
-        body("reboundParameter").contains("\\TypedPress\\Js::dataGet($input, 'n')")
+        body("reboundParameter").contains("\\TypedPress\\Js::dataGet( $input, 'n' )")
             && !body("reboundParameter").contains("->p[")
     );
     // A nullable receiver that no assignment replaces tries the property first: `??` gives the
     // checked read for null and undefined, so a missing value still reads as dataGet does.
     assert!(
-        body("nullableParameter").contains("($input->p['n'] ?? \\TypedPress\\Js::dataGet($input, 'n'))"),
+        body("nullableParameter").contains("( $input->p['n'] ?? \\TypedPress\\Js::dataGet( $input, 'n' ) )"),
         "{}",
         body("nullableParameter")
     );
@@ -1725,8 +1739,8 @@ fn compiled_php_matches_node_on_every_differential_case() {
     // Typed number comparisons and equality are native after a run-time int/float check; a literal
     // string side compares with `===`; a plain-variable object read tries the property first.
     assert!(
-        !body("numberCompare").contains("dynamicBinary('<', $a, $b)")
-            || body("numberCompare").contains("\\is_float($a)")
+        !body("numberCompare").contains("dynamicBinary( '<', $a, $b )")
+            || body("numberCompare").contains("\\is_float( $a )")
     );
     assert!(
         body("numberCompare").contains("(float) $a < (float) $b"),
@@ -1734,30 +1748,31 @@ fn compiled_php_matches_node_on_every_differential_case() {
         body("numberCompare")
     );
     assert!(body("numberCompare").contains("$a == $b"), "{}", body("numberCompare"));
+    // The literal is written first (WordPress's standard for a comparison with a variable).
     assert!(
-        body("stringEquality").contains("$s === 'a'"),
+        body("stringEquality").contains("'a' === $s"),
         "{}",
         body("stringEquality")
     );
     assert!(
-        !body("stringEquality").contains("strictEq($s, 'a')"),
+        !body("stringEquality").contains("strictEq( $s, 'a' )"),
         "{}",
         body("stringEquality")
     );
     assert!(body("localRead").contains("->p['title'] ??"), "{}", body("localRead"));
     // A literal-typed value that may hold anything is still checked; a call stays on the helper.
     assert!(
-        body("literalTypedNull").contains("(\\is_int($n) || \\is_float($n)) ? $n == 0"),
+        body("literalTypedNull").contains("( \\is_int( $n ) || \\is_float( $n ) ) ? $n == 0"),
         "{}",
         body("literalTypedNull")
     );
     assert!(
-        body("literalTypedMissing").contains("\\is_float($__t"),
+        body("literalTypedMissing").contains("\\is_float( $__t"),
         "{}",
         body("literalTypedMissing")
     );
     assert!(
-        body("literalTypedCall").contains("\\TypedPress\\Js::strictEq($a, "),
+        body("literalTypedCall").contains("\\TypedPress\\Js::strictEq( $a, "),
         "{}",
         body("literalTypedCall")
     );
@@ -2019,12 +2034,26 @@ fn compiled_tsx_renders_the_html_react_renders() {
     let functions = std::fs::read_to_string(app.join("tp/app/functions.php")).unwrap();
     let body = |name: &str| {
         functions
-            .split(&format!("function component__components_{name}("))
+            .split(&format!(
+                "function component__components_{}(",
+                typedpress::schema::physical_name(name)
+            ))
             .nth(1)
             .and_then(|rest| rest.split("\n}\n").next())
             .unwrap_or_else(|| panic!("no {name} in functions.php"))
             .to_string()
     };
+    // Layout may wrap calls, but the first argument must still name the tag.
+    let has_element = |php: &str, element: &str| {
+        php.split("\\TypedPress\\Html::element(")
+            .skip(1)
+            .any(|call| call.trim_start().starts_with(element))
+    };
+    let strings = body("static__TemplateStrings");
+    assert_eq!(strings.matches("\\implode(").count(), 1, "{strings}");
+    let slots = body("static__TemplateSlots");
+    assert_eq!(slots.matches("\\TypedPress\\Html::template(").count(), 2, "{slots}");
+    assert!(!slots.contains("\\TypedPress\\Html::raw("), "{slots}");
     let folded = body("static__Static");
     for element in [
         "'main'",
@@ -2038,20 +2067,17 @@ fn compiled_tsx_renders_the_html_react_renders() {
         "'br'",
         "'img'",
     ] {
-        assert!(
-            !folded.contains(&format!("\\TypedPress\\Html::element({element}")),
-            "{element} not folded:\n{folded}"
-        );
+        assert!(!has_element(&folded, element), "{element} not folded:\n{folded}");
     }
     assert!(folded.contains("<main class=\"page\" id=\"top\""), "{folded}");
     // Left to the runtime: a custom element, a list item with a dynamic key, a void element with children.
-    assert!(folded.contains("\\TypedPress\\Html::element('link-like'"), "{folded}");
+    assert!(folded.contains("\\TypedPress\\Html::element( 'link-like'"), "{folded}");
     assert!(
-        folded.contains("\\TypedPress\\Html::element('li', ['className' => 'item', 'key' => $item]"),
+        folded.contains("'className' => 'item',") && folded.contains("'key'       => $item,"),
         "{folded}"
     );
     assert!(
-        body("static__VoidChildren").contains("\\TypedPress\\Html::element('br', [], "),
+        body("static__VoidChildren").contains("\\TypedPress\\Html::element( 'br', array(), "),
         "{}",
         body("static__VoidChildren")
     );
@@ -2065,10 +2091,7 @@ fn compiled_tsx_renders_the_html_react_renders() {
         "'form'",
         "'my-widget'",
     ] {
-        assert!(
-            attributes.contains(&format!("\\TypedPress\\Html::element({element}")),
-            "{element} folded:\n{attributes}"
-        );
+        assert!(has_element(&attributes, element), "{element} folded:\n{attributes}");
     }
     // Extra keys in decoded JSON never reach `style` or a spread's attributes.
     let evil = "url(//evil.example/t)";
@@ -2204,6 +2227,20 @@ fn php_case(runtime: &Path, app: &Path, case: &str, args: serde_json::Value) -> 
         .arg(args.to_string())
         .output()
         .unwrap()
+}
+
+/// Locales are turned off for apps: only the test suite's TYPEDPRESS_LOCALES=1 (.cargo/config.toml) keeps them.
+#[test]
+fn locales_are_turned_off() {
+    let out = first()
+        .env_remove("TYPEDPRESS_LOCALES")
+        .arg("check")
+        .arg(root().join("tests/fixtures/locales-client"))
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("locales are turned off for now"), "{stderr}");
 }
 
 /// §7.3: the generated client types localized collections; translation ids follow the primary key.
@@ -2364,12 +2401,8 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     assert_eq!(posts["data"][0]["title"], "Hello, TypedPress", "{posts}");
     drop(server);
 
-    // §7.3: localized posts ship a wpml-config.xml, so WPML and Polylang know which fields translate.
-    assert_eq!(
-        std::fs::read_to_string(plugin.join("wpml-config.xml")).unwrap(),
-        std::fs::read_to_string(root().join("tests/fixtures/blog.wpml-config.xml")).unwrap(),
-        "wpml-config.xml drifted from tests/fixtures/blog.wpml-config.xml"
-    );
+    // The blog has no localized post types. The localized fixture below checks the XML contents.
+    assert!(!plugin.join("wpml-config.xml").exists());
     // Post-backed collections have no MySQL table; editor:false ones do (no FK to a post type).
     let mysql = std::fs::read_to_string(plugin.join("tp/app/migrations/0001_init.sql")).unwrap();
     assert!(mysql.contains("CREATE TABLE `{prefix}tp_comments`"), "{mysql}");

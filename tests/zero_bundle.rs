@@ -412,9 +412,19 @@ fn every_0_3_authoring_form_recompiles_to_the_schema_0_3_served() {
     assert_eq!(
         differences,
         [
+            // Schema format bumped from v3 to v5 (guard unification and compiled schema reset).
+            "/version: 3 became 5",
             // `routes` moved onto the first/app/ route table (`app`, asserted below and served in
             // a_recompiled_zero_bundle_serves_its_routes_as_0_3_did).
             "/routes is gone",
+            // Generated PHP callback names are now snake_case.
+            "/collections/posts/hooks/beforeCreate: \"posts__beforeCreate__chain\" became \"posts__before_create__chain\"",
+            "/collections/posts/hooks/afterCreate: \"posts__afterCreate\" became \"posts__after_create\"",
+            "/collections/posts/hooks/beforeUpdate: \"posts__beforeUpdate\" became \"posts__before_update\"",
+            "/collections/posts/hooks/afterUpdate: \"posts__afterUpdate\" became \"posts__after_update\"",
+            "/collections/posts/hooks/beforeDelete: \"posts__beforeDelete\" became \"posts__before_delete\"",
+            "/collections/posts/hooks/afterDelete: \"posts__afterDelete\" became \"posts__after_delete\"",
+            "/collections/things/columns/touched/onUpdate/fn: \"things__onUpdate__touched\" became \"things__on_update__touched\"",
             // The timestamped scheme was renamed with the product; it verifies the same header.
             "/actions/hook/signature/scheme: \"zero\" became \"typedpress\"",
         ],
@@ -433,7 +443,7 @@ fn every_0_3_authoring_form_recompiles_to_the_schema_0_3_served() {
             (
                 method.clone(),
                 r["pattern"].as_str().unwrap().to_owned(),
-                file["access"].clone(),
+                file["handlerGuard"].clone(),
                 file["signature"].clone(),
             )
         })

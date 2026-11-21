@@ -29,9 +29,9 @@ the database enforces. Both kinds share the field builders, access rules,
 `ref()`, hooks, the API and the typed client, so one app can use both and a
 table row can belong to a post.
 
-A new project from `npm create typedpress` is content only. `typedpress add
-db` adds the database half: an example `tp/tables.ts`, typed client calls
-for it and a note on migrations. It only creates files that are missing.
+A new project from `npm create typedpress` stores its notes as WordPress posts.
+`typedpress add db` adds example SQL tables in `tp/tables.ts`, typed client calls,
+and a note on migrations. It only creates files that are missing.
 
 A collection can't be stored in a table. The earlier `editor: false` option is
 gone and `collection()` refuses it at the option; write `table()` instead. A
@@ -65,6 +65,20 @@ resolve inside `tp/`. Anything else, such as `import { x } from "./lib/x"`
 at the root or `"../src/x"` from `tp/`, fails with `F1210` and names the
 file to move. Packages (`"typedpress"`, `"php/wordpress"`, npm packages) are always
 allowed, and an installed package's own relative imports are its business.
+
+Set `seed: true` in `defineConfig()` to include records from synced files in the
+standalone WordPress plugin. WordPress imports missing records when the plugin
+starts. It preserves edits to existing editorial records and skips records
+already in the trash. Use `typedpress sync` to merge edits from source files into
+an existing site.
+
+`typedpress build` and `typedpress check` read those files first. A file the import
+would refuse fails the build at its path and line: a field the kind doesn't have,
+a required field left out, a value over a `.max()`, an HTML block in a Markdown
+body, or a `uid` two files share. A record refused only on the site (a reference
+to a record that isn't there, a `validate` rule) is reported in wp-admin and the
+PHP error log with the file it came from. WordPress keeps that refusal and does
+not run the import again until a new build changes the content or the schema.
 
 ### Exports register by name
 
@@ -386,9 +400,8 @@ nullable with a default.
 
 Modifiers (each returns a new builder; builders are immutable so shared field
 sets are safe): `.optional()`, `.default(value)` (a literal), `.defaultNow()`
-(timestamp/date), `.$default(() => value)` / `.$defaultFn(...)` (runs in PHP on
-insert), `.$onUpdate(() => value)` / `.$onUpdateFn(...)` (runs in PHP on
-update; `() => new Date()` on a timestamp is recognized as "now"), `.many()`
+(timestamp/date), `.$default(() => value)` (runs in PHP on insert), `.$onUpdate(() => value)`
+(runs in PHP on update; `() => new Date()` on a timestamp is recognized as "now"), `.many()`
 (select, media and `ref()`), `.unique()`, `.onDelete("cascade" | "restrict" | "setNull")` and
 `.reverse("name")` (on `ref()`, see [Relations](#relations)),
 `.min(n)` / `.max(n)` (numbers: bounds; strings: length; lists: item count),
@@ -423,7 +436,7 @@ Phase-2 modifiers:
   visibility only, as SCF conditional logic on WordPress. Scalar siblings, ANDed,
   with a top-level `OR`. It never hides data from the API.
 - `.localized()`: the field is translated per locale (text, richText, json,
-  select, group, repeater, blocks). See [Locales](#locales).
+  select, group, repeater, blocks). Turned off for now with `locales`. See [Locales](#locales).
 - `file(bucket)`: a column holding a private file's id from an exported `files()` bucket. See [Files](#files).
 
 Each modifier is checked against the column kind (design §1.2): `.max()` on a
@@ -775,6 +788,10 @@ export default function Api() {
   throwaway WordPress the export renders on.
 
 ## Locales
+
+**Turned off for now.** Setting `locales` fails the build with "locales are turned
+off for now"; leave it out. The rest of this section describes the feature for when it
+comes back.
 
 ```ts
 locales: { default: "en", all: ["en", "de"] },   // fallback: true by default
@@ -1166,7 +1183,9 @@ children to its parent and removes its links.
 Storage is WordPress's own: `tp_<name>` (so a storage name has at most 26
 characters), its fields as term meta `tp_<field>`, and the links as
 `wp_term_relationships` rows in write order. Nothing about a taxonomy enters the
-migration snapshot. Not built yet, each a build error: `was`, `sync`, hooks,
+migration snapshot. A `sync` pattern enables persistent term UIDs and the normal source/merchant
+merge workflow; term assignments and category parents travel as UIDs. `agents: false` hides the
+kind's abilities. Not built yet, each a build error: `was`, hooks,
 `abilities` and `search` on a taxonomy; translations (with `locales` set, write
 `translations: false`); terms on `table()` kinds and `ref(taxonomy)`;
 `terms(wp.categories)`; `.min()`/`.max()` on a terms field; containers,
@@ -1337,7 +1356,10 @@ List columns (`select([...]).many()`, `media().many()`) take `has`,
 neither can be ordered by. On editor collections `group`/`repeater`/`blocks`
 can't be compared at all (their WordPress meta is spread over many rows).
 These are build errors with the same message the runtime returns.
-`with: { cover: true }` on a media column puts the media row in place of the id.
+`with: { cover: true }` on a media column puts the media row in place of the id
+(`url`, `alt`, `width`, `height`, `sizes.<name>.url`, ...). On a `file()` column
+it puts the file row there, with its signed `url`; the id stays an id for a
+visitor the bucket's read rule refuses.
 
 `await` on these calls compiles to plain blocking PHP calls.
 
@@ -1508,7 +1530,15 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   `by` and `summary`. With `admin: false` there is no screen; `typedpress schema list` and the
   `<app>/schema-read` ability show the same.
 
-Taxonomies can't be added at runtime: `taxonomy()` is not in this TypedPress version.
+Taxonomies can't be added through a runtime schema change; declare them with `taxonomy()` in source.
+
+## Commerce
+
+An exported `store()` enables pinned WooCommerce. `product()`, `productCategory()`, `productTag()`
+and `order()` expose fixed kinds over native Woo objects, with the ordinary typed queries,
+facade, abilities and catalog sync. `typedpress add shop` creates a storefront and native checkout
+without changing existing files. See [WooCommerce shops](woocommerce.md) for the fields, settings,
+cart client, permissions and Playground proof.
 
 ## Plugin packages
 
@@ -1747,7 +1777,7 @@ needs no pages for it.
 // tp/app/api/feed.json/route.ts: GET /api/feed.json
 import { db, type RouteRequest } from "typedpress";
 
-export const access = "anyone";
+export const guard = "anyone";
 
 export async function GET(req: RouteRequest) {
   const limit = Number(req.query.get("limit") ?? "20");
@@ -1782,7 +1812,7 @@ export function POST(req: RouteRequest) {
   first folder that WordPress or TypedPress owns (`wp-admin`, `wp-json`,
   `wp-content`, `feed`, `typedpress-admin`, `auth`, `__spacefast`, `.well-known`,
   ...).
-- Export exactly one of `access` or `signature`; there is no default. `access`
+- A handler-only file must export exactly one of `guard` or `signature`. A `guard`
   takes the same rules as actions (`"anyone"`, `"authenticated"`, a role, a
   boolean, or a function of `ctx`). `signature` verifies an HMAC over the raw
   body, as on [actions](#actions). The verified caller is then anonymous.
@@ -1984,7 +2014,12 @@ export default defineConfig({});
 - The message has `to`, `subject` and `text` and/or `html`, plus optional
   `from`, `cc`, `bcc`, `replyTo` and `headers`. Addresses are strings or
   `{ email, name? }`; `to`, `cc` and `bcc` may be lists, 50 recipients in all.
-  `from` defaults to `noreply@` the site's host.
+  `from` defaults to `noreply@` the site's host, or `TP_MAIL_SENDER_DOMAIN`
+  when set. A host that is no mail domain (`127.0.0.1`, `localhost`) uses
+  `noreply@typedpress.localhost` on a local or development site and is refused
+  anywhere else, with what to set. An optional field holding `null` or
+  `undefined` is a field left out, so `replyTo: settings.replyTo` (an optional
+  column, `string | null`) sends without one when it is unset.
 - `send` validates the message, then queues it inside the handler's
   transaction. It is handed off after the request commits, so a rolled-back
   write sends nothing. A refused hand-off is retried by the job runner (5
@@ -1999,6 +2034,56 @@ export default defineConfig({});
   primary sending domain and counts recipients against the Space's daily
   allowance. A managed host without a transport refuses rather than falling
   back to `wp_mail`.
+
+### Email templates
+
+Write a message as a [React Email](https://react.email) component in
+`emails/` beside `typedpress.config.ts`, import it in a handler, and render
+it with `mail.render(Template, props)`. It returns `{ html, text }` for
+`mail.send()`:
+
+```ts
+// emails/welcome.tsx
+import { Body, Button, Html, Text } from "react-email";
+
+export default function Welcome({ name, url }: { name: string; url: string }) {
+  return (
+    <Html>
+      <Body>
+        <Text>Welcome, {name}!</Text>
+        <Button href={url}>Open your dashboard</Button>
+      </Body>
+    </Html>
+  );
+}
+```
+
+```ts
+// typedpress.config.ts
+import Welcome from "./emails/welcome";
+
+export const welcome = action({
+  input: { to: email(), name: text() },
+  access: "editor",
+  async handler({ to, name }) {
+    const { html, text } = mail.render(Welcome, { name, url: "https://example.com/dashboard" });
+    return (await mail.send({ to, subject: `Welcome, ${name}`, html, text })).id;
+  },
+});
+```
+
+- Each template default-exports one synchronous component with typed props.
+  The build checks the props each `mail.render()` call passes.
+- Templates may import `Html`, `Body`, `Text` and `Button` from
+  `react-email` (default styling, `lang` on `Html`, `href` on `Button`) and
+  local modules inside `emails/`. Keep shared parts in an underscore folder
+  such as `emails/_components/`; they aren't templates.
+- `text` keeps paragraph breaks and link destinations.
+- `email dev` previews the same files with `Template.PreviewProps`, which
+  the build ignores.
+- `emails/identity/organization-invite.tsx` replaces Identity's built-in
+  organization invitation (`siteName`, `identityUrl`, `invitationCode`,
+  `expiresIn`).
 
 ## WordPress abilities
 
@@ -2073,6 +2158,7 @@ return post === null ? "" : esc_html(post.post_title);
 | `get_userdata(user_id)` | `WP_User \| false` |
 | `get_permalink(post_id)` | `string \| false` |
 | `home_url(path)` | `string` |
+| `wp_login_url(redirect)` | `string` |
 | `sanitize_text_field`, `sanitize_title`, `esc_html`, `esc_attr`, `esc_url`, `wp_strip_all_tags` | `string` → `string` |
 
 - Types come from `php-stubs/wordpress-stubs` 7.1.2 (WordPress's own

@@ -357,7 +357,7 @@ test("RepoFile shows a repository file whole, highlighted", async ({ page }) => 
 
 test("CompiledExcerpt shows the PHP the compiler wrote for an example", async ({ page }) => {
 	await page.goto(at("/compiler"));
-	for (const fn of ["function signedIn(", "function reads__beforeCreate(", "function job__tally(", "function ms("]) {
+	for (const fn of ["function signed_in(", "function reads__before_create(", "function job__tally(", "function ms("]) {
 		await expect(page.locator("main").getByText(fn, { exact: false }).first()).toBeVisible();
 	}
 });
@@ -432,7 +432,7 @@ test("the tour shows each stop's config next to what it compiles to", async ({ p
 	await page.goto(at("/tour/pantry#a-hook"));
 	const stop = page.locator(":target");
 	await expect(stop).toContainText("beforeCreate(data)");
-	await expect(stop).toContainText("function items__beforeCreate");
+	await expect(stop).toContainText("function items__before_create");
 });
 
 test("an example page lists every file, opens one, and opens one a link names", async ({ page }) => {

@@ -1,5 +1,5 @@
 {
-    "version": 3,
+    "version": 5,
     "runtime": "0.3",
     "name": "phase2",
     "admin": true,
@@ -122,15 +122,45 @@
                 },
                 "payload": {
                     "type": "json",
-                    "notNull": true
+                    "notNull": true,
+                    "shape": {
+                        "type": "object",
+                        "properties": {
+                            "message": {
+                                "type": "string"
+                            }
+                        },
+                        "required": [
+                            "message"
+                        ]
+                    }
                 },
                 "data": {
                     "type": "json",
                     "notNull": true,
-                    "omit": true
+                    "omit": true,
+                    "shape": {
+                        "type": "object",
+                        "properties": {
+                            "label": {
+                                "type": "string"
+                            },
+                            "payload": {
+                                "type": "object",
+                                "properties": {
+                                    "suffix": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "suffix"
+                                ]
+                            }
+                        }
+                    }
                 }
             },
-            "handler": "job__sendWelcome",
+            "handler": "job__send_welcome",
             "retries": 5,
             "agents": true
         }

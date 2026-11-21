@@ -6,7 +6,7 @@ copied verbatim into every build) plus generated files. This document is the
 seam between them. The compiler only emits calls listed here.
 
 Requirements (`Platform::problems()` is the one statement of them; activation
-and `typedpress doctor` both apply it): WordPress 7.2-beta5+ on PHP 8.2+ with the
+and `typedpress doctor` both apply it): WordPress 7.1+ on PHP 8.2+ with the
 `mbstring`, `json` and `gd` extensions (`sodium` for the identity bundle);
 MySQL 8.0+ or MariaDB 10.11+ with every TypedPress table InnoDB, or SQLite through
 SQLite Database Integration 3.1.2+; the pinned platform plugins Secure Custom
@@ -345,7 +345,7 @@ rolled the transaction back), every later statement of it and its commit fail.
 A job queued before Action Scheduler is ready (a `wp-hooks` handler on `init`
 at priority 0) commits without an action and gets one once Action Scheduler is
 ready. `Jobs\Runner::recover`, run when the runtime prepares a site and by the
-daily maintenance action, gives each waiting job that has no `tp_job` action
+hourly maintenance action, gives each waiting job that has no `tp_job` action
 of any status one, at most 1000 per run. That covers a request that died before
 Action Scheduler was ready, deleted actions, and the jobs that runtimes before
 this one left in `tp__outbox`. A job whose action an administrator cancelled
@@ -742,11 +742,11 @@ The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
   rule returns and draft visibility decide, exactly as for a visitor's
   `posts.list()`. Then an item is listed only when it is published without a
   password, every placeholder of its `url` comes from a field a visitor may read
-  (a `:slug` only editors read lists nothing), and no `tp/app/` page under a
-  layout `guard` serves its address. A file's count, its paging and its entries
+  (a `:slug` only editors read lists nothing), and no guarded `tp/app/` page
+  serves its address. A file's count, its paging and its entries
   come from that one list, so a hidden row adds no file and no page. A kind with
   nothing to list has no file.
-- **App pages** are the ones `/llms.txt` lists (no parameters, no layout
+- **App pages** are the ones `/llms.txt` lists (no parameters, no page or layout
   `guard`, a 200 for a signed-out visitor), less the home page (core lists it)
   and any page whose metadata says `robots: { index: false }`.
 - **Core's home entry** is dated from the newest post the posts file lists
@@ -834,9 +834,10 @@ and on core `/wp/v2/<route>`) and `GET /__tp/api/v1/search` read one index.
 
 After a committed write to public content, the v2 app plugin announces the
 URLs it changed on the host's `tp_purge_urls` action:
-`do_action('tp_purge_urls', list<string> $paths)`. On Spacefast the engine
-listens and purges those URLs from Batcache and the edge. With no listener
-(`has_action` is false), nothing is collected or announced.
+`do_action('tp_purge_urls', list<string> $paths)`. The runtime listens itself
+where a page cache it knows is loaded (below), which on WP Cloud and Spacefast
+is Batcache and the platform's edge. With no listener (`has_action` is false),
+nothing is collected or announced.
 
 - **Writes covered:** posts and pages of public post types (create, update,
   publish, unpublish, trash, delete), term assignments, and term edits and
@@ -861,11 +862,14 @@ listens and purges those URLs from Batcache and the edge. With no listener
 - `Purges::paths(array $urls): list<string>` turns URLs into the announced
   paths, `.md` twins included.
 - **`tp/app/` pages** (`Render\Cache`): an anonymous visitor's 200 render of
-  a page outside any guarded layout sends `Cache-Control: public,
+  a page without page or layout guards sends `Cache-Control: public,
   max-age=0, s-maxage=300, must-revalidate` (the `tp_app_cache_window`
   filter sets the window; `s-maxage` comes after `max-age` because Batcache
-  takes the last `max-age=` in the header as its own window); anything else sends `private, no-store` and calls
-  `batcache_cancel()`. Each cacheable render records the rows it read in
+  takes the last `max-age=` in the header as its own window) and
+  `A8C-Edge-Cache: cache`, the WP Cloud edge's opt-in for a PHP response;
+  anything else sends `private, no-store` with `A8C-Edge-Cache: no-cache` and calls
+  `batcache_cancel()`. `Render\Cache::send()` writes both headers from the one
+  `Cache-Control` value, so they never disagree; other hosts ignore the second. Each cacheable render records the rows it read in
   `tp__app_reads` (kind, row id or `*` for a listing, path with query),
   under the address WordPress links the page at (`/notes/a/` for a visit to
   `/notes/a`): one read of what the path recorded last, and nothing written
@@ -894,14 +898,34 @@ listens and purges those URLs from Batcache and the edge. With no listener
   and gets no prebuilt header.
 - **Page caches the runtime purges itself** (`Wp\PageCaches`): where Batcache
   (`batcache_clear_url()`), the VIP edge cache (`wpvip_purge_edge_cache_for_url()`,
-  or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins) or Jetpack
-  Boost (`jetpack_boost_clear_page_cache_url`) is loaded, the runtime listens on
-  `tp_purge_urls` and clears each path in each of them. Batcache counts only
-  while its drop-in runs (`$batcache` is set). `/*` bans the VIP site and clears
-  Boost's whole cache; a list longer than VIP queues in one request (100) bans
-  the VIP site once instead of each URL. Boost clears a URL recursively, so `/`
-  goes to its home action. Batcache has no whole-site clear, so its entries run
-  out with the window. A host's own listener runs beside these.
+  or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins), Jetpack
+  Boost (`jetpack_boost_clear_page_cache_url`) or the WP Cloud edge
+  (`edge_cache_purge_uris`, which the platform adds on `init` where its purge API
+  is configured) is loaded, the runtime listens on `tp_purge_urls` and clears each
+  path in each of them. The WP Cloud edge gets one call with every absolute URL.
+  Batcache counts only while its drop-in runs (`$batcache` is set). `/*` bans the
+  VIP site, clears Boost's whole cache and purges the WP Cloud edge domain
+  (`edge_cache_purge_domain`); a list longer than VIP queues in one request (100)
+  bans the VIP site once instead of each URL. Boost clears a URL recursively, so
+  `/` goes to its home action. Batcache itself has no whole-site clear, so outside
+  WP Cloud its entries run out with the window; the WP Cloud platform clears the
+  host's Batcache entries before each edge purge it sends. A host's own listener
+  runs beside these.
+- **Deploys:** making a build live (`typedpress push`, or a rollback) announces
+  `/*` once, so every page cache and the edge drop pages the old build rendered.
+- **Viewer cookies:** a request carrying a cookie a render may answer differently
+  for (`wordpress_logged_in_*`, `wordpress_sec_*`, `wp-postpass_*`,
+  `comment_author_*`, `wp_lang`, the Identity session cookie) gets a private page
+  (`Render\Cache::viewerCookie()`), as it gets no prebuilt file. A response that
+  sets a cookie before its headers go out is private too, as Batcache refuses to
+  keep one: a plugin that starts a PHP session on every request (`PHPSESSID`)
+  turns page caching off for the site.
+- **Batcache and signed-in requests:** Batcache keeps what any request without a
+  `wp*` cookie printed, whatever its `Cache-Control`. A request that runs as a
+  user (an application password, a bearer token) calls `batcache_cancel()` as
+  soon as WordPress sets the user; every private router page, every `/__tp/api`
+  answer and every Identity answer (its REST API and hosted screens, which find
+  the session from its cookie without setting the user) calls it too.
 
 ## Reactive queries (`Live\Module`)
 

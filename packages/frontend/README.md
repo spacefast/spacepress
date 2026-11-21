@@ -103,6 +103,41 @@ This command builds browser files. Native server components still compile to
 PHP. React components run when the browser entry mounts them. The package
 does not server-render React or schedule hydration.
 
+## Edit React browser components
+
+Build the browser entries once to create their metadata. Start `typedpress dev`
+and open a WordPress page that uses one of those entries. Saving a React component
+updates the open page through Vite Fast Refresh. Compatible edits preserve React
+state, such as the value of a counter. Run the frontend build again when you
+change the entry list or framework options, then restart `typedpress dev`.
+
+While Vite serves the entries, `typedpress dev` does not rewrite
+`public/typedpress-assets/`. `typedpress build`, `typedpress push` and
+`typedpress export` build the entries again before they read `public/`, with the
+entry list and framework options of the last frontend build
+(`.tp/frontend-dev.json`), so they never ship a bundle from before your edits.
+A checkout with no `.tp/` has no such record: run the frontend build there
+first, as a deployment's build script does.
+
+### Open the dev site from another machine
+
+Vite listens on this machine. A browser on another machine reaches it only
+through the site's own address, so pass the path `/__tp_vite/` on to Vite in
+the proxy you put in front of the site. `typedpress dev` prints Vite's port when
+the path is not passed on, and keeps that port across restarts. With
+Tailscale:
+
+```sh
+tailscale serve --bg --https=8443 http://localhost:8787
+tailscale serve --bg --https=8443 --set-path=/__tp_vite/ http://localhost:<vite port>/__tp_vite/
+typedpress dev --url https://box.example.ts.net:8443
+```
+
+Without that mapping the page loads the built entry, `typedpress dev` prints
+one line saying Fast Refresh is off, and each save builds the bundle again:
+reload the page to see the edit. With `--host` and an `http://` address the
+browser loads Vite from that address directly and nothing else is needed.
+
 ## Mix UI frameworks in browser entries
 
 React JSX works by default. Set project-relative include globs for Preact

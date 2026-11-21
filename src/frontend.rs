@@ -27,6 +27,7 @@ pub(crate) fn prepare_styles(project: &Path) -> Result<Option<File>> {
         Ok(lock)
     })()
     .map_err(|e| error(format!("can't lock frontend assets for this build: {e}")))?;
+    rebuild_entries(project)?;
     let styles = crate::loader::stylesheet_inputs(project)?;
     if styles.is_empty() && !project.join(crate::loader::FRONTEND_STYLES).is_file() {
         return Ok(None);
@@ -59,4 +60,41 @@ await buildStyles({ root: process.cwd(), styles: JSON.parse(readFileSync(0, 'utf
     }
     write.map_err(|e| error(format!("can't send stylesheet imports to the frontend build: {e}")))?;
     Ok(Some(guard))
+}
+
+/// `typedpress dev` sets this for the builds it runs: it serves the browser entries' sources through
+/// Vite, so rebuilding their bundle on every save would be wasted work.
+pub(crate) const DEV_SERVES_ENTRIES: &str = "TP_DEV_SERVES_FRONTEND";
+
+/// The browser entries `@typedpress/frontend` built in this project before (`.tp/frontend-dev.json`
+/// records them), built again before anything reads `public/typedpress-assets`: `typedpress dev` never
+/// rewrites that bundle, so a `build`, `push` or `export` after a dev session would otherwise ship
+/// the one from before the session's edits. A project with no record (a fresh checkout) is left to
+/// its own build script, as before.
+fn rebuild_entries(project: &Path) -> Result<()> {
+    let error = |message: String| Diag::new(Span::NONE, message).code(crate::diag::Code::Import);
+    if std::env::var_os(DEV_SERVES_ENTRIES).is_some() || !project.join(".tp/frontend-dev.json").is_file() {
+        return Ok(());
+    }
+    let status = Command::new("node")
+        .current_dir(project)
+        .args([
+            "--input-type=module",
+            "--eval",
+            r#"
+import { rebuildFrontend } from '@typedpress/frontend';
+await rebuildFrontend({ root: process.cwd() });
+"#,
+        ])
+        .stdin(Stdio::null())
+        // The command's own standard output is its report (`built … -> …`); Vite's goes to stderr.
+        .stdout(std::io::stderr())
+        .stderr(Stdio::inherit())
+        .status()
+        .map_err(|e| error(format!("can't start the frontend build with Node.js: {e}")))?;
+    if !status.success() {
+        return Err(error(format!("the browser entries in public/typedpress-assets could not be rebuilt ({status})"))
+            .help("Fix the error above, or run the project's own frontend build. The existing bundle may be older than the sources."));
+    }
+    Ok(())
 }

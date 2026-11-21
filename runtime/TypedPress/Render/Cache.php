@@ -14,12 +14,16 @@ use function TypedPress\db;
  * Cache policy and URL purges for `tp/app/` pages (docs/spec/rendering.md §6.1, §6.2).
  *
  * Policy, per response, from what the render was:
- * - an anonymous visitor's 200 render of a page no layout guards is **cacheable**:
- *   `Cache-Control: public, max-age=0, s-maxage=<window>, must-revalidate`, so Batcache and the
- *   edge keep it for everyone (a twin is always rendered as an anonymous visitor too). `s-maxage`
- *   comes after `max-age`: Batcache reads the last `max-age` in the header as its own window;
- * - anything else (a signed-in viewer, a guarded section, an error, a 404) is
- *   `private, no-store`, and calls `batcache_cancel()` where Batcache runs.
+ * - an anonymous visitor's 200 render of a page no layout guards, to a request with no viewer cookie
+ *   ({@see viewerCookie()}), is **cacheable**:
+ *   `Cache-Control: public, max-age=0, s-maxage=<window>, must-revalidate` and
+ *   `A8C-Edge-Cache: cache`, so Batcache and the edge (WP Cloud's included) keep it for everyone (a
+ *   twin is always rendered as an anonymous visitor too). `s-maxage` comes after `max-age`: Batcache
+ *   reads the last `max-age` in the header as its own window;
+ * - anything else (a signed-in viewer, a viewer cookie, a guarded section, an error, a 404, a
+ *   response that sets a cookie) is
+ *   `private, no-store` with `A8C-Edge-Cache: no-cache`, and calls `batcache_cancel()` where
+ *   Batcache runs ({@see send()}).
  *
  * Purges: each cacheable render records the rows it read in `tp__app_reads` (kind, id or `*`
  * for a listing, URL path with its query), under the address WordPress serves the page at
@@ -65,13 +69,52 @@ final class Cache
         // A prerender (Prebuilt) is recorded like a cacheable render, and kept by no shared cache:
         // the file it becomes is the copy that is served.
         if ($status === 200 && $anonymous && !$guarded && Prebuilt::prerendering()) {
-            return ['private, no-store, max-age=0', true];
+            return [self::PRIVATE, true];
         }
         if ($status === 200 && $anonymous && !$guarded) {
             $window = max(0, (int) apply_filters('tp_app_cache_window', self::WINDOW));
             return ["public, max-age=0, s-maxage=$window, must-revalidate", true];
         }
-        return ['private, no-store, max-age=0', false];
+        return [self::PRIVATE, false];
+    }
+
+    /**
+     * Sends a router response's `Cache-Control` with the WP Cloud edge's own directive beside it. That
+     * edge stores a PHP response only with `A8C-Edge-Cache: cache` and a positive shared TTL, and
+     * `no-cache` keeps it from storing one whatever else says it may; other hosts ignore the header.
+     * Derived from the `Cache-Control` sent, so the two never disagree.
+     */
+    public static function send(string $cacheControl): void
+    {
+        // A response that sets a cookie is this visitor's (Batcache refuses to keep one too).
+        if (str_starts_with($cacheControl, 'public') && preg_grep('/^set-cookie:/i', headers_list()) !== []) {
+            $cacheControl = self::PRIVATE;
+        }
+        header('Cache-Control: ' . $cacheControl);
+        header(self::EDGE_HEADER . ': ' . (str_starts_with($cacheControl, 'public') ? 'cache' : 'no-cache'));
+        // Batcache reads only `max-age`, so it would keep this response for its default window.
+        if (!str_starts_with($cacheControl, 'public') && function_exists('batcache_cancel')) {
+            batcache_cancel();
+        }
+    }
+
+    /** The WP Cloud edge's per-response cache switch. */
+    public const EDGE_HEADER = 'A8C-Edge-Cache';
+    private const PRIVATE = 'private, no-store, max-age=0';
+
+    /**
+     * The request carries a cookie a render may answer differently for: a WordPress or Identity
+     * sign-in, an unlocked password-protected post, a comment author's saved name and email, a login
+     * language. Such a request is never given, or served, a shared copy, whoever WordPress says it is.
+     */
+    public static function viewerCookie(): bool
+    {
+        foreach (array_keys($_COOKIE) as $name) {
+            if (preg_match('/^(wordpress_logged_in_|wordpress_sec_|wp-postpass_|comment_author_|wp_lang$|zi_session$|__Host-zi_session$)/', (string) $name) === 1) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -133,7 +176,7 @@ final class Cache
         if (!self::listening()) {
             return;
         }
-        $spec = db()->schema()->collections()[$collection] ?? null;
+        $spec = db()->schema()->kinds()[$collection] ?? null;
         if ($spec === null) {
             return;
         }

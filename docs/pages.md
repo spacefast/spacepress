@@ -734,6 +734,11 @@ export function CheerButton({ noteId, count: initial }: { noteId: number; count:
 
 - `useState`, values derived from state and props, handlers, `useEffect`,
   `useMount`, `useEvent`, `useRef` and `sharedState` come from `"typedpress/client"`.
+- `const field = useRef<HTMLInputElement>()` with `<input ref={field} />` gives
+  handlers and effects the element as `field.current`, in the browser. It is
+  null while a conditional hides the element. Each ref is attached to one
+  element of its own component; a ref no element has, one attached twice, and
+  `ref` on a component or in a server component are build errors.
 - `useLive(kind, query, { enabled })` is a list read the page keeps current, as
   `{ data, error, loading }`. The server answers it in the first render as the
   visitor (`TypedPress\Live\Module::evaluate`, with its token), and the page

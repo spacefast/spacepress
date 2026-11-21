@@ -430,6 +430,16 @@ fn native_posts_run_on_wordpress() {
 /// `taxonomy()` and `terms()` refusals (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34
 /// and the deferred list): each a build error at its source.
 #[test]
+fn taxonomy_sync_is_supported_with_persistent_term_identity() {
+    let out = first()
+        .arg("check")
+        .arg(root().join("tests/fixtures/taxonomy-sync"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
 fn rejects_what_taxonomies_and_terms_do_not_build_yet() {
     for (fixture, message, at) in [
         (
@@ -471,11 +481,6 @@ fn rejects_what_taxonomies_and_terms_do_not_build_yet() {
             "reject-taxonomy-richtext",
             "richText() fields on a taxonomy aren't built yet (`body`)",
             "tp/schema.ts:2:40",
-        ),
-        (
-            "reject-taxonomy-sync",
-            "a taxonomy can't sync: `sync` is for collections and tables",
-            "tp/schema.ts:2:44",
         ),
         (
             "reject-taxonomy-translations",
@@ -730,6 +735,15 @@ fn mail_send_needs_recipients_a_subject_and_a_body() {
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
+fn mail_render_checks_template_props() {
+    rejects(
+        "reject-mail-render-props",
+        "these props are { name: number; kind: \"welcome\" }",
+        "typedpress.config.ts:3:",
+    );
 }
 
 #[test]
@@ -1744,8 +1758,9 @@ fn compiled_php_matches_node_on_every_differential_case() {
         body("numberCompare")
     );
     assert!(body("numberCompare").contains("$a == $b"), "{}", body("numberCompare"));
+    // The literal is written first (WordPress's standard for a comparison with a variable).
     assert!(
-        body("stringEquality").contains("$s === 'a'"),
+        body("stringEquality").contains("'a' === $s"),
         "{}",
         body("stringEquality")
     );
@@ -2044,6 +2059,8 @@ fn compiled_tsx_renders_the_html_react_renders() {
             .skip(1)
             .any(|call| call.trim_start().starts_with(element))
     };
+    let strings = body("static__TemplateStrings");
+    assert_eq!(strings.matches("\\implode(").count(), 1, "{strings}");
     let slots = body("static__TemplateSlots");
     assert_eq!(slots.matches("\\TypedPress\\Html::template(").count(), 2, "{slots}");
     assert!(!slots.contains("\\TypedPress\\Html::raw("), "{slots}");

@@ -33,4 +33,30 @@ check('the refusal does not disclose the deploying account', !str_contains(json_
 [$status, $body] = $request($unscoped);
 eq('an unscoped administrator may list deployment history', $status, 200);
 eq('the permitted list includes its deploying account', $body['deployments'][0]['by'] ?? null, 'admin');
+
+// An uploaded/previously-ready commerce build must not reach this unqualified host's installer
+// or become live through rollback. Use real build-store files and the public selection path.
+$root = \TypedPressPlugin\Site::store();
+$app = str_repeat('a', 64); $runtime = str_repeat('b', 64);
+wp_mkdir_p("$root/app/$app/plugins/typedpress-app-example");
+wp_mkdir_p("$root/runtime/$runtime"); wp_mkdir_p("$root/build"); wp_mkdir_p("$root/ready");
+file_put_contents("$root/runtime/$runtime/typedpress-loader.php", '<?php');
+$manifest = ['format' => 'typedpress.build.v1', 'name' => 'example', 'runtime' => $runtime, 'app' => $app];
+$bytes = json_encode($manifest); $build = hash('sha256', $bytes);
+file_put_contents("$root/build/$build.json", $bytes);
+file_put_contents("$root/ready/$build.json", '{}');
+$hosted = ['format' => 'typedpress.hosted.v1', 'requires' => ['woocommerce' => '>=11.3.0']];
+file_put_contents("$root/app/$app/manifest.json", json_encode($hosted));
+$live = \TypedPressPlugin\Site::live(); $history = \TypedPressPlugin\Site::history();
+$refused = false;
+try { \TypedPressPlugin\Site::checkCommerce($manifest); } catch (RuntimeException $e) { $refused = str_contains($e->getMessage(), 'does not yet support commerce'); }
+check('an uploaded commerce build is refused before initialization', $refused);
+$refused = false;
+try { \TypedPressPlugin\Receiver::rollback($build); } catch (RuntimeException $e) { $refused = str_contains($e->getMessage(), 'does not yet support commerce'); }
+check('even an already-ready commerce rollback is refused', $refused);
+eq('a refused commerce rollback preserves the live build and history', [\TypedPressPlugin\Site::live(), \TypedPressPlugin\Site::history()], [$live, $history]);
+file_put_contents("$root/app/$app/manifest.json", json_encode(['format' => 'typedpress.hosted.v1', 'requires' => []]));
+\TypedPressPlugin\Site::checkCommerce($manifest);
+\TypedPressPlugin\Receiver::rollback($build);
+eq('ordinary ready builds can still be selected', \TypedPressPlugin\Site::live(), $build);
 finish('deployments');

@@ -48,7 +48,7 @@ test('official plugin counterparts persist in real native Studio WordPress and c
     return value.data ?? value;
   }
   const api = (path, options) => request(`/wp-json/typedpress-plugins/v1${path}`, options);
-  const first = (path, options) => request(`/__tp/api/v1${path}`, options);
+  const first = (path, options) => request(`/wp-json/typedpress/v1${path}`, options);
   assert.equal((await first('')).runtime.wp.database.kind, 'sqlite');
   const status = await api('/status', { auth: null });
   assert.equal(status.sandbox.available, false);

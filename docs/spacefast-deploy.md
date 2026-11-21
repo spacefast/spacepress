@@ -64,11 +64,11 @@ WordPress Studio. See the [local development guide](../CONTRIBUTING.md#the-comma
 
 ## Call a REST endpoint, action or route
 
-Collections use `/__tp/api/v1/<collection>`. An action named `hello` uses
-`POST /__tp/api/v1/actions/hello` on the Space hostname:
+Collections use `/wp-json/typedpress/v1/<collection>`. An action named `hello` uses
+`POST /wp-json/typedpress/v1/actions/hello` on the Space hostname:
 
 ```sh
-curl --fail-with-body 'https://your-space.example/__tp/api/v1/actions/hello' \
+curl --fail-with-body 'https://your-space.example/wp-json/typedpress/v1/actions/hello' \
 	-H 'Content-Type: application/json' \
 	--data '{"name":"Sam"}'
 ```

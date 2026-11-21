@@ -1,5 +1,5 @@
 // The `emdash` module for EmDash's official Astro templates, over a TypedPress site's API
-// (`/__tp/api/v1`). tpEmdash() points `emdash` here, so a template's
+// (`/wp-json/typedpress/v1`). tpEmdash() points `emdash` here, so a template's
 // `import { getEmDashCollection } from "emdash"` reads TypedPress kinds with no code in the template.
 //
 // The TypedPress app is expected to declare what the templates read: `posts` and `pages` collections
@@ -10,7 +10,7 @@ import { parseHTML } from "linkedom";
 import { connect } from "../index.js";
 import { requestContext } from "./context.js";
 
-const API = "/__tp/api/v1";
+const API = "/wp-json/typedpress/v1";
 const env = (name) => {
   const value = globalThis.process?.env?.[name];
   return typeof value === "string" && value !== "" ? value : undefined;

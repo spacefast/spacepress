@@ -258,7 +258,7 @@ test("a screen declared with adminScreen() in TypeScript is registered and serve
 // is TypedPress's own: what it reads from its REST controllers and what its screens save are content and
 // settings, never the schema, so none of it is refused.
 test("with the schema lock on, the admin's controllers answer and its saves go through", async () => {
-  const lock = (await (await fetch(`${site}/__tp/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.hardening;
+  const lock = (await (await fetch(`${site}/wp-json/typedpress/v1`, { headers: auth("admin") })).json()).data.runtime.wp.hardening;
   assert.ok(lock.includes("schemaLock"));
   const json = (method: string, path: string, body?: unknown) =>
     fetch(`${site}${path}`, { method, headers: { ...auth("admin"), ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -275,7 +275,7 @@ test("with the schema lock on, the admin's controllers answer and its saves go t
   assert.equal(edited.status, 200, await edited.clone().text());
   assert.deepEqual((await edited.json()).meta.tags, ["guide"]);
   // A global, and core's settings, as the admin's settings screens save them.
-  const global = await json("PATCH", "/__tp/api/v1/settings", { siteTitle: "Admin saved" });
+  const global = await json("PATCH", "/wp-json/typedpress/v1/settings", { siteTitle: "Admin saved" });
   assert.equal(global.status, 200, await global.clone().text());
   const tagline = `Admin ${Date.now().toString(36)}`;
   const settings = await json("POST", "/wp-json/wp/v2/settings", { description: tagline });

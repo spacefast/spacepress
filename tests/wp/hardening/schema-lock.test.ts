@@ -291,9 +291,9 @@ test("what stays open: the site's own SCF objects, content, users, settings and 
   assert.equal(ownType.status, 200, JSON.stringify(ownType.body));
 
   const json = (who: Role, body: unknown, method = "POST") => ({ method, headers: { "content-type": "application/json", ...auth(who) }, body: JSON.stringify(body) });
-  const note = await fetch(`${site}/__tp/api/v1/notes`, json("editor", { title: `Open ${run}` }));
+  const note = await fetch(`${site}/wp-json/typedpress/v1/notes`, json("editor", { title: `Open ${run}` }));
   assert.equal(note.status, 201, await note.clone().text());
-  const edited = await fetch(`${site}/__tp/api/v1/notes/${(await note.json()).data.id}`, json("editor", { title: `Edited ${run}` }, "PATCH"));
+  const edited = await fetch(`${site}/wp-json/typedpress/v1/notes/${(await note.json()).data.id}`, json("editor", { title: `Edited ${run}` }, "PATCH"));
   assert.equal((await edited.json()).data.title, `Edited ${run}`);
   const corePost = await fetch(`${core}/posts`, json("editor", { title: `Core ${run}`, status: "publish" }));
   assert.equal(corePost.status, 201);

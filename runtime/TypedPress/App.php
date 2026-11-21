@@ -6,7 +6,7 @@ namespace TypedPress;
 
 /**
  * Boots a generated app and serves its REST API (§4.8) and CLI. The WordPress plugin passes its
- * Store/Auth/Media and calls handle() with the path after the API prefix (`/__tp/api/v1`): the
+ * Store/Auth/Media and calls handle() with the path after the API prefix (`/wp-json/typedpress/v1`): the
  * WordPress facade for TypedPress's own routes with no core route (sign-in, sync, services, files), and
  * the abilities (invoke).
  */

@@ -33,7 +33,7 @@ use TypedPress\Wp\WpFiles;
  *   (an option, a menu, the time) is never older than that. Site-wide settings drop every file.
  * - The `<build>` directory is named by the app's compiled files, the runtime's content hash, and
  *   the WordPress, theme and plugin versions that write the page's head and assets.
- * - `GET /__tp/api/v1/prerender` lists the URLs for `typedpress export`, to an editor.
+ * - `GET /wp-json/typedpress/v1/prerender` lists the URLs for `typedpress export`, to an editor.
  */
 final class Prebuilt
 {
@@ -439,7 +439,7 @@ final class Prebuilt
         return '/' . implode('/', $out);
     }
 
-    /** `GET /__tp/api/v1/prerender`: the URLs to build, to someone who may edit the site. */
+    /** `GET /wp-json/typedpress/v1/prerender`: the URLs to build, to someone who may edit the site. */
     public static function route(string $method, array $parts, array $query, string $body, Viewer $viewer): array
     {
         \TypedPress\App::allow($method, ['GET']);

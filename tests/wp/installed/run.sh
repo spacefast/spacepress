@@ -55,7 +55,7 @@ try {
   await run(['dev', project, '--port', String(port), '--no-watch']);
   const status = JSON.parse(await run(['dev', 'status', project]));
   assert.equal(status.isOnline, true);
-  const response = await fetch(`${status.siteUrl}/__tp/api/v1`, { signal: AbortSignal.timeout(15000) });
+  const response = await fetch(`${status.siteUrl}/wp-json/typedpress/v1`, { signal: AbortSignal.timeout(15000) });
   assert.equal(response.status, 200);
   const { data } = await response.json();
   assert.equal(data.name, 'project');

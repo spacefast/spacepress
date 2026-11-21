@@ -111,7 +111,7 @@ wp_add_inline_script( 'wp-api-fetch', 'window.tpAdmin = ' . wp_json_encode( arra
     'readable' => tp_admin_navigation(),
     'role' => \TypedPress\Wp\CoreAccess::viewer()->user['role'] ?? 'subscriber',
     'mount' => tp_admin_url(),
-    // TypedPress's API (/__tp/api/v1): the admin's own reads and writes go through it, as every client's do.
+    // TypedPress's API (/wp-json/typedpress/v1): the admin's own reads and writes go through it, as every client's do.
     'api' => \TypedPress\Wp\Facade::url(),
 ), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ) . ';', 'after' );
 

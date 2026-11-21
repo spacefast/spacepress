@@ -30,7 +30,7 @@ Every TypedPress file starts with `declare(strict_types=1);`. Namespace `TypedPr
     typedpress-app-<name>.php                plugin header
     tp/app/schema.php                generated: `return [...]` schema metadata
     tp/app/functions.php             generated: compiled hooks, actions, helpers (namespace TypedPressApp)
-    tp/app/openapi.json              generated: the API as OpenAPI 3.1, served at /__tp/api/v1/openapi.json
+    tp/app/openapi.json              generated: the API as OpenAPI 3.1, served at /wp-json/typedpress/v1/openapi.json
     tp/app/migrations/NNNN_<name>.sql  MySQL DDL, `{prefix}` for the table prefix
     tp/app/client/typedpress-client.js   the typed client as a browser module (`@typedpress/client`), minified
     tp/app/client-version.php       `return '<12 hex>';`: digest of typedpress-client.js, its script version
@@ -89,7 +89,7 @@ minted on activation.
 The app's schema is the authoritative runtime series check; the runtime
 refuses a mismatched series or a second app plugin.
 
-`GET /__tp/api/v1` on WordPress includes `runtime.wp` with WordPress/PHP/database
+`GET /wp-json/typedpress/v1` on WordPress includes `runtime.wp` with WordPress/PHP/database
 versions, `scf`, `actionScheduler`, `mcpAdapter`, `twoFactor`, `polylang`, `identity`,
 `imageCdn`, `akismet` (`{ version, spamChecks }`: the Akismet a site has through
 Jetpack, and whether it has a key; never required), and `incompatibleTables`. `runtime.pendingMigrations` and
@@ -626,8 +626,12 @@ uses the validated schema passed by the WordPress registry and requires
 its store, authentication and media services, and migrates on activation and
 on the first request after an update (`Wp\Plugin`).
 
-The app's API is `/__tp/api/v1` (spec §3a, `Wp\Facade`), served on
-`do_parse_request` before the theme. Each request is dispatched with
+The app's API is `/wp-json/typedpress/v1` (spec §3a, `Wp\Facade`), one route on
+WordPress's REST server (`?rest_route=/typedpress/v1` reaches it too). Core
+authenticates the request, answers preflights and applies the method override; the
+route's callback answers with TypedPress's own body and headers
+(`rest_pre_serve_request`), and a request core refuses first (a bad nonce, a scoped
+credential, a malformed JSON body) gets the same problem document. Each request is dispatched with
 `rest_do_request()` to the core route that serves it, which enforces TypedPress's
 rules (`PostsController`, `UserMeta`, `TableController`, the Abilities run
 route); the facade maps input and output only. Everything else → 404 problem.
@@ -653,7 +657,13 @@ where the app declares none of that name. A collection's `api` flags gate
 list/get/create/update/delete (disabled → 405 `method_not_allowed`).
 Authentication is core REST's (cookie and nonce, an application password,
 or a TypedPress Identity bearer); CORS headers and `OPTIONS` preflights are
-core's; `_method` and `X-HTTP-Method-Override` work as on `/wp-json`. Every
+core's; `_method` and `X-HTTP-Method-Override` work as on `/wp-json`. An
+application password is accepted under core's rule and no other: on a request
+WordPress itself serves from the REST API (`REST_REQUEST`), never because of
+how its URL starts, so it signs nobody in on a page or on `admin-ajax.php`.
+A wrong, suspended or out-of-scope one is refused with its error (401 or 403),
+not answered as a visitor. A path segment is percent-decoded once, the same
+under `/wp-json/typedpress/v1/…` and as `?rest_route=/typedpress/v1/…`. Every
 answer is `Cache-Control: private, no-store` with `Vary: Origin, Cookie,
 Authorization`, except file streams and `/openapi.json`, which is the same for
 every caller.
@@ -712,7 +722,7 @@ The v2 app plugin registers these. A WordPress without a TypedPress app is uncha
   `password` parameter, or an editor in the edit context). Core is asked only
   for the item's `id` (`_fields=id`), so `the_content` runs once per request. Every refusal stays
   core's JSON error. List routes and other methods are unchanged. The
-  `/__tp/api/v1` item route's `?format=md` calls `MarkdownTwins::post()`
+  `/wp-json/typedpress/v1` item route's `?format=md` calls `MarkdownTwins::post()`
   too, so both give the same Markdown.
 - **Listing and `/llms.txt` summaries** come from the hand-written excerpt or
   from `Markdown::renderPost()` of the post, never from its raw stored markup. So
@@ -810,8 +820,8 @@ The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
 `search` is a reserved kind name: the compiler refuses it, as it does `media` and
 `files`, because the API serves `GET /search`.
 
-`search` on a kind (`posts.list({ search })`, `?search=` on `/__tp/api/v1/<kind>`
-and on core `/wp/v2/<route>`) and `GET /__tp/api/v1/search` read one index.
+`search` on a kind (`posts.list({ search })`, `?search=` on `/wp-json/typedpress/v1/<kind>`
+and on core `/wp/v2/<route>`) and `GET /wp-json/typedpress/v1/search` read one index.
 
 - **The index.** `{prefix}tp__search` has one row per (kind, row id, field):
   the field's text with markup and block comments removed (each tag is a word
@@ -1013,8 +1023,8 @@ nothing is collected or announced.
 - **Batcache and signed-in requests:** Batcache keeps what any request without a
   `wp*` cookie printed, whatever its `Cache-Control`. A request that runs as a
   user (an application password, a bearer token) calls `batcache_cancel()` as
-  soon as WordPress sets the user; every private router page, every `/__tp/api`
-  answer and every Identity answer (its REST API and hosted screens, which find
+  soon as WordPress sets the user; every private router page, every
+  `/wp-json/typedpress/v1` answer and every Identity answer (its REST API and hosted screens, which find
   the session from its cookie without setting the user) calls it too.
 
 ## Reactive queries (`Live\Module`)
@@ -1030,7 +1040,7 @@ Design and measurements: [the decision](decisions/2026-11-13-reactive-queries.md
   out of the trash (`transition_post_status`).
 - **`Connection::beforeCommit(callable)`** runs a callback just before `COMMIT` of the outermost
   transaction (at once when none is open). A throw rolls the transaction back.
-- **`POST /__tp/api/v1/_live`** takes `{ queries: [{ kind, op, args?, id?, token? }] }`:
+- **`POST /wp-json/typedpress/v1/_live`** takes `{ queries: [{ kind, op, args?, id?, token? }] }`:
   `kind` is the client's schema key, `op` one of `list`, `paginate`, `get`, `count`, `args` that
   call's arguments, `id` the row for `get` (or `args.where` for a `get` by filter), `token` what
   the previous answer to the same query returned. It answers

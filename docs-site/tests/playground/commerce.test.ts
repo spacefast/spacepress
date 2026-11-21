@@ -42,7 +42,7 @@ async function sync(ok = true) {
   return out.text;
 }
 const api = async (resource: string) => {
-  const response = await fetch(new URL(`/__tp/api/v1/${resource}`, base), { headers: { Authorization: `Basic ${Buffer.from(credential).toString('base64')}` } });
+  const response = await fetch(new URL(`/wp-json/typedpress/v1/${resource}`, base), { headers: { Authorization: `Basic ${Buffer.from(credential).toString('base64')}` } });
   assert.equal(response.status, 200, await response.clone().text());
   return response.json();
 };
@@ -317,7 +317,7 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   page.setDefaultTimeout(20_000);
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const catalog = await page.goto(new URL('/shop', base).href);
-  const publicProducts = await (await page.request.get(new URL('/__tp/api/v1/products', base).href)).json();
+  const publicProducts = await (await page.request.get(new URL('/wp-json/typedpress/v1/products', base).href)).json();
   const publicGuide = publicProducts.data.find((product: any) => product.sku === 'GUIDE-PDF');
   assert.equal(publicGuide.downloads[0].id, 'field-guide');
   assert.equal('file' in publicGuide.downloads[0], false, 'the public catalog must not disclose backing download locations');
@@ -427,7 +427,7 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   await page.goto(new URL('/shop', base).href);
   const refused = await page.evaluate(async () => {
     const get = await fetch('/wp-json/wc/store/v1/cart'); const nonce = get.headers.get('Nonce')!;
-    const products = await (await fetch('/__tp/api/v1/products')).json();
+    const products = await (await fetch('/wp-json/typedpress/v1/products')).json();
     const post = (path: string, data: unknown) => fetch(`/wp-json/wc/store/v1/cart/${path}`, { method: 'POST', headers: { Nonce: nonce, 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => r.status);
     return [await post('add-item', { id: products.data.find((p: any) => p.sku === 'MUG-BLUE').id, quantity: 2 }), await post('apply-coupon', { code: 'TEST' })];
   });

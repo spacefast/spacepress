@@ -36,7 +36,7 @@ Choose an unused local port and set `PORT` first. Send an anonymous request to
 the website URL printed by `typedpress dev`:
 
 ```sh
-curl "$SITE_URL/__tp/api/v1/actions/link" \
+curl "$SITE_URL/wp-json/typedpress/v1/actions/link" \
   -H 'Content-Type: application/json' \
   --data '{"slug":"café & tea","title":"Tea & <scones>"}'
 ```

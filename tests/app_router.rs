@@ -1993,7 +1993,7 @@ fn client_components_compile_to_interactivity_stores() {
     assert_eq!(like["label2"], "142 likes");
     assert_eq!(
         like["calls"],
-        serde_json::json!([{ "url": "/__tp/api/v1/actions/like", "method": "POST", "nonce": "n0nce", "body": { "postId": 42 } }])
+        serde_json::json!([{ "url": "/wp-json/typedpress/v1/actions/like", "method": "POST", "nonce": "n0nce", "body": { "postId": 42 } }])
     );
     let effects = drive("clients/Effects", "effects.mjs");
     assert_eq!(
@@ -2314,7 +2314,7 @@ export const nope = state.result?.nope;
         seen["form"],
         serde_json::json!({
             "method": "post",
-            "action": "/__tp/api/v1/actions/subscribe",
+            "action": "/wp-json/typedpress/v1/actions/subscribe",
             "hidden": [["_tp_return", "hidden", "/?ref=nav"]],
             "page cache": "public, max-age=0, s-maxage=300, must-revalidate",
             "undeclared query": "private, no-store, max-age=0",
@@ -2466,7 +2466,7 @@ fn forms_submit_in_place_in_the_browser() {
     // A second submit while the first was in flight sent nothing.
     assert_eq!(
         success["posts"],
-        serde_json::json!(["/__tp/api/v1/actions/subscribe"]),
+        serde_json::json!(["/wp-json/typedpress/v1/actions/subscribe"]),
         "{seen}"
     );
     // The same document: the window marker survives and no navigation entry was added.
@@ -2533,7 +2533,7 @@ fn forms_submit_in_place_in_the_browser() {
     assert_eq!(
         seen["failed"],
         serde_json::json!({
-            "posts": ["/__tp/api/v1/actions/subscribe"],
+            "posts": ["/wp-json/typedpress/v1/actions/subscribe"],
             "message": ["alert", true],
             "afterPending": { "busy": null, "disabled": [false] },
             "marker": "same document",
@@ -2542,7 +2542,7 @@ fn forms_submit_in_place_in_the_browser() {
     );
     assert_eq!(
         seen["dropped"],
-        serde_json::json!({ "posts": ["/__tp/api/v1/actions/subscribe"], "message": true, "marker": "same document" }),
+        serde_json::json!({ "posts": ["/wp-json/typedpress/v1/actions/subscribe"], "message": true, "marker": "same document" }),
         "{seen}"
     );
     // A `<Link>` click during a submit: the linked page stays; the late answer isn't rendered.
@@ -3977,7 +3977,7 @@ fn api_reference_renders_openapi_as_pages() {
     assert_eq!(index["status"], 200);
     assert_eq!(index["h1"], serde_json::json!(["Apiref API"]));
     assert!(
-        index["server"][0].as_str().unwrap().ends_with("/__tp/api/v1"),
+        index["server"][0].as_str().unwrap().ends_with("/wp-json/typedpress/v1"),
         "{index}"
     );
     assert_eq!(index["tags"][0], "notes");
@@ -4355,8 +4355,8 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     );
     assert_eq!(missing["cache"], "private, no-store, max-age=0");
     // One address per page (#462), the permalink structure's (`/%postname%/`, a trailing slash): the
-    // bare spelling 301s there with its query string. The address itself, a `.md` twin, the REST and
-    // `/__tp/` API routes and WordPress's own paths answer where they are. A path no doc has, and
+    // bare spelling 301s there with its query string. The address itself, a `.md` twin, the REST routes
+    // (TypedPress's API among them) and WordPress's own paths answer where they are. A path no doc has, and
     // `/docs` (the catch-all with no item), are a 404 where they were asked, as WordPress answers one.
     assert_eq!(
         seen["spellings"],
@@ -5227,7 +5227,7 @@ fn static_export_from_a_hosted_site() {
                 "-d",
             ])
             .arg(body.to_string())
-            .arg(format!("{site}/__tp/api/v1{path}"))
+            .arg(format!("{site}/wp-json/typedpress/v1{path}"))
             .output()
             .unwrap();
         String::from_utf8_lossy(&out.stdout).into_owned()

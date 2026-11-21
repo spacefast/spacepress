@@ -34,7 +34,7 @@ echo \\TypedPress\\Wp\\Facade::route(\\TypedPress\\Wp\\Runtime::plugin(), 'POST'
 
 /** The items the API lists, over HTTP, as the signed-in visitor. */
 async function items(): Promise<Record<string, unknown>[]> {
-	const response = await get("/__tp/api/v1/items");
+	const response = await get("/wp-json/typedpress/v1/items");
 	assert.equal(response.status, 200, response.body);
 	const json = JSON.parse(response.body) as { data?: Record<string, unknown>[] } | Record<string, unknown>[];
 	const rows = Array.isArray(json) ? json : json.data;

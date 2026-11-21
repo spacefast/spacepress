@@ -189,7 +189,7 @@ components defined inside render.
 
 - Without JavaScript, the form POSTs to the action endpoint and redirects back
   to the page, with errors in a flash. As built: form-encoded to
-  `/__tp/api/v1/actions/<name>`, `303` to the hidden `_tp_return` path
+  `/wp-json/typedpress/v1/actions/<name>`, `303` to the hidden `_tp_return` path
   with `?_flash=<id>`, the flash a sealed read-once cookie; the marked render
   is `private, no-store` ([pages.md](../pages.md#forms)).
 - With JavaScript, `data-wp-on--submit="actions.submit"` in `tp/router` sends
@@ -298,7 +298,7 @@ TSX subset, so they are examples as well as product.
   twin is written beside its HTML and served from the same file lane (§6.1).
 - `/llms.txt` lists kinds with URLs plus pages, with descriptions.
 - In WordPress-rendered mode, TypedPress serves markdown for every kind URL.
-- Backend-only sites: `GET /wp-json/wp/v2/posts/<id>?format=md` (built), and `GET /__tp/api/v1/posts/<id>?format=md` once the facade lands (workstream 2).
+- Backend-only sites: `GET /wp-json/wp/v2/posts/<id>?format=md` (built), and `GET /wp-json/typedpress/v1/posts/<id>?format=md` once the facade lands (workstream 2).
 
 ## 6. Caching
 

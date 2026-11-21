@@ -9,7 +9,7 @@ This record was captured before the rename from First to TypedPress. The command
 is written with today's name, `typedpress`, and so are the files the text names.
 The rest of the recorded output and the request paths are as that run printed
 them: `first/` and `.first/` are `tp/` and `.tp/`, `first-diagnostics` is
-`typedpress-diagnostics`, and `/wp-json/first/v1` is `/__tp/api/v1`.
+`typedpress-diagnostics`, and `/wp-json/first/v1` is `/wp-json/typedpress/v1`.
 
 ## Resolved authoring and compiler diagnostics
 

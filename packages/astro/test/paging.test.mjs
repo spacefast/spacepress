@@ -1,4 +1,4 @@
-// The build-time loader's paging against an in-memory stand-in for `POST /__tp/api/v1/_live`
+// The build-time loader's paging against an in-memory stand-in for `POST /wp-json/typedpress/v1/_live`
 // (same answers: a sealed token per read, "not modified" when the read's rows are the same, and
 // "pending" now and then): random inserts with high and low keys, deletes, edits and rows leaving
 // and joining the filter. After every build the entries must be exactly the rows, none stale, and

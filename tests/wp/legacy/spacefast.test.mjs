@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 const { url } = JSON.parse(readFileSync(process.env.TP_SPACEFAST_HARNESS, 'utf8'));
-const request = (path, token, options = {}) => fetch(`${url}/${path.startsWith('typedpress-identity/') ? 'wp-json/' : '__tp/api/v1/'}${path}`, {
+const request = (path, token, options = {}) => fetch(`${url}/wp-json/${path.startsWith('typedpress-identity/') ? '' : 'typedpress/v1/'}${path}`, {
   ...options, headers: { Cookie: `__Host-sfi_session=${token}`, ...options.headers },
 });
 test('imported cookie authenticates, survives upgrade, refuses forgeries and logs out', async () => {
@@ -13,7 +13,7 @@ test('imported cookie authenticates, survives upgrade, refuses forgeries and log
   const me = await response.json();
   assert.equal(me.data.name, 'Imported Member');
   assert.match(response.headers.get('set-cookie'), /zi_session=old-token/);
-  const second = await fetch(`${url}/__tp/api/v1/me`, { headers: { Cookie: 'zi_session=old-token' } });
+  const second = await fetch(`${url}/wp-json/typedpress/v1/me`, { headers: { Cookie: 'zi_session=old-token' } });
   assert.equal(second.status, 200);
   assert.deepEqual(await second.json(), me);
   for (const token of ['0'.repeat(64), 'native-legacy-shaped', 'expired-token', 'revoke-token']) {

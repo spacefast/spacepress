@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const harness = JSON.parse(readFileSync(process.env.TP_WP_HARNESS ?? join(here, ".harness.json"), "utf8"));
-const api = `${harness.url}/__tp/api/v1`;
+const api = `${harness.url}/wp-json/typedpress/v1`;
 const requests = Number(process.argv[process.argv.indexOf("--requests") + 1]) || 200;
 const basic = (role) => ({ Authorization: "Basic " + btoa(`${role}:${harness.users[role].appPassword}`) });
 const questions = () => Number(execFileSync(join(here, "harness.sh"), ["sql", "SHOW GLOBAL STATUS LIKE 'Questions'"], { encoding: "utf8" }).trim().split("\n").at(-1).split("\t")[1]);

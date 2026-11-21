@@ -1,6 +1,6 @@
 // Shared helpers for the WordPress suites: the harness's `up` JSON (written by run.sh to
 // tests/wp/.harness.json), WP-CLI and SQL through harness.sh, and raw HTTP against TypedPress's API
-// (/__tp/api/v1, spec §3a) and core /wp/v2.
+// (/wp-json/typedpress/v1, spec §3a) and core /wp/v2.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -18,7 +18,7 @@ interface Harness {
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const harness: Harness = JSON.parse(readFileSync(process.env.TP_WP_HARNESS ?? join(here, ".harness.json"), "utf8"));
-export const api = `${harness.url}/__tp/api/v1`;
+export const api = `${harness.url}/wp-json/typedpress/v1`;
 export const core = `${harness.url}/wp-json/wp/v2`;
 
 export function auth(role: Role): Record<string, string> {

@@ -8,7 +8,7 @@
 //! - with `--site`, the hosted site, which must run this checkout's build, signed in as an editor
 //!   (`remote::sign_in`: the credential `typedpress login` stored, or `TP_APP_PASSWORD` / `TP_TOKEN`).
 //!
-//! Each URL the site lists (`GET /__tp/api/v1/prerender`) is fetched as a signed-out visitor with
+//! Each URL the site lists (`GET /wp-json/typedpress/v1/prerender`) is fetched as a signed-out visitor with
 //! its prerender token, with its Markdown twin. The export writes `<path>.html` and `<path>.md`,
 //! `404.html`, `sitemap.xml`, `llms.txt`, `robots.txt`, `_redirects` with a refresh page at each old
 //! URL, and every same-site file the pages reference (stylesheets, images, script modules including

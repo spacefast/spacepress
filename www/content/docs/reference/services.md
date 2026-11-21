@@ -74,7 +74,7 @@ Keep prices, currency, product names and the return URL in trusted server config
 
 ## HTTP contract
 
-Paths below follow `/__tp/api/v1`. Successes use `{ "data": ... }`; failures use the existing problem-document envelope. Both POST entry points require an `Idempotency-Key` header of 1–64 bytes. Retry the same intent with the same body and key; use a new key after editing the input.
+Paths below follow `/wp-json/typedpress/v1`. Successes use `{ "data": ... }`; failures use the existing problem-document envelope. Both POST entry points require an `Idempotency-Key` header of 1–64 bytes. Retry the same intent with the same body and key; use a new key after editing the input.
 
 | Method and path                                    | Input / result                                                                                                                               |
 |----------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|

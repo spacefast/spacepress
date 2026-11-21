@@ -198,8 +198,8 @@ test("the TypedPress app and the Astro site render the same content with their o
 
 test("an editor's change shows on the TypedPress app at once, and on the Astro site after a rebuild that pulls only that plant", async () => {
   const auth = { authorization: `Basic ${btoa(site.users.admin.appPassword)}`, "content-type": "application/json" };
-  const [plant] = (await (await fetch(`${site.url}/__tp/api/v1/plants?where=${encodeURIComponent('{"slug":"rosemary"}')}`)).json()).data;
-  const patched = await fetch(`${site.url}/__tp/api/v1/plants/${plant.id}`, { method: "PATCH", headers: auth, body: JSON.stringify({ summary: "Edited in wp-admin." }) });
+  const [plant] = (await (await fetch(`${site.url}/wp-json/typedpress/v1/plants?where=${encodeURIComponent('{"slug":"rosemary"}')}`)).json()).data;
+  const patched = await fetch(`${site.url}/wp-json/typedpress/v1/plants/${plant.id}`, { method: "PATCH", headers: auth, body: JSON.stringify({ summary: "Edited in wp-admin." }) });
   assert.equal(patched.status, 200);
   const summary = async (base) => {
     const page = await browser.newPage();

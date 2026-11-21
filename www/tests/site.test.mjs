@@ -181,7 +181,7 @@ test("home: the newest posts are listed at the end of the guide", async () => {
 
 test("blog posts are WordPress's own posts, at the blog's address only", async () => {
   // The API lists them, as anyone reads them, and each is at /blog/<slug>.
-  const listed = await (await fetch(base + "/__tp/api/v1/posts")).json();
+  const listed = await (await fetch(base + "/wp-json/typedpress/v1/posts")).json();
   assert.ok(listed.data.length > 0, "no posts");
   const post = listed.data[0];
   // WordPress's own address for a post (/%postname%/, ?p=) sends the reader to the blog's.
@@ -196,11 +196,11 @@ test("blog posts are WordPress's own posts, at the blog's address only", async (
 });
 
 test("the star job can only be started by an admin", async () => {
-  const response = await fetch(`${base}/__tp/api/v1/actions/refreshStarsNow`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  const response = await fetch(`${base}/wp-json/typedpress/v1/actions/refreshStarsNow`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   assert.ok([401, 403].includes(response.status), `POST refreshStarsNow answered ${response.status}`);
 });
 
 test("saved edits cannot be listed by a visitor", async () => {
-  const response = await fetch(`${base}/__tp/api/v1/shares`);
+  const response = await fetch(`${base}/wp-json/typedpress/v1/shares`);
   assert.ok([401, 403].includes(response.status), `GET /shares answered ${response.status}`);
 });

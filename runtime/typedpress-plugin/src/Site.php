@@ -127,7 +127,13 @@ final class Site
      */
     public static function route(): ?string
     {
-        $path = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+        // WordPress reads the path as sent. One that starts `//` would be read here as a host and a
+        // path below it, and WordPress serves it as a page.
+        if (str_starts_with($uri, '//')) {
+            return null;
+        }
+        $path = (string) (wp_parse_url($uri, PHP_URL_PATH) ?? '/');
         $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
         if ($base !== '' && str_starts_with($path, $base . '/')) {
             $path = substr($path, strlen($base));

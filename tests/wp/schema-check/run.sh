@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# The deploy-time schema check on real WordPress/MariaDB (spec §2.9): successive deploys of one
-# app, each checked against live rows by `wp typedpress migrate [--drop=name=rows]`.
+# Forward-only schema changes through successive builds and a real WordPress/MariaDB site.
 #   TP_WP_PROJECT=typedpress-wp-schema-check TP_WP_PORT=8902 tests/wp/schema-check/run.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -13,25 +12,45 @@ export TP_WP_PORT="${TP_WP_PORT:-8902}"
 work="$(mktemp -d)"
 cleanup() { "$wp/harness.sh" down >/dev/null; rm -rf "$work"; }
 trap cleanup EXIT
-mkdir -p "$work/app" "$work/content"
-# Each step is built into the same project in order, so its migration is planned against the
-# previous step's ledger, then staged as its own wp-content for the test to install.
-for step in initial additive required tighten rename drop adoptedField adoptedKind narrow retype retyped requiredNarrow toReal ratioText ratioReal memoText memoRef readoptField readoptRetype; do
-  node "$here/steps.mjs" "$step" > "$work/app/typedpress.config.ts"
-  "$target/debug/typedpress" build "$work/app" --quiet >/dev/null
-  rsync -a --delete "$work/app/tp/dist/wp-content/" "$work/content/$step/"
-done
-# The stack mounts one plugins directory; the test swaps each step's app plugin into it.
-mkdir -p "$work/live"
-rsync -a --delete "$work/content/initial/" "$work/live/"
+mkdir -p "$work/app" "$work/content" "$work/live"
+
+write_config() { node "$here/steps.mjs" "$1" > "$work/app/typedpress.config.ts"; }
+build() { "$target/debug/typedpress" build "$work/app" --quiet; }
+stage() {
+  write_config "$1"
+  build >/dev/null
+  rsync -a "$work/app/tp/dist/wp-content/" "$work/content/$1/"
+}
+refuses() {
+  write_config "$1"
+  if build > "$work/build.log" 2>&1 || ! grep -Fq "$2" "$work/build.log"; then
+    cat "$work/build.log" >&2
+    echo "not ok: $1 should be refused with: $2" >&2
+    exit 1
+  fi
+  echo "ok: compiler refuses $1"
+}
+
+stage initial
+stage additive
+refuses required 'cannot add required column `notes.reviewer` without a literal default'
+refuses tighten 'making `notes.body` required without a literal default'
+refuses narrow 'narrowing `notes.body`'
+refuses toBoolean 'narrowing `notes.flag`'
+refuses toInteger 'narrowing `notes.count`'
+refuses toReal 'narrowing `notes.ratio`'
+refuses integerToReal 'narrowing `notes.total`'
+refuses toRef 'narrowing `notes.count`'
+refuses renameColumn 'forward-only migrations never rename columns in place'
+refuses renameTable 'forward-only migrations never rename SQL tables in place'
+stage renamed
+stage retired
+
+rsync -a "$work/content/initial/" "$work/live/"
 "$wp/harness.sh" down >/dev/null
 "$wp/harness.sh" up --wp-content "$work/live" --bare > "$work/bare.json"
-# A table the app did not create, seeded before the first deploy.
 "$wp/harness.sh" sql "CREATE TABLE wp_external_tasks (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, title LONGTEXT NOT NULL, note LONGTEXT, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 "$wp/harness.sh" sql "INSERT INTO wp_external_tasks (title, note) VALUES ('kept', 'existing row'), ('also kept', NULL)"
-# A second table the app didn't create, for the adopted retype step: rank holds no values.
-"$wp/harness.sh" sql "CREATE TABLE wp_external_retype (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, name LONGTEXT, rank BIGINT, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-"$wp/harness.sh" sql "INSERT INTO wp_external_retype (name) VALUES ('existing row')"
 "$wp/harness.sh" up --wp-content "$work/live" > "$work/harness.json"
 TP_WP_HARNESS="$work/harness.json" TP_SCHEMA_CHECK_CONTENT="$work/content" TP_SCHEMA_CHECK_LIVE="$work/live" \
   node --test "$here/schema-check.test.ts"

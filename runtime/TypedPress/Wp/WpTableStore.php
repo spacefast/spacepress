@@ -276,7 +276,9 @@ final class WpTableStore implements Store, Links
     public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = []): void
     {
         $table = '`' . $this->db->prefix() . 'tp__revisions`';
-        $forUpdate = $this->db->sqlite() ? '' : ' FOR UPDATE';
+        // The insert owns its newly allocated key. A locking read of its revision history can lock
+        // the gap around that key and deadlock with another insert allocating a different key.
+        $forUpdate = $this->db->sqlite() || ($meta['allocatedKey'] ?? false) ? '' : ' FOR UPDATE';
         $max = $this->db->run("SELECT MAX(`version`) AS v FROM $table WHERE `collection` = ? AND `pk` = ?$forUpdate", [$collection, (string) $pk]);
         $version = ((int) ($max[0]['v'] ?? 0)) + 1;
         $op = (string) ($meta['op'] ?? 'update');

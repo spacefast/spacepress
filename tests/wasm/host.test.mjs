@@ -48,7 +48,7 @@ test('wasm and native capture include the same synced Markdown files', () => {
   try {
     const project = path.join(temp, 'project');
     const files = {
-      'typedpress.config.ts': "import { defineConfig, collection, text, mutation } from 'typedpress'; export const posts = collection({ title: text(), body: richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); export default defineConfig({});",
+      'typedpress.config.ts': "import { defineConfig, collection, text, richText } from 'typedpress'; export const posts = collection({ title: text(), body: richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); export default defineConfig({});",
       'content/posts/hello.md': '---\ntitle: Hello\n---\nA **seed**.\n',
       'content/posts/ignored.txt': 'not synced',
     };
@@ -81,8 +81,14 @@ test('wasm captures the full-site pages bundle byte for byte like native sources
     for (const name of ['tp/app/notes/[slug]/page.tsx', 'tp/app/notes/[slug]/note.module.css', 'tp/app/about/compass.svg', 'tp/components/CheerButton.tsx']) {
       assert.equal(typeof files[name], 'string', name);
     }
-    const memory = Object.fromEntries(Object.entries(files).filter(([name]) => !name.startsWith('tp/_generated/migrations/')));
-    for (const name of fs.readdirSync(path.join(project, 'tp/_generated/migrations'))) memory[`tp/_generated/migrations/${name}`] = fs.readFileSync(path.join(project, 'tp/_generated/migrations', name), 'utf8');
+    const ledger = 'tp/_generated/migrations';
+    const memory = Object.fromEntries(Object.entries(files).filter(([name]) => !name.startsWith(`${ledger}/`)));
+    for (const entry of fs.readdirSync(path.join(project, ledger), { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const file = path.join(entry.parentPath, entry.name);
+      const name = path.relative(project, file).split(path.sep).join('/');
+      memory[name] = fs.readFileSync(file, 'utf8');
+    }
     assert.equal(call(exports, 'tp_sources', { project: '/site', files: memory }).app, capture.app, 'an in-memory project captures the same bytes');
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });

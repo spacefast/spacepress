@@ -366,51 +366,6 @@
         }
       }
     },
-    "/places/{id}/purge": {
-      "delete": {
-        "tags": ["Places"],
-        "operationId": "places.purge",
-        "summary": "Purge a places row",
-        "x-typedpress-access": "rule",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "Permanently deletes one places row (bypasses soft delete) and returns it as it was.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Place" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/places/{id}/revisions": {
       "get": {
         "tags": ["Places"],
@@ -933,51 +888,6 @@
         "responses": {
           "200": {
             "description": "The restored row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Drive" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/drives/{id}/purge": {
-      "delete": {
-        "tags": ["Drives"],
-        "operationId": "drives.purge",
-        "summary": "Purge a drives row",
-        "x-typedpress-access": "rule",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "Permanently deletes one drives row (bypasses soft delete) and returns it as it was.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1534,51 +1444,6 @@
         }
       }
     },
-    "/health_readings/{id}/purge": {
-      "delete": {
-        "tags": ["Health Readings"],
-        "operationId": "healthReadings.purge",
-        "summary": "Purge a health_readings row",
-        "x-typedpress-access": "rule",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "Permanently deletes one health_readings row (bypasses soft delete) and returns it as it was.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/HealthReading" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/health_readings/{id}/revisions": {
       "get": {
         "tags": ["Health Readings"],
@@ -2101,51 +1966,6 @@
         "responses": {
           "200": {
             "description": "The restored row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Content" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/contents/{id}/purge": {
-      "delete": {
-        "tags": ["Contents"],
-        "operationId": "contents.purge",
-        "summary": "Purge a contents row",
-        "x-typedpress-access": "rule",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "Permanently deletes one contents row (bypasses soft delete) and returns it as it was.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5564,14 +5384,15 @@
           "from": { "type": ["integer", "null"] },
           "to": { "type": "integer" },
           "changes": {
-            "type": "object",
-            "additionalProperties": {
+            "type": "array",
+            "items": {
               "type": "object",
               "properties": {
-                "before": {},
-                "after": {}
+                "field": { "type": "string" },
+                "from": {},
+                "to": {}
               },
-              "required": ["before", "after"]
+              "required": ["field", "from", "to"]
             }
           }
         },

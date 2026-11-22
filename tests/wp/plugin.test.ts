@@ -3,12 +3,19 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { api, auth as authHeader, harness, http, run, sql, wp, wpTry } from "./env.ts";
 
 /** The runtime's system-tables marker: `<series>+<fingerprint of registered tables>`. */
 const tablesVersion = () => wp("eval", "echo \\TypedPress\\Wp\\Runtime::tablesVersion();");
+const app = fileURLToPath(new URL(`.wp-content/plugins/${harness.plugin}/tp/app/`, import.meta.url));
+const initialMigration = readdirSync(app + "migrations").find((id) => /^\d{14}_[a-z0-9]+_init$/.test(id));
+const probeId = "20990101000000_probe1_upgrade";
+const probeDir = `${app}migrations/${probeId}`;
+const probeFile = `${probeDir}/migration.sql`;
+const probeFilter = `app = 'blog' AND SUBSTRING_INDEX(id, ':', 1) = '${probeId}'`;
+const probeLedger = () => sql(`SELECT id FROM wp_tp__migrations WHERE ${probeFilter}`).map((r) => r.id);
 
 // The binary run.sh built; honours CARGO_TARGET_DIR so parallel worktrees can share none.
 function tpBinary(): string {
@@ -44,7 +51,8 @@ test("activation registers the post types, field groups and options page, and cr
   const sharedTables = ["wp_tp__files", "wp_tp__jobs", "wp_tp__migrations", "wp_tp__receipts", "wp_tp__revisions", "wp_tp_comments", "wp_tp_field_teams", "wp_tp_fuse_log", "wp_tp_guestbook", "wp_tp_hook_notes", "wp_tp_job_notes", "wp_tp_phrases", "wp_tp_reviews", "wp_tp_signups", "wp_tp_tour_log"];
   assert.deepEqual(tables.filter((r) => sharedTables.includes(r.t)).map((r) => r.t).sort(), sharedTables);
   assert.deepEqual([...new Set(tables.map((r) => r.e))], ["InnoDB"]);
-  assert.deepEqual(sql("SELECT app, id FROM wp_tp__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]]);
+  assert.ok(initialMigration, "the app ships a timestamped init migration");
+  assert.deepEqual(sql("SELECT app, id FROM wp_tp__migrations").map((r) => [r.app, r.id]), [["blog", initialMigration]]);
 
   const registry: unknown = JSON.parse(wp("eval", `
     $plugin = \\TypedPress\\Wp\\Runtime::plugin();
@@ -121,17 +129,17 @@ test("one WP-CLI call activates Action Scheduler, Polylang, the runtime and the 
  * copy run.sh mounts as wp-content/plugins. Returns the restore step.
  */
 function copyUpdate(migration: string) {
-  const app = fileURLToPath(new URL(`.wp-content/plugins/${harness.plugin}/tp/app/`, import.meta.url));
   const schema = readFileSync(app + "schema.php");
-  writeFileSync(app + "migrations/9999_upgrade_probe.sql", migration);
+  mkdirSync(probeDir);
+  writeFileSync(probeFile, migration);
   appendFileSync(app + "schema.php", "\n// upgraded\n");
   return {
-    rewrite: (next: string) => writeFileSync(app + "migrations/9999_upgrade_probe.sql", next),
+    rewrite: (next: string) => writeFileSync(probeFile, next),
     async restore() {
-      rmSync(app + "migrations/9999_upgrade_probe.sql");
+      rmSync(probeDir, { recursive: true });
       writeFileSync(app + "schema.php", schema);
       sql("DROP TABLE IF EXISTS wp_upgrade_probe");
-      sql("DELETE FROM wp_tp__migrations WHERE id LIKE '9999\\_upgrade\\_probe%'");
+      sql(`DELETE FROM wp_tp__migrations WHERE ${probeFilter}`);
       assert.equal((await fetch(`${api}/posts?limit=1`)).status, 200, "the restored build serves again");
     },
   };
@@ -258,11 +266,11 @@ test("an app updated by copying files in migrates on the first request, once, wh
       }
       return false;
     });
-    assert.deepEqual(sql("SELECT id FROM wp_tp__migrations WHERE id LIKE '9999%'"), [], "nothing ran while the lock was held");
+    assert.deepEqual(probeLedger(), [], "nothing ran while the lock was held");
     holder.stdin.end("go\n");
     await exited;
     assert.deepEqual(new Set(await Promise.all(queued)), new Set([200]), "every request was served, before or after the upgrade");
-    assert.deepEqual(sql("SELECT id FROM wp_tp__migrations WHERE id LIKE '9999%'").map((r) => r.id), ["9999_upgrade_probe"]);
+    assert.deepEqual(probeLedger(), [probeId]);
     assert.deepEqual(sql("SELECT n FROM wp_upgrade_probe"), [{ n: "1" }], "applied exactly once");
   } finally {
     holder.kill();
@@ -292,7 +300,7 @@ describe("while an app update has failed half way", () => {
     update = copyUpdate("CREATE TABLE `{prefix}upgrade_probe` (`n` INT NOT NULL) ENGINE=InnoDB;\n--> statement-breakpoint\nINSERT INTO `{prefix}missing_table` (`n`) VALUES (1);\n");
     const refused = await fetch(`${api}/posts?limit=1`);
     assert.deepEqual([refused.status, (await refused.json()).code], [503, "unavailable"], "the update failed");
-    assert.deepEqual(sql("SELECT id FROM wp_tp__migrations WHERE id LIKE '9999%'").map((r) => r.id), ["9999_upgrade_probe:1"], "statement 1 is recorded");
+    assert.deepEqual(probeLedger(), [`${probeId}:1`], "statement 1 is recorded");
   });
   after(async () => {
     await update.restore();
@@ -310,7 +318,7 @@ describe("while an app update has failed half way", () => {
     for (const args of [["find", "posts"], ["find", "comments"]]) {
       const out = JSON.parse(wpTry("typedpress", ...args));
       assert.deepEqual([out.error.status, out.error.code], [503, "unavailable"], args.join(" "));
-      assert.match(out.error.detail, /Migration 9999_upgrade_probe failed at statement 2/);
+      assert.ok(out.error.detail.includes(`Migration ${probeId} failed at statement 2`), out.error.detail);
     }
   });
 
@@ -412,21 +420,21 @@ describe("while an app update has failed half way", () => {
 
   test("the database error is shown to administrators only", () => {
     const notice = (user: string) => wp("eval", "do_action('admin_notices');", `--user=${user}`);
-    assert.match(notice("admin"), /Migration 9999_upgrade_probe failed at statement 2/);
+    assert.ok(notice("admin").includes(`Migration ${probeId} failed at statement 2`));
     assert.doesNotMatch(notice("subscriber"), /Migration/);
   });
 
   test("`wp typedpress migrate --mark-applied` only accepts the next pending statement", () => {
-    const wrong = JSON.parse(wpTry("typedpress", "migrate", "--mark-applied=9999_upgrade_probe:1"));
-    assert.match(wrong.error.detail, /next pending statement of 9999_upgrade_probe is 2 of 2/);
-    assert.deepEqual(sql("SELECT id FROM wp_tp__migrations WHERE id LIKE '9999%'").map((r) => r.id), ["9999_upgrade_probe:1"]);
+    const wrong = JSON.parse(wpTry("typedpress", "migrate", `--mark-applied=${probeId}:1`));
+    assert.ok(wrong.error.detail.includes(`next pending statement of ${probeId} is 2 of 2`), wrong.error.detail);
+    assert.deepEqual(probeLedger(), [`${probeId}:1`]);
   });
 
   test("once fixed, the next request resumes after the committed statement", async () => {
     // Statement 1 is not replayed (it would fail: the table exists).
     update.rewrite("CREATE TABLE `{prefix}upgrade_probe` (`n` INT NOT NULL) ENGINE=InnoDB;\n--> statement-breakpoint\nINSERT INTO `{prefix}upgrade_probe` (`n`) VALUES (2);\n");
     assert.equal((await fetch(`${api}/posts?limit=1`)).status, 200);
-    assert.deepEqual(sql("SELECT id FROM wp_tp__migrations WHERE id LIKE '9999%'").map((r) => r.id), ["9999_upgrade_probe"]);
+    assert.deepEqual(probeLedger(), [probeId]);
     assert.deepEqual(sql("SELECT n FROM wp_upgrade_probe"), [{ n: "2" }]);
   });
 });
@@ -434,9 +442,8 @@ describe("while an app update has failed half way", () => {
 test("`wp typedpress migrate --mark-applied` waits for the migration lock, marks, and finishes the file", async () => {
   // A pending migration whose statement 1 already took effect, with the schema hash left current so
   // WordPress's own init doesn't migrate: only the marking command touches the ledger here.
-  const app = fileURLToPath(new URL(`.wp-content/plugins/${harness.plugin}/tp/app/`, import.meta.url));
-  const file = app + "migrations/9999_upgrade_probe.sql";
-  writeFileSync(file, "CREATE TABLE `{prefix}upgrade_probe` (`n` INT NOT NULL) ENGINE=InnoDB;\n--> statement-breakpoint\nINSERT INTO `{prefix}upgrade_probe` (`n`) VALUES (3);\n");
+  mkdirSync(probeDir);
+  writeFileSync(probeFile, "CREATE TABLE `{prefix}upgrade_probe` (`n` INT NOT NULL) ENGINE=InnoDB;\n--> statement-breakpoint\nINSERT INTO `{prefix}upgrade_probe` (`n`) VALUES (3);\n");
   sql("CREATE TABLE wp_upgrade_probe (`n` INT NOT NULL) ENGINE=InnoDB");
   const harnessSh = fileURLToPath(new URL("harness.sh", import.meta.url));
   const holder = spawn(harnessSh, ["wp", "eval", `
@@ -449,22 +456,22 @@ test("`wp typedpress migrate --mark-applied` waits for the migration lock, marks
   try {
     await until("the holder", () => held.includes("held"));
     let cli = "";
-    const marking = spawn(harnessSh, ["wp", "typedpress", "migrate", "--mark-applied=9999_upgrade_probe:1"], { stdio: ["ignore", "pipe", "pipe"] });
+    const marking = spawn(harnessSh, ["wp", "typedpress", "migrate", `--mark-applied=${probeId}:1`], { stdio: ["ignore", "pipe", "pipe"] });
     marking.stdout.on("data", (c) => (cli += c));
     const markingDone = new Promise((resolve) => marking.on("close", resolve));
     const waiting = () => Number(sql("SELECT COUNT(*) AS n FROM information_schema.PROCESSLIST WHERE INFO LIKE 'SELECT GET_LOCK%'")[0].n);
     await until("the marking command waiting on the migration lock", () => waiting() >= 1);
-    assert.deepEqual(sql("SELECT id FROM wp_tp__migrations WHERE id LIKE '9999%'"), [], "nothing marked while the lock is held");
+    assert.deepEqual(probeLedger(), [], "nothing marked while the lock is held");
     holder.stdin.end("go\n");
     await holderDone;
     await markingDone;
-    assert.deepEqual(JSON.parse(cli).data.applied, ["9999_upgrade_probe"], "marked statement 1, ran statement 2, finished the file");
+    assert.deepEqual(JSON.parse(cli).data.applied, [probeId], "marked statement 1, ran statement 2, finished the file");
     assert.deepEqual(sql("SELECT n FROM wp_upgrade_probe"), [{ n: "3" }]);
   } finally {
     holder.kill();
-    rmSync(file, { force: true });
+    rmSync(probeDir, { recursive: true });
     sql("DROP TABLE IF EXISTS wp_upgrade_probe");
-    sql("DELETE FROM wp_tp__migrations WHERE id LIKE '9999%'");
+    sql(`DELETE FROM wp_tp__migrations WHERE ${probeFilter}`);
   }
 });
 
@@ -477,18 +484,17 @@ test("a statement that committed without its marker keeps failing until the oper
   // explicit way past it, and only for the next pending statement.
   assert.deepEqual(evalFixture("migration-resume.php"), {
     retry: "still failing", markWrongStep: "refused", markOtherFile: "refused", markPathAlias: "refused",
-    mark: "ok", resume: "ok", columns: ["id", "n"], ledger: ["9999_resume"],
+    mark: "ok", resume: "ok", columns: ["id", "n"], ledger: ["20990101000000_probe1_resume"],
   });
 });
 
-test("a second app on the site runs its own 0001_init: the ledger is per app", () => {
-  // The blog's ledger already holds `0001_init`; another app's `0001_init` is a different file.
-  assert.deepEqual(evalFixture("second-app-ledger.php"), [["0001_init"], ["0001_init"], true]);
-  assert.deepEqual(sql("SELECT app, id FROM wp_tp__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]], "the blog's ledger is untouched");
+test("a second app applies its own migration even when the first app already used its ID", () => {
+  assert.deepEqual(evalFixture("second-app-ledger.php"), [[initialMigration], [initialMigration], true]);
+  assert.deepEqual(sql("SELECT app, id FROM wp_tp__migrations").map((r) => [r.app, r.id]), [["blog", initialMigration]], "the blog's ledger is untouched");
 });
 
 test("the migration ledger records the SQL hash it applied", () => {
-  const [row] = sql("SELECT `sql` FROM wp_tp__migrations WHERE app = 'blog' AND id = '0001_init'");
+  const [row] = sql(`SELECT \`sql\` FROM wp_tp__migrations WHERE app = 'blog' AND id = '${initialMigration}'`);
   assert.match(row.sql, /^[a-f0-9]{64}$/);
 });
 

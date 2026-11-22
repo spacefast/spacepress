@@ -10,6 +10,8 @@ $dir = '/tmp/typedpress-app-migrate-indexes/tp/app/migrations';
 $migrator = new \TypedPress\Wp\Migrator($db, $dir, $schema);
 $ledger = $db->prefix() . 'tp__migrations';
 $table = 'adopt_legacy_contacts';
+$bookmarks = $db->prefix() . 'tp_bookmarks';
+$revisions = $db->prefix() . 'tp__revisions';
 $otherDatabase = 'tp_adopt_other';
 $check = static function (bool $ok, string $message): void {
     if (!$ok) { throw new \RuntimeException($message); }
@@ -27,7 +29,7 @@ try {
     }
     $check($db->run("SHOW CREATE TABLE `$table`") === $ddl, 'refused storage engine changed the table');
     $check(!$migrator->hasLedger(), 'refused storage engine created a migration ledger');
-    $check($db->run("SHOW TABLES LIKE 'adopt_zero_bookmarks'") === [], 'refused storage engine ran earlier migration DDL');
+    $check($db->run("SHOW TABLES LIKE '$bookmarks'") === [], 'refused storage engine ran earlier migration DDL');
     $db->run("ALTER TABLE `$table` ENGINE=InnoDB");
     $db->run("ALTER TABLE `$table` ADD CONSTRAINT `old_parent_fk` FOREIGN KEY (`parentId`) REFERENCES `$table` (`id`) ON DELETE SET NULL");
     $ddl = $db->run("SHOW CREATE TABLE `$table`");
@@ -40,7 +42,7 @@ try {
     }
     $check($db->run("SHOW CREATE TABLE `$table`") === $ddl, 'refused adoption changed the table');
     $check(!$migrator->hasLedger(), 'refused adoption created a migration ledger');
-    $check($db->run("SHOW TABLES LIKE 'adopt_zero_bookmarks'") === [], 'refused adoption ran earlier migration DDL');
+    $check($db->run("SHOW TABLES LIKE '$bookmarks'") === [], 'refused adoption ran earlier migration DDL');
     $db->run("ALTER TABLE `$table` RENAME INDEX `old_email_key` TO `email_unique`");
     $ddl = $db->run("SHOW CREATE TABLE `$table`");
     try {
@@ -62,7 +64,7 @@ try {
     }
     $check($db->run("SHOW CREATE TABLE `$table`") === $ddl, 'cross-database adoption changed the table');
     $check(!$migrator->hasLedger(), 'cross-database adoption created a migration ledger');
-    $check($db->run("SHOW TABLES LIKE 'adopt_zero_bookmarks'") === [], 'cross-database adoption ran earlier migration DDL');
+    $check($db->run("SHOW TABLES LIKE '$bookmarks'") === [], 'cross-database adoption ran earlier migration DDL');
     $db->run("ALTER TABLE `$table` DROP FOREIGN KEY `tp_contacts_parentId_fk`");
     $db->run("ALTER TABLE `$table` MODIFY `id` BIGINT NOT NULL AUTO_INCREMENT, MODIFY `parentId` BIGINT NULL");
     $db->run("ALTER TABLE `$table` ADD CONSTRAINT `tp_contacts_parentId_fk` FOREIGN KEY (`parentId`) REFERENCES `$table` (`id`) ON DELETE SET NULL");
@@ -75,7 +77,7 @@ try {
     }
     $check($db->run("SHOW CREATE TABLE `$table`") === $ddl, 'signed key refusal changed the table');
     $check(!$migrator->hasLedger(), 'signed key refusal created a migration ledger');
-    $check($db->run("SHOW TABLES LIKE 'adopt_zero_bookmarks'") === [], 'signed key refusal ran earlier migration DDL');
+    $check($db->run("SHOW TABLES LIKE '$bookmarks'") === [], 'signed key refusal ran earlier migration DDL');
     $db->run("ALTER TABLE `$table` DROP FOREIGN KEY `tp_contacts_parentId_fk`");
     $db->run("ALTER TABLE `$table` MODIFY `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, MODIFY `parentId` BIGINT UNSIGNED NULL");
     $db->run("ALTER TABLE `$table` ADD CONSTRAINT `tp_contacts_parentId_fk` FOREIGN KEY (`parentId`) REFERENCES `$table` (`id`) ON DELETE SET NULL");
@@ -93,9 +95,9 @@ try {
     $check($migrator->migrate() === [], 'completed migrations were repeated');
     echo "adopted-constraint proof: nontransactional storage, wrong index names, foreign key names, referenced databases and signed keys refused without table or ledger changes; canonical constraints adopted and the unique index removed; BIGINT row retained; native boolean predicates preserved\n";
 } finally {
+    $db->run("DROP TABLE IF EXISTS `$bookmarks`");
     $db->run("DROP TABLE IF EXISTS `$table`");
     $db->run("DROP TABLE IF EXISTS `$otherDatabase`.`$table`");
     $db->run("DROP TABLE IF EXISTS `$ledger`");
-    $db->run('DROP TABLE IF EXISTS adopt_zero__revisions');
-    $db->run('DROP TABLE IF EXISTS adopt_zero_bookmarks');
+    $db->run("DROP TABLE IF EXISTS `$revisions`");
 }

@@ -86,7 +86,7 @@ $hidden = [];
 foreach ($xpath->query('.//input[@type="hidden"]', $form) as $input) {
     $hidden[$input->getAttribute('name')] = $input->getAttribute('value');
 }
-foreach (['Ada' => 'Hello, Ada!', str_repeat('x', 61) => 'name must be at most 60 characters'] as $name => $expected) {
+foreach (['Ada' => 'Hello, Ada!', str_repeat('x', 61) => 'name must be 1 to 60 characters'] as $name => $expected) {
     [$status, , $back] = request($form->getAttribute('action'), $hidden + ['name' => $name]);
     eq('form POST redirects back', $status, 303);
     if ($back === '') {

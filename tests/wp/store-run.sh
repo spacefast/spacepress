@@ -96,11 +96,13 @@ ok "a managed boot before initialize writes nothing"
 fresh=$(site)
 plan=$(inspect "$first" "")
 python3 - "$plan" <<'PY' || fail "a fresh site's plan: $plan"
-import json,sys
+import json,re,sys
 out=json.loads(sys.argv[1])
 assert out['refusals']==[], out['refusals']
-assert [(m['id'], m['statements']) for m in out['migrations']]==[('0001_init', [1, 2])], out['migrations']
-assert len(out['migrations'][0]['sql'])==64
+[migration]=out['migrations']
+assert re.fullmatch(r'[0-9]{14}_[0-9a-hjkmnp-tv-z]{6}_init', migration['id']), migration
+assert migration['statements']==[1, 2], migration
+assert len(migration['sql'])==64
 steps=out['systemTables']['steps']
 assert '__tp_jobs' in steps, steps
 assert out['seed'] is True and out['manifest']['baseline'] is None, out
@@ -109,7 +111,7 @@ PY
 ok "inspecting a build on a fresh site plans its tables, migration and seed, and writes nothing"
 
 receipt=$(initialize "$first")
-[[ $(json migrations.0 <<< "$receipt") == 0001_init ]] || fail "the first build applies the init migration: $receipt"
+[[ $(json migrations.0 <<< "$receipt") == "$(json migrations.0.id <<< "$plan")" ]] || fail "the first build applies the planned init migration: $receipt"
 [[ $(json seed.notes.created <<< "$receipt") == 1 ]] || fail "the first build seeds one note: $receipt"
 [[ $(action "$first" | json data.build) == one ]] || fail "build one answers"
 [[ $(action "$first" | json data.notes) == 1 ]] || fail "build one reads the seeded note"
@@ -152,23 +154,26 @@ status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: applic
 [[ $status == 404 ]] || fail "a collected build is gone, got $status"
 ok "gc removes only what the kept builds do not reference"
 
-# Inspecting a candidate changes nothing (docs/decisions/2026-11-07-build-store.md). Build three adds
-# a required field with no default to notes, which holds rows: its schema check refuses. Loading it
-# and inspecting it reports the refusal and the plan, and leaves every table, option and ledger row
-# as it was.
+# Build three binds an existing table that the site lacks. Inspecting it reports the refusal and
+# leaves every table, option and ledger row as it was.
 mkdir -p "$work/three/storelane"
 rsync -a --exclude host.php --exclude contract-host.php "$here/store/" "$work/three/storelane/"
-sed -i.bak -e "s/BUILD_LABEL/three/" -e 's/table({ title: text() }/table({ title: text(), rating: text() }/' -e 's/values({ title })/values({ title, rating: "5" })/' "$work/three/storelane/typedpress.config.ts" && rm "$work/three/storelane/typedpress.config.ts.bak"
+sed -i.bak 's/BUILD_LABEL/three/' "$work/three/storelane/typedpress.config.ts" && rm "$work/three/storelane/typedpress.config.ts.bak"
+cat >> "$work/three/storelane/typedpress.config.ts" <<'TS'
+
+export const ratings = table({ rating: text() }, { existingTable: "wp_missing_ratings" });
+TS
 "$bin" sources "$work/three/storelane" --out "$work/three/sources"
 third=$("$bin" compile-to-store "$work/three/sources" "$store" "$work/three/sources" "$first" | json build)
-[[ -f "$store/baseline/$third/migrations/0002_update.sql" ]] || fail "build three's baseline holds its new migration"
+compgen -G "$store/baseline/$third/migrations/*_create_ratings/migration.sql" >/dev/null || fail "build three's baseline holds its new migration"
 before=$(site)
 inspected=$(inspect "$third" "")
 python3 - "$inspected" <<'PY' || fail "inspection reports the refusal and the plan: $inspected"
 import json,sys
 out=json.loads(sys.argv[1])
 codes=[r['code'] for r in out['refusals']]
-assert codes==['required_field_missing'], codes
+assert codes==['adoption_mismatch'], codes
+assert 'wp_missing_ratings' in out['refusals'][0]['message'], out['refusals']
 assert [m['id'] for m in out['migrations']]==[], out['migrations']
 assert out['systemTables'] is None and out['identitySchema'] is None, out
 assert out['seed'] is True and out['manifest']['baseline'], out

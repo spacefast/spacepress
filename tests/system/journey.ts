@@ -42,7 +42,7 @@ export interface UpgradedClient {
     get(id: number): Promise<{ id: number; title: string; dek: string | null; readingMinutes: number | null }>;
     update(id: number, patch: { readingMinutes: number }): Promise<{ readingMinutes: number | null }>;
   };
-  comments: { get(id: number): Promise<{ id: number; body: string; pinned: boolean }> };
+  comments: { get(id: number): Promise<{ id: number; body: string; pinned: boolean; _rev: string }> };
   globals: { settings: { get(): Promise<{ tagline: string | null }> } };
 }
 
@@ -50,6 +50,7 @@ export interface SiteJourneyEnv {
   origin: string;
   client(role: Role): Client;
   authorId: number;
+  editorUserId: number;
   editor: EditorSurface;
   promoteDue(at: string): Promise<Client | void>;
   runJobs(): Promise<void>;
@@ -140,12 +141,15 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
     await env.editor.publish(feature);
 
     const read = await anon.posts.get(feature, { with: { authorId: true, cover: true, comments: true } });
-    const { cover: media, authorId: byline, comments: thread, updatedAt, publishedAt, uid, _rev, ...row } = read;
+    const { cover: media, authorId: byline, comments: thread, createdAt, updatedAt, publishedAt, uid, _rev, ...row } = read;
     assert.equal(typeof _rev, "string", "a kind with staged versions reads with its revision token");
     assert.match(uid, /^zr_[0-9a-f]{20}$/, "synced posts carry a stable uid");
     const { cover: _, authorId: __, ...rest } = fields;
-    assert.deepEqual(row, { ...rest, id: feature, status: "published", slug: `feature-${run}` }, "readers see every public field");
-    assert.ok(publishedAt && updatedAt, "publishing stamps the dates");
+    assert.deepEqual(row, {
+      ...rest, id: feature, status: "published", slug: `feature-${run}`,
+      author: env.editorUserId, deletedAt: null, deletedBy: null,
+    }, "readers see every public field");
+    assert.ok(createdAt && publishedAt && updatedAt, "the post has creation, publication and update dates");
     assert.deepEqual(media, await anon.media.get(cover));
     assert.deepEqual([media?.mime, media?.alt, byline?.id, thread], ["image/png", "A single pixel", env.authorId, []]);
     const listed = await anon.posts.list({ where: { featured: true, topics: { has: "science" }, id: feature }, with: { authorId: true } });
@@ -408,11 +412,13 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
 
   await t.test("an additive upgrade migrates in place and keeps every row", async () => {
     const before = await anon.posts.get(feature);
-    const comment = await editor.comments.get(commentId);
+    const { _rev: beforeRevision, ...comment } = await editor.comments.get(commentId);
     const as = await env.upgrade();
     const post = await as("anonymous").posts.get(feature);
     assert.deepEqual(post, { ...before, readingMinutes: null }, "the new post field starts empty");
-    assert.deepEqual(await as("editor").comments.get(commentId), { ...comment, pinned: false }, "the new column gets its default");
+    const { _rev: upgradedRevision, ...upgradedComment } = await as("editor").comments.get(commentId);
+    assert.deepEqual(upgradedComment, { ...comment, pinned: false }, "the new column gets its default");
+    assert.notEqual(upgradedRevision, beforeRevision, "the revision token includes the row's new shape");
     assert.equal((await as("anonymous").globals.settings.get()).tagline, tagline);
     assert.equal((await as("editor").posts.update(feature, { readingMinutes: 7 })).readingMinutes, 7);
     await rejects(() => as("editor").posts.update(feature, { readingMinutes: 0 }), { status: 422, code: "invalid_input", pointer: "/readingMinutes" });

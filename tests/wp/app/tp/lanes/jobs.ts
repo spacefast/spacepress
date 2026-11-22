@@ -10,7 +10,7 @@ export const jobNotes = table({
   fail: boolean().default(false),
   stamped: text().optional(),
 }, { access: { create: "editor", read: "editor", update: "editor" } }).on({
-  async afterCreate(row: { id: number; title: string; fail: boolean; stamped: string | null }) {
+  async afterCreate(row) {
     await stamp.enqueue({ noteId: row.id, fail: row.fail });
     if (row.title === "Explode") throw new HttpError(500, "boom", "afterCreate exploded after enqueue");
   },

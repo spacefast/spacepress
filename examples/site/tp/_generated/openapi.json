@@ -363,45 +363,6 @@
         }
       }
     },
-    "/authors/{id}/purge": {
-      "delete": {
-        "tags": ["Authors"],
-        "operationId": "authors.purge",
-        "summary": "Purge a authors row",
-        "x-typedpress-access": "admin",
-        "description": "Permanently deletes one authors row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Author" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/authors/{id}/revisions": {
       "get": {
         "tags": ["Authors"],
@@ -1349,50 +1310,6 @@
         "responses": {
           "200": {
             "description": "The restored row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Post" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/posts/{id}/purge": {
-      "delete": {
-        "tags": ["Posts"],
-        "operationId": "posts.purge",
-        "summary": "Purge a posts row",
-        "x-typedpress-access": "editor",
-        "description": "Permanently deletes one posts row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2802,45 +2719,6 @@
         }
       }
     },
-    "/comments/{id}/purge": {
-      "delete": {
-        "tags": ["Comments"],
-        "operationId": "comments.purge",
-        "summary": "Purge a comments row",
-        "x-typedpress-access": "editor",
-        "description": "Permanently deletes one comments row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Comment" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/comments/{id}/revisions": {
       "get": {
         "tags": ["Comments"],
@@ -3317,45 +3195,6 @@
         }
       }
     },
-    "/subscribers/{id}/purge": {
-      "delete": {
-        "tags": ["Subscribers"],
-        "operationId": "subscribers.purge",
-        "summary": "Purge a subscribers row",
-        "x-typedpress-access": "admin",
-        "description": "Permanently deletes one subscribers row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Subscriber" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/subscribers/{id}/revisions": {
       "get": {
         "tags": ["Subscribers"],
@@ -3812,45 +3651,6 @@
         "responses": {
           "200": {
             "description": "The restored row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Announcement" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/announcements/{id}/purge": {
-      "delete": {
-        "tags": ["Announcements"],
-        "operationId": "announcements.purge",
-        "summary": "Purge a announcements row",
-        "x-typedpress-access": "admin",
-        "description": "Permanently deletes one announcements row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6627,14 +6427,15 @@
           "from": { "type": ["integer", "null"] },
           "to": { "type": "integer" },
           "changes": {
-            "type": "object",
-            "additionalProperties": {
+            "type": "array",
+            "items": {
               "type": "object",
               "properties": {
-                "before": {},
-                "after": {}
+                "field": { "type": "string" },
+                "from": {},
+                "to": {}
               },
-              "required": ["before", "after"]
+              "required": ["field", "from", "to"]
             }
           }
         },

@@ -21,7 +21,9 @@ test("comments are rows in wp_tp_comments; references to posts are checked and c
   ]);
   await problem("POST", "/comments", { body: { postId: 999_999_999, name: "V", body: "x" } }, { status: 409, code: "reference_violation", pointer: "/postId" });
   await ok("DELETE", `/posts/${post.id}`, { as: "editor" });
-  assert.deepEqual(sql(`SELECT id FROM wp_tp_comments WHERE id = ${c.id}`), [], "onDelete: cascade ran in the pipeline");
+  assert.deepEqual(sql(`SELECT id FROM wp_tp_comments WHERE id = ${c.id} AND deletedAt IS NOT NULL AND _live IS NULL`),
+    [{ id: String(c.id) }], "onDelete: cascade soft-deleted the comment");
+  await problem("GET", `/comments/${c.id}`, { as: "editor" }, { status: 404, code: "not_found", pointer: undefined });
 });
 
 test("table relations use the generated client, SQL joins and the target's access rules", async () => {

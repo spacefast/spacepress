@@ -333,45 +333,6 @@
         }
       }
     },
-    "/locations/{id}/purge": {
-      "delete": {
-        "tags": ["Locations"],
-        "operationId": "locations.purge",
-        "summary": "Purge a locations row",
-        "x-typedpress-access": "editor",
-        "description": "Permanently deletes one locations row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Location" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/locations/{id}/revisions": {
       "get": {
         "tags": ["Locations"],
@@ -862,45 +823,6 @@
         }
       }
     },
-    "/items/{id}/purge": {
-      "delete": {
-        "tags": ["Items"],
-        "operationId": "items.purge",
-        "summary": "Purge a items row",
-        "x-typedpress-access": "editor",
-        "description": "Permanently deletes one items row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Item" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/items/{id}/revisions": {
       "get": {
         "tags": ["Items"],
@@ -1371,45 +1293,6 @@
         "responses": {
           "200": {
             "description": "The restored row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/ShoppingList" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/shopping_list/{id}/purge": {
-      "delete": {
-        "tags": ["Shopping List"],
-        "operationId": "shoppingList.purge",
-        "summary": "Purge a shopping_list row",
-        "x-typedpress-access": "editor",
-        "description": "Permanently deletes one shopping_list row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4144,14 +4027,15 @@
           "from": { "type": ["integer", "null"] },
           "to": { "type": "integer" },
           "changes": {
-            "type": "object",
-            "additionalProperties": {
+            "type": "array",
+            "items": {
               "type": "object",
               "properties": {
-                "before": {},
-                "after": {}
+                "field": { "type": "string" },
+                "from": {},
+                "to": {}
               },
-              "required": ["before", "after"]
+              "required": ["field", "from", "to"]
             }
           }
         },

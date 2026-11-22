@@ -1767,50 +1767,6 @@
         }
       }
     },
-    "/posts/{id}/purge": {
-      "delete": {
-        "tags": ["Posts"],
-        "operationId": "posts.purge",
-        "summary": "Purge a posts row",
-        "x-typedpress-access": "author",
-        "description": "Permanently deletes one posts row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `author` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Post" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/posts/{id}/revisions": {
       "get": {
         "tags": ["Posts"],
@@ -3118,50 +3074,6 @@
         "responses": {
           "200": {
             "description": "The restored row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Recipe" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/recipes/{id}/purge": {
-      "delete": {
-        "tags": ["Recipes"],
-        "operationId": "recipes.purge",
-        "summary": "Purge a recipes row",
-        "x-typedpress-access": "editor",
-        "description": "Permanently deletes one recipes row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4509,50 +4421,6 @@
         }
       }
     },
-    "/handbook/{id}/purge": {
-      "delete": {
-        "tags": ["Handbook"],
-        "operationId": "handbook.purge",
-        "summary": "Purge a handbook row",
-        "x-typedpress-access": "editor",
-        "description": "Permanently deletes one handbook row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Handbook" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/handbook/{id}/revisions": {
       "get": {
         "tags": ["Handbook"],
@@ -5852,45 +5720,6 @@
         }
       }
     },
-    "/registrations/{id}/purge": {
-      "delete": {
-        "tags": ["Registrations"],
-        "operationId": "registrations.purge",
-        "summary": "Purge a registrations row",
-        "x-typedpress-access": "admin",
-        "description": "Permanently deletes one registrations row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Registration" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/registrations/{id}/revisions": {
       "get": {
         "tags": ["Registrations"],
@@ -6353,45 +6182,6 @@
         "responses": {
           "200": {
             "description": "The restored row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Activity" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/activity/{id}/purge": {
-      "delete": {
-        "tags": ["Activity"],
-        "operationId": "activity.purge",
-        "summary": "Purge a activity row",
-        "x-typedpress-access": "admin",
-        "description": "Permanently deletes one activity row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
             "content": {
               "application/json": {
                 "schema": {
@@ -11886,14 +11676,15 @@
           "from": { "type": ["integer", "null"] },
           "to": { "type": "integer" },
           "changes": {
-            "type": "object",
-            "additionalProperties": {
+            "type": "array",
+            "items": {
               "type": "object",
               "properties": {
-                "before": {},
-                "after": {}
+                "field": { "type": "string" },
+                "from": {},
+                "to": {}
               },
-              "required": ["before", "after"]
+              "required": ["field", "from", "to"]
             }
           }
         },

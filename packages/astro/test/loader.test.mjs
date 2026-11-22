@@ -263,9 +263,15 @@ test("an editor's credentials read drafts and editor-only fields when asked", as
 
 test("the schema comes from the site's description", async () => {
   const { schema, types } = await tpLoader("notes", { site: site.url }).createSchema();
-  const parsed = schema.parse({ id: 1, title: "T", slug: "t", summary: null, body: null, cover: { id: 3, url: "u" }, rank: 2, featured: false, status: "published", publishedAt: null });
+  const row = {
+    id: 1, title: "T", slug: "t", summary: null, body: null, cover: { id: 3, url: "u" },
+    rank: 2, featured: false, status: "published", publishedAt: null, author: null,
+    createdAt: "2026-11-22T12:00:00Z", updatedAt: "2026-11-22T12:00:00Z",
+    deletedAt: null, deletedBy: null,
+  };
+  const parsed = schema.parse(row);
   assert.equal(parsed.rank, 2);
-  assert.throws(() => schema.parse({ id: 1, title: 5 }), /title/);
+  assert.throws(() => schema.parse({ ...row, title: 5 }), /title/);
   assert.match(types, /title: string;/);
   assert.match(types, /status: "draft" \| "published" \| "scheduled";/);
   assert.match(types, /memo\?: string \| null;/);
@@ -390,4 +396,3 @@ test("astro build renders the collection, and a rebuild after an edit pulls only
   assert.match(readFileSync(join(out, "dist/notes/note-4/index.html"), "utf8"), /<h1>Note 4, rebuilt<\/h1>/);
   t.diagnostic(second.split("\n").find((l) => l.includes("notes:")));
 });
-

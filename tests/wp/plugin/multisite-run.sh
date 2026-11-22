@@ -129,7 +129,7 @@ export const stories = table({ title: text(), section: text().default("front") }
 export default defineConfig({ name: "newsapp" });
 TS
 out=$(push newsapp "$super" "$news") || fail "the second push to /news: $out"
-[[ $out == *"run migration 0002"* && $(curl -s "$news/wp-json/typedpress/v1/stories" | json data.0.section) == front ]] || fail "the second push migrates /news: $out"
+[[ $out =~ "run migration "[0-9]{14}_[0-9a-hjkmnp-tv-z]{6}_add_stories_section && $(curl -s "$news/wp-json/typedpress/v1/stories" | json data.0.section) == front ]] || fail "the second push migrates /news: $out"
 [[ $(wp --url="$shop" option get tp_live_build) == "$shop_build" && $(curl -s "$shop/wp-json/typedpress/v1" | json data.name) == shopapp ]] || fail "the other site keeps its build"
 ok "a deployment to one site changes nothing on another"
 
@@ -143,9 +143,11 @@ wp config set TP_STORE_DIR "$configured" >/dev/null
 wp site create --slug=journal --title=Journal >/dev/null
 wp site create --slug=wiki --title=Wiki >/dev/null
 app sharedapp pages
+# The two fresh deployments compile independently against empty baselines.
+export TYPEDPRESS_MIGRATION_TIME=20261122000000
 for site in journal wiki; do
   out=$(push sharedapp "$super" "$url/$site") || fail "the push to /$site with a configured store: $out"
-  [[ $out == *"applied migration 0001_init"*"live: $url/$site now runs sharedapp"* ]] || fail "/$site installs the build itself: $out"
+  [[ $out =~ "applied migration "[0-9]{14}_[0-9a-hjkmnp-tv-z]{6}_init && $out == *"live: $url/$site now runs sharedapp"* ]] || fail "/$site installs the build itself: $out"
 done
 journal_id=$(wp --url="$url/journal" eval 'echo get_current_blog_id();'); wiki_id=$(wp --url="$url/wiki" eval 'echo get_current_blog_id();')
 tables=$("$harness" sql "SHOW TABLES LIKE '%tp\_pages'" | tail -n +2 | sort | tr '\n' ' ')

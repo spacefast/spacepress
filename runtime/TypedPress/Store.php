@@ -99,7 +99,7 @@ interface Store
     /** @return list<array{id: int, version?: int, op?: string, at: string, userId: ?int, schemaMigration?: ?string, changed?: ?list<string>, row: array}> newest first */
     public function revisions(string $collection, int|string $pk): array;
 
-    /** @param array{op?: string, schemaMigration?: ?string, changed?: ?list<string>} $meta */
+    /** @param array{op?: string, schemaMigration?: ?string, changed?: ?list<string>, allocatedKey?: bool} $meta */
     public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = []): void;
 
     /** @return ?array{id: int, version?: int, op?: string, at: string, userId: ?int, schemaMigration?: ?string, changed?: ?list<string>, row: array} */

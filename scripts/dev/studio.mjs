@@ -469,7 +469,7 @@ ini_set('opcache.revalidate_freq', '0');
             return $header;
         }
         $plugin = \\TypedPress\\Wp\\Plugin::instance();
-        $file = $plugin === null ? null : \\TypedPress\\Wp\\PublicFiles::file($plugin->dir . '/public', $plugin->schema->reserved());
+        $file = $plugin === null ? null : \\TypedPress\\Wp\\PublicFiles::fallbackFile($plugin);
         if ($file === null || preg_match('/\\\\.html?$/i', $file) !== 1) return $header;
         $tag = '<script src="' . esc_url(add_query_arg('build', $live['session'] . '.' . (int) $live['revision'], $client())) . '" defer></script>';
         ob_start(static function (string $html) use ($tag): string {

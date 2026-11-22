@@ -4519,7 +4519,8 @@ fn public_files_serve_at_the_site_root() {
             "/.well-known/ai.json": [200, "application/json", 13],
             "/notes.md": [200, "text/markdown; charset=utf-8", 15],
             "/robots-extra.txt": [200, "text/plain; charset=utf-8", 14],
-            "/it's.txt": [200, "text/plain; charset=utf-8", 1]
+            "/it's.txt": [200, "text/plain; charset=utf-8", 1],
+            "/index.html": [200, "text/html; charset=utf-8", 21]
         })
     );
     assert_eq!(

@@ -298,7 +298,7 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
       const overlay = page.locator('typedpress-dev-error');
       const code = overlay.getByRole('link', { name: 'error[F1001]' });
       await code.waitFor();
-      assert.match(await code.getAttribute('href'), /\/reference\/diagnostics\.mdx#codes:~:text=F1001$/);
+      assert.equal(await code.getAttribute('href'), 'https://spacepress.dev/docs/reference/language-support#:~:text=F1001');
       assert.match(await overlay.locator('code').innerText(), /tp\/app\/page\.tsx:1:\d+/);
       assert.match(await overlay.locator('pre').textContent(), /\S/);
     }
@@ -361,8 +361,11 @@ if (defined('WP_CLI') && WP_CLI) {
   session = foreground(['dev', project, '--foreground'], { ...env, CLAUDECODE: '1' });
   cursor = await session.wait('Watching config');
   // The tab left open follows the new session: it stops asking the stopped one and reloads.
-  await followed.waitForFunction(() => window.tpDevLoaded === undefined);
-  await followed.close();
+  // (The browser subtest above leaves it; when that failed, the steps after this still run.)
+  if (followed) {
+    await followed.waitForFunction(() => window.tpDevLoaded === undefined);
+    await followed.close();
+  }
   const recovered = JSON.parse(await readFile(join(project, '.tp/dev/owner.json'), 'utf8'));
   assert.equal(recovered.pending, undefined);
   assert.deepEqual(recovered.migrations, interrupted.pending.migrations);

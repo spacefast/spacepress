@@ -572,7 +572,7 @@ namespace TypedPress\\Wp {
         public static function instance(): self { return new self(); }
     }
     final class PublicFiles {
-        public static function file(string $root, array $reserved): ?string { return getenv('TP_TEST_FILE') ?: null; }
+        public static function fallbackFile(Plugin $plugin): ?string { return getenv('TP_TEST_FILE') ?: null; }
     }
 }
 namespace {

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "20261122041755_5k4x6x_update",
+  "ops": [
+    {
+      "op": "updateTableMeta",
+      "table": "examples",
+      "meta": {
+        "addQueried": [
+          "id"
+        ]
+      }
+    }
+  ]
+}

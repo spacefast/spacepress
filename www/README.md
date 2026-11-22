@@ -11,52 +11,56 @@ The official website and documentation for **SpacePress** (`https://spacepress.d
 - `lib/` — browser compiler wrapper, WordPress Playground blueprint generator, and example showcase loaders
 - `content/` — Markdown documentation (`content/docs/**/*.md`, also embedded into `typedpress mcp`) and blog posts (`content/posts/*.md`)
 
-## Build & Run Locally
+## Build and run locally
+
+Install the Node.js version in `../.node-version`, Bun 1.3.14, and the Rust
+toolchain in `../rust-toolchain` with the `wasm32-unknown-unknown` target. From
+the repository root, run:
+
+```bash
+PLUGINS_URL=http://localhost:8960 npm run build --prefix www
+```
+
+The command installs the locked dependencies, builds the native compiler and
+WASM from this checkout, builds the featured examples and shared plugin ZIPs,
+then bundles, checks, and compiles the website. WordPress is only needed to run
+the compiled site. Set `WWW_FETCH_GITHUB_STARS=1` if you want the build to query
+GitHub for the header badge.
 
 ```bash
 cd www
-
-# 1. Build the browser WASM compiler and showcase plugin zips (first time or after compiler/example changes)
-node scripts/build-wasm.mjs
-node scripts/build-showcase.ts
-
-# 2. Bundle browser scripts, example sources, and play-data.json into public/
-bun run build
-
-# 3. Type-check & compile SpacePress plugins
-../target/release/typedpress check
-../target/release/typedpress build
-
-# 4. Start local WordPress dev server (port 8960)
-../target/release/typedpress dev --port 8960 --detach
-
-# 5. Sync Markdown docs & blog posts into WordPress
-../target/release/typedpress sync
-
-# 6. (Optional) Seed the examples SQL table
+../target/debug/typedpress dev --port 8960 --detach
+TP_APP_PASSWORD="admin:<app-password>" ../target/debug/typedpress sync --no-commit
 TP_APP_PASSWORD="admin:<app-password>" npm run seed
 ```
 
-Stop the local server at any time with `../target/release/typedpress dev stop`.
+Stop the local server with `../target/debug/typedpress dev stop`. The dev site and
+its content remain on disk.
 
-### Test Run in WordPress with local plugin ZIPs
+## Test a fresh WordPress install
 
-By default, **Run in WordPress** fetches the shared plugin ZIPs from
-`https://spacepress.dev/playground-plugins/`. To test ZIPs from your local build,
-set `PLUGINS_URL` to the origin where your browser can reach the dev site.
+Run these commands from the repository root after building with the local
+`PLUGINS_URL` above. Keep port 8960 free for the suite.
 
 ```bash
-PLUGINS_URL=http://localhost:8960 bun run build
+(cd www && bun x --no-install playwright-core install chromium-headless-shell)
+npm exec --yes --package=typescript@5.9.3 -- tsc --project www/tsconfig.json
+node scripts/check-www-examples.mjs
+npm test --prefix www
 ```
 
-The build copies the ZIPs to `public/playground-plugins/` and records the origin in
-`public/play-data.json`. Serve the ZIPs with a CORS header that allows
-`https://playground.wordpress.net`. Chrome may prompt for local network access when
-the ZIPs are hosted on localhost or a private network.
+CI installs Chromium with `--with-deps` on Linux. The suite copies the site into
+a temporary project, starts WordPress on SQLite, syncs Markdown, and seeds the
+examples before running Chromium. It stops and removes its own site afterward.
+To use another port, set `TP_WWW_PORT` for the tests and use the same port in
+`PLUGINS_URL` when building.
 
-## Scripts
+## Serve the Playground ZIPs
 
-- `node scripts/build-wasm.mjs` — builds `src/wasm.rs` (`wasm32-unknown-unknown`) into `.build/compiler.wasm`
-- `node scripts/build-showcase.ts` — builds the featured `examples/*` apps and writes shared plugin zips & manifests into `.build/files/`
-- `bun run build` — runs `scripts/sources.mjs`, `scripts/run-data.ts`, copies WASM + plugin zips, and bundles `browser/site.js` into `public/`
-- `npm run seed` — seeds missing rows into `/wp-json/typedpress/v1/examples`
+**Run in WordPress** fetches ZIPs from `/playground-plugins/` at the origin
+recorded in `public/play-data.json`. Set `PLUGINS_URL` to the destination's
+origin when building. The default is `https://spacepress.dev`. The destination
+must send CORS headers that allow `https://playground.wordpress.net` to fetch
+the ZIPs. The browser suite checks cross-origin fetches against the local build.
+Chrome may prompt for local network access when you open WordPress Playground
+with ZIPs hosted on localhost or a private network.

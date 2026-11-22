@@ -1,0 +1,1 @@
+-- Forward-only schema metadata migration (20261122041755_5k4x6x_update); no SQL DDL required.

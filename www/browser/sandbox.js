@@ -3,6 +3,7 @@
 // instant TS -> PHP / SQL / db.d.ts / OpenAPI / Client output tabs, unified diff toggle, and live diagnostics.
 import { File, FileDiff } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/edit";
+import { migrationInputs } from "../lib/blueprint.ts";
 import { loadCompiler } from "./compiler-shared.js";
 
 const theme = { light: "pierre-light", dark: "pierre-dark" };
@@ -24,7 +25,7 @@ const TAB_LABELS = {
 
 function labelForOutput(path) {
   if (TAB_LABELS[path]) return TAB_LABELS[path];
-  if (path.includes("/migrations/")) return path.split("/").pop();
+  if (path.includes("/migrations/")) return path.split("/").slice(-2).join("/");
   return path.split("/").pop();
 }
 
@@ -118,8 +119,7 @@ class Sandbox extends HTMLElement {
     this.outputs = {};
     this.baselineOutputs = {};
     this.previousOutputs = {};
-    this.baseSnapshot = null;
-    this.baseMigrationFiles = [];
+    this.baseMigrations = {};
     this.compiler = null;
 
     // Remove any stale rendered UI while leaving .sp-sb-defs intact for Preact router morphing.
@@ -499,12 +499,9 @@ class Sandbox extends HTMLElement {
         const baseRes = this.compiler.compile({
           name: "sandbox",
           files: this.buildFileMap(this.baseFile, this.baseSource),
-          previous: null,
-          migrationFiles: [],
         });
         if (baseRes.output) {
-          this.baseSnapshot = baseRes.output.snapshot;
-          this.baseMigrationFiles = baseRes.output.migrations.map(([name]) => name);
+          this.baseMigrations = migrationInputs(baseRes.output.migrations);
           this.baselineOutputs = this.extractOutputs(baseRes.output);
         }
       }
@@ -530,10 +527,7 @@ class Sandbox extends HTMLElement {
   }
 
   extractOutputs(out) {
-    const map = {};
-    for (const [mName, sql] of out.migrations) {
-      map[`tp/_generated/migrations/${mName}`] = sql;
-    }
+    const map = migrationInputs(out.migrations);
     if (out.schemaPhp) map["tp/app/schema.php"] = out.schemaPhp;
     if (out.functionsPhp && out.functionsPhp.trim().length > 0) map["tp/app/functions.php"] = out.functionsPhp;
     if (out.genTs) map["tp/_generated/db.d.ts"] = out.genTs;
@@ -550,9 +544,7 @@ class Sandbox extends HTMLElement {
     try {
       result = this.compiler.compile({
         name: "sandbox",
-        files: this.buildFileMap(preset.file, this.currentCode),
-        previous: this.baseSnapshot,
-        migrationFiles: this.baseMigrationFiles,
+        files: { ...this.buildFileMap(preset.file, this.currentCode), ...this.baseMigrations },
       });
     } catch (err) {
       this.setStatus("error", `Error: ${err.message ?? err}`);
@@ -599,7 +591,7 @@ class Sandbox extends HTMLElement {
         : null;
       this.selectedOutput = match ?? keys[0] ?? "";
     } else if (!isReset) {
-      const newMig = keys.find((k) => k.includes("/migrations/") && !(k in this.previousOutputs));
+      const newMig = keys.find((k) => k.endsWith("/migration.sql") && !(k in this.previousOutputs));
       if (newMig) this.selectedOutput = newMig;
     }
 

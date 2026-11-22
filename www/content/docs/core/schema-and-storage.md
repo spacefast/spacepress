@@ -30,4 +30,4 @@ All columns are `NOT NULL` by default unless `.optional()` is chained.
 
 Chain `.min(n)`, `.max(n)`, `.pattern(/.../)`, `.unique()`, `.default(v)`, `.defaultNow()`, `.$default(fn)`, `.$onUpdate(fn)`, `.validate((v, ctx) => ...)`, `.ui({ label, help, placeholder, width })`, and `.showIf({ ... })`.
 
-To rename a column or SQL table without losing production data, declare `.was("oldName")` on the column or `was: "old_table"` on `table()`. SpacePress emits a safe rename migration against `tp/_generated/migrations/snapshot.json`.
+To rename a column or SQL table without losing production data, declare `.was("oldName")` on the column or `was: "old_table"` on `table()`. SpacePress reads `ops.json` from the existing migration folders and writes a new folder for the rename under `tp/_generated/migrations/`.

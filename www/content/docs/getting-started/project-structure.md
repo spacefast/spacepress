@@ -29,7 +29,7 @@ my-app/
 
 Commit everything you author (`typedpress.config.ts`, `tp/schema.ts`, `tp/app/`, `content/`, `emails/`, `public/`) **plus** these compiler lock/ledger files:
 
-- `tp/_generated/migrations/` (`snapshot.json` and numbered `*.sql` files) — tracks schema history for safe incremental deploys.
+- `tp/_generated/migrations/` contains a sortable folder for each migration. Each folder holds `ops.json` and `migration.sql`.
 - `tp/_generated/wp-plugins.lock.json` — locks WordPress plugin versions and SHA-256 checksums.
 - `tp/_generated/plugins.lock.json` — locks capability grants for `use` plugin packages.
 - `tp/_generated/abilities.json` & `tp/_generated/runtime-schema.json` — when using pulled WordPress Abilities or runtime schema versions.

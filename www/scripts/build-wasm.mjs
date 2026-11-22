@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const site = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const repo = path.dirname(site);
-const target = process.env.CARGO_TARGET_DIR ?? path.join(repo, "target");
+const target = path.resolve(repo, process.env.CARGO_TARGET_DIR ?? "target");
 
 const build = spawnSync(
 	"cargo",

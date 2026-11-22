@@ -191,7 +191,7 @@ jobs:
         run: node --test scripts/deploy/artifact.test.mjs scripts/deploy/wordpress.test.mjs
 
   # Each example's own test against real WordPress (Studio, through `typedpress dev`): the HTTP
-  # verifiers, the website's example trees and the EmDash counterparts. check-examples.sh above
+  # verifiers and the EmDash counterparts. check-examples.sh above
   # only compiles them. Port 8940 is the runner's own; the frontend of official-sites uses 8941.
   examples:
     if: github.event_name != 'pull_request'
@@ -221,8 +221,6 @@ jobs:
             target
           key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
       - run: cargo build --locked --bin typedpress
-      # The website's example trees compile, or are labelled proposals that nothing runs.
-      - run: node scripts/check-www-examples.mjs "$TP_BIN"
       # The files-sdk probe runs nightly in files-sdk.yml: with --expect-red it reports rather than
       # gates, and it took most of this job.
       - name: Example HTTP verifiers on WordPress
@@ -231,6 +229,39 @@ jobs:
         run: node examples/emdash/test.mjs publishing agents platform official-source
       - name: Subscriptions calendar
         run: node --test examples/subscriptions/tp/lib/calendar.test.mjs
+
+  www:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PLUGINS_URL: http://localhost:8960
+      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+      - name: Install build tools
+        run: |
+          npm install --global bun@1.3.14 typescript@5.9.3
+          rustup toolchain install "$(cat rust-toolchain)" --profile minimal --target wasm32-unknown-unknown
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-www-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .tp/cache/plugins
+          key: plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
+      - run: npm run build --prefix www
+      - run: tsc --project www/tsconfig.json
+      - run: node scripts/check-www-examples.mjs
+      - run: bun x --no-install playwright-core install --with-deps chromium-headless-shell
+        working-directory: www
+      - run: npm test --prefix www
 
   host:
     if: github.event_name != 'pull_request'

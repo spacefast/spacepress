@@ -144,6 +144,15 @@ eq('explicit undefined becomes null at shaped storage boundaries', Schema::valid
 problem('explicit undefined still enforces required storage fields', fn () => Schema::validateInput([
     'note' => ['type' => 'text', 'notNull' => true],
 ], new \TypedPress\JsObject(['note' => \TypedPress\Js::undefined()])), 422, 'invalid_input', '/note');
+$optionalInput = ['limit' => ['type' => 'integer', 'notNull' => true, 'omit' => true]];
+eq('an undefined optional argument stays omitted', Schema::validateInput(
+    $optionalInput,
+    new \TypedPress\JsObject(['limit' => \TypedPress\Js::undefined()])
+), []);
+problem('a null optional argument is still rejected', fn () => Schema::validateInput(
+    $optionalInput,
+    ['limit' => null]
+), 422, 'invalid_input', '/limit');
 $deepDefault = str_repeat('[', 520) . '1' . str_repeat(']', 520);
 $deepValue = Schema::validateInput([
     'deep' => ['type' => 'json', 'default' => ['json' => $deepDefault]],

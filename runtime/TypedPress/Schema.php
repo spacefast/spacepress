@@ -620,7 +620,7 @@ final class Schema
         foreach ($fields as $name => $f) {
             $name = (string) $name;
             $ptr = $base . HttpError::seg($name);
-            if (!array_key_exists($name, $obj)) {
+            if (!array_key_exists($name, $obj) || (($f['omit'] ?? false) && $obj[$name] === JsUndefined::Value)) {
                 if (isset($f['default'])) {
                     $obj[$name] = self::generate($f['default'], $f);
                 } elseif ($f['omit'] ?? false) {

@@ -404,6 +404,8 @@ jobs:
       # Main suites and the native admin journey, on one stack. The migration and S3 lanes run as
       # their own jobs below: on one runner the three together reached the 40-minute limit.
       - run: tests/wp/run.sh
+      - name: Verify upstream two-user collaborative editing
+        run: tests/wp/coediting/run.sh
       - name: Preserve failed native admin browser evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

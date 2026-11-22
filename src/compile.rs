@@ -2484,10 +2484,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     let _ = writeln!(out, "{p}{source} = {src};\n{p}foreach ({source} as {value}) {{");
                 } else {
-                    let len = self.tmp_var();
                     let _ = writeln!(
                         out,
-                        "{p}{source} = {src};\n{p}{len} = \\count({source}->a);\n{p}for ({index} = 0; {index} < {len}; {index}++) {{"
+                        "{p}{source} = {src};\n{p}for ({index} = 0; {index} < \\count({source}->a); {index}++) {{"
                     );
                     let _ = writeln!(out, "{}{value} = {source}->a[{index}];", pad(indent + 1));
                 }

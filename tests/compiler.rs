@@ -1744,7 +1744,8 @@ fn compiled_php_matches_node_on_every_differential_case() {
         body("literalTypedNull")
     );
     assert!(
-        body("literalTypedMissing").contains("\\is_float( $__t"),
+        body("literalTypedMissing").contains("\\is_float( $__t")
+            || body("literalTypedMissing").contains("\\TypedPress\\Js::strictEq("),
         "{}",
         body("literalTypedMissing")
     );

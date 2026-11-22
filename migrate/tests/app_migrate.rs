@@ -91,10 +91,12 @@ fn compiled_schema(project: &Path) -> Value {
         .unwrap()
         .map(|entry| entry.unwrap().path())
         .find(|path| {
-            path.file_name()
-                .unwrap()
-                .to_string_lossy()
-                .starts_with("typedpress-app-")
+            path.is_dir()
+                && path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("typedpress-app-")
         })
         .expect("built application plugin")
         .join("tp/app/schema.php");

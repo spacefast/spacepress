@@ -213,5 +213,45 @@ $started = microtime(true) - 5;
 $m = new ReflectionMethod(\TypedPress\Render\Prebuilt::class, 'write');
 $out['forget race'] = [$m->invoke(null, \TypedPress\Render\Prebuilt::dir() . '/about.html', 'old', '/about', $started), is_file(\TypedPress\Render\Prebuilt::dir() . '/about.html')];
 
+// A prebuilt path longer than the read index holds (Cache::MAX_URL): the render can't be recorded,
+// so no write would mark a file stale. Neither the page nor its twin becomes a file.
+wp_set_current_user(1);
+$long = str_repeat('a', 190);
+\TypedPress\db()->insert('notes', ['title' => 'Long', 'slug' => $long, 'status' => 'published'], true);
+\TypedPress\Wp\Purges::flush();
+$site->actAs(null);
+do_action('init');
+$drain();
+$longPage = fetch("$url/notes/$long/");
+$longTwin = fetch("$url/notes/$long.md");
+$out['long address'] = [
+    is_file(\TypedPress\Render\Prebuilt::dir() . "/notes/$long.html"), is_file(\TypedPress\Render\Prebuilt::dir() . "/notes/$long.md"),
+    $longPage['status'], $longPage['prebuilt'], $longTwin['status'], $longTwin['prebuilt'],
+];
+
+// A loose deployment can replace only a public module and its map, with the same size and mtime.
+// Its prebuilt HTML must still stop sending the old digest in a script URL.
+wp_mkdir_p($dir);
+file_put_contents($dir . '/about.html', $about['body']);
+$cached = fetch("$url/about/");
+$appRoot = \TypedPress\Wp\Runtime::plugin()->dir;
+$asset = $appRoot . '/public/about-module.mjs';
+$map = $appRoot . '/tp/app/public-files.json';
+$prior = substr(hash_file('sha256', $asset), 0, 12);
+$script = str_replace('version = 1', 'version = 2', (string) file_get_contents($asset));
+$next = substr(hash('sha256', $script), 0, 12);
+$mtime = filemtime($map);
+$mapSize = filesize($map);
+file_put_contents($asset, $script);
+file_put_contents($map, str_replace($prior, $next, (string) file_get_contents($map)));
+touch($map, $mtime);
+clearstatcache();
+$updated = fetch("$url/about/");
+$out['public script updated'] = [
+    $cached['prebuilt'], str_contains($cached['body'], 'tpv=' . $prior),
+    filesize($map) === $mapSize && filemtime($map) === $mtime,
+    $updated['status'], $updated['prebuilt'], str_contains($updated['body'], 'tpv=' . $next),
+];
+
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

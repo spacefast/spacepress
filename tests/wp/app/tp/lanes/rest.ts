@@ -3,7 +3,7 @@
 //
 // Lane R (core `/wp/v2` under TypedPress's rules): an admin-only collection, one whose read rule is a
 // per-owner filter, and one with an admin-only field.
-import { action, blocks, collection, db, group, HttpError, integer, json, repeater, richText, slug, text, table, ref, taxonomy } from "typedpress";
+import { blocks, collection, db, group, HttpError, integer, json, repeater, richText, slug, text, table, ref, taxonomy, query, mutation } from "typedpress";
 import { jottings, vault as vaultKind } from "typedpress:db";
 
 export const vault = collection({ title: text(), code: text().optional() },
@@ -239,53 +239,40 @@ export const roundTrips = collection({
   create: "admin", update: "editor", delete: "admin",
 } });
 
-export const jotQuery = action({
-  input: { tag: text() },
-  access: "anyone",
-  readonly: true,
-  async handler({ tag }) {
-    const where = { title: { like: `${tag}%` } };
-    const rows = await jottings.list({ where, orderBy: { title: "asc" }, columns: { title: true, status: true } });
-    const page1 = await jottings.paginate({ where, orderBy: { title: "asc" }, limit: 2 });
-    const page2 = page1.cursor === null ? null : await jottings.paginate({ where, orderBy: { title: "asc" }, limit: 2, cursor: page1.cursor });
-    const head = rows[0];
-    const first = head === undefined ? null : await jottings.get({ title: head.title });
-    const byId = first === null ? null : await jottings.get(first.id);
-    return {
-      titles: rows.map((r) => r.title),
-      statuses: rows.map((r) => r.status),
-      pages: [page1.rows.map((r) => r.title), page2 === null ? null : page2.rows.map((r) => r.title), page2 === null ? null : page2.cursor],
-      total: await jottings.count({ where }),
-      searched: await jottings.count({ where, search: "needle" }),
-      get: byId === null ? null : byId.title,
-      trusted: (await jottings.system.list({ where, columns: { title: true } })).length,
-      trustedCount: await jottings.system.count({ where }),
-    };
-  },
+export const jotQuery = query({ access: "anyone" }, async ({ tag }: { tag: string }) => {
+  const where = { title: { like: `${tag}%` } };
+  const rows = await jottings.list({ where, orderBy: { title: "asc" }, columns: { title: true, status: true } });
+  const page1 = await jottings.paginate({ where, orderBy: { title: "asc" }, limit: 2 });
+  const page2 = page1.cursor === null ? null : await jottings.paginate({ where, orderBy: { title: "asc" }, limit: 2, cursor: page1.cursor });
+  const head = rows[0];
+  const first = head === undefined ? null : await jottings.get({ title: head.title });
+  const byId = first === null ? null : await jottings.get(first.id);
+  return {
+    titles: rows.map((r) => r.title),
+    statuses: rows.map((r) => r.status),
+    pages: [page1.rows.map((r) => r.title), page2 === null ? null : page2.rows.map((r) => r.title), page2 === null ? null : page2.cursor],
+    total: await jottings.count({ where }),
+    searched: await jottings.count({ where, search: "needle" }),
+    get: byId === null ? null : byId.title,
+    trusted: (await jottings.system.list({ where, columns: { title: true } })).length,
+    trustedCount: await jottings.system.count({ where }),
+  };
 });
 
-export const jotWrite = action({
-  input: { tag: text(), step: text() },
-  access: "anyone",
-  async handler({ tag, step }) {
-    if (step === "create") return (await jottings.create({ title: `${tag} written`, note: "first" })).title;
-    const row = await jottings.system.get({ title: `${tag} written` });
-    if (row === null) return "missing";
-    if (step === "update") return (await jottings.update(row.id, { note: "second" })).note ?? "none";
-    if (step === "delete") return (await jottings.delete(row.id)).title;
-    return "unknown step";
-  },
+export const jotWrite = mutation({ access: "anyone" }, async ({ tag, step }: { tag: string; step: string }) => {
+  if (step === "create") return (await jottings.create({ title: `${tag} written`, note: "first" })).title;
+  const row = await jottings.system.get({ title: `${tag} written` });
+  if (row === null) return "missing";
+  if (step === "update") return (await jottings.update(row.id, { note: "second" })).note ?? "none";
+  if (step === "delete") return (await jottings.delete(row.id)).title;
+  return "unknown step";
 });
 
-export const vaultPeek = action({
-  input: { title: text(), system: integer().optional() },
-  access: "anyone",
-  readonly: true,
-  async handler({ title, system }) {
-    if (system !== 1) return (await vaultKind.get({ title }))?.title ?? null;
-    const trusted = await vaultKind.system.get({ title });
-    return { system: trusted === null ? null : trusted.title, count: await vaultKind.system.count({ where: { title } }) };
-  },
+export const vaultPeek = query({ access: "anyone" }, async ({ title, system }: { title: string; system?: number }) => {
+  if (system !== undefined && !Number.isInteger(system)) throw new HttpError(422, "invalid_input", "system must be an integer", "/system");
+  if (system !== 1) return (await vaultKind.get({ title }))?.title ?? null;
+  const trusted = await vaultKind.system.get({ title });
+  return { system: trusted === null ? null : trusted.title, count: await vaultKind.system.count({ where: { title } }) };
 });
 /** Top-level options this lane owns (e.g. webhooks, media, locales). */
 export const config = {};

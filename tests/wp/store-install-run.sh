@@ -10,6 +10,8 @@
 #
 #   TP_WP_PROJECT=typedpress-wp-store-install TP_WP_PORT=8903 tests/wp/store-install-run.sh
 set -euo pipefail
+# Locales are turned off for apps (docs/decisions/2026-11-17-locales-off.md); this lane exercises them.
+export TYPEDPRESS_LOCALES=1
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"
@@ -118,7 +120,7 @@ ok "after initialize from WP-CLI, the first requests to /wp-admin/new/, a kind U
 initialized=$(site)
 # Requests to the initialized build (a page, wp-admin, sign-in, the API, WP-CLI) install nothing more:
 # initialize installed it all.
-for path in / /about /colophon /wp-admin/ /wp-login.php /__tp/api/v1/kinds/notes; do
+for path in / /about /colophon /wp-admin/ /wp-login.php /wp-json/typedpress/v1/kinds/notes; do
   curl -s -o /dev/null -H "X-TypedPress-Build: $build" "$url$path" || true
 done
 host "echo 'booted';" >/dev/null
@@ -196,7 +198,7 @@ fi
 wp plugin install "/typedpress-cache/polylang.$pll_version.zip" --activate >/dev/null 2>&1 || fail "the lane could not install Polylang"
 wp transient delete pll_activation_redirect >/dev/null 2>&1 || true
 wp --exec="define('TP_TEST_BUILD', '$languages');" eval "TypedPress\\Loader\\Loader::initialize('$root', '$languages');" >/dev/null
-for path in /wp-json/ /__tp/api/v1/kinds/notes; do
+for path in /wp-json/ /wp-json/typedpress/v1/kinds/notes; do
   curl -s -o /dev/null -H "X-TypedPress-Build: $languages" "$url$path" || true
 done
 wp --exec="define('TP_TEST_BUILD', '$languages');" eval "echo 'booted';" >/dev/null
@@ -213,7 +215,7 @@ rsync -a "$work/installlane/tp/dist/wp-content/" "$work/plugins-content/"
 "$here/harness.sh" up --wp-content "$work/plugins-content" > "$work/plugins.json"
 probe_route
 url=$(json url < "$work/plugins.json")
-for path in / /about /colophon /wp-admin/ /wp-login.php /__tp/api/v1/kinds/notes; do
+for path in / /about /colophon /wp-admin/ /wp-login.php /wp-json/typedpress/v1/kinds/notes; do
   curl -s -o /dev/null "$url$path" || true
 done
 wp eval "echo 'booted';" >/dev/null

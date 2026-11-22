@@ -1,7 +1,7 @@
 ---
 name: typedpress-add-kind
 description: "Use when adding or changing data in a TypedPress project: a new kind (`collection()` or `table()`), a new field on a kind, a reference between kinds with `ref()`, an access rule, or a renamed or removed field."
-compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
+compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
 ---
 
 # Add a kind or a field
@@ -96,5 +96,4 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Require
 - Never pass `--drop` or `--allow-destructive` to a site that is not a local dev site without
   the owner's explicit decision: it deletes rows.
 
-Reference: `docs/config-api.md`, sections "Columns", "Collections, tables and user projections",
-"Relations", "Access" and "Schema changes at deploy".
+Reference: `www/content/docs/core/schema-and-storage.md` and `www/content/docs/core/queries-and-access.md`.

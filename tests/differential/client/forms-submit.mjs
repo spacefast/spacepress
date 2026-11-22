@@ -31,7 +31,7 @@ async function open(href) {
   const posts = [];
   const pages = [];
   page.on("request", (r) => {
-    if (r.method() === "POST" && r.url().includes("/__tp/api/v1/actions/")) posts.push(path(r.url()));
+    if (r.method() === "POST" && r.url().includes("/wp-json/typedpress/v1/actions/")) posts.push(path(r.url()));
     if (r.resourceType() === "document" || r.url().includes("_flash=")) pages.push(`${r.method()} ${path(r.url())}`);
   });
   await page.goto(href, { waitUntil: "networkidle" });
@@ -55,7 +55,7 @@ try {
   const historyBefore = await page.evaluate(() => history.length);
 
   // A submit that succeeds, held in flight: the form is busy, and a second submit sends nothing.
-  let release = await hold(page, "**/__tp/api/v1/actions/subscribe");
+  let release = await hold(page, "**/wp-json/typedpress/v1/actions/subscribe");
   await page.fill("form.subscribe [name=email]", "ada@example.test");
   await page.fill("form.subscribe [name=seats]", "3");
   await page.check("form.subscribe [name=weekly]");
@@ -105,7 +105,7 @@ try {
   await page.waitForSelector(".voted", { timeout: 15000 });
   const maybe = await page.textContent(".voted");
   await page.evaluate(() => { document.querySelector(".vote .yes").disabled = true; });
-  release = await hold(page, "**/__tp/api/v1/actions/vote");
+  release = await hold(page, "**/wp-json/typedpress/v1/actions/vote");
   await page.click("button.outside");
   await page.waitForFunction(() => document.querySelector("form.vote")?.getAttribute("aria-busy") === "true");
   const outsidePending = await page.$eval("button.outside", (b) => [b.disabled, b.hasAttribute("data-tp-pending")]);
@@ -124,7 +124,7 @@ try {
   };
 
   // The post reached the server and the answer is a 500: an error in the form, nothing sent again.
-  await page.route("**/__tp/api/v1/actions/subscribe", async (route) => {
+  await page.route("**/wp-json/typedpress/v1/actions/subscribe", async (route) => {
     await route.fetch({ maxRedirects: 0 }); // the action runs
     await route.fulfill({ status: 500, contentType: "text/html", body: "<!DOCTYPE html><h1>Server error</h1>" });
   });
@@ -140,10 +140,10 @@ try {
     afterPending: await busy(page, "form.subscribe"),
     marker: await page.evaluate(() => window.tpMarker ?? null),
   };
-  await page.unroute("**/__tp/api/v1/actions/subscribe");
+  await page.unroute("**/wp-json/typedpress/v1/actions/subscribe");
 
   // No answer at all (the connection drops): the post may have run, so the same, never a repost.
-  await page.route("**/__tp/api/v1/actions/subscribe", (route) => route.abort("failed"));
+  await page.route("**/wp-json/typedpress/v1/actions/subscribe", (route) => route.abort("failed"));
   posts.length = 0;
   await page.click("form.subscribe button");
   await page.waitForFunction(() => !document.querySelector("form.subscribe").hasAttribute("aria-busy"), null, { timeout: 15000 });
@@ -153,10 +153,10 @@ try {
     message: await page.$("form.subscribe [data-tp-form-error]").then((el) => el !== null),
     marker: await page.evaluate(() => window.tpMarker ?? null),
   };
-  await page.unroute("**/__tp/api/v1/actions/subscribe");
+  await page.unroute("**/wp-json/typedpress/v1/actions/subscribe");
 
   // A `<Link>` click while a submit is in flight: the page linked to stays, the answer is dropped.
-  release = await hold(page, "**/__tp/api/v1/actions/vote");
+  release = await hold(page, "**/wp-json/typedpress/v1/actions/vote");
   await page.click(".vote .maybe");
   await page.waitForFunction(() => document.querySelector("form.vote")?.getAttribute("aria-busy") === "true");
   await page.click("a.other");
@@ -165,6 +165,10 @@ try {
   await release();
   await flashed;
   await page.waitForTimeout(1000);
+  // Both links request prefetch. The region router owns only the same-template destination.
+  out.prefetch = await page.locator('a[data-wp-on--mouseenter]').evaluateAll((links) =>
+    links.map((link) => [link.textContent, link.classList.contains("no-prefetch")])
+  );
   out.link = {
     url: path(page.url()),
     other: await page.$(".other-page").then((el) => el !== null),
@@ -181,7 +185,7 @@ try {
     let releaseLink;
     const linkHeld = new Promise((r) => { releaseLink = r; });
     await page.route("**/other/", async (route) => { await linkHeld; await route.continue().catch(() => {}); });
-    const releasePost = await hold(page, "**/__tp/api/v1/actions/vote");
+    const releasePost = await hold(page, "**/wp-json/typedpress/v1/actions/vote");
     await page.click(".vote .maybe");
     await page.waitForFunction(() => document.querySelector("form.vote")?.getAttribute("aria-busy") === "true");
     await page.click("a.other");
@@ -206,7 +210,7 @@ try {
   // its result isn't shown.
   {
     const { page } = await open(`${url}/?ref=nav`);
-    const releaseVote = await hold(page, "**/__tp/api/v1/actions/vote");
+    const releaseVote = await hold(page, "**/wp-json/typedpress/v1/actions/vote");
     await page.click(".vote .yes");
     await page.waitForFunction(() => document.querySelector("form.vote")?.getAttribute("aria-busy") === "true");
     await page.fill("form.subscribe [name=email]", "two@example.test");
@@ -247,15 +251,15 @@ try {
     const { page } = await open(`${url}/live`);
     const live = [];
     page.on("response", async (r) => {
-      if (r.url().endsWith("/__tp/api/v1/_live")) live.push((await r.json().catch(() => ({}))).data?.results?.map((x) => (x.changed ? "changed" : "unchanged")));
+      if (r.url().endsWith("/wp-json/typedpress/v1/_live")) live.push((await r.json().catch(() => ({}))).data?.results?.map((x) => (x.changed ? "changed" : "unchanged")));
     });
-    const release = await hold(page, "**/__tp/api/v1/actions/sign");
+    const release = await hold(page, "**/wp-json/typedpress/v1/actions/sign");
     await page.fill("form.sign [name=name]", "Mine");
     await page.click("form.sign button");
     await page.waitForFunction(() => document.querySelector("form.sign")?.getAttribute("aria-busy") === "true");
     // Another visitor's entry, and the region asked again at once (as a tab shown again asks).
-    const write = await fetch(`${url}/__tp/api/v1/entries`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Theirs" }) });
-    const changed = page.waitForResponse(async (r) => r.url().endsWith("/__tp/api/v1/_live") && (await r.json().catch(() => ({}))).data?.results?.some((x) => x.changed), { timeout: 20000 });
+    const write = await fetch(`${url}/wp-json/typedpress/v1/entries`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Theirs" }) });
+    const changed = page.waitForResponse(async (r) => r.url().endsWith("/wp-json/typedpress/v1/_live") && (await r.json().catch(() => ({}))).data?.results?.some((x) => x.changed), { timeout: 20000 });
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await changed;
     await page.waitForTimeout(500);
@@ -295,8 +299,8 @@ try {
       await page.fill("form.sign [name=name]", "Before");
       await page.click("form.sign button");
       await page.waitForFunction(() => window.__rendered === true, null, { timeout: 15000 });
-      await fetch(`${url}/__tp/api/v1/entries`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Newer" }) });
-      const changed = page.waitForResponse(async (r) => r.url().endsWith("/__tp/api/v1/_live") && (await r.json().catch(() => ({}))).data?.results?.some((x) => x.changed), { timeout: 20000 });
+      await fetch(`${url}/wp-json/typedpress/v1/entries`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Newer" }) });
+      const changed = page.waitForResponse(async (r) => r.url().endsWith("/wp-json/typedpress/v1/_live") && (await r.json().catch(() => ({}))).data?.results?.some((x) => x.changed), { timeout: 20000 });
       await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
       await changed;
       await page.waitForTimeout(300);
@@ -309,7 +313,7 @@ try {
     // The `sign` post runs, then a 500: one entry, one post, an error in the form.
     const posts = [];
     page.on("request", (r) => { if (r.method() === "POST" && r.url().includes("/actions/sign")) posts.push(1); });
-    await page.route("**/__tp/api/v1/actions/sign", async (route) => {
+    await page.route("**/wp-json/typedpress/v1/actions/sign", async (route) => {
       await route.fetch({ maxRedirects: 0 });
       await route.fulfill({ status: 500, contentType: "text/html", body: "<!DOCTYPE html><h1>Server error</h1>" });
     });
@@ -317,12 +321,12 @@ try {
     await page.click("form.sign button");
     await page.waitForSelector("form.sign [data-tp-form-error]", { timeout: 15000 });
     await page.waitForTimeout(1000);
-    const rows = (await (await fetch(`${url}/__tp/api/v1/entries`)).json()).data ?? [];
+    const rows = (await (await fetch(`${url}/wp-json/typedpress/v1/entries`)).json()).data ?? [];
     out.ranOnce = { posts: posts.length, rows: rows.filter((r) => r.name === "Once").length };
     // A region update while the error shows: the message stays one, in the form, not copied into
     // the page the update builds. The next submit clears it.
-    await page.unroute("**/__tp/api/v1/actions/sign");
-    await fetch(`${url}/__tp/api/v1/entries`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Later" }) });
+    await page.unroute("**/wp-json/typedpress/v1/actions/sign");
+    await fetch(`${url}/wp-json/typedpress/v1/entries`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Later" }) });
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await page.waitForFunction(() => [...document.querySelectorAll(".entry")].some((li) => li.textContent === "Later"), null, { timeout: 20000 });
     const boxesAfterLive = await page.$$eval("[data-tp-form-error]", (b) => b.length);
@@ -350,7 +354,7 @@ try {
   // An action that runs and comes back to a page that is a 404 now (its entry was deleted): that
   // page is shown in place, not an error.
   {
-    const made = await (await fetch(`${url}/__tp/api/v1/entries`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Doomed" }) })).json();
+    const made = await (await fetch(`${url}/wp-json/typedpress/v1/entries`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Doomed" }) })).json();
     const { page } = await open(`${url}/entries/${made.data.id}`);
     await page.evaluate(() => { window.tpMarker = "same document"; });
     await page.click("form.remove button");
@@ -383,6 +387,61 @@ try {
       header: await page.$$eval("header.wp-block-template-part", (h) => h.length),
       regions: await page.$$eval("[data-wp-router-region]", (r) => r.length),
       url: path(page.url()),
+    };
+    await page.close();
+  }
+
+  // A stale answer in another block template arriving after a `<Link>` navigation is dropped, not
+  // navigated to (#537).
+  {
+    const { page } = await open(`${url}/?ref=nav`);
+    await page.evaluate(() => {
+      window.tpMarker = "same document";
+      window.tpSubmittedVote = document.querySelector("form.vote");
+      window.tpSubmittedVote.querySelector("[name=_tp_return]").value = "/bare/";
+    });
+    const releaseVote = await hold(page, "**/wp-json/typedpress/v1/actions/vote");
+    await page.click(".vote .yes");
+    await page.waitForFunction(() => document.querySelector("form.vote")?.getAttribute("aria-busy") === "true");
+    await page.click("a.other");
+    await page.waitForSelector(".other-page", { timeout: 15000 });
+    const flashed = page.waitForResponse((r) => r.url().includes("_flash="), { timeout: 15000 });
+    await releaseVote();
+    await flashed;
+    await page.waitForFunction(() => window.tpSubmittedVote?.getAttribute("aria-busy") === null);
+    out.otherTemplateStaleLink = {
+      url: path(page.url()),
+      other: await page.$(".other-page").then((el) => el !== null),
+      template: await page.evaluate(() => document.body.dataset.tpTemplate),
+      marker: await page.evaluate(() => window.tpMarker ?? null),
+    };
+    await page.close();
+  }
+
+  // A stale answer in another block template overtaken by a later submit stays on the newer submit's
+  // page and marks the older form overtaken (#537).
+  {
+    const { page } = await open(`${url}/?ref=nav`);
+    await page.evaluate(() => {
+      window.tpMarker = "same document";
+      window.tpSubmittedVote = document.querySelector("form.vote");
+      window.tpSubmittedVote.querySelector("[name=_tp_return]").value = "/bare/";
+    });
+    const releaseVote = await hold(page, "**/wp-json/typedpress/v1/actions/vote");
+    await page.click(".vote .yes");
+    await page.waitForFunction(() => document.querySelector("form.vote")?.getAttribute("aria-busy") === "true");
+    await page.fill("form.subscribe [name=email]", "three@example.test");
+    await page.fill("form.subscribe [name=seats]", "1");
+    await page.click("form.subscribe button");
+    await page.waitForSelector(".done", { timeout: 15000 });
+    await releaseVote();
+    await page.waitForFunction(() => window.tpSubmittedVote?.getAttribute("aria-busy") === null);
+    out.otherTemplateOvertaken = {
+      url: path(page.url()),
+      done: await page.textContent(".done"),
+      template: await page.evaluate(() => document.body.dataset.tpTemplate),
+      marker: await page.evaluate(() => window.tpMarker ?? null),
+      message: await page.$eval("form.vote", (f) => f.querySelectorAll("[data-tp-form-error]").length),
     };
     await page.close();
   }

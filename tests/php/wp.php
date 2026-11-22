@@ -26,8 +26,8 @@ if ((int) ini_get('memory_limit') !== -1 && (int) ini_get('memory_limit') < 512)
     ini_set('memory_limit', '512M');
 }
 
-const WP_CORE_VERSION = '7.2-beta5';
-const WP_CORE_SHA256 = '43ab43ff79f256b1efc177125ef45b63ea621b0aacba9d0275ce56c5efa8a793';
+const WP_CORE_VERSION = '7.1';
+const WP_CORE_SHA256 = 'd1ae02b5ae18428031ffc3943659fa87ab361d827f4aa804adf9276e4dc75df6';
 const WP_SQLITE_VERSION = '3.1.2';
 const WP_SQLITE_SHA256 = '04c43be5e200a1633499f7577f3fdc25345d389e1a8ffa64dbd6a4eacfbaaaf6';
 const WP_CLI_PHAR_VERSION = '2.12.0';
@@ -101,6 +101,11 @@ final class WpSite
         ));
         $activate = [];
         if (isset($fixture['wpContent'])) {
+            if (is_dir($fixture['wpContent'] . '/mu-plugins')) {
+                foreach (glob($fixture['wpContent'] . '/mu-plugins/*.php') ?: [] as $file) {
+                    copy($file, "$dir/content/mu-plugins/" . basename($file));
+                }
+            }
             // A `typedpress build` artifact: its plugins as built, activated in the manifest's order.
             $manifest = json_decode((string) file_get_contents($fixture['wpContent'] . '/typedpress-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
             foreach (array_keys($manifest['plugins']) as $slug) {
@@ -142,13 +147,15 @@ final class WpSite
             $site->appPlugin($repo, $name, $fixture);
             $activate[] = "typedpress-app-$name";
         }
-        // Test-only must-use plugin: no outgoing mail, and the private-file probe goes to our server.
-        file_put_contents("$dir/content/mu-plugins/typedpress-tests.php", <<<'PHP'
+        // Test-only must-use plugin: no outgoing mail, isolated public symlink root, and the private-file probe goes to our server.
+        $publicRoot = var_export("$dir/public-root", true);
+        file_put_contents("$dir/content/mu-plugins/typedpress-tests.php", <<<PHP
             <?php
             add_filter('pre_wp_mail', static fn () => true);
-            add_filter('tp_private_probe_url', static function (string $url): string {
-                $port = getenv('TP_TEST_SERVER_PORT');
-                return $port ? preg_replace('#^https?://[^/]+#', "http://127.0.0.1:$port", $url) : $url;
+            add_filter('tp_public_root', static fn (): string => $publicRoot);
+            add_filter('tp_private_probe_url', static function (string \$url): string {
+                \$port = getenv('TP_TEST_SERVER_PORT');
+                return \$port ? preg_replace('#^https?://[^/]+#', "http://127.0.0.1:\$port", \$url) : \$url;
             });
             PHP);
         // A suite's own must-use plugins (name => PHP source), loaded before anything else boots.
@@ -205,7 +212,10 @@ final class WpSite
         file_put_contents("$plugin/tp/app/functions.php", $functions);
         $migration = $fixture['migration'] ?? wpDdl($fixture['schema']);
         if ($migration !== '') {
-            file_put_contents("$plugin/tp/app/migrations/0001_init.sql", $migration);
+            $initDir = "$plugin/tp/app/migrations/20261121000000_000000_init";
+            mkdir($initDir, 0777, true);
+            file_put_contents("$initDir/migration.sql", $migration);
+            file_put_contents("$initDir/ops.json", json_encode(['version' => 1, 'id' => '20261121000000_000000_init', 'ops' => []]));
         }
     }
 
@@ -213,7 +223,7 @@ final class WpSite
     public function writeSchema(array $schema): void
     {
         $name = (string) ($schema['name'] ?? 'app');
-        $schema += ['version' => 3, 'runtime' => wpConstant(dirname(__DIR__, 2) . '/runtime/TypedPress/Schema.php', 'SERIES'), 'name' => $name, 'site' => ['uidPrefix' => 'zr_'],
+        $schema += ['version' => 5, 'runtime' => wpConstant(dirname(__DIR__, 2) . '/runtime/TypedPress/Schema.php', 'SERIES'), 'name' => $name, 'site' => ['uidPrefix' => 'zr_'],
             'locales' => null, 'media' => ['sizes' => []], 'files' => [], 'jobs' => [], 'webhooks' => [], 'globals' => [], 'actions' => []];
         $schema['auth'] ??= ['collection' => null, 'guests' => true, 'accessTtl' => 300, 'refreshTtl' => 2592000];
         foreach ($schema['collections'] as $c => &$spec) {
@@ -255,7 +265,9 @@ final class WpSite
             putenv("TP_TEST_SERVER_PORT=$port");
             $server = proc_open(
                 // A suite that rewrites schema.php (an app update) is served the new file by the next request.
-                [PHP_BINARY, '-d', 'opcache.revalidate_freq=0', '-S', "127.0.0.1:$port", __DIR__ . '/wp-router.php'],
+                // macOS counts lock-wait sleeps toward PHP's execution limit; each test client
+                // already has its own timeout, and must be allowed to observe the 30s lock timeout.
+                [PHP_BINARY, '-d', 'opcache.revalidate_freq=0', '-d', 'max_execution_time=0', '-S', "127.0.0.1:$port", __DIR__ . '/wp-router.php'],
                 [1 => ['file', "$this->dir/server.log", 'a'], 2 => ['file', "$this->dir/server.log", 'a']],
                 $pipes,
                 $this->dir,
@@ -463,7 +475,7 @@ final class WpSite
         return [
             'name' => (string) $match['route']['id'],
             'params' => array_map(static fn ($v) => is_array($v) ? implode('/', $v) : $v, $match['params']),
-            'route' => ['handler' => $file['methods'][$method] ?? throw new \RuntimeException("$path has no $method"), 'access' => $file['access'] ?? ['allow' => false], 'signature' => $file['signature'] ?? null],
+            'route' => ['handler' => $file['methods'][$method] ?? throw new \RuntimeException("$path has no $method"), 'access' => $file['handlerGuard'] ?? ['allow' => false], 'signature' => $file['signature'] ?? null],
         ];
     }
 
@@ -581,7 +593,7 @@ function wpDdl(array $schema): string
                 $join = $def['references']['join'];
                 $fk = static fn (string $side, string $c) => isset($tables[$c]) && isset($tables[$def['references']['collection']])
                     ? ",\n\tCONSTRAINT `tp_{$join}_{$side}_fk` FOREIGN KEY (`$side`) REFERENCES `{prefix}{$tables[$c]}` (`id`) ON DELETE CASCADE" : '';
-                $joins[] = "CREATE TABLE `{prefix}tp_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
+                $joins[] = "CREATE TABLE `{prefix}tp__join_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
                     . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)" . $fk('owner_id', $name) . $fk('target_id', $def['references']['collection']) . "\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
                 continue;
             }
@@ -649,15 +661,17 @@ function wpDdl(array $schema): string
             // A `terms` field's links are core's term relationships (`term:<taxonomy>`): no table.
             if (($def['type'] ?? null) === 'refList' && !str_starts_with($def['references']['join'], 'term:')) {
                 $join = $def['references']['join'];
-                $joins[] = "CREATE TABLE `{prefix}tp_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
+                $joins[] = "CREATE TABLE `{prefix}tp__join_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
                     . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
             }
         }
     }
     array_push($statements, ...$joins);
     if ($revisions) {
-        $statements[] = "CREATE TABLE `{prefix}tp__revisions` (\n\t`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n\t`collection` VARCHAR(64) NOT NULL,\n\t`pk` VARCHAR(64) NOT NULL,"
-            . "\n\t`at` CHAR(24) NOT NULL,\n\t`userId` BIGINT,\n\t`row` LONGTEXT NOT NULL,\n\tPRIMARY KEY (`id`),\n\tKEY `row` (`collection`, `pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+        $statements[] = "CREATE TABLE `{prefix}tp__revisions` (\n\t`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n\t`collection` VARCHAR(64) NOT NULL,\n\t`pk` VARCHAR(191) NOT NULL,"
+            . "\n\t`version` BIGINT UNSIGNED NOT NULL DEFAULT 1,\n\t`op` VARCHAR(16) NOT NULL DEFAULT 'update',"
+            . "\n\t`at` CHAR(24) NOT NULL,\n\t`userId` BIGINT UNSIGNED NULL,\n\t`schemaMigration` VARCHAR(191) NULL,"
+            . "\n\t`row` LONGTEXT NOT NULL,\n\t`changed` LONGTEXT NULL,\n\tPRIMARY KEY (`id`),\n\tKEY `row` (`collection`, `pk`),\n\tUNIQUE KEY `row_version` (`collection`, `pk`, `version`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
     }
 
     return implode("\n--> statement-breakpoint\n", $statements) . ($statements === [] ? '' : "\n");
@@ -936,7 +950,7 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
     }
     foreach ($site['activate'] as $slug) {
         $main = $slug === 'sqlite-database-integration' ? 'load.php' : "$slug.php";
-        $error = activate_plugin("$slug/$main", '', false, true);
+        $error = activate_plugin("$slug/$main", '', false, $slug !== 'woocommerce');
         if ($error instanceof WP_Error) {
             fwrite(STDERR, "activating $slug: " . $error->get_error_message() . "\n");
             exit(1);

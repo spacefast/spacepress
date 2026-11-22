@@ -8,12 +8,13 @@ use crate::schema::{ColType, Schema};
 use crate::types::{self, Ty};
 use indexmap::IndexMap;
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The app's own abilities as data: name → (input properties, the required ones). For the drift
 /// test against `Register::operations()`; inputs that are not objects list nothing.
 pub fn own_inputs(schema: &Schema) -> BTreeMap<String, (Vec<String>, Vec<String>)> {
     own(schema)
+        .abilities
         .into_iter()
         .map(|(name, (input, _))| {
             let (mut keys, mut required) = (Vec::new(), Vec::new());
@@ -41,6 +42,8 @@ pub struct Locked {
     pub name: String,
     pub input: Value,
     pub output: Value,
+    /// The ability's `readonly` annotation when it was pulled.
+    pub readonly: bool,
 }
 
 /// Every ability a call can name: the app's own and the lock's. Own abilities win a name clash: the
@@ -48,6 +51,11 @@ pub struct Locked {
 #[derive(Debug, Default, Clone)]
 pub struct Catalog {
     pub abilities: BTreeMap<String, (Ty, Ty)>,
+    /// The abilities annotated read-only: the only ones a `query()` may call.
+    pub readonly: BTreeSet<String>,
+    /// The app's own abilities a scoped credential runs only with its `personal` grant
+    /// (`AgentScope::ability`): every ability of an `order()` kind, and `complete-order`.
+    pub personal: BTreeSet<String>,
 }
 
 impl Catalog {
@@ -62,8 +70,15 @@ impl Catalog {
                 ),
             );
         }
-        abilities.extend(own(schema));
-        Catalog { abilities }
+        let mut readonly: BTreeSet<String> = locked.iter().filter(|a| a.readonly).map(|a| a.name.clone()).collect();
+        readonly.extend(own_readonly(schema));
+        let own = own(schema);
+        abilities.extend(own.abilities);
+        Catalog {
+            abilities,
+            readonly,
+            personal: own.personal,
+        }
     }
 }
 
@@ -91,6 +106,7 @@ pub fn parse_lock(text: &str) -> Result<Vec<Locked>, String> {
                 name: name.to_string(),
                 input: a["input_schema"].clone(),
                 output: a["output_schema"].clone(),
+                readonly: a["readonly"] == Value::Bool(true),
             })
         })
         .collect()
@@ -189,11 +205,23 @@ pub fn schema_ty(s: &Value, warnings: &mut Vec<String>, at: &str) -> Ty {
 /// (`unknown`, functions, unions of objects): the Ability then publishes no output schema, so core
 /// never refuses a result the type system allowed. Every node keeps the `type` core's validator needs.
 pub fn ty_schema(t: &Ty) -> Option<Value> {
+    schema_of(t, false)
+}
+
+/// A handler's input type as the JSON Schema the site checks a call against: like [`ty_schema`],
+/// except that a `number` is a number (an input is what JSON sends, never NaN).
+pub fn input_schema(t: &Ty) -> Option<Value> {
+    schema_of(t, true)
+}
+
+fn schema_of(t: &Ty, input: bool) -> Option<Value> {
     use serde_json::json;
     const MAX_SAFE: f64 = 9_007_199_254_740_992.0; // 2^53
+    let ty_schema = |t: &Ty| schema_of(t, input);
     let t = types::json_wire_type(t);
     Some(match &t {
         Ty::Instance(_, fields) => return ty_schema(fields),
+        Ty::Num | Ty::FreshNumLit(_) if input => json!({ "type": "number" }),
         // A computed number may be NaN or ±Infinity, which the wire encodes as null.
         Ty::Num | Ty::FreshNumLit(_) => json!({ "type": ["number", "null"] }),
         // An integer literal is an `integer` only where the cast is exact (|n| <= 2^53); beyond that
@@ -323,13 +351,47 @@ fn escape(key: &str) -> String {
     key.replace('~', "~0").replace('/', "~1")
 }
 
+/// The app's own abilities that only read, as `Register` annotates them `readonly`: kind and media
+/// reads, revisions, staged reads, sync reads, global reads, and every `query()`.
+fn own_readonly(schema: &Schema) -> Vec<String> {
+    const READS: &[&str] = &[
+        "-list",
+        "-get",
+        "-revisions",
+        "-staged-get",
+        "-staged-compare",
+        "-sync-read",
+    ];
+    let actions: std::collections::BTreeSet<String> = schema
+        .actions
+        .values()
+        .map(|a| format!("{}/{}", kebab(&schema.name), kebab(&a.name)))
+        .collect();
+    own(schema)
+        .abilities
+        .into_iter()
+        .map(|(name, _)| name)
+        .filter(|name| {
+            if actions.contains(name) {
+                schema
+                    .actions
+                    .values()
+                    .any(|a| a.readonly && *name == format!("{}/{}", kebab(&schema.name), kebab(&a.name)))
+            } else {
+                READS.iter().any(|r| name.ends_with(r))
+            }
+        })
+        .collect()
+}
+
 /// The app's own abilities, typed from the schema: one entry per operation
 /// `runtime/TypedPress/Wp/Abilities/Register::build` registers, with the same names and input properties
 /// (`wordpress_own_abilities_match_the_registered_ones` in tests/compiler_contracts.rs runs both and
 /// compares them). Results the runtime publishes no output schema for are `unknown`.
-fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
+fn own(schema: &Schema) -> Own {
     let app = kebab(&schema.name);
-    let mut out = Vec::new();
+    let mut out: Vec<(String, (Ty, Ty))> = Vec::new();
+    let mut personal = BTreeSet::new();
     let opt = |fields: &[(&str, Ty, bool)]| {
         Ty::Obj(
             fields
@@ -350,6 +412,7 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
     };
     // Taxonomies have no abilities yet (docs/decisions/2026-11-11-authoring-surface.md, deferrals).
     for c in schema.collections.values().filter(|c| c.taxonomy.is_none()) {
+        let first = out.len();
         // As Register::collection: `with` when there is something to load, `locale` when localized.
         let mut extra = Vec::new();
         if !c.relations.is_empty()
@@ -381,12 +444,14 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
         if c.api.create {
             out.push((format!("{app}/{k}-create"), (create_input(schema, c), row.clone())));
         }
-        // As Register::collection: a kind with staged versions takes `_rev` and `takeover` on its
-        // update and delete (docs/staged.md).
+        // As Register::collection: kinds with staged versions or table revisions take `_rev` (and `takeover` for posts).
         let staged = c.editor && c.revisions && c.staged;
+        let has_rev = staged || (!c.editor && !c.auth && c.revisions);
         let conditions = |mut fields: Vec<(&'static str, Ty, bool)>| {
             if staged {
                 fields.extend([("_rev", Ty::Str, true), ("takeover", Ty::Bool, true)]);
+            } else if has_rev {
+                fields.push(("_rev", Ty::Str, true));
             }
             opt(&fields)
         };
@@ -408,7 +473,15 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
         }
         if c.revisions {
             let user = opt(&[("id", Ty::Num, false), ("name", Ty::Str, false)]).nullable();
-            let revision = opt(&[("id", Ty::Num, false), ("at", Ty::Str, false), ("user", user, false)]);
+            let revision = opt(&[
+                ("id", Ty::Num, false),
+                ("version", Ty::Num, false),
+                ("op", Ty::Str, false),
+                ("at", Ty::Str, false),
+                ("user", user, false),
+                ("schemaMigration", Ty::Str.nullable(), false),
+                ("changed", Ty::Array(Box::new(Ty::Str)).nullable(), false),
+            ]);
             out.push((
                 format!("{app}/{k}-revisions"),
                 (id(), opt(&[("revisions", Ty::Array(Box::new(revision)), false)])),
@@ -491,6 +564,9 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
                 (opt(&[("uid", Ty::Str, false), ("expect", Ty::Str, false)]), Ty::Unknown),
             ));
         }
+        if c.commerce.as_deref() == Some("order") {
+            personal.extend(out[first..].iter().map(|(name, _)| name.clone()));
+        }
     }
     for a in schema.actions.values() {
         out.push((
@@ -526,12 +602,58 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
             ));
         }
     }
-    out
+    for (name, shape) in commerce_operations(schema) {
+        if name == "complete-order" {
+            personal.insert(format!("{app}/{name}"));
+        }
+        out.push((
+            format!("{app}/{name}"),
+            (
+                schema_ty(&shape["input"], &mut Vec::new(), ""),
+                schema_ty(&shape["output"], &mut Vec::new(), ""),
+            ),
+        ));
+    }
+    Own {
+        abilities: out,
+        personal,
+    }
 }
 
-/// `JsonSchema::isRequired`: a NOT NULL column without a default or auto-increment.
+/// The app's own abilities: each one's name, input and output, and the names that need the
+/// `personal` grant ([`Catalog::personal`]).
+struct Own {
+    abilities: Vec<(String, (Ty, Ty))>,
+    personal: BTreeSet<String>,
+}
+
+/// The stock and fulfilment operations `TypedPress\Commerce\Operations` registers for this schema,
+/// with their schemas: none without `product({ inventory: true })`, and `complete-order` only
+/// with an `order()` beside it.
+pub fn commerce_operations(schema: &Schema) -> Vec<(String, Value)> {
+    let has = |kind: &str| schema.collections.values().any(|c| c.commerce.as_deref() == Some(kind));
+    if !schema
+        .collections
+        .values()
+        .any(|c| c.commerce.as_deref() == Some("product") && c.columns.contains_key("stockQuantity"))
+    {
+        return Vec::new();
+    }
+    let shapes: Value = serde_json::from_str(include_str!("../../runtime/TypedPress/Commerce/operations.json"))
+        .expect("commerce operation schemas");
+    shapes
+        .as_object()
+        .expect("commerce operations")
+        .iter()
+        .filter(|(name, _)| *name != "complete-order" || has("order"))
+        .map(|(name, shape)| (name.clone(), shape.clone()))
+        .collect()
+}
+
+/// `Schema::isRequired`: a NOT NULL column without a default or auto-increment, that a typed input
+/// doesn't mark optional.
 fn required(col: &crate::schema::Column) -> bool {
-    col.not_null && col.default.is_none() && !col.auto_increment
+    (col.not_null || col.required) && col.default.is_none() && !col.auto_increment && !col.omit
 }
 
 /// An action's or job's input as `JsonSchema::input` publishes it: every field, required ones as

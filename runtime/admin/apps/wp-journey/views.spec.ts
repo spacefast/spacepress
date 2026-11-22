@@ -49,7 +49,7 @@ async function newSession(browser: Browser, path: string, label: string, hidden:
 }
 
 test.beforeAll(async ({ request }) => {
-	const author = await request.post(`${site}/__tp/api/v1/authors`, {
+	const author = await request.post(`${site}/wp-json/typedpress/v1/authors`, {
 		headers, data: { name: `View author ${Date.now()}`, email: `views-${Date.now()}@example.test` },
 	});
 	expect(author.status(), await author.text()).toBe(201);
@@ -58,9 +58,9 @@ test.beforeAll(async ({ request }) => {
 		data: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'),
 	});
 	expect(image.status(), await image.text()).toBe(201);
-	const post = await request.post(`${site}/__tp/api/v1/posts`, { headers, data: { title: `View post ${Date.now()}` } });
+	const post = await request.post(`${site}/wp-json/typedpress/v1/posts`, { headers, data: { title: `View post ${Date.now()}` } });
 	expect(post.status(), await post.text()).toBe(201);
-	const comment = await request.post(`${site}/__tp/api/v1/comments`, {
+	const comment = await request.post(`${site}/wp-json/typedpress/v1/comments`, {
 		headers: { Authorization: `Basic ${Buffer.from(`subscriber:${harness.users.subscriber.appPassword}`).toString('base64')}` },
 		data: { postId: (await post.json()).data.id, name: 'View reader', body: `View comment ${Date.now()}` },
 	});
@@ -93,7 +93,12 @@ test('media remembers columns and sends its saved page size to WordPress after r
 	const path = '/wp-admin/new/media';
 	await page.goto(`${site}${path}`);
 	await resetView(page);
-	await hideColumn(page, 'Alt text');
+	// Media opens as a grid; columns are a table-layout setting, and the chosen layout is saved too.
+	const layoutSaved = page.waitForResponse(r => r.url().includes('/wp/v2/users/') && r.request().method() === 'POST');
+	await page.getByRole('button', { name: 'Layout', exact: true }).click();
+	await page.getByRole('menuitemradio', { name: 'Table', exact: true }).click();
+	expect((await layoutSaved).ok()).toBe(true);
+	await hideColumn(page, 'Type');
 	await page.getByRole('button', { name: 'View options', exact: true }).click();
 	const saved = page.waitForResponse(r => r.url().includes('/wp/v2/users/') && r.request().method() === 'POST');
 	const query = page.waitForResponse(r => r.url().includes('/wp/v2/media?') && new URL(r.url()).searchParams.get('per_page') === '10');
@@ -104,8 +109,9 @@ test('media remembers columns and sends its saved page size to WordPress after r
 	await page.reload();
 	expect((await reloaded).ok()).toBe(true);
 	await expect(page.getByRole('button', { name: 'View options', exact: true })).toBeVisible();
-	await expect(page.getByRole('columnheader', { name: 'Alt text', exact: true })).toHaveCount(0);
-	await newSession(browser, path, 'Alt text', true);
+	await expect(page.getByRole('columnheader', { name: 'Uploaded', exact: true })).toBeVisible();
+	await expect(page.getByRole('columnheader', { name: 'Type', exact: true })).toHaveCount(0);
+	await newSession(browser, path, 'Type', true);
 });
 
 test('custom screens share saved columns between TypedPress and classic admin', async ({ page, browser, request }) => {

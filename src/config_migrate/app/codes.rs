@@ -622,7 +622,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_HANDLER_SIGNATURE",
         feature: "handler signature (rest, default or destructured parameters)",
-        v2: "action({ input: { ...columns }, handler(input, ctx) })",
+        v2: "query(options, async (input: { ... }, ctx) => ...) or mutation(...)",
         fix: "Give each parameter a name and a concrete type; read defaults inside the handler.",
         test: |_, r| {
             r.starts_with("rest and default parameters")
@@ -639,7 +639,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_HANDLER_TYPES",
         feature: "handler parameter without a concrete type",
-        v2: "action input columns",
+        v2: "the handler's typed input parameter",
         fix: "Annotate each handler parameter with a concrete TypeScript type.",
         test: |_, r| {
             r.starts_with("handler parameters require explicit types")
@@ -651,7 +651,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_HANDLER_SHAPE",
         feature: "query, mutation or action declaration",
-        v2: "action({ input, handler })",
+        v2: "query(options, handler) or mutation(options, handler)",
         fix: "Declare each handler as query(...), mutation(...) or action(...) around one inline function.",
         test: |_, r| {
             r.starts_with("expected a handler helper")

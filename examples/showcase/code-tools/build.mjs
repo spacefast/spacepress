@@ -22,7 +22,7 @@ export async function buildSourceLab({outdir}) {
     },
   });
   await build({
-    entryPoints: [path.join(here, '../../../docs-site/lib/compiler.ts')],
+    entryPoints: [path.join(here, '../../../www/lib/compiler.ts')],
     outfile: path.join(outdir, 'compiler.js'),
     bundle: true,
     format: 'esm',

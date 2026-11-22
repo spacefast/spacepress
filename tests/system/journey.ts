@@ -144,7 +144,7 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
     assert.equal(typeof _rev, "string", "a kind with staged versions reads with its revision token");
     assert.match(uid, /^zr_[0-9a-f]{20}$/, "synced posts carry a stable uid");
     const { cover: _, authorId: __, ...rest } = fields;
-    assert.deepEqual(row, { ...rest, id: feature, status: "published", slug: `feature-${run}`, locale: "en", translations: { en: feature } }, "readers see every public field");
+    assert.deepEqual(row, { ...rest, id: feature, status: "published", slug: `feature-${run}` }, "readers see every public field");
     assert.ok(publishedAt && updatedAt, "publishing stamps the dates");
     assert.deepEqual(media, await anon.media.get(cover));
     assert.deepEqual([media?.mime, media?.alt, byline?.id, thread], ["image/png", "A single pixel", env.authorId, []]);
@@ -391,25 +391,6 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
     await mia.auth.signOut();
     assert.equal(await mia.auth.me(), null);
     await rejects(() => mia.members.get(created.id), { status: 401, code: "unauthenticated" });
-  });
-
-  await t.test("a post is translated: German readers get the translation, others fall back", async () => {
-    const de = await editor.posts.create({ title: `Feature ${run} (DE)`, dek: "Warum ein Pixel reicht", locale: "de", translationOf: feature, status: "published" });
-    const shared = await anon.posts.get(feature);
-    // Translated fields are the translation's own; every other field is the group's.
-    assert.deepEqual([de.locale, de.title, de.dek, de.topics, de.featured, de.authorId, de.cover], ["de", `Feature ${run} (DE)`, "Warum ein Pixel reicht", shared.topics, shared.featured, shared.authorId, shared.cover]);
-    assert.deepEqual((await anon.posts.get(feature)).translations, { en: feature, de: de.id });
-    assert.equal((await anon.posts.get(feature, { locale: "de" })).title, `Feature ${run} (DE)`);
-    // A German reader of the list sees the translation in place of the original, and the
-    // untranslated posts in English.
-    const german = await anon.posts.list({ locale: "de", where: { title: { like: `%${run}%` } }, limit: 200 });
-    assert.ok(german.some((p) => p.id === de.id) && !german.some((p) => p.id === feature), "the translation replaces its original");
-    assert.ok(german.some((p) => p.locale === "en"), "untranslated posts fall back to English");
-    assert.ok((await anon.posts.list({ where: { title: { like: `%${run}%` } }, limit: 200 })).every((p) => p.locale === "en"), "the default locale stays English");
-    // Shared fields stay shared: a change on the translation reaches the original.
-    await editor.posts.update(de.id, { topics: ["science"] });
-    assert.deepEqual((await anon.posts.get(feature)).topics, ["science"]);
-    await editor.posts.update(feature, { topics: shared.topics });
   });
 
   await t.test("editors update the site settings; others can't", async () => {

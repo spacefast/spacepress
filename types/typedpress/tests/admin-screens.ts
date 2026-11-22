@@ -1,14 +1,10 @@
 // adminScreen(): a TypedPress Admin screen declared in TypeScript (docs/admin-screens.md).
-import { action, adminScreen, boolean, integer, item, number, text } from "typedpress";
+import { adminScreen, boolean, item, number, query, mutation } from "typedpress";
 
-const listPending = action({
-  input: { limit: integer().optional() },
-  readonly: true,
-  handler: () => ({ rows: [{ id: 1, total: 3, shipped: false }] }),
-});
-const markShipped = action({ input: { id: integer(), note: text().optional() }, handler: ({ id }) => ({ id }) });
-const rename = action({ input: { id: integer(), patch: text() }, handler: () => null });
-const readOne = action({ input: { id: integer() }, readonly: true, handler: () => ({ total: 1 }) });
+const listPending = query({}, (_input: { limit?: number }) => ({ rows: [{ id: 1, total: 3, shipped: false }] }));
+const markShipped = mutation({}, ({ id }: { id: number; note?: string }) => ({ id }));
+const rename = mutation({}, (_input: { id: number; patch: string }) => null);
+const readOne = query({}, (_input: { id: number }) => ({ total: 1 }));
 void number; void boolean;
 
 export const pendingOrders = adminScreen({

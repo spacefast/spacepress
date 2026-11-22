@@ -14,8 +14,15 @@ require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 $fixture = dirname(__DIR__) . '/fixtures/taxonomy';
+$schema = require "$fixture/schema.php";
+$merchantTags = $schema['taxonomies']['tags'];
+$merchantTags['key'] = 'merchantTags'; $merchantTags['label'] = 'Merchant tags';
+$merchantTags['columns']['uid'] = ['type' => 'text'];
+$merchantTags['relations'] = []; $merchantTags['url'] = null;
+$merchantTags['wp'] = ['taxonomy' => 'tp_merchant_tags', 'groupKey' => 'group_tp_merchant_tags', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_merchant_tags_', 'on' => ['posts']];
+$schema['taxonomies']['merchantTags'] = $merchantTags;
 $wp = wpSite('taxonomy', [
-    'schema' => require "$fixture/schema.php",
+    'schema' => $schema,
     'functions' => file_get_contents("$fixture/functions.php"),
     'users' => ['ed' => 'editor', 'alice' => 'author', 'sub' => 'subscriber'],
 ]);
@@ -37,6 +44,20 @@ function isProblem(string $label, array $r, int $status, string $code, ?string $
 }
 
 $names = static fn (array $rows): array => array_column($rows, 'name');
+
+// Authored uid keeps ordinary term metadata, including SCF's underscore-prefixed field reference.
+$merchant = wp_insert_term('Existing merchant tag', 'tp_merchant_tags')['term_id'];
+update_term_meta($merchant, 'tp_uid', 'merchant-42');
+update_term_meta($merchant, '_tp_uid', 'field_tp_merchant_tags_uid');
+eq('existing authored taxonomy uid values keep their metadata key', $db->findFirst('merchantTags', ['where' => ['id' => $merchant]])['uid'], 'merchant-42');
+eq('authored uid filters use the existing metadata', array_column($db->findMany('merchantTags', ['where' => ['uid' => 'merchant-42']]), 'id'), [$merchant]);
+$db->update('merchantTags', ['uid' => 'merchant-43'], ['id' => $merchant]);
+eq('API writes preserve authored uid storage and the SCF field reference', [get_term_meta($merchant, 'tp_uid', true), get_term_meta($merchant, '_tp_uid', true)], ['merchant-43', 'field_tp_merchant_tags_uid']);
+eq('SCF reads the authored uid written through the API', get_field('field_tp_merchant_tags_uid', 'term_' . $merchant), 'merchant-43');
+update_field('field_tp_merchant_tags_uid', 'merchant-44', 'term_' . $merchant);
+eq('API reads the authored uid written through SCF', $db->findFirst('merchantTags', ['where' => ['id' => $merchant]])['uid'], 'merchant-44');
+$newMerchant = $db->insert('merchantTags', ['name' => 'New merchant tag', 'uid' => 'merchant-45'], true)[0];
+eq('API-created authored uid values use ordinary term metadata', [$newMerchant['uid'], get_term_meta($newMerchant['id'], 'tp_uid', true)], ['merchant-45', 'merchant-45']);
 
 // ================================================================ registration (ruling 25)
 
@@ -74,7 +95,8 @@ problem('a term has no author', fn () => $db->insert('topics', ['name' => 'A', '
 $updated = $db->update('topics', ['name' => 'World news', 'description' => 'Everywhere', 'color' => null], ['id' => $news['id']], true)[0];
 eq('an update writes core\'s fields and term meta', [$updated['name'], $updated['slug'], $updated['description'], $updated['color']], ['World news', 'news', 'Everywhere', null]);
 eq('a cleared field is gone from term meta', get_term_meta($news['id'], 'tp_color', true), '');
-eq('a term with no fields of its own is a row too', array_keys($db->insert('tags', ['name' => 'Short'], true)[0]), ['id', 'name', 'slug', 'description', 'count', 'url']);
+$short = $db->insert('tags', ['name' => 'Short'], true)[0];
+eq('a term with no fields of its own is a row too', array_keys($short), ['id', 'name', 'slug', 'description', 'count', 'url']);
 
 // ================================================================ hierarchy (ruling 30)
 
@@ -83,6 +105,16 @@ $city = $db->insert('topics', ['name' => 'City', 'parent' => $local['id']], true
 eq('parent is a term of the same taxonomy', $local['parent'], $news['id']);
 eq('`:path` is the chain of ancestor slugs', $city['url'], home_url('/topics/news/local/city/'));
 $tag = $db->insert('tags', ['name' => 'Elsewhere'], true)[0];
+foreach ([$tag, $short] as $row) {
+    wp_cache_delete($row['id'], 'terms');
+}
+$readUrls = static fn () => array_column($db->findMany('tags', ['columns' => ['url' => true]]), 'url');
+$beforeUrls = $wpdb->num_queries;
+eq('term lists use the core permalink for each row', $readUrls(), [home_url('/tags/elsewhere/'), home_url('/tags/short/')]);
+$coldQueries = $wpdb->num_queries - $beforeUrls;
+$beforeUrls = $wpdb->num_queries;
+$readUrls();
+eq('cold term links need one more WordPress query than cached links', $coldQueries - ($wpdb->num_queries - $beforeUrls), 1);
 problem('a parent from another taxonomy is refused', fn () => $db->insert('topics', ['name' => 'X', 'parent' => $tag['id']]), 409, 'reference_violation', '/parent');
 problem('a term can\'t be its own parent', fn () => $db->update('topics', ['parent' => $local['id']], ['id' => $local['id']]), 409, 'reference_violation', '/parent');
 problem('a flat taxonomy has no parent', fn () => $db->insert('tags', ['name' => 'Y', 'parent' => $tag['id']]), 422, 'invalid_input', '/parent');
@@ -165,6 +197,37 @@ eq('deleting a term removes its meta', (function () use ($db, $sports): array {
     return get_term_meta($sports['id']);
 })(), []);
 
+// Deleting a parent term must not reparent child terms the viewer can't read (#522).
+(static function () use ($wp, $schema): void {
+    $db = \TypedPress\db();
+    $parent = $db->insert('topics', ['name' => 'Visible Parent'], true)[0];
+    $child = $db->insert('topics', ['name' => 'Hidden Child', 'parent' => $parent['id']], true)[0];
+    $restricted = $schema;
+    $restricted['taxonomies']['topics']['access']['read'] = ['fn' => static fn (): array => ['id' => ['ne' => $child['id']]]];
+    $restrictedSchema = new \TypedPress\Schema($restricted);
+    $store = \TypedPress\Wp\CompositeStore::create($restrictedSchema, $wp->connection());
+    $restrictedDb = new \TypedPress\Db($store, $restrictedSchema, $db->media());
+    $editor = new \TypedPress\Viewer(['id' => $wp->userId('ed'), 'name' => 'ed', 'role' => 'editor']);
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($restrictedDb);
+    try {
+        problem(
+            'deleting a parent term refuses when a child term may be hidden from the viewer',
+            fn () => $restrictedDb->delete('topics', ['id' => $parent['id']], false, $editor),
+            409,
+            'reference_violation',
+        );
+        eq('the parent term stays', $db->findFirst('topics', ['where' => ['id' => $parent['id']]])['name'] ?? null, 'Visible Parent');
+        eq('the hidden child keeps its parent', $db->findFirst('topics', ['where' => ['id' => $child['id']]])['parent'] ?? null, $parent['id']);
+    } finally {
+        \TypedPress\Db::setInstance($previous);
+    }
+    // A viewer who can read every term in the taxonomy can still delete the parent.
+    $db->delete('topics', ['id' => $parent['id']], false, $editor);
+    eq('with full read visibility, deleting the parent reparents the child to root', $db->findFirst('topics', ['where' => ['id' => $child['id']]])['parent'], null);
+    $db->delete('topics', ['id' => $child['id']]);
+})();
+
 // ================================================================ core internals the term route relies on
 // TermsController subclasses core's WP_REST_Terms_Controller and TermMeta its WP_REST_Term_Meta_Fields
 // (docs/wordpress-internals.md). A core release that renames, hides or reshapes one of these fails here
@@ -195,5 +258,173 @@ $wide = array_map(static fn (array $r): array => array_intersect_key($r, array_f
 eq('a term read with columns returns what reading every column gave', $narrow, $wide);
 $termSql = array_values(array_filter($statements, static fn (string $s): bool => str_contains($s, 'AS `name`')))[0] ?? '';
 check('and selects no other term field or meta join', !str_contains($termSql, 'AS `color`') && !str_contains($termSql, 'AS `description`') && !str_contains($termSql, "meta_key = 'tp_color'"), $termSql);
+
+// Older sites can share the same term ID across taxonomies. Core never caches an ambiguous ID.
+$wpdb->insert($wpdb->term_taxonomy, ['term_id' => $tag['id'], 'taxonomy' => 'category', 'description' => '']);
+wp_cache_delete($tag['id'], 'terms');
+check('a shared term still has its taxonomy-specific URL', in_array(home_url('/tags/elsewhere/'), $readUrls(), true));
+$shared = get_term($tag['id']);
+check('listing URLs keeps unqualified shared term IDs ambiguous', is_wp_error($shared) && $shared->get_error_code() === 'ambiguous_term_id');
+
+// A viewer's term delete refuses while an item they can't read carries the term, and keeps its link
+// (docs/decisions/2026-11-16-per-row-delete-visibility.md); core's own delete would remove it.
+(static function () use ($db, $fixture): void {
+    $term = $db->insert('tags', ['name' => 'Hidden link'], true)[0];
+    $post = $db->insert('posts', ['title' => 'Admin only', 'labels' => [$term['id']], 'status' => 'draft'], true)[0];
+    $raw = require "$fixture/schema.php";
+    $raw['collections']['posts']['access']['read'] = ['role' => 'admin'];
+    $probe = new \TypedPress\Db($db->store(), new \TypedPress\Schema($raw), $db->media());
+    $editor = new \TypedPress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
+    problem('a term on an item the viewer can\'t read refuses the delete', fn () => $probe->delete('tags', ['id' => $term['id']], false, $editor), 409, 'reference_violation');
+    eq('… and the item keeps the term', wp_get_object_terms($post['id'], 'tp_tags', ['fields' => 'ids']), [$term['id']]);
+    // An item in WordPress's trash still carries its terms, and core's term delete removes them.
+    $trashedTerm = $db->insert('tags', ['name' => 'On a trashed item'], true)[0];
+    $trashed = $db->insert('posts', ['title' => 'Trashed', 'labels' => [$trashedTerm['id']], 'status' => 'draft'], true)[0];
+    \TypedPress\Wp\Plugin::instance()->connection()->core(static fn () => wp_trash_post($trashed['id']));
+    problem('a term on a trashed item the viewer can\'t read refuses the delete', fn () => $probe->delete('tags', ['id' => $trashedTerm['id']], false, $editor), 409, 'reference_violation');
+    eq('… and the trashed item keeps it', wp_get_object_terms($trashed['id'], 'tp_tags', ['fields' => 'ids']), [$trashedTerm['id']]);
+    $free = $db->insert('tags', ['name' => 'Free'], true)[0];
+    eq('a term no item carries deletes', count($probe->delete('tags', ['id' => $free['id']], true, $editor)), 1);
+})();
+
+// A term delete removes the term from items as the viewer's own update of each: an item they can read
+// but not update keeps the term, and the delete refuses.
+(static function () use ($db, $fixture): void {
+    $term = $db->insert('tags', ['name' => 'Read-only post link'], true)[0];
+    $post = $db->insert('posts', ['title' => 'Readable protected post', 'labels' => [$term['id']], 'status' => 'published'], true)[0];
+    $raw = require "$fixture/schema.php";
+    $raw['collections']['posts']['access']['read'] = ['role' => 'anyone'];
+    $raw['collections']['posts']['access']['update'] = ['role' => 'admin'];
+    $probe = new \TypedPress\Db($db->store(), new \TypedPress\Schema($raw), $db->media());
+    $editor = new \TypedPress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
+    problem('editor cannot directly remove protected post term', fn () => $probe->update('posts', ['labels' => []], ['id' => $post['id']], false, $editor), 403, 'forbidden');
+    $result = null;
+    try { $probe->delete('tags', ['id' => $term['id']], false, $editor); $result = ['status' => 200]; }
+    catch (\Throwable $e) { $result = \TypedPress\App::problem($e); }
+    $links = wp_get_object_terms($post['id'], 'tp_tags', ['fields' => 'ids']);
+    eq('deleting term must enforce linked post update rule', [$result['status'], $links], [409, [$term['id']]]);
+})();
+
+
+// The delete check reads only the posts that carry the term: unrelated password-protected posts are
+// never loaded, however many or large, at 128M.
+(static function () use ($db, $fixture, $wp): void {
+    $term = $db->insert('tags', ['name' => 'Only a public post carries this'], true)[0];
+    $db->insert('posts', ['title' => 'Public link', 'labels' => [$term['id']], 'status' => 'published'], true);
+    $hiddenId = \TypedPress\Wp\Plugin::instance()->connection()->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => 'Unrelated hidden post', 'post_status' => 'publish', 'post_password' => 'not-a-credential-fixture', 'post_content' => 'Unrelated hidden content'], true));
+    check('an unrelated protected post was seeded', is_int($hiddenId));
+    $raw = require "$fixture/schema.php";
+    $raw['taxonomies']['tags']['access']['delete'] = ['role' => 'anyone'];
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create(new \TypedPress\Schema($raw), $db->store()->db), new \TypedPress\Schema($raw), $db->media());
+    $visitor = new \TypedPress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
+    {
+        $payload = str_repeat('x', 2 * 1024 * 1024);
+        $wp->connection()->run('UPDATE wp_posts SET post_content = ? WHERE ID = ?', [$payload, $hiddenId]);
+        unset($payload);
+        $cols = 'post_author, post_date, post_date_gmt, post_content, post_title, post_excerpt, post_status, comment_status, ping_status, post_password, post_name, to_ping, pinged, post_modified, post_modified_gmt, post_content_filtered, post_parent, guid, menu_order, post_type, post_mime_type, comment_count';
+        for ($i = 0; $i < 6; $i++) {
+            $wp->connection()->run("INSERT INTO wp_posts ($cols) SELECT $cols FROM wp_posts WHERE post_type = ? AND post_password = ?", ['tp_posts', 'not-a-credential-fixture']);
+        }
+        echo "hidden-volume setup: 1 * 2^6 unrelated protected posts * 2 MiB content; lowering request memory to 128M\n";
+    }
+    $limit = ini_get('memory_limit');
+    ini_set('memory_limit', '128M');
+    wp_cache_flush();
+    \TypedPress\Wp\CoreAccess::flush();
+    eq('hidden post is not cached before viewer delete', wp_cache_get($hiddenId, 'posts'), false);
+    try { $probe->delete('tags', ['id' => $term['id']], false, $visitor); $result = ['status' => 200]; }
+    catch (\Throwable $e) { $result = \TypedPress\App::problem($e); }
+    ini_set('memory_limit', $limit);
+    $cached = wp_cache_get($hiddenId, 'posts');
+    eq('the viewer\'s check loads no unrelated protected post', $cached !== false, false);
+    eq('… and the delete answers as it would without them (a subscriber can\'t update the public post)', $result['status'], 409);
+})();
+
+
+// A draft hidden by status alone refuses the term delete for a subscriber.
+(static function () use ($db, $fixture): void {
+    $term = $db->insert('tags', ['name' => 'Draft-only link'], true)[0];
+    $post = $db->insert('posts', ['title' => 'Draft-only owner', 'labels' => [$term['id']], 'status' => 'draft'], true)[0];
+    $raw = require "$fixture/schema.php";
+    $raw['taxonomies']['tags']['access']['delete'] = ['role' => 'anyone'];
+    $probe = new \TypedPress\Db($db->store(), new \TypedPress\Schema($raw), $db->media());
+    $visitor = new \TypedPress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
+    problem('draft-only term owner refuses deletion for subscriber', fn () => $probe->delete('tags', ['id' => $term['id']], false, $visitor), 409, 'reference_violation');
+    eq('refused draft-only term owner retains link', wp_get_object_terms($post['id'], 'tp_tags', ['fields' => 'ids']), [$term['id']]);
+})();
+
+// Password-protected posts that carry the deleted term are decided in SQL, never loaded: one or 64
+// such posts of 2 MiB each answer the same refusal at 128M. An editor, who could open them, is refused
+// too (the check fails closed).
+(static function () use ($db, $fixture, $wp): void {
+    $raw = require "$fixture/schema.php";
+    $raw['taxonomies']['tags']['access']['delete'] = ['role' => 'anyone'];
+    $schema = new \TypedPress\Schema($raw);
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $viewer = new \TypedPress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
+    $single = $db->insert('tags', ['name' => 'single protected referring post'], true)[0];
+    $bulk = $db->insert('tags', ['name' => 'many protected referring posts'], true)[0];
+    $one = \TypedPress\Wp\Plugin::instance()->connection()->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => 'Q516 protected single', 'post_status' => 'publish', 'post_password' => 'q516-fixture'], true));
+    wp_set_object_terms($one, [$single['id']], 'tp_tags');
+    $seed = \TypedPress\Wp\Plugin::instance()->connection()->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => 'Q516 protected bulk', 'post_status' => 'publish', 'post_password' => 'q516-fixture'], true));
+    $payload = str_repeat('x', 2 * 1024 * 1024);
+    $wp->connection()->run('UPDATE wp_posts SET post_content = ? WHERE ID = ?', [$payload, $seed]);
+    unset($payload);
+    $cols = 'post_author, post_date, post_date_gmt, post_content, post_title, post_excerpt, post_status, comment_status, ping_status, post_password, post_name, to_ping, pinged, post_modified, post_modified_gmt, post_content_filtered, post_parent, guid, menu_order, post_type, post_mime_type, comment_count';
+    for ($i = 0; $i < 6; $i++) {
+        $wp->connection()->run("INSERT INTO wp_posts ($cols) SELECT $cols FROM wp_posts WHERE post_title = ?", ['Q516 protected bulk']);
+    }
+    $tt = get_term($bulk['id'], 'tp_tags')->term_taxonomy_id;
+    $wp->connection()->run('INSERT INTO wp_term_relationships (object_id, term_taxonomy_id, term_order) SELECT ID, ?, 0 FROM wp_posts WHERE post_title = ?', [$tt, 'Q516 protected bulk']);
+    wp_cache_flush();
+    \TypedPress\Wp\CoreAccess::flush();
+    $limit = ini_get('memory_limit');
+    ini_set('memory_limit', '128M');
+    problem('a protected post carrying the term refuses its delete', fn () => $probe->delete('tags', ['id' => $single['id']], false, $viewer), 409, 'reference_violation');
+    problem('… and 64 large ones answer alike, loading none', fn () => $probe->delete('tags', ['id' => $bulk['id']], false, $viewer), 409, 'reference_violation');
+    ini_set('memory_limit', $limit);
+    $editor = new \TypedPress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
+    problem('an editor is refused too: password visibility here is decided in SQL and fails closed', fn () => $probe->delete('tags', ['id' => $single['id']], false, $editor), 409, 'reference_violation');
+})();
+
+// A post-password cookie is checked against the passwords of the posts that carry the term only:
+// unrelated protected posts' passwords are never read, and the cookie still opens the post it fits.
+(static function () use ($db, $fixture, $wp): void {
+    $raw = require "$fixture/schema.php";
+    $raw['taxonomies']['tags']['access']['delete'] = ['role' => 'anyone'];
+    $raw['collections']['posts']['access']['update'] = ['role' => 'anyone'];
+    $schema = new \TypedPress\Schema($raw);
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $viewer = new \TypedPress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
+    $core = \TypedPress\Wp\Plugin::instance()->connection();
+    foreach (['unrelated-one', 'unrelated-two', 'unrelated-three'] as $password) {
+        $core->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => "Unrelated $password", 'post_status' => 'publish', 'post_password' => $password], true));
+    }
+    $carried = static function (string $name) use ($db, $core): array {
+        $term = $db->insert('tags', ['name' => $name], true)[0];
+        $post = $core->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => "Carries $name", 'post_status' => 'publish', 'post_password' => 'scoped-fixture'], true));
+        wp_set_object_terms($post, [$term['id']], 'tp_tags');
+
+        return [$term, $post];
+    };
+    require_once ABSPATH . WPINC . '/class-phpass.php';
+    $_COOKIE['wp-postpass_' . COOKIEHASH] = (new \PasswordHash(8, true))->HashPassword('scoped-fixture');
+    [$term, $post] = $carried('cookie-opened link');
+    $statements = [];
+    \TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$statements): void {
+        $statements[] = $sql;
+    };
+    try { $probe->delete('tags', ['id' => $term['id']], false, $viewer); $result = ['status' => 200]; }
+    catch (\Throwable $e) { $result = \TypedPress\App::problem($e); }
+    \TypedPress\Wp\Connection::$observer = null;
+    $passwordReads = array_values(array_filter($statements, static fn (string $s): bool => str_contains($s, 'DISTINCT HEX(post_password)')));
+    check('the delete check read some post passwords', $passwordReads !== []);
+    check('… only those of the posts that carry the term', array_filter($passwordReads, static fn (string $s): bool => !str_contains($s, ' AND ID IN (')) === [], implode("\n", $passwordReads));
+    eq('a cookie that opens the carrying post lets the delete through, removing the link', [$result['status'], wp_get_object_terms($post, 'tp_tags', ['fields' => 'ids'])], [200, []]);
+    $_COOKIE['wp-postpass_' . COOKIEHASH] = (new \PasswordHash(8, true))->HashPassword('unrelated-one');
+    [$other] = $carried('cookie for another post');
+    problem('a cookie for an unrelated protected post opens nothing here', fn () => $probe->delete('tags', ['id' => $other['id']], false, $viewer), 409, 'reference_violation');
+    unset($_COOKIE['wp-postpass_' . COOKIEHASH]);
+})();
 
 finish('taxonomy');

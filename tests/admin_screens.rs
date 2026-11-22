@@ -13,27 +13,13 @@ fn first() -> Command {
 }
 
 /// Two actions every case uses: a readonly list and a write that takes an id.
-const ACTIONS: &str = r#"import { action, adminScreen, item, defineConfig, integer, text } from "typedpress";
+const ACTIONS: &str = r#"import { adminScreen, item, defineConfig, query, mutation } from "typedpress";
 
-export const listPending = action({
-  input: { limit: integer().optional() },
-  readonly: true,
-  access: "editor",
-  handler: () => ({ rows: [{ id: 1, total: 3, shipped: false }] }),
-});
+export const listPending = query({ access: "editor" }, (_input: { limit?: number }) => ({ rows: [{ id: 1, total: 3, shipped: false }] }));
 
-export const markShipped = action({
-  input: { id: integer(), note: text().optional() },
-  access: "editor",
-  handler: ({ id }) => ({ id }),
-});
+export const markShipped = mutation({ access: "editor" }, ({ id }: { id: number; note?: string }) => ({ id }));
 
-export const purge = action({
-  input: { id: integer() },
-  destructive: true,
-  idempotent: true,
-  handler: ({ id }) => id,
-});
+export const purge = mutation({ destructive: true, idempotent: true }, ({ id }: { id: number }) => id);
 "#;
 
 fn project(screens: &str) -> tempfile::TempDir {
@@ -166,9 +152,9 @@ fn screen_mistakes_are_refused_where_they_are_written_with_a_fix() {
     let cases: &[(&str, &str, usize, &str)] = &[
         (
             "export const s = adminScreen({ title: \"S\", view: { action: markShipped, fields: { id: {} } } });",
-            "`view.action` runs `markShipped`, which isn't readonly",
+            "`view.action` runs `markShipped`, which isn't a query",
             0,
-            "add `readonly: true` to `markShipped`",
+            "make it `export const markShipped = query({ ... }, ...)`",
         ),
         (
             "export const s = adminScreen({ title: \"S\", view: { action: \"listPending\", fields: { id: {} } } });",
@@ -296,7 +282,7 @@ fn define_config_takes_no_screens_option() {
 #[test]
 fn an_agents_false_action_has_no_ability_for_a_screen() {
     let tmp = project(
-        "export const hidden = action({ input: {}, readonly: true, agents: false, handler: () => [] });\nexport const s = adminScreen({ title: \"S\", view: { action: hidden, fields: { id: {} } } });",
+        "export const hidden = query({ agents: false }, () => []);\nexport const s = adminScreen({ title: \"S\", view: { action: hidden, fields: { id: {} } } });",
     );
     let out = check(tmp.path());
     let stderr = String::from_utf8_lossy(&out.stderr);

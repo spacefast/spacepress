@@ -88,7 +88,7 @@ $upload = static function (string $bucket, string $bytes, string $name, ?string 
 $download = static function (string $url) use ($wp): array {
     $parts = parse_url($url);
     parse_str($parts['query'] ?? '', $query);
-    [$status, $headers, $payload] = $wp->handle('GET', (string) preg_replace('#^.*?/__tp/api/v1#', '', $parts['path']), '', null, [], $query);
+    [$status, $headers, $payload] = $wp->handle('GET', (string) preg_replace('#^.*?/wp-json/typedpress/v1#', '', $parts['path']), '', null, [], $query);
     ob_start();
     \TypedPress\Response::emit($payload);
 
@@ -144,6 +144,16 @@ $talk = call('POST', '/talks', 'alice', ['title' => 'Q3', 'deck' => $deck['id']]
 eq('without with: the id', call('GET', "/talks/{$talk['id']}", 'bob')[1]['deck'], $deck['id']);
 $own = call('GET', "/talks/{$talk['id']}", 'alice', query: ['with' => 'deck'])[1]['deck'];
 check('with: { deck: true } populates for a reader the bucket admits, with a working url', is_array($own) && $own['id'] === $deck['id'] && $download($own['url'])[0] === 200, $own);
+// A page's read (`db.query.talks.findFirst({ columns, with })`): `with` asked for the column, so a
+// `columns` selection that leaves it out, or excludes it, still returns the file.
+$viewer = new \TypedPress\Viewer($wp->user('alice'));
+eq('with: { deck: true } loads the file through a `columns` selection that leaves the column out, or excludes it',
+    array_map(static function (array $columns) use ($talk, $viewer): array {
+        $row = \TypedPress\db()->findFirst('talks', ['where' => ['id' => $talk['id']], 'columns' => $columns, 'with' => ['deck' => true]], $viewer);
+
+        return [array_key_exists('title', $row), $row['deck']['filename'] ?? null];
+    }, [['id' => true], ['deck' => false, 'title' => false]]),
+    [[false, $own['filename']], [false, $own['filename']]]);
 eq('with: { deck: true } keeps the id for a reader the owner rule refuses', [call('GET', "/talks/{$talk['id']}", 'bob', query: ['with' => 'deck'])[1]['deck'], call('GET', '/talks', query: ['with' => 'deck'])[1][0]['deck']], [$deck['id'], $deck['id']]);
 
 isProblem('a before-hook cannot slip in an unchecked file id', call('POST', '/talks', 'alice', ['title' => 'hooked']), 422, 'invalid_input', '/deck');

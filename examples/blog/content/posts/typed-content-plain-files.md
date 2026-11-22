@@ -13,9 +13,6 @@ sections: null
 createdAt: 2026-10-31T13:27:16.519Z
 status: draft
 publishedAt: null
-locale: en
-translations:
-  en: zr_1cb85f8a84c9552aab54
 ---
 ## One schema
 

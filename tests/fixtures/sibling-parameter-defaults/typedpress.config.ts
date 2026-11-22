@@ -1,4 +1,4 @@
-import { action, defineConfig } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 
 // Destructured elements bind left to right, so a default may read an earlier sibling.
 function pick({ a, b = a }: { a: number; b?: number }): number {
@@ -8,6 +8,6 @@ function pair([a = 1, b = a]: number[]): number {
   return a + b;
 }
 
-export const sum = action({ access: "anyone", handler: () => pick({ a: 2 }) + pair([3]) });
+export const sum = mutation({ access: "anyone" }, () => pick({ a: 2 }) + pair([3]));
 
 export default defineConfig({});

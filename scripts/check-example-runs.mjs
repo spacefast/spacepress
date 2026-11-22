@@ -28,13 +28,6 @@ const verifiers = {
   "stuff-drawer": "verify.mjs",
   subscriptions: "scripts/verify.mjs",
 };
-// Expected to fail until the issue is fixed: owner-scoped deletes of referenced rows answer 409 on
-// main (https://github.com/spacefast/zero/issues/533). Each still runs. Only that failure is
-// accepted: the verifier's assertion must be about a DELETE, and the last DELETE it logged (with its
-// response on the same or the next line) must be a 409 `reference_violation` "may reference this
-// row". Any other failure (startup, a timeout, another request or assertion) fails CI. A pass is
-// reported so the marker can be removed.
-const expectedFail = { "drive-locker": 533, "pet-food": 533, "stuff-drawer": 533, subscriptions: 533 };
 const selected = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(verifiers);
 for (const name of selected) if (!verifiers[name]) throw new Error(`no verifier for ${name}; known: ${Object.keys(verifiers).join(", ")}`);
 
@@ -60,7 +53,6 @@ for (const name of selected) {
   const wp = (...args) => tp("wp", "--site", project, ...args);
   console.log(`\n=== ${name}`);
   let status = 1;
-  let output = "";
   try {
     tp("dev", project, "--port", String(port), "--no-watch");
     const site = JSON.parse(tp("dev", "status", project, "--json")).url.replace(/\/$/, "");
@@ -70,13 +62,10 @@ for (const name of selected) {
     const admin = `admin:${password("admin")}`;
     const other = `other:${password("other")}`;
     const run = spawnSync(process.execPath, [join(project, verifiers[name])], {
-      stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 15 * 60_000,
+      stdio: ["ignore", "inherit", "inherit"], timeout: 15 * 60_000,
       env: { ...process.env, TP_BIN: binary, TP_SITE: site, TP_TEST_URL: site, TP_AUTH: admin, TP_OTHER_AUTH: other, TP_APP_PASSWORD: admin, TP_OTHER_APP_PASSWORD: other },
     });
-    process.stdout.write(run.stdout ?? "");
-    process.stderr.write(run.stderr ?? "");
     status = run.status ?? 1;
-    output = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
   } catch (error) {
     console.error(error.message);
   } finally {
@@ -84,32 +73,8 @@ for (const name of selected) {
     spawnSync("npx", ["--yes", "--package", STUDIO, "--", "studio", "delete", "--path", join(project, ".tp/dev/wordpress"), "--no-files"], { stdio: "ignore", timeout: 120_000 });
     rmSync(work, { recursive: true, force: true });
   }
-  const issue = expectedFail[name];
-  if (issue && status === 0) {
-    console.log(`=== ${name}: passed, but marked expected-fail for #${issue}: remove the marker`);
-    console.log(`::warning::${name} passes; remove its expected-fail marker for #${issue} in scripts/check-example-runs.mjs`);
-    continue;
-  }
-  if (issue && stoppedAtKnownRefusal(output)) {
-    console.log(`=== ${name}: expected failure (#${issue}): a delete of a referenced row answered 409`);
-    continue;
-  }
   console.log(`=== ${name}: ${status === 0 ? "ok" : "FAILED"}`);
   if (status !== 0) failed.push(name);
-}
-/** The verifier failed on a delete that #533 refuses: its last DELETE answered that 409, and its assertion names a delete. */
-function stoppedAtKnownRefusal(log) {
-  const lines = log.split("\n");
-  const refusal = /\b409\b.*"code":"reference_violation".*may reference this row/;
-  const at = lines.findIndex((line) => line.startsWith("AssertionError"));
-  // The assertion names the delete, or is that refusal itself.
-  if (at === -1 || !(/DELETE|delete/.test(lines[at]) || refusal.test(lines[at]))) return false;
-  for (let i = at - 1; i >= 0; i--) {
-    if (/DELETE/.test(lines[i]) && !/^Cleanup:/.test(lines[i])) {
-      return refusal.test(lines[i]) || refusal.test(lines[i + 1] ?? "");
-    }
-  }
-  return false;
 }
 
 if (failed.length) {

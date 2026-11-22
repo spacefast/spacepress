@@ -1,64 +1,52 @@
-// The back room, on the storefront: orders to ship and drives running low. Everything else (editing
-// drives and their translations, moderating reviews, the shop settings) is in TypedPress Admin.
 import { db } from "typedpress";
 import { useFormState } from "typedpress/app";
-import { drives, orders, stockMovements } from "typedpress:db";
-import { markShipped, restock } from "../../server";
-import { money } from "../_lib/format";
+import { markShipped, processingOrders, restock } from "../../server";
 
 export const metadata = { title: "Staff", robots: { index: false, follow: false } };
 
 export default async function Staff() {
-  const shop = await db.globals.shop.get();
+  const settings = await db.globals.settings.get();
   const shipped = useFormState(markShipped);
   const restocked = useFormState(restock);
-  const open = await orders.list({ where: { status: "placed" }, orderBy: { id: "asc" }, limit: 100, with: { drive: true } });
-  const stock = await drives.list({ locale: "en", orderBy: { stock: "asc" }, limit: 100 });
-  const low = stock.filter((d) => d.stock <= shop.lowStockAt);
-  const moves = await stockMovements.list({ orderBy: { id: "desc" }, limit: 10, with: { drive: true } });
+  const orders = await processingOrders();
+  const low = await db.query.drives.findMany({
+    where: { stockQuantity: { lte: settings.lowStockAt } },
+    orderBy: { stockQuantity: "asc" }, limit: 100,
+    columns: { id: true, name: true, stockQuantity: true },
+  });
+  const moves = await db.query.stockMovements.findMany({ orderBy: { id: "desc" }, limit: 10 });
+
   return (
     <>
       <h1>Staff</h1>
-      <p className="muted">Edit drives, translations, reviews and <a href="/wp-admin/new/">shop settings</a> in TypedPress Admin.</p>
-
+      <p><a href="/wp-admin/new/screens/shipping">Shipping in TypedPress Admin</a></p>
       <h2>Orders to ship</h2>
-      {shipped.result ? <p className="ok">Order {shipped.result.code} is {shipped.result.status}.</p> : null}
-      {shipped.error ? <p className="error">{shipped.error.message}</p> : null}
-      {open.length === 0 ? <p className="empty">Nothing to ship.</p> : null}
-      {open.length > 0 ? (
-        <table className="table">
-          <thead><tr><th>Order</th><th>Drive</th><th>Qty</th><th>Total</th><th>Buyer</th><th></th></tr></thead>
-          <tbody>
-            {open.map((o) => (
-              <tr>
-                <td><code>{o.code}</code></td>
-                <td>{o.drive.name}</td>
-                <td>{o.quantity}</td>
-                <td>{money(o.total, shop.currency)}</td>
-                <td>{o.buyerName} <span className="muted">{o.buyerEmail}</span></td>
-                <td>
-                  <form action={markShipped} className="inline">
-                    <input type="hidden" name="order" value={String(o.id)} />
-                    <button>Mark shipped</button>
-                  </form>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : null}
+      {shipped.result && <p className="ok">Order {shipped.result.id} marked shipped.</p>}
+      {shipped.error && <p className="error" role="alert">{shipped.error.message}</p>}
+      {orders.length === 0 && <p>Nothing to ship.</p>}
+      <ul className="list">
+        {orders.map((order) => (
+          <li>
+            <span>Order {order.id} · {order.lines.map((line) => `${line.quantity} × ${line.name}`).join(", ")} · {order.total} {order.currency}</span>
+            <form action={markShipped} className="inline">
+              <input type="hidden" name="order" value={order.id} />
+              <button>Mark shipped</button>
+            </form>
+          </li>
+        ))}
+      </ul>
 
       <h2>Low stock</h2>
-      {restocked.result ? <p className="ok">Restocked: {restocked.result.stock} on the shelf now.</p> : null}
-      {restocked.error ? <p className="error">{restocked.error.message}</p> : null}
-      {low.length === 0 ? <p className="empty">Every drive has more than {shop.lowStockAt} in stock.</p> : null}
+      {restocked.result && <p className="ok">Restocked. {restocked.result.stock} on the shelf.</p>}
+      {restocked.error && <p className="error" role="alert">{restocked.error.message}</p>}
+      {low.length === 0 && <p>No drives are at or below the low stock threshold.</p>}
       <ul className="list">
-        {low.map((d) => (
+        {low.map((drive) => (
           <li>
-            <span>{d.name} <span className="muted">({d.stock} left)</span></span>
+            <span>{drive.name} · {drive.stockQuantity} left</span>
             <form action={restock} className="inline">
-              <input type="hidden" name="drive" value={String(d.id)} />
-              <input name="quantity" type="number" min="1" max="500" defaultValue="5" aria-label="Quantity" />
+              <input type="hidden" name="drive" value={drive.id} />
+              <label>Quantity <input name="quantity" type="number" min="1" max="500" defaultValue="5" /></label>
               <button>Restock</button>
             </form>
           </li>
@@ -67,12 +55,10 @@ export default async function Staff() {
 
       <h2>Recent stock movements</h2>
       <table className="table">
-        <thead><tr><th>When</th><th>Drive</th><th>Change</th><th>Reason</th></tr></thead>
-        <tbody>
-          {moves.map((m) => (
-            <tr><td>{m.at.slice(0, 16).replace("T", " ")}</td><td>{m.drive.name}</td><td>{m.change > 0 ? `+${m.change}` : String(m.change)}</td><td>{m.reason}</td></tr>
-          ))}
-        </tbody>
+        <thead><tr><th>When</th><th>Product</th><th>Order</th><th>Change</th><th>Reason</th></tr></thead>
+        <tbody>{moves.map((move) => (
+          <tr><td>{move.at.slice(0, 16).replace("T", " ")}</td><td>{move.drive}</td><td>{move.order ?? "—"}</td><td>{move.change}</td><td>{move.reason}</td></tr>
+        ))}</tbody>
       </table>
     </>
   );

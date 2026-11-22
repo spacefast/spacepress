@@ -1,8 +1,8 @@
 import {
   collection, global, text, integer, boolean, timestamp, richText, media, slug, select,
-  repeater, group, blocks, email, url, file, files, defineConfig, action, job, jobs, env,
+  repeater, group, blocks, email, url, file, files, defineConfig, job, env,
   db, HttpError,
-  table, userProjection, ref,
+  table, userProjection, ref, query, mutation,
 } from "typedpress";
 
 export const authors = collection({
@@ -17,12 +17,10 @@ export const authors = collection({
 export const decks = files({ accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "anyone", create: "author", delete: "editor" } });
 
 export const posts = collection({
-  // Translated per locale (§7.3). The other fields are shared by a post's translations, except
-  // each row's own slug, status and dates.
-  title: text().min(1).max(120).localized(),
+  title: text().min(1).max(120),
   slug: slug({ source: "title" }).optional(),
-  body: richText().localized().optional(),
-  excerpt: text({ multiline: true }).max(300).localized().optional(),
+  body: richText().optional(),
+  excerpt: text({ multiline: true }).max(300).optional(),
   cover: media({ accept: "image" }).optional(),
   tags: select(["news", "guide", "release"]).many().default([]),
   authorId: ref(authors).optional(),
@@ -80,7 +78,7 @@ export const comments = table({
     if (["author", "editor", "admin"].includes(ctx.user?.role ?? "")) {
       await db.update(comments).set({ approved: true }).where({ id: row.id });
     } else {
-      await jobs.notifyEditors.enqueue({ commentId: row.id }, { key: `comment-${row.id}` });
+      await notifyEditors.enqueue({ commentId: row.id }, { key: `comment-${row.id}` });
     }
   },
 });
@@ -105,37 +103,25 @@ export const settings = global({
 }, { label: "Site settings" });
 
 // Runs after the comment's request commits, on the queue (Action Scheduler on WordPress).
-export const notifyEditors = job({
-  input: { commentId: integer() },
-  retries: 3,
-  // A real site would email its editors here; this one stamps the comment so you can see it ran.
-  handler: async ({ commentId }) => {
-    await db.update(comments).set({ notifiedAt: new Date().toISOString() }).where({ id: commentId });
-  },
+export const notifyEditors = job({ retries: 3 }, async ({ commentId }: { commentId: number }) => {
+  if (!Number.isInteger(commentId)) throw new HttpError(422, "invalid_input", "commentId must be an integer", "/commentId");
+  await db.update(comments).set({ notifiedAt: new Date().toISOString() }).where({ id: commentId });
 });
 
-export const approveComment = action({
-  input: { id: integer() },
-  access: "editor",
-  async handler({ id }) {
-    const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
-    if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
-    return row;
-  },
+export const approveComment = mutation({ access: "editor" }, async ({ id }: { id: number }) => {
+  if (!Number.isInteger(id)) throw new HttpError(422, "invalid_input", "id must be an integer", "/id");
+  const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
+  if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
+  return row;
 });
 
-export const publishedCount = action({
-  input: {},
-  access: "anyone",
-  async handler() {
-    const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
-    return { count: rows.length };
-  },
+export const publishedCount = query({ access: "anyone" }, async () => {
+  const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
+  return { count: rows.length };
 });
 
 export default defineConfig({
   name: "blog",
-  locales: { default: "en", all: ["en", "de"] },
   // A 600×400 crop of every image for cards, centred on the image's focal point (§7.2).
   media: { sizes: { card: { width: 600, height: 400, fit: "cover" } } },
   // Every post change is POSTed, signed, to BLOG_HOOK_URL and retried on failure (§6.1).

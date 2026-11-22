@@ -1,5 +1,4 @@
-import { action, defineConfig } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 const windows = process.platform === "win32";
-export const a = action({ input: {}, access: "anyone",
-  handler() { return windows; } });
+export const a = mutation({ access: "anyone" }, () => { return windows; });
 export default defineConfig({});

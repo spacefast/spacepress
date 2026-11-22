@@ -67,10 +67,10 @@ test("activation registers the post types, field groups and options page, and cr
     mkdir($dir . '/tp/app', 0777, true);
     $file = $dir . '/tp/app/schema.php';
     try {
-      file_put_contents($file, '<?php return ' . var_export(['version'=>3, 'runtime'=>'0.1'], true) . ';');
+      file_put_contents($file, '<?php return ' . var_export(['version'=>5, 'runtime'=>'0.1'], true) . ';');
       $result = \\TypedPress\\Wp\\Runtime::app($dir, $dir . '/app.php');
       ob_start(); do_action('admin_notices'); $notice = ob_get_clean();
-      echo wp_json_encode([$result, \\TypedPress\\Wp\\Runtime::plugin(), str_contains($notice, 'built for runtime 0.1'), str_contains($notice, 'first 0.3.x')]);
+      echo wp_json_encode([$result, \\TypedPress\\Wp\\Runtime::plugin(), str_contains($notice, 'built for runtime 0.1'), str_contains($notice, 'typedpress 0.3.x')]);
     } finally {
       unlink($file); rmdir($dir . '/tp/app'); rmdir($dir . '/tp'); rmdir($dir);
     }

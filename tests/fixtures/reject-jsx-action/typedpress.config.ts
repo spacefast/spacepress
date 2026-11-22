@@ -1,6 +1,6 @@
-import { defineConfig, action } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 import { Badge } from "./tp/components/Badge";
 
-export const badge = action({ input: {}, handler: async () => ({ html: Badge({ text: "x" }) }) });
+export const badge = mutation({}, async () => ({ html: Badge({ text: "x" }) }));
 
 export default defineConfig({});

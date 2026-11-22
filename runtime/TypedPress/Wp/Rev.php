@@ -34,8 +34,14 @@ final class Rev
     public const FIELD = '_rev';
     public const TAKEOVER = 'takeover';
 
-    /** The item's live token (what an item read carries), or null for a kind without staged versions. */
-    public static function live(string $collection, int $id): ?string
+    /** True when this collection supports `_rev` optimistic concurrency (post kinds with staged versions, or SQL table kinds with revisions). */
+    public static function enabled(array $spec): bool
+    {
+        return Staged::enabled($spec) || (isset($spec['table']) && ($spec['revisions'] ?? false));
+    }
+
+    /** The item's live token (what an item read carries), or null for a kind without `_rev`. */
+    public static function live(string $collection, int|string $id): ?string
     {
         $state = self::state($collection, $id);
 
@@ -50,17 +56,43 @@ final class Rev
         return $state === null ? null : self::encode($state, true);
     }
 
-    /** $row with its live `_rev`, for a kind with staged versions; any other row as it is. */
+    /** $row with its live `_rev`, for a kind with `_rev`; any other row as it is. */
     public static function attach(string $collection, mixed $row): mixed
     {
-        $spec = Plugin::instance()?->schema->hasCollection($collection) ? Plugin::instance()->schema->collection($collection) : null;
-        $pk = $spec['primaryKey'] ?? 'id';
-        if (!is_array($row) || $spec === null || !Staged::enabled($spec) || !isset($row[$pk])) {
-            return $row;
-        }
-        $token = self::live($collection, (int) $row[$pk]);
+        return self::attachAll($collection, [$row])[0];
+    }
 
-        return $token === null ? $row : $row + [self::FIELD => $token];
+    /**
+     * {@see attach()} for a page of rows: the tokens of every row are read together, so a list costs
+     * the same statements whatever its length. Keys and order are the caller's.
+     *
+     * @param array<array-key, mixed> $rows
+     * @return array<array-key, mixed>
+     */
+    public static function attachAll(string $collection, array $rows): array
+    {
+        $spec = Plugin::instance()?->schema->hasCollection($collection) ? Plugin::instance()->schema->collection($collection) : null;
+        if ($spec === null || !self::enabled($spec)) {
+            return $rows;
+        }
+        $pk = $spec['primaryKey'];
+        $intPk = ($spec['columns'][$pk]['type'] ?? '') === 'integer';
+        $ids = [];
+        foreach ($rows as $row) {
+            if (is_array($row) && isset($row[$pk])) {
+                $ids[] = $intPk ? (int) $row[$pk] : (string) $row[$pk];
+            }
+        }
+        $states = self::states($collection, $ids);
+        foreach ($rows as $i => $row) {
+            $key = is_array($row) && isset($row[$pk]) ? ($intPk ? (int) $row[$pk] : (string) $row[$pk]) : null;
+            $state = $key !== null ? ($states[$key] ?? null) : null;
+            if ($state !== null) {
+                $rows[$i] = $row + [self::FIELD => self::encode($state, false)];
+            }
+        }
+
+        return $rows;
     }
 
     /**
@@ -88,17 +120,25 @@ final class Rev
      * A caller the item's update rule doesn't cover is left to the write, which refuses it as it
      * refuses anyone: neither the lock nor the token is theirs to learn about.
      */
-    public static function require(string $collection, int $id, mixed $expected, bool $takeover, ?Viewer $viewer, bool $staged = false, ?array $data = null): void
+    public static function require(string $collection, int|string $id, mixed $expected, bool $takeover, ?Viewer $viewer, bool $staged = false, ?array $data = null): void
     {
         $state = self::state($collection, $id);
         if ($state === null) {
             return;
         }
-        if ($viewer !== null && !CoreAccess::covers($collection, 'update', $id, $viewer)
-            && !(Plugin::instance()?->db()->permits($collection, 'update', $id, $viewer, $data) ?? false)) {
-            return; // the write refuses them as it refuses anyone the rule doesn't cover
+        $plugin = Plugin::instance();
+        $spec = $plugin !== null && $plugin->schema->hasCollection($collection) ? $plugin->schema->collection($collection) : null;
+        $isPost = $spec !== null && Staged::enabled($spec);
+        if ($viewer !== null) {
+            $allowed = ($isPost && CoreAccess::covers($collection, 'update', (int) $id, $viewer))
+                || ($plugin?->db()->permits($collection, 'update', $id, $viewer, $data) ?? false);
+            if (!$allowed) {
+                return; // the write refuses them as it refuses anyone the rule doesn't cover
+            }
         }
-        self::lock($id, $takeover);
+        if ($isPost) {
+            self::lock((int) $id, $takeover);
+        }
         if ($expected === null) {
             return;
         }
@@ -117,16 +157,36 @@ final class Rev
      */
     public static function guarded(string $collection, int|string $id, mixed $expected, bool $takeover, ?Viewer $viewer, callable $write, ?array $data = null): mixed
     {
-        $plugin = Plugin::instance() ?? throw new \LogicException('No TypedPress app');
-        $spec = $plugin->schema->hasCollection($collection) ? $plugin->schema->collection($collection) : null;
-        $store = $plugin->db()->store();
-        if ($spec === null || !Staged::enabled($spec) || !$store instanceof CompositeStore || !preg_match('/^\d{1,18}$/D', (string) $id)) {
+        $plugin = Plugin::instance();
+        if ($plugin === null) {
             return $write();
         }
+        $spec = $plugin->schema->hasCollection($collection) ? $plugin->schema->collection($collection) : null;
+        $store = $plugin->db()->store();
+        if ($spec === null || !self::enabled($spec) || !$store instanceof CompositeStore) {
+            return $write();
+        }
+        if (Staged::enabled($spec)) {
+            if (!preg_match('/^\d{1,18}$/D', (string) $id)) {
+                return $write();
+            }
 
-        return $plugin->db()->transaction(static function () use ($store, $collection, $id, $expected, $takeover, $viewer, $write, $data): mixed {
-            $store->posts->stagedLock((int) $id);
-            self::require($collection, (int) $id, $expected, $takeover, $viewer, data: $data);
+            return $plugin->db()->transaction(static function () use ($store, $collection, $id, $expected, $takeover, $viewer, $write, $data): mixed {
+                $store->posts->stagedLock((int) $id);
+                self::require($collection, (int) $id, $expected, $takeover, $viewer, data: $data);
+
+                return $write();
+            });
+        }
+
+        // SQL table kind: lock the row inside the transaction before checking `_rev`.
+        return $plugin->db()->transaction(static function () use ($plugin, $spec, $collection, $id, $expected, $takeover, $viewer, $write, $data): mixed {
+            $conn = $plugin->connection();
+            $table = '`' . str_replace('`', '``', $spec['existingTable'] ?? ($conn->prefix() . $spec['table'])) . '`';
+            $pkCol = '`' . str_replace('`', '``', (string) ($spec['columns'][$spec['primaryKey']]['column'] ?? $spec['primaryKey'])) . '`';
+            $forUpdate = $conn->sqlite() ? '' : ' FOR UPDATE';
+            $conn->run("SELECT 1 FROM $table WHERE $pkCol = ?$forUpdate", [$id]);
+            self::require($collection, $id, $expected, $takeover, $viewer, data: $data);
 
             return $write();
         });
@@ -195,48 +255,134 @@ final class Rev
     // ================================================================ internals
 
     /**
-     * The item as tokens describe it: `live`, a digest of the post row and its TypedPress meta, and the
-     * id of its newest revision (TypedPress writes one with every update, so it is the row as it was
-     * then); `staged`, a digest of the staged revision and its record, or null.
+     * The item as tokens describe it: `live`, a digest of the post row + meta (or SQL table row),
+     * `revision`, the id of its newest revision, and `staged` (post kinds only).
      *
-     * @return ?array{id: int, live: string, revision: int, staged: ?string}
+     * @return ?array{id: int|string, live: string, revision: int, staged: ?string}
      */
-    private static function state(string $collection, int $id): ?array
+    private static function state(string $collection, int|string $id): ?array
+    {
+        return self::states($collection, [$id])[$id] ?? null;
+    }
+
+    /**
+     * {@see state()} of each of $ids that exists, read from the database as it is now (never from a
+     * cache: a write is checked against it). Three statements however many items there are (the
+     * posts, their TypedPress meta, their newest and staged revisions), and two more when one of them
+     * has a staged version.
+     *
+     * @param list<int> $ids
+     * @return array<int, array{id: int, live: string, revision: int, staged: ?string}>
+     */
+    private static function states(string $collection, array $ids): array
     {
         $plugin = Plugin::instance();
         $spec = $plugin !== null && $plugin->schema->hasCollection($collection) ? $plugin->schema->collection($collection) : null;
-        if ($spec === null || !Staged::enabled($spec)) {
-            return null;
+        $ids = array_values(array_unique($ids));
+        if ($spec === null || !self::enabled($spec) || $ids === []) {
+            return [];
         }
         $db = $plugin->connection();
-        $wpdb = $db->wpdb();
-        $post = $db->run("SELECT ID, post_modified_gmt, post_status, post_name, post_title, post_content, post_excerpt, post_date_gmt, post_password, post_author FROM `{$wpdb->posts}` WHERE ID = ?", [$id])[0] ?? null;
-        if ($post === null) {
-            return null;
-        }
-        $prefix = $wpdb->esc_like((string) $spec['wp']['metaPrefix']);
-        $meta = $db->run(
-            "SELECT meta_key, meta_value FROM `{$wpdb->postmeta}` WHERE post_id = ? AND (meta_key LIKE ? OR meta_key LIKE ?) ORDER BY meta_key, meta_id",
-            [$id, $prefix . '%', '\\_' . $prefix . '%'],
-        );
-        $revision = $db->run(
-            "SELECT MAX(ID) AS id FROM `{$wpdb->posts}` WHERE post_parent = ? AND post_type = 'revision' AND post_name = ?",
-            [$id, $id . '-revision-v1'],
-        )[0]['id'] ?? null;
-        $staged = $db->run(
-            "SELECT r.ID, r.post_modified_gmt, r.post_title, r.post_content, m.meta_value FROM `{$wpdb->posts}` r LEFT JOIN `{$wpdb->postmeta}` m ON m.post_id = r.ID AND m.meta_key = ?"
-            . " WHERE r.post_parent = ? AND r.post_type = 'revision' AND r.post_name = ? ORDER BY r.ID",
-            [Staged::META, $id, WpPostStore::stagedName($id)],
-        );
-        // A staged revision's fields change through its meta; its id, record and copy of the post cover a re-stage.
-        $stagedMeta = $staged === [] ? [] : $db->run("SELECT meta_key, meta_value FROM `{$wpdb->postmeta}` WHERE post_id = ? ORDER BY meta_key, meta_id", [(int) $staged[0]['ID']]);
+        $in = static fn (array $values): string => implode(', ', array_fill(0, count($values), '?'));
+        if (!Staged::enabled($spec)) {
+            $table = '`' . str_replace('`', '``', $spec['existingTable'] ?? ($db->prefix() . $spec['table'])) . '`';
+            $pkName = (string) $spec['primaryKey'];
+            $physPk = (string) ($spec['columns'][$pkName]['column'] ?? $pkName);
+            $pkCol = '`' . str_replace('`', '``', $physPk) . '`';
+            $intPk = ($spec['columns'][$pkName]['type'] ?? '') === 'integer';
+            $rows = [];
+            foreach ($db->run("SELECT * FROM $table WHERE $pkCol IN ({$in($ids)})", $ids) as $row) {
+                $k = $intPk ? (int) $row[$physPk] : (string) $row[$physPk];
+                $rows[$k] = $row;
+            }
+            if ($rows === []) {
+                return [];
+            }
+            $revs = [];
+            $revTable = $db->prefix() . 'tp__revisions';
+            if ($db->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$revTable]) !== []) {
+                $strIds = array_map('strval', array_keys($rows));
+                foreach ($db->run("SELECT `pk`, MAX(`id`) AS id FROM `$revTable` WHERE `collection` = ? AND `pk` IN ({$in($strIds)}) GROUP BY `pk`", [$collection, ...$strIds]) as $r) {
+                    $k = $intPk ? (int) $r['pk'] : (string) $r['pk'];
+                    $revs[$k] = (int) $r['id'];
+                }
+            }
+            $out = [];
+            foreach ($rows as $k => $row) {
+                $out[$k] = [
+                    'id' => $k,
+                    'live' => self::digest($row),
+                    'revision' => $revs[$k] ?? 0,
+                    'staged' => null,
+                ];
+            }
 
-        return [
-            'id' => $id,
-            'live' => self::digest([$post, $meta]),
-            'revision' => (int) ($revision ?? 0),
-            'staged' => $staged === [] ? null : self::digest([$staged, $stagedMeta]),
-        ];
+            return $out;
+        }
+        $ids = array_map('intval', $ids);
+        $wpdb = $db->wpdb();
+        $posts = [];
+        foreach ($db->run("SELECT ID, post_modified_gmt, post_status, post_name, post_title, post_content, post_excerpt, post_date_gmt, post_password, post_author FROM `{$wpdb->posts}` WHERE ID IN ({$in($ids)})", $ids) as $post) {
+            $posts[(int) $post['ID']] = $post;
+        }
+        if ($posts === []) {
+            return [];
+        }
+        $ids = array_keys($posts);
+        // Each item's rows keep the order its own read gave them: by key, then by meta id.
+        $prefix = $wpdb->esc_like((string) $spec['wp']['metaPrefix']);
+        $meta = array_fill_keys($ids, []);
+        foreach ($db->run(
+            "SELECT post_id, meta_key, meta_value FROM `{$wpdb->postmeta}` WHERE post_id IN ({$in($ids)}) AND (meta_key LIKE ? OR meta_key LIKE ?) ORDER BY post_id, meta_key, meta_id",
+            [...$ids, $prefix . '%', '\\_' . $prefix . '%'],
+        ) as $row) {
+            $meta[(int) $row['post_id']][] = ['meta_key' => $row['meta_key'], 'meta_value' => $row['meta_value']];
+        }
+        // The newest revision of each item, and whether it has a staged one: both are revisions of
+        // the item, told apart by the name they are stored under. Nothing is staged for most items.
+        // The names are listed too, so the database can find the rows by `post_name`'s index, as
+        // each item's own read did, whatever number of revisions an item has.
+        $names = static fn (array $of): array => [...array_map(static fn (int $id): string => $id . '-revision-v1', $of), ...array_map([WpPostStore::class, 'stagedName'], $of)];
+        $revisions = $holding = [];
+        foreach ($db->run(
+            "SELECT post_parent, MAX(CASE WHEN post_name = CONCAT(post_parent, '-revision-v1') THEN ID ELSE 0 END) AS revision,"
+            . " MAX(CASE WHEN post_name = CONCAT(post_parent, ?) THEN ID ELSE 0 END) AS staged"
+            . " FROM `{$wpdb->posts}` WHERE post_parent IN ({$in($ids)}) AND post_type = 'revision' AND post_name IN ({$in($names($ids))}) GROUP BY post_parent",
+            [WpPostStore::STAGED_SUFFIX, ...$ids, ...$names($ids)],
+        ) as $row) {
+            $revisions[(int) $row['post_parent']] = (int) $row['revision'];
+            if ((int) $row['staged'] > 0) {
+                $holding[] = (int) $row['post_parent'];
+            }
+        }
+        $staged = $stagedMeta = [];
+        if ($holding !== []) {
+            foreach ($db->run(
+                "SELECT r.post_parent, r.ID, r.post_modified_gmt, r.post_title, r.post_content, m.meta_value FROM `{$wpdb->posts}` r LEFT JOIN `{$wpdb->postmeta}` m ON m.post_id = r.ID AND m.meta_key = ?"
+                . " WHERE r.post_parent IN ({$in($holding)}) AND r.post_type = 'revision' AND r.post_name IN ({$in($holding)}) AND r.post_name = CONCAT(r.post_parent, ?) ORDER BY r.ID",
+                [Staged::META, ...$holding, ...array_map([WpPostStore::class, 'stagedName'], $holding), WpPostStore::STAGED_SUFFIX],
+            ) as $row) {
+                $parent = (int) $row['post_parent'];
+                unset($row['post_parent']);
+                $staged[$parent][] = $row;
+            }
+            // A staged revision's fields change through its meta; its id, record and copy of the post cover a re-stage.
+            $first = array_values(array_map(static fn (array $rows): int => (int) $rows[0]['ID'], $staged));
+            foreach ($first === [] ? [] : $db->run("SELECT post_id, meta_key, meta_value FROM `{$wpdb->postmeta}` WHERE post_id IN ({$in($first)}) ORDER BY post_id, meta_key, meta_id", $first) as $row) {
+                $stagedMeta[(int) $row['post_id']][] = ['meta_key' => $row['meta_key'], 'meta_value' => $row['meta_value']];
+            }
+        }
+        $out = [];
+        foreach ($posts as $id => $post) {
+            $out[$id] = [
+                'id' => $id,
+                'live' => self::digest([$post, $meta[$id]]),
+                'revision' => $revisions[$id] ?? 0,
+                'staged' => isset($staged[$id]) ? self::digest([$staged[$id], $stagedMeta[(int) $staged[$id][0]['ID']] ?? []]) : null,
+            ];
+        }
+
+        return $out;
     }
 
     private static function digest(mixed $value): string
@@ -259,12 +405,12 @@ final class Rev
         return rtrim(strtr(base64_encode((string) json_encode($claim)), '+/', '-_'), '=');
     }
 
-    /** @return ?array{id: int, revision: int, live: string, staged: ?string} (`staged` false-y for an item token) */
+    /** @return ?array{id: int|string, revision: int, live: string, staged: ?string} (`staged` false-y for an item token) */
     private static function decode(string $token): ?array
     {
         $claim = json_decode((string) base64_decode(strtr($token, '-_', '+/'), true), true);
         if (!is_array($claim) || !in_array($claim[0] ?? null, ['i', 's'], true) || count($claim) !== ($claim[0] === 's' ? 5 : 4)
-            || !is_int($claim[1]) || !is_int($claim[2]) || !is_string($claim[3]) || (isset($claim[4]) && !is_string($claim[4]))) {
+            || (!is_int($claim[1]) && !is_string($claim[1])) || !is_int($claim[2]) || !is_string($claim[3]) || (isset($claim[4]) && !is_string($claim[4]))) {
             return null;
         }
 
@@ -290,10 +436,10 @@ final class Rev
      *
      * @return array{fields: ?list<string>, staged?: bool}
      */
-    private static function changed(string $collection, int $id, ?array $then, array $now, bool $staged, ?Viewer $viewer): array
+    private static function changed(string $collection, int|string $id, ?array $then, array $now, bool $staged, ?Viewer $viewer): array
     {
         $out = ['fields' => null] + ($staged ? ['staged' => $then === null || ($then['staged'] === false ? $now['staged'] !== null : $then['staged'] !== $now['staged'])] : []);
-        if ($then === null || $then['id'] !== $id) {
+        if ($then === null || (string) $then['id'] !== (string) $id) {
             return $out;
         }
         if ($then['live'] === $now['live']) {
@@ -309,11 +455,14 @@ final class Rev
         } catch (HttpError) {
             return $out;
         }
-        $after = $db->editorRow($collection, $id) ?? [];
+        $spec = $plugin->schema->collection($collection);
+        $after = Staged::enabled($spec)
+            ? ($db->editorRow($collection, (int) $id) ?? [])
+            : ($db->findFirst($collection, ['where' => [$spec['primaryKey'] => $id], 'deleted' => 'include']) ?? []);
         $read = static fn (array $row): array => $viewer === null ? $row : ($db->current(static fn () => \TypedPress\Extensions::read([$row], $collection, $viewer))[0] ?? []);
         [$before, $after] = [$read($before), $read($after)];
         $fields = [];
-        foreach ($plugin->schema->collection($collection)['columns'] as $name => $def) {
+        foreach ($spec['columns'] as $name => $def) {
             $name = (string) $name;
             // Generated on every update, hidden, or unreadable to this caller on either side.
             if (isset($def['onUpdate']) || ($def['hidden'] ?? false) || !array_key_exists($name, $before) || !array_key_exists($name, $after)) {

@@ -1,4 +1,13 @@
-import { allowed, columns, defaults, parseSchema, visible } from './model';
+import {
+	allowed,
+	columns,
+	defaultListColumns,
+	defaults,
+	parseSchema,
+	singularLabel,
+	stripHtml,
+	visible,
+} from './model';
 import { fromNative, toNative, nativeEditor } from './api';
 
 test('schema metadata describes labels, help, explicit kind and defaults independently of editor preferences', () => {
@@ -132,4 +141,65 @@ test('conditional fields evaluate sibling values and grouped conditions', () => 
 		false
 	);
 	expect(visible({ secret: { isNotNull: true } }, {})).toBe(false);
+});
+test('collection table helpers singularize labels, avoid duplicating titleField, skip richText blobs, and decode HTML entities', () => {
+	const s = parseSchema({
+		collections: {
+			docs: {
+				label: 'Docs',
+				kind: 'collection',
+				primaryKey: 'id',
+				title: 'title',
+				content: 'content',
+				slug: 'slug',
+				columns: {
+					id: { type: 'integer', autoIncrement: true },
+					title: { type: 'text' },
+					slug: { type: 'text' },
+					content: { type: 'richText' },
+					description: { type: 'text' },
+					status: { type: 'text', enum: ['draft', 'published'] },
+				},
+				access: { read: 'anyone' },
+			},
+			entries: {
+				label: 'Blog Entries',
+				kind: 'collection',
+				primaryKey: 'id',
+				title: 'title',
+				ui: { singularLabel: 'Article', defaultColumns: ['title', 'status', 'category'] },
+				columns: {
+					id: { type: 'integer', autoIncrement: true },
+					title: { type: 'text' },
+					status: { type: 'text', enum: ['draft', 'published'] },
+					category: { type: 'text' },
+				},
+				access: { read: 'anyone' },
+			},
+		},
+		globals: [],
+	});
+	expect(singularLabel(s.collections.docs)).toBe('Doc');
+	expect(singularLabel(s.collections.entries)).toBe('Article');
+	expect(defaultListColumns(s.collections.docs, 'title')).toEqual(['status', 'slug', 'description']);
+	expect(defaultListColumns(s.collections.entries, 'title')).toEqual(['status', 'category']);
+	expect(stripHtml('<h2 class="wp-block-heading">Hello</h2> <p>World</p>')).toBe('Hello World');
+
+	window.tpAdmin = {
+		native: { docs: { path: '/wp/v2/tp_docs', postType: 'tp_docs', metaPrefix: 'tp_' } },
+		readable: ['docs'],
+		role: 'admin',
+	};
+	const decoded = fromNative(s.collections.docs, {
+		id: 1,
+		title: { rendered: 'MCP &#038; AI Agents' },
+		slug: 'mcp-and-agents',
+		status: 'publish',
+		modified_gmt: '2026-04-01T12:00:00',
+		link: 'https://example.com/docs/mcp-and-agents',
+	});
+	expect(decoded.title).toBe('MCP & AI Agents');
+	expect(decoded.status).toBe('published');
+	expect(decoded._modified).toBe('2026-04-01T12:00:00');
+	expect(decoded._link).toBe('https://example.com/docs/mcp-and-agents');
 });

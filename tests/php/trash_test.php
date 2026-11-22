@@ -19,6 +19,9 @@ require __DIR__ . '/harness.php';
 
 $schema = require dirname(__DIR__) . '/fixtures/blog/schema.php';
 $schema['collections']['posts']['url'] = '/blog/:slug';
+// This suite exercises WordPress's native wp_scheduled_delete cron; opt posts out of TypedPress's
+// default retention: "forever" soft-delete guard so core's trash cron runs here.
+$schema['collections']['posts']['softDelete'] = false;
 // A table that refuses its post's delete while a row points at it.
 $pins = $schema['collections']['comments'];
 $pins['key'] = 'pins';

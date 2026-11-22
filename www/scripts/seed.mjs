@@ -7,7 +7,7 @@ const base = (process.env.SITE_URL ?? "http://localhost:8960").replace(/\/$/, ""
 const password = process.env.TP_APP_PASSWORD;
 if (!password) throw new Error("set TP_APP_PASSWORD to an administrator's username:application-password");
 const headers = { authorization: `Basic ${Buffer.from(password).toString("base64")}`, "content-type": "application/json" };
-const api = `${base}/__tp/api/v1/examples`;
+const api = `${base}/wp-json/typedpress/v1/examples`;
 async function request(url, options = {}) {
   const response = await fetch(url, { ...options, headers });
   if (!response.ok) throw new Error(`examples API returned HTTP ${response.status}`);
@@ -22,7 +22,7 @@ for (const [position, name] of featured.entries()) {
   if (current.data.length > 0) continue;
   const example = build.examples[name];
   if (!example || typeof example.title !== "string" || typeof example.summary !== "string") throw new Error(`build has no example metadata for ${name}`);
-  await request(api, { method: "POST", body: JSON.stringify({ name, title: example.title, summary: example.summary, repo: "spacefast/zero", path: name === "website" ? "www" : `examples/${name}`, position }) });
+  await request(api, { method: "POST", body: JSON.stringify({ name, title: example.title, summary: example.summary, repo: "spacefast/spacepress", path: name === "website" ? "www" : `examples/${name}`, position }) });
   added++;
 }
 console.log(`examples: ${added} added; existing rows retained`);

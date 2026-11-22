@@ -1,4 +1,5 @@
-import { db, HttpError, jobs, type HookCtx } from "typedpress";
+import { db, HttpError, job, type HookCtx } from "typedpress";
+import { shoppingList } from "typedpress:db";
 
 export const DAY_MS = 86_400_000;
 export const WINDOW_DAYS = 14;
@@ -54,6 +55,15 @@ export async function projection(foodId: number, owner: number) {
   };
 }
 
+export const checkLowStock = job({ agents: false, retries: 3 }, async (input: { foodId: number; ownerId: number }) => {
+  const food = await db.query.foods.findFirst({ where: { id: input.foodId, ownerId: input.ownerId } });
+  if (!food) return;
+  const forecast = await projection(food.id, food.ownerId);
+  // Scheduler jobs have no user. Update the user's pre-created candidate.
+  await db.update(shoppingList).set({ needed: forecast.needsRestock, checkedAt: new Date().toISOString() })
+    .where({ foodId: food.id, ownerId: food.ownerId });
+});
+
 export async function queueStockCheck(foodId: number, owner: number) {
-  await jobs.checkLowStock.enqueue({ foodId, ownerId: owner }, { key: `food-${foodId}` });
+  await checkLowStock.enqueue({ foodId, ownerId: owner }, { key: `food-${foodId}` });
 }

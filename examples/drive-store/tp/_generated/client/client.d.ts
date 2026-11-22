@@ -1,3 +1,6 @@
+export type Id<Kind extends string = string> = number & {
+	readonly __tp_kind?: Kind;
+};
 export type Role = "guest" | "subscriber" | "author" | "editor" | "admin";
 export interface User {
 	id: number;
@@ -38,91 +41,306 @@ export interface PrivateFile {
 }
 export interface RevisionSummary {
 	id: number;
+	version: number;
+	op: "create" | "update" | "delete" | "restore" | "purge";
 	at: string;
 	user: {
 		id: number;
 		name: string;
 	} | null;
+	schemaMigration: string | null;
+	changed: string[] | null;
+}
+export interface RevisionDiff<T = Record<string, unknown>> {
+	from: number;
+	to: number;
+	changes: {
+		field: keyof T & string;
+		from: unknown;
+		to: unknown;
+	}[];
 }
 export type Status = "draft" | "published" | "scheduled";
-export type Locale = "en" | "tr";
+export type Locale = never;
+export interface StockMovement {
+	id: Id<"stockMovements">;
+	drive: number;
+	change: number;
+	reason: "sale" | "restock" | "return";
+	order: number | null;
+	at: string;
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
+}
+export interface StockMovementInsert {
+	drive: number;
+	change: number;
+	reason: "sale" | "restock" | "return";
+	order?: number | null;
+	at?: string;
+}
+export interface StockMovementPatch {
+	drive?: number;
+	change?: number;
+	reason?: "sale" | "restock" | "return";
+	order?: number | null;
+	at?: string;
+}
+export interface StockMovementWith {}
+export interface StockMovementFilter {
+	id?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	drive?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	change?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	reason?: "sale" | "restock" | "return" | null | {
+		eq?: "sale" | "restock" | "return" | null;
+		ne?: "sale" | "restock" | "return" | null;
+		gt?: "sale" | "restock" | "return";
+		gte?: "sale" | "restock" | "return";
+		lt?: "sale" | "restock" | "return";
+		lte?: "sale" | "restock" | "return";
+		in?: ("sale" | "restock" | "return")[];
+		notIn?: ("sale" | "restock" | "return")[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	order?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	at?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	AND?: StockMovementFilter[];
+	OR?: StockMovementFilter[];
+	NOT?: StockMovementFilter;
+}
+export type StockMovementOrder = Partial<Record<"id" | "drive" | "change" | "reason" | "order" | "at" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy", "asc" | "desc">> | string;
 export interface Drive {
-	id: number;
-	name: string;
-	slug: string | null;
-	summary: string | null;
-	description: string | null;
-	brand: string;
-	model: string;
-	capacityGb: number;
-	media: "hdd" | "ssd" | "nvme";
-	connector: "sata" | "sas" | "nvme" | "usb";
-	condition: "like-new" | "good" | "fair" | "for-parts";
-	powerOnHours: number | null;
-	price: number;
-	stock: number;
-	status: "draft" | "published" | "scheduled";
-	publishedAt: string | null;
+	id: Id<"drives">;
 	uid: string | null;
-	locale: "en" | "tr";
-	translations: Partial<Record<"en" | "tr", number>>;
-}
-export interface DriveFields {
 	name: string;
-	slug?: string | null;
-	summary?: string | null;
-	description?: string | null;
-	brand: string;
-	model: string;
-	capacityGb: number;
-	media?: "hdd" | "ssd" | "nvme";
-	connector?: "sata" | "sas" | "nvme" | "usb";
-	condition?: "like-new" | "good" | "fair" | "for-parts";
-	powerOnHours?: number | null;
-	price: number;
-	stock?: number;
-	status?: "draft" | "published" | "scheduled";
-	publishedAt?: string | null;
-	uid?: string | null;
-	locale?: "en" | "tr";
-	translationOf?: undefined;
+	slug: string;
+	description: string;
+	sku: string | null;
+	shortDescription: string | null;
+	price: string | null;
+	status: "draft" | "pending" | "scheduled" | "published" | "private";
+	images: number[];
+	virtual: boolean;
+	downloadable: boolean;
+	downloads: {
+		id: string;
+		name: string;
+		file?: string;
+	}[];
+	type: string;
+	purchasable: boolean;
+	availability: string;
+	stockQuantity: number | null;
+	url: string | null;
+	brand: string | null;
+	model: string | null;
+	capacityGb: number | null;
+	media: "hdd" | "ssd" | "nvme" | null;
+	connector: "sata" | "sas" | "nvme" | "usb" | null;
+	condition: "like-new" | "good" | "fair" | "for-parts" | null;
+	powerOnHours: number | null;
+	testedOn: string | null;
+	serial?: string | null;
+	categories: Id<"categories">[];
+	tags: Id<"tags">[];
 }
-export type DriveInsert = DriveFields | (Omit<DriveFields, "brand" | "model" | "capacityGb" | "media" | "connector" | "condition" | "powerOnHours" | "price" | "stock" | "translationOf"> & Partial<Pick<DriveFields, "brand" | "model" | "capacityGb" | "media" | "connector" | "condition" | "powerOnHours" | "price" | "stock">> & {
-	translationOf: number;
-});
-export interface DrivePatch {
-	name?: string;
-	slug?: string | null;
-	summary?: string | null;
-	description?: string | null;
-	brand?: string;
-	model?: string;
-	capacityGb?: number;
-	media?: "hdd" | "ssd" | "nvme";
-	connector?: "sata" | "sas" | "nvme" | "usb";
-	condition?: "like-new" | "good" | "fair" | "for-parts";
-	powerOnHours?: number | null;
-	price?: number;
-	stock?: number;
-	status?: "draft" | "published" | "scheduled";
-	publishedAt?: string | null;
+export interface DriveInsert {
 	uid?: string | null;
+	name: string;
+	slug?: string;
+	description?: string;
+	sku?: string | null;
+	shortDescription?: string | null;
+	price?: string | null;
+	status?: "draft" | "pending" | "scheduled" | "published" | "private";
+	images?: number[];
+	virtual?: boolean;
+	downloadable?: boolean;
+	downloads?: {
+		id: string;
+		name: string;
+		file: string;
+	}[];
+	brand?: string | null;
+	model?: string | null;
+	capacityGb?: number | null;
+	media?: "hdd" | "ssd" | "nvme" | null;
+	connector?: "sata" | "sas" | "nvme" | "usb" | null;
+	condition?: "like-new" | "good" | "fair" | "for-parts" | null;
+	powerOnHours?: number | null;
+	testedOn?: string | null;
+	serial?: string | null;
+	categories?: Id<"categories">[];
+	tags?: Id<"tags">[];
+}
+export interface DrivePatch {
+	uid?: string | null;
+	name?: string;
+	slug?: string;
+	description?: string;
+	sku?: string | null;
+	shortDescription?: string | null;
+	price?: string | null;
+	status?: "draft" | "pending" | "scheduled" | "published" | "private";
+	images?: number[];
+	virtual?: boolean;
+	downloadable?: boolean;
+	downloads?: {
+		id: string;
+		name: string;
+		file?: string;
+	}[];
+	brand?: string | null;
+	model?: string | null;
+	capacityGb?: number | null;
+	media?: "hdd" | "ssd" | "nvme" | null;
+	connector?: "sata" | "sas" | "nvme" | "usb" | null;
+	condition?: "like-new" | "good" | "fair" | "for-parts" | null;
+	powerOnHours?: number | null;
+	testedOn?: string | null;
+	serial?: string | null;
+	categories?: number[];
+	tags?: number[];
 }
 export interface DriveWith {
-	orders?: true | {
-		where?: OrderFilter;
-		orderBy?: OrderOrder;
+	categories?: true | {
+		where?: CategoryFilter;
+		orderBy?: CategoryOrder;
 		limit?: number;
 		offset?: number;
-		with?: OrderWith;
+		with?: CategoryWith;
 	};
-	stockMovements?: true | {
-		where?: StockMovementFilter;
-		orderBy?: StockMovementOrder;
+	tags?: true | {
+		where?: TagFilter;
+		orderBy?: TagOrder;
 		limit?: number;
 		offset?: number;
-		with?: StockMovementWith;
+		with?: TagWith;
 	};
+	images?: true;
 }
 export interface DriveFilter {
 	id?: number | null | {
@@ -134,6 +352,22 @@ export interface DriveFilter {
 		lte?: number;
 		in?: number[];
 		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	uid?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
 		isNull?: true;
 		isNotNull?: true;
 	};
@@ -169,7 +403,7 @@ export interface DriveFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	summary?: string | null | {
+	description?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
 		gt?: string;
@@ -185,7 +419,175 @@ export interface DriveFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	description?: string | null | {
+	sku?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	shortDescription?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	price?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	status?: "draft" | "pending" | "scheduled" | "published" | "private" | null | {
+		eq?: "draft" | "pending" | "scheduled" | "published" | "private" | null;
+		ne?: "draft" | "pending" | "scheduled" | "published" | "private" | null;
+		gt?: "draft" | "pending" | "scheduled" | "published" | "private";
+		gte?: "draft" | "pending" | "scheduled" | "published" | "private";
+		lt?: "draft" | "pending" | "scheduled" | "published" | "private";
+		lte?: "draft" | "pending" | "scheduled" | "published" | "private";
+		in?: ("draft" | "pending" | "scheduled" | "published" | "private")[];
+		notIn?: ("draft" | "pending" | "scheduled" | "published" | "private")[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	images?: [] | null | {
+		has?: number;
+		eq?: [];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	virtual?: boolean | null | {
+		eq?: boolean | null;
+		ne?: boolean | null;
+		gt?: boolean;
+		gte?: boolean;
+		lt?: boolean;
+		lte?: boolean;
+		in?: boolean[];
+		notIn?: boolean[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	downloadable?: boolean | null | {
+		eq?: boolean | null;
+		ne?: boolean | null;
+		gt?: boolean;
+		gte?: boolean;
+		lt?: boolean;
+		lte?: boolean;
+		in?: boolean[];
+		notIn?: boolean[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	downloads?: {
+		id: string;
+		name: string;
+		file?: string;
+	}[] | null | {
+		eq?: {
+			id: string;
+			name: string;
+			file?: string;
+		}[] | null;
+		ne?: {
+			id: string;
+			name: string;
+			file?: string;
+		}[] | null;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	type?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	purchasable?: boolean | null | {
+		eq?: boolean | null;
+		ne?: boolean | null;
+		gt?: boolean;
+		gte?: boolean;
+		lt?: boolean;
+		lte?: boolean;
+		in?: boolean[];
+		notIn?: boolean[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	availability?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	stockQuantity?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	url?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
 		gt?: string;
@@ -305,47 +707,7 @@ export interface DriveFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	price?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	};
-	stock?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	};
-	status?: "draft" | "published" | "scheduled" | null | {
-		eq?: "draft" | "published" | "scheduled" | null;
-		ne?: "draft" | "published" | "scheduled" | null;
-		gt?: "draft" | "published" | "scheduled";
-		gte?: "draft" | "published" | "scheduled";
-		lt?: "draft" | "published" | "scheduled";
-		lte?: "draft" | "published" | "scheduled";
-		in?: ("draft" | "published" | "scheduled")[];
-		notIn?: ("draft" | "published" | "scheduled")[];
-		like?: string;
-		ilike?: string;
-		notLike?: string;
-		notIlike?: string;
-		isNull?: true;
-		isNotNull?: true;
-	};
-	publishedAt?: string | null | {
+	testedOn?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
 		gt?: string;
@@ -354,6 +716,87 @@ export interface DriveFilter {
 		lte?: string;
 		in?: string[];
 		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	serial?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	categories?: [] | {
+		has?: number;
+		eq?: [];
+		NOT?: {
+			has?: number;
+		};
+	} | true | false | CategoryFilter;
+	tags?: [] | {
+		has?: number;
+		eq?: [];
+		NOT?: {
+			has?: number;
+		};
+	} | true | false | TagFilter;
+	AND?: DriveFilter[];
+	OR?: DriveFilter[];
+	NOT?: DriveFilter;
+}
+export type DriveOrder = Partial<Record<"id" | "uid" | "name" | "slug" | "description" | "sku" | "shortDescription" | "price" | "status" | "virtual" | "downloadable" | "type" | "purchasable" | "availability" | "stockQuantity" | "url" | "brand" | "model" | "capacityGb" | "media" | "connector" | "condition" | "powerOnHours" | "testedOn" | "serial", "asc" | "desc">> | string;
+export interface Category {
+	id: Id<"categories">;
+	uid: string | null;
+	name: string;
+	slug: string;
+	description: string;
+	parent: Id<"categories"> | null;
+	count: number;
+	url: string | null;
+}
+export interface CategoryInsert {
+	uid?: string | null;
+	name: string;
+	slug?: string;
+	description?: string;
+	parent?: Id<"categories"> | null;
+}
+export interface CategoryPatch {
+	uid?: string | null;
+	name?: string;
+	slug?: string;
+	description?: string;
+	parent?: number | null;
+}
+export interface CategoryWith {
+	drives?: true | {
+		where?: DriveFilter;
+		orderBy?: DriveOrder;
+		limit?: number;
+		offset?: number;
+		with?: DriveWith;
+	};
+}
+export interface CategoryFilter {
+	id?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
 	};
@@ -373,15 +816,15 @@ export interface DriveFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	locale?: "en" | "tr" | null | {
-		eq?: "en" | "tr" | null;
-		ne?: "en" | "tr" | null;
-		gt?: "en" | "tr";
-		gte?: "en" | "tr";
-		lt?: "en" | "tr";
-		lte?: "en" | "tr";
-		in?: ("en" | "tr")[];
-		notIn?: ("en" | "tr")[];
+	name?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
 		like?: string;
 		ilike?: string;
 		notLike?: string;
@@ -389,69 +832,322 @@ export interface DriveFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	orders?: true | OrderFilter;
-	stockMovements?: true | StockMovementFilter;
-	AND?: DriveFilter[];
-	OR?: DriveFilter[];
-	NOT?: DriveFilter;
+	slug?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	description?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	parent?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	count?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	url?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	drives?: true | DriveFilter;
+	AND?: CategoryFilter[];
+	OR?: CategoryFilter[];
+	NOT?: CategoryFilter;
 }
-export type DriveOrder = Partial<Record<"id" | "name" | "slug" | "summary" | "description" | "brand" | "model" | "capacityGb" | "media" | "connector" | "condition" | "powerOnHours" | "price" | "stock" | "status" | "publishedAt" | "uid" | "locale", "asc" | "desc">> | string;
-export interface Order {
-	id: number;
-	code: string;
-	drive: number;
-	quantity: number;
-	unitPrice: number;
-	total: number;
-	buyerName: string;
-	buyerEmail: string;
-	buyerId: number;
-	status: "placed" | "shipped" | "cancelled";
-	placedAt: string;
-	shippedAt: string | null;
+export type CategoryOrder = Partial<Record<"id" | "uid" | "name" | "slug" | "description" | "parent" | "count" | "url", "asc" | "desc">> | string;
+export interface Tag {
+	id: Id<"tags">;
+	uid: string | null;
+	name: string;
+	slug: string;
+	description: string;
+	count: number;
+	url: string | null;
 }
-export interface OrderInsert {
-	code: string;
-	drive: number;
-	quantity?: number;
-	unitPrice?: number;
-	total?: number;
-	buyerName: string;
-	buyerEmail: string;
-	buyerId?: number;
-	status?: "placed" | "shipped" | "cancelled";
-	placedAt?: string;
-	shippedAt?: string | null;
+export interface TagInsert {
+	uid?: string | null;
+	name: string;
+	slug?: string;
+	description?: string;
 }
-export interface OrderPatch {
-	code?: string;
-	drive?: number;
-	quantity?: number;
-	unitPrice?: number;
-	total?: number;
-	buyerName?: string;
-	buyerEmail?: string;
-	buyerId?: number;
-	status?: "placed" | "shipped" | "cancelled";
-	placedAt?: string;
-	shippedAt?: string | null;
+export interface TagPatch {
+	uid?: string | null;
+	name?: string;
+	slug?: string;
+	description?: string;
 }
-export interface OrderWith {
-	drive?: true | {
+export interface TagWith {
+	drives?: true | {
 		where?: DriveFilter;
 		orderBy?: DriveOrder;
 		limit?: number;
 		offset?: number;
 		with?: DriveWith;
 	};
-	stockMovements?: true | {
-		where?: StockMovementFilter;
-		orderBy?: StockMovementOrder;
-		limit?: number;
-		offset?: number;
-		with?: StockMovementWith;
-	};
 }
+export interface TagFilter {
+	id?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	uid?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	name?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	slug?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	description?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	count?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	url?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	drives?: true | DriveFilter;
+	AND?: TagFilter[];
+	OR?: TagFilter[];
+	NOT?: TagFilter;
+}
+export type TagOrder = Partial<Record<"id" | "uid" | "name" | "slug" | "description" | "count" | "url", "asc" | "desc">> | string;
+export interface Order {
+	id: Id<"orders">;
+	status: string;
+	currency: string;
+	precision: number;
+	createdAt: string;
+	updatedAt: string;
+	paidAt: string | null;
+	completedAt: string | null;
+	customer: number | null;
+	paymentMethod: string;
+	paymentTitle: string;
+	total: string;
+	subtotal: string;
+	discountTotal: string;
+	shippingTotal: string;
+	taxTotal: string;
+	billing: {
+		first_name: string;
+		last_name: string;
+		company: string;
+		address_1: string;
+		address_2: string;
+		city: string;
+		state: string;
+		postcode: string;
+		country: string;
+		email: string | null;
+		phone: string | null;
+	};
+	shipping: {
+		first_name: string;
+		last_name: string;
+		company: string;
+		address_1: string;
+		address_2: string;
+		city: string;
+		state: string;
+		postcode: string;
+		country: string;
+		email: string | null;
+		phone: string | null;
+	};
+	lines: {
+		id: number;
+		name: string;
+		product: number;
+		variation: number | null;
+		quantity: number;
+		subtotal: string;
+		subtotalTax: string;
+		total: string;
+		totalTax: string;
+		taxes: unknown;
+	}[];
+	shippingLines: {
+		id: number;
+		name: string;
+		method_id: string;
+		instance_id: string;
+		total: string;
+		total_tax: string;
+		taxes: unknown;
+	}[];
+	taxLines: {
+		id: number;
+		name: string;
+		rate_id: number;
+		label: string;
+		compound: boolean;
+		tax_total: string;
+		shipping_tax_total: string;
+	}[];
+	feeLines: {
+		id: number;
+		name: string;
+		total: string;
+		total_tax: string;
+		taxes: unknown;
+	}[];
+	couponLines: {
+		id: number;
+		name: string;
+		code: string;
+		discount: string;
+		discount_tax: string;
+	}[];
+	refunds: {
+		id: number;
+		amount: string;
+		reason: string;
+		createdAt: string;
+	}[];
+}
+export type OrderInsert = never;
+export type OrderPatch = never;
+export interface OrderWith {}
 export interface OrderFilter {
 	id?: number | null | {
 		eq?: number | null;
@@ -465,7 +1161,7 @@ export interface OrderFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	code?: string | null | {
+	status?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
 		gt?: string;
@@ -481,55 +1177,7 @@ export interface OrderFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	drive?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	} | DriveFilter;
-	quantity?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	};
-	unitPrice?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	};
-	total?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	};
-	buyerName?: string | null | {
+	currency?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
 		gt?: string;
@@ -545,23 +1193,7 @@ export interface OrderFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	buyerEmail?: string | null | {
-		eq?: string | null;
-		ne?: string | null;
-		gt?: string;
-		gte?: string;
-		lt?: string;
-		lte?: string;
-		in?: string[];
-		notIn?: string[];
-		like?: string;
-		ilike?: string;
-		notLike?: string;
-		notIlike?: string;
-		isNull?: true;
-		isNotNull?: true;
-	};
-	buyerId?: number | null | {
+	precision?: number | null | {
 		eq?: number | null;
 		ne?: number | null;
 		gt?: number;
@@ -573,15 +1205,75 @@ export interface OrderFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	status?: "placed" | "shipped" | "cancelled" | null | {
-		eq?: "placed" | "shipped" | "cancelled" | null;
-		ne?: "placed" | "shipped" | "cancelled" | null;
-		gt?: "placed" | "shipped" | "cancelled";
-		gte?: "placed" | "shipped" | "cancelled";
-		lt?: "placed" | "shipped" | "cancelled";
-		lte?: "placed" | "shipped" | "cancelled";
-		in?: ("placed" | "shipped" | "cancelled")[];
-		notIn?: ("placed" | "shipped" | "cancelled")[];
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	paidAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	completedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	customer?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	paymentMethod?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
 		like?: string;
 		ilike?: string;
 		notLike?: string;
@@ -589,7 +1281,7 @@ export interface OrderFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	placedAt?: string | null | {
+	paymentTitle?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
 		gt?: string;
@@ -598,10 +1290,14 @@ export interface OrderFilter {
 		lte?: string;
 		in?: string[];
 		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
 		isNull?: true;
 		isNotNull?: true;
 	};
-	shippedAt?: string | null | {
+	total?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
 		gt?: string;
@@ -610,205 +1306,372 @@ export interface OrderFilter {
 		lte?: string;
 		in?: string[];
 		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
 		isNull?: true;
 		isNotNull?: true;
 	};
-	stockMovements?: true | StockMovementFilter;
+	subtotal?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	discountTotal?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	shippingTotal?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	taxTotal?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	billing?: {
+		first_name: string;
+		last_name: string;
+		company: string;
+		address_1: string;
+		address_2: string;
+		city: string;
+		state: string;
+		postcode: string;
+		country: string;
+		email: string | null;
+		phone: string | null;
+	} | null | {
+		eq?: {
+			first_name: string;
+			last_name: string;
+			company: string;
+			address_1: string;
+			address_2: string;
+			city: string;
+			state: string;
+			postcode: string;
+			country: string;
+			email: string | null;
+			phone: string | null;
+		} | null;
+		ne?: {
+			first_name: string;
+			last_name: string;
+			company: string;
+			address_1: string;
+			address_2: string;
+			city: string;
+			state: string;
+			postcode: string;
+			country: string;
+			email: string | null;
+			phone: string | null;
+		} | null;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	shipping?: {
+		first_name: string;
+		last_name: string;
+		company: string;
+		address_1: string;
+		address_2: string;
+		city: string;
+		state: string;
+		postcode: string;
+		country: string;
+		email: string | null;
+		phone: string | null;
+	} | null | {
+		eq?: {
+			first_name: string;
+			last_name: string;
+			company: string;
+			address_1: string;
+			address_2: string;
+			city: string;
+			state: string;
+			postcode: string;
+			country: string;
+			email: string | null;
+			phone: string | null;
+		} | null;
+		ne?: {
+			first_name: string;
+			last_name: string;
+			company: string;
+			address_1: string;
+			address_2: string;
+			city: string;
+			state: string;
+			postcode: string;
+			country: string;
+			email: string | null;
+			phone: string | null;
+		} | null;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	lines?: {
+		id: number;
+		name: string;
+		product: number;
+		variation: number | null;
+		quantity: number;
+		subtotal: string;
+		subtotalTax: string;
+		total: string;
+		totalTax: string;
+		taxes: unknown;
+	}[] | null | {
+		eq?: {
+			id: number;
+			name: string;
+			product: number;
+			variation: number | null;
+			quantity: number;
+			subtotal: string;
+			subtotalTax: string;
+			total: string;
+			totalTax: string;
+			taxes: unknown;
+		}[] | null;
+		ne?: {
+			id: number;
+			name: string;
+			product: number;
+			variation: number | null;
+			quantity: number;
+			subtotal: string;
+			subtotalTax: string;
+			total: string;
+			totalTax: string;
+			taxes: unknown;
+		}[] | null;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	shippingLines?: {
+		id: number;
+		name: string;
+		method_id: string;
+		instance_id: string;
+		total: string;
+		total_tax: string;
+		taxes: unknown;
+	}[] | null | {
+		eq?: {
+			id: number;
+			name: string;
+			method_id: string;
+			instance_id: string;
+			total: string;
+			total_tax: string;
+			taxes: unknown;
+		}[] | null;
+		ne?: {
+			id: number;
+			name: string;
+			method_id: string;
+			instance_id: string;
+			total: string;
+			total_tax: string;
+			taxes: unknown;
+		}[] | null;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	taxLines?: {
+		id: number;
+		name: string;
+		rate_id: number;
+		label: string;
+		compound: boolean;
+		tax_total: string;
+		shipping_tax_total: string;
+	}[] | null | {
+		eq?: {
+			id: number;
+			name: string;
+			rate_id: number;
+			label: string;
+			compound: boolean;
+			tax_total: string;
+			shipping_tax_total: string;
+		}[] | null;
+		ne?: {
+			id: number;
+			name: string;
+			rate_id: number;
+			label: string;
+			compound: boolean;
+			tax_total: string;
+			shipping_tax_total: string;
+		}[] | null;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	feeLines?: {
+		id: number;
+		name: string;
+		total: string;
+		total_tax: string;
+		taxes: unknown;
+	}[] | null | {
+		eq?: {
+			id: number;
+			name: string;
+			total: string;
+			total_tax: string;
+			taxes: unknown;
+		}[] | null;
+		ne?: {
+			id: number;
+			name: string;
+			total: string;
+			total_tax: string;
+			taxes: unknown;
+		}[] | null;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	couponLines?: {
+		id: number;
+		name: string;
+		code: string;
+		discount: string;
+		discount_tax: string;
+	}[] | null | {
+		eq?: {
+			id: number;
+			name: string;
+			code: string;
+			discount: string;
+			discount_tax: string;
+		}[] | null;
+		ne?: {
+			id: number;
+			name: string;
+			code: string;
+			discount: string;
+			discount_tax: string;
+		}[] | null;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	refunds?: {
+		id: number;
+		amount: string;
+		reason: string;
+		createdAt: string;
+	}[] | null | {
+		eq?: {
+			id: number;
+			amount: string;
+			reason: string;
+			createdAt: string;
+		}[] | null;
+		ne?: {
+			id: number;
+			amount: string;
+			reason: string;
+			createdAt: string;
+		}[] | null;
+		isNull?: true;
+		isNotNull?: true;
+	};
 	AND?: OrderFilter[];
 	OR?: OrderFilter[];
 	NOT?: OrderFilter;
 }
-export type OrderOrder = Partial<Record<"id" | "code" | "drive" | "quantity" | "unitPrice" | "total" | "buyerName" | "buyerEmail" | "buyerId" | "status" | "placedAt" | "shippedAt", "asc" | "desc">> | string;
-export interface StockMovement {
-	id: number;
-	drive: number;
-	change: number;
-	reason: "sale" | "restock" | "return";
-	order: number | null;
-	note: string | null;
-	at: string;
-}
-export interface StockMovementInsert {
-	drive: number;
-	change: number;
-	reason: "sale" | "restock" | "return";
-	order?: number | null;
-	note?: string | null;
-	at?: string;
-}
-export interface StockMovementPatch {
-	drive?: number;
-	change?: number;
-	reason?: "sale" | "restock" | "return";
-	order?: number | null;
-	note?: string | null;
-	at?: string;
-}
-export interface StockMovementWith {
-	drive?: true | {
-		where?: DriveFilter;
-		orderBy?: DriveOrder;
-		limit?: number;
-		offset?: number;
-		with?: DriveWith;
-	};
-	order?: true | {
-		where?: OrderFilter;
-		orderBy?: OrderOrder;
-		limit?: number;
-		offset?: number;
-		with?: OrderWith;
-	};
-}
-export interface StockMovementFilter {
-	id?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	};
-	drive?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	} | DriveFilter;
-	change?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	};
-	reason?: "sale" | "restock" | "return" | null | {
-		eq?: "sale" | "restock" | "return" | null;
-		ne?: "sale" | "restock" | "return" | null;
-		gt?: "sale" | "restock" | "return";
-		gte?: "sale" | "restock" | "return";
-		lt?: "sale" | "restock" | "return";
-		lte?: "sale" | "restock" | "return";
-		in?: ("sale" | "restock" | "return")[];
-		notIn?: ("sale" | "restock" | "return")[];
-		like?: string;
-		ilike?: string;
-		notLike?: string;
-		notIlike?: string;
-		isNull?: true;
-		isNotNull?: true;
-	};
-	order?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	} | OrderFilter;
-	note?: string | null | {
-		eq?: string | null;
-		ne?: string | null;
-		gt?: string;
-		gte?: string;
-		lt?: string;
-		lte?: string;
-		in?: string[];
-		notIn?: string[];
-		like?: string;
-		ilike?: string;
-		notLike?: string;
-		notIlike?: string;
-		isNull?: true;
-		isNotNull?: true;
-	};
-	at?: string | null | {
-		eq?: string | null;
-		ne?: string | null;
-		gt?: string;
-		gte?: string;
-		lt?: string;
-		lte?: string;
-		in?: string[];
-		notIn?: string[];
-		isNull?: true;
-		isNotNull?: true;
-	};
-	AND?: StockMovementFilter[];
-	OR?: StockMovementFilter[];
-	NOT?: StockMovementFilter;
-}
-export type StockMovementOrder = Partial<Record<"id" | "drive" | "change" | "reason" | "order" | "note" | "at", "asc" | "desc">> | string;
-export interface Shop {
-	shopName: string;
-	currency: "USD" | "EUR" | "TRY";
+export type OrderOrder = Partial<Record<"id" | "status" | "currency" | "precision" | "createdAt" | "updatedAt" | "paidAt" | "completedAt" | "customer" | "paymentMethod" | "paymentTitle" | "total" | "subtotal" | "discountTotal" | "shippingTotal" | "taxTotal", "asc" | "desc">> | string;
+export interface Settings {
 	notice: string | null;
 	lowStockAt: number;
 }
-export interface ShopPatch {
-	shopName?: string;
-	currency?: "USD" | "EUR" | "TRY";
+export interface SettingsPatch {
 	notice?: string | null;
 	lowStockAt?: number;
 }
-export interface BuyInput {
-	drive: number;
-	quantity?: number;
-	buyerName: string;
-	buyerEmail: string;
-}
-export type BuyOutput = {
-	code: string;
-	quantity: number;
-	total: number;
-	buyerEmail: string;
-};
 export interface RestockInput {
 	drive: number;
 	quantity: number;
-	note?: string | null;
 }
 export type RestockOutput = {
-	drive: number;
 	stock: number;
 };
 export interface MarkShippedInput {
 	order: number;
 }
 export type MarkShippedOutput = {
-	code: string;
-	status: "placed" | "shipped" | "cancelled";
+	id: number;
 };
 export type PendingOrdersInput = Record<string, never>;
 export type PendingOrdersOutput = {
 	rows: ({
 		id: number;
-		code: string;
-		buyer: string;
-		quantity: number;
-		total: number;
+		total: string;
+		drives: string;
 	})[];
 };
 export interface Collections {
+	stockMovements: {
+		row: StockMovement;
+		insert: StockMovementInsert;
+		patch: StockMovementPatch;
+		with: StockMovementWith;
+		filter: StockMovementFilter;
+		order: StockMovementOrder;
+	};
 	drives: {
 		row: Drive;
 		insert: DriveInsert;
@@ -816,6 +1679,22 @@ export interface Collections {
 		with: DriveWith;
 		filter: DriveFilter;
 		order: DriveOrder;
+	};
+	categories: {
+		row: Category;
+		insert: CategoryInsert;
+		patch: CategoryPatch;
+		with: CategoryWith;
+		filter: CategoryFilter;
+		order: CategoryOrder;
+	};
+	tags: {
+		row: Tag;
+		insert: TagInsert;
+		patch: TagPatch;
+		with: TagWith;
+		filter: TagFilter;
+		order: TagOrder;
 	};
 	orders: {
 		row: Order;
@@ -825,26 +1704,14 @@ export interface Collections {
 		filter: OrderFilter;
 		order: OrderOrder;
 	};
-	stockMovements: {
-		row: StockMovement;
-		insert: StockMovementInsert;
-		patch: StockMovementPatch;
-		with: StockMovementWith;
-		filter: StockMovementFilter;
-		order: StockMovementOrder;
-	};
 }
 export interface Globals {
-	shop: {
-		row: Shop;
-		patch: ShopPatch;
+	settings: {
+		row: Settings;
+		patch: SettingsPatch;
 	};
 }
 export interface Actions {
-	buy: {
-		input: BuyInput;
-		output: BuyOutput;
-	};
 	restock: {
 		input: RestockInput;
 		output: RestockOutput;
@@ -861,21 +1728,70 @@ export interface Actions {
 export declare const SCHEMA: {
 	readonly name: "drive-store";
 	readonly collections: {
+		readonly stockMovements: {
+			readonly path: "stock_movements";
+			readonly primaryKey: "id";
+			readonly drafts: false;
+			readonly revisions: true;
+			readonly softDelete: true;
+			readonly localized: false;
+			readonly relations: {};
+			readonly media: readonly [];
+			readonly mediaList: readonly [];
+			readonly files: readonly [];
+		};
 		readonly drives: {
 			readonly path: "drives";
 			readonly primaryKey: "id";
-			readonly drafts: true;
-			readonly revisions: true;
-			readonly localized: true;
+			readonly drafts: false;
+			readonly revisions: false;
+			readonly softDelete: false;
+			readonly localized: false;
 			readonly relations: {
-				readonly orders: {
+				readonly categories: {
 					readonly kind: "many";
-					readonly collection: "orders";
+					readonly collection: "categories";
 					readonly optional: false;
 				};
-				readonly stockMovements: {
+				readonly tags: {
 					readonly kind: "many";
-					readonly collection: "stockMovements";
+					readonly collection: "tags";
+					readonly optional: false;
+				};
+			};
+			readonly media: readonly ["images"];
+			readonly mediaList: readonly ["images"];
+			readonly files: readonly [];
+		};
+		readonly categories: {
+			readonly path: "categories";
+			readonly primaryKey: "id";
+			readonly drafts: false;
+			readonly revisions: false;
+			readonly softDelete: false;
+			readonly localized: false;
+			readonly relations: {
+				readonly drives: {
+					readonly kind: "many";
+					readonly collection: "drives";
+					readonly optional: false;
+				};
+			};
+			readonly media: readonly [];
+			readonly mediaList: readonly [];
+			readonly files: readonly [];
+		};
+		readonly tags: {
+			readonly path: "tags";
+			readonly primaryKey: "id";
+			readonly drafts: false;
+			readonly revisions: false;
+			readonly softDelete: false;
+			readonly localized: false;
+			readonly relations: {
+				readonly drives: {
+					readonly kind: "many";
+					readonly collection: "drives";
 					readonly optional: false;
 				};
 			};
@@ -888,48 +1804,16 @@ export declare const SCHEMA: {
 			readonly primaryKey: "id";
 			readonly drafts: false;
 			readonly revisions: false;
+			readonly softDelete: false;
 			readonly localized: false;
-			readonly relations: {
-				readonly drive: {
-					readonly kind: "one";
-					readonly collection: "drives";
-					readonly optional: false;
-				};
-				readonly stockMovements: {
-					readonly kind: "many";
-					readonly collection: "stockMovements";
-					readonly optional: false;
-				};
-			};
-			readonly media: readonly [];
-			readonly mediaList: readonly [];
-			readonly files: readonly [];
-		};
-		readonly stockMovements: {
-			readonly path: "stock_movements";
-			readonly primaryKey: "id";
-			readonly drafts: false;
-			readonly revisions: false;
-			readonly localized: false;
-			readonly relations: {
-				readonly drive: {
-					readonly kind: "one";
-					readonly collection: "drives";
-					readonly optional: false;
-				};
-				readonly order: {
-					readonly kind: "one";
-					readonly collection: "orders";
-					readonly optional: true;
-				};
-			};
+			readonly relations: {};
 			readonly media: readonly [];
 			readonly mediaList: readonly [];
 			readonly files: readonly [];
 		};
 	};
-	readonly globals: readonly ["shop"];
-	readonly actions: readonly ["buy", "restock", "markShipped", "pendingOrders"];
+	readonly globals: readonly ["settings"];
+	readonly actions: readonly ["restock", "markShipped", "pendingOrders"];
 	readonly buckets: readonly [];
 };
 export type SchemaDescriptor = typeof SCHEMA;
@@ -992,6 +1876,8 @@ export type ListQuery<
 	limit?: number;
 	offset?: number;
 	with?: W;
+	/** Soft-delete filter: `"exclude"` (default), `"include"`, or `"only"`. Non-default modes require `restore` or `delete` access. */
+	deleted?: "exclude" | "include" | "only";
 } & StatusQuery<K> & LocaleQuery<K>;
 /**
 * A read. Await it for one answer, or `subscribe` to keep it current: the callback gets the result
@@ -1049,12 +1935,18 @@ export interface CollectionClient<K extends CollectionKey> {
 	*/
 	update(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<Row<K>>;
 	delete(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
+	/** Restores a soft-deleted row (and any cascade-deleted children sharing its deletion group). */
+	restore(id: IdOf<K>): Promise<Row<K>>;
+	/** Permanently removes the row from storage (default access `"system"`). */
+	purge(id: IdOf<K>): Promise<Row<K>>;
 	/** `list(q).subscribe(onRows, onError)`. Returns a function that stops watching. */
 	watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q: ListQuery<K, ExactWith<K, W>> | undefined, onRows: (rows: RowWith<K, W>[]) => void, onError?: (error: TypedPressError) => void): () => void;
 	revisions: {
 		/** Newest first. Needs `update` access on the row. */
 		list(id: IdOf<K>): Promise<RevisionSummary[]>;
 		get(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
+		/** Diffs two revisions (by version or revision id) as this viewer may read them. */
+		diff(id: IdOf<K>, fromVersion: number, toVersion: number): Promise<RevisionDiff<Row<K>>>;
 		/** Runs the update pipeline with the revision as the patch; returns the updated row. */
 		restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
 	};
@@ -1204,7 +2096,7 @@ export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
 	readonly actions: ActionsClient;
 	readonly globals: GlobalsClient;
 	readonly auth: AuthClient;
-	/** `GET /__tp/api/v1`: the app's schema (kinds, fields, globals, actions), as `typedpress pull` reads it. */
+	/** `GET /wp-json/typedpress/v1`: the app's schema (kinds, fields, globals, actions), as `typedpress pull` reads it. */
 	schema(): Promise<unknown>;
 };
 /** One committed transaction's changes, as the runtime's `tp_realtime_changes` hook sends them. */
@@ -1248,7 +2140,7 @@ export interface RealtimeOptions {
 /** For host scripts: every client on this page, created before or after, uses this transport by default. */
 export declare function registerRealtimeTransport(transport: RealtimeTransport): void;
 export interface ClientOptions {
-	/** Base URL including the API prefix: "https://x.test/__tp/api/v1". Default: `/__tp/api/v1` on the page's origin. */
+	/** Base URL including the API prefix: "https://x.test/wp-json/typedpress/v1". Default: `/wp-json/typedpress/v1` on the page's origin. */
 	url?: string;
 	/** WordPress cookie auth: the REST nonce; sent as `X-WP-Nonce` with `credentials: "same-origin"`. */
 	nonce?: string;
@@ -1298,4 +2190,202 @@ export declare function createClient(options?: ClientOptions): Client;
 * an action's result, a global. Returns a function that stops watching.
 */
 export declare function watch<T>(client: Client, collections: readonly CollectionKey[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: TypedPressError) => void): () => void;
+/** Cart contracts and error-cart handling adapted from @woo/storefront-core (MIT),
+* packages/core/src/contracts.ts and packages/core/src/transport.ts.
+* Amounts here are exact decimal strings; the Store API's minor units are normalized on read.
+*/
+export interface WooCartItem {
+	key: string;
+	id: number;
+	name: string;
+	quantity: number;
+	images: {
+		id: number;
+		src: string;
+		thumbnail: string;
+		alt: string;
+	}[];
+	prices: {
+		price: string;
+		currencyCode: string;
+		currencyMinorUnit: number;
+	};
+	totals: {
+		lineTotal: string;
+		lineSubtotal: string;
+	};
+	variation: {
+		attribute: string;
+		value: string;
+	}[];
+}
+export interface WooCartTotals {
+	totalItems: string;
+	totalPrice: string;
+	totalShipping: string | null;
+	totalDiscount: string;
+	totalFees: string;
+	totalTax: string;
+	currencyCode: string;
+	currencyMinorUnit: number;
+}
+export interface WooAddress {
+	firstName?: string;
+	lastName?: string;
+	company?: string;
+	address1?: string;
+	address2?: string;
+	city?: string;
+	state?: string;
+	postcode?: string;
+	country?: string;
+	email?: string;
+	phone?: string;
+}
+export interface WooShippingPackage {
+	packageId: number;
+	name: string;
+	rates: {
+		id: string;
+		name: string;
+		price: string;
+		selected: boolean;
+		currencyCode: string;
+		currencyMinorUnit: number;
+	}[];
+}
+export interface WooCart {
+	items: WooCartItem[];
+	itemsCount: number;
+	totals: WooCartTotals;
+	needsShipping: boolean;
+	shippingRates: WooShippingPackage[];
+	billingAddress?: WooAddress;
+	shippingAddress?: WooAddress;
+	coupons: {
+		code: string;
+		totals: {
+			totalDiscount: string;
+		};
+	}[];
+	fees: {
+		id: string;
+		name: string;
+		total: string;
+		totalTax: string;
+	}[];
+}
+/** The codes Woo 11.3.0's cart routes send for the requests this client makes (`StoreApi/Routes/V1/Cart*.php`,
+* `Utilities/CartController.php`, `Utilities/QuantityLimits.php`, `Authentication.php`), with their statuses. */
+export type WooStoreErrorCode = "invalid_quantity" | "rate_limit_exceeded" | "readonly_quantity" | "rest_invalid_param" | "woocommerce_rest_add_to_cart_error" | "woocommerce_rest_cart_error" | "woocommerce_rest_cart_invalid_key" | "woocommerce_rest_cart_invalid_parent_product" | "woocommerce_rest_cart_invalid_product" | "woocommerce_rest_cart_item_exists" | "woocommerce_rest_cart_missing_rate_id" | "woocommerce_rest_invalid_nonce" | "woocommerce_rest_invalid_variation_data" | "woocommerce_rest_missing_attributes" | "woocommerce_rest_missing_nonce" | "woocommerce_rest_missing_variation_data" | "woocommerce_rest_product_invalid_quantity" | "woocommerce_rest_product_not_purchasable" | "woocommerce_rest_product_out_of_stock" | "woocommerce_rest_product_partially_out_of_stock" | "woocommerce_rest_shipping_disabled" | "woocommerce_rest_unknown_server_error" | "woocommerce_rest_variation_id_from_variation_data";
+export declare class WooStoreError extends Error {
+	/** The string Woo sent, unchanged. Extensions and other Woo versions send codes outside `WooStoreErrorCode`.
+	* `http_error` is this client's own: the answer was not a Woo error, such as a proxy's or a maintenance page. */
+	readonly code: WooStoreErrorCode | (string & {});
+	readonly status: number;
+	/** The current cart. Woo sends it with a 409 only. */
+	readonly cart: WooCart | undefined;
+	/** `message` is plain text: Woo's HTML entities are already decoded. */
+	constructor(code: WooStoreErrorCode | (string & {}), message: string, status: number, cart?: WooCart);
+}
+/** Exact conversion, including zero-decimal currencies. Never uses floating-point arithmetic. */
+export declare function wooDecimal(minor: string, precision: number): string;
+/** Woo's Store API cart. Browser only. */
+export interface WooCartClient {
+	get(): Promise<WooCart>;
+	add(id: number, quantity?: number): Promise<WooCart>;
+	/** Sets a line's quantity. Woo refuses a quantity of zero, so zero removes the line. */
+	update(key: string, quantity: number): Promise<WooCart>;
+	remove(key: string): Promise<WooCart>;
+	updateCustomer(input: {
+		billing?: WooAddress;
+		shipping?: WooAddress;
+	}): Promise<WooCart>;
+	selectShipping(packageId: number, rateId: string): Promise<WooCart>;
+	subscribe(listener: (cart: WooCart) => void): () => void;
+}
+interface CartTransportOptions {
+	/** Woo Store API root. An absolute URL on another origin selects a token session. */
+	base?: string;
+	fetch?: typeof fetch;
+}
+type WooCheckoutAddress = Omit<WooAddress, "firstName" | "lastName" | "address1" | "address2"> & {
+	first_name?: string;
+	last_name?: string;
+	address_1?: string;
+	address_2?: string;
+};
+export interface WooCheckoutInput {
+	billing_address: WooCheckoutAddress;
+	shipping_address?: WooCheckoutAddress;
+	payment_method: string;
+	payment_data?: {
+		key: string;
+		value: string | boolean;
+	}[];
+	expected_total?: string;
+	order_notes?: string;
+	additional_fields?: Record<string, unknown>;
+	extensions?: Record<string, unknown>;
+}
+export interface WooCheckoutResult {
+	order_id: number;
+	status: string;
+	payment_result: {
+		payment_status: string;
+		redirect_url: string;
+		payment_details: unknown;
+	};
+}
+export interface WooTokenCartClient extends WooCartClient {
+	/**
+	* Places the order through Woo's Store API with the same token: no cookie at any step.
+	* The cart is read again afterwards, so subscribers see the cart Woo emptied.
+	*/
+	checkout(input: WooCheckoutInput): Promise<WooCheckoutResult>;
+	/**
+	* The store's checkout page address that hands this cart to Woo's Checkout Block. Woo copies the
+	* token's cart into a new cookie session there (`?session=`), so that page needs cookies.
+	* The address must be on the Store API's origin: the token is a credential for this cart.
+	*/
+	checkoutLink(checkoutUrl: string): string;
+}
+/**
+* `session: "cookie"` is Woo's session cookie and rotating nonce, the session the Checkout Block reads.
+* `session: "token"` sends no cookie: Woo's `Cart-Token` header names the session and replaces the nonce.
+* Left out, it is the cookie on the page's own origin and the token for a Store API on another one.
+*/
+export declare function createCartClient(options: CartTransportOptions & {
+	session: "token";
+}): WooTokenCartClient;
+export declare function createCartClient(options?: CartTransportOptions & {
+	session?: "cookie";
+}): WooCartClient;
+export declare const cart: WooCartClient;
+export interface WooCartState {
+	/** Woo's last confirmed cart with the pending writes' previews applied. Undefined until the first read answers. */
+	cart: WooCart | undefined;
+	/** True until the first read answers or fails. */
+	loading: boolean;
+	/** True while a write waits for Woo. */
+	pending: boolean;
+	/** The last failure. A refused write stays until the next write starts, so a later write that was
+	* already queued and succeeds does not hide it. A failed read stays until Woo next answers with a cart. */
+	error: Error | undefined;
+}
+export interface WooCartActions extends Pick<WooCartClient, "add" | "update" | "remove" | "selectShipping" | "updateCustomer"> {
+	/** Reads the cart from Woo, after every write already queued. */
+	refresh(): Promise<WooCart>;
+}
+/** A token cart's actions. `pending` is true while the order is placed, and the cart is Woo's afterwards. */
+export interface WooTokenCartActions extends WooCartActions, Pick<WooTokenCartClient, "checkout"> {}
+export interface WooCartStore<Actions extends WooCartActions = WooCartActions> {
+	subscribe(changed: () => void): () => void;
+	snapshot(): WooCartState;
+	serverSnapshot(): WooCartState;
+	actions: Actions;
+}
+/** One cart store per client, shared by React hooks and other browser subscribers. */
+export declare function createCartStore(client: WooTokenCartClient): WooCartStore<WooTokenCartActions>;
+export declare function createCartStore(client?: WooCartClient): WooCartStore;
 export {};

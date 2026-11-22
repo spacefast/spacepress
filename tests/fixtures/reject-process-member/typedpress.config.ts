@@ -1,5 +1,4 @@
-import { action, defineConfig } from "typedpress";
-export const a = action({ input: {}, access: "anyone",
-  handler() { return process.cwd(); } });
+import { defineConfig, mutation } from "typedpress";
+export const a = mutation({ access: "anyone" }, () => { return process.cwd(); });
 
 export default defineConfig({});

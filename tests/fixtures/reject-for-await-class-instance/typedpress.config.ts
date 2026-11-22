@@ -1,4 +1,4 @@
-import { action, defineConfig } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 
 class Deferred {
   value = 1;
@@ -7,13 +7,10 @@ class Deferred {
   }
 }
 
-export const probe = action({
-  input: {},
-  handler: async () => {
-    const out: unknown[] = [];
-    for await (const v of [new Deferred()]) out.push(v);
-    return out;
-  },
+export const probe = mutation({}, async () => {
+  const out: unknown[] = [];
+  for await (const v of [new Deferred()]) out.push(v);
+  return out;
 });
 
 export default defineConfig({});

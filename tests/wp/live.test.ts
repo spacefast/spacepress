@@ -1,5 +1,5 @@
 // Reactive queries on real WordPress + MariaDB: the per-kind counters under concurrent writers, and
-// POST /__tp/api/v1/_live answering "not modified" or a fresh result as the caller: a reader the
+// POST /wp-json/typedpress/v1/_live answering "not modified" or a fresh result as the caller: a reader the
 // kind refuses, a field hidden from the caller, and saves made through core REST (what wp-admin and
 // the block editor send). The in-process suite (tests/php/live_test.php) covers each rule in turn.
 import { test } from "node:test";

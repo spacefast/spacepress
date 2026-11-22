@@ -19,6 +19,8 @@ export function buildMenuTree( flatItems: FlatMenuItem[] ): MenuItem[] {
 			label: item.label,
 			badge: item.badge,
 			parent_type: item.parent_type,
+			section: item.section,
+			sectionLabel: item.sectionLabel,
 			children: [],
 			callback: item.callback,
 		} );

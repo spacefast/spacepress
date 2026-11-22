@@ -21,7 +21,7 @@ pub(crate) fn adapter(args: &[String]) -> ExitCode {
     let result = (|| -> std::io::Result<ExitCode> {
         let directory = tempfile::tempdir()?;
         for (name, bytes) in [
-            ("local.php", include_bytes!("../../scripts/deploy/local.php").as_slice()),
+            ("entry.php", include_bytes!("../../scripts/deploy/local.php").as_slice()),
             (
                 "Json.php",
                 include_bytes!("../../runtime/TypedPress/Json.php").as_slice(),
@@ -40,7 +40,7 @@ pub(crate) fn adapter(args: &[String]) -> ExitCode {
             file.write_all(bytes)?;
         }
         let status = Command::new(std::env::var_os("TP_DEPLOY_PHP").unwrap_or_else(|| "php".into()))
-            .arg(directory.path().join("local.php"))
+            .arg(directory.path().join("entry.php"))
             .args(args)
             .status()?;
         Ok(ExitCode::from(status.code().unwrap_or(1).clamp(0, 255) as u8))

@@ -4,7 +4,7 @@ import { harness } from "../env.ts";
 
 const page = async (path: string) => {
   const response = await fetch(`${harness.url}${path}`, { redirect: "manual" });
-  return { status: response.status, html: await response.text() };
+  return { status: response.status, html: await response.text(), location: response.headers.get("location") };
 };
 
 test("converted 0.8 static pages are served by WordPress from the hosted compile", async () => {
@@ -17,13 +17,17 @@ test("converted 0.8 static pages are served by WordPress from the hosted compile
   assert.match(home.html, /<a href="\/pricing">Pricing<\/a>/);
 
   // A page that maps over an imported data module renders every item at capture.
-  const pricing = await page("/pricing");
+  const moved = await page("/pricing");
+  assert.equal(moved.status, 301);
+  assert.equal(moved.location, `${harness.url}/pricing/`);
+  const pricing = await page("/pricing/");
   assert.equal(pricing.status, 200);
   assert.match(pricing.html, /<p class="[^"]*tagline[^"]*">Simple, honest pricing\.<\/p>/);
   for (const plan of ["Free", "Pro"]) assert.match(pricing.html, new RegExp(`<h2[^>]*>${plan}</h2>`));
 
-  // pages/docs/index.tsx answers at /docs, as in 0.8.
-  const docs = await page("/docs");
+  // The old 0.8 address redirects to WordPress's canonical permalink.
+  assert.equal((await page("/docs")).status, 301);
+  const docs = await page("/docs/");
   assert.equal(docs.status, 200);
   assert.match(docs.html, /<h1[^>]*>Docs<\/h1>/);
 

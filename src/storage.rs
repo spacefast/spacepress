@@ -52,7 +52,7 @@ pub fn describe(schema: &Schema) -> Json {
         .map(|(key, def)| {
             (
                 key.clone(),
-                json!({ "table": format!("tp_{key}"), "owner": def["join"]["owner"], "target": def["join"]["target"],
+                json!({ "table": format!("tp__join_{key}"), "owner": def["join"]["owner"], "target": def["join"]["target"],
                     "columns": ["owner_id", "target_id", "position"], "indexes": indexes(key, &snapshot) }),
             )
         })
@@ -61,6 +61,15 @@ pub fn describe(schema: &Schema) -> Json {
 }
 
 fn kind(c: &Collection, snapshot: &Json) -> Json {
+    if let Some(resource) = &c.commerce {
+        let fields = c
+            .columns
+            .iter()
+            .filter(|(_, col)| !col.read_only)
+            .map(|(name, col)| (name.clone(), field(col, json!({ "woocommerce": name }))))
+            .collect::<Map<_, _>>();
+        return json!({ "in":"woocommerce", "resource":resource, "fields":fields });
+    }
     let place = if c.auth {
         "users"
     } else if c.editor {
@@ -101,7 +110,7 @@ fn at(c: &Collection, place: &str, table: &str, name: &str, col: &Column) -> Jso
         "table" if col.ty == ColType::RefList => {
             json!({ "join": col.references.as_ref().and_then(|r| r.join.clone()) })
         }
-        "table" => json!({ "table": table, "column": name }),
+        "table" => json!({ "table": table, "column": col.physical_name() }),
         "posts" => {
             let core = |field: &str| json!({ "post": field });
             if col.ty == ColType::RefList {

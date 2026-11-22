@@ -65,7 +65,7 @@ try {
   page.on("request", (r) => requests.push(r.url()));
   page.on("response", async (r) => { if (r.url().includes("/actions/")) responses.push([r.status(), await r.text().catch(() => "")]); });
   // One guest before the page renders, so the server's answer has a row in it.
-  const seeded = await fetch(new URL("__tp/api/v1/guestbook", url), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Ada" }) });
+  const seeded = await fetch(new URL("wp-json/typedpress/v1/guestbook", url), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Ada" }) });
   if (seeded.status !== 201) throw new Error(`seed: ${seeded.status} ${await seeded.text()}`);
   await page.goto(url, { waitUntil: "networkidle" });
   // The stores are loaded and hydrated once a click changes the DOM.
@@ -86,6 +86,10 @@ try {
   const output = await page.textContent("output");
   const items = await page.textContent("u");
   const seen = await page.textContent("i");
+  // `ref={box}` on the <output>: a handler reads the element through the ref.
+  await page.click("button.measure");
+  await page.waitForFunction(() => document.querySelector("button.measure").textContent !== "unmeasured", null, { timeout: 15000 });
+  const ref = await page.textContent("button.measure");
   // A CSS module's renamed class, switched by state, styles the element from the linked stylesheet.
   const toggle = "[data-wp-interactive='clients/Toggle']";
   const look = () => page.$eval(toggle, (el) => [el.className, getComputedStyle(el).color, el.textContent]);
@@ -132,19 +136,19 @@ try {
     const url = new URL("wp-content/plugins/typedpress-app-clients/tp/app/client/typedpress-client.js", document.baseURI.replace(/[^/]*$/, ""));
     const response = await fetch(url);
     const m = await import(url.href);
-    return [response.status, response.headers.get("content-type"), typeof m.createClient, typeof m.createClient({ url: location.origin + "/__tp/api/v1" }).actions.like];
+    return [response.status, response.headers.get("content-type"), typeof m.createClient, typeof m.createClient({ url: location.origin + "/wp-json/typedpress/v1" }).actions.like];
   });
   // `useLive`: the server answered the guestbook read in the first render; another visitor's
   // write (straight to the API, no cookies) shows on this page with no reload, by the client's poll.
   const guests = () => page.$$eval("[data-wp-interactive='clients/Guestbook'] li.guest", (li) => li.map((x) => x.textContent));
   const liveBefore = await guests();
   const loadingAttr = await page.getAttribute("[data-wp-interactive='clients/Guestbook']", "data-loading");
-  const write = await fetch(new URL("__tp/api/v1/guestbook", url), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Grace" }) });
+  const write = await fetch(new URL("wp-json/typedpress/v1/guestbook", url), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Grace" }) });
   await page.waitForFunction(() => [...document.querySelectorAll("[data-wp-interactive='clients/Guestbook'] li.guest")].some((li) => li.textContent === "Grace"), null, { timeout: 45000 })
     .catch((e) => { throw new Error(`${e.message}\nwarnings: ${JSON.stringify(warnings)}`); });
   const liveAfter = await guests();
   const liveRequests = requests.filter((r) => r.endsWith("/_live")).length;
-  process.stdout.write(JSON.stringify({ live: { before: liveBefore, loading: loadingAttr, write: write.status, after: liveAfter, polled: liveRequests > 0 }, client, before, after, hydration, output, items, seen, toggleBefore, toggleAfter, shelfSteps, kept, warnings, responses }));
+  process.stdout.write(JSON.stringify({ live: { before: liveBefore, loading: loadingAttr, write: write.status, after: liveAfter, polled: liveRequests > 0 }, client, before, after, hydration, output, items, seen, ref, toggleBefore, toggleAfter, shelfSteps, kept, warnings, responses }));
 } finally {
   await browser.close();
 }

@@ -13,7 +13,22 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('assets', ['wpContent' => $argv[1]]);
+$site = wpSite('assets', ['wpContent' => $argv[1], 'muPlugins' => [
+    'late-theme-style' => <<<'PHP'
+        <?php
+        add_action('wp_head', static function (): void {
+            wp_register_style('late-theme', false, [], null);
+            wp_enqueue_style('late-theme');
+            wp_add_inline_style('late-theme', '.site { color: #123456; }');
+        }, 5);
+        add_filter('wp_get_custom_css', static fn (string $css): string => $css . '.owner-style { color: #654321; }');
+        add_action('wp_head', static function (): void {
+            wp_register_style('owner-override', false, [], null);
+            wp_add_inline_style('owner-override', '.site { color: #654321; }');
+            wp_print_styles(['owner-override']);
+        }, 20);
+        PHP,
+]]);
 $site->startServer();
 $url = $site->url();
 
@@ -31,11 +46,23 @@ foreach (['about', 'plain', 'colophon'] as $path) {
     $html = new DOMDocument();
     @$html->loadHTML($page['body']);
     $xpath = new DOMXPath($html);
+    $styleOrder = [];
+    foreach ($xpath->query('//style[@id="global-styles-inline-css" or @id="late-theme-inline-css" or @id="owner-override-inline-css"] | //link[@rel="stylesheet"][starts-with(@id, "typedpress-app-")] | //style[starts-with(@id, "typedpress-app-")]') as $style) {
+        $styleOrder[] = $style->getAttribute('id');
+    }
     $links = [];
-    foreach ($xpath->query('//link[@rel="stylesheet"][starts-with(@id, "typedpress-app-")]') as $link) {
-        $href = (string) $link->getAttribute('href');
-        $file = get($href);
-        $links[] = ['file' => basename((string) parse_url($href, PHP_URL_PATH)), 'status' => $file['status'], 'type' => $file['type'], 'css' => $file['body']];
+    foreach ($xpath->query('//link[@rel="stylesheet"][starts-with(@id, "typedpress-app-")] | //style[starts-with(@id, "typedpress-app-")]') as $node) {
+        if ($node->nodeName === 'link') {
+            $href = (string) $node->getAttribute('href');
+            $file = get($href);
+            $links[] = ['file' => basename((string) parse_url($href, PHP_URL_PATH)), 'inline' => false, 'status' => $file['status'], 'type' => $file['type'], 'css' => $file['body']];
+        } else {
+            $id = (string) $node->getAttribute('id');
+            // typedpress-app-<stem>-<hash>-css-inline-css -> <stem>-<hash>.css
+            $stem = preg_replace('/^typedpress-app-|-css-inline-css$/', '', $id);
+            $css = (string) preg_replace('/\s*\/\*#\s*sourceURL=[^*]+\*\/\s*$/', '', trim($node->textContent));
+            $links[] = ['file' => $stem . '.css', 'inline' => true, 'status' => 200, 'type' => 'text/css', 'css' => $css];
+        }
     }
     $classes = [];
     foreach ($xpath->query('//*[@data-wp-router-region]//*[@class]') as $element) {
@@ -46,7 +73,7 @@ foreach (['about', 'plain', 'colophon'] as $path) {
         $file = get((string) $img->getAttribute('src'));
         $images[] = ['src' => basename((string) parse_url($img->getAttribute('src'), PHP_URL_PATH)), 'status' => $file['status'], 'type' => $file['type'], 'body' => $file['body']];
     }
-    $out[$path] = ['status' => $page['status'], 'links' => $links, 'classes' => $classes, 'images' => $images];
+    $out[$path] = ['status' => $page['status'], 'links' => $links, 'styleOrder' => $styleOrder, 'ownerCss' => str_contains($page['body'], '.owner-style { color: #654321; }'), 'classes' => $classes, 'images' => $images];
 }
 $out['url'] = $url;
 echo json_encode($out, JSON_UNESCAPED_SLASHES);

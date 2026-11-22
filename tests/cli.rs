@@ -408,9 +408,9 @@ impl Drop for Served {
     }
 }
 
-const CONFIG: &str = r#"import { defineConfig, table, text, job, jobs, integer } from "typedpress";
+const CONFIG: &str = r#"import { defineConfig, table, text, job } from "typedpress";
 const notes = table({ title: text() }, { access: { read: "anyone" } });
-export { notes }; export const stamp = job({ input: { n: integer().optional() }, handler: async () => {} }); export default defineConfig({ name: "clilane" });
+export { notes }; export const stamp = job({}, async (_input: { n?: number }) => {}); export default defineConfig({ name: "clilane" });
 "#;
 
 /// `typedpress <site cmd> --site @lane` and `wp @lane typedpress <site cmd>` on one real WordPress: the same
@@ -1074,22 +1074,22 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
 
     let rename = &schema["actions"]["rename"];
     assert_eq!(rename["access"], "editor");
-    assert_eq!(rename["endpoint"], "POST /__tp/api/v1/actions/rename");
+    assert_eq!(rename["endpoint"], "POST /wp-json/typedpress/v1/actions/rename");
     assert_eq!(rename["ability"], "agentkit/rename");
     assert_eq!(
         rename["input"]["id"],
-        serde_json::json!({ "type": "integer", "required": true })
+        serde_json::json!({ "type": "number", "required": true })
     );
     assert_eq!(rename["output"]["type"], "object");
     assert_eq!(
         schema["jobs"]["clearDone"],
-        serde_json::json!({ "input": { "keep": { "type": "integer", "default": 0 } }, "retries": 2, "agents": false })
+        serde_json::json!({ "input": { "keep": { "type": "number" } }, "retries": 2, "agents": false })
     );
     // A page that serves a kind's `url` names the kind as `kinds` lists it.
     assert_eq!(
         schema["routes"],
         serde_json::json!([
-            { "pattern": "/api/list", "type": "route", "file": "tp/app/api/list/route.ts", "methods": ["GET"], "access": "anyone" },
+            { "pattern": "/api/list", "type": "route", "file": "tp/app/api/list/route.ts", "methods": ["GET"], "guard": "anyone" },
             { "pattern": "/events/:slug", "type": "page", "file": "tp/app/events/[slug]/page.tsx", "kind": "cookingEvents" },
             { "pattern": "/", "type": "page", "file": "tp/app/page.tsx" },
         ])
@@ -1172,6 +1172,83 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
 }
 
 #[test]
+fn mcp_schema_reports_page_and_handler_guards() {
+    let project = tempfile::tempdir().unwrap();
+    copy_tree(&agent_kit(), project.path());
+    let page = "export default function Page() { return <p>Page</p>; }";
+    let post = "export async function POST() { return { body: \"ok\" }; }";
+    let hybrid = format!("{page}\n{post}");
+    let signature =
+        "export const signature = { secret: env('HOOK_SECRET'), header: 'x-signature', scheme: 'hmac-sha256' };";
+    for (name, file, exports) in [
+        (
+            "page-only",
+            "page.tsx",
+            format!("export const guard = 'subscriber';\n{page}"),
+        ),
+        (
+            "handler-only",
+            "route.ts",
+            format!("export const guard = 'editor';\n{post}"),
+        ),
+        (
+            "shared",
+            "page.tsx",
+            format!("export const guard = 'author';\n{hybrid}"),
+        ),
+        (
+            "split",
+            "page.tsx",
+            format!("export const guard = {{ page: 'subscriber', handlers: 'admin' }};\n{hybrid}"),
+        ),
+        (
+            "callbacks",
+            "page.tsx",
+            format!(
+                "export const guard = {{ page: (ctx) => ctx.user !== null, handlers: (ctx) => ctx.user === null }};\n{hybrid}"
+            ),
+        ),
+        (
+            "public-page",
+            "page.tsx",
+            format!("export const guard = {{ handlers: 'subscriber' }};\n{hybrid}"),
+        ),
+        (
+            "signed",
+            "page.tsx",
+            format!("import {{ env }} from 'typedpress';\nexport const guard = 'editor';\n{signature}\n{hybrid}"),
+        ),
+    ] {
+        let dir = project.path().join("tp/app").join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(file), exports).unwrap();
+    }
+
+    let mut mcp = Mcp::initialized(project.path(), &[]);
+    let schema = mcp.ok("schema", serde_json::json!({}));
+    let routes = schema["routes"].as_array().unwrap();
+    let route = |path: &str| routes.iter().find(|entry| entry["pattern"] == path).unwrap();
+    for (path, guard) in [
+        ("/page-only", serde_json::json!("subscriber")),
+        ("/handler-only", serde_json::json!("editor")),
+        ("/shared", serde_json::json!("author")),
+        ("/split", serde_json::json!({"page": "subscriber", "handlers": "admin"})),
+        (
+            "/callbacks",
+            serde_json::json!({"page": "function", "handlers": "function"}),
+        ),
+        ("/public-page", serde_json::json!({"handlers": "subscriber"})),
+        ("/signed", serde_json::json!("editor")),
+    ] {
+        let entry = route(path);
+        assert_eq!(entry["guard"], guard, "{path}");
+        assert!(entry.get("access").is_none(), "{path}");
+    }
+    assert_eq!(route("/signed")["signed"], true);
+    mcp.finish();
+}
+
+#[test]
 fn mcp_check_returns_the_envelope_first_check_json_prints_and_sees_edits() {
     // On the fixture, the same document `typedpress check --json` writes.
     let printed = first().arg("check").arg(agent_kit()).arg("--json").output().unwrap();
@@ -1224,28 +1301,32 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
     let mut mcp = Mcp::initialized(&agent_kit(), &[]);
     let found = mcp.ok(
         "docs_search",
-        serde_json::json!({ "query": "compiler diagnostics envelope", "limit": 5 }),
+        serde_json::json!({ "query": "tested compiler compatibility", "limit": 5 }),
     );
     let results = found["results"].as_array().unwrap();
     assert!(!results.is_empty() && results.len() <= 5, "{found}");
     let hit = results
         .iter()
-        .find(|hit| hit["path"] == "docs/compiler-diagnostics.md")
-        .unwrap_or_else(|| panic!("the diagnostics page among {found}"));
-    assert_eq!(hit["title"], "Compiler diagnostics");
+        .find(|hit| hit["path"] == "www/content/docs/reference/language-support.md")
+        .unwrap_or_else(|| panic!("the compatibility page among {found}"));
+    assert_eq!(hit["title"], "Tested Compiler Compatibility");
     assert!(!hit["snippet"].as_str().unwrap().is_empty());
     // Words no page has: no results, not an error.
     let nothing = mcp.ok("docs_search", serde_json::json!({ "query": "zzqqxxyy" }));
     assert_eq!(nothing["results"], serde_json::json!([]));
 
-    // A page as committed, whole, with its outline.
-    let on_disk = std::fs::read_to_string(root().join("docs/compiler-diagnostics.md")).unwrap();
+    // A short page as committed, whole (without front matter), with its outline.
+    let on_disk = std::fs::read_to_string(root().join("www/content/docs/operations/mcp-and-agents.md")).unwrap();
+    let body = on_disk
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.split_once("\n---\n").map(|(_, b)| b.trim_start()))
+        .unwrap_or(&on_disk);
     let page = mcp.ok(
         "docs_read",
-        serde_json::json!({ "path": "docs/compiler-diagnostics.md" }),
+        serde_json::json!({ "path": "www/content/docs/operations/mcp-and-agents.md" }),
     );
-    assert_eq!(page["title"], "Compiler diagnostics");
-    assert_eq!(page["text"], on_disk);
+    assert_eq!(page["title"], "MCP & AI Agents");
+    assert_eq!(page["text"], body);
     assert!(page.get("truncated").is_none());
     // One section by its heading (in any letter case): that heading first, and only text of the page.
     let section = |mcp: &mut Mcp, path: &str, name: &str, committed: &str| {
@@ -1260,18 +1341,22 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
         assert!(text.len() < committed.len());
     };
     let last = page["sections"].as_array().unwrap().last().unwrap().as_str().unwrap();
-    section(&mut mcp, "docs/compiler-diagnostics.md", last, &on_disk);
+    section(&mut mcp, "www/content/docs/operations/mcp-and-agents.md", last, body);
     // A long page read whole answers with its opening and its outline, to read one section at a time.
     let listed = mcp.result("resources/list", serde_json::json!({}));
     let resources = listed["resources"].as_array().unwrap();
     let long = resources
         .iter()
-        .filter(|page| page["name"].as_str().unwrap().starts_with("docs/"))
+        .filter(|page| page["name"].as_str().unwrap().starts_with("www/content/docs/"))
         .max_by_key(|page| page["size"].as_u64().unwrap())
         .unwrap()["name"]
         .as_str()
         .unwrap();
-    let committed = std::fs::read_to_string(root().join(long)).unwrap();
+    let committed_raw = std::fs::read_to_string(root().join(long)).unwrap();
+    let committed = committed_raw
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.split_once("\n---\n").map(|(_, b)| b.trim_start()))
+        .unwrap_or(&committed_raw);
     let opening = mcp.ok("docs_read", serde_json::json!({ "path": long }));
     assert_eq!(opening["truncated"], true, "{long}");
     let text = opening["text"].as_str().unwrap();
@@ -1285,7 +1370,7 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
         &mut mcp,
         long,
         sections[sections.len() / 2].as_str().unwrap(),
-        &committed,
+        committed,
     );
     // A section as long as a page is capped the same way, with its subsections to read next.
     let title = committed.lines().next().unwrap().trim_start_matches('#').trim();
@@ -1296,65 +1381,60 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
     // A heading of the query outranks a long section that only mentions its words; whole words only.
     let access = mcp.ok(
         "docs_search",
-        serde_json::json!({ "query": "access rules owner", "limit": 3 }),
+        serde_json::json!({ "query": "declarative access rules", "limit": 3 }),
     );
     assert!(
         access["results"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|hit| hit["path"] == "docs/config-api.md" && hit["section"] == "Access"),
+            .any(|hit| hit["path"] == "www/content/docs/core/queries-and-access.md"
+                && hit["section"] == "Declarative access rules"),
         "{access}"
     );
     assert!(
-        mcp.refused("docs_read", serde_json::json!({ "path": "docs/nope.md" }))
-            .starts_with("no documentation page docs/nope.md")
+        mcp.refused("docs_read", serde_json::json!({ "path": "www/content/docs/nope.md" }))
+            .starts_with("no documentation page www/content/docs/nope.md")
     );
     assert!(
         mcp.refused(
             "docs_read",
-            serde_json::json!({ "path": "docs/agents.md", "section": "No such heading" })
+            serde_json::json!({ "path": "www/content/docs/operations/mcp-and-agents.md", "section": "No such heading" })
         )
-        .starts_with("docs/agents.md has no section \"No such heading\"; its sections are: ")
+        .starts_with(
+            "www/content/docs/operations/mcp-and-agents.md has no section \"No such heading\"; its sections are: "
+        )
     );
 
-    // The same pages are the server's resources. Design proposals are not documentation of what ships.
+    // The same pages are the server's resources.
     let uris: Vec<&str> = resources.iter().map(|r| r["uri"].as_str().unwrap()).collect();
-    assert!(uris.contains(&"typedpress-docs:///docs/agents.md"), "{uris:?}");
     assert!(
-        uris.contains(&"typedpress-docs:///docs-site/docs/getting-started.mdx"),
-        "{uris:?}"
-    );
-    // The site's copy of a docs/ page is not a second page to search.
-    assert!(
-        !uris.contains(&"typedpress-docs:///docs-site/docs/agents.mdx"),
+        uris.contains(&"typedpress-docs:///www/content/docs/operations/mcp-and-agents.md"),
         "{uris:?}"
     );
     assert!(
-        !uris
-            .iter()
-            .any(|uri| uri.contains("/design-") || uri.contains("/spec/")),
+        uris.contains(&"typedpress-docs:///www/content/docs/getting-started/installation.md"),
         "{uris:?}"
     );
     let started = resources
         .iter()
-        .find(|r| r["name"] == "docs-site/docs/getting-started.mdx")
+        .find(|r| r["name"] == "www/content/docs/getting-started/installation.md")
         .unwrap();
-    assert_eq!(started["title"], "Get started");
+    assert_eq!(started["title"], "Installation & Setup");
     assert_eq!(started["mimeType"], "text/markdown");
-    assert!(started["description"].as_str().unwrap().contains("TypedPress app"));
+    assert!(started["description"].as_str().unwrap().contains("WordPress"));
     let read = mcp.result(
         "resources/read",
-        serde_json::json!({ "uri": "typedpress-docs:///docs/compiler-diagnostics.md" }),
+        serde_json::json!({ "uri": "typedpress-docs:///www/content/docs/operations/mcp-and-agents.md" }),
     );
     assert_eq!(
         read["contents"],
-        serde_json::json!([{ "uri": "typedpress-docs:///docs/compiler-diagnostics.md", "mimeType": "text/markdown", "text": on_disk }])
+        serde_json::json!([{ "uri": "typedpress-docs:///www/content/docs/operations/mcp-and-agents.md", "mimeType": "text/markdown", "text": on_disk }])
     );
     // Through 2025-11-25 a missing resource is -32002.
     let missing = mcp.request(
         "resources/read",
-        serde_json::json!({ "uri": "typedpress-docs:///docs/nope.md" }),
+        serde_json::json!({ "uri": "typedpress-docs:///www/content/docs/nope.md" }),
     );
     assert_eq!(missing["error"]["code"], -32002, "{missing}");
     assert_eq!(
@@ -1706,13 +1786,12 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
         serde_json::to_vec(&serde_json::json!({
             "extends": "./tsconfig.json",
             "compilerOptions": {
-                "types": [], "jsx": "react-jsx", "jsxImportSource": "typedpress", "skipLibCheck": true,
+                "types": [], "skipLibCheck": true,
                 "paths": {
                     "typedpress": [root().join("types/typedpress/index.d.ts")],
-                    "typedpress/app": [root().join("types/typedpress/app.d.ts")],
-                    "typedpress/content": [root().join("types/typedpress/content.d.ts")],
-                    "typedpress/jsx-runtime": [root().join("types/typedpress/jsx-runtime.d.ts")],
-                    "typedpress/jsx-dev-runtime": [root().join("types/typedpress/jsx-dev-runtime.d.ts")]
+                    "typedpress/*": [root().join("types/typedpress/*.d.ts")],
+                    "typedpress:db": [root().join("types/typedpress/db.d.cts")],
+                    "php/wordpress": [root().join("types/typedpress/wordpress.d.ts")],
                 }
             },
             "include": ["tp/**/*.ts", "tp/**/*.tsx"],
@@ -1742,12 +1821,15 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
 #[test]
 fn add_api_reference_exports_every_operation_in_a_static_site() {
     let tmp = tempfile::tempdir().unwrap();
-    let project = scaffold(tmp.path());
-    let config = project.join("typedpress.config.ts");
-    let source = std::fs::read_to_string(&config).unwrap();
-    let static_source = source.replacen("defineConfig({", "defineConfig({ output: \"static\",", 1);
-    assert_ne!(source, static_source, "the scaffold's config calls defineConfig({{");
-    std::fs::write(&config, static_source).unwrap();
+    let project = tmp.path().to_path_buf();
+    std::fs::write(
+        project.join("typedpress.config.ts"),
+        r#"import { collection, defineConfig, text } from "typedpress";
+export const notes = collection({ title: text() }, { title: "title" });
+export default defineConfig({ name: "static-api", output: "static" });
+"#,
+    )
+    .unwrap();
     let added = add(&project, &["api-reference"]);
     assert_eq!(
         added.status.code(),
@@ -1756,6 +1838,12 @@ fn add_api_reference_exports_every_operation_in_a_static_site() {
         text(&added.stdout),
         text(&added.stderr)
     );
+    // Export requires a home page for the WordPress header's home link.
+    std::fs::write(
+        project.join("tp/app/page.tsx"),
+        "export default function Home() { return <main>API documentation</main>; }\n",
+    )
+    .unwrap();
     let built = first().arg("build").arg(&project).output().unwrap();
     assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
     // The operations, from the document the pages read.
@@ -1802,6 +1890,11 @@ fn add_api_reference_exports_every_operation_in_a_static_site() {
         "{}{}",
         text(&exported.stdout),
         text(&exported.stderr)
+    );
+    assert!(
+        std::fs::read_to_string(project.join("tp/dist/static/index.html"))
+            .unwrap()
+            .contains("API documentation")
     );
     let api = project.join("tp/dist/static/api");
     let pages = std::fs::read_dir(&api)
@@ -1857,6 +1950,148 @@ fn scaffold(parent: &Path) -> PathBuf {
         .expect("node");
     assert!(created.status.success(), "{}", text(&created.stderr));
     project
+}
+
+/// A starter note the seed would refuse on the site fails the build at its file and field, in
+/// `typedpress check` too, and nothing is written for WordPress to run.
+#[test]
+fn a_seed_file_the_site_would_refuse_fails_the_build_at_its_file_and_field() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let note = project.join("content/notes/first-walk.md");
+    let original = std::fs::read_to_string(&note).unwrap();
+    let refused = |command: &str| {
+        let out = first().arg(command).arg(&project).output().unwrap();
+        assert!(!out.status.success(), "{command} accepted a note the seed refuses");
+        text(&out.stderr)
+    };
+
+    // A title over the kind's `.max(120)`.
+    std::fs::write(
+        &note,
+        original.replace("title: A first walk", &format!("title: {}", "x".repeat(130))),
+    )
+    .unwrap();
+    for command in ["build", "check"] {
+        let said = refused(command);
+        // `build` prints the diagnostic's code (`error[F0001]:`); `check` prints plain `error:`.
+        let heading = if command == "build" { "error[F0001]" } else { "error" };
+        assert!(
+            said.contains(&format!("{heading}: title must be at most 120 characters")),
+            "{said}"
+        );
+        assert!(said.contains("--> content/notes/first-walk.md:3:1"), "{said}");
+        assert!(said.contains("it has 130 characters"), "{said}");
+    }
+    assert!(
+        !project.join("tp/dist").exists(),
+        "a refused build wrote a plugin WordPress would run"
+    );
+
+    // An HTML block: WordPress stores it as a Custom HTML block, which Markdown can't hold.
+    std::fs::write(
+        &note,
+        format!("{original}\n<iframe src=\"https://example.com\"></iframe>\n"),
+    )
+    .unwrap();
+    let said = refused("build");
+    assert!(
+        said.contains("`<iframe src=\"https://example.com\"></iframe>` is an HTML block"),
+        "{said}"
+    );
+    assert!(said.contains("--> content/notes/first-walk.md:13:1"), "{said}");
+
+    // A field the kind doesn't have, with the one it was meant to be.
+    std::fs::write(&note, original.replace("summary:", "sumary:")).unwrap();
+    let said = refused("build");
+    assert!(
+        said.contains("error[F0001]: Unknown or generated field 'sumary'"),
+        "{said}"
+    );
+    assert!(said.contains("--> content/notes/first-walk.md:5:1"), "{said}");
+    assert!(said.contains("did you mean `summary`?"), "{said}");
+
+    // A required field left out.
+    std::fs::write(&note, original.replace("title: A first walk\n", "")).unwrap();
+    let said = refused("build");
+    assert!(said.contains("error[F0001]: title is required"), "{said}");
+    assert!(said.contains("--> content/notes/first-walk.md:"), "{said}");
+
+    // HTML inside a line of text is Markdown the site keeps, so the build takes it.
+    std::fs::write(&note, format!("{original}\nPress <kbd>Ctrl</kbd> to stop.\n")).unwrap();
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert!(built.status.success(), "{}", text(&built.stderr));
+}
+
+/// A copied note keeps its `uid` line: the error names both files and says what to delete.
+/// Only `build` and `check` check the seed files: a content typo doesn't stop a command that
+/// compiles for another reason, such as `typedpress add`.
+#[test]
+fn a_seed_file_typo_does_not_block_add() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let note = project.join("content/notes/first-walk.md");
+    let original = std::fs::read_to_string(&note).unwrap();
+    std::fs::write(
+        &note,
+        original.replace("title: A first walk", &format!("title: {}", "x".repeat(130))),
+    )
+    .unwrap();
+    let added = first().args(["add", "db"]).current_dir(&project).output().unwrap();
+    assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert!(!built.status.success(), "build accepted a note the seed refuses");
+    assert!(
+        text(&built.stderr).contains("title must be at most 120 characters"),
+        "{}",
+        text(&built.stderr)
+    );
+}
+
+#[test]
+fn two_seed_files_with_one_uid_are_both_named() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let notes = project.join("content/notes");
+    std::fs::copy(notes.join("first-walk.md"), notes.join("second-walk.md")).unwrap();
+    let out = first().arg("build").arg(&project).output().unwrap();
+    assert!(!out.status.success());
+    let said = text(&out.stderr);
+    assert!(
+        said.contains(
+            "error[F0001]: content/notes/second-walk.md and content/notes/first-walk.md have the same uid zr_d2c870c681684da0b234"
+        ),
+        "{said}"
+    );
+    assert!(said.contains("--> content/notes/second-walk.md:2:1"), "{said}");
+    assert!(said.contains("delete that line from the copy"), "{said}");
+}
+
+/// `seed: true` ships the files of synced kinds; with none, the build says nothing is seeded.
+#[test]
+fn seed_without_a_synced_kind_warns_that_nothing_is_seeded() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let seeded = first().arg("build").arg(&project).output().unwrap();
+    assert!(seeded.status.success(), "{}", text(&seeded.stderr));
+    assert!(
+        !text(&seeded.stderr).contains("nothing is seeded"),
+        "{}",
+        text(&seeded.stderr)
+    );
+    let config = project.join("typedpress.config.ts");
+    let source = std::fs::read_to_string(&config).unwrap();
+    assert!(source.contains("  sync: \"content/notes/*.md\",\n"));
+    std::fs::write(&config, source.replace("  sync: \"content/notes/*.md\",\n", "")).unwrap();
+    let out = first().arg("build").arg(&project).output().unwrap();
+    let said = text(&out.stderr);
+    assert!(out.status.success(), "{said}");
+    assert!(
+        said.contains(
+            "warning: `seed: true` imports the files of synced kinds, and no kind has `sync`: nothing is seeded."
+        ),
+        "{said}"
+    );
 }
 
 fn add(project: &Path, args: &[&str]) -> Output {
@@ -1936,8 +2171,11 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     ledger.sort();
-    assert_eq!(ledger, ["0001_init.sql", "snapshot.json"]);
-    let sql = std::fs::read_to_string(project.join("tp/_generated/migrations/0001_init.sql")).unwrap();
+    assert_eq!(ledger.len(), 1, "expected 1 sortable migration folder: {ledger:?}");
+    assert!(ledger[0].ends_with("_init"), "expected *_init folder: {ledger:?}");
+    let init_dir = project.join("tp/_generated/migrations").join(&ledger[0]);
+    assert!(init_dir.join("ops.json").is_file(), "expected ops.json in {init_dir:?}");
+    let sql = std::fs::read_to_string(init_dir.join("migration.sql")).unwrap();
     assert_eq!(sql.matches("CREATE TABLE `{prefix}tp_projects`").count(), 1, "{sql}");
     assert!(
         sql.contains("FOREIGN KEY (`project`) REFERENCES `{prefix}tp_projects` (`id`) ON DELETE CASCADE"),
@@ -1952,7 +2190,15 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
         project.join("tsconfig.test.json"),
         serde_json::to_vec(&serde_json::json!({
             "extends": "./tsconfig.json",
-            "compilerOptions": { "types": [], "paths": { "typedpress": [root().join("types/typedpress/index.d.ts")] } }
+            "compilerOptions": {
+                "types": [],
+                "paths": {
+                    "typedpress": [root().join("types/typedpress/index.d.ts")],
+                    "typedpress/*": [root().join("types/typedpress/*.d.ts")],
+                    "typedpress:db": [root().join("types/typedpress/db.d.cts")],
+                    "php/wordpress": [root().join("types/typedpress/wordpress.d.ts")],
+                }
+            }
         }))
         .unwrap(),
     )
@@ -2085,7 +2331,7 @@ fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
     std::fs::create_dir_all(project.join("tp/server")).unwrap();
     std::fs::write(
         project.join("tp/server/tasks.ts"),
-        "import { action } from \"typedpress\";\nexport const tasks = action({ input: {}, async handler() { return 1; } });\n",
+        "import { mutation } from \"typedpress\";\nexport const tasks = mutation({}, async () => { return 1; });\n",
     )
     .unwrap();
     let state = tree(&project);
@@ -2118,7 +2364,7 @@ fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
     std::fs::create_dir_all(&bare).unwrap();
     std::fs::write(
         bare.join("typedpress.config.ts"),
-        "import { action, defineConfig } from \"typedpress\";\nconst __projects = action({ input: {}, async handler() { return 1; } }); export { __projects as projects }; export default defineConfig({ name: \"bare\" });\n",
+        "import { defineConfig, mutation } from \"typedpress\";\nconst __projects = mutation({}, async () => { return 1; }); export { __projects as projects }; export default defineConfig({ name: \"bare\" });\n",
     )
     .unwrap();
     let state = tree(&bare);
@@ -2239,7 +2485,7 @@ fn the_added_tables_enforce_their_access_rules_on_a_real_wordpress() {
         .unwrap();
     let _served = Served(child);
     let served: serde_json::Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("serve: {line}"));
-    let base = format!("{}/__tp/api/v1", served["url"].as_str().unwrap());
+    let base = format!("{}/wp-json/typedpress/v1", served["url"].as_str().unwrap());
     // (status, body) of one request, as `who` (a served user) or signed out.
     let call = |who: Option<&str>, method: &str, path: &str, body: Option<serde_json::Value>| {
         let mut curl = Command::new("curl");
@@ -2418,11 +2664,11 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
     // action with its endpoint, its job, its page and route, and the site's MCP endpoint.
     for line in [
         "This project is the TypedPress app `agentkit`.",
-        "| `shoppingList` | table | anyone | editor | editor | admin | `/__tp/api/v1/shopping_list` |",
-        "| `articles` | collection | anyone | author | editor | editor | `/__tp/api/v1/articles` |",
+        "| `shoppingList` | table | anyone | editor | editor | admin | `/wp-json/typedpress/v1/shopping_list` |",
+        "| `articles` | collection | anyone | author | editor | editor | `/wp-json/typedpress/v1/articles` |",
         "- `substitutes`: `item`: ref → shoppingList, `name`: text",
-        "| `rename` | `id`: integer, `name`: text | editor | `POST /__tp/api/v1/actions/rename` |",
-        "- `clearDone`: input `keep?`: integer; retried up to 2 times",
+        "| `rename` | `id`: number, `name`: text | editor | `POST /wp-json/typedpress/v1/actions/rename` |",
+        "- `clearDone`: input `keep?`: number; retried up to 2 times",
         "| `/api/list` | route (GET) | `tp/app/api/list/route.ts` |",
         "| `/` | page | `tp/app/page.tsx` |",
         "guest < subscriber < author < editor < admin.",
@@ -2807,17 +3053,19 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
         }
         // Every documentation page it points to is one `typedpress mcp`'s `docs_read` serves, unless the
         // skill says it is not.
-        for (at, _) in every_file.match_indices("`docs") {
-            let path: &str = every_file[at + 1..].split('`').next().unwrap();
-            if path.ends_with(".md") || path.ends_with(".mdx") {
-                assert!(root().join(path).is_file(), "{name} points to {path}");
-                let line = every_file[at..].lines().next().unwrap();
-                if !line.contains("not served by `docs_read`") {
-                    let read = embedded.call("docs_read", serde_json::json!({ "path": path }));
-                    assert_eq!(
-                        read["isError"], false,
-                        "{name} points to {path}, which docs_read does not serve"
-                    );
+        for prefix in ["`docs", "`www/content/docs"] {
+            for (at, _) in every_file.match_indices(prefix) {
+                let path: &str = every_file[at + 1..].split('`').next().unwrap();
+                if path.ends_with(".md") || path.ends_with(".mdx") {
+                    assert!(root().join(path).is_file(), "{name} points to {path}");
+                    let line = every_file[at..].lines().next().unwrap();
+                    if !line.contains("not served by `docs_read`") {
+                        let read = embedded.call("docs_read", serde_json::json!({ "path": path }));
+                        assert_eq!(
+                            read["isError"], false,
+                            "{name} points to {path}, which docs_read does not serve"
+                        );
+                    }
                 }
             }
         }
@@ -2831,10 +3079,14 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
             "typedpress-add-kind",
             "typedpress-add-page",
             "typedpress-connect-mcp",
+            "typedpress-deploy",
             "typedpress-dev-site",
             "typedpress-fix-diagnostic",
+            "typedpress-markdown-sync",
             "typedpress-migrate",
             "typedpress-migrate-astro",
+            "typedpress-security-audit",
+            "typedpress-woocommerce",
             "typedpress-write-action"
         ]
     );
@@ -2862,7 +3114,7 @@ fn the_code_in_the_skills_compiles_as_one_project() {
             };
             // Every block says its language, so a TypeScript sample is never skipped for lack of a tag.
             assert!(!language.trim().is_empty(), "{skill}: a code block without a language");
-            if !matches!(language.trim(), "ts" | "tsx") {
+            if !matches!(language.trim(), "ts" | "tsx" | "md") {
                 continue;
             }
             // Blocks sit inside a numbered list: drop the list's indentation.
@@ -2871,17 +3123,32 @@ fn the_code_in_the_skills_compiles_as_one_project() {
                 .map(|line| line.strip_prefix("   ").unwrap_or(line))
                 .collect::<Vec<_>>()
                 .join("\n");
-            let path = code
-                .lines()
-                .next()
-                .and_then(|first| first.strip_prefix("// "))
-                .map(|rest| rest.split([' ', ':']).next().unwrap())
-                .filter(|path| path.starts_with("tp/"))
-                .unwrap_or_else(|| panic!("{skill}: a ts block names its file in its first line:\n{code}"));
+            let (path, body) = if language.trim() == "md" {
+                let Some(path) = code
+                    .lines()
+                    .next()
+                    .and_then(|first| first.strip_prefix("<!-- "))
+                    .and_then(|rest| rest.strip_suffix(" -->"))
+                    .filter(|path| path.starts_with("tp/"))
+                else {
+                    continue;
+                };
+                let rest = code.split_once('\n').map(|(_, r)| r).unwrap_or("");
+                (path, rest.to_string())
+            } else {
+                let path = code
+                    .lines()
+                    .next()
+                    .and_then(|first| first.strip_prefix("// "))
+                    .map(|rest| rest.split([' ', ':']).next().unwrap())
+                    .filter(|path| path.starts_with("tp/"))
+                    .unwrap_or_else(|| panic!("{skill}: a ts block names its file in its first line:\n{code}"));
+                (path, code.clone())
+            };
             let target = project.path().join(path);
             assert!(!target.exists(), "{skill}: {path} is written by two blocks");
             std::fs::create_dir_all(target.parent().unwrap()).unwrap();
-            std::fs::write(&target, code.clone() + "\n").unwrap();
+            std::fs::write(&target, body + "\n").unwrap();
             written.push(path.to_string());
         }
     }
@@ -3313,4 +3580,117 @@ fn mcp_dev_status_is_bounded_by_the_servers_timeout() {
             .is_some()
     );
     mcp.finish();
+}
+
+/// `typedpress build --diagnostics-file <path>` is `typedpress dev`'s: it is in no usage line, belongs to
+/// `build` alone, and writes the compile's envelope whether the project compiled or not. The
+/// terminal names the diagnostic's code, as the dev overlay does.
+#[test]
+fn build_writes_the_diagnostics_envelope_for_dev_on_success_and_on_failure() {
+    let project = tempfile::tempdir().unwrap();
+    let config = project.path().join("typedpress.config.ts");
+    let report = project.path().join("report/diagnostics.json");
+    let build = || {
+        first()
+            .arg("build")
+            .arg(project.path())
+            .arg("--quiet")
+            .arg("--diagnostics-file")
+            .arg(&report)
+            .output()
+            .unwrap()
+    };
+    let envelope = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(&report).unwrap()).unwrap();
+
+    std::fs::write(&config, "export default { broken: ;").unwrap();
+    let failed = build();
+    assert_eq!(failed.status.code(), Some(1));
+    let said = text(&failed.stderr);
+    let written = envelope();
+    assert_eq!(written["schema"], "typedpress-diagnostics");
+    assert_eq!(written["ok"], false);
+    let diagnostic = &written["diagnostics"][0];
+    assert_eq!(diagnostic["location"]["file"], "typedpress.config.ts");
+    let code = diagnostic["code"].as_str().unwrap();
+    assert!(
+        said.starts_with(&format!("error[{code}]: {}", diagnostic["message"].as_str().unwrap())),
+        "{said}"
+    );
+
+    // A build that compiles replaces it with an envelope that has no diagnostics.
+    std::fs::write(&config, CONFIG).unwrap();
+    let built = build();
+    assert!(built.status.success(), "{}", text(&built.stderr));
+    let written = envelope();
+    assert_eq!(written["ok"], true);
+    assert_eq!(written["diagnostics"], serde_json::json!([]));
+
+    // And a later failure replaces that one.
+    std::fs::write(&config, "export default { broken: ;").unwrap();
+    assert_eq!(build().status.code(), Some(1));
+    assert_eq!(envelope()["ok"], false);
+
+    // Internal: not in the help, and not a flag of any other command.
+    for help in [&["help"][..], &["help", "build"]] {
+        let out = first().args(help).output().unwrap();
+        assert!(!text(&out.stdout).contains("diagnostics-file"), "{}", text(&out.stdout));
+    }
+    let table = std::fs::read_to_string(root().join("runtime/TypedPress/Cli/commands.json")).unwrap();
+    assert!(!table.contains("diagnostics-file"));
+    let misplaced = first()
+        .args(["check", "--diagnostics-file"])
+        .arg(&report)
+        .arg(project.path())
+        .output()
+        .unwrap();
+    assert_eq!(misplaced.status.code(), Some(2));
+    assert!(text(&misplaced.stderr).starts_with("unknown option --diagnostics-file"));
+    let missing = first().args(["build", "--diagnostics-file"]).output().unwrap();
+    assert_eq!(missing.status.code(), Some(2));
+    assert!(text(&missing.stderr).starts_with("--diagnostics-file needs a path"));
+}
+
+/// `typedpress dev status --json` reports the watching process's failed build from the state file, and
+/// says nothing of a process that is gone.
+#[test]
+fn dev_status_reports_the_failed_build_of_the_process_that_is_watching() {
+    let project = tempfile::tempdir().unwrap();
+    let dev = project.path().join(".tp/dev");
+    std::fs::create_dir_all(&dev).unwrap();
+    std::fs::write(dev.join("owner.json"), r#"{"version":1,"created":true}"#).unwrap();
+    let error = serde_json::json!({
+        "message": "Unexpected token",
+        "diagnostics": [{ "code": "F1001", "message": "Unexpected token", "location": { "file": "tp/app/page.tsx", "line": 1, "column": 44 } }],
+    });
+    let state = |pid: u32| {
+        serde_json::json!({
+            "version": 1, "url": "http://localhost:1", "local": "http://localhost:1", "port": 1,
+            "pid": pid, "log": "/work/dev.log", "wordpress": "7.1", "php": "8.4", "error": error,
+        })
+    };
+    let status = || {
+        let out = first()
+            .args(["dev", "status", "--json"])
+            .arg(project.path())
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
+    };
+
+    // This test's own process stands for the watcher: it exists.
+    std::fs::write(dev.join("state.json"), state(std::process::id()).to_string()).unwrap();
+    let watching = status();
+    assert_eq!(watching["pid"], std::process::id());
+    assert_eq!(watching["error"], error);
+    assert_eq!(watching["log"], "/work/dev.log");
+
+    // A process that has ended: its log and its error are not this site's any more.
+    let mut ended = Command::new("true").spawn().unwrap();
+    ended.wait().unwrap();
+    std::fs::write(dev.join("state.json"), state(ended.id()).to_string()).unwrap();
+    let stopped = status();
+    assert_eq!(stopped["pid"], serde_json::Value::Null);
+    assert_eq!(stopped["error"], serde_json::Value::Null);
+    assert_eq!(stopped["log"], serde_json::Value::Null);
 }

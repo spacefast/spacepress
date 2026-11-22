@@ -64,7 +64,9 @@ $out['base'] = $url;
 $out['spellings'] = ['slash' => [$slash['status'], $slash['location']], 'bare' => [$bare['status'], $bare['location']]];
 fetch("$url/");
 fetch("$url/notes/hello.md");
-$out['index'] = $wpdb->get_col("SELECT url FROM $reads ORDER BY url");
+// Each recorded address once: the home page lists notes, so it holds a listing row and the note's.
+$out['index'] = $wpdb->get_col("SELECT DISTINCT url FROM $reads ORDER BY url");
+$out['home reads'] = $wpdb->get_col("SELECT CASE WHEN item = '*' THEN '*' ELSE 'row' END FROM $reads WHERE url = '/' ORDER BY item");
 
 // One edit of a note an anonymous visitor's pages read: one call, each path once.
 $out['edit'] = $announced($edit('Hello again'));

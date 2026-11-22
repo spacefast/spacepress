@@ -11,6 +11,8 @@ permissions:
 
 env:
   XDEBUG_MODE: 'off'
+  # Locales are turned off for apps; the suite still exercises them.
+  TYPEDPRESS_LOCALES: '1'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -37,6 +39,21 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --lib
+      # examples/kitchen-sink uses every authoring feature the type declarations offer. This half
+      # of tests/kitchen_sink.rs only parses files (well under a second); the half that builds the
+      # example and drives it on WordPress runs with the other test targets on main.
+      - run: cargo test --locked --test kitchen_sink -- --skip kitchen_sink_renders_every_route_on_wordpress
+      - name: Install generated PHP layout tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-cli php-xml php-mbstring composer
+          composer install --working-dir=examples/php-standards --no-interaction --prefer-dist
+      - name: Test PHP comparison tooling
+        run: node --test examples/php-standards/compare.test.ts
+      - name: Check generated PHP WordPress standards
+        run: |
+          cargo run --locked --example php-standards -- "$RUNNER_TEMP/php-standards"
+          composer --working-dir=examples/php-standards run check -- "$RUNNER_TEMP/php-standards"
   # Three shards in parallel: the compiler suites and the npm comparison (about 26 minutes); the
   # slowest test targets, `slow` (app_migrate, app_router, config_migrate, sync and wp_plugins);
   # and fmt, clippy, every other test target and the acceptance scripts, `rest`. Test targets
@@ -159,6 +176,11 @@ jobs:
           npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
           npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
           node --test examples/migrate-astro/migrated.test.mjs
+      - name: Scaffolder on WordPress
+        if: matrix.shard == 'rest'
+        env:
+          TP_BIN: ${{ github.workspace }}/target/debug/typedpress
+        run: npm test --prefix packages/create-typedpress
       - name: Docker-free local development acceptance
         if: matrix.shard == 'rest'
         run: node --test scripts/dev/acceptance.test.mjs
@@ -201,12 +223,8 @@ jobs:
       - run: cargo build --locked --bin typedpress
       # The website's example trees compile, or are labelled proposals that nothing runs.
       - run: node scripts/check-www-examples.mjs "$TP_BIN"
-      # The files-sdk probe reports what doesn't compile yet; --expect-red keeps it from failing CI
-      # until every scenario matches Node (examples/files-sdk/README.md).
-      - name: files-sdk probe
-        run: |
-          npm ci --prefix examples/files-sdk --ignore-scripts --no-audit --no-fund
-          (cd examples/files-sdk && node verify.mjs --expect-red)
+      # The files-sdk probe runs nightly in files-sdk.yml: with --expect-red it reports rather than
+      # gates, and it took most of this job.
       - name: Example HTTP verifiers on WordPress
         run: node scripts/check-example-runs.mjs
       - name: EmDash counterparts on WordPress
@@ -338,10 +356,11 @@ jobs:
           key: wordpress-catalog-${{ hashFiles('scripts/wordpress-catalog.py') }}
       - run: python3 scripts/wordpress-catalog.py --check
       - run: tsc -p examples/pantry
+      - run: tsc -p examples/kitchen-sink
       - run: tsc -p examples/blog
       - run: tsc -p examples/showcase
       - run: tsc -p examples/blog/client-tests
-      - run: node --test runtime/client/index.test.ts runtime/client/committed.test.ts
+      - run: node --test runtime/client/*.test.ts
       - run: node --test examples/showcase/build-app.test.mjs examples/showcase/rebuild-service.test.mjs
       - run: node --test scripts/dev/studio.test.mjs
       - run: node --test packages/cli/test/*.test.mjs packages/create-typedpress/test/*.test.mjs scripts/release/archive.test.mjs
@@ -435,10 +454,15 @@ jobs:
 
   # Schema checks, seeding, outbound fetch and WordPress abilities: split from wp-migrate, which
   # ran past its timeout once both halves shared one runner.
+  # Two halves of the lanes on separate runners; run one after another they outgrew the timeout.
   wp-schema:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        lanes: [schema, store]
     env:
       TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
     steps:
@@ -466,24 +490,34 @@ jobs:
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: cargo build --locked --bin typedpress
       - name: Deploy-time schema check against live rows
+        if: matrix.lanes == 'schema'
         run: TP_WP_PROJECT=typedpress-wp-schema-check TP_WP_PORT=8902 tests/wp/schema-check/run.sh
       - name: TypedPress-publish seed and sync adoption
+        if: matrix.lanes == 'schema'
         run: TP_WP_PROJECT=typedpress-wp-seed TP_WP_PORT=8897 tests/wp/seed-run.sh
       - name: Outbound fetch with SSRF refusals
+        if: matrix.lanes == 'schema'
         run: TP_WP_PROJECT=typedpress-wp-fetch TP_WP_PORT=8899 tests/wp/fetch/run.sh
       - name: WordPress abilities and wp-hooks from TypeScript
+        if: matrix.lanes == 'schema'
         run: TP_WP_PROJECT=typedpress-wp-wordpress TP_WP_PORT=8898 tests/wp/wordpress/run.sh
       - name: Opinionated WordPress hardening, and stock WordPress without an app
+        if: matrix.lanes == 'schema'
         run: TP_WP_PROJECT=typedpress-wp-hardening TP_WP_PORT=8896 tests/wp/hardening/run.sh
       - name: Sealed mode on its own stack
+        if: matrix.lanes == 'store'
         run: TP_WP_PROJECT=typedpress-wp-sealed TP_WP_PORT=8895 tests/wp/hardening/sealed-run.sh
       - name: Build store, managed initialize, and inspecting a candidate without changing the site
+        if: matrix.lanes == 'store'
         run: TP_WP_PROJECT=typedpress-wp-store TP_WP_PORT=8901 tests/wp/store-run.sh
       - name: A managed build installs only from initialize, and installs what plugins install on boot
+        if: matrix.lanes == 'store'
         run: TP_WP_PROJECT=typedpress-wp-store-install TP_WP_PORT=8903 tests/wp/store-install-run.sh
       - name: The TypedPress plugin on a stock WordPress, with typedpress login and typedpress push
+        if: matrix.lanes == 'store'
         run: TP_WP_PROJECT=typedpress-wp-plugin TP_WP_PORT=8905 tests/wp/plugin/run.sh
       - name: The TypedPress plugin on a WordPress network, one app per site
+        if: matrix.lanes == 'store'
         run: TP_WP_PROJECT=typedpress-wp-plugin-ms TP_WP_PORT=8907 tests/wp/plugin/multisite-run.sh
 
   wp-s3:
@@ -631,6 +665,6 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y rsync
       - name: Identity acceptance on PHP ${{ matrix.php }}
         env:
-          IDENTITY_WORDPRESS_IMAGE: wordpress:beta-7.2-beta5-php${{ matrix.php }}-apache
+          IDENTITY_WORDPRESS_IMAGE: wordpress:7.1.0-php${{ matrix.php }}-apache
           IDENTITY_CLI_IMAGE: wordpress:cli-php${{ matrix.php }}
         run: tests/identity/run.sh

@@ -1,7 +1,7 @@
 // "typedpress/app": pages, layouts and HTTP routes under tp/app/ (docs/spec/rendering.md §2–§4).
 // Types only: the compiler lowers these to PHP; nothing here runs in Node or the browser.
 /// <reference path="./assets.d.ts" />
-import type { Action, ColumnsConfig, RouteRequest, RouteResponse, User } from "typedpress";
+import type { AccessCtx, Action, ColumnsConfig, RouteRequest, RouteResponse } from "typedpress";
 import type { JSX } from "typedpress/jsx-runtime";
 
 export type { RouteRequest, RouteResponse };
@@ -17,7 +17,7 @@ export interface Routes {}
 export type ReactNode = JSX.Children;
 
 /** A path the app serves, checked against the generated route map once it exists. */
-export type Href = keyof Routes extends never ? string : RoutePaths | `http${string}` | `mailto:${string}` | `#${string}` | `?${string}`;
+export type Href = keyof Routes extends never ? string : RoutePaths | `${RoutePaths}?${string}` | `${RoutePaths}#${string}` | `http${string}` | `mailto:${string}` | `#${string}` | `?${string}`;
 type RoutePaths = { [K in keyof Routes]: Routes[K] extends { path: infer P extends string } ? P : never }[keyof Routes];
 
 type Params<R> = R extends keyof Routes ? (Routes[R] extends { params: infer P } ? P : Record<string, string>) : Record<string, string | string[]>;
@@ -80,8 +80,10 @@ export interface Metadata {
   scripts?: string[];
 }
 
-/** `export const guard` in a layout: who may see everything below it. */
-export type Guard = "anyone" | "authenticated" | "subscriber" | "author" | "editor" | "admin" | boolean | ((ctx: { user: User | null }) => boolean);
+type GuardRule = "anyone" | "authenticated" | "guest" | "subscriber" | "author" | "editor" | "admin" | boolean | ((ctx: AccessCtx) => boolean);
+
+/** A page, layout, or HTTP handler can export one rule. A page with handlers can give each its own rule. */
+export type Guard = GuardRule | { page?: GuardRule; handlers: GuardRule };
 
 /**
  * `export const template` in a page or layout: the WordPress block template the page renders in.
@@ -158,6 +160,28 @@ export declare function Content(props: { value: string | null | undefined }): JS
 /** Trusted markup: a literal is placed as written; any other value goes through `wp_kses_post`. */
 export declare function Html(props: { value: string | null | undefined }): JSX.Element;
 /**
+ * An optimized `<img>`: accepts an imported image URL, a `?meta` image object (`{ src, width, height, format }`),
+ * or a WordPress media attachment object. Fills intrinsic `width`/`height` automatically, defaults to
+ * `loading="lazy"` + `decoding="async"`, emits responsive `srcset` from WordPress media sizes, and
+ * emits `<link rel="preload" as="image" fetchpriority="high">` when `priority` is true.
+ */
+export declare function Image(props: {
+  src:
+    | string
+    | { readonly src: string; readonly width?: number; readonly height?: number; readonly format?: string }
+    | { readonly url: string; readonly width?: number | null; readonly height?: number | null; readonly sizes?: Record<string, { readonly url: string; readonly width: number; readonly height?: number }> };
+  alt: string;
+  width?: number | string;
+  height?: number | string;
+  sizes?: string;
+  priority?: boolean;
+  loading?: "lazy" | "eager";
+  decoding?: "async" | "sync" | "auto";
+  className?: string;
+  id?: string;
+  style?: Record<string, string | number | undefined>;
+}): JSX.Element;
+/**
  * A link. A path on this site navigates inside the router region (`@wordpress/interactivity-router`)
  * once JavaScript runs; without it, it is an ordinary link.
  */
@@ -165,6 +189,8 @@ export declare function Link(props: {
   href: Href;
   children?: JSX.Element | string | number | (JSX.Element | string | number)[];
   prefetch?: boolean;
+  /** Override automatic sign-in routing for a local destination. By default its page and layout guards decide. */
+  requireAuth?: boolean;
   className?: string;
   id?: string;
   title?: string;
@@ -172,3 +198,9 @@ export declare function Link(props: {
   target?: string;
   "aria-current"?: string;
 }): JSX.Element;
+
+/** A GET search form using the app's `q` query parameter. */
+export declare function Search(props: { action?: Href; label?: string; placeholder?: string; className?: string }): JSX.Element;
+
+/** Search results from one kind with a URL, or from every searchable kind with a URL. */
+export declare function SearchResults(props: { kind?: string; q: string | null | undefined; page?: number; perPage?: number; className?: string }): JSX.Element;

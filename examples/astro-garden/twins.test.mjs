@@ -8,6 +8,7 @@
 // Needs the `typedpress` binary (TP_BIN, default target/debug/typedpress), PHP 8.2+ with pdo_sqlite, Node
 // 22.23.4+ (Astro 7.4), `npm ci` here and in tests/differential/client, and Chromium's headless
 // shell (npx --prefix tests/differential/client playwright-core install chromium-headless-shell).
+// Set CHROMIUM to use a different installed browser executable.
 //
 //   node --test examples/astro-garden/twins.test.mjs
 import assert from "node:assert/strict";
@@ -89,12 +90,26 @@ before(async () => {
   const seed = spawnSync("php", ["-d", "memory_limit=512M", "-r", "require $argv[1]; wpLoad($argv[2]); \\TypedPress\\Sync\\Seed::run(\\TypedPress\\Wp\\Runtime::plugin(), $argv[3]);",
     join(repo, "tests/php/wp.php"), site.dir, join(work, "compiled/seed")], { encoding: "utf8" });
   assert.equal(seed.status, 0, seed.stdout + seed.stderr);
+  // Give this fixture a non-default Site Editor color, so inheritance cannot pass by coincidence.
+  const theme = spawnSync("php", ["-d", "memory_limit=512M", "-r", `
+    require $argv[1]; wpLoad($argv[2]); wp_set_current_user(1);
+    $data = WP_Theme_JSON_Resolver::get_user_data_from_wp_global_styles(wp_get_theme(), true);
+    $content = ['version' => 3, 'isGlobalStylesUserThemeJSON' => true,
+      'styles' => ['elements' => ['link' => ['color' => ['text' => '#126644']]]]];
+    $result = wp_update_post(['ID' => (int) $data['ID'], 'post_content' => wp_slash(wp_json_encode($content))], true);
+    if (is_wp_error($result)) throw new RuntimeException($result->get_error_message());
+  `, join(repo, "tests/php/wp.php"), site.dir], { encoding: "utf8" });
+  assert.equal(theme.status, 0, theme.stdout + theme.stderr);
 
   buildAstro();
   astro = await serveStatic(join(work, "astro/dist"));
-  const cache = join(homedir(), ".cache/ms-playwright");
-  const shell = readdirSync(cache).filter((n) => n.startsWith("chromium_headless_shell-")).sort().reverse()[0];
-  browser = await chromium.launch({ executablePath: join(cache, shell, "chrome-headless-shell-linux64/chrome-headless-shell") });
+  let executablePath = process.env.CHROMIUM;
+  if (!executablePath) {
+    const cache = join(homedir(), ".cache/ms-playwright");
+    const shell = readdirSync(cache).filter((n) => n.startsWith("chromium_headless_shell-")).sort().reverse()[0];
+    executablePath = join(cache, shell, "chrome-headless-shell-linux64/chrome-headless-shell");
+  }
+  browser = await chromium.launch({ executablePath });
 });
 
 after(async () => {
@@ -126,8 +141,17 @@ async function read(base) {
       meta: await page.textContent(".meta"),
       bold: await page.textContent("article.plant b"),
       h2: await page.textContent("article.plant h2"),
-      accent: await page.$eval(".masthead a", (a) => getComputedStyle(a).color),
     };
+    const styles = await page.$eval(".masthead a", (a) => {
+      const accent = getComputedStyle(a).color;
+      if (!getComputedStyle(a).getPropertyValue("--tp--color--link").trim()) return { accent, themeLink: null };
+      const probe = document.createElement("span");
+      probe.style.color = "var(--tp--color--link)";
+      a.parentElement.append(probe);
+      const themeLink = getComputedStyle(probe).color;
+      probe.remove();
+      return { accent, themeLink };
+    });
     // After a full load: TypedPress's region navigation swaps the title, not the other head tags.
     await page.goto(`${base}/plants/lavender`, { waitUntil: "networkidle" });
     lavender.description = await page.$eval("meta[name=description]", (m) => m.content);
@@ -135,14 +159,19 @@ async function read(base) {
     await page.waitForSelector(".plants");
     await page.goto(`${base}/plants/sweet-pea`, { waitUntil: "networkidle" });
     const sweetPea = { h1: await page.textContent("article.plant h1"), meta: await page.textContent(".meta") };
-    return { home, lavender, sweetPea, errors };
+    return { home, lavender, sweetPea, errors, styles };
   } finally {
     await page.close();
   }
 }
 
-test("the TypedPress app and the Astro site render the same pages", async () => {
-  const [native, onAstro] = [await read(site.url), await read(astro.url)];
+test("the TypedPress app and the Astro site render the same content with their own styles", async () => {
+  const { styles: nativeStyles, ...native } = await read(site.url);
+  const { styles: astroStyles, ...onAstro } = await read(astro.url);
+  assert.notEqual(nativeStyles.themeLink, null, "the native app must receive WordPress theme colors");
+  assert.equal(nativeStyles.themeLink, "rgb(18, 102, 68)", "the active theme exposes the Site Editor value");
+  assert.equal(nativeStyles.accent, nativeStyles.themeLink, "the native app inherits its active WordPress theme");
+  assert.equal(astroStyles.accent, "rgb(47, 125, 50)", "Astro keeps its stylesheet's palette");
   assert.deepEqual(native.errors, []);
   assert.deepEqual(onAstro.errors, []);
   assert.deepEqual(native.home, {
@@ -161,7 +190,6 @@ test("the TypedPress app and the Astro site render the same pages", async () => 
     meta: "Lamiaceae · up to 60 cm",
     bold: "after flowering",
     h2: "Planting",
-    accent: "rgb(47, 125, 50)",
     description: "A dry-garden shrub with scented flower spikes.",
   });
   assert.deepEqual(native.sweetPea, { h1: "Sweet pea", meta: "Fabaceae" });
@@ -170,8 +198,8 @@ test("the TypedPress app and the Astro site render the same pages", async () => 
 
 test("an editor's change shows on the TypedPress app at once, and on the Astro site after a rebuild that pulls only that plant", async () => {
   const auth = { authorization: `Basic ${btoa(site.users.admin.appPassword)}`, "content-type": "application/json" };
-  const [plant] = (await (await fetch(`${site.url}/__tp/api/v1/plants?where=${encodeURIComponent('{"slug":"rosemary"}')}`)).json()).data;
-  const patched = await fetch(`${site.url}/__tp/api/v1/plants/${plant.id}`, { method: "PATCH", headers: auth, body: JSON.stringify({ summary: "Edited in wp-admin." }) });
+  const [plant] = (await (await fetch(`${site.url}/wp-json/typedpress/v1/plants?where=${encodeURIComponent('{"slug":"rosemary"}')}`)).json()).data;
+  const patched = await fetch(`${site.url}/wp-json/typedpress/v1/plants/${plant.id}`, { method: "PATCH", headers: auth, body: JSON.stringify({ summary: "Edited in wp-admin." }) });
   assert.equal(patched.status, 200);
   const summary = async (base) => {
     const page = await browser.newPage();

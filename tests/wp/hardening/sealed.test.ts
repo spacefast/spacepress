@@ -27,9 +27,9 @@ test("the build's manifest and the running app hold the same list, exactly; the 
     ["hello-dolly/hello.php", "typedpress-runtime/typedpress-runtime.php", "hello-dolly.php", "hello.php", "two-factor.php", "hello-dolly/sub/evil.php", "hello-dolly/../akismet/akismet.php", "Hello-Dolly/hello.php", "polylang/polylang.php", "typedpress-admin/typedpress-admin.php", "akismet/akismet.php"].map(allows),
     [true, true, false, false, false, false, false, false, false, true, false],
   );
-  const anonymous = (await (await fetch(`${site}/__tp/api/v1`)).json()).data.runtime.wp.sealed;
+  const anonymous = (await (await fetch(`${site}/wp-json/typedpress/v1`)).json()).data.runtime.wp.sealed;
   assert.deepEqual(anonymous, { enforced: "report" }, "a visitor learns only that the site is sealed");
-  const report = (await (await fetch(`${site}/__tp/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
+  const report = (await (await fetch(`${site}/wp-json/typedpress/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
   assert.deepEqual(report.plugins, [], "every active plugin is listed");
   assert.equal(report.enforced, "report");
   assert.deepEqual([report.dropins, report.networkPlugins], [[], []]);
@@ -89,7 +89,7 @@ test("a plugin a sealed site never runs is refused whatever the list says, and r
   wp("eval", `$a = get_option('active_plugins'); $a[] = '${file}'; update_option('active_plugins', $a);`);
   try {
     assert.equal((await fetch(`${site}/wp-json/vip-block-data-api/v1/posts/1/blocks`)).status, 200);
-    const report = (await (await fetch(`${site}/__tp/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
+    const report = (await (await fetch(`${site}/wp-json/typedpress/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
     assert.deepEqual(report.plugins, [file]);
     // A host that enforces the list never loads it.
     const hosted = wp("eval", `require_once WP_CONTENT_DIR . '/typedpress-loader.php'; echo wp_json_encode(TypedPress\\Loader\\Loader::allowedPlugins(['${file}', 'typedpress-runtime/typedpress-runtime.php'], ['vip-block-data-api', 'typedpress-runtime']));`);
@@ -123,7 +123,7 @@ test("TypedPress's admin is TypedPress's own: a sealed site activates it though 
   assert.equal(on.status, 200, await on.text());
   try {
     assert.ok(active().includes("typedpress-admin"));
-    const report = (await (await fetch(`${site}/__tp/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
+    const report = (await (await fetch(`${site}/wp-json/typedpress/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
     assert.deepEqual(report.plugins, [], "it isn't reported as unlisted");
     // Its own routes answer, and a save it makes through core's routes isn't the schema lock's to
     // refuse: a row of a TypedPress kind created and edited as the admin's editor does.
@@ -138,9 +138,9 @@ test("TypedPress's admin is TypedPress's own: a sealed site activates it though 
     const row = await edited.json();
     assert.deepEqual([edited.status, row.title.raw ?? row.title.rendered, row.meta.mood], [200, "Edited in the admin", "bright"]);
     // And the saves its screens make through TypedPress's API: a row, and a global's values.
-    const viaApi = await json(auth("admin"), "PATCH", `/__tp/api/v1/notes/${id}`, { mood: "steady" });
+    const viaApi = await json(auth("admin"), "PATCH", `/wp-json/typedpress/v1/notes/${id}`, { mood: "steady" });
     assert.equal((await viaApi.json()).data.mood, "steady");
-    const global = await json(auth("admin"), "PATCH", "/__tp/api/v1/banner", { motto: "From the admin" });
+    const global = await json(auth("admin"), "PATCH", "/wp-json/typedpress/v1/banner", { motto: "From the admin" });
     assert.equal((await global.json()).data.motto, "From the admin");
     // The admin's page is served at its mount, /wp-admin/new/ (wp-admin's query form sends the
     // visitor there once the rewrite rule is written).
@@ -161,7 +161,7 @@ test("code already loaded and not listed is reported, never deactivated or remov
   // Activate an unlisted plugin around sealed mode (the option, as a migration or another tool would).
   wp("eval", "$a = get_option('active_plugins'); $a[] = 'akismet/akismet.php'; update_option('active_plugins', $a);");
   try {
-    const report = (await (await fetch(`${site}/__tp/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
+    const report = (await (await fetch(`${site}/wp-json/typedpress/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
     assert.deepEqual(report.plugins, ["akismet/akismet.php"]);
     assert.ok(report.muPlugins.length > 0, "the test stack's own must-use plugins are listed");
     assert.ok(report.theme.some((t: string) => t.endsWith("/functions.php")), JSON.stringify(report.theme));
@@ -212,7 +212,7 @@ test("a host enforces the list before any plugin loads", async () => {
   wp("eval", `copy('${process.env.TP_SEALED_HOST}', WPMU_PLUGIN_DIR . '/typedpress-sealed-host.php');`);
   wp("eval", "$a = get_option('active_plugins', [], false); $a[] = 'akismet/akismet.php'; remove_all_filters('option_active_plugins'); update_option('active_plugins', $a);");
   try {
-    const report = (await (await fetch(`${site}/__tp/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
+    const report = (await (await fetch(`${site}/wp-json/typedpress/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
     assert.equal(report.enforced, "host");
     assert.deepEqual(report.plugins, [], "the host's filter kept it out");
     const loaded = await (await fetch(`${site}/wp-json/`)).json();

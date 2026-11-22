@@ -5,8 +5,8 @@ declare(strict_types=1);
 /*
  * `php -S` router for a WpSite (tests/php/wp.php): what the production web server does for TypedPress.
  * Static files are served from the site; `/wp-content/uploads/typedpress-private/` is denied (the
- * private-files probe checks exactly that); `/wp-json/...` becomes a `rest_route` request; and
- * everything else runs WordPress's index.php. TP_TEST_SITE names the site directory.
+ * private-files probe checks exactly that); and everything else runs WordPress's index.php, which
+ * parses `/wp-json/...` itself, as behind a real web server. TP_TEST_SITE names the site directory.
  */
 
 $dir = getenv('TP_TEST_SITE') ?: throw new RuntimeException('TP_TEST_SITE is not set');
@@ -34,24 +34,88 @@ if (str_starts_with($path, '/wp-content/uploads/typedpress-private/')) {
     http_response_code(403);
     exit;
 }
-// Static files, from the site's wp-content or from core, with the types a browser needs (a module
-// script must be JavaScript; mime_content_type() calls a .js file text/plain).
-$static = match (true) {
-    str_starts_with($path, '/wp-content/') => "$dir/content/" . substr($path, strlen('/wp-content/')),
-    $path !== '/' => $core . $path,
-    default => null,
-};
-if ($static !== null && !str_ends_with($path, '.php') && !str_contains($path, '..') && is_file($static)) {
-    $type = match (strtolower(pathinfo($static, PATHINFO_EXTENSION))) {
-        'js', 'mjs' => 'text/javascript',
-        'css' => 'text/css',
+// Static files, from the site's wp-content, its synced root public symlinks, or core, with the
+// types a browser needs (a module script must be JavaScript; mime_content_type() calls .js text/plain).
+$method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+$decoded = rawurldecode($path);
+$serveStatic = static function (string $file) use ($method): never {
+    $type = match (strtolower(pathinfo($file, PATHINFO_EXTENSION))) {
+        'js', 'mjs' => 'text/javascript; charset=utf-8',
+        'css' => 'text/css; charset=utf-8',
+        'html', 'htm' => 'text/html; charset=utf-8',
         'json' => 'application/json',
         'svg' => 'image/svg+xml',
-        default => mime_content_type($static) ?: 'application/octet-stream',
+        'png' => 'image/png',
+        'jpg', 'jpeg' => 'image/jpeg',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+        'avif' => 'image/avif',
+        'ico' => 'image/x-icon',
+        'woff' => 'font/woff',
+        'woff2' => 'font/woff2',
+        'ttf' => 'font/ttf',
+        'otf' => 'font/otf',
+        'mp4' => 'video/mp4',
+        'webm' => 'video/webm',
+        'mp3' => 'audio/mpeg',
+        'pdf' => 'application/pdf',
+        'wasm' => 'application/wasm',
+        'md' => 'text/markdown; charset=utf-8',
+        'txt' => 'text/plain; charset=utf-8',
+        default => mime_content_type($file) ?: 'application/octet-stream',
     };
     header('Content-Type: ' . $type);
-    readfile($static);
+    header('Content-Length: ' . (string) filesize($file));
+    if ($method !== 'HEAD') {
+        readfile($file);
+    }
     exit;
+};
+$safeStatic = static function (string $candidate, array $roots): ?string {
+    if (str_contains($candidate, "\0") || str_contains($candidate, '..')) {
+        return null;
+    }
+    if (is_dir($candidate) && is_file("$candidate/index.html")) {
+        $candidate = "$candidate/index.html";
+    }
+    if (!is_file($candidate)) {
+        return null;
+    }
+    $ext = strtolower(pathinfo($candidate, PATHINFO_EXTENSION));
+    if (in_array($ext, ['php', 'phtml', 'phar', 'php3', 'php4', 'php5', 'php7', 'php8', 'phps', 'htaccess', 'htpasswd', 'ini'], true)) {
+        return null;
+    }
+    $real = realpath($candidate);
+    if ($real === false) {
+        return null;
+    }
+    foreach ($roots as $root) {
+        $top = realpath($root);
+        if ($top !== false && str_starts_with($real, $top . DIRECTORY_SEPARATOR)) {
+            return $real;
+        }
+    }
+    return null;
+};
+if (($method === 'GET' || $method === 'HEAD') && !str_contains($decoded, '..') && !str_contains($decoded, '\\')) {
+    if (str_starts_with($decoded, '/wp-content/')) {
+        $found = $safeStatic("$dir/content/" . substr($decoded, strlen('/wp-content/')), ["$dir/content"]);
+        if ($found !== null) {
+            $serveStatic($found);
+        }
+    } elseif ($decoded !== '/') {
+        $publicRoot = "$dir/public-root";
+        if (is_dir($publicRoot)) {
+            $found = $safeStatic($publicRoot . $decoded, ["$dir/content", $publicRoot]);
+            if ($found !== null) {
+                $serveStatic($found);
+            }
+        }
+        $found = $safeStatic($core . $decoded, [$core]);
+        if ($found !== null) {
+            $serveStatic($found);
+        }
+    }
 }
 // wp-login.php and wp-admin's screens run as their own files, as a web server runs them: they boot
 // through wp-load.php, which needs a wp-config.php, so they run from the site's WP-CLI root (core
@@ -68,9 +132,6 @@ if (preg_match('#^/(wp-login\.php|wp-admin/(?:[a-z0-9-]+\.php)?)$#', $path, $m) 
     chdir(dirname("$root/$file"));
     require "$root/$file";
     exit;
-}
-if (preg_match('#^/wp-json(/.*)?$#', $path, $m) === 1) {
-    $_GET['rest_route'] = ($m[1] ?? '') === '' ? '/' : $m[1];
 }
 // Core's comment form handler is a script of its own, as on any web server. The shared core has no
 // wp-config.php for its wp-load.php to find, so the site's settings load first and the script runs

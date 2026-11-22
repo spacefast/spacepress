@@ -5,7 +5,9 @@ export {};
 declare module "typedpress/app" {
   interface Routes {
     "drives/[slug]": { path: `/drives/${string}`; params: { slug: string }; item: import("typedpress").RegisteredKinds extends { drives: { $inferSelect: infer R } } ? R : Record<string, unknown> };
-    "orders": { path: `/orders`; params: {  } };
+    "cart": { path: `/cart`; params: {  } };
+    "checkout": { path: `/checkout`; params: {  } };
+    "source": { path: `/source`; params: {  } };
     "staff": { path: `/staff`; params: {  } };
     "/": { path: `/`; params: {  } };
   }

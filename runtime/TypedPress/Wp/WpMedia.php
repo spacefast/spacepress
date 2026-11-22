@@ -50,7 +50,7 @@ final class WpMedia implements Media
 
     public function __construct(private readonly Connection $db, Dialect $dialect)
     {
-        $this->schema = new Schema(['version' => 3, 'runtime' => Schema::SERIES, 'collections' => [self::TABLE => ['primaryKey' => 'id', 'columns' => self::COLUMNS, 'relations' => []]]]);
+        $this->schema = new Schema(['version' => 5, 'runtime' => Schema::SERIES, 'collections' => [self::TABLE => ['primaryKey' => 'id', 'columns' => self::COLUMNS, 'relations' => []]]]);
         $wpdb = $db->wpdb();
         $alt = "LEFT JOIN `{$wpdb->postmeta}` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '_wp_attachment_image_alt'";
         $file = "LEFT JOIN `{$wpdb->postmeta}` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '_wp_attached_file'";
@@ -428,7 +428,7 @@ final class WpMedia implements Media
 /** @internal Answers dialect()/source() for compiling media queries; never stores. */
 final class MediaView implements Store
 {
-    public function readGuards(string $collection, \TypedPress\Viewer $viewer): array { return []; }
+    public function readGuards(string $collection, \TypedPress\Viewer $viewer, bool $forSelect = false): array { return []; }
     public function showsUnique(string $collection, string $column, \TypedPress\Viewer $viewer): bool { return false; }
 
     public function __construct(private readonly Dialect $d, private readonly Source $source)
@@ -455,8 +455,8 @@ final class MediaView implements Store
     public function globalRead(string $name): ?array { return null; }
     public function globalWrite(string $name, array $values): void { throw new \LogicException('read-only view'); }
     public function revisions(string $collection, int|string $pk): array { return []; }
-    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId): void { throw new \LogicException('read-only view'); }
-    public function revision(string $collection, int|string $pk, int $revisionId): ?array { return null; }
+    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = []): void { throw new \LogicException('read-only view'); }
+    public function revision(string $collection, int|string $pk, int $revisionId, bool $byVersion = false): ?array { return null; }
     public function promoteDue(string $collection, string $nowIso): array { return []; }
     public function mapError(\Throwable $e): \Throwable { return $e; }
 }

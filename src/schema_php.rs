@@ -1,4 +1,4 @@
-//! Emits `tp/app/schema.php` (version 3, phase-2 §3.1: the runtime's whole view
+//! Emits `tp/app/schema.php` (version 5, phase-2 §3.1: the runtime's whole view
 //! of the app, WordPress identifiers included) and `tp/_generated/db.d.ts`
 //! (registers the schema with the `"first"` types).
 
@@ -41,6 +41,9 @@ fn num(n: f64) -> String {
 fn column(c: &Column, ctx: Ctx, indent: usize) -> String {
     let top = ctx == Ctx::Column;
     let mut parts = vec![format!("'type' => {}", php_str(c.ty.name()))];
+    if c.commerce_meta {
+        parts.push("'commerceMeta' => true".into());
+    }
     if c.primary_key && top {
         parts.push("'primaryKey' => true".into());
     }
@@ -67,6 +70,15 @@ fn column(c: &Column, ctx: Ctx, indent: usize) -> String {
     }
     if c.not_null {
         parts.push("'notNull' => true".into());
+    }
+    if c.omit {
+        parts.push("'omit' => true".into());
+    }
+    if c.required {
+        parts.push("'required' => true".into());
+    }
+    if let Some(shape) = &c.shape {
+        parts.push(format!("'shape' => {}", php_json(shape)));
     }
     if c.unique && top {
         parts.push("'unique' => true".into());
@@ -150,6 +162,17 @@ fn column(c: &Column, ctx: Ctx, indent: usize) -> String {
     if let Some(b) = &c.bucket {
         parts.push(format!("'bucket' => {}", php_str(b)));
     }
+    if let Some(col) = &c.storage_name
+        && col != &c.name
+    {
+        parts.push(format!("'column' => {}", php_str(col)));
+    }
+    if !c.aliases.is_empty() {
+        parts.push(format!(
+            "'aliases' => [{}]",
+            c.aliases.iter().map(|a| php_str(a)).collect::<Vec<_>>().join(", ")
+        ));
+    }
     if c.derived {
         parts.push("'derived' => true".into());
     }
@@ -205,6 +228,19 @@ fn opt(s: &Option<String>) -> String {
     s.as_deref().map(php_str).unwrap_or_else(|| "null".into())
 }
 
+fn retention_php(r: &crate::schema::Retention) -> String {
+    let deleted = r.deleted_seconds.map_or_else(|| "null".to_string(), |s| s.to_string());
+    let revisions = match &r.revisions {
+        None => "null".to_string(),
+        Some(rr) => format!(
+            "['keepLast' => {}, 'maxAgeSeconds' => {}]",
+            rr.keep_last.map_or_else(|| "null".to_string(), |n| n.to_string()),
+            rr.max_age_seconds.map_or_else(|| "null".to_string(), |s| s.to_string())
+        ),
+    };
+    format!("['deletedSeconds' => {deleted}, 'revisions' => {revisions}]")
+}
+
 fn collection(out: &mut String, c: &Collection) {
     let pk = c.primary_key().map(|p| p.name.as_str()).unwrap_or("id");
     let _ = writeln!(out, "        {} => [", php_str(&c.table));
@@ -213,6 +249,12 @@ fn collection(out: &mut String, c: &Collection) {
     let _ = writeln!(out, "            'editor' => {},", c.editor);
     let _ = writeln!(out, "            'drafts' => {},", c.drafts);
     let _ = writeln!(out, "            'revisions' => {},", c.revisions);
+    if c.soft_delete {
+        out.push_str("            'softDelete' => true,\n");
+    }
+    if let Some(r) = &c.retention {
+        let _ = writeln!(out, "            'retention' => {},", retention_php(r));
+    }
     if c.editor && !c.staged {
         // Staged versions are on for every collection; only the opt-out is written.
         let _ = writeln!(out, "            'staged' => false,");
@@ -242,8 +284,14 @@ fn collection(out: &mut String, c: &Collection) {
     if c.hierarchical {
         out.push_str("            'hierarchical' => true,\n");
     }
+    if let Some(kind) = &c.commerce {
+        let _ = writeln!(out, "            'commerce' => {},", php_str(kind));
+    }
     if c.taxonomy.is_some() {
         out.push_str("            'taxonomy' => true,\n");
+    }
+    if let Some(ui) = &c.ui {
+        let _ = writeln!(out, "            'ui' => {},", php_json(ui));
     }
     let _ = writeln!(out, "            'title' => {},", opt(&c.title));
     let _ = writeln!(out, "            'content' => {},", opt(&c.content));
@@ -321,7 +369,27 @@ fn collection(out: &mut String, c: &Collection) {
             );
         }
     }
-    if let Some(tax) = &c.taxonomy {
+    if let Some(kind) = &c.commerce {
+        if let Some(tax) = &c.taxonomy {
+            let taxonomy = if kind == "productCategory" {
+                "product_cat"
+            } else {
+                "product_tag"
+            };
+            let on = tax.on.iter().map(|k| php_str(k)).collect::<Vec<_>>().join(", ");
+            let _ = writeln!(
+                out,
+                "            'wp' => ['taxonomy' => '{taxonomy}', 'metaPrefix' => 'tp_', 'on' => [{on}]],\n            'table' => null,"
+            );
+        } else {
+            let post_type = if kind == "product" { "product" } else { "shop_order" };
+            let _ = writeln!(
+                out,
+                "            'wp' => ['postType' => '{post_type}', 'metaPrefix' => 'tp_'],\n            'table' => 'tp_{}',",
+                c.table
+            );
+        }
+    } else if let Some(tax) = &c.taxonomy {
         // A taxonomy's terms are core's (ruling 25): `wp_terms`, `wp_term_taxonomy`, term meta.
         let t = &c.table;
         let on: Vec<String> = tax.on.iter().map(|k| php_str(k)).collect();
@@ -364,7 +432,7 @@ pub fn render(schema: &Schema) -> String {
     let mut out = String::from(
         "<?php\n\n// Generated by `typedpress build`. Do not edit.\n\ndeclare(strict_types=1);\n\nreturn [\n",
     );
-    let _ = writeln!(out, "    'version' => 3,");
+    out.push_str("    'version' => 5,\n");
     let _ = writeln!(out, "    'runtime' => '{}',", crate::platform::SERIES);
     let _ = writeln!(out, "    'name' => {},", php_str(&schema.name));
     let _ = writeln!(out, "    'admin' => {},", schema.admin);
@@ -395,6 +463,24 @@ pub fn render(schema: &Schema) -> String {
     if !schema.pings {
         out.push_str("    'pings' => false,\n");
     }
+    if let Some(r) = &schema.retention {
+        let _ = writeln!(out, "    'retention' => {},", retention_php(r));
+    }
+    if !schema.migration_providers.is_empty() {
+        out.push_str("    'migrationProviders' => [\n");
+        for mp in &schema.migration_providers {
+            let _ = writeln!(
+                out,
+                "        {} => ['id' => {}, 'cliOnly' => {}, 'requireArchive' => {}, 'allowRawSql' => {}],",
+                php_str(&mp.id),
+                php_str(&mp.id),
+                mp.cli_only,
+                mp.require_archive,
+                mp.allow_raw_sql,
+            );
+        }
+        out.push_str("    ],\n");
+    }
     match &schema.frontend {
         None => {}
         Some(crate::kind_url::Frontend::Off) => out.push_str("    'frontend' => false,\n"),
@@ -416,6 +502,9 @@ pub fn render(schema: &Schema) -> String {
         "    'locales' => {},",
         schema.locales.as_ref().map(php_json).unwrap_or_else(|| "null".into())
     );
+    if let Some(store) = &schema.store {
+        let _ = writeln!(out, "    'store' => {},", php_json(store));
+    }
     let _ = writeln!(out, "    'media' => {},", php_json(&schema.media));
     if let Some(uploads) = &schema.uploads {
         let _ = writeln!(out, "    'uploads' => {},", php_json(uploads));
@@ -449,13 +538,51 @@ pub fn render(schema: &Schema) -> String {
     if !schema.islands.is_empty() {
         out.push_str("    ],\n    'islands' => [\n");
         for (namespace, island) in &schema.islands {
+            let assets = if island.assets.is_empty() {
+                String::new()
+            } else {
+                let entries: Vec<String> = island
+                    .assets
+                    .iter()
+                    .map(|(name, asset)| match asset {
+                        crate::schema::IslandAsset::Url(file) => {
+                            format!("{} => {}", php_str(name), php_str(file))
+                        }
+                        crate::schema::IslandAsset::Meta {
+                            file,
+                            width,
+                            height,
+                            format: fmt,
+                        } => format!(
+                            "{} => ['file' => {}, 'width' => {width}, 'height' => {height}, 'format' => {}]",
+                            php_str(name),
+                            php_str(file),
+                            php_str(fmt)
+                        ),
+                    })
+                    .collect();
+                format!(", 'assets' => [{}]", entries.join(", "))
+            };
             let _ = writeln!(
                 out,
-                "        {} => ['file' => {}, 'actions' => [{}]{}],",
+                "        {} => ['file' => {}, 'actions' => [{}]{assets}{}],",
                 php_str(namespace),
                 php_str(&island.file),
                 island.actions.iter().map(|a| php_str(a)).collect::<Vec<_>>().join(", "),
                 if island.live { ", 'live' => true" } else { "" }
+            );
+        }
+    }
+    if !schema.assets_meta.is_empty() {
+        out.push_str("    ],\n    'assetsMeta' => [\n");
+        for (file, meta) in &schema.assets_meta {
+            let _ = writeln!(
+                out,
+                "        {} => ['width' => {}, 'height' => {}, 'format' => {}],",
+                php_str(file),
+                meta.width,
+                meta.height,
+                php_str(&meta.format)
             );
         }
     }
@@ -475,8 +602,51 @@ pub fn render(schema: &Schema) -> String {
                 ),
                 None => "null".into(),
             };
+            // A preceding callback can redirect or stop the request before a role guard runs.
+            // Infer sign-in only if the first guard that could refuse a guest requires a role.
+            let files = r.layouts.iter().chain(r.page.iter());
+            let mut guard_files = Vec::new();
+            let mut requires_login = None;
+            let mut template = "theme";
+            for path in files {
+                let Some(file) = app.files.get(path) else { continue };
+                if let Some(guard) = &file.guard {
+                    guard_files.push(php_str(path));
+                    if requires_login.is_none() {
+                        requires_login = match guard {
+                            Access::Role(role) if role == "anyone" => None,
+                            Access::Allow(true) => None,
+                            Access::Role(_) => Some(true),
+                            _ => Some(false),
+                        };
+                    }
+                }
+                if let Some(choice) = file.template.as_deref() {
+                    template = choice;
+                }
+            }
+            let navigation = format!(
+                ", 'guards' => [{}], 'template' => {}{}",
+                guard_files.join(", "),
+                php_str(template),
+                if requires_login == Some(true) {
+                    ", 'loginRequired' => true"
+                } else {
+                    ""
+                }
+            );
+            let preloads = if r.preloads.is_empty() {
+                String::new()
+            } else {
+                let items: Vec<String> = r
+                    .preloads
+                    .iter()
+                    .map(|p| format!("['file' => {}, 'type' => {}]", php_str(&p.file), php_str(p.mime)))
+                    .collect();
+                format!(", 'preloads' => [{}]", items.join(", "))
+            };
             format!(
-                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}], 'kind' => {kind}{}]",
+                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}]{preloads}, 'kind' => {kind}{navigation}{}]",
                 php_str(&r.id),
                 php_str(&r.pattern),
                 opt(&r.page),
@@ -493,6 +663,11 @@ pub fn render(schema: &Schema) -> String {
         if schema.output == crate::schema::Output::Static {
             out.push_str("        'output' => 'static',\n");
         }
+        let _ = writeln!(
+            out,
+            "        'hasPrebuilt' => {},",
+            app.routes.iter().any(|r| r.prerender)
+        );
         out.push_str("        'routes' => [\n");
         for r in &app.routes {
             let _ = writeln!(out, "            {},", route(r));
@@ -503,6 +678,25 @@ pub fn render(schema: &Schema) -> String {
             "        'notFound' => {},",
             app.not_found.as_ref().map(route).unwrap_or_else(|| "null".into())
         );
+        // App routes have unique literal paths with precedence over parameter matches.
+        // Legacy config routes can share a path across HTTP methods and retain their ordered lookup.
+        if !app.legacy_routes {
+            let mut literal = Vec::new();
+            let mut dynamic = Vec::new();
+            for (position, route) in app.routes.iter().enumerate() {
+                if route.pattern.split('/').any(|segment| segment.starts_with([':', '*'])) {
+                    dynamic.push(position.to_string());
+                } else {
+                    literal.push(format!("{} => {position}", php_str(&route.pattern)));
+                }
+            }
+            let _ = writeln!(
+                out,
+                "        'routeIndex' => ['literal' => [{}], 'dynamic' => [{}]],",
+                literal.join(", "),
+                dynamic.join(", ")
+            );
+        }
         if let Some(login) = &app.login {
             let _ = writeln!(out, "        'login' => {},", route(login));
         }
@@ -528,12 +722,15 @@ pub fn render(schema: &Schema) -> String {
                 .join(", ");
             let _ = writeln!(
                 out,
-                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'access' => {}, 'signature' => {}, 'search' => {}, 'methods' => [{methods}]{}],",
+                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}{}, 'signature' => {}, 'search' => {}, 'methods' => [{methods}]{}],",
                 php_str(path),
                 opt(&f.component),
                 f.metadata.as_ref().map(php_json).unwrap_or_else(|| "null".into()),
                 f.guard.as_ref().map(access).unwrap_or_else(|| "null".into()),
-                f.access.as_ref().map(access).unwrap_or_else(|| "null".into()),
+                f.handler_guard
+                    .as_ref()
+                    .map(|rule| format!(", 'handlerGuard' => {}", access(rule)))
+                    .unwrap_or_default(),
                 f.signature.as_ref().map(php_json).unwrap_or_else(|| "null".into()),
                 f.search
                     .as_ref()
@@ -581,9 +778,14 @@ pub fn render(schema: &Schema) -> String {
     }
     out.push_str("    ],\n    'jobs' => [\n");
     for (name, job) in &schema.jobs {
+        let schedule = match &job.schedule {
+            None => String::new(),
+            Some(crate::schema::Schedule::Every(seconds)) => format!(", 'schedule' => ['every' => {seconds}]"),
+            Some(crate::schema::Schedule::Cron(expr)) => format!(", 'schedule' => ['cron' => {}]", php_str(expr)),
+        };
         let _ = writeln!(
             out,
-            "        {} => ['input' => {}, 'handler' => {}, 'retries' => {}, 'agents' => {}],",
+            "        {} => ['input' => {}, 'handler' => {}, 'retries' => {}, 'agents' => {}{schedule}],",
             php_str(name),
             fields_block(&job.input, 2),
             php_str(&job.handler),
@@ -613,6 +815,9 @@ pub fn render(schema: &Schema) -> String {
         let n = &g.name;
         let _ = writeln!(out, "        {} => [", php_str(n));
         let _ = writeln!(out, "            'label' => {},", php_str(&g.label));
+        if let Some(ui) = &g.ui {
+            let _ = writeln!(out, "            'ui' => {},", php_json(ui));
+        }
         let _ = writeln!(out, "            'agents' => {},", g.agents);
         let _ = writeln!(out, "            'fields' => {},", fields_block(&g.fields, 3));
         let rules: Vec<String> = g
@@ -637,6 +842,9 @@ pub fn render(schema: &Schema) -> String {
         let _ = writeln!(out, "            'idempotent' => {},", a.idempotent);
         let _ = writeln!(out, "            'readonly' => {},", a.readonly);
         let _ = writeln!(out, "            'destructive' => {},", a.destructive);
+        if a.personal {
+            out.push_str("            'personal' => true,\n");
+        }
         let _ = writeln!(
             out,
             "            'output' => {},",
@@ -647,6 +855,13 @@ pub fn render(schema: &Schema) -> String {
             "            'signature' => {},",
             a.signature.as_ref().map(php_json).unwrap_or_else(|| "null".into())
         );
+        if let Some(r) = &a.rate_limit {
+            let _ = writeln!(
+                out,
+                "            'rateLimit' => ['count' => {}, 'window' => {}],",
+                r.count, r.window
+            );
+        }
         let _ = writeln!(out, "        ],");
     }
     out.push_str("    ],\n");
@@ -659,6 +874,20 @@ pub fn render(schema: &Schema) -> String {
         }
         out.push_str("    ],\n");
     }
+    if !schema.widgets.is_empty() {
+        out.push_str("    'widgets' => [\n");
+        for (id, widget) in &schema.widgets {
+            let _ = writeln!(out, "        {} => {},", php_str(id), php_json(widget));
+        }
+        out.push_str("    ],\n");
+    }
+    if !schema.dashboards.is_empty() {
+        out.push_str("    'dashboards' => [\n");
+        for (id, dashboard) in &schema.dashboards {
+            let _ = writeln!(out, "        {} => {},", php_str(id), php_json(dashboard));
+        }
+        out.push_str("    ],\n");
+    }
     out.push_str("];\n");
     out
 }
@@ -668,7 +897,7 @@ pub fn render(schema: &Schema) -> String {
 pub fn gen_ts(schema: &Schema) -> String {
     use std::fmt::Write as _;
     let mut out = String::from(
-        "// Generated by `typedpress build`. Do not edit.\nimport type { Collection, ColumnBuilder, Relations, One, Many, Global, Job } from \"typedpress\";\n",
+        "// Generated by `typedpress build`. Do not edit.\nimport type { Collection, ColumnBuilder, Relations, One, Many, Global, Job, Id } from \"typedpress\";\n",
     );
     // One field as its builder type: kind, value, required, defaulted, translated, key.
     let builder = |col: &Column, value: String| {
@@ -682,7 +911,7 @@ pub fn gen_ts(schema: &Schema) -> String {
             php_str(kind),
             value,
             col.authored_not_null(),
-            col.authored_has_default(),
+            col.authored_has_default() || col.read_only,
             col.localized,
             col.primary_key
         )
@@ -693,6 +922,8 @@ pub fn gen_ts(schema: &Schema) -> String {
             "userProjection"
         } else if c.taxonomy.is_some() {
             "taxonomy"
+        } else if let Some(kind) = &c.commerce {
+            kind.as_str()
         } else if c.editor {
             "collection"
         } else {
@@ -706,6 +937,18 @@ pub fn gen_ts(schema: &Schema) -> String {
                     "Partial<Record<GeneratedLocale, {}>>",
                     crate::client::registry_value(c.primary_key().expect("primary key"))
                 )
+            } else if col.primary_key && col.ty == crate::schema::ColType::Integer {
+                format!("Id<{}>", php_str(&c.key))
+            } else if let Some(r) = &col.references
+                && let Some(target) = schema.collections.get(&r.collection)
+                && col.ty == crate::schema::ColType::Integer
+            {
+                format!("Id<{}>", php_str(&target.key))
+            } else if let Some(r) = &col.references
+                && let Some(target) = schema.collections.get(&r.collection)
+                && col.ty == crate::schema::ColType::RefList
+            {
+                format!("Id<{}>[]", php_str(&target.key))
             } else {
                 crate::client::registry_value(col)
             };
@@ -714,27 +957,15 @@ pub fn gen_ts(schema: &Schema) -> String {
         let _ = writeln!(out, "  }}, {}, {}>;", c.auth, php_str(storage));
     }
     out.push_str("};\n");
-    // Globals and jobs register by export like kinds (docs/spec/spec.md §1.1), so they are typed the
-    // same way: structurally, with no import of the sources that export them.
+    // Globals register by export like kinds (docs/spec/spec.md §1.1), so they are typed the same
+    // way: structurally, with no import of the sources that export them. A job is typed by its own
+    // export (`notifyLowStock.enqueue(...)`).
     let has_globals = !schema.globals.is_empty();
-    let has_jobs = !schema.jobs.is_empty();
     if has_globals {
         out.push_str("type Globals = {\n");
         for (name, g) in &schema.globals {
             let _ = writeln!(out, "  {}: Global<{}, {{", php_str(name), php_str(name));
             for col in g.fields.values().filter(|col| !col.hidden) {
-                let value = crate::client::registry_value(col);
-                let _ = writeln!(out, "    {}: {};", php_str(&col.name), builder(col, value));
-            }
-            out.push_str("  }>;\n");
-        }
-        out.push_str("};\n");
-    }
-    if has_jobs {
-        out.push_str("type Jobs = {\n");
-        for (name, j) in &schema.jobs {
-            let _ = writeln!(out, "  {}: Job<{{", php_str(name));
-            for col in j.input.values() {
                 let value = crate::client::registry_value(col);
                 let _ = writeln!(out, "    {}: {};", php_str(&col.name), builder(col, value));
             }
@@ -771,9 +1002,6 @@ pub fn gen_ts(schema: &Schema) -> String {
     out.push_str("declare module \"typedpress\" { interface Register { relations: Relations<Entities, Graph>");
     if has_globals {
         out.push_str("; globals: Globals");
-    }
-    if has_jobs {
-        out.push_str("; jobs: Jobs");
     }
     if locales.is_some() {
         out.push_str("; locales: GeneratedLocale");

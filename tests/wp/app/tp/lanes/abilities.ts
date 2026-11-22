@@ -1,74 +1,46 @@
 // Lane fragment for the WP test app; only this lane edits this file. Every kind, action and job it
 // exports registers under its export name, and a name another lane or the app uses fails the build.
-import { action, adminScreen, db, group, integer, item, json, repeater, text } from "typedpress";
+import { adminScreen, db, item, query, mutation, HttpError } from "typedpress";
 import { comments } from "../blog/typedpress.config.ts";
 function refsHelper() { return 1; }
 const refsSaved: { f?: () => number } = {};
 /** Annotated from its options (spec §3a): reads only, so core runs it over GET. */
-export const refsCount = action({
-  input: { body: text() },
-  access: "anyone",
-  readonly: true,
-  async handler({ body }) {
-    const rows = await db.query.comments.findMany({ where: { body }, columns: { id: true } });
-    return { body, count: rows.length, ids: rows.map((r) => r.id) };
-  },
+export const refsCount = query({ access: "anyone" }, async ({ body }: { body: string }) => {
+  const rows = await db.query.comments.findMany({ where: { body }, columns: { id: true } });
+  return { body, count: rows.length, ids: rows.map((r) => r.id) };
 });
 
 /** Destructive and idempotent: core runs it over DELETE. */
-export const refsPurge = action({
-  input: { body: text() },
-  access: "editor",
-  destructive: true,
-  idempotent: true,
-  async handler({ body }) {
-    const gone = await db.delete(comments).where({ body }).returning();
-    return gone.length;
-  },
+export const refsPurge = mutation({ access: "editor", destructive: true, idempotent: true }, async ({ body }: { body: string }) => {
+  const gone = await db.delete(comments).where({ body }).returning();
+  return gone.length;
 });
 
 /** Computed numbers that can't be finite (NaN, Infinity, 2^70): null on the wire; 1e20 literal kept. */
-export const refsRatio = action({
-  input: { n: integer() },
-  access: "anyone",
-  readonly: true,
-  handler({ n }): { ratio: number; big: 1e20; huge: number } {
-    return { ratio: n / n, big: 1e20, huge: 2 ** (n * 70) };
-  },
+export const refsRatio = query({ access: "anyone" }, ({ n }: { n: number }): { ratio: number; big: 1e20; huge: number } => {
+  if (!Number.isInteger(n)) throw new HttpError(422, "invalid_input", "n must be an integer", "/n");
+  return { ratio: n / n, big: 1e20, huge: 2 ** (n * 70) };
 });
 
-export const refsEmpty = action({ input: {}, access: "editor", handler: () => ({}) });
+export const refsEmpty = mutation({ access: "editor" }, () => ({}));
 
-export const refsWire = action({ input: {}, access: "editor", handler: () => ({ f: refsHelper, a: [refsHelper, NaN] }) });
+export const refsWire = mutation({ access: "editor" }, () => ({ f: refsHelper, a: [refsHelper, NaN] }));
 
-export const refsEcho = action({
-  input: { meta: json().optional(), info: group({ tag: text().optional() }).optional(), items: repeater({ tag: text().optional() }).optional() },
-  access: (ctx) => { refsSaved.f = refsHelper; return ctx.user?.role === "editor" || ctx.user?.role === "admin"; },
-  handler: (input) => {
-    if (refsSaved.f && refsSaved.f !== refsHelper) throw new Error("named function identity changed across callbacks");
-    return input.info ? { meta: input.meta, info: input.info } : { meta: input.meta };
-  },
+export const refsEcho = mutation({ access: (ctx) => { refsSaved.f = refsHelper; return ctx.user?.role === "editor" || ctx.user?.role === "admin"; } }, (input: { meta?: unknown; info?: { tag?: string }; items?: ({ tag?: string })[] }) => {
+  if (refsSaved.f && refsSaved.f !== refsHelper) throw new Error("named function identity changed across callbacks");
+  return input.info ? { meta: input.meta, info: input.info } : { meta: input.meta };
 });
 
 /** Kept from agents (§7.1): an ability for PHP and `wp typedpress run`, absent from core REST and MCP. */
-export const agentNote = action({
-  input: { note: text().max(200) },
-  access: "editor",
-  agents: false,
-  async handler({ note }) {
-    const rows = await db.query.comments.findMany({ where: { body: note }, columns: { id: true } });
-    return { note, seen: rows.length };
-  },
+export const agentNote = mutation({ access: "editor", agents: false }, async ({ note }: { note: string }) => {
+  if (note.length > 200) throw new HttpError(422, "invalid_input", "note must be at most 200 characters", "/note");
+  const rows = await db.query.comments.findMany({ where: { body: note }, columns: { id: true } });
+  return { note, seen: rows.length };
 });
 /** The rows a screen lists: readonly, so core runs it over GET. */
-export const refsRows = action({
-  input: {},
-  access: "editor",
-  readonly: true,
-  async handler() {
-    const rows = await db.query.comments.findMany({ columns: { id: true, body: true }, limit: 100 });
-    return { rows };
-  },
+export const refsRows = query({ access: "editor" }, async () => {
+  const rows = await db.query.comments.findMany({ columns: { id: true, body: true }, limit: 100 });
+  return { rows };
 });
 
 /**

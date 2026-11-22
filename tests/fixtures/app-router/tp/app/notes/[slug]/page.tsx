@@ -5,7 +5,11 @@ export const metadata = ({ params }: PageProps<"notes/[slug]">) => ({
   title: `Note ${params.slug}`,
   canonical: `/notes/${params.slug}`,
   openGraph: { image: `/og/${params.slug}.png` },
-  links: [{ rel: "alternate", href: `/notes/${params.slug}.md`, type: "text/markdown" }],
+  // The layout's link again, its keys in another order: the head still has it once.
+  links: [
+    { rel: "alternate", href: `/notes/${params.slug}.md`, type: "text/markdown" },
+    { type: "text/plain", href: "/llms.txt", rel: "describedby" },
+  ],
   scripts: ["/note.js", "https://cdn.example/a.js"],
 });
 
@@ -21,7 +25,7 @@ export default async function Note({ params }: PageProps<"notes/[slug]">) {
 }
 
 // The page's own form handler: POST to the page URL, for signed-in readers.
-export const access = "subscriber";
+export const guard = { page: undefined, handlers: "subscriber" };
 
 export async function POST(req: RouteRequest) {
   return { status: 303, headers: { location: `/notes/${req.params.slug}?sent=1` }, body: "" };

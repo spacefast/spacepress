@@ -250,7 +250,7 @@ fn every_build_keeps_a_baseline_and_describes_its_storage() {
     let second = typedpress::host::compile_to_store(&two, &root, &two, Some(&first.build_id)).unwrap();
     assert_eq!(first.manifest.baseline, None);
     assert_eq!(second.manifest.baseline.as_deref(), Some(first.build_id.as_str()));
-    assert_eq!(first.manifest.jobs, ["notifyLowStock"]);
+    assert_eq!(first.manifest.jobs, ["notifyLowStock", "weeklyList"]);
     assert_eq!(
         first.manifest.wordpress.as_deref(),
         Some(typedpress::platform::WORDPRESS)
@@ -261,10 +261,17 @@ fn every_build_keeps_a_baseline_and_describes_its_storage() {
         let app = root.join("app").join(&built.app_hash);
         let hashes: serde_json::Map<String, serde_json::Value> =
             serde_json::from_slice(&fs::read(baseline.join("hashes.json")).unwrap()).unwrap();
-        assert_eq!(
-            hashes.keys().cloned().collect::<Vec<_>>(),
-            ["migrations/0001_init.sql", "snapshot.json", "storage.json"]
+        let keys: Vec<String> = hashes.keys().cloned().collect();
+        assert_eq!(keys.len(), 4, "{keys:?}");
+        assert!(
+            keys[0].starts_with("migrations/") && keys[0].ends_with("_init/migration.sql"),
+            "{keys:?}"
         );
+        assert!(
+            keys[1].starts_with("migrations/") && keys[1].ends_with("_init/ops.json"),
+            "{keys:?}"
+        );
+        assert_eq!(&keys[2..], ["snapshot.json", "storage.json"]);
         for (rel, hash) in &hashes {
             let bytes = fs::read(baseline.join(rel)).unwrap();
             assert_eq!(bytes, fs::read(app.join(rel)).unwrap(), "{rel} is the app tree's");
@@ -294,7 +301,7 @@ fn every_build_keeps_a_baseline_and_describes_its_storage() {
     assert_eq!(items["fields"]["opened"]["default"], false);
     assert_eq!(
         items["indexes"],
-        serde_json::json!([{ "columns": ["id"], "name": "PRIMARY", "unique": true }, { "columns": ["slug"], "name": "slug_unique", "unique": true }, { "columns": ["locationId"], "name": "tp_items_locationId_fk", "unique": false }])
+        serde_json::json!([{ "columns": ["id"], "name": "PRIMARY", "unique": true }, { "columns": ["slug", "_live"], "name": "slug_unique", "unique": true }, { "columns": ["deletedAt"], "name": "deletedAt_idx", "unique": false }, { "columns": ["locationId"], "name": "tp_items_locationId_fk", "unique": false }])
     );
     assert_eq!(
         described["kinds"]["locations"]["fields"]["kind"]["choices"],
@@ -344,7 +351,7 @@ fn manifests_with_and_without_the_deployment_fields_load() {
         .unwrap();
     assert_eq!(
         String::from_utf8_lossy(&out.stdout),
-        "[\"notifyLowStock\"]",
+        "[\"notifyLowStock\",\"weeklyList\"]",
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );

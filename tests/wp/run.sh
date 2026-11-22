@@ -4,6 +4,8 @@
 # the plugin, run every tests/wp/*.test.ts, tear down. `cargo test` never depends on this. TP_WP_PORT (default 8790) picks the port;
 # TP_WP_KEEP=1 leaves the stack up afterwards.
 set -euo pipefail
+# Locales are turned off for apps (docs/decisions/2026-11-17-locales-off.md); this lane exercises them.
+export TYPEDPRESS_LOCALES=1
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 cd "$repo"

@@ -21,7 +21,7 @@ use TypedPress\Store;
  */
 final class WpUserStore implements Store
 {
-    public function readGuards(string $collection, \TypedPress\Viewer $viewer): array
+    public function readGuards(string $collection, \TypedPress\Viewer $viewer, bool $forSelect = false): array
     {
         return [];
     }
@@ -497,11 +497,11 @@ final class WpUserStore implements Store
         return [];
     }
 
-    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId): void
+    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = []): void
     {
     }
 
-    public function revision(string $collection, int|string $pk, int $revisionId): ?array
+    public function revision(string $collection, int|string $pk, int $revisionId, bool $byVersion = false): ?array
     {
         return null;
     }

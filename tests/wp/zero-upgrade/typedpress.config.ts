@@ -1,7 +1,7 @@
 // The 0.3.0 app in zero.config.ts, ported to TypedPress by its owner: the same kinds, fields and stored
 // names, in the current authoring form (fields are required unless `.optional()`). run.sh builds
 // it against the 0.3.0 ledger; it must plan no new migration.
-import { collection, table, text, integer, boolean, select, email, file, files, global, userProjection, defineConfig, action, job, jobs, db } from "typedpress";
+import { collection, table, text, boolean, select, email, file, files, global, userProjection, defineConfig, job, db, mutation } from "typedpress";
 
 export const notes = table({
   title: text().max(120),
@@ -27,20 +27,13 @@ export const settings = global({
   siteTitle: text().default("Carry").max(80),
 }, { label: "Settings" });
 
-export const stamp = job({
-  input: { id: integer() },
-  handler: async ({ id }) => {
-    await db.update(notes).set({ done: true }).where({ id });
-  },
+export const stamp = job({}, async ({ id }: { id: number }) => {
+  await db.update(notes).set({ done: true }).where({ id });
 });
 
-export const later = action({
-  input: { id: integer() },
-  access: "anyone",
-  async handler({ id }) {
-    await jobs.stamp.enqueue({ id }, { key: `note-${id}` });
-    return { queued: id };
-  },
+export const later = mutation({ access: "anyone" }, async ({ id }: { id: number }) => {
+  await stamp.enqueue({ id }, { key: `note-${id}` });
+  return { queued: id };
 });
 
 export default defineConfig({

@@ -1,7 +1,7 @@
 ---
 name: typedpress-add-page
 description: "Use when adding a page or an HTTP route to a TypedPress project under `tp/app/`: a `page.tsx` rendered by WordPress on each request, a `layout.tsx`, a dynamic segment such as `[slug]`, a guarded section, or a `route.ts` that answers its own HTTP methods."
-compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
+compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
 ---
 
 # Add a page under tp/app/
@@ -59,7 +59,7 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Require
    // tp/app/api/recipes/route.ts
    import { recipes } from "typedpress:db";
 
-   export const access = "anyone";
+   export const guard = "anyone";
 
    export async function GET() {
      const rows = await recipes.list({ limit: 20 });
@@ -89,8 +89,8 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Require
 
 ## Escalation
 
-- Anything `docs/pages.md` does not describe (client-side interactivity, prerendering): search the
+- Anything `www/content/docs/core/pages-and-islands.md` does not describe (client-side interactivity, prerendering): search the
   documentation first, and do not invent an API for it.
 
-Reference: `docs/pages.md` (the folder rules, metadata, guards, links) and `docs/config-api.md`,
-section "HTTP routes".
+Reference: `www/content/docs/core/pages-and-islands.md` (the folder rules, metadata, guards, links) and
+`www/content/docs/core/actions-jobs-routes.md` (HTTP routes).

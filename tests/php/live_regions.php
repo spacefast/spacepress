@@ -5,7 +5,7 @@ declare(strict_types=1);
 /*
  * The subscription endpoint's `page` read (docs/decisions/2026-11-14-live-regions.md):
  * tests/fixtures/live-regions, built by `typedpress build`, on WordPress with php -S. Every answer comes
- * from `POST /__tp/api/v1/_live` over HTTP, as the browser asks. Prints one JSON object.
+ * from `POST /wp-json/typedpress/v1/_live` over HTTP, as the browser asks. Prints one JSON object.
  *
  *   TP_WP_THEMES=1 php tests/php/live_regions.php <wp-content dir>
  */
@@ -16,6 +16,14 @@ $site = wpSite('live-regions', ['wpContent' => $argv[1], 'users' => ['chief' => 
     <?php
     // A host that keeps cached pages: the page cache records what cacheable renders read.
     add_action('tp_purge_urls', static function (array $paths): void {});
+    if (isset($_SERVER['HTTP_X_TP_TEST_SEED_FAILURE'])) {
+        add_filter('salt', static function ($salt) {
+            if (in_array(\TypedPress\Live\Token::class, array_column(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 8), 'class'), true)) {
+                throw new RuntimeException('Test seed issuance failure');
+            }
+            return $salt;
+        });
+    }
     // Counts the page renders `_live` runs, to tell "not modified" by counter from by hash.
     add_action('tp_app_live_rendered', static function (): void {
         update_option('test_live_renders', (int) get_option('test_live_renders', 0) + 1, false);
@@ -29,7 +37,7 @@ $url = $site->url();
 
 function post(string $url, array $queries, array $headers = []): array
 {
-    $ch = curl_init("$url/__tp/api/v1/_live");
+    $ch = curl_init("$url/wp-json/typedpress/v1/_live");
     curl_setopt_array($ch, [
         CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json', ...$headers], CURLOPT_POSTFIELDS => json_encode(['queries' => $queries]),
@@ -53,6 +61,30 @@ $renders = static function (): int {
     global $wpdb;
     return (int) $wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'test_live_renders'");
 };
+function pageSeed(string $url, string $id, array $headers = []): array
+{
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => $headers, CURLOPT_TIMEOUT => 30]);
+    $body = curl_exec($ch);
+    if ($body === false) {
+        throw new RuntimeException(curl_error($ch));
+    }
+    $doc = new DOMDocument();
+    @$doc->loadHTML($body);
+    $element = (new DOMXPath($doc))->query("//*[@data-tp-live='$id']")->item(0);
+    return json_decode($element->getAttribute('data-tp-live-seed'), true, 512, JSON_THROW_ON_ERROR);
+}
+
+$was = $renders();
+$seed = pageSeed("$url/", 'notes');
+$out['page seed'] = [$renders() - $was, $seed['kinds']];
+$was = $renders();
+[$checked] = post($url, [$page('/', 'notes', $seed['token'])]);
+$out['first poll'] = [$shape($checked), $renders() - $was];
+$unsealed = pageSeed("$url/", 'notes', ['X-TP-Test-Seed-Failure: 1']);
+[$retry] = post($url, [$page($unsealed['url'], 'notes', $unsealed['token'] ?? null)]);
+$out['unsealed page seed'] = [isset($unsealed['token']), $unsealed['kinds'], $shape($retry), $items($retry)];
+
 // The first answer: the region's HTML, and only the region's.
 [$first] = post($url, [$page('/', 'notes')]);
 $out['first'] = [$shape($first), $items($first), str_contains($first['data']['html'], '<h1>'), $first['data']['kinds']];
@@ -70,6 +102,8 @@ wp_set_current_user(1);
 $site->actAs(null);
 [$after] = post($url, [$page('/', 'notes', $again['token'])]);
 $out['after write'] = [$shape($after), $items($after)];
+[$changedSinceGet] = post($url, [$page('/', 'notes', $seed['token'])]);
+$out['write before first poll'] = [$shape($changedSinceGet), $items($changedSinceGet)];
 // A draft doesn't show to anonymous visitors, and doesn't count as a change for them.
 wp_set_current_user(1);
 \TypedPress\db()->insert('notes', ['title' => 'Draft', 'status' => 'draft']);
@@ -112,6 +146,9 @@ $before = $reads();
 [$home] = post($url, [$page('/', 'notes')], $editor);
 $out['editor'] = [$shape($desk), preg_match('#class="count">(\d+)<#', $desk['data']['html'] ?? '', $m) ? (int) $m[1] : null, $items($home)];
 $out['records nothing'] = $reads() - $before;
+$publicSeed = pageSeed("$url/about/", 'static');
+[$crossViewer] = post($url, [$page($publicSeed['url'], 'static', $publicSeed['token'])], $editor);
+$out['page seed other viewer'] = $shape($crossViewer);
 $ch = curl_init("$url/");
 curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true]);
 curl_exec($ch);

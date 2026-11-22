@@ -50,6 +50,24 @@ eq('addresses coerce to { email, name? } lists and trim; text and html both trav
         'cc' => [['email' => 'c@example.test', 'name' => 'Cé']], 'replyTo' => 'r@example.test']),
     ['from' => ['email' => 'app@example.test'], 'to' => [['email' => 'a@example.test']], 'subject' => 'S', 'text' => 't', 'html' => '<b>h</b>',
         'cc' => [['email' => 'c@example.test', 'name' => 'Cé']], 'replyTo' => ['email' => 'r@example.test']]);
+eq('a field holding undefined is a field left out, in the message and in an address',
+    Mail::payload(\TypedPress\Seam::toPhp(new JsObject(['from' => 'app@example.test', 'to' => new JsObject(['email' => 'a@example.test', 'name' => \TypedPress\JsUndefined::Value]),
+        'subject' => 'S', 'text' => 't', 'replyTo' => \TypedPress\JsUndefined::Value, 'cc' => \TypedPress\JsUndefined::Value, 'headers' => \TypedPress\JsUndefined::Value]))),
+    ['from' => ['email' => 'app@example.test'], 'to' => [['email' => 'a@example.test']], 'subject' => 'S', 'text' => 't']);
+$sender = static function (string $configured, string $host, bool $local): string {
+    try {
+        return Mail::sender($configured, $host, $local)['email'];
+    } catch (HttpError $e) {
+        return $e->pointer . ' ' . $e->getMessage();
+    }
+};
+eq('the default sender is noreply@ the configured domain, else the site host; a local site on a host that is no mail domain uses the reserved name',
+    [$sender('Example.Test', '127.0.0.1', false), $sender('', 'kitchen.example', false), $sender('', '127.0.0.1', true), $sender('', 'localhost', true)],
+    ['noreply@example.test', 'noreply@kitchen.example', Mail::LOCAL_SENDER, Mail::LOCAL_SENDER]);
+eq('anywhere else, a host that is no mail domain is refused with what to set',
+    [$sender('', '127.0.0.1', false), $sender('localhost', 'kitchen.example', true)],
+    ['/from This site\'s host (127.0.0.1) is not a domain email can be sent from. Set `from` on the message, or set TP_MAIL_SENDER_DOMAIN to the sending domain.',
+        '/from TP_MAIL_SENDER_DOMAIN (localhost) is not a domain email can be sent from. Set `from` on the message, or set TP_MAIL_SENDER_DOMAIN to the sending domain.']);
 eq('bad messages are refused at send, with a pointer',
     array_map($refusal, [
         null,
@@ -104,7 +122,7 @@ remove_all_filters('pre_wp_mail');
 $bodies = [];
 add_action('phpmailer_init', static function ($mailer) use (&$bodies): void {
     $mailer->isSendmail();
-    $mailer->Sendmail = '/bin/true';
+    $mailer->Sendmail = '/usr/bin/true';
 }, PHP_INT_MIN);
 add_action('phpmailer_init', static function ($mailer) use (&$bodies): void {
     $bodies[] = ['to' => array_keys($mailer->getAllRecipientAddresses())[0], 'alt' => $mailer->AltBody];

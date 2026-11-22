@@ -1,4 +1,4 @@
-import { collection, text, email, media, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db, table, userProjection, ref } from "typedpress";
+import { collection, text, email, media, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, defineConfig, db, table, userProjection, ref, mutation, HttpError } from "typedpress";
 import type { FieldAccessCtx as FieldContext, JobCtx } from "typedpress";
 function deny(): never { throw new Error("denied"); }
 async function yes() { return true; }
@@ -107,11 +107,11 @@ export const users = { members };
 export const entities = { ...collections, ...tables, ...users };
 export const settings = global({ title: text().default("Hello").optional() }, { agents: false });
 
-export const sendWelcome = job({ input: { email: email(), payload: json<{ message: string }>(), data: group({ label: text().default("welcome").optional(), payload: json<{ suffix: string }>().optional() }).optional() }, retries: 5, agents: true, handler: async (input, ctx: JobCtx) => { let choose = yes; choose = no; if (visible(input.email) && !(await choose())) { await db.insert(audit).values({ note: input.payload.message + ":" + ctx.jobId + ":" + ctx.attempt + ":" + (input.data?.payload?.suffix ?? "") }); } } });
+export const sendWelcome = job({ retries: 5, agents: true }, async (input: { email: string; payload: { message: string }; data?: { label?: string; payload?: { suffix: string } } }, ctx: JobCtx) => { if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email)) throw new HttpError(422, "invalid_input", "email must be an email address", "/email"); let choose = yes; choose = no; if (visible(input.email) && !(await choose())) { await db.insert(audit).values({ note: input.payload.message + ":" + ctx.jobId + ":" + ctx.attempt + ":" + (input.data?.payload?.suffix ?? "") }); } });
 
-export const inbound = action({ input: { allow: boolean().default(true) }, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: (input, ctx): boolean => { if (ctx.user === null) return false; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return allowed(input.allow) && !allowed(null); } } });
+export const inbound = mutation({ idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" } }, ({ allow = true }: { allow?: boolean }, ctx): boolean => { if (ctx.user === null) return false; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return allowed(allow) && !allowed(null); } });
 
-export const widened = action({ input: {}, handler: () => {
+export const widened = mutation({}, () => {
   const values = ["a"]; values.unshift("b");
   let choice = values.length > 0 ? "a" : "b"; choice = "c";
   const finite: ("a" | "b")[] = ["a"]; finite.push("b");
@@ -131,7 +131,7 @@ export const widened = action({ input: {}, handler: () => {
   const numericChoice = values.length > 0 ? 0 : 1;
   const inferredNumber = numericChoice.toString();
   const selected = finite[0]; if (selected === undefined) throw new Error("missing element"); switch (selected) { case "a": case "b": return { values, choice, finite: finite.map((value: "a" | "b") => value), nested, callbacks, tuples, finiteDefaults, defaultTuple, reduced, reducedNested, numeric, effects, formatted, inferredNumber, functionMaybe: maybeFunction(), defaultMaybe: maybeDefault(), maybe: maybeFirst() }; }
-} });
+});
 
 export default defineConfig({
   name: "phase2",

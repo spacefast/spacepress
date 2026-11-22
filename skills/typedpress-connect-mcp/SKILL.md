@@ -1,7 +1,7 @@
 ---
 name: typedpress-connect-mcp
 description: "Use when connecting an MCP client (Claude Code, Claude Desktop, Codex or another agent) to a running TypedPress site so it can use the app's data and actions: finding the endpoint, creating an application password, and writing the client configuration. Not for the development-time `typedpress mcp` server."
-compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
+compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
 ---
 
 # Connect an MCP client to a site's endpoint
@@ -95,4 +95,4 @@ the answer carried and send `MCP-Protocol-Version` with the negotiated version.
   chat transcript. Revoke a leaked application password in the user's profile.
 - A production site: confirm the user and its role with the owner before connecting.
 
-Reference: `docs/agents.md`.
+Reference: `www/content/docs/operations/mcp-and-agents.md`.

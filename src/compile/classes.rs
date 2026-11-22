@@ -133,12 +133,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .class_ids
             .entry((self.owner(), Rc::as_ptr(class) as usize))
             .or_insert(next);
-        if self.classes.contains_key(&id) {
-            return Ok(id);
+        if !self.classes.contains_key(&id) {
+            // A refused class registers nothing, so the next reference compiles it again and reports
+            // the refusal (`instanceof` narrowing compiles the class speculatively; see `attempt`).
+            let caller = std::mem::replace(&mut self.current, format!("%class{id}"));
+            let compiled = self.attempt(|this| this.compile_class(id, class));
+            self.current = caller;
+            compiled?;
         }
-        // A refused class registers nothing, so the next reference compiles it again and reports
-        // the refusal (`instanceof` narrowing compiles the class speculatively; see `attempt`).
-        self.attempt(|this| this.compile_class(id, class))
+        // A function that uses a class may run any of its code (constructor, field initializers,
+        // methods, accessors): the call graph says so, for the check that a query never writes.
+        let caller = self.current.clone();
+        self.calls.entry(caller).or_default().insert(format!("%class{id}"));
+        Ok(id)
     }
 
     fn compile_class(&mut self, id: usize, class: &Rc<ClassValue>) -> Result<usize> {
@@ -376,7 +383,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .iter()
                 .any(|(name, is_static, _)| !is_static && name.starts_with('#'))
         {
-            field_body.push_str("    $__tp_class->brand($__tp_this);\n");
+            field_body.push_str("\t$__tp_class->brand($__tp_this);\n");
         }
         let receiver_ty = |instance: &Ty| if javascript { Ty::Dynamic } else { instance.clone() };
         for field in c.fields.iter().filter(|f| !f.is_static) {
@@ -410,16 +417,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
             };
             if field.name.starts_with('#') {
                 field_body.push_str(&format!(
-                    "    $__tp_class->privateDefine($__tp_this, {}, {value});\n",
+                    "\t$__tp_class->privateDefine($__tp_this, {}, {value});\n",
                     php_str(&field.name)
                 ));
             } else {
-                field_body.push_str(&format!("    $__tp_this->p[{}] = {value};\n", php_str(&field.name)));
+                field_body.push_str(&format!("\t$__tp_this->p[{}] = {value};\n", php_str(&field.name)));
             }
         }
         writeln!(
             self.output,
-            "function {fields_name}(\\TypedPress\\JsObject $__tp_this, \\TypedPress\\JsClass $__tp_class)\n{{\n{field_body}}}\n"
+            "function {fields_name}(\\TypedPress\\JsObject $__tp_this, \\TypedPress\\JsClass $__tp_class) {{\n{field_body}}}\n"
         )
         .unwrap();
         let ctor = if let Some(f) = &c.constructor {
@@ -611,7 +618,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             (None, Some(builtin)) => format!("\\TypedPress\\JsClass::builtin({})", php_str(builtin)),
             (None, None) => "null".into(),
         };
-        writeln!(self.output, "function {name}(): \\TypedPress\\JsClass\n{{\n    static $class;\n    return $class ??= new \\TypedPress\\JsClass({parent_php}, {ctor}, \\Closure::fromCallable({}), [{}], [{}], {data}, [{}], [{}], {private_statics}, [{instance_accessors}], [{static_accessors}], symbolMethods: [{symbol_methods}], staticSymbolMethods: [{static_symbol_methods}], prototypeSymbols: [{prototype_symbols}]);\n}}\n", php_str(&format!("\\TypedPressApp\\{fields_name}")), own_methods.join(", "), static_methods.join(", "), private_methods.join(", "), static_private_methods.join(", ")).unwrap();
+        writeln!(self.output, "function {name}(): \\TypedPress\\JsClass {{\n\tstatic $class;\n\treturn $class ??= new \\TypedPress\\JsClass({parent_php}, {ctor}, \\Closure::fromCallable({}), [{}], [{}], {data}, [{}], [{}], {private_statics}, [{instance_accessors}], [{static_accessors}], symbolMethods: [{symbol_methods}], staticSymbolMethods: [{static_symbol_methods}], prototypeSymbols: [{prototype_symbols}]);\n}}\n", php_str(&format!("\\TypedPressApp\\{fields_name}")), own_methods.join(", "), static_methods.join(", "), private_methods.join(", "), static_private_methods.join(", ")).unwrap();
         Ok(id)
     }
 

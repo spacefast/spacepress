@@ -13,7 +13,18 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('route-pages', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor']]);
+$site = wpSite('route-pages', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor'], 'muPlugins' => [
+    'query-warnings' => <<<'PHP'
+        <?php
+        // A theme's post loop must work with the main query supplied by the app router.
+        set_error_handler(static function (int $level, string $message, string $file, int $line): bool {
+            if ($level === E_WARNING && str_ends_with($file, '/class-wp-query.php')) {
+                throw new ErrorException($message, 0, $level, $file, $line);
+            }
+            return false;
+        });
+        PHP,
+]]);
 // A page an editor made before the app existed, at no route's address.
 wp_set_current_user(1);
 $native = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Native', 'post_name' => 'native']);

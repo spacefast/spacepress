@@ -1,7 +1,7 @@
 import {
-  action, collection, date, db, defineConfig, file, files,
-  HttpError, integer, job, jobs, media, richText, text, timestamp,
-  type InferSelectModel, select, ref,
+  collection, date, db, defineConfig, file, files,
+  HttpError, integer, job, media, richText, text, timestamp,
+  type InferSelectModel, select, ref, query, mutation,
 } from "typedpress";
 import { addDays, overdueDelay, today } from "./tp/lib/dates";
 
@@ -21,7 +21,7 @@ export const systems = collection({
   model: text().max(120).optional(),
   installedOn: date().optional(),
   manual: file(manuals).ui({
-    label: "Manual PDF", help: "Upload to /__tp/api/v1/files/manuals, then enter its file ID.",
+    label: "Manual PDF", help: "Upload to /wp-json/typedpress/v1/files/manuals, then enter its file ID.",
   }).optional(),
 }, { title: "name", label: "Home systems", access: {
   read: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), create: "authenticated",
@@ -118,77 +118,71 @@ async function requireTask(taskId: number, userId: number) {
 }
 
 async function scheduleOverdue(task: InferSelectModel<typeof tasks>) {
-  await jobs.flagOverdue.enqueue({ taskId: task.id, ownerId: task.ownerId, dueOn: task.nextDueOn }, {
+  await flagOverdue.enqueue({ taskId: task.id, ownerId: task.ownerId, dueOn: task.nextDueOn }, {
     delay: overdueDelay(task.nextDueOn), key: `overdue-${task.id}-${task.nextDueOn}`,
   });
 }
 
-export const dueNext = action({
-  input: { days: integer().min(0).max(366).default(30) },
-  access: "authenticated",
-  async handler({ days }, ctx) {
-    if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
-    const userId = ctx.user.id;
-    const through = addDays(today(), days);
-    const due = await db.query.tasks.findMany({
-      where: { ownerId: userId, nextDueOn: { lte: through } },
-      orderBy: { nextDueOn: "asc" },
-    });
-    return { through, tasks: due };
-  },
+export const dueNext = query({ access: "authenticated" }, async ({ days = 30 }: { days?: number }, ctx) => {
+  if (!Number.isInteger(days)) throw new HttpError(422, "invalid_input", "days must be an integer", "/days");
+  if (days < 0) throw new HttpError(422, "invalid_input", "days must be at least 0", "/days");
+  if (days > 366) throw new HttpError(422, "invalid_input", "days must be at most 366", "/days");
+  if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
+  const userId = ctx.user.id;
+  const through = addDays(today(), days);
+  const due = await db.query.tasks.findMany({
+    where: { ownerId: userId, nextDueOn: { lte: through } },
+    orderBy: { nextDueOn: "asc" },
+  });
+  return { through, tasks: due };
 });
 
-export const markDone = action({
-  input: {
-    taskId: integer(), notes: text().max(10000).optional(),
-    costCents: integer().min(0).max(100000000).optional(),
-  },
-  access: "authenticated",
-  idempotent: true,
-  async handler({ taskId, notes, costCents }, ctx) {
-    if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
-    const userId = ctx.user.id;
-    const task = await requireTask(taskId, userId);
-    const doneOn = today();
-    const [log] = await db.insert(doneLogs).values({
-      taskId, ownerId: userId, systemId: task.systemId,
-      doneOn, notes: notes ?? "", costCents: costCents ?? 0,
-    }).returning();
-    const [updated] = await db.update(tasks).set({
-      lastDoneOn: doneOn, nextDueOn: addDays(doneOn, task.everyDays), overdueAt: null,
-    }).where({ id: taskId, ownerId: userId }).returning();
-    return { log, task: updated };
-  },
+export const markDone = mutation({ access: "authenticated", idempotent: true }, async ({ taskId, notes, costCents }: { taskId: number; notes?: string; costCents?: number }, ctx) => {
+  if (!Number.isInteger(taskId)) throw new HttpError(422, "invalid_input", "taskId must be an integer", "/taskId");
+  if (costCents !== undefined && !Number.isInteger(costCents)) throw new HttpError(422, "invalid_input", "costCents must be an integer", "/costCents");
+  if (notes !== undefined && notes.length > 10000) throw new HttpError(422, "invalid_input", "notes must be at most 10000 characters", "/notes");
+  if (costCents !== undefined && costCents < 0) throw new HttpError(422, "invalid_input", "costCents must be at least 0", "/costCents");
+  if (costCents !== undefined && costCents > 100000000) throw new HttpError(422, "invalid_input", "costCents must be at most 100000000", "/costCents");
+  if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
+  const userId = ctx.user.id;
+  const task = await requireTask(taskId, userId);
+  const doneOn = today();
+  const [log] = await db.insert(doneLogs).values({
+    taskId, ownerId: userId, systemId: task.systemId,
+    doneOn, notes: notes ?? "", costCents: costCents ?? 0,
+  }).returning();
+  const [updated] = await db.update(tasks).set({
+    lastDoneOn: doneOn, nextDueOn: addDays(doneOn, task.everyDays), overdueAt: null,
+  }).where({ id: taskId, ownerId: userId }).returning();
+  return { log, task: updated };
 });
 
-export const yearCost = action({
-  input: { year: integer().min(1900).max(9998) },
-  access: "authenticated",
-  async handler({ year }, ctx) {
-    if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
-    const userId = ctx.user.id;
-    const homeSystems = await db.query.systems.findMany({ where: { ownerId: userId }, orderBy: { name: "asc" } });
-    const logs = await db.query.doneLogs.findMany({
-      where: { ownerId: userId, doneOn: { gte: `${year}-01-01`, lt: `${year + 1}-01-01` } },
-    });
-    const spend = homeSystems.map((system) => {
-      const costs = logs.filter((log) => log.systemId === system.id);
-      return { systemId: system.id, name: system.name, costCents: costs.reduce((sum, log) => sum + log.costCents, 0) };
-    });
-    return { year, systems: spend, totalCents: spend.reduce((sum, system) => sum + system.costCents, 0) };
-  },
+export const yearCost = query({ access: "authenticated" }, async ({ year }: { year: number }, ctx) => {
+  if (!Number.isInteger(year)) throw new HttpError(422, "invalid_input", "year must be an integer", "/year");
+  if (year < 1900) throw new HttpError(422, "invalid_input", "year must be at least 1900", "/year");
+  if (year > 9998) throw new HttpError(422, "invalid_input", "year must be at most 9998", "/year");
+  if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
+  const userId = ctx.user.id;
+  const homeSystems = await db.query.systems.findMany({ where: { ownerId: userId }, orderBy: { name: "asc" } });
+  const logs = await db.query.doneLogs.findMany({
+    where: { ownerId: userId, doneOn: { gte: `${year}-01-01`, lt: `${year + 1}-01-01` } },
+  });
+  const spend = homeSystems.map((system) => {
+    const costs = logs.filter((log) => log.systemId === system.id);
+    return { systemId: system.id, name: system.name, costCents: costs.reduce((sum, log) => sum + log.costCents, 0) };
+  });
+  return { year, systems: spend, totalCents: spend.reduce((sum, system) => sum + system.costCents, 0) };
 });
 
-export const flagOverdue = job({
-  input: { taskId: integer(), ownerId: integer(), dueOn: date() },
-  retries: 3,
-  async handler({ taskId, ownerId: userId, dueOn }) {
-    const task = await db.query.tasks.findFirst({ where: { id: taskId, ownerId: userId } });
-    if (!task) return;
-    if (task.nextDueOn !== dueOn || task.nextDueOn >= today() || task.overdueAt !== null) return;
-    await db.update(tasks).set({ overdueAt: new Date().toISOString() })
-      .where({ id: taskId, ownerId: userId, nextDueOn: dueOn, overdueAt: { isNull: true } });
-  },
+export const flagOverdue = job({ retries: 3 }, async ({ taskId, ownerId: userId, dueOn }: { taskId: number; ownerId: number; dueOn: string }) => {
+  if (!Number.isInteger(taskId)) throw new HttpError(422, "invalid_input", "taskId must be an integer", "/taskId");
+  if (!Number.isInteger(userId)) throw new HttpError(422, "invalid_input", "ownerId must be an integer", "/ownerId");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueOn)) throw new HttpError(422, "invalid_input", "dueOn must be a date (YYYY-MM-DD)", "/dueOn");
+  const task = await db.query.tasks.findFirst({ where: { id: taskId, ownerId: userId } });
+  if (!task) return;
+  if (task.nextDueOn !== dueOn || task.nextDueOn >= today() || task.overdueAt !== null) return;
+  await db.update(tasks).set({ overdueAt: new Date().toISOString() })
+    .where({ id: taskId, ownerId: userId, nextDueOn: dueOn, overdueAt: { isNull: true } });
 });
 
 export default defineConfig({

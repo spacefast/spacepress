@@ -1,6 +1,6 @@
-/// The oldest WordPress a build targets: 7.2's fifth beta. Compared in PHP's version_compare order
-/// (`wp_plugins::version::at_least`), so 7.2's later betas, RCs and nightlies pass and 7.2-beta4 doesn't.
-pub const WORDPRESS: &str = "7.2-beta5";
+/// The oldest WordPress a build targets: 7.1, the release Spacefast runs. Compared in PHP's version_compare
+/// order (`wp_plugins::version::at_least`), so 7.1.x and every 7.2 build pass and 7.1's own pre-releases don't.
+pub const WORDPRESS: &str = "7.1";
 pub const PHP: &str = "8.2";
 pub const MYSQL: &str = "8.0";
 pub const MARIADB: &str = "10.11";
@@ -52,6 +52,23 @@ pub fn plugins(localized: bool) -> Vec<crate::wp_plugins::Plugin> {
         .collect()
 }
 
+/// Optional native commerce runtime, pinned like the other platform plugins.
+pub fn app_plugins(localized: bool, commerce: bool) -> Vec<crate::wp_plugins::Plugin> {
+    let mut pins = plugins(localized);
+    if commerce {
+        pins.push(crate::wp_plugins::Plugin {
+            slug: "woocommerce".into(),
+            version: "11.3.0".into(),
+            sha256: Some("d9eb1e46df8309eb37b6f7f3fba51480f2a9a00e7feb10b1487592fde39accc6".into()),
+            requires: Vec::new(),
+            plugin_data: Some(crate::wp_plugins::Resource::WordPress {
+                slug: "woocommerce.11.3.0.zip".into(),
+            }),
+        });
+    }
+    pins
+}
+
 pub fn requirements() -> serde_json::Value {
     let plugins: serde_json::Map<String, serde_json::Value> = plugins(true)
         .into_iter()
@@ -69,23 +86,21 @@ pub fn cache(project: &std::path::Path) -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn wordpress_floor_is_7_2_beta5_in_version_compare_order() {
+    fn wordpress_floor_is_7_1_in_version_compare_order() {
         for (found, supported) in [
+            ("7.1", true),
+            ("7.1.4", true),
+            ("7.2-alpha-64000", true),
             ("7.2-beta5", true),
             ("7.2-beta5-65525", true),
-            ("7.2-beta6", true),
             ("7.2-RC1", true),
-            ("7.2-RC2-65600", true),
             ("7.2", true),
-            ("7.2.1", true),
-            ("7.3-alpha-61000", true),
             ("8.0", true),
-            ("7.1", false),
-            ("7.1.4", false),
-            ("7.1.9", false),
-            ("7.2-beta4", false),
-            ("7.2-beta4-65000", false),
-            ("7.2-alpha-64000", false),
+            ("7.0", false),
+            ("7.0.3", false),
+            ("7.1-beta2", false),
+            ("7.1-RC1", false),
+            ("7.1-alpha-62000", false),
         ] {
             assert_eq!(
                 crate::wp_plugins::version::at_least(found, super::WORDPRESS),

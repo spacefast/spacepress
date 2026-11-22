@@ -2,7 +2,7 @@
 uid: zr_da1f49c7974cbe3be504
 name: Seagate Exos X16 16 TB
 slug: seagate-exos-x16
-summary: Enterprise helium drive pulled from a retired NAS.
+shortDescription: Enterprise helium drive pulled from a retired NAS.
 brand: Seagate
 model: ST16000NM001G
 capacityGb: 16000
@@ -10,14 +10,15 @@ media: hdd
 connector: sata
 condition: good
 powerOnHours: 21400
-price: 139
-stock: 6
+testedOn: 2026-10-02
+price: "139.00"
+sku: SEAGATE-EXOS-X16
+serial: DEMO-SEAGATE-EXOS-X16
 status: published
-publishedAt: 2026-11-15T20:39:36.000Z
-locale: en
-translations:
-  en: zr_da1f49c7974cbe3be504
-  tr: zr_e53b223fcf224cfb4a81
+categories:
+  - zr_66736e1d454abbec125a
+tags:
+  - zr_93d8d8025dab1917c72b
 ---
 Pulled from a four-bay NAS that was upgraded to larger drives. Every unit passed a full surface scan and a SMART extended test before listing.
 

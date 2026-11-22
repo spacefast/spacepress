@@ -12,7 +12,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('app-cache', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor'], 'muPlugins' => [
+$site = wpSite('app-cache', ['wpContent' => $argv[1], 'identity' => true, 'users' => ['chief' => 'editor'], 'muPlugins' => [
     'host' => <<<'PHP'
         <?php
         add_action('tp_purge_urls', static function (array $paths): void {
@@ -34,10 +34,29 @@ $site = wpSite('app-cache', ['wpContent' => $argv[1], 'users' => ['chief' => 'ed
         // Batcache counts only while its drop-in runs: that is what sets $batcache.
         $GLOBALS['batcache'] = new stdClass();
         function batcache_clear_url($url) { tp_test_cleared('batcache', $url); }
+        // Batcache's opt-out, marked on the response so a test sees which answers it would drop.
+        function batcache_cancel(): void
+        {
+            $GLOBALS['batcache']->cancel = true;
+            if (!headers_sent()) {
+                header('X-Test-Batcache: cancel');
+            }
+        }
+        // A plugin that sets a cookie before a page renders (Polylang's language cookie, on `wp`).
+        add_action('wp', static function (): void {
+            if (isset($_SERVER['HTTP_X_TEST_SET_COOKIE'])) {
+                setcookie('test_cookie', '1');
+            }
+        });
         function wpvip_purge_edge_cache_for_url($url) { tp_test_cleared('vip', $url); }
         function wpvip_purge_edge_cache_for_site() { tp_test_cleared('vip', '*'); }
         add_action('jetpack_boost_clear_page_cache_url', static fn ($url) => tp_test_cleared('boost', $url));
         add_action('jetpack_boost_clear_page_cache_home', static fn () => tp_test_cleared('boost', 'home'));
+        // The WP Cloud platform's edge purge actions, as an Atomic site registers them.
+        add_action('edge_cache_purge_uris', static function (array $urls): void {
+            tp_test_cleared('edge', implode(' ', $urls));
+        });
+        add_action('edge_cache_purge_domain', static fn () => tp_test_cleared('edge', '*'));
         PHP,
 ]]);
 wp_set_current_user(1);
@@ -63,7 +82,9 @@ function fetch(string $url, array $headers = []): array
         },
     ]);
     curl_exec($ch);
-    return ['status' => (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), 'cache' => $out['cache-control'][0] ?? null];
+    $seen = ['status' => (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), 'cache' => $out['cache-control'][0] ?? null, 'edge' => $out['a8c-edge-cache'][0] ?? null];
+    // Only where Batcache would drop the answer, so the page expectations stay as they were.
+    return isset($out['x-test-batcache']) ? $seen + ['batcache' => 'cancel'] : $seen;
 }
 /** The window Batcache keeps a response for: its own regex over the header (advanced-cache.php, Batcache 1.5). */
 function batcacheWindow(?string $header): ?int
@@ -75,6 +96,7 @@ $cookie = static function (string $user) use ($site): string {
     return 'Cookie: ' . LOGGED_IN_COOKIE . '=' . rawurlencode(wp_generate_auth_cookie($id, time() + 3600, 'logged_in'));
 };
 
+$appPassword = \WP_Application_Passwords::create_new_application_password($site->userId('chief'), ['name' => 'cache test'])[0];
 $out = [
     // Every page reads differently: home lists notes, /notes/hello reads one, /about reads nothing.
     'home' => fetch("$url/"),
@@ -84,6 +106,18 @@ $out = [
     'as editor' => fetch("$url/notes/hello/", [$cookie('chief')]),
     'guarded' => fetch("$url/account/", [$cookie('chief')]),
     'missing' => fetch("$url/notes/nope/"),
+    // A cookie the render may answer for, though WordPress signs no one in: a comment author's saved
+    // name and email, an unlocked password-protected post, an Identity session.
+    'comment author' => fetch("$url/about/", ['Cookie: comment_author_' . COOKIEHASH . '=Ann']),
+    'post password' => fetch("$url/about/", ['Cookie: wp-postpass_' . COOKIEHASH . '=x']),
+    'identity session' => fetch("$url/about/", ['Cookie: zi_session=x']),
+    'sets a cookie' => fetch("$url/about/", ['X-Test-Set-Cookie: 1']),
+    // Batcache keeps what any request without a WordPress cookie printed, whatever its Cache-Control:
+    // TypedPress's API and Identity's answer for whoever asks, signed in by a header or by the
+    // Identity cookie (which never sets the WordPress user for Identity's own API).
+    'api anonymous' => fetch("$url/wp-json/typedpress/v1/me"),
+    'api app password' => fetch("$url/wp-json/typedpress/v1/me", ['Authorization: Basic ' . base64_encode("chief:$appPassword")]),
+    'identity api' => fetch("$url/?rest_route=/typedpress-identity/v1/account", ['Cookie: zi_session=x']),
 ];
 // Every policy Cache::policy() hands out, as Batcache reads it: a shareable page is kept for its
 // window (also a filtered one), anything else for none.
@@ -99,7 +133,20 @@ $out['batcache served'] = array_map(static fn (string $key) => batcacheWindow($o
 // that counts records the kind as listed, as a list would.
 \TypedPress\Render\Reads::during(static fn () => \TypedPress\db()->count('notes'), $counted);
 $out['count reads'] = $counted;
+// Dependency IDs keep the order and type of their first appearance across overlapping reads.
+\TypedPress\Render\Reads::during(static function (): void {
+    foreach ([[7, '7', '07'], ['7', 8, 7]] as $ids) {
+        \TypedPress\Extensions::read(array_map(static fn ($id) => ['id' => $id], $ids), 'notes', null);
+    }
+}, $overlap);
+if ($overlap !== ['notes' => ['ids' => [7, '7', '07', 8], 'listed' => true]]) {
+    throw new RuntimeException('Overlapping reads lost their primary key order or type.');
+}
+// `//notes/other/` is the page `/notes/other/` to the router (AppRouter::requestPath), and a URL of
+// its own to a cache that no purge names: answered privately, recorded under no page.
+$out['double slash'] = fetch("$url//notes/other/");
 global $wpdb;
+$out['double slash index'] = $wpdb->get_col("SELECT DISTINCT url FROM {$wpdb->prefix}tp__app_reads WHERE url NOT IN ('/', '/notes/hello/', '/notes/other/', '/notes/third/') ORDER BY url");
 $out['index'] = array_map(static fn ($r) => "{$r['kind']} {$r['item']} {$r['url']}", $wpdb->get_results("SELECT kind, item, url FROM {$wpdb->prefix}tp__app_reads ORDER BY url, kind, item", ARRAY_A));
 // An edit to one note purges the URLs that read it and the ones that listed notes, nothing else.
 \TypedPress\Wp\Purges::flush(); // what setting the site up wrote outside a transaction goes out first
@@ -135,5 +182,16 @@ unset($GLOBALS['batcache']);
 delete_option('test_cleared');
 \TypedPress\Wp\PageCaches::purge(['/about']);
 $out['without batcache drop-in'] = str_replace($url, '', get_option('test_cleared', []));
+// Batcache keeps any response to a request without a WordPress cookie, whatever its Cache-Control:
+// a request signed in another way (an application password, a bearer token) cancels it, as soon as
+// WordPress knows the user, and an anonymous one does not. The stand-in's flag.
+$GLOBALS['batcache'] = new stdClass();
+$cancelled = [];
+foreach (['anonymous' => 0, 'signed in' => 1] as $who => $id) {
+    $GLOBALS['batcache']->cancel = false;
+    wp_set_current_user($id);
+    $cancelled[$who] = $GLOBALS['batcache']->cancel;
+}
+$out['batcache cancelled'] = $cancelled;
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

@@ -90,13 +90,13 @@ app newsapp stories
 app shopapp products
 out=$(push newsapp "$super" "$news") || fail "the push to /news: $out"
 [[ $out == *"live: $news now runs newsapp"* ]] || fail "the push to /news goes live there: $out"
-[[ $(curl -s "$news/__tp/api/v1" | json data.name) == newsapp ]] || fail "/news runs its app"
-[[ $(status "$shop/__tp/api/v1") == 404 && $(status "$url/__tp/api/v1") == 404 ]] || fail "a push to one site leaves the others without an app"
+[[ $(curl -s "$news/wp-json/typedpress/v1" | json data.name) == newsapp ]] || fail "/news runs its app"
+[[ $(status "$shop/wp-json/typedpress/v1") == 404 && $(status "$url/wp-json/typedpress/v1") == 404 ]] || fail "a push to one site leaves the others without an app"
 out=$(push shopapp "$super" "$shop") || fail "the push to /shop: $out"
 # Each site has its own store, so the runtime goes up once per site.
 [[ $out == *"uploading the runtime tree"* && $out == *"live: $shop now runs shopapp"* ]] || fail "the push to /shop uploads into that site's own store: $out"
-[[ $(curl -s "$shop/__tp/api/v1" | json data.name) == shopapp && $(curl -s "$news/__tp/api/v1" | json data.name) == newsapp ]] || fail "each site runs its own app"
-[[ $(status "$url/__tp/api/v1") == 404 ]] || fail "the network's main site still has no app"
+[[ $(curl -s "$shop/wp-json/typedpress/v1" | json data.name) == shopapp && $(curl -s "$news/wp-json/typedpress/v1" | json data.name) == newsapp ]] || fail "each site runs its own app"
+[[ $(status "$url/wp-json/typedpress/v1") == 404 ]] || fail "the network's main site still has no app"
 ok "each site of the network takes its own app, pushed to its own address"
 
 # ---- what belongs to one site ------------------------------------------------------------------
@@ -113,7 +113,7 @@ news_key=$(wp --url="$news" option get tp_store_key); shop_key=$(wp --url="$shop
 [[ $(wp --url="$news" option get tp_deployments --format=json | json 0.name) == newsapp && $(wp --url="$shop" option get tp_deployments --format=json | json 0.name) == shopapp ]] || fail "the deployment history is per site"
 # Content written on one site is that site's.
 wp --url="$news" typedpress insert stories '{"title":"On the news site"}' >/dev/null
-[[ $(curl -s "$news/__tp/api/v1/stories" | json data.0.title) == "On the news site" && $(status "$shop/__tp/api/v1/stories") == 404 ]] || fail "one site's content is not another's"
+[[ $(curl -s "$news/wp-json/typedpress/v1/stories" | json data.0.title) == "On the news site" && $(status "$shop/wp-json/typedpress/v1/stories") == 404 ]] || fail "one site's content is not another's"
 ok "tables, builds, the live build and the history belong to one site"
 
 # ---- who may deploy ----------------------------------------------------------------------------
@@ -129,8 +129,8 @@ export const stories = table({ title: text(), section: text().default("front") }
 export default defineConfig({ name: "newsapp" });
 TS
 out=$(push newsapp "$super" "$news") || fail "the second push to /news: $out"
-[[ $out == *"run migration 0002"* && $(curl -s "$news/__tp/api/v1/stories" | json data.0.section) == front ]] || fail "the second push migrates /news: $out"
-[[ $(wp --url="$shop" option get tp_live_build) == "$shop_build" && $(curl -s "$shop/__tp/api/v1" | json data.name) == shopapp ]] || fail "the other site keeps its build"
+[[ $out == *"run migration 0002"* && $(curl -s "$news/wp-json/typedpress/v1/stories" | json data.0.section) == front ]] || fail "the second push migrates /news: $out"
+[[ $(wp --url="$shop" option get tp_live_build) == "$shop_build" && $(curl -s "$shop/wp-json/typedpress/v1" | json data.name) == shopapp ]] || fail "the other site keeps its build"
 ok "a deployment to one site changes nothing on another"
 
 # ---- one configured store directory for the whole network ---------------------------------------
@@ -153,6 +153,6 @@ tables=$("$harness" sql "SHOW TABLES LIKE '%tp\_pages'" | tail -n +2 | sort | tr
 [[ $(wp --url="$url/journal" option get tp_live_build) == "$(wp --url="$url/wiki" option get tp_live_build)" ]] || fail "the two sites run the same build"
 "$harness" compose exec -T wordpress sh -c "test -d $configured/site-$journal_id/ready && test -d $configured/site-$wiki_id/ready && ! test -e $configured/ready" || fail "each site's store is its own directory under the configured one"
 wp --url="$url/journal" typedpress insert pages '{"title":"In the journal"}' >/dev/null
-[[ $(curl -s "$url/journal/__tp/api/v1/pages" | json data.0.title) == "In the journal" && $(curl -s "$url/wiki/__tp/api/v1/pages" | json data) == "[]" ]] || fail "the same app on two sites keeps two sets of rows"
+[[ $(curl -s "$url/journal/wp-json/typedpress/v1/pages" | json data.0.title) == "In the journal" && $(curl -s "$url/wiki/wp-json/typedpress/v1/pages" | json data) == "[]" ]] || fail "the same app on two sites keeps two sets of rows"
 ok "with one TP_STORE_DIR, each site installs and keeps its own builds"
 echo "plugin multisite lane: all checks passed"

@@ -1,7 +1,7 @@
 ---
 name: typedpress-dev-site
 description: "Use when running a TypedPress project locally or inspecting its local WordPress site: starting and stopping `typedpress dev`, finding the site's URL and login, reading records with `typedpress find`, running an action or a job by hand, or running WP-CLI on the site."
-compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
+compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
 ---
 
 # Run and inspect the dev site
@@ -23,12 +23,15 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Require
    ```
 
    `state` is `none` (no site yet), `stopped` or `running`; `url` and `port` say where it is, and
-   `watching` whether a `typedpress dev` process is rebuilding it on save.
+   `watching` whether a `typedpress dev` process is rebuilding it on save. `error` is null, or the
+   watching process's last build when it failed (`message` and the compiler's `diagnostics`): the
+   site then serves the last build that succeeded, so fix the source before reading the site.
 
 2. Start the site.
    - `typedpress dev --detach` builds, starts WordPress and returns once the site is up. It keeps
      rebuilding on every save in the background and logs to `.tp/dev/dev.log`. Use this from
-     an agent. Plain `typedpress dev` does the same when an agent runs it without a terminal.
+     an agent. It exits 1 and prints the error when the first build fails; WordPress is running
+     and the next save that builds clears it. Plain `typedpress dev` does the same when an agent runs it without a terminal.
    - `typedpress dev` in a terminal stays in the foreground until Ctrl+C.
    - `typedpress dev --no-watch` builds, starts WordPress and returns, with nothing watching. Run it
      again after edits to rebuild.
@@ -48,8 +51,8 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Require
    - `typedpress abilities`: the Abilities the app registers.
    - `typedpress wp <args>`: any WP-CLI command, for example `typedpress wp plugin list`.
 
-5. Read the HTTP API as a visitor would: `GET <siteUrl>/__tp/api/v1` describes the app, and
-   `GET <siteUrl>/__tp/api/v1/<storage name>` lists what an anonymous visitor may read.
+5. Read the HTTP API as a visitor would: `GET <siteUrl>/wp-json/typedpress/v1` describes the app, and
+   `GET <siteUrl>/wp-json/typedpress/v1/<storage name>` lists what an anonymous visitor may read.
 
 6. Stop it with `typedpress dev stop`. The database, uploads and plugins are kept in
    `.tp/dev/wordpress` for the next start.
@@ -77,4 +80,4 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Require
   `delete`, `action`) unless the owner named that site.
 - Never delete `.tp/dev/` to "reset" without asking: it holds the local database and uploads.
 
-Reference: `docs-site/docs/getting-started.mdx`, `docs-site/docs/reference/cli.mdx`.
+Reference: `www/content/docs/getting-started/installation.md`, `www/content/docs/operations/cli-and-deploy.md`.

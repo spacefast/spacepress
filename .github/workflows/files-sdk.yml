@@ -1,0 +1,44 @@
+# The files-sdk probe (examples/files-sdk/README.md): compiles files-sdk and compares each scenario
+# with Node. It reports what doesn't compile yet; --expect-red keeps it from failing until every
+# scenario matches, but still fails on a provenance mismatch, a Node exception or a compiler crash.
+# It took most of ci.yml's examples job and rarely failed it, so it runs here,
+# nightly and on demand, instead of on every push to main.
+name: files-sdk probe
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  files-sdk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TP_BIN: ${{ github.workspace }}/target/debug/typedpress
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.5
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php8.3-cli php8.3-sqlite3 php8.3-mbstring php8.3-gd php8.3-curl php8.3-zip
+          sudo update-alternatives --set php /usr/bin/php8.3
+          rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
+      - run: cargo build --locked --bin typedpress
+      - name: files-sdk probe
+        run: |
+          npm ci --prefix examples/files-sdk --ignore-scripts --no-audit --no-fund
+          (cd examples/files-sdk && node verify.mjs --expect-red)

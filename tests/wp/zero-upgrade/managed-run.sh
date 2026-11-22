@@ -84,6 +84,6 @@ receipt=$(host "echo json_encode(TypedPress\\Loader\\Loader::initialize('$root',
 [[ $("$wp/harness.sh" sql "SHOW TABLES LIKE 'wp\\_zero\\_%'" | wc -l) -eq 0 ]] || fail "initialize moved every 0.3 table"
 [[ -n $("$wp/harness.sh" wp option get tp_zero_names --format=json) && -n $("$wp/harness.sh" wp option get tp_identity_zero_names --format=json) ]] || fail "both upgrades recorded that they ran"
 [[ $(inspect) == '[]' ]] || fail "after initialize nothing is left: $(inspect)"
-titles=$(curl -s -H "X-TypedPress-Build: $build" "$url/__tp/api/v1/notes" | python3 -c 'import json,sys; print(sorted(n["title"] for n in json.load(sys.stdin)["data"]))')
+titles=$(curl -s -H "X-TypedPress-Build: $build" "$url/wp-json/typedpress/v1/notes" | python3 -c 'import json,sys; print(sorted(n["title"] for n in json.load(sys.stdin)["data"]))')
 [[ $titles == "['Kept note', 'Second note']" ]] || fail "the site serves the 0.3 site's notes through TypedPress: $titles"
 ok "initialize runs both upgrades, resuming the interrupted one, and the site serves the 0.3 data"

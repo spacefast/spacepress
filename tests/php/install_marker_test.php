@@ -92,7 +92,7 @@ check('the request that found everything installed records the marker, autoloade
 [$status, $next] = request($url, '/');
 eq('with the marker, a request runs none of the install checks', [$status, checks($next)], [200, []]);
 check('and fewer statements in all', count($next) < count($first), [count($first), count($next)]);
-[$status, $api] = request($url, '/__tp/api/v1/posts');
+[$status, $api] = request($url, '/wp-json/typedpress/v1/posts');
 eq('an API read runs none of them either', [$status, checks($api)], [200, []]);
 
 // ---- what drops it -----------------------------------------------------------------------------------
@@ -121,21 +121,54 @@ $recheck('the app deactivated', static function (): void {
 $recheck('the search shape cleared', static fn () => delete_option('tp_search_shape'));
 $recheck('a recurring action cancelled', static fn () => as_unschedule_all_actions('tp_jobs_maintain', [], 'typedpress'));
 check('which the checking request scheduled again', as_has_scheduled_action('tp_jobs_maintain', [], 'typedpress'));
+// A site an older runtime scheduled daily keeps that interval until a check replaces it with the hourly one.
+$maintenance = static function (): array {
+    $store = ActionScheduler::store();
+    $ids = $store->query_actions(['hook' => 'tp_jobs_maintain', 'group' => 'typedpress', 'status' => ActionScheduler_Store::STATUS_PENDING]);
+
+    return array_map(static fn ($id): int => (int) $store->fetch_action((string) $id)->get_schedule()->get_recurrence(), $ids);
+};
+eq('maintenance recurs hourly', $maintenance(), [HOUR_IN_SECONDS]);
+$recheck('maintenance on an older runtime\'s daily interval', static function (): void {
+    as_unschedule_all_actions('tp_jobs_maintain', [], 'typedpress');
+    as_schedule_recurring_action(time() + DAY_IN_SECONDS, DAY_IN_SECONDS, 'tp_jobs_maintain', [], 'typedpress');
+});
+eq('which the checking request replaced with one hourly schedule', $maintenance(), [HOUR_IN_SECONDS]);
+// A refused schedule keeps the old run, and the request that hit it keeps serving: the site is
+// never left without maintenance, and the next request retries.
+$refuser = $wp->dir . '/content/mu-plugins/refuse-maintenance.php';
+file_put_contents($refuser, <<<'PHP'
+    <?php
+    add_filter('pre_as_schedule_recurring_action', static fn ($pre, $at, $every, $hook) => $hook === 'tp_jobs_maintain' ? 0 : $pre, 10, 4);
+    PHP);
+as_unschedule_all_actions('tp_jobs_maintain', [], 'typedpress');
+as_schedule_recurring_action(time() + DAY_IN_SECONDS, DAY_IN_SECONDS, 'tp_jobs_maintain', [], 'typedpress');
+wp_cache_flush();
+[$status] = request($url, '/');
+eq('a request whose maintenance schedule is refused still serves', $status, 200);
+eq('and keeps the daily run it would have replaced', $maintenance(), [DAY_IN_SECONDS]);
+eq('and records no marker, so the next request retries', $marker(), null);
+unlink($refuser);
+[$status] = request($url, '/');
+eq('which replaces it once Action Scheduler accepts', [$status, $maintenance()], [200, [HOUR_IN_SECONDS]]);
 
 // ---- a failed install is never hidden ------------------------------------------------------------------
 // A migration the database refuses: the request that runs it fails, records nothing, and every request
 // after it retries (and fails) instead of skipping the check.
 $migrations = $wp->dir . '/content/plugins/typedpress-app-blog/tp/app/migrations';
-file_put_contents("$migrations/0002_broken.sql", "ALTER TABLE `{prefix}no_such_table` ADD COLUMN `x` INT;\n");
+$brokenMigDir = "$migrations/20261121180000_aaaaaa_broken";
+@mkdir($brokenMigDir, 0777, true);
+file_put_contents("$brokenMigDir/migration.sql", "ALTER TABLE `{prefix}no_such_table` ADD COLUMN `x` INT;\n");
 $broken = $schema;
 $broken['collections']['posts']['label'] = 'Broken build';
 $wp->writeSchema($broken);
 [, $statements] = request($url, '/');
 check('a failing migration is tried', in_array('ledger', checks($statements), true), checks($statements));
 eq('and leaves no marker', $marker(), null);
-[$status, $statements] = request($url, '/__tp/api/v1/posts');
+[$status, $statements] = request($url, '/wp-json/typedpress/v1/posts');
 eq('the next request retries it, and TypedPress refuses meanwhile', [$status, in_array('schema hash', checks($statements), true), $marker()], [503, true, null]);
-unlink("$migrations/0002_broken.sql");
+unlink("$brokenMigDir/migration.sql");
+rmdir($brokenMigDir);
 $wp->writeSchema($schema);
 request($url, '/');
 check('once the build is fixed, the marker is recorded again', $marker() !== null, $marker());

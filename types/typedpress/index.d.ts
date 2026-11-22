@@ -31,6 +31,29 @@ export type { ServicesConfig, ServiceForm, ServiceFormField, ServiceProduct } fr
 /** Flattens intersections so hovers show a plain object. */
 type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
+/** Branded primary-key / reference ID for a kind (e.g. `Id<"posts">`). Assignable to `number`, prevents cross-kind ID mixups. */
+export type Id<Kind extends string = string> = number & { readonly __tp_kind?: Kind };
+
+/** Retention duration: `"forever"` (default, never auto-purge) or a duration like `"30d"`, `"90d"`, `"1y"`. */
+export type RetentionDuration = "forever" | `${number}${"s" | "m" | "h" | "d" | "w" | "y"}`;
+
+/** Revision pruning policy: keep the latest `keepLast` revisions and/or prune revisions older than `maxAge`. */
+export interface RevisionRetention {
+  keepLast?: number;
+  maxAge?: RetentionDuration;
+}
+
+/** Retention policy for soft-deleted rows and revisions. Default is `"forever"` (never auto-purge). */
+export type RetentionConfig =
+  | "forever"
+  | {
+      deleted?: RetentionDuration;
+      revisions?: "forever" | RevisionRetention;
+    };
+
+/** Which rows a query includes when soft deletes are enabled. Default: `"exclude"`. */
+export type DeletedMode = "exclude" | "include" | "only";
+
 type Awaitable<T> = T | Promise<T>;
 
 /** Phantom keys: carry type information without showing up in autocomplete. */
@@ -105,7 +128,7 @@ export interface FieldUi {
 }
 
 /**
- * A column definition inside `collection(...)`, `global(...)`, a structured field, or `action({ input })`.
+ * A column definition inside `collection(...)`, `global(...)`, or a structured field.
  * Builders are immutable: each modifier returns a new builder.
  *
  * - `TData`       — the TS value type (select union, `json<T>()`, sub-field shapes, ...)
@@ -161,8 +184,10 @@ export interface ColumnBuilder<
     : TKind extends "integer"
       ? ColumnBuilder<"refList", number[], TNotNull, THasDefault, TLocalized, TPrimary>
       : ColumnBuilder<"select", TData[], TNotNull, THasDefault, TLocalized, TPrimary>;
-  /** Declares a rename: this field was stored as `old`. The deploy renames the column and keeps its values. */
-  was(old: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
+  /** Maps this TypeScript field to an existing physical SQL column name with zero DDL. */
+  column(physicalName: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
+  /** Accepts an old API/filter field name as an alias during field renames. */
+  alias(oldName: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** SQL `DEFAULT value` (a constant; arrays/objects for list and structured columns). */
   default(
     this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
@@ -177,21 +202,11 @@ export interface ColumnBuilder<
     this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     fn: () => GeneratedValue<TKind, TData>,
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
-  /** Alias of `$default`. */
-  $defaultFn(
-    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
-    fn: () => GeneratedValue<TKind, TData>,
-  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /**
    * Computed in PHP on update (`() => new Date()` on a timestamp means "now").
    * Like Drizzle, it also counts as a default for inserts. Not allowed on sub-fields.
    */
   $onUpdate(
-    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
-    fn: () => GeneratedValue<TKind, TData>,
-  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
-  /** Alias of `$onUpdate`. */
-  $onUpdateFn(
     this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     fn: () => GeneratedValue<TKind, TData>,
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
@@ -407,6 +422,30 @@ export interface CommentOptions {
   types?: readonly [];
 }
 
+/** Admin presentation options for a collection or table. */
+export interface KindUi<TCol extends string = string> {
+  /** Icon name (e.g. `"post"`, `"page"`, `"table"`, `"store"`, `"globe"`) or a `dashicons-*` name. */
+  icon?: string;
+  /** Singular label used on create buttons (e.g. `"Doc"` → `"New Doc"`). */
+  singularLabel?: string;
+  /** Short subtitle shown under the collection title in TypedPress Admin. */
+  description?: string;
+  /** Optional sidebar section/group override. */
+  group?: string;
+  /** Default visible columns in the admin table view (excluding the primary title column). */
+  defaultColumns?: readonly TCol[];
+  /** Hide this kind from the default admin sidebar (route remains accessible). */
+  hidden?: boolean;
+}
+
+/** Admin presentation options for a global. */
+export interface GlobalUi {
+  icon?: string;
+  description?: string;
+  group?: string;
+  hidden?: boolean;
+}
+
 /** Options shared by the `collection()` signatures; `T` is the collection being defined. */
 export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Physical resource name, without prefixes. Defaults to the registry key in snake_case.
@@ -415,9 +454,6 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Bind table() to an already existing SQL table, without adding any prefix.
    * The first migration checks its columns; it never creates or copies this table. */
   existingTable?: string;
-  /** Declares a rename: this table was stored as `old` (its name in tp/_generated/migrations/snapshot.json).
-   * The deploy renames the table and keeps its rows. table() only. */
-  was?: string;
   /** Project-relative Markdown/JSON files; implies uid: true. A `**` folder before the file pattern (`content/docs/` then `**` then `/*.md`) reads a folder tree into a hierarchical collection. */
   sync?: `${string}/*.md` | `${string}/*.json`;
   /** Items nest like WordPress Pages: adds `parent` and `order`, and `:path` in `url` is the parent chain. collection() only. */
@@ -427,6 +463,8 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   agents?: boolean;
   /** Shown in wp-admin menus and the typed client docs. */
   label?: string;
+  /** Admin presentation options (icon, singularLabel, description, group, defaultColumns, hidden). */
+  ui?: KindUi<keyof ColumnsOf<T> & string>;
   /**
    * The item URL, one pattern for incoming URLs and outgoing links: `"/blog/:slug"`. It starts with a
    * literal segment. Placeholders are `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required
@@ -437,8 +475,12 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   url?: `/${string}`;
   /** Native on collections; opt-in publication state on tables. */
   drafts?: boolean;
-  /** Keep a revision per update. Default true for collections, false for tables. */
+  /** Keep a revision per write. Default true for collections and tables. */
   revisions?: boolean;
+  /** Native soft deletes (Trash on collections, `_live`/`deletedAt` on tables). Default true; set `false` to hard-delete immediately. */
+  softDelete?: boolean;
+  /** Per-kind retention override (inherits config `retention`, default `"forever"`). */
+  retention?: RetentionConfig;
   /**
    * Staged versions: a change to an item saved beside the live one, then compared, promoted or
    * discarded. Default true for collections; `false` turns them off. collection() only.
@@ -466,14 +508,14 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
 }
 
 /** Metadata every collection carries alongside its column references. */
-export type StorageKind = "collection" | "table" | "userProjection" | "taxonomy";
+export type StorageKind = "collection" | "table" | "userProjection" | "taxonomy" | "product" | "order";
 
 export interface CollectionMeta<TName extends string, TCols extends ColumnsConfig, TAuth extends boolean = false, TStorage extends StorageKind = StorageKind> {
   readonly [collectionBrand]: { columns: TCols; auth: TAuth; storage: TStorage };
   /** Row type returned by queries. */
   readonly $inferSelect: SelectShape<TCols>;
   /** Shape accepted by `db.insert(...).values(...)`. */
-  readonly $inferInsert: ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
+  readonly $inferInsert: TStorage extends "order" ? never : ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
   /**
    * Hooks on this kind (spec §2.8), in the file that declares it. Returns the kind, so calls chain;
    * several handlers for one event run in order.
@@ -553,11 +595,25 @@ type IdentityColumns<TUid extends boolean, TSync extends string | undefined> = T
   : TSync extends string ? { uid: ColumnBuilder<"text", string, true, true> } : {};
 type TranslatedColumns<TCols> = HasLocalized<TCols> extends true ? LocaleColumns<TCols> : {};
 
+/** Automatic system fields present on every collection() and table() unless declared explicitly. */
+export type SystemColumns = {
+  author: ColumnBuilder<"integer", number, false, true>;
+  createdAt: ColumnBuilder<"timestamp", string, true, true>;
+  updatedAt: ColumnBuilder<"timestamp", string, true, true>;
+};
+
+/** Soft-delete system fields present when `softDelete !== false` (the default). */
+export type SoftDeleteColumns = {
+  deletedAt: ColumnBuilder<"timestamp", string, false, true>;
+  deletedBy: ColumnBuilder<"integer", number, false, true>;
+};
+
 /** The implicit integer `id` every kind has. */
 type WithId<TCols extends ColumnsConfig> = [PrimaryKeyOf<TCols>] extends [never]
   ? "id" extends keyof TCols ? TCols : TCols & { id: ColumnBuilder<"id", number, true, true, false, true> }
   : TCols;
-type StoredColumns<TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined> = WithId<TCols> & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>;
+type WithSystem<TCols extends ColumnsConfig> = TCols & Omit<SystemColumns, keyof TCols> & Omit<SoftDeleteColumns, keyof TCols>;
+type StoredColumns<TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined> = WithId<TCols> & Omit<SystemColumns, keyof TCols> & Omit<SoftDeleteColumns, keyof TCols> & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>;
 
 /** WordPress posts, native editor, drafts and revisions. Registry key supplies identity. */
 export declare function collection<
@@ -595,7 +651,7 @@ type PostFields = ColumnsConfig & { [K in keyof PostColumns | keyof DraftColumns
 type PostKind<TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined> =
   Collection<string, StoredColumns<PostColumns & TCols, TUid, TSync> & DraftColumns>;
 /** Options a `wp.posts` kind takes: comments are on unless `comments: false`. */
-type PostOptions<T extends AnyCollection> = Pick<CollectionOptions<T>, "url" | "comments" | "access" | "label" | "sync" | "uid" | "agents" | "api" | "staged">;
+type PostOptions<T extends AnyCollection> = Pick<CollectionOptions<T>, "url" | "comments" | "access" | "label" | "ui" | "sync" | "uid" | "agents" | "api" | "staged" | "softDelete" | "retention">;
 
 /**
  * WordPress's own kinds. `wp.posts` is WordPress's posts: the block editor, comments, drafts, revisions,
@@ -638,6 +694,9 @@ type TermFields = Record<string, ColumnBuilder<TermFieldKind, any, boolean, bool
 
 /** `taxonomy()` options (rulings 25-32). */
 export interface TaxonomyOptions<T extends AnyCollection = AnyCollection, THierarchical extends boolean = boolean> {
+  /** Markdown/JSON source with persistent term UIDs, using the normal seed and sync workflow. */
+  sync?: string;
+  agents?: boolean;
   /** Stored as `tp_<storageName>`: at most 26 characters. Defaults to the export name in snake_case. */
   storageName?: string;
   /** Shown in wp-admin. */
@@ -655,10 +714,10 @@ export interface TaxonomyOptions<T extends AnyCollection = AnyCollection, THiera
 }
 
 /** A taxonomy: terms in WordPress's term tables, with term meta fields, attached to collections. */
-export declare function taxonomy<TFields extends TermFields = {}, THierarchical extends boolean = false>(
+export declare function taxonomy<TFields extends TermFields = {}, THierarchical extends boolean = false, TSync extends string | undefined = undefined>(
   fields?: TFields,
-  options?: NoInfer<TaxonomyOptions<Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">>> & { hierarchical?: THierarchical },
-): Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">;
+  options?: NoInfer<TaxonomyOptions<Collection<string, WithId<TFields> & TermColumns<THierarchical> & IdentityColumns<false, TSync>, false, "taxonomy">>> & { hierarchical?: THierarchical; sync?: TSync },
+): Collection<string, WithId<TFields> & TermColumns<THierarchical> & IdentityColumns<false, TSync>, false, "taxonomy">;
 
 /**
  * An item's terms of `taxonomy`: the term ids in write order (`[]` when none), kept as WordPress's
@@ -740,8 +799,11 @@ export interface FieldOperators<T> {
   AND?: FieldFilter<T>[];
 }
 
+/** Unwrap branded Id<Kind> in filters so plain numbers (e.g. `Number(params.id)`) match. */
+type FilterValue<T> = T extends Id<any> ? number : T;
+
 /** A field condition: a bare (non-object) value or an operator object. */
-export type FieldFilter<T> = FieldOperators<T> | (T extends object ? never : T);
+export type FieldFilter<T> = FieldOperators<FilterValue<T>> | (FilterValue<T> extends object ? never : FilterValue<T>);
 
 /** List columns (`mediaList`, `select({ multiple })`): membership, emptiness, null. No `in`/`like`/ordering. */
 export interface ListOperators<TItem> {
@@ -834,16 +896,57 @@ export interface NestedQueryConfig<
 
 type RelationKind<R> = R extends { readonly [relationBrand]: { kind: infer K } } ? K : never;
 
+/** The `media()` and `file()` columns of kind `K`: `with` puts each one's row in place of its id. */
+type LoadableColumns<TSchema extends Schema, K extends keyof TSchema> = ColumnsOfKind<ColumnsOf<TSchema[K]>, "media" | "mediaList" | "file">;
+
 export type WithConfig<TSchema extends Schema, TRels, K extends keyof TSchema> = {
-  [R in keyof RelationsOf<TRels, K>]?:
-    | boolean
-    | NestedQueryConfig<
-        TSchema,
-        TRels,
-        TargetOf<RelationsOf<TRels, K>[R]> & keyof TSchema,
-        RelationKind<RelationsOf<TRels, K>[R]> & ("one" | "many")
-      >;
+  [R in keyof RelationsOf<TRels, K> | LoadableColumns<TSchema, K>]?: R extends keyof RelationsOf<TRels, K>
+    ?
+        | boolean
+        | NestedQueryConfig<
+            TSchema,
+            TRels,
+            TargetOf<RelationsOf<TRels, K>[R]> & keyof TSchema,
+            RelationKind<RelationsOf<TRels, K>[R]> & ("one" | "many")
+          >
+    : boolean;
 };
+
+/** A media item, as `with: { cover: true }` loads it in place of a `media()` column's id. */
+export interface MediaRow {
+  id: number;
+  url: string;
+  mime: string;
+  size: number;
+  width: number | null;
+  height: number | null;
+  alt: string | null;
+  filename: string;
+  createdAt: string;
+  /** The sizes `media.sizes` in `defineConfig` names; empty for a file that is no image. */
+  sizes: Record<string, { url: string; width: number; height: number }>;
+}
+
+/** A private file, as `with` loads it in place of a `file()` column's id. `url` is signed and valid for five minutes. */
+export interface FileRow {
+  id: number;
+  bucket: string;
+  filename: string;
+  mime: string;
+  size: number;
+  ownerId: number | null;
+  createdAt: string;
+  url: string;
+}
+
+/** What `with` puts in place of a media or file column. A file stays its id for a visitor the bucket's read rule refuses. */
+type LoadedColumn<C> = ColumnKindOf<C> extends "mediaList"
+  ? MediaRow[]
+  : ColumnKindOf<C> extends "media"
+    ? MediaRow | (ColumnNotNull<C> extends true ? never : null)
+    : ColumnKindOf<C> extends "file"
+      ? FileRow | number | (ColumnNotNull<C> extends true ? never : null)
+      : never;
 
 type TrueKeys<T> = { [K in keyof T]-?: T[K] extends true ? K : never }[keyof T];
 type FalseKeys<T> = { [K in keyof T]-?: T[K] extends false ? K : never }[keyof T];
@@ -871,7 +974,9 @@ type WithResult<TSchema extends Schema, TRels, K extends keyof TSchema, TWith> =
     K
   >
     ? RelationResult<TSchema, TRels, RelationsOf<TRels, K>[W], TWith[W]>
-    : never;
+    : W extends keyof ColumnsOf<TSchema[K]>
+      ? LoadedColumn<ColumnsOf<TSchema[K]>[W]>
+      : never;
 };
 
 /** One row of `db.query.<K>` given its `columns` and `with`. */
@@ -887,6 +992,7 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
     TWith extends WithConfig<TSchema, TRels, K> = {},
   >(config?: {
     locale?: Locale | "*";
+    deleted?: DeletedMode;
     where?: RelationsFilter<TSchema, TRels, K>;
     orderBy?: OrderBy<TSchema[K]>;
     limit?: number;
@@ -900,6 +1006,7 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
     TWith extends WithConfig<TSchema, TRels, K> = {},
   >(config?: {
     locale?: Locale | "*";
+    deleted?: DeletedMode;
     where?: RelationsFilter<TSchema, TRels, K>;
     orderBy?: OrderBy<TSchema[K]>;
     offset?: number;
@@ -923,7 +1030,7 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
  * }
  * ```
  *
- * `typedpress build` emits the kinds, globals and jobs structurally, with the relation graph, so
+ * `typedpress build` emits the kinds and globals structurally, with the relation graph, so
  * nothing imports the sources that export them; localized projects also register their locale
  * union.
  */
@@ -935,6 +1042,8 @@ type RegisteredRelations = Register extends { relations: Relations<any, infer C>
 
 type KindListOptions<TSchema extends Schema, TRels, K extends keyof TSchema, TCols, TWith> = {
   locale?: Locale | "*";
+  /** Soft-delete filter: `"exclude"` (default), `"include"`, or `"only"`. Non-default modes require `restore` or `delete` access. */
+  deleted?: DeletedMode;
   where?: RelationsFilter<TSchema, TRels, K>;
   orderBy?: OrderBy<TSchema[K]>;
   /** A case-insensitive match on the kind's title, content and text fields the visitor may read. */
@@ -943,6 +1052,24 @@ type KindListOptions<TSchema extends Schema, TRels, K extends keyof TSchema, TCo
   columns?: TCols;
   with?: TWith;
 };
+
+export type RevisionOp = "create" | "update" | "delete" | "restore" | "purge";
+
+export interface RevisionSummary {
+  id: number;
+  version: number;
+  op: RevisionOp;
+  at: string;
+  user: { id: number; name: string } | null;
+  schemaMigration: string | null;
+  changed: string[] | null;
+}
+
+export interface RevisionDiff<TRow = Record<string, unknown>> {
+  from: number;
+  to: number;
+  changes: { field: keyof TRow & string; from: unknown; to: unknown }[];
+}
 
 /**
  * The query API of one kind (spec §3), on what `import { posts } from "typedpress:db"` gives you. Every
@@ -960,14 +1087,25 @@ export interface KindApi<TSchema extends Schema, TRels, K extends keyof TSchema>
   /** One row by id or by a filter (`{ slug: "hello" }`); null when no row the visitor may read matches. A kind they may not read at all throws the API's 401/403. */
   get<TCols extends ColumnsSelection<TSchema[K]> = {}, TWith extends WithConfig<TSchema, TRels, K> = {}>(
     target: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id | RelationsFilter<TSchema, TRels, K> : RelationsFilter<TSchema, TRels, K>,
-    q?: { locale?: Locale | "*"; columns?: TCols; with?: TWith },
+    q?: { locale?: Locale | "*"; deleted?: DeletedMode; columns?: TCols; with?: TWith },
   ): Promise<QueryRow<TSchema, TRels, K, TCols, TWith> | null>;
-  count(q?: { locale?: Locale | "*"; where?: RelationsFilter<TSchema, TRels, K>; search?: string }): Promise<number>;
+  count(q?: { locale?: Locale | "*"; deleted?: DeletedMode; where?: RelationsFilter<TSchema, TRels, K>; search?: string }): Promise<number>;
   create(data: TSchema[K]["$inferInsert"]): Promise<TSchema[K]["$inferSelect"]>;
   /** The updated row; a 404 when no row has that id or the visitor's update rule doesn't cover it. */
   update(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never, patch: Partial<TSchema[K]["$inferInsert"]>): Promise<TSchema[K]["$inferSelect"]>;
-  /** The deleted row; a 404 when no row has that id or the visitor's delete rule doesn't cover it. */
+  /** Soft-deletes the row (when `softDelete` is on, the default) or hard-deletes it; a 404 when no row has that id or the visitor's delete rule doesn't cover it. */
   delete(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<TSchema[K]["$inferSelect"]>;
+  /** Restores a soft-deleted row and any cascade-deleted children sharing its `deletedGroup`. Throws 409 on unique collision. */
+  restore(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<TSchema[K]["$inferSelect"]>;
+  /** Permanently deletes a row (active or soft-deleted). Default access is `"system"`. */
+  purge(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<TSchema[K]["$inferSelect"]>;
+  /** Native revision history (default ON for both `collection()` and `table()`). */
+  readonly revisions: {
+    list(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<RevisionSummary[]>;
+    get(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never, version: number): Promise<TSchema[K]["$inferSelect"]>;
+    diff(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never, fromVersion: number, toVersion: number): Promise<RevisionDiff<TSchema[K]["$inferSelect"]>>;
+    restore(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never, version: number): Promise<TSchema[K]["$inferSelect"]>;
+  };
 }
 
 /** The app's kinds by registered name: what `import { posts } from "typedpress:db"` gives you. */
@@ -1080,7 +1218,7 @@ export interface BeforeHookCtx<TData> extends HookCtx<TData> {
 
 export interface AccessCtx<TData = Record<string, unknown>> {
   user: User | null;
-  op: "read" | "create" | "update" | "delete";
+  op: "read" | "create" | "update" | "delete" | "restore" | "purge";
   /** create: the incoming row (after defaults, before beforeCreate). update: the patch. Absent otherwise. */
   data?: TData;
 }
@@ -1101,8 +1239,8 @@ export type AccessFilter<T extends AnyCollection> = {
   NOT?: AccessFilter<T>;
 } & { [relation: string]: unknown };
 
-/** `"anyone"` includes unauthenticated callers; `"authenticated"` is any user; a role admits itself and above. */
-export type AccessShorthand = boolean | "anyone" | "authenticated" | "self" | Role;
+/** `"anyone"` includes unauthenticated callers; `"authenticated"` is any user; `"system"` allows trusted/system callers only; a role admits itself and above. */
+export type AccessShorthand = boolean | "anyone" | "authenticated" | "self" | "system" | Role;
 
 /**
  * Who may perform an operation. Functions are compiled to PHP; they may read `ctx` and constants,
@@ -1117,12 +1255,14 @@ export type CreateAccessRule<T extends AnyCollection = AnyCollection> =
   | AccessShorthand
   | ((ctx: AccessCtx<Partial<Insert<T>>>) => boolean);
 
-/** Defaults: `read: "anyone"`, writes `"editor"`. Readers below editor only see published rows unless `read` is a function. */
+/** Defaults: `read: "anyone"`, writes `"editor"`, `restore` inherits `delete`, `purge: "system"`. Readers below editor only see published rows unless `read` is a function. */
 export interface AccessConfig<T extends AnyCollection = AnyCollection> {
   read?: AccessRule<T>;
   create?: Exclude<CreateAccessRule<T>, "self">;
   update?: AccessRule<T>;
   delete?: AccessRule<T>;
+  restore?: AccessRule<T>;
+  purge?: AccessRule<T>;
 }
 
 /** Actions and globals have no rows to filter: a shorthand or a boolean function. */
@@ -1152,8 +1292,16 @@ export interface CollectionHooks<T extends AnyCollection> {
    * null: WordPress empties its trash on a schedule, with nobody signed in.
    */
   beforeDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
-  /** After a permanent delete, in its transaction. `ctx.user` can be null, as for `beforeDelete`. */
+  /** After a delete (soft delete when `softDelete` is on, permanent otherwise), in its transaction. */
   afterDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** Before a soft-deleted row is restored; a throw refuses it. */
+  beforeRestore?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** After a soft-deleted row is restored, in its transaction. */
+  afterRestore?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** Before a row is permanently purged; a throw refuses it. */
+  beforePurge?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** After a row is permanently purged, in its transaction. */
+  afterPurge?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
   /** A collection's item became published: created published, updated into it, or its scheduled time came. */
   afterPublish?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
 }
@@ -1162,48 +1310,58 @@ export type Hooks<TSchema extends Schema> = {
   [K in keyof TSchema]?: CollectionHooks<TSchema[K]>;
 };
 
-/** Action input after defaults: required when NOT NULL or defaulted. */
-type ActionInputKeys<TInput> = {
-  [K in keyof TInput]: TInput[K] extends {
-    readonly [columnBrand]: { notNull: true } | { hasDefault: true };
-  }
-    ? K
-    : never;
-}[keyof TInput];
+/** A query's or mutation's input: its handler's first parameter type, `{}` when it takes none. */
+type HandlerInput<F> = F extends (input: infer I, ...rest: any[]) => any ? (unknown extends I ? {} : I) : {};
 
-export type InferActionInput<TInput extends ColumnsConfig> = Simplify<
-  { [K in ActionInputKeys<TInput>]: SelectValue<TInput[K]> } & {
-    [K in Exclude<keyof TInput, ActionInputKeys<TInput>>]?: SelectValue<TInput[K]>;
-  }
->;
-
-export interface Action<TInput extends ColumnsConfig = ColumnsConfig, TResult = unknown> {
+/** A `query()` or `mutation()`: called from the browser by its export name, and from server code. */
+export interface Action<TInput = any, TResult = unknown> {
   readonly [actionBrand]: { input: TInput; result: TResult };
   /**
-   * From a `"use client"` component: a `fetch` to the action's endpoint, with the REST nonce. The
-   * parameter is checked through `ClientInput`, so an action of any input stays an `AnyAction`.
+   * From a `"use client"` component: a `fetch` to the function's endpoint, with the REST nonce. From
+   * server code: a call as the current caller, with its access check.
    */
-  <I extends ClientInput<TInput>>(input: I): Promise<Awaited<TResult>>;
+  (input: TInput): Promise<Awaited<TResult>>;
 }
 
-/** The input a client call passes: the action's input, or anything for `AnyAction`. */
-type ClientInput<TInput extends ColumnsConfig> = ColumnsConfig extends TInput ? Record<string, unknown> : InferActionInput<TInput>;
+export type AnyAction = Action<any, unknown>;
 
-export type AnyAction = Action<ColumnsConfig, unknown>;
-
-/** `POST <prefix>/actions/<name>`; the handler's return value is the response `data`. Default access `"editor"`. */
-export declare function action<TInput extends ColumnsConfig, TResult>(definition: {
-  input: TInput;
-  access?: GateRule<InferActionInput<TInput>>;
+/** What `query()` and `mutation()` share. */
+interface FunctionOptions<TInput> {
+  /** Who may call it. Default `"editor"`. */
+  access?: GateRule<TInput>;
+  /** Published as an Ability, so agents can call it. Default true. */
   agents?: boolean;
-  idempotent?: boolean;
-  /** Only reads: the Ability is annotated `readonly` (run over GET) and implies `idempotent`. */
-  readonly?: boolean;
-  /** Deletes or overwrites data: the Ability is annotated `destructive`, so agents confirm first. */
-  destructive?: boolean;
-  signature?: { secret: EnvValue; header: string; scheme: "typedpress" | "hmac-sha256" };
-  handler: (input: InferActionInput<TInput>, ctx: HookCtx) => Awaitable<TResult>;
-}): Action<TInput, TResult>;
+  /**
+   * At most this many calls per period, per user (per address when signed out): `"10/min"`, with
+   * sec, min, hour or day. A mutation open to `"anyone"` defaults to `"30/min"`; `false` turns it off.
+   */
+  rateLimit?: `${number}/${"s" | "sec" | "second" | "m" | "min" | "minute" | "h" | "hour" | "d" | "day"}` | false;
+}
+
+/**
+ * A server function that reads. The input is the handler's parameter type; it may not write (the
+ * build refuses a write, in it or in anything it calls), and its Ability is marked read-only.
+ * `POST` or `GET <prefix>/actions/<name>`.
+ */
+export declare function query<F extends (input: any, ctx: HookCtx) => unknown>(
+  options: FunctionOptions<HandlerInput<F>>,
+  handler: F,
+): Action<HandlerInput<F>, Awaited<ReturnType<F>>>;
+
+/**
+ * A server function that writes, in one transaction. The input is the handler's parameter type.
+ * `POST <prefix>/actions/<name>`.
+ */
+export declare function mutation<F extends (input: any, ctx: HookCtx) => unknown>(
+  options: FunctionOptions<HandlerInput<F>> & {
+    idempotent?: boolean;
+    /** Deletes or overwrites data: the Ability is annotated `destructive`, so agents confirm first. */
+    destructive?: boolean;
+    /** Signed webhooks: the caller proves the request with an HMAC instead of an access rule. */
+    signature?: { secret: EnvValue; header: string; scheme: "typedpress" | "hmac-sha256" };
+  },
+  handler: F,
+): Action<HandlerInput<F>, Awaited<ReturnType<F>>>;
 
 /** A singleton record (site settings, footer links): `GET/PATCH <prefix>/globals/<name>`, `db.globals.<key>`. */
 export interface Global<TName extends string = string, TFields extends FieldsConfig = FieldsConfig> {
@@ -1226,6 +1384,7 @@ export declare function global<TFields extends FieldsConfig>(
   fields: TFields,
   options?: {
     label?: string;
+    ui?: GlobalUi;
     agents?: boolean;
     access?: { read?: GateRule<never>; update?: GateRule<Partial<SelectShape<TFields>>> };
   },
@@ -1241,8 +1400,11 @@ export interface ConfigInput<TLocales extends LocalesConfig = LocalesConfig> {
   webhooks?: Webhook[];
   /** Private native forms, queued mail, publication search and server-priced checkout. */
   services?: ServicesConfig;
+  /** Import synced content when the standalone plugin starts. Existing editorial content is preserved. */
+  seed?: boolean;
   uploads?: UploadsConfig;
   media?: { sizes?: Record<string, { width: number; height?: number; fit?: "cover" | "inside" }> };
+  /** Turned off for now: setting it fails the build. */
   locales?: TLocales;
   /** Build-only WordPress plugin dependencies. */
   plugins?: Readonly<Record<string, WordPressPlugin>>;
@@ -1294,6 +1456,11 @@ export interface ConfigInput<TLocales extends LocalesConfig = LocalesConfig> {
    */
   output?: "server" | "static";
   /**
+   * Global retention policy for soft-deleted rows and revisions. Default `"forever"` (never auto-purge;
+   * WordPress's 30-day `wp_scheduled_delete` is unhooked for TypedPress post types unless configured).
+   */
+  retention?: RetentionConfig;
+  /**
    * Plugin packages, registered in order: `use: [seo({ ... })]`. Each one's capabilities are
    * inferred from its compiled code and granted by the committed `tp/_generated/plugins.lock.json`.
    */
@@ -1327,7 +1494,7 @@ export interface ScreenField {
 }
 
 type ScreenFields<F extends string> = { [K in F]: ScreenField };
-type ActionInputOf<A> = A extends Action<infer I, any> ? InferActionInput<I> : never;
+type ActionInputOf<A> = A extends Action<infer I, any> ? I : never;
 /** An action's input where any value may also be `item("field")`. */
 type WithItems<T> =
   | ItemRef
@@ -1366,9 +1533,9 @@ export interface ScreenFormLayout<F extends string> {
   labelPosition?: "top" | "side" | "none";
 }
 
-/** A list: a readonly action whose output holds the rows. */
+/** A list: a query whose output holds the rows. */
 export interface ScreenView<A extends AnyAction, F extends string> {
-  /** A `readonly: true` action; the build refuses any other. */
+  /** A `query()`; the build refuses a mutation here. */
   action: A;
   input?: ActionInputOf<A>;
   /** Dot path to the rows in the action's output; leave it out when the output is the list. */
@@ -1379,7 +1546,7 @@ export interface ScreenView<A extends AnyAction, F extends string> {
   layout?: ScreenViewLayout<NoInfer<F>>;
 }
 
-/** A form: a readonly action returns the values; `submit` runs with the edited ones as `item("field")`. */
+/** A form: a query returns the values; `submit` runs with the edited ones as `item("field")`. */
 export interface ScreenForm<A extends AnyAction, F extends string, S extends AnyAction> {
   action: A;
   input?: ActionInputOf<A>;
@@ -1401,7 +1568,7 @@ interface ScreenBase<TActions extends readonly AnyAction[]> {
   /** Where wp-admin lists it (`parent`: a menu slug such as `"tools.php"`); `false` keeps it out of wp-admin. */
   classic?: false | { parent?: string; icon?: string; position?: number };
   /** Where TypedPress Admin's sidebar lists it; `false` keeps it out (its route still works). */
-  menu?: false | { parent?: string; icon?: string };
+  menu?: false | { parent?: string; icon?: string; section?: string };
   /** Item actions, each one a TypedPress action run as its Ability. */
   actions?: { [K in keyof TActions]: ScreenAction<TActions[K]> };
   /** Fixed lines shown above the body. */
@@ -1430,12 +1597,99 @@ export declare function adminScreen<
   TSubmit extends AnyAction = AnyAction,
 >(definition: AdminScreenDefinition<F, TSource, TActions, TSubmit>): AdminScreen;
 
+declare const widgetBrand: unique symbol;
+declare const dashboardBrand: unique symbol;
+
+/** An `adminWidget()` value: registered by its export and placeable on any admin dashboard. */
+export interface AdminWidget { readonly [widgetBrand]: true }
+
+/** An `adminDashboard()` value: registered by its export as a custom dashboard or Home layout. */
+export interface AdminDashboard { readonly [dashboardBrand]: true }
+
+/** Built-in SpacePress / TypedPress dashboard widget types. */
+export type BuiltinWidgetId =
+  | "tp/content-overview"
+  | "tp/recent-activity"
+  | "tp/drafts-queue"
+  | "tp/app-status"
+  | "tp/store-pulse";
+
+export interface WidgetMetric {
+  id?: string;
+  label: string;
+  /** Dot path into the readonly action's response (e.g. `"totals.orders"`). */
+  path: string;
+  format?: "number" | "currency" | "percent" | "text";
+}
+
+export interface WidgetField {
+  label?: string;
+  type?: "text" | "integer" | "number" | "boolean" | "datetime";
+  description?: string;
+}
+
+export type AdminWidgetDefinition<A extends AnyAction = AnyAction> = ScreenAccess & {
+  title: string;
+  description?: string;
+  info?: string;
+  /** A `readonly: true` action that supplies the widget's data. */
+  action: A;
+  input?: ActionInputOf<A>;
+  display?: "metrics" | "list" | "table" | "summary";
+  /** Dot path to the list rows in the action's response (for `list` / `table` widgets). */
+  items?: string;
+  fields?: Record<string, WidgetField>;
+  metrics?: readonly WidgetMetric[];
+  /** Default grid column span (1–4). */
+  width?: 1 | 2 | 3 | 4;
+  /** Default grid row span (1–4). */
+  height?: 1 | 2 | 3 | 4;
+  link?: { label: string; to: string };
+};
+
+/** Declare a reusable dashboard widget backed by a readonly action. */
+export declare function adminWidget<A extends AnyAction>(definition: AdminWidgetDefinition<A>): AdminWidget;
+
+export type DashboardWidgetPlacement =
+  | AdminWidget
+  | BuiltinWidgetId
+  | {
+      widget: AdminWidget | BuiltinWidgetId;
+      width?: 1 | 2 | 3 | 4;
+      height?: 1 | 2 | 3 | 4;
+      fullWidth?: boolean;
+    };
+
+export type AdminDashboardDefinition = ScreenAccess & {
+  title: string;
+  description?: string;
+  /** Set `home: true` to customize the default Home (`/`) dashboard instead of adding a new route. */
+  home?: boolean;
+  /** Where TypedPress Admin's sidebar lists it; `false` hides it from the sidebar. */
+  menu?: false | { icon?: string; section?: string };
+  widgets: readonly [DashboardWidgetPlacement, ...DashboardWidgetPlacement[]];
+};
+
+/** Declare a custom admin dashboard (or override the default Home dashboard with `home: true`). */
+export declare function adminDashboard(definition: AdminDashboardDefinition): AdminDashboard;
+
 declare const pluginBrand: unique symbol;
 /** A plugin package's definition: `export default (options) => definePlugin({ ... })`. */
 export interface Plugin { readonly [pluginBrand]: true }
+export interface MigrationProviderConfig {
+  /** Stable identifier of the opt-in migration provider (e.g. `"destructive-migrations"`). */
+  id: string;
+  /** When true (default), the provider only runs from CLI and never during HTTP requests. */
+  cliOnly?: boolean;
+  /** When true, every destructive operation requires `--archive-to=<path>`. */
+  requireArchive?: boolean;
+  /** When true, allows explicit raw destructive SQL via CLI. */
+  allowRawSql?: boolean;
+}
+
 /**
- * Defines a plugin in an installed package. Its hooks keep app-hook semantics; its actions, jobs
- * and routes are registered as `<name>_<key>`, and `jobs.<key>` inside the plugin names its own.
+ * Defines a plugin in an installed package. Its hooks keep app-hook semantics; its queries,
+ * mutations and jobs are registered as `<name>_<key>`, and `x.enqueue()` on one of its jobs queues it.
  * There is no capability list: the compiler infers it, and the app's lock grants it.
  */
 export declare function definePlugin<TSchema extends Schema = Schema>(definition: {
@@ -1445,6 +1699,8 @@ export declare function definePlugin<TSchema extends Schema = Schema>(definition
   hooks?: Hooks<TSchema>;
   actions?: Record<string, AnyAction>;
   jobs?: Record<string, AnyJob>;
+  /** Optional CLI-only migration provider (e.g. `typedpress/danger`). */
+  migrationProvider?: MigrationProviderConfig;
 }): Plugin;
 
 // ---------------------------------------------------------------------------
@@ -1453,24 +1709,31 @@ export declare function definePlugin<TSchema extends Schema = Schema>(definition
 
 /** Throw from a hook or action to pick the HTTP response. */
 export declare class HttpError extends Error {
-  constructor(status: number, code: string, message: string);
+  /** `pointer` names the input field the error is about (`"/email"`), so a form shows it beside that field. */
+  constructor(status: number, code: string, message: string, pointer?: string);
   readonly status: number;
   readonly code: string;
 }
 
 
-// Phase-2 runtime values are declarations only; lane D supplies their compilation.
-export interface Job<TInput extends ColumnsConfig = ColumnsConfig> {
+/** A `job()` or `cron()`: queued with `enqueue`, run off the request by Action Scheduler. */
+export interface Job<TInput = any> {
   readonly [jobBrand]: { input: TInput };
+  /** Queue a run inside the current transaction; it runs after commit. `key` collapses duplicates still waiting. */
+  enqueue(input: TInput, opts?: EnqueueOptions): Promise<{ id: string }>;
 }
-export type AnyJob = Job<ColumnsConfig>;
+export type AnyJob = Job<any>;
 export interface JobCtx extends HookCtx { attempt: number; jobId: string }
-export declare function job<TInput extends ColumnsConfig>(definition: {
-  input: TInput;
-  retries?: number;
-  agents?: boolean;
-  handler: (input: InferActionInput<TInput>, ctx: JobCtx) => Awaitable<void>;
-}): Job<TInput>;
+/**
+ * A background job. The input is the handler's parameter type. `every: "1h"` also runs it on that
+ * repeat (s, m, h, d or w; at least a minute), with no input.
+ */
+export declare function job<F extends (input: any, ctx: JobCtx) => Awaitable<void>>(
+  options: { retries?: number; agents?: boolean; every?: `${number}${"s" | "m" | "h" | "d" | "w"}` },
+  handler: F,
+): Job<HandlerInput<F>>;
+/** A job Action Scheduler runs on a five-field cron schedule in UTC: `cron("0 3 * * *", async () => { ... })`. */
+export declare function cron(schedule: string, handler: (input: {}, ctx: JobCtx) => Awaitable<void>): Job<{}>;
 export interface EnqueueOptions { delay?: number; key?: string }
 
 /** The request a `route.ts` (or page) HTTP handler under `tp/app/` receives. Header names are lowercase; the body is the raw text. */
@@ -1500,36 +1763,39 @@ export interface RouteQuery {
 }
 /** What a route handler returns. Status defaults to 200, body to "", Content-Type to text/plain; charset=utf-8. */
 export interface RouteResponse { status?: number; headers?: Record<string, string>; body?: string }
-export interface JobHandle<TInput> {
-  enqueue(input: TInput, opts?: EnqueueOptions): Promise<{ id: string }>;
-}
-type RegisteredJobs = Register extends { jobs: infer J extends Record<string, AnyJob> } ? J : never;
-export type JobsApi = [RegisteredJobs] extends [never]
-  ? Record<string, JobHandle<Record<string, unknown>>>
-  : { readonly [K in keyof RegisteredJobs]: RegisteredJobs[K] extends Job<infer I> ? JobHandle<InsertShape<I>> : never };
-export declare const jobs: JobsApi;
 export declare function once<T>(key: string, fn: () => Awaitable<T>): Promise<T>;
 
-export type MailAddress = string | { email: string; name?: string };
+export type MailAddress = string | { email: string; name?: string | null };
+/**
+ * An optional field may be left out, `undefined` or `null`; all three send without it. An optional
+ * column reads as `string | null`, so `replyTo: settings.replyTo` needs no conversion.
+ */
 export interface MailMessage {
-  /** Defaults to `noreply@` the site's host. On Spacefast it must use the Space's sending domain. */
-  from?: MailAddress;
+  /**
+   * Defaults to `noreply@` the site's host (or `TP_MAIL_SENDER_DOMAIN`). On Spacefast it must use
+   * the Space's sending domain. A local site on `127.0.0.1` or `localhost` sends as
+   * `noreply@typedpress.localhost`.
+   */
+  from?: MailAddress | null;
   to: MailAddress | MailAddress[];
   subject: string;
-  text?: string;
-  html?: string;
-  cc?: MailAddress | MailAddress[];
-  bcc?: MailAddress | MailAddress[];
-  replyTo?: MailAddress;
-  headers?: Record<string, string>;
+  text?: string | null;
+  html?: string | null;
+  cc?: MailAddress | MailAddress[] | null;
+  bcc?: MailAddress | MailAddress[] | null;
+  replyTo?: MailAddress | null;
+  headers?: Record<string, string> | null;
 }
 /**
  * Email from hooks, actions, routes and jobs. `send` queues the message in the handler's
  * transaction and hands it to the site's mail transport after commit, retrying a refusal; a
- * rollback sends nothing. It resolves to the queued delivery's id.
+ * rollback sends nothing. It resolves to the queued delivery's id. `render` turns a React Email
+ * template from `emails/` into the `html` and `text` a message carries.
  */
 export declare const mail: {
   send(message: MailMessage): Promise<{ id: string }>;
+  /** The HTML and plain text of an `emails/` template's default export, rendered with `props`. */
+  render<P>(template: (props: P) => unknown, props: P): { html: string; text: string };
 };
 
 export interface EnvValue { readonly [envBrand]: true }
@@ -1583,3 +1849,88 @@ export type WordPressPlugin = string | ({
       sha256: string;
     }
 ));
+
+/** Native WooCommerce runtime. Source owns only the declared store keys. */
+export interface StoreOptions {
+  currency: string;
+  country: string;
+  address?: { line1: string; line2?: string; city: string; postcode: string };
+  sellTo?: "all" | readonly string[];
+  units?: { weight: "kg" | "g" | "lbs" | "oz"; dimension: "m" | "cm" | "mm" | "in" | "yd" };
+  shipping?: readonly { name: string; countries: readonly string[] | "rest"; methods: readonly (
+    { type: "flatRate"; title: string; cost: string } |
+    { type: "freeShipping"; title: string; minimum?: string } |
+    { type: "localPickup"; title: string; cost?: string }
+  )[] }[];
+  payments?: readonly string[];
+  email?: { fromName: string; fromAddress: string };
+  checkout?: `/${string}`;
+}
+declare const storeBrand: unique symbol;
+export interface CommerceStore { readonly [storeBrand]: true }
+export declare function store(options: StoreOptions): CommerceStore;
+export interface CommerceOptions { sync?: string; url?: `/${string}`; agents?: boolean; label?: string; api?: false | { list?: boolean; get?: boolean; create?: boolean; update?: boolean; delete?: boolean } }
+type ProductColumns = {
+  uid: ColumnBuilder<"text", string, true, true>;
+  name: ColumnBuilder<"text", string, true, false>;
+  slug: ColumnBuilder<"slug", string, true, true>;
+  description: ColumnBuilder<"richText", string, true, true>;
+  shortDescription: ColumnBuilder<"text", string, false, false>;
+  sku: ColumnBuilder<"text", string, false, false>;
+  status: ColumnBuilder<"text", "draft" | "pending" | "scheduled" | "published" | "private", true, true>;
+  price: ColumnBuilder<"text", string, false, false>;
+  images: ColumnBuilder<"mediaList", number[], true, true>;
+  categories: ColumnBuilder<"refList", number[], true, true>;
+  tags: ColumnBuilder<"refList", number[], true, true>;
+  virtual: ColumnBuilder<"boolean", boolean, true, true>;
+  downloadable: ColumnBuilder<"boolean", boolean, true, true>;
+  downloads: ColumnBuilder<"json", { id: string; name: string; file: string }[], true, true>;
+  type: ColumnBuilder<"text", string, true, true>;
+  purchasable: ColumnBuilder<"boolean", boolean, true, true>;
+  availability: ColumnBuilder<"text", string, true, true>;
+  url: ColumnBuilder<"text", string, false, true>;
+};
+type ProductFields = Record<string, ColumnBuilder<"text" | "integer" | "number" | "boolean" | "date" | "email" | "url", unknown, false, false>> & {
+  [K in keyof ProductColumns | "id" | "stockQuantity"]?: never;
+};
+export declare function product<F extends ProductFields = {}, I extends boolean = false>(
+  options?: CommerceOptions & { fields?: F; inventory?: I; reviews?: boolean },
+): Collection<string, WithId<ProductColumns & F & (I extends true ? {
+  stockQuantity: ColumnBuilder<"integer", number, false, true>;
+} : {})>, false, "product">;
+export declare function productCategory(options?: CommerceOptions): Collection<string, WithId<TermColumns<true> & { uid: ColumnBuilder<"text", string, true, true> }>, false, "taxonomy">;
+export declare function productTag(options?: CommerceOptions): Collection<string, WithId<TermColumns<false> & { uid: ColumnBuilder<"text", string, true, true> }>, false, "taxonomy">;
+export interface OrderAddress {
+  first_name: string; last_name: string; company: string; address_1: string; address_2: string;
+  city: string; state: string; postcode: string; country: string; email?: string; phone?: string;
+}
+export interface OrderLine {
+  id: number; name: string; product: number; variation: number | null; quantity: number;
+  subtotal: string; subtotalTax: string; total: string; totalTax: string;
+  taxes: { total: Record<string, string>; subtotal: Record<string, string> };
+}
+export declare function order(options?: Pick<CommerceOptions, "agents" | "label"> & { api?: false | { list?: boolean; get?: boolean } }): Collection<string, WithId<{
+  status: ColumnBuilder<"text", string, true, true>;
+  currency: ColumnBuilder<"text", string, true, true>;
+  total: ColumnBuilder<"text", string, true, true>;
+  subtotal: ColumnBuilder<"text", string, true, true>;
+  discountTotal: ColumnBuilder<"text", string, true, true>;
+  shippingTotal: ColumnBuilder<"text", string, true, true>;
+  taxTotal: ColumnBuilder<"text", string, true, true>;
+  precision: ColumnBuilder<"integer", number, true, true>;
+  createdAt: ColumnBuilder<"timestamp", string, true, true>;
+  updatedAt: ColumnBuilder<"timestamp", string, true, true>;
+  paidAt: ColumnBuilder<"timestamp", string, false, true>;
+  completedAt: ColumnBuilder<"timestamp", string, false, true>;
+  customer: ColumnBuilder<"integer", number, false, true>;
+  paymentMethod: ColumnBuilder<"text", string, true, true>;
+  paymentTitle: ColumnBuilder<"text", string, true, true>;
+  billing: ColumnBuilder<"json", OrderAddress, true, true>;
+  shipping: ColumnBuilder<"json", OrderAddress, true, true>;
+  lines: ColumnBuilder<"json", OrderLine[], true, true>;
+  shippingLines: ColumnBuilder<"json", { id: number; name: string; method_id: string; instance_id: string; total: string; total_tax: string; taxes: unknown }[], true, true>;
+  taxLines: ColumnBuilder<"json", { id: number; name: string; rate_id: number; label: string; compound: boolean; tax_total: string; shipping_tax_total: string }[], true, true>;
+  feeLines: ColumnBuilder<"json", { id: number; name: string; total: string; total_tax: string; taxes: unknown }[], true, true>;
+  couponLines: ColumnBuilder<"json", { id: number; name: string; code: string; discount: string; discount_tax: string }[], true, true>;
+  refunds: ColumnBuilder<"json", { id: number; amount: string; reason: string; createdAt: string }[], true, true>;
+}>, false, "order">;

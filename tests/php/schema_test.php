@@ -16,10 +16,10 @@ use TypedPress\Schema;
 $fixture = __DIR__ . '/../fixtures/blog/schema.php';
 $schema = Schema::load($fixture);
 eq('PHP platform policy matches the shared golden', \TypedPress\Wp\Platform::requirements(), json_decode(file_get_contents(__DIR__ . '/../fixtures/platform.json'), true, 512, JSON_THROW_ON_ERROR));
-// The WordPress floor is 7.2-beta5: what $wp_version reads on each build, whole (core's suffix-dropping check would pass every 7.2 pre-release).
-$floor = ['7.2-beta5' => true, '7.2-beta5-65525' => true, '7.2-beta6' => true, '7.2-RC1' => true, '7.2-RC2-65600' => true, '7.2' => true, '7.2.1' => true, '7.3-alpha-61000' => true, '8.0' => true,
-    '7.1' => false, '7.1.4' => false, '7.1.9' => false, '7.2-beta4' => false, '7.2-beta4-65000' => false, '7.2-alpha-64000' => false];
-eq('WordPress floor accepts 7.2-beta5 and later, rejects 7.1.x and 7.2-beta4', array_map(\TypedPress\Wp\Platform::wordpressSupported(...), array_map('strval', array_keys($floor))), array_values($floor));
+// The WordPress floor is 7.1: what $wp_version reads on each build, whole (core's suffix-dropping check would pass 7.1's pre-releases).
+$floor = ['7.1' => true, '7.1.4' => true, '7.2-alpha-64000' => true, '7.2-beta5' => true, '7.2-beta5-65525' => true, '7.2-RC1' => true, '7.2' => true, '8.0' => true,
+    '7.0' => false, '7.0.3' => false, '7.1-beta2' => false, '7.1-RC1' => false, '7.1-alpha-62000' => false];
+eq('WordPress floor accepts 7.1 and later, rejects 7.0.x and 7.1 pre-releases', array_map(\TypedPress\Wp\Platform::wordpressSupported(...), array_map('strval', array_keys($floor))), array_values($floor));
 $posts = $schema->collection('posts')['columns'];
 $comments = $schema->collection('comments')['columns'];
 $settings = $schema->global('settings')['fields'];
@@ -37,22 +37,22 @@ $write = static function (array $col, mixed $v, string $name) use ($ctx): mixed 
 
 $tmp = tempnam(sys_get_temp_dir(), 'zs');
 foreach ([
-    ['version' => 2, 'runtime' => Schema::SERIES],
-    ['version' => 3, 'runtime' => '0.2'],
-    ['version' => 3],
+    ['version' => 4, 'runtime' => Schema::SERIES],
+    ['version' => 5, 'runtime' => '0.2'],
+    ['version' => 5],
 ] as $raw) {
     file_put_contents($tmp, '<?php return ' . var_export($raw, true) . ';');
     try {
         Schema::load($tmp);
         check('incompatible schema is refused', false);
     } catch (RuntimeException $e) {
-        $expected = $raw['version'] !== 3 ? 'schema.php version 3 required; rebuild with this TypedPress version'
+        $expected = $raw['version'] !== 5 ? 'schema.php version 5 required; rebuild with this TypedPress version'
             : 'schema.php built for runtime ' . ($raw['runtime'] ?? '(missing)') . '; this runtime is 0.3; rebuild with this TypedPress version';
         eq('incompatible schema is refused', $e->getMessage(), $expected);
     }
 }
 unlink($tmp);
-eq('v3 reader reports its contract', [$schema->version(), $schema->runtime()], [3, '0.3']);
+eq('v5 reader reports its contract', [$schema->version(), $schema->runtime()], [5, '0.3']);
 
 $phase2Raw = json_decode(file_get_contents(__DIR__ . '/../fixtures/phase2.schema.json'), true, 512, JSON_THROW_ON_ERROR);
 $phase2 = new Schema($phase2Raw);
@@ -73,7 +73,7 @@ check('describe hides function names, hooks and wp identifiers',
     !str_contains($described, '__') && !str_contains($described, 'hooks') && !str_contains($described, 'postType') && !str_contains($described, 'handler'),
     $described);
 eq('describe summarises access', [$schema->describe()['collections']['posts']['access'], $schema->describe()['actions']['publishedCount']['access']],
-    [['read' => 'rule', 'create' => 'author', 'update' => 'rule', 'delete' => 'editor'], 'anyone']);
+    [['read' => 'rule', 'create' => 'author', 'update' => 'rule', 'delete' => 'editor', 'restore' => 'editor', 'purge' => false], 'anyone']);
 
 // ---------------------------------------------------------------- scalar formats
 

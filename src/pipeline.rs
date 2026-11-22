@@ -21,13 +21,15 @@ pub struct Built {
     pub schema: schema::Schema,
     pub functions_php: String,
     pub snapshot: serde_json::Value,
-    /// New migration files, `(name, SQL)`; empty when the schema did not change.
-    pub migrations: Vec<(String, String)>,
+    /// New migration folders (`<id>/{ops.json,migration.sql}`); empty when the SQL schema did not change.
+    pub migrations: Vec<migrate::MigrationEntry>,
     pub gen_ts: String,
     /// `tp/_generated/routes.d.ts`, when the app has `tp/app/` routes.
     pub routes_ts: Option<String>,
     /// Destructive steps in the new migrations.
     pub warnings: Vec<String>,
+    /// Compile-time OXC AST lint warnings (e.g. `capital_P_dangit`), with auto-fix spans.
+    pub lint_warnings: Vec<crate::lint::Warning>,
     /// Declared WordPress plugins outside `wp_plugins/supported.json`; they still install.
     pub unsupported_plugins: Vec<String>,
     pub hints: Vec<String>,
@@ -43,9 +45,9 @@ pub struct Built {
     pub references: Option<serde_json::Value>,
     /// `tp/theme.json`, when the project has one: shipped as the app plugin's `tp/app/theme.json`.
     pub theme: Option<serde_json::Value>,
-    /// `tp/_generated/theme.css`, with `tp/theme.json`: Tailwind v4 tokens on WordPress's preset
+    /// `tp/_generated/theme.css`: Tailwind v4 tokens on WordPress's preset
     /// variables ([`crate::theme`]).
-    pub theme_css: Option<String>,
+    pub theme_css: String,
 }
 
 /// The schema ledger, committed with the project: `snapshot.json` and the numbered SQL that
@@ -62,75 +64,42 @@ pub fn moved_ledger() -> Diag {
     ))
 }
 
-/// The last build, as the next one needs it: its snapshot and the number the next migration file gets.
+/// The previous migrations in the ledger, folded into the baseline schema state.
 #[derive(Debug)]
 pub struct Previous {
+    /// Existing migration IDs from `<ledger>/<id>/ops.json` in sorted order.
+    pub ids: Vec<String>,
+    /// Folded schema state produced by replaying every committed `ops.json`.
+    pub folded: migrate::FoldedState,
+    /// Snapshot view of the folded state.
     pub snapshot: serde_json::Value,
-    pub next_migration: u32,
     /// Refuse any plugin grant `tp/_generated/plugins.lock.json` doesn't already hold (CI, `--frozen`).
     pub frozen: bool,
 }
 
 impl Previous {
-    /// A typedpress build: nothing to diff against, `0001_init.sql`.
+    /// A first build: empty baseline, no prior migrations.
     pub fn none() -> Self {
-        Self::from_project(None, []).expect("an absent snapshot is valid")
+        let folded = migrate::FoldedState::empty();
+        let snapshot = folded.to_snapshot();
+        Previous {
+            ids: Vec::new(),
+            folded,
+            snapshot,
+            frozen: false,
+        }
     }
 
-    /// From a committed `snapshot.json` in [`LEDGER`] (absent on a first build) and the names of
-    /// everything beside it. The numbering follows the files whether or not the snapshot is there, so
-    /// a deleted snapshot never produces a second `0001_init.sql` over the first. An older snapshot is
-    /// refused rather than diffed: its shape would plan the wrong migration.
-    pub fn from_project<'a>(
-        snapshot: Option<serde_json::Value>,
-        migration_files: impl IntoIterator<Item = &'a str>,
-    ) -> Result<Self, Diag> {
-        let migration_files: Vec<&str> = migration_files.into_iter().collect();
-        // A ledger from before the flat layout (`wp/` and `sqlite/` subdirectories, moved here as-is
-        // by `git mv`), or the old ledger moved inside this one (`git mv` into an existing
-        // directory), is refused rather than read as "no migrations yet", which would restart the
-        // numbering at 0001 and ship an app plugin without its earlier files.
-        if migration_files.contains(&"migrations") {
-            return Err(Diag::new(
-                Span::NONE,
-                format!("{LEDGER}/migrations/ is the old ledger moved one level too deep"),
-            )
-            .help(format!(
-                "move its contents up with `git mv {LEDGER}/migrations/* {LEDGER}/ && rmdir {LEDGER}/migrations`, then build again"
-            )));
-        }
-        for nested in ["wp", "sqlite"] {
-            if migration_files.contains(&nested) {
-                return Err(Diag::new(
-                    Span::NONE,
-                    format!(
-                        "{LEDGER}/{nested}/ is from an earlier layout; move {LEDGER}/wp/*.sql and {LEDGER}/wp/snapshot.json into {LEDGER}/, then delete the {LEDGER}/wp/ and {LEDGER}/sqlite/ directories"
-                    ),
-                ));
-            }
-        }
-        let snapshot = match snapshot {
-            None => serde_json::json!({ "version": 2, "tables": {} }),
-            Some(snapshot) if snapshot["version"] == 2 => snapshot,
-            Some(snapshot) => {
-                return Err(Diag::new(
-                    Span::NONE,
-                    format!(
-                        "{LEDGER}/snapshot.json is a version {} snapshot; this compiler writes version 2 (delete {LEDGER}/ to start over)",
-                        snapshot["version"]
-                    ),
-                ));
-            }
-        };
-        let next_migration = migration_files
-            .into_iter()
-            .filter_map(|name| name.get(..4)?.parse::<u32>().ok())
-            .max()
-            .unwrap_or(0)
-            + 1;
+    /// Reconstructs the baseline by folding every `(id, ops_json)` folder entry in sorted ID order.
+    /// Incompatible parallel-branch edits fail here with a diagnostic naming both migration IDs.
+    pub fn from_entries(entries: Vec<(String, serde_json::Value)>) -> Result<Self, Diag> {
+        let folded = migrate::fold(&entries)?;
+        let snapshot = folded.to_snapshot();
+        let ids = folded.history.clone();
         Ok(Previous {
+            ids,
+            folded,
             snapshot,
-            next_migration,
             frozen: false,
         })
     }
@@ -174,7 +143,17 @@ pub fn build(
     let blocks = components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     app::register(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::content_page::register(program, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
+    crate::commerce::pages(&ext.schema, config_span).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::runtime_schema::apply(runtime_lock.as_ref(), &mut ev, &mut ext)?;
+    // A query's, mutation's or job's input is its handler's parameter type: read before anything
+    // reads inputs (admin screens, the compiled handlers, the client).
+    let inputs = {
+        let schema = ext.schema.clone();
+        let mut c = compile::Compiler::new(&schema, &mut ev, &ext, program);
+        c.infer_inputs(&ext.roots).map_err(|d| d.phase(diag::Code::Compile))?
+    };
+    compile::apply_inputs(&mut ext.schema, inputs);
+    extract::screens(&config, &mut ev, config_span, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
@@ -188,6 +167,7 @@ pub fn build(
     let mut hooks: HookFunctions = indexmap::IndexMap::new();
     let plugin_lock = read_plugin_lock(program, &project.join(crate::plugins::LOCK_PATH))?;
     let previous_value;
+    let mut personal_actions = Vec::new();
     let (functions, slots, settled) = {
         let mut c = compile::Compiler::new(&schema, &mut ev, &ext, program);
         c.abilities = catalog.clone();
@@ -216,19 +196,55 @@ pub fn build(
             }
         }
         // The lock settles before anything is emitted, so a refused plugin generates nothing.
-        let mut handlers = Vec::new();
-        for ((_, name), root) in slots.iter().zip(&roots) {
-            if let Some(plugin) = root.plugin {
-                let mut reached = std::collections::BTreeSet::from([name.clone()]);
-                let mut stack = vec![name.clone()];
-                while let Some(f) = stack.pop() {
-                    for callee in c.calls.get(&f).into_iter().flatten() {
-                        if reached.insert(callee.clone()) {
-                            stack.push(callee.clone());
-                        }
+        let reach = |name: &String| {
+            let mut reached = std::collections::BTreeSet::from([name.clone()]);
+            let mut stack = vec![name.clone()];
+            while let Some(f) = stack.pop() {
+                for callee in c.calls.get(&f).into_iter().flatten() {
+                    if reached.insert(callee.clone()) {
+                        stack.push(callee.clone());
                     }
                 }
-                handlers.push((plugin, name.clone(), reached));
+            }
+            reached
+        };
+        let mut handlers = Vec::new();
+        // Each action: its ability's name, and every function its handler reaches.
+        let app = crate::wordpress::abilities::kebab(&schema.name);
+        let mut actions = Vec::new();
+        for ((slot, name), root) in slots.iter().zip(&roots) {
+            if let Some(plugin) = root.plugin {
+                handlers.push((plugin, name.clone(), reach(name)));
+            }
+            if let Slot::ActionHandler { action } = slot {
+                let ability = format!("{app}/{}", crate::wordpress::abilities::kebab(action));
+                actions.push((action.clone(), ability, reach(name)));
+            }
+        }
+        // An action is personal when its code reads orders or calls an ability that needs the grant,
+        // or calls an action that is. Repeated until nothing changes, so a chain of actions calling
+        // actions is followed to its end.
+        let mut personal_abilities = std::collections::BTreeSet::new();
+        loop {
+            let found: Vec<_> = actions
+                .iter()
+                .filter(|(_, ability, reached)| {
+                    !personal_abilities.contains(ability)
+                        && reached.iter().any(|f| {
+                            c.personal.contains(f)
+                                || c.ability_calls
+                                    .get(f)
+                                    .is_some_and(|called| called.iter().any(|a| personal_abilities.contains(a)))
+                        })
+                })
+                .map(|(action, ability, _)| (action.clone(), ability.clone()))
+                .collect();
+            if found.is_empty() {
+                break;
+            }
+            for (action, ability) in found {
+                personal_abilities.insert(ability);
+                personal_actions.push(action);
             }
         }
         let prev = previous()?;
@@ -243,9 +259,8 @@ pub fn build(
                     hosts.iter().map(|h| compile::php_str(h)).collect::<Vec<_>>().join(", ")
                 ),
             };
-            c.output.push_str(&format!(
-                "function {function}(): ?array\n{{\n    return {value};\n}}\n\n"
-            ));
+            c.output
+                .push_str(&format!("/**\n * Return the plugin's permitted outbound HTTP hosts.\n *\n * @return string[]|null\n */\nfunction {function}(): ?array {{\n\treturn {value};\n}}\n\n"));
         }
         (std::mem::take(&mut c.output), slots, settled)
     };
@@ -257,6 +272,9 @@ pub fn build(
             .expect("collection")
             .hooks
             .insert(kind, name);
+    }
+    for action in personal_actions {
+        schema.actions.get_mut(&action).expect("action").personal = true;
     }
     for (slot, name) in slots {
         match slot {
@@ -271,6 +289,9 @@ pub fn build(
             Slot::WpHook { index } => schema.wp_hooks[index].handler = name,
             Slot::Component { name: component } => {
                 schema.components.insert(component, name);
+            }
+            Slot::Email { file } => {
+                schema.components.insert(file, name);
             }
             Slot::AppPage { .. }
             | Slot::AppMetadata { .. }
@@ -326,6 +347,7 @@ pub fn build(
                 source,
                 shipped,
                 actions: analysis.server_actions.iter().cloned().collect(),
+                assets: analysis.assets.clone(),
                 live: !analysis.live.is_empty(),
             },
         );
@@ -355,82 +377,58 @@ pub fn build(
         crate::services_config::parse(&config, &ev, &schema, config_span).map_err(|d| d.phase(diag::Code::Schema))?;
     let services_php = services.as_ref().map(crate::services_config::php).unwrap_or_default();
     let functions_php = format!(
-        "<?php\n\n// Generated by `typedpress build` from typedpress.config.ts. Do not edit.\n\ndeclare(strict_types=1);\n\nnamespace TypedPressApp;\n\n{}",
+        "<?php\n/**\n * Backend functions compiled from TypeScript sources.\n *\n * Generated by `typedpress build` from typedpress.config.ts. Do not edit.\n *\n * @package TypedPress\n */\n\ndeclare(strict_types=1);\n\nnamespace TypedPressApp;\n\n{}",
         functions + &services_php + &crate::content_page::functions_php(&schema)
     );
+    let functions_php = crate::php_layout::format(&functions_php);
     let previous = previous_value;
     adopted_names(&mut schema, &previous.snapshot);
     // A 0.3.0 capture keeps the indexes its build had: recompiling a stored Space plans no migration.
     let queried = if ev.legacy() { Default::default() } else { queried };
     let snapshot = migrate::snapshot_with(&schema, &queried);
-    if let Some(tables) = previous.snapshot.get("tables").and_then(serde_json::Value::as_object) {
-        for stored in tables.keys() {
-            // The table that keeps `stored`'s rows: the same name, or the one that declares `was: stored`.
-            let successor = snapshot["tables"].get(stored).or_else(|| {
-                snapshot["tables"]
-                    .as_object()?
-                    .values()
-                    .find(|t| t["was"].as_str() == Some(stored.as_str()))
-            });
-            if let Some(next) = successor
-                && tables[stored]["existingTable"] != next["existingTable"]
-            {
-                return Err(Diag::new(config_span, format!("existingTable binding for `{stored}` cannot change after the first snapshot, including through a `was` rename; move data explicitly before changing storage")).phase(diag::Code::Schema));
-            }
-            // Storage follows the builder: a SQL table in the ledger declared with collection() would
-            // plan the table's drop and read empty posts. Refused here, before any migration is written.
-            if let Some(next) = successor
-                && tables[stored]["editor"] == false
-                && tables[stored]["auth"] != true
-                && next["editor"] == true
-            {
-                let kind = ext
-                    .collections
-                    .iter()
-                    .find(|c| snapshot["tables"].get(c.table()) == Some(next));
-                let key = kind.map_or(stored.as_str(), |c| schema.collections[c.table()].key.as_str());
-                return Err(Diag::new(
-                    kind.map_or(config_span, |c| c.span),
-                    format!("`{key}` is stored as a SQL table, and collection() is always WordPress posts"),
-                )
-                .help("declare it with table() again: its rows stay where they are and no migration is written")
-                .phase(diag::Code::Schema));
-            }
-            let canonical = crate::schema::physical_name(stored);
-            if &canonical != stored
-                && !schema.collections.contains_key(stored)
-                && schema.collections.contains_key(&canonical)
-            {
-                return Err(Diag::new(config_span, format!(
-                    "stored resource `{stored}` conflicts with canonical physical name `{canonical}`; an authoring change cannot rename persisted storage"
-                )).help(format!("keep the migration ledger and bind the existing resource with `storageName: \"{stored}\"`"))
-                    .phase(diag::Code::Schema));
-            }
-            // Old snapshots record physical names only. A removed and a new resource
-            // could be an authored alias becoming its storage name, even when both
-            // names are already snake_case. Never guess a destructive replacement.
-            // A table that declares `was: "<stored>"` renames it (spec §2.6); the planner moves it.
-            let renamed = snapshot["tables"]
-                .as_object()
-                .is_some_and(|next| next.values().any(|t| t["was"].as_str() == Some(stored.as_str())));
-            if !schema.collections.contains_key(stored)
-                && !renamed
-                && let Some(added) = schema.collections.keys().find(|name| !tables.contains_key(*name))
-            {
-                return Err(Diag::new(config_span, format!(
-                    "stored resource `{stored}` disappears while new resource `{added}` is added; an authoring change cannot rename persisted storage"
-                )).help(format!("to rename it, declare `was: \"{stored}\"` on the table; to drop it, remove it in one deploy and add the new one in the next"))
-                    .phase(diag::Code::Schema));
-            }
+    for (stored, prev_def) in &previous.folded.tables {
+        let successor = snapshot["tables"].get(stored);
+        if let Some(next) = successor
+            && prev_def["existingTable"] != next["existingTable"]
+        {
+            return Err(Diag::new(
+                config_span,
+                format!("existingTable binding for `{stored}` cannot change after the first migration; move data explicitly before changing storage"),
+            )
+            .phase(diag::Code::Schema));
+        }
+        if let Some(next) = successor
+            && prev_def["editor"] == false
+            && prev_def["auth"] != true
+            && next["editor"] == true
+        {
+            let kind = ext
+                .collections
+                .iter()
+                .find(|c| snapshot["tables"].get(c.table()) == Some(next));
+            let key = kind.map_or(stored.as_str(), |c| schema.collections[c.table()].key.as_str());
+            return Err(Diag::new(
+                kind.map_or(config_span, |c| c.span),
+                format!("`{key}` is stored as a SQL table, and collection() is always WordPress posts"),
+            )
+            .help("declare it with table() again: its rows stay where they are and no migration is written")
+            .phase(diag::Code::Schema));
+        }
+        if let Some(commerce) = schema.collections.get(stored).and_then(|c| c.commerce.as_deref()) {
+            let kind = ext.collections.iter().find(|c| c.table() == stored);
+            return Err(Diag::new(
+                kind.map_or(config_span, |c| c.span),
+                format!("`{stored}` is stored as a SQL table, and {commerce}() is always WooCommerce storage"),
+            )
+            .help("give the commerce kind another name, or retire the table in one deploy and add the commerce kind in the next")
+            .phase(diag::Code::Schema));
         }
     }
     let mut migrations = Vec::new();
-    let warnings = migrate::destructive(&previous.snapshot, &snapshot);
-    let statements = migrate::plan(&previous.snapshot, &snapshot);
-    if !statements.is_empty() {
-        let n = previous.next_migration;
-        let name = if n == 1 { "init" } else { "update" };
-        migrations.push((format!("{n:04}_{name}.sql"), migrate::render(&statements)));
+    let mut warnings = Vec::new();
+    if let Some((entry, notes)) = migrate::plan_forward_only(&previous.folded, &snapshot, &previous.ids)? {
+        migrations.push(entry);
+        warnings.extend(notes);
     }
     // Each action's Ability publishes its result type as an output schema (spec §3a).
     for (name, ty) in &action_results {
@@ -463,7 +461,8 @@ pub fn build(
         .runtime_schema
         .is_some()
         .then(|| crate::runtime_schema::references(&schema, &program.root));
-    let theme_css = theme.as_ref().map(crate::theme::tokens);
+    let theme_css = crate::theme::tokens(theme.as_ref().unwrap_or(&serde_json::Value::Null));
+    let lint_warnings = crate::lint::check_project(root);
     Ok(Built {
         theme,
         theme_css,
@@ -479,6 +478,7 @@ pub fn build(
         gen_ts,
         routes_ts,
         warnings,
+        lint_warnings,
         hints: ext.hints,
         plugin_lock: settled.lock,
         plugin_changes: settled.changes,
@@ -666,6 +666,34 @@ fn components(
             });
         }
     }
+    // Templates compile before the handlers that render them, so `mail.render()` finds their props.
+    let mut email_roots = Vec::new();
+    for (path, module) in &program.emails {
+        let exports = ev.run_module(*module)?;
+        let span = Span {
+            file: program.modules[*module].file,
+            start: 0,
+            end: 0,
+        };
+        let Some(Value::Closure(closure)) = exports.get("default") else {
+            return Err(Diag::new(span, format!("{path} needs a default component"))
+                .help("write `export default function Welcome(props: WelcomeProps) { ... }`"));
+        };
+        if closure.func.is_async || closure.func.params.len() > 1 {
+            return Err(Diag::new(
+                span,
+                "an email template is a synchronous server component with one props object",
+            ));
+        }
+        let stem = path.trim_end_matches(".tsx");
+        email_roots.push(extract::Root {
+            closure: closure.clone(),
+            slot: Slot::Email { file: path.clone() },
+            name: extract::slugify_name(stem).replace('-', "_"),
+            plugin: None,
+        });
+    }
+    ext.roots.splice(0..0, email_roots);
     ext.roots.extend(client_roots);
     ext.roots.extend(server_roots);
     Ok(blocks)
@@ -730,16 +758,25 @@ impl Built {
     pub fn summary(&self) -> String {
         let s = &self.schema;
         format!(
-            "{} collections, {} tables, {} user projections, {}{} globals, {} hooks, {} actions",
+            "{} collections, {} tables, {} user projections, {}{}{} globals, {} hooks, {} actions",
             s.collections.values().filter(|c| c.editor).count(),
             s.collections
                 .values()
-                .filter(|c| !c.editor && !c.auth && c.taxonomy.is_none())
+                .filter(|c| !c.editor && !c.auth && c.taxonomy.is_none() && c.commerce.is_none())
                 .count(),
             s.collections.values().filter(|c| c.auth).count(),
             match s.collections.values().filter(|c| c.taxonomy.is_some()).count() {
                 0 => String::new(),
                 n => format!("{n} taxonomies, "),
+            },
+            match s
+                .collections
+                .values()
+                .filter(|c| c.commerce.is_some() && c.taxonomy.is_none())
+                .count()
+            {
+                0 => String::new(),
+                n => format!("{n} commerce kinds, "),
             },
             s.globals.len(),
             s.collections.values().map(|c| c.hooks.len()).sum::<usize>(),
@@ -751,52 +788,53 @@ impl Built {
 #[cfg(test)]
 mod tests {
     use super::Previous;
+    use serde_json::json;
 
     #[test]
-    fn the_next_migration_number_follows_the_highest_file_with_or_without_a_snapshot() {
-        let snapshot = serde_json::json!({ "version": 2, "tables": {} });
-        let files = ["0001_init.sql", "0003_update.sql", "snapshot.json"];
+    fn folds_committed_ops_entries_in_sorted_id_order() {
+        let m1 = (
+            "20261121180000_7k9m2x_init".to_string(),
+            json!({
+                "version": 1,
+                "id": "20261121180000_7k9m2x_init",
+                "ops": [{
+                    "op": "createTable",
+                    "table": "notes",
+                    "def": { "editor": false, "drafts": false, "columns": {
+                        "id": { "type": "integer", "notNull": true, "primaryKey": true, "autoIncrement": true, "unique": false, "max": null, "default": null, "references": null }
+                    }}
+                }]
+            }),
+        );
+        let m2 = (
+            "20261121180100_3p4q5r_add_notes_body".to_string(),
+            json!({
+                "version": 1,
+                "id": "20261121180100_3p4q5r_add_notes_body",
+                "ops": [{
+                    "op": "addColumn",
+                    "table": "notes",
+                    "column": "body",
+                    "def": { "type": "text", "notNull": false, "primaryKey": false, "autoIncrement": false, "unique": false, "max": null, "default": null, "references": null }
+                }]
+            }),
+        );
+        // Out-of-order input still folds chronologically by sortable ID.
+        let prev = Previous::from_entries(vec![m2, m1]).unwrap();
         assert_eq!(
-            Previous::from_project(Some(snapshot.clone()), files)
-                .unwrap()
-                .next_migration,
-            4
+            prev.ids,
+            vec!["20261121180000_7k9m2x_init", "20261121180100_3p4q5r_add_notes_body"]
         );
-        assert_eq!(Previous::from_project(None, files).unwrap().next_migration, 4);
-        assert_eq!(Previous::from_project(Some(snapshot), []).unwrap().next_migration, 1);
+        assert!(prev.folded.tables["notes"]["columns"]["body"].is_object());
     }
 
     #[test]
-    fn the_earlier_nested_layout_is_refused_before_the_snapshot_is_read() {
-        for nested in ["wp", "sqlite"] {
-            let error = Previous::from_project(None, [nested, "0001_init.sql"]).unwrap_err();
-            assert!(
-                error
-                    .message
-                    .starts_with(&format!("tp/_generated/migrations/{nested}/ is from an earlier layout")),
-                "{}",
-                error.message
-            );
-        }
-    }
-
-    #[test]
-    fn the_old_ledger_moved_one_level_too_deep_is_refused() {
-        let error = Previous::from_project(None, ["migrations"]).unwrap_err();
-        assert!(
-            error
-                .message
-                .ends_with("migrations/ is the old ledger moved one level too deep"),
-            "{}",
-            error.message
-        );
-    }
-
-    #[test]
-    fn a_snapshot_from_another_version_is_refused_not_diffed() {
-        let error = Previous::from_project(Some(serde_json::json!({ "version": 1, "tables": {} })), []).unwrap_err();
-        assert!(error.message.contains("version 1 snapshot"), "{}", error.message);
-        let error = Previous::from_project(Some(serde_json::json!({ "tables": {} })), []).unwrap_err();
-        assert!(error.message.contains("version null snapshot"), "{}", error.message);
+    fn unsupported_ops_version_is_refused() {
+        let err = Previous::from_entries(vec![(
+            "20261121180000_7k9m2x_init".to_string(),
+            json!({ "version": 99, "ops": [] }),
+        )])
+        .unwrap_err();
+        assert!(err.message.contains("unsupported version 99"), "{}", err.message);
     }
 }

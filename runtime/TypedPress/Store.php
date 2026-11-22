@@ -75,8 +75,14 @@ interface Store
      */
     public function source(string $collection): Source;
 
-    /** @return list<array|SqlPredicate> Storage-native visibility filters for this explicit viewer, applied before pagination and relation matching. */
-    public function readGuards(string $collection, Viewer $viewer): array;
+    /**
+     * Storage-native visibility for this viewer, applied before pagination and relation matching.
+     * For SELECT, a store may return an equivalent predicate without checking whether any rows
+     * are restricted. Other callers use an empty list as proof that the scope is unrestricted.
+     *
+     * @return list<array|SqlPredicate>
+     */
+    public function readGuards(string $collection, Viewer $viewer, bool $forSelect = false): array;
 
     /**
      * True when the storage itself already shows $viewer every value of this unique column, whatever
@@ -90,13 +96,14 @@ interface Store
 
     public function globalWrite(string $name, array $values): void;
 
-    /** @return list<array{id: int, at: string, userId: ?int, row: array}> newest first */
+    /** @return list<array{id: int, version?: int, op?: string, at: string, userId: ?int, schemaMigration?: ?string, changed?: ?list<string>, row: array}> newest first */
     public function revisions(string $collection, int|string $pk): array;
 
-    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId): void;
+    /** @param array{op?: string, schemaMigration?: ?string, changed?: ?list<string>} $meta */
+    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = []): void;
 
-    /** @return ?array{id: int, at: string, userId: ?int, row: array} */
-    public function revision(string $collection, int|string $pk, int $revisionId): ?array;
+    /** @return ?array{id: int, version?: int, op?: string, at: string, userId: ?int, schemaMigration?: ?string, changed?: ?list<string>, row: array} */
+    public function revision(string $collection, int|string $pk, int $revisionId, bool $byVersion = false): ?array;
 
     /**
      * Scheduled publishing. WpTable: UPDATE ... SET status='published' WHERE status='scheduled'

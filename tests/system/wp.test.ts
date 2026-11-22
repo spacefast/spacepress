@@ -2,7 +2,7 @@
 // `typedpress build` and boots a fresh WordPress with users and nothing else; this file installs
 // the artifact the way a site owner would (copy wp-content/plugins in, activate with WP-CLI), checks
 // the install, runs the shared journey through the generated client against core /wp/v2 (the
-// editor) and /__tp/api/v1 (the app), then walks the plugin lifecycle: upgrade, deactivate,
+// editor) and /wp-json/typedpress/v1 (the app), then walks the plugin lifecycle: upgrade, deactivate,
 // reactivate, uninstall.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -22,7 +22,7 @@ interface Receipt {
 const frontend = { clientId: "app_site", redirectUri: "" };
 const receipt: Receipt = JSON.parse(readFileSync(join(repo, "tests/system/.harness.json"), "utf8"));
 const wpContent = join(repo, "tests/system/.wp-content");
-const api = `${receipt.url}/__tp/api/v1`;
+const api = `${receipt.url}/wp-json/typedpress/v1`;
 const core = `${receipt.url}/wp-json/wp/v2`;
 const harness = join(repo, "tests/wp/harness.sh");
 const project = join(work, "wp-site");
@@ -30,7 +30,7 @@ const artifact = join(work, "wp-artifact");
 
 /** The order a site owner activates in: each plugin after every plugin its header requires. */
 // TypedPress Admin ships with every build and registers only once the app has (plugins_loaded order): last.
-const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "polylang", "typedpress-runtime", "typedpress-identity", "typedpress-app-site", "typedpress-admin"];
+const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "typedpress-runtime", "typedpress-identity", "typedpress-app-site", "typedpress-admin"];
 
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const wpFails = (...args: string[]) => {
@@ -152,7 +152,7 @@ test("installing the artifact: activation order, platform requirements, doctor",
   assert.deepEqual(readdirSync(join(artifact, "plugins")).filter((n) => !n.endsWith(".zip")).sort(), [...ORDER].sort());
   install(artifact);
   // Requires Plugins refuses to activate a plugin before its dependencies, so order matters.
-  assert.match(wpFails("plugin", "activate", "typedpress-app-site"), /requires 6 plugins.*Action Scheduler, MCP Adapter, Polylang, Secure Custom Fields, Two Factor, TypedPress Runtime/s);
+  assert.match(wpFails("plugin", "activate", "typedpress-app-site"), /requires 5 plugins.*Action Scheduler, MCP Adapter, Secure Custom Fields, Two Factor, TypedPress Runtime/s);
   assert.match(wpFails("plugin", "activate", "typedpress-runtime"), /requires 4 plugins.*Action Scheduler, MCP Adapter, Secure Custom Fields, Two Factor/s);
   assert.deepEqual(active(), []);
   // This site sits behind a published port its own container can't reach, so the owner routes the
@@ -332,8 +332,7 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   const editor = client("editor");
   const admin = client("admin");
   const snapshot = async () => {
-    // Every locale's rows: a translation is content too.
-    const posts = await editor.posts.list({ locale: "*", orderBy: { id: "asc" }, limit: 200 });
+    const posts = await editor.posts.list({ orderBy: { id: "asc" }, limit: 200 });
     const media = await anon.media.list({ limit: 200 });
     return {
       posts,
@@ -363,7 +362,6 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   };
   const before = await snapshot();
   for (const kind of ["posts", "authors", "comments", "subscribers", "announcements", "members", "media", "manuscripts"] as const) assert.ok(before[kind].length > 0, `no ${kind} to preserve`);
-  assert.ok(before.posts.some((p) => p.locale === "de"), "no translation to preserve");
   assert.ok(before.revisions.some((r) => r.length > 0), "no revisions to preserve");
   assert.ok([...before.files, ...before.manuscripts].every((entry) => entry.includes(200)), "every file was served before");
 

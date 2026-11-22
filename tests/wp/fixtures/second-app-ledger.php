@@ -8,7 +8,7 @@ $db = \TypedPress\Wp\Runtime::plugin()->connection();
 $dir = sys_get_temp_dir() . '/typedpress-other-' . bin2hex(random_bytes(4));
 mkdir($dir);
 file_put_contents("$dir/0001_init.sql", "CREATE TABLE `{prefix}tp_other_notes` (\n\t`id` BIGINT,\n\tPRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-$other = new \TypedPress\Wp\Migrator($db, $dir, new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Wp\Runtime::SERIES, 'name' => 'other']));
+$other = new \TypedPress\Wp\Migrator($db, $dir, new \TypedPress\Schema(['version' => 5, 'runtime' => \TypedPress\Wp\Runtime::SERIES, 'name' => 'other']));
 
 $pending = $other->pending();
 $applied = $other->migrate();

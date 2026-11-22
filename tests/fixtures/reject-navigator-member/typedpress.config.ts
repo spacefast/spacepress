@@ -1,4 +1,3 @@
-import { action, defineConfig } from "typedpress";
-export const a = action({ input: {}, access: "anyone",
-  handler() { return navigator.userAgent; } });
+import { defineConfig, mutation } from "typedpress";
+export const a = mutation({ access: "anyone" }, () => { return navigator.userAgent; });
 export default defineConfig({});

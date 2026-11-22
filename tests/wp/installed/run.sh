@@ -3,11 +3,13 @@
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/../../.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/typedpress-installed-native.XXXXXXXX")"
+# Keep Studio's Unix sockets below the platform path limit, independently of the long fake HOME.
+daemon="$(mktemp -d "${TMPDIR:-/tmp}/tp-pm.XXXXXXXX")"
 cleanup() {
   if [[ $? == 0 ]]; then
-    rm -rf "$work"
+    rm -rf "$work" "$daemon"
   else
-    echo "Installed-binary failure retained for inspection: $work" >&2
+    echo "Installed-binary failure retained for inspection: $work (Studio daemon: $daemon)" >&2
   fi
 }
 trap cleanup EXIT
@@ -28,7 +30,7 @@ export const notes = table({ title: text() });
 export default defineConfig({});
 CONFIG
 cd "$work"
-env -u TP_WP_HARNESS HOME="$home" XDG_CACHE_HOME= \
+env -u TP_WP_HARNESS HOME="$home" XDG_CACHE_HOME= STUDIO_PROCESS_MANAGER_HOME="$daemon" \
   TP_WP_PLUGIN_CACHE="${TP_WP_PLUGIN_CACHE:-$repo/.tp/cache/plugins}" \
   node --input-type=module - "$bin/typedpress" "$project" <<'CHECK'
 import assert from 'node:assert/strict';
@@ -53,7 +55,7 @@ try {
   await run(['dev', project, '--port', String(port), '--no-watch']);
   const status = JSON.parse(await run(['dev', 'status', project]));
   assert.equal(status.isOnline, true);
-  const response = await fetch(`${status.siteUrl}/__tp/api/v1`, { signal: AbortSignal.timeout(15000) });
+  const response = await fetch(`${status.siteUrl}/wp-json/typedpress/v1`, { signal: AbortSignal.timeout(15000) });
   assert.equal(response.status, 200);
   const { data } = await response.json();
   assert.equal(data.name, 'project');
@@ -72,6 +74,9 @@ try {
   const errors = [];
   if (!stopped) await run(['dev', 'stop', project]).catch((error) => errors.push(error));
   await exec('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', 'delete', '--path', `${project}/.tp/dev/wordpress`, '--no-files'], { timeout: 60000 })
+    .catch((error) => errors.push(error));
+  // Both HOME and the daemon belong only to this test; stop its daemon as well as its site.
+  await exec('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', 'stop', '--all'], { timeout: 60000 })
     .catch((error) => errors.push(error));
   if (errors.length) {
     for (const error of errors) console.error('Cleanup:', error.message);

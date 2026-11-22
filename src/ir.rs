@@ -76,6 +76,9 @@ pub enum FnBody {
 pub struct Param {
     pub pat: Pat,
     pub ann: Option<TyAnn>,
+    /// The written annotation where `ann` is erased (installed package TypeScript), kept only to
+    /// read a `query()`, `mutation()` or `job()` input from its handler's parameter type.
+    pub declared: Option<TyAnn>,
     pub default: Option<Expr>,
     pub optional: bool,
     pub rest: bool,
@@ -135,6 +138,7 @@ impl ClassField {
                     },
                 ),
                 ann: None,
+                declared: None,
                 default: None,
                 optional: false,
                 rest: false,

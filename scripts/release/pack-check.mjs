@@ -24,7 +24,7 @@ export const PACKAGES = {
   },
   'create-typedpress': {
     directory: 'packages/create-typedpress', license: 'MIT',
-    required: ['package.json', 'README.md', 'LICENSE', 'bin/create-typedpress.mjs', 'template/typedpress.config.ts', 'template/gitignore'],
+    required: ['package.json', 'README.md', 'LICENSE', 'bin/create-typedpress.mjs', 'template/typedpress.config.ts', 'template/gitignore', 'template/tp/app/page.tsx', 'template/content/notes/first-walk.md'],
   },
   '@typedpress/astro': {
     directory: 'packages/astro', license: 'MIT',

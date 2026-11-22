@@ -2,7 +2,7 @@
 import type { HookCtx, RouteRequest } from "typedpress";
 import { echo } from "../../helpers";
 
-export const access = "anyone";
+export const guard = "anyone";
 
 export async function POST(req: RouteRequest, ctx: HookCtx) {
   return echo(req, ctx);

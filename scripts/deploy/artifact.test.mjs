@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile, chmod } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,7 +22,8 @@ function run(args, env = {}) {
 }
 
 test('artifact preflight binds bytes, redacts env, detects history changes and refuses unqualified publish without executing PHP', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'typedpress-framework-lifecycle-artifact-'));
+  // The adapter intentionally refuses symlinked parents; macOS aliases its default temp directory.
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'typedpress-framework-lifecycle-artifact-')));
   try {
     const artifact = join(root, 'candidate');
     const app = join(artifact, 'plugins/typedpress-app-test/tp/app');
@@ -58,13 +59,16 @@ test('artifact preflight binds bytes, redacts env, detects history changes and r
     assert.ok(refused.receipt.error.preflight.missingCapabilities.includes('host_acknowledged_process_and_database_session_drain'));
     await symlink(join(root, 'baseline'), join(artifact, 'linked'));
     assert.equal(run(['inspect', '--artifact', artifact]).receipt.error.code, 'unsafe_file');
+    const alias = join(root, 'artifact-alias');
+    await symlink(artifact, alias);
+    assert.equal(run(['inspect', '--artifact', alias]).receipt.error.code, 'unsafe_path');
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
 test('restore validates the entire archive before reserving a fresh destination', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'typedpress-framework-lifecycle-archive-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'typedpress-framework-lifecycle-archive-')));
   try {
     const archive = join(root, 'unsafe.zip');
     const target = join(root, 'restored');

@@ -8,38 +8,43 @@ use TypedPress\HttpError;
 use TypedPress\Js;
 
 /**
- * `/__tp/api/v1` (spec §3a): one clean HTTP shape over core's routes. Every request is dispatched
+ * `/wp-json/typedpress/v1` (spec §3a): one clean HTTP shape over core's routes. Every request is dispatched
  * to the core route with `rest_do_request()` as the caller, and only input and output are mapped, so
  * there is no second permission check, query path or write path to disagree with core:
  *
- *   GET    /__tp/api/v1/<kind>          → GET  /wp/v2/<base>        { data: rows, cursor }
- *   GET    /__tp/api/v1/<kind>/<id>     → GET  /wp/v2/<base>/<id>   { data: row } (`?format=md`: markdown)
- *   POST   /__tp/api/v1/<kind>          → POST /wp/v2/<base>        TypedPress input → core input
- *   PATCH  /__tp/api/v1/<kind>/<id>     → POST /wp/v2/<base>/<id>
- *   DELETE /__tp/api/v1/<kind>/<id>     → DELETE /wp/v2/<base>/<id> (post kinds: force)
- *   GET    /__tp/api/v1/me              → GET  /wp/v2/users/me      { id, name, role } + the user's row
- *   POST   /__tp/api/v1/actions/<name>  → /wp-abilities/v1/abilities/<app>/<name>/run (GET if readonly)
- *   GET/PATCH /__tp/api/v1/<global>      → the global's get/update Ability, through the same run route
- *   GET/PATCH /__tp/api/v1/settings      → GET /wp/v2/settings (public fields from the index for others)
- *   GET    /__tp/api/v1/menus[/<loc>]    → /wp/v2/menu-locations + /wp/v2/menu-items, public locations only
- *   POST   /__tp/api/v1/_live           → subscribed reads: "not modified" or fresh results (Live\Module)
- *   GET    /__tp/api/v1                 → the app's schema: kinds, fields, actions (`typedpress pull`)
+ *   GET    /wp-json/typedpress/v1/<kind>          → GET  /wp/v2/<base>        { data: rows, cursor }
+ *   GET    /wp-json/typedpress/v1/<kind>/<id>     → GET  /wp/v2/<base>/<id>   { data: row } (`?format=md`: markdown)
+ *   POST   /wp-json/typedpress/v1/<kind>          → POST /wp/v2/<base>        TypedPress input → core input
+ *   PATCH  /wp-json/typedpress/v1/<kind>/<id>     → POST /wp/v2/<base>/<id>
+ *   DELETE /wp-json/typedpress/v1/<kind>/<id>     → DELETE /wp/v2/<base>/<id> (post kinds: force)
+ *   GET    /wp-json/typedpress/v1/me              → GET  /wp/v2/users/me      { id, name, role } + the user's row
+ *   POST   /wp-json/typedpress/v1/actions/<name>  → /wp-abilities/v1/abilities/<app>/<name>/run (GET if readonly)
+ *   GET/PATCH /wp-json/typedpress/v1/<global>      → the global's get/update Ability, through the same run route
+ *   GET/PATCH /wp-json/typedpress/v1/settings      → GET /wp/v2/settings (public fields from the index for others)
+ *   GET    /wp-json/typedpress/v1/menus[/<loc>]    → /wp/v2/menu-locations + /wp/v2/menu-items, public locations only
+ *   POST   /wp-json/typedpress/v1/_live           → subscribed reads: "not modified" or fresh results (Live\Module)
+ *   GET    /wp-json/typedpress/v1                 → the app's schema: kinds, fields, actions (`typedpress pull`)
  *   …/<kind>/<id>/staged[/compare|/promote|/preview] → a post kind's staged version ({@see Staged})
  *
- * Errors are RFC 9457 problem documents mapped from core's `WP_Error`. Callers authenticate as core
- * accepts: the cookie with `X-WP-Nonce`, an application password, or a TypedPress Identity bearer token.
- * It sits outside `/wp-json` (like `/__spacefast/`), served on `do_parse_request` before the theme.
+ * Errors are RFC 9457 problem documents mapped from core's `WP_Error`. It is one route on WordPress's
+ * REST server (`typedpress/v1`), so core does what every `/wp-json` route gets: authentication (the
+ * cookie with `X-WP-Nonce`, an application password, or a TypedPress Identity bearer token), CORS and
+ * preflights, `_method` and `X-HTTP-Method-Override`, and `HEAD`. The callback answers with
+ * TypedPress's own body and headers ({@see served()}).
  * 0.8's `/__zero/config`, `/__zero/run`, `/__zero/auth/*` and `/__zero/realtime/events` are not
  * this facade's and are never answered here.
  */
 final class Facade
 {
-    public const PREFIX = '/__tp/api/v1';
+    /** The REST namespace the API is served under. */
+    public const NAMESPACE = 'typedpress/v1';
+    /** The API's path on a site with WordPress's default REST prefix (`rest_url()` gives the real one). */
+    public const PREFIX = '/wp-json/' . self::NAMESPACE;
 
-    /** The absolute URL of a facade path (`/media/42`), below the site's home URL. */
+    /** The absolute URL of a facade path (`/media/42`), as WordPress's REST URL. */
     public static function url(string $path = ''): string
     {
-        return home_url(self::PREFIX . $path);
+        return rest_url(self::NAMESPACE . $path);
     }
 
     /**
@@ -93,54 +98,92 @@ final class Facade
 
     public static function register(Plugin $plugin): void
     {
-        add_filter('do_parse_request', static function (bool $parse) use ($plugin): bool {
-            if ($parse) {
-                self::serve($plugin);
-            }
-
-            return $parse;
-        }, 0);
+        add_action('rest_api_init', static function () use ($plugin): void {
+            $handler = [
+                'methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+                'callback' => static fn (\WP_REST_Request $request): \WP_REST_Response => self::answer($plugin, $request),
+                // Each path is checked by what it dispatches to: core's route, the ability's own check.
+                'permission_callback' => '__return_true',
+            ];
+            register_rest_route(self::NAMESPACE, '/(?P<path>.+)', $handler);
+            // The namespace's own path is the app's schema, in place of core's namespace index.
+            rest_get_server()->register_route(self::NAMESPACE, '/' . self::NAMESPACE, [$handler], true);
+        });
+        add_filter('request', [self::class, 'decoded']);
+        add_filter('rest_authentication_errors', [self::class, 'authenticate'], 1); // after AgentScope::booted()
+        add_filter('rest_pre_serve_request', [self::class, 'served'], 100, 3);
+        add_filter('rest_allowed_cors_headers', static fn (array $headers, mixed $request = null): array => $request instanceof \WP_REST_Request && self::below((string) $request->get_route()) !== null
+            ? array_merge($headers, ['Idempotency-Key', 'TypedPress-Signature']) : $headers, 10, 2);
     }
 
-    private static function serve(Plugin $plugin): void
+    /** The answer the API's callback made for this request: status, headers, body. */
+    private static ?array $answer = null;
+
+    /** The API path being answered ('' for the schema), once core has dispatched to the API. */
+    private static ?string $serving = null;
+
+    /** The API's callback: TypedPress's answer, sent as it is by {@see served()}. */
+    private static function answer(Plugin $plugin, \WP_REST_Request $request): \WP_REST_Response
     {
-        $path = self::path();
-        if ($path === null) {
-            return;
-        }
-        if (!defined('REST_REQUEST')) {
-            define('REST_REQUEST', true); // core's REST behaviour (auth, caching headers) for the dispatches
-        }
-        // WordPress's CORS for the request's origin, as /wp-json sends it (rest_send_cors_headers and
-        // the filters on it), and its answer to a preflight.
-        $method = self::method();
-        rest_send_cors_headers(false);
-        if ($method === 'OPTIONS') {
-            header('Access-Control-Allow-Headers: ' . implode(', ', (array) apply_filters('rest_allowed_cors_headers',
-                ['Authorization', 'X-WP-Nonce', 'Content-Disposition', 'Content-MD5', 'Content-Type', 'Idempotency-Key', 'TypedPress-Signature'], new \WP_REST_Request('OPTIONS', self::PREFIX . $path))));
-            self::emit(204, self::PRIVATE, '');
-        }
+        $path = self::below((string) $request->get_route()) ?? '';
+        self::$serving = $path;
         try {
             if ($plugin->unavailable() !== null) {
                 throw new HttpError(503, 'unavailable', Plugin::UNAVAILABLE);
             }
-            $auth = self::authenticate();
-            if ($auth instanceof \WP_Error) {
-                // A form whose nonce has expired goes back to its page with the error, as a refused action does.
-                if (($form = self::formAction($method, $path)) !== null) {
-                    self::emit(...\TypedPress\Render\Forms::redirect($form, (string) file_get_contents('php://input'), null, \TypedPress\App::problem(self::fromWpError($auth, 401))));
-                }
-                self::problem($auth);
-            }
-            $query = self::query();
-            [$status, $headers, $body] = self::route($plugin, $method, $path, $query, (string) file_get_contents('php://input'));
-            self::emit($status, $headers, $body);
+            // The route is decoded ({@see decoded()}); route() takes the path as sent, one segment at a time.
+            $sent = implode('/', array_map('rawurlencode', explode('/', $path)));
+            self::$answer = self::route($plugin, $request->get_method(), $sent, self::query(), $request->get_body());
         } catch (HttpError | \TypedPress\JsError $e) {
-            $problem = \TypedPress\App::problem($e);
-            // Storage behind the build is short-lived: a client retries shortly, as /wp-json said.
-            $retry = $problem['status'] === 503 ? ['Retry-After' => '5'] : [];
-            self::emit($problem['status'], ['Content-Type' => 'application/problem+json'] + $retry + self::PRIVATE, (string) Js::jsonStringify($problem));
+            self::$answer = self::problemAnswer(\TypedPress\App::problem($e));
         }
+
+        return new \WP_REST_Response([], self::$answer[0]);
+    }
+
+    /**
+     * rest_pre_serve_request: the API's answer goes out as TypedPress made it (its own body, headers and
+     * status), and a request core refused before the API ran (a bad nonce, a scoped credential, a
+     * malformed JSON body) gets the same answer as a problem document, or a form its flash. Every
+     * answer depends on who asks, so Batcache keeps none.
+     */
+    public static function served(mixed $served, mixed $result, mixed $request): mixed
+    {
+        if ($served || !$request instanceof \WP_REST_Request || ($path = self::below((string) $request->get_route())) === null) {
+            return $served;
+        }
+        if (function_exists('batcache_cancel')) {
+            batcache_cancel();
+        }
+        $answer = self::$answer;
+        self::$answer = null;
+        if ($answer === null) {
+            if (!$result instanceof \WP_REST_Response || !$result->is_error()) {
+                return $served; // core's own answer: a preflight's route description
+            }
+            $problem = \TypedPress\App::problem(self::fromWpError($result->as_error(), $result->get_status()));
+            $form = self::formAction($request->get_method(), $path);
+            $answer = $form !== null ? \TypedPress\Render\Forms::redirect($form, $request->get_body(), null, $problem) : self::problemAnswer($problem);
+        }
+        [$status, $headers, $body] = $answer;
+        status_header($status);
+        foreach ($headers as $name => $value) {
+            header($name . ': ' . $value, true);
+        }
+        if ($request->get_method() !== 'HEAD') {
+            \TypedPress\Response::emit($body); // a file download streams through its closure
+        }
+
+        return true;
+    }
+
+    /** @return array{int, array<string, string>, string} */
+    private static function problemAnswer(array $problem): array
+    {
+        // Storage behind the build is short-lived: a client retries shortly.
+        $retry = $problem['status'] === 503 ? ['Retry-After' => '5'] : [];
+
+        return [$problem['status'], ['Content-Type' => 'application/problem+json'] + $retry + self::PRIVATE, (string) Js::jsonStringify($problem)];
     }
 
     /**
@@ -222,7 +265,7 @@ final class Facade
 
             return self::list($kind, $query);
         }
-        if ($kind['type'] === 'post' && ($segments[2] ?? null) === 'revisions' && count($segments) <= 5) {
+        if (in_array($kind['type'], ['post', 'table'], true) && ($segments[2] ?? null) === 'revisions' && count($segments) <= 5) {
             self::gate($kind, 'update');
 
             return self::revisions($kind, $method, self::id($kind, $segments[1]), array_slice($segments, 3), $query, $body);
@@ -234,6 +277,28 @@ final class Facade
 
             return self::json($status, ['data' => $data]);
         }
+        if (Kinds::first($kind) && count($segments) === 3 && in_array($segments[2], ['restore', 'purge'], true)) {
+            $id = self::id($kind, $segments[1]);
+            $op = $segments[2];
+            \TypedPress\App::allow($method, $op === 'restore' ? ['POST'] : ['DELETE']);
+            self::gate($kind, 'delete');
+            $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
+            $db = $plugin->db();
+            $pk = $kind['spec']['primaryKey'];
+            $row = $db->transaction(static function () use ($db, $viewer, $kind, $pk, $id, $op): ?array {
+                $previous = $db->actor();
+                $db->setActor($viewer->user);
+                try {
+                    return $op === 'restore'
+                        ? ($db->restore((string) $kind['name'], [$pk => $id], true, $viewer)[0] ?? null)
+                        : ($db->purge((string) $kind['name'], [$pk => $id], true, $viewer)[0] ?? null);
+                } finally {
+                    $db->setActor($previous);
+                }
+            }) ?? throw HttpError::notFound("No {$kind['name']} row with id $id");
+
+            return self::json(200, ['data' => self::rev($kind, PostMeta::values((string) $kind['name'], $row, array_map('strval', array_keys($row))))]);
+        }
         if (count($segments) !== 2) {
             throw HttpError::notFound("No route for $path");
         }
@@ -243,14 +308,34 @@ final class Facade
         $item = "$base/" . rawurlencode((string) $id);
         if ($method === 'PATCH') {
             // `_rev` and `takeover` are the write's conditions ({@see Rev}), not fields.
-            [$patch, $rev, $takeover] = $kind['type'] === 'post' ? Rev::split(self::body($body)) : [self::body($body), null, false];
+            [$patch, $rev, $takeover] = in_array($kind['type'], ['post', 'table'], true) ? Rev::split(self::body($body)) : [self::body($body), null, false];
             $row = Rev::guarded((string) $kind['name'], $id, $rev, $takeover, CoreAccess::viewer(),
                 fn () => self::outside($kind, 'update', $id, fn () => self::dispatch('POST', $item, self::context($kind), Kinds::input($kind, $patch)), $patch), $patch);
 
             return self::json(200, ['data' => self::rev($kind, Kinds::row($kind, $row))]);
         }
         if ($method === 'DELETE') {
-            // TypedPress's delete is permanent: core trashes posts without `force`, and refuses users without it.
+            // Soft-deletable First kinds go through TypedPress's soft-delete pipeline (Trash for posts,
+            // _live = NULL for SQL tables). Non-soft-deletable kinds keep permanent core delete (`force: true`).
+            if (Kinds::first($kind) && ($kind['spec']['softDelete'] ?? false)) {
+                $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
+                $db = $plugin->db();
+                $pk = $kind['spec']['primaryKey'];
+                $row = Rev::guarded((string) $kind['name'], $id, $query[Rev::FIELD] ?? null, ($query[Rev::TAKEOVER] ?? '') === '1', $viewer,
+                    static fn () => $db->transaction(static function () use ($db, $viewer, $kind, $pk, $id): array {
+                        $previous = $db->actor();
+                        $db->setActor($viewer->user);
+                        try {
+                            return $db->delete((string) $kind['name'], [$pk => $id], true, $viewer)[0]
+                                ?? throw HttpError::notFound("No {$kind['name']} row with id $id");
+                        } finally {
+                            $db->setActor($previous);
+                        }
+                    }));
+
+                return self::json(200, ['data' => PostMeta::values((string) $kind['name'], $row, array_map('strval', array_keys($row)))]);
+            }
+            // Non-soft-deletable delete is permanent: core trashes posts without `force`, and refuses users without it.
             $params = match ($kind['type']) {
                 'post', 'wp-post', 'comments', 'media', 'term' => ['force' => true],
                 'users' => ['force' => true, 'reassign' => false], // the member's posts are kept, unowned
@@ -330,8 +415,20 @@ final class Facade
         if (Kinds::first($kind)) {
             // `where` is always TypedPress's (an empty filter when none was given): TypedPress's pipeline picks the
             // rows, so its read rule and draft visibility decide, not core's default status filter.
-            $params = array_intersect_key($query, array_flip(['where', 'orderBy', 'with', 'search', 'locale']))
+            $params = array_intersect_key($query, array_flip(['where', 'orderBy', 'with', 'search', 'locale', 'deleted']))
                 + ['where' => '{}'] + $paging + self::context($kind);
+            if ($kind['type'] === 'post' && isset($query['deleted']) && $query['deleted'] !== 'exclude') {
+                // Soft-deleted post reads go straight through TypedPress's pipeline (core's WP_Query hides trash).
+                $plugin = Plugin::instance() ?? throw new \LogicException('No TypedPress app');
+                $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
+                $db = $plugin->db();
+                $opts = \TypedPress\App::listOptions(array_intersect_key($query, array_flip(['where', 'orderBy', 'with', 'search', 'locale', 'deleted'])));
+                $total = $db->count((string) $kind['name'], $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true, 'search' => true, 'deleted' => true]));
+                $rows = $db->findMany((string) $kind['name'], ['limit' => $limit, 'offset' => $offset] + $opts, $viewer);
+                $rows = array_map(static fn (array $r) => self::rev($kind, PostMeta::values((string) $kind['name'], $r, array_map('strval', array_keys($r)))), $rows);
+
+                return self::json(200, ['data' => $rows, 'cursor' => self::cursor($offset + $limit, $total)]);
+            }
             if (isset($query['status'])) {
                 // `status` is shorthand for a filter on `status`, ANDed with `where`.
                 $where = Js::decodeJson((string) $params['where']);
@@ -347,7 +444,9 @@ final class Facade
         $rows = self::unwrap($response);
         $cursor = self::cursor($offset + $limit, (int) ($response->get_headers()['X-WP-Total'] ?? 0));
 
-        $rows = array_values(array_filter(array_map(static fn (mixed $r): mixed => self::rev($kind, $r), Kinds::rows($kind, $rows)), static fn ($r) => $r !== null));
+        $rows = array_values(array_filter(Kinds::rows($kind, $rows), static fn ($r) => $r !== null));
+        // Post and SQL table kinds with revisions carry their live `_rev` ({@see Rev}), read for the whole page at once.
+        $rows = in_array($kind['type'], ['post', 'table'], true) ? Rev::attachAll((string) $kind['name'], $rows) : $rows;
 
         return self::json(200, ['data' => $rows, 'cursor' => $cursor]);
     }
@@ -596,6 +695,7 @@ final class Facade
             'rest_post_invalid_id', 'rest_user_invalid_id', 'rest_no_route', 'rest_ability_not_found', 'rest_revision_parent_id_mismatch',
             'rest_term_invalid', 'rest_comment_invalid_id', 'rest_menu_location_invalid' => 'not_found',
             'rest_invalid_param', 'rest_missing_callback_param' => 'invalid_input',
+            'rest_invalid_json' => 'invalid_json',
             'rest_no_route_method', 'rest_ability_invalid_method' => 'method_not_allowed',
             default => !str_starts_with($code, 'rest_') ? $code : match ($status) {
                 401, 403 => $denied,
@@ -620,43 +720,79 @@ final class Facade
 
     // ================================================================ request parsing
 
-    /** The facade path below its prefix ('' for the schema), or null when the request isn't the facade's. */
+    /**
+     * The API path of this request ('' for the schema), or null when it isn't the API's. WordPress
+     * decides that, not the URL: the request is REST (`REST_REQUEST`, which core defines once it has
+     * parsed a REST route) and the route it parsed is below the API's namespace. Null until then.
+     */
     public static function path(): ?string
     {
-        $path = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
-        $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
-        if ($base !== '' && str_starts_with($path, $base . '/')) {
-            $path = substr($path, strlen($base));
+        if (self::$serving !== null) {
+            return self::$serving;
         }
-        if ($path !== self::PREFIX && !str_starts_with($path, self::PREFIX . '/')) {
-            return null;
-        }
+        $route = $GLOBALS['wp']->query_vars['rest_route'] ?? null;
 
-        return substr($path, strlen(self::PREFIX));
+        return is_string($route) && defined('REST_REQUEST') && REST_REQUEST ? self::below(untrailingslashit($route)) : null;
     }
 
     /**
-     * The request's method, with the override core's REST server honours (`?_method=`, then
-     * `X-HTTP-Method-Override`): clients behind proxies that pass only GET and POST, and WordPress's
-     * own api-fetch, which sends PATCH and DELETE that way.
+     * `request`: the API's route as the caller wrote it, decoded once however it was sent. WordPress
+     * keeps a route it took from the path (`/wp-json/typedpress/v1/…`) percent-encoded as sent, so
+     * that one is decoded here. PHP has decoded `?rest_route=/typedpress/v1/…`, and WordPress then
+     * added its slashes to it, which come off here. Core, the scope check and the API then all read
+     * the same route for both spellings.
+     *
+     * @param array<string, mixed> $vars
+     * @return array<string, mixed>
      */
-    private static function method(): string
+    public static function decoded(array $vars): array
     {
-        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
-        if ($method !== 'POST') {
-            return $method;
+        $route = $vars['rest_route'] ?? null;
+        if (!is_string($route)) {
+            return $vars;
         }
-        $override = $_GET['_method'] ?? $_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'] ?? null;
+        if (isset($_GET['rest_route']) || isset($_POST['rest_route'])) {
+            $decoded = wp_unslash($route);
+        } elseif (str_ends_with((string) ($GLOBALS['wp']->request ?? ''), ltrim($route, '/'))) {
+            // WordPress matched its rewrite rule on the path as sent (it also tries the decoded path,
+            // whose route needs no decoding).
+            $decoded = rawurldecode($route);
+        } else {
+            return $vars;
+        }
+        if (self::below($decoded) !== null) {
+            $vars['rest_route'] = $decoded;
+        }
 
-        return is_string($override) && $override !== '' ? strtoupper($override) : $method;
+        return $vars;
     }
 
-    /** Core's REST authentication, as `/wp-json` runs it: cookie + nonce, application password, bearer. */
-    private static function authenticate(): ?\WP_Error
+    /**
+     * rest_authentication_errors, before core reads what an application password did (priority 90):
+     * resolve the API's user now. WordPress first resolves the user before it knows the request is
+     * REST (at `init`; while plugins load under Polylang), so without application passwords, and its
+     * REST server drops that visitor. Left alone, the next resolve is core's cookie check at priority
+     * 100, after the outcome was read, and a refused password (wrong, suspended, out of scope) would
+     * go on as a visitor instead of answering its error. Other REST routes keep core's order.
+     */
+    public static function authenticate(mixed $result): mixed
     {
-        $result = apply_filters('rest_authentication_errors', null);
+        if (self::path() !== null && isset($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'])) {
+            wp_get_current_user(); // a no-op when the request's user is already resolved
+        }
 
-        return $result instanceof \WP_Error ? $result : null;
+        return $result;
+    }
+
+    /** The API path of a REST route ('' for the namespace itself), or null when the route isn't the API's. */
+    public static function below(string $route): ?string
+    {
+        $prefix = '/' . self::NAMESPACE;
+        if (strcasecmp($route, $prefix) === 0) {
+            return '';
+        }
+
+        return strncasecmp($route, $prefix . '/', strlen($prefix) + 1) === 0 ? substr($route, strlen($prefix)) : null;
     }
 
     /** The raw query string, decoded as the facade's query arguments (no PHP renaming). */
@@ -670,8 +806,9 @@ final class Facade
             [$k, $v] = array_pad(explode('=', $pair, 2), 2, '');
             $out[urldecode($k)] = urldecode($v);
         }
-        // Transport metadata, as core's own routes consume it: api-fetch's locale hint and the nonce.
-        unset($out['_locale'], $out['_wpnonce'], $out['_method']);
+        // Transport metadata, as core's own routes consume it: api-fetch's locale hint, the nonce, the
+        // method override and the route of a `?rest_route=` request.
+        unset($out['_locale'], $out['_wpnonce'], $out['_method'], $out['rest_route']);
 
         return $out;
     }
@@ -706,7 +843,7 @@ final class Facade
     /** An item of a post kind as the API answers it: with its live `_rev` ({@see Rev}). */
     private static function rev(array $kind, mixed $row): mixed
     {
-        return $kind['type'] === 'post' ? Rev::attach((string) $kind['name'], $row) : $row;
+        return in_array($kind['type'], ['post', 'table'], true) ? Rev::attach((string) $kind['name'], $row) : $row;
     }
 
     /**
@@ -802,6 +939,65 @@ final class Facade
         if ($viewer === null) {
             throw HttpError::notFound("No $collection row $id");
         }
+        $formatUser = static function (?int $uid): ?array {
+            if ($uid === null || $uid <= 0) {
+                return null;
+            }
+            $user = get_userdata($uid);
+
+            return $user instanceof \WP_User ? ['id' => (int) $user->ID, 'name' => (string) $user->display_name] : null;
+        };
+        if ($kind['type'] === 'table') {
+            if ($rest === []) {
+                \TypedPress\App::allow($method, ['GET', 'HEAD']);
+                [$limit, $offset] = self::paging($query);
+                $all = $db->revisions($collection, $id, $viewer);
+                $slice = array_slice($all, $offset, $limit);
+                $out = array_map(static fn (array $r): array => [
+                    'id' => $r['id'],
+                    'version' => $r['version'],
+                    'op' => $r['op'],
+                    'at' => $r['at'],
+                    'user' => $formatUser($r['userId']),
+                    'schemaMigration' => $r['schemaMigration'],
+                    'changed' => $r['changed'],
+                ], $slice);
+
+                return self::json(200, ['data' => $out, 'cursor' => self::cursor($offset + $limit, count($all))]);
+            }
+            if ($rest[0] === 'diff' && count($rest) === 1) {
+                \TypedPress\App::allow($method, ['GET', 'HEAD']);
+                $from = isset($query['from']) && preg_match('/^\d{1,18}$/D', (string) $query['from']) ? (int) $query['from'] : throw HttpError::invalidQuery('from must be a revision version or id', '/from');
+                $to = isset($query['to']) && preg_match('/^\d{1,18}$/D', (string) $query['to']) ? (int) $query['to'] : throw HttpError::invalidQuery('to must be a revision version or id', '/to');
+
+                return self::json(200, ['data' => $db->diffRevisions($collection, $id, $from, $to, $viewer, byVersion: true)]);
+            }
+            if (!preg_match('/^\d{1,18}$/D', $rest[0])) {
+                throw HttpError::notFound("No revision {$rest[0]}");
+            }
+            $rid = (int) $rest[0];
+            if (count($rest) === 1) {
+                \TypedPress\App::allow($method, ['GET', 'HEAD']);
+
+                return self::json(200, ['data' => $db->revision($collection, $id, $rid, $viewer)]);
+            }
+            if ($rest[1] !== 'restore' || count($rest) !== 2) {
+                throw HttpError::notFound('No such revisions route');
+            }
+            \TypedPress\App::allow($method, ['POST']);
+            [, $rev, $takeover] = Rev::split(self::body($body));
+            $restored = Rev::guarded($collection, $id, $rev, $takeover, $viewer, static fn (): array => $db->transaction(static function () use ($db, $collection, $id, $rid, $viewer): array {
+                $previous = $db->actor();
+                $db->setActor($viewer->user);
+                try {
+                    return $db->restoreRevision($collection, $id, $rid, $viewer);
+                } finally {
+                    $db->setActor($previous);
+                }
+            }));
+
+            return self::json(200, ['data' => self::rev($kind, PostMeta::values($collection, $restored, array_map('strval', array_keys($restored))))]);
+        }
         if ($rest === []) {
             \TypedPress\App::allow($method, ['GET', 'HEAD']);
             // A page of core's revisions route, newest first, as `{ data, cursor }` like every list.
@@ -822,14 +1018,34 @@ final class Facade
             } finally {
                 remove_filter('rest_revision_query', $noAutosaves);
             }
+            $coreRows = (array) $hidden(static fn () => self::unwrap($response));
+            $metaById = [];
+            foreach ($db->revisions($collection, $id, $viewer) as $entry) {
+                $metaById[$entry['id']] = $entry;
+            }
             $out = [];
-            foreach ((array) $hidden(static fn () => self::unwrap($response)) as $r) {
-                $user = (int) ($r['author'] ?? 0) > 0 ? get_userdata((int) $r['author']) : null;
-                $out[] = ['id' => (int) $r['id'], 'at' => self::isoGmt((string) ($r['date_gmt'] ?? '')),
-                    'user' => $user instanceof \WP_User ? ['id' => (int) $user->ID, 'name' => (string) $user->display_name] : null];
+            foreach ($coreRows as $r) {
+                $rid = (int) $r['id'];
+                $m = $metaById[$rid] ?? null;
+                $out[] = [
+                    'id' => $rid,
+                    'version' => $m['version'] ?? 1,
+                    'op' => $m['op'] ?? 'update',
+                    'at' => self::isoGmt((string) ($r['date_gmt'] ?? '')),
+                    'user' => $formatUser((int) ($r['author'] ?? 0) ?: null),
+                    'schemaMigration' => $m['schemaMigration'] ?? null,
+                    'changed' => $m['changed'] ?? null,
+                ];
             }
 
             return self::json(200, ['data' => $out, 'cursor' => self::cursor($offset + $limit, (int) ($response->get_headers()['X-WP-Total'] ?? 0))]);
+        }
+        if ($rest[0] === 'diff' && count($rest) === 1) {
+            \TypedPress\App::allow($method, ['GET', 'HEAD']);
+            $from = isset($query['from']) && preg_match('/^\d{1,18}$/D', (string) $query['from']) ? (int) $query['from'] : throw HttpError::invalidQuery('from must be a revision version or id', '/from');
+            $to = isset($query['to']) && preg_match('/^\d{1,18}$/D', (string) $query['to']) ? (int) $query['to'] : throw HttpError::invalidQuery('to must be a revision version or id', '/to');
+
+            return self::json(200, ['data' => $db->diffRevisions($collection, $id, $from, $to, $viewer, byVersion: true)]);
         }
         if (!preg_match('/^\d{1,18}$/D', $rest[0])) {
             throw HttpError::notFound("No revision {$rest[0]}");
@@ -954,12 +1170,6 @@ final class Facade
         return [$status, ['Content-Type' => 'application/json; charset=utf-8'] + self::PRIVATE, (string) Js::jsonStringify($body)];
     }
 
-    private static function problem(\WP_Error $error): never
-    {
-        $problem = \TypedPress\App::problem(self::fromWpError($error, 401));
-        self::emit($problem['status'], ['Content-Type' => 'application/problem+json'] + self::PRIVATE, (string) Js::jsonStringify($problem));
-    }
-
     /** @return array<string, string> lower-cased request headers, as TypedPress's handlers read them */
     private static function headers(): array
     {
@@ -976,18 +1186,5 @@ final class Facade
         }
 
         return $headers;
-    }
-
-    /** @param array<string, string> $headers */
-    private static function emit(int $status, array $headers, string|\Closure $body): never
-    {
-        status_header($status);
-        foreach ($headers as $name => $value) {
-            header($name . ': ' . $value, true);
-        }
-        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'HEAD') {
-            \TypedPress\Response::emit($body); // a file download streams through its closure
-        }
-        exit;
     }
 }

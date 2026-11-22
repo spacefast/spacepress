@@ -210,20 +210,36 @@ $refused("another Space's renamed table, whatever names the app gives", $legacyO
 $GLOBALS['GUARD_SPACE'] = '';
 
 // The migrator refuses an unchecked binding before it reads the table or writes the ledger.
+$writeMig = static function (string $root, string $id, string $sql): void {
+    @mkdir("$root/$id", 0777, true);
+    file_put_contents("$root/$id/migration.sql", $sql);
+};
+$clearDir = static function (string $root): void {
+    foreach (glob("$root/*") ?: [] as $entry) {
+        if (is_dir($entry)) {
+            foreach (glob("$entry/*") ?: [] as $f) {
+                @unlink($f);
+            }
+            @rmdir($entry);
+        } else {
+            @unlink($entry);
+        }
+    }
+};
 $bad = $schema;
 $bad['collections']['comments']['existingTable'] = 'wp_users';
 $dir = sys_get_temp_dir() . '/typedpress-guard-' . getmypid();
 @mkdir($dir);
-file_put_contents("$dir/0001_adopt.sql", "-- typedpress-adopt {\"table\":\"wp_users\",\"indexes\":[],\"foreignKeys\":[],\"integerColumns\":[]}\nSELECT `ID` FROM `wp_users` LIMIT 0;");
+$writeMig($dir, '20261121180000_aaaaaa_adopt', "-- typedpress-adopt {\"table\":\"wp_users\",\"indexes\":[],\"foreignKeys\":[],\"integerColumns\":[]}\nSELECT `ID` FROM `wp_users` LIMIT 0;");
 $migrator = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($bad));
 problem('the migrator refuses an existingTable of WordPress users', static fn () => $migrator->migrate(), 409, 'existing_table_refused');
-eq('and records nothing', in_array('0001_adopt', $migrator->pending(), true), true);
+eq('and records nothing', in_array('20261121180000_aaaaaa_adopt', $migrator->pending(), true), true);
 problem('planning the deploy refuses it the same way, before the schema check reads it', static fn () => $migrator->plan(), 409, 'existing_table_refused');
 // A historical adoption record is refused by plan() too, with no collection binding the table.
 $historical = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($schema));
 problem("planning refuses a historical adoption of WordPress users", static fn () => $historical->plan(), 409, 'existing_table_refused');
-problem('marking a step of it applied is refused before the ledger is touched', static fn () => $historical->markApplied('0001_adopt:1'), 409, 'existing_table_refused');
-eq('and the step is still pending', in_array('0001_adopt', $historical->pending(), true), true);
+problem('marking a step of it applied is refused before the ledger is touched', static fn () => $historical->markApplied('20261121180000_aaaaaa_adopt:1'), 409, 'existing_table_refused');
+eq('and the step is still pending', in_array('20261121180000_aaaaaa_adopt', $historical->pending(), true), true);
 // The site's read-only inspection returns the refusal instead of throwing: a copy of the plugin
 // whose app directory holds the historical adoption of wp_users.
 $plugin = (new \ReflectionClass(\TypedPress\Wp\Plugin::class))->newInstanceWithoutConstructor();
@@ -244,9 +260,9 @@ unlink("$app/tp/app/migrations");
 rmdir("$app/tp/app");
 rmdir("$app/tp");
 rmdir($app);
-array_map('unlink', glob("$dir/*"));
+$clearDir($dir);
 
-// A historical adoption is checked on its own: a later migration of the same deploy dropped its
+// A historical adoption is checked on its own: a later migration of the same deploy retired its
 // collection, so no collection binds the table any more.
 $GLOBALS['GUARD_SPACE'] = 'spc_mine';
 $legacy = $legacyOf('spc_mine', 'myTasks');
@@ -265,62 +281,63 @@ $under = static function (string $prefix, callable $fn) use ($wpdb) {
 $adoptRecord = static fn (string $table, ?string $name) => '-- typedpress-adopt ' . json_encode(array_filter(['table' => $table, 'name' => $name], static fn ($v) => $v !== null)
     + ['indexes' => [['name' => 'PRIMARY', 'unique' => true, 'columns' => ['id']]], 'foreignKeys' => [], 'integerColumns' => [['name' => 'id', 'unsigned' => true]]])
     . "\nSELECT `id`, `title` FROM `$table` LIMIT 0;";
-$history = static function (string $adopt, string $table) use ($dir): void {
-    array_map('unlink', glob("$dir/*"));
-    file_put_contents("$dir/0001_adopt.sql", $adopt);
-    file_put_contents("$dir/0002_update.sql", '-- typedpress-check ' . json_encode(['check' => 'drop', 'name' => 'myTasks', 'table' => $table, 'adopted' => true]) . "\nDROP TABLE `$table`;");
+$history = static function (string $adopt, string $table) use ($dir, $clearDir, $writeMig): void {
+    $clearDir($dir);
+    $writeMig($dir, '20261121180000_aaaaaa_adopt', $adopt);
+    $writeMig($dir, '20261121180001_bbbbbb_retire', "-- retiring table \"$table\" (data preserved; forward-only)\n");
 };
 $later = $schema; // the blog schema binds no existingTable: the collection is gone
 $history($adoptRecord($legacy, 'myTasks'), $legacy);
 $wp->connection()->run("DROP TABLE IF EXISTS `{$mine}tp__migrations`");
-$replay = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later), ['myTasks' => 1]);
+$replay = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later));
 try {
     $under($mine, static fn () => $replay->migrate());
-    check('an adoption whose collection a later migration drops replays with the drop confirmed', true);
+    check('an adoption whose collection a later migration retires replays cleanly', true);
 } catch (\Throwable $e) {
-    check('an adoption whose collection a later migration drops replays with the drop confirmed', false, $e->getMessage());
+    check('an adoption whose collection a later migration retires replays cleanly', false, $e->getMessage());
 }
-eq('and both migrations are recorded', $under($mine, static fn () => array_values(array_intersect(['0001_adopt', '0002_update'], $replay->pending()))), []);
-eq('the drop ran as confirmed', $wp->connection()->run("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?", [$legacy]), []);
+eq('and both migrations are recorded', $under($mine, static fn () => array_values(array_intersect(['20261121180000_aaaaaa_adopt', '20261121180001_bbbbbb_retire'], $replay->pending()))), []);
+eq('and the retired table data stays intact (forward-only)', $wp->connection()->run("SELECT `title` FROM `$legacy`"), [['title' => 'kept']]);
 // The same historical record is still refused for a table no Space or site may bind.
 foreach (['wp_users' => 'WordPress users', $sfz('spc_other') . 'users' => "another Space's users", $legacyOf('spc_other', 'myTasks') => "another Space's 0.8 table",
     'wp_tp__migrations' => "TypedPress's own", 'wp_actionscheduler_actions' => "Action Scheduler's", 'wp_shopusers' => "another install's"] as $table => $what) {
     $history($adoptRecord($table, 'myTasks'), $table);
     $site = $table === 'wp_shopusers' ? 'wp_' : $mine;
     $wp->connection()->run("DROP TABLE IF EXISTS `{$site}tp__migrations`");
-    $replay = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later), ['myTasks' => 0]);
+    $replay = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later));
     problem("a historical adoption of $what's table is still refused", static fn () => $under($site, static fn () => $replay->migrate()), 409, 'existing_table_refused');
 }
 $wp->connection()->run("DROP TABLE IF EXISTS `{$mine}tp__migrations`");
 
-// An adoption record from before `name`, whose collection was renamed (myTasks to items) and then
-// removed: the drop check carries the name it was adopted under, so this Space's table still drops.
+// Core forward-only guard refuses DROP TABLE even if hand-edited into a migration file.
 $GLOBALS['GUARD_SPACE'] = 'spc_mine';
 $wp->connection()->run("CREATE TABLE IF NOT EXISTS `$legacy` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `title` TEXT)");
-array_map('unlink', glob("$dir/*"));
-file_put_contents("$dir/0001_adopt.sql", $adoptRecord($legacy, null));
-file_put_contents("$dir/0002_update.sql", '-- typedpress-check ' . json_encode(['check' => 'drop', 'name' => 'items', 'table' => $legacy, 'adopted' => true, 'adoptedAs' => 'myTasks']) . "\nDROP TABLE `$legacy`;");
+$clearDir($dir);
+$writeMig($dir, '20261121180000_aaaaaa_adopt', $adoptRecord($legacy, 'myTasks'));
+$writeMig($dir, '20261121180001_bbbbbb_drop', "DROP TABLE `$legacy`;");
 $wp->connection()->run("DROP TABLE IF EXISTS `{$mine}tp__migrations`");
-$renamedAway = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later), ['items' => 0]);
+$dropMigrator = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later));
 try {
-    $under($mine, static fn () => $renamedAway->plan());
-    check('a renamed then removed adoption plans with its drop confirmed', true);
-} catch (\Throwable $e) {
-    check('a renamed then removed adoption plans with its drop confirmed', false, $e->getMessage());
+    $under($mine, static fn () => $dropMigrator->migrate());
+    check('core migrator refuses DROP TABLE in a schema migration', false, 'accepted');
+} catch (\RuntimeException $e) {
+    check('core migrator refuses DROP TABLE in a schema migration', str_contains($e->getMessage(), 'forward-only'), $e->getMessage());
 }
 $wp->connection()->run("DROP TABLE IF EXISTS `{$mine}tp__migrations`");
 $wp->connection()->run("DROP TABLE IF EXISTS `$legacy`");
 $GLOBALS['GUARD_SPACE'] = '';
 
-// An adoption an earlier runtime applied, whose collection is gone, is checked again before a later
-// statement drops its table: a ledger that recorded `0001_adopt` of wp_users can't drop wp_users.
+// An adoption an earlier runtime applied, whose collection is gone, is checked again before any later
+// statement touches its table: a ledger that recorded `20261121180000_aaaaaa_adopt` of wp_users can't alter wp_users.
 $wp->connection()->run('DROP TABLE IF EXISTS wp_tp__migrations');
-$history($adoptRecord('wp_users', 'members'), 'wp_users');
-$migrator = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later), ['myTasks' => (int) $wp->connection()->run('SELECT COUNT(*) AS n FROM wp_users')[0]['n']]);
-$wp->connection()->run('CREATE TABLE wp_tp__migrations (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, `sql` CHAR(64) NULL, PRIMARY KEY (`app`, `id`))');
-$wp->connection()->run('INSERT INTO wp_tp__migrations (`app`, `id`, `applied_at`) VALUES (?, ?, ?)', [(new \TypedPress\Schema($later))->name(), '0001_adopt', '2026-01-01T00:00:00.000Z']);
-problem('planning a drop of a table adopted earlier re-checks that adoption', static fn () => $migrator->plan(), 409, 'existing_table_refused');
-problem('and so does applying it, with the drop confirmed', static fn () => $migrator->migrate(), 409, 'existing_table_refused');
+$clearDir($dir);
+$writeMig($dir, '20261121180000_aaaaaa_adopt', $adoptRecord('wp_users', 'members'));
+$writeMig($dir, '20261121180001_bbbbbb_alter', "ALTER TABLE `wp_users` ADD COLUMN `note` TEXT NULL;");
+$migrator = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later));
+$wp->connection()->run('CREATE TABLE wp_tp__migrations (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `kind` VARCHAR(32) NOT NULL DEFAULT \'schema\', `applied_at` CHAR(24) NOT NULL, `sql` CHAR(64) NULL, `actor` VARCHAR(191) NULL, `reason` TEXT NULL, `rows_affected` BIGINT UNSIGNED NULL, PRIMARY KEY (`app`, `id`))');
+$wp->connection()->run('INSERT INTO wp_tp__migrations (`app`, `id`, `kind`, `applied_at`) VALUES (?, ?, ?, ?)', [(new \TypedPress\Schema($later))->name(), '20261121180000_aaaaaa_adopt', 'schema', '2026-01-01T00:00:00.000Z']);
+problem('planning an alter of a table adopted earlier re-checks that adoption', static fn () => $migrator->plan(), 409, 'existing_table_refused');
+problem('and so does applying it', static fn () => $migrator->migrate(), 409, 'existing_table_refused');
 eq('wp_users is still there', (int) $wp->connection()->run('SELECT COUNT(*) AS n FROM wp_users')[0]['n'] > 0, true);
 $wp->connection()->run('DROP TABLE IF EXISTS wp_tp__migrations');
 
@@ -328,20 +345,20 @@ $wp->connection()->run('DROP TABLE IF EXISTS wp_tp__migrations');
 // lacks is a refusal at plan time, not a successful plan that then fails to apply.
 $GLOBALS['GUARD_SPACE'] = 'spc_mine';
 $wp->connection()->run('CREATE TABLE wp_legacy_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `title` TEXT)');
-array_map('unlink', glob("$dir/*"));
-file_put_contents("$dir/0001_adopt.sql", '-- typedpress-adopt ' . json_encode(['table' => 'wp_legacy_notes', 'name' => 'notes',
+$clearDir($dir);
+$writeMig($dir, '20261121180000_aaaaaa_adopt', '-- typedpress-adopt ' . json_encode(['table' => 'wp_legacy_notes', 'name' => 'notes',
     'indexes' => [['name' => 'PRIMARY', 'unique' => true, 'columns' => ['id']], ['name' => 'by_title', 'unique' => false, 'columns' => ['title']]],
     'foreignKeys' => [], 'integerColumns' => [['name' => 'id', 'unsigned' => true]]]) . "\nSELECT `id`, `title` FROM `wp_legacy_notes` LIMIT 0;");
 $notes = $schema;
 $notes['collections']['comments']['existingTable'] = 'wp_legacy_notes';
 $planner = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($notes));
 problem('plan() refuses an adoption whose declared index the table lacks', static fn () => $planner->plan(), 409, 'schema_refused');
-file_put_contents("$dir/0001_adopt.sql", '-- typedpress-adopt ' . json_encode(['table' => 'wp_legacy_notes', 'name' => 'notes',
+$writeMig($dir, '20261121180000_aaaaaa_adopt', '-- typedpress-adopt ' . json_encode(['table' => 'wp_legacy_notes', 'name' => 'notes',
     'indexes' => [['name' => 'PRIMARY', 'unique' => true, 'columns' => ['id']]], 'foreignKeys' => [], 'integerColumns' => [['name' => 'id', 'unsigned' => true]]])
     . "\nSELECT `id`, `missing` FROM `wp_legacy_notes` LIMIT 0;");
 problem('and one whose declared column the table lacks', static fn () => $planner->plan(), 409, 'schema_refused');
 $GLOBALS['GUARD_SPACE'] = '';
-array_map('unlink', glob("$dir/*"));
+$clearDir($dir);
 rmdir($dir);
 $GLOBALS['GUARD_SPACE'] = '';
 

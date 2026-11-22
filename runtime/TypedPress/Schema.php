@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace TypedPress;
 
 /**
- * Read-only view of the generated schema.php (version 3, phase-2 §3.1) plus the value codecs shared
+ * Read-only view of the generated schema.php (version 5, phase-2 §3.1) plus the value codecs shared
  * by the write pipeline, filters, globals and action input validation (§3.4).
  *
  * Values exist in three forms:
@@ -37,8 +37,8 @@ final class Schema
         if (!is_array($raw)) {
             throw new \RuntimeException("$file must return an array");
         }
-        if (($raw['version'] ?? null) !== 3) {
-            throw new \RuntimeException('schema.php version 3 required; rebuild with this TypedPress version');
+        if (($raw['version'] ?? null) !== 5) {
+            throw new \RuntimeException('schema.php version 5 required; rebuild with this TypedPress version');
         }
 
         if (($raw['runtime'] ?? null) !== self::SERIES) {
@@ -55,6 +55,15 @@ final class Schema
      * (`version`, `hash`) and the site's active version this request runs (`active`: its `version`
      * and `hash`).
      */
+    public function commerce(): ?array { return $this->raw['store'] ?? null; }
+
+    public function raw(): array { return $this->raw; }
+
+    public function retention(): ?array
+    {
+        return is_array($this->raw['retention'] ?? null) ? $this->raw['retention'] : null;
+    }
+
     public function runtimeSchema(): ?array
     {
         return $this->raw['runtimeSchema'] ?? null;
@@ -62,7 +71,7 @@ final class Schema
 
     public function version(): int
     {
-        return $this->raw['version'] ?? 3;
+        return $this->raw['version'] ?? 5;
     }
 
     public function runtime(): ?string
@@ -88,6 +97,40 @@ final class Schema
     {
         // An app built before the list was in every schema: the app router's copy, else the runtime's.
         return array_map('strtolower', (array) ($this->raw['reserved'] ?? $this->raw['app']['reserved'] ?? self::RESERVED));
+    }
+
+    /**
+     * Resolves `.alias(...)` field names in an input, patch, filter, or orderBy object to their
+     * canonical column names. Throws 422 if both a canonical field and its alias are provided.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    public static function resolveAliases(array $spec, array $data, string $ptr = ''): array
+    {
+        $map = [];
+        foreach ($spec['columns'] ?? [] as $name => $col) {
+            foreach ($col['aliases'] ?? [] as $alias) {
+                $map[(string) $alias] = (string) $name;
+            }
+        }
+        if ($map === []) {
+            return $data;
+        }
+        $out = [];
+        foreach ($data as $k => $v) {
+            $key = (string) $k;
+            $canonical = $map[$key] ?? $key;
+            if ($canonical !== $key && array_key_exists($canonical, $data)) {
+                throw HttpError::invalidInput("Cannot provide both '$canonical' and its alias '$key'", $ptr . HttpError::seg($key));
+            }
+            if (array_key_exists($canonical, $out)) {
+                throw HttpError::invalidInput("Duplicate aliased field for '$canonical'", $ptr . HttpError::seg($key));
+            }
+            $out[$canonical] = $v;
+        }
+
+        return $out;
     }
 
     /** @return array<string, array> */
@@ -134,6 +177,26 @@ final class Schema
     public function screens(): array
     {
         return $this->raw['screens'] ?? [];
+    }
+
+    /**
+     * `adminWidget()` exports by widget id.
+     *
+     * @return array<string, array>
+     */
+    public function widgets(): array
+    {
+        return $this->raw['widgets'] ?? [];
+    }
+
+    /**
+     * `adminDashboard()` exports by dashboard id.
+     *
+     * @return array<string, array>
+     */
+    public function dashboards(): array
+    {
+        return $this->raw['dashboards'] ?? [];
     }
 
     public function site(): array
@@ -211,13 +274,23 @@ final class Schema
 
     /**
      * Compiled `"use client"` components: namespace => the store module under the app plugin's
-     * `tp/app/client/` and the server actions it calls.
+     * `tp/app/client/`, the server actions it calls, and any imported static assets.
      *
-     * @return array<string, array{file: string, actions: list<string>}>
+     * @return array<string, array{file: string, actions: list<string>, assets?: array<string, mixed>, live?: bool}>
      */
     public function islands(): array
     {
         return $this->raw['islands'] ?? [];
+    }
+
+    /**
+     * Intrinsic dimensions and format for imported image assets, by filename under `tp/app/assets/`.
+     *
+     * @return array<string, array{width: int, height: int, format: string}>
+     */
+    public function assetsMeta(): array
+    {
+        return $this->raw['assetsMeta'] ?? [];
     }
 
     /** `frontend` (spec §5): null (WordPress or tp/app/ renders), false (backend only) or the external site's URL. */
@@ -316,12 +389,12 @@ final class Schema
                 'auth' => $c['auth'] ?? false,
                 'agents' => $c['agents'] ?? true,
                 'localized' => $c['localized'] ?? false,
-            ] + (($c['taxonomy'] ?? false) ? ['taxonomy' => true, 'hierarchical' => (bool) ($c['hierarchical'] ?? false)] : []) + [
+            ] + (isset($c['commerce']) ? ['commerce' => $c['commerce']] : []) + (($c['taxonomy'] ?? false) ? ['taxonomy' => true, 'hierarchical' => (bool) ($c['hierarchical'] ?? false)] : []) + [
                 'title' => $c['title'] ?? null,
                 'content' => $c['content'] ?? null,
                 'slug' => $c['slug'] ?? null,
                 'primaryKey' => $c['primaryKey'],
-            ] + (isset($c['excerpt']) ? ['excerpt' => $c['excerpt']] : []) + [
+            ] + (isset($c['excerpt']) ? ['excerpt' => $c['excerpt']] : []) + (isset($c['ui']) ? ['ui' => $c['ui']] : []) + [
                 'columns' => array_map(self::publicColumn(...), $c['columns']),
                 'relations' => $c['relations'] ?? [],
                 'access' => array_map(self::accessSummary(...), Access::collectionRules($c)),
@@ -335,7 +408,7 @@ final class Schema
                 'agents' => $g['agents'] ?? true,
                 'fields' => array_map(self::publicColumn(...), $g['fields']),
                 'access' => array_map(self::accessSummary(...), Access::globalRules($g)),
-            ];
+            ] + (isset($g['ui']) ? ['ui' => $g['ui']] : []);
         }
         $actions = [];
         foreach ($this->actions() as $name => $a) {
@@ -426,7 +499,7 @@ final class Schema
     /** True when a create must receive this column (no default, not generated). */
     public static function isRequired(array $col): bool
     {
-        return ($col['notNull'] ?? false) && !isset($col['default']) && !($col['autoIncrement'] ?? false) && !($col['readOnly'] ?? false)
+        return (($col['notNull'] ?? false) || ($col['required'] ?? false)) && !isset($col['default']) && !($col['omit'] ?? false) && !($col['autoIncrement'] ?? false) && !($col['readOnly'] ?? false)
             && !($col['type'] === 'slug' && isset($col['source'])); // derived when left out
     }
 
@@ -494,7 +567,8 @@ final class Schema
                 is_float($v) && Js::isInteger($v) && abs($v) <= 9007199254740991 => (int) $v,
                 default => throw $bad(),
             },
-            'real' => (is_int($v) || is_float($v)) && Js::isFinite($v) ? (float) $v : throw $bad(),
+            // A whole number stays an int, so an id from a `number` input reads back exactly.
+            'real' => is_int($v) ? $v : (is_float($v) && Js::isFinite($v) ? $v : throw $bad()),
             'text', 'richText' => is_string($v) ? $v : throw $bad(),
             'email' => is_string($v) && filter_var($v, FILTER_VALIDATE_EMAIL) !== false ? $v : throw $bad(),
             'url' => is_string($v) && preg_match('#^https?://#i', $v) && filter_var($v, FILTER_VALIDATE_URL) !== false ? $v : throw $bad(),
@@ -502,7 +576,7 @@ final class Schema
             'boolean' => is_bool($v) ? $v : throw $bad(),
             'timestamp' => self::timestamp($v) ?? throw $bad(),
             'date' => is_string($v) && self::isDate($v) ? $v : throw $bad(),
-            'json' => self::jsonValue($v) ?? throw $bad(),
+            'json' => isset($col['shape']) ? self::shaped($col['shape'], $v, $name, $pointer) : (self::jsonValue($v) ?? throw $bad()),
             'mediaList' => self::idList($v, $name, $pointer) ?? throw $bad(),
             'refList' => self::refList($v, $name, $pointer) ?? throw $bad(),
             'select' => self::selectList($col, $v, $name, $pointer) ?? throw $bad(),
@@ -553,7 +627,10 @@ final class Schema
             if (!array_key_exists($name, $obj)) {
                 if (isset($f['default'])) {
                     $obj[$name] = self::generate($f['default'], $f);
-                } elseif ($f['notNull'] ?? false) {
+                } elseif ($f['omit'] ?? false) {
+                    // An optional field of a typed input (`limit?: number`): left out, it stays out.
+                    continue;
+                } elseif (($f['notNull'] ?? false) || ($f['required'] ?? false)) {
                     throw HttpError::invalidInput("$name is required", $ptr);
                 } else {
                     $out[$name] = null;
@@ -647,6 +724,14 @@ final class Schema
                 throw HttpError::invalidInput("$name has a duplicate value '$item'", "$pointer/$i");
             }
         }
+
+        return $v;
+    }
+
+    /** A typed input's structured value, checked against the shape its parameter type gives it. */
+    private static function shaped(array $shape, mixed $v, string $name, string $pointer): mixed
+    {
+        InputShape::check($shape, $v, $name, $pointer);
 
         return $v;
     }

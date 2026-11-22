@@ -29,8 +29,8 @@ TYPES = ROOT / "types/typedpress/wordpress.d.ts"
 BEGIN, END = "// BEGIN GENERATED: scripts/wordpress-catalog.py", "// END GENERATED"
 CACHE = ROOT / "tests/wp/cache/catalog"
 
-# WordPress 7.1.x: the newest stubs php-stubs/wordpress-stubs has released. TypedPress's floor is 7.2-beta5
-# (src/platform.rs); every name the catalog takes from 7.1 is still in 7.2.
+# WordPress 7.1.x: the newest stubs php-stubs/wordpress-stubs has released. TypedPress's floor is 7.1
+# (src/platform.rs), so the catalog's names are the floor's.
 PINS = {
     "hooks": {
         "url": "https://registry.npmjs.org/@wp-hooks/wordpress-core/-/wordpress-core-1.13.0.tgz",
@@ -50,6 +50,19 @@ SELECT_HOOKS = [
     "user_register", "wp_login", "wp_logout",
     "rest_api_init", "wp_mail", "pre_get_posts", "login_message",
 ]
+# Hooks TypedPress's runtime fires itself, so no core docblock describes them. `async` admits an
+# `async` handler: its awaited TypedPress database writes run synchronously in PHP.
+OWN_HOOKS = {
+    "typedpress_woo_order_stock": {
+        "kind": "action",
+        "params": [{"name": "product_id", "type": "number"}, {"name": "order_id", "type": "number"},
+                   {"name": "change", "type": "number"}, {"name": "reason", "type": '"sale" | "return"'}],
+        "description": "Fires when WooCommerce changes a product's stock for an order: a sale lowers it, a cancelled order or a restocked refund returns it.",
+        "source": "runtime/TypedPress/Commerce/Operations.php",
+        "byReference": False,
+        "async": True,
+    },
+}
 # Classes a hook parameter may carry, as read-only views: class -> admitted public properties.
 SELECT_CLASSES = {
     "WP_Post": ["ID", "post_author", "post_date", "post_date_gmt", "post_content", "post_title", "post_excerpt",
@@ -85,6 +98,7 @@ SELECT_FUNCTIONS = {
     "get_userdata": {"params": ["user_id"], "returns": "WP_User | false"},
     "get_permalink": {"params": ["post"], "paramTypes": {"post": "number"}},
     "home_url": {"params": ["path"]},
+    "wp_login_url": {"params": ["redirect"]},
     "sanitize_text_field": {"params": ["str"]},
     "sanitize_title": {"params": ["title"]},
     "esc_html": {"params": ["text"]},
@@ -189,7 +203,7 @@ def hooks():
             # changes it through `set`, never by replacing it.
             "byReference": h["type"] == "action_reference",
         }
-    return out
+    return out | OWN_HOOKS
 
 
 def raise_(message):
@@ -286,7 +300,7 @@ def render_types(catalog):
         throws = " Throws an HttpError when WordPress returns a WP_Error." if f["wpError"] else ""
         lines.append(f"/** WordPress `{name}()`.{throws} */")
         lines.append(f"export declare function {name}({params}): {f['returns']};")
-    lines.append("/** The WordPress hooks `tp/wp-hooks/` accepts: kind and arguments, from core's docblocks. */")
+    lines.append("/** The hooks `tp/wp-hooks/` accepts: kind and arguments, from core's docblocks and TypedPress's own. */")
     lines.append("export interface Hooks {")
     for name, h in catalog["hooks"].items():
         params = ", ".join(f"{p['name']}: {p['type']}" for p in h["params"])

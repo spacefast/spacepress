@@ -17,21 +17,17 @@ try {
   page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") out.errors.push(m.text()); });
   const live = [];
   page.on("request", (r) => {
-    if (r.url().endsWith("/__tp/api/v1/_live")) live.push({ at: Date.now(), body: JSON.parse(r.postData() ?? "{}") });
+    if (r.url().endsWith("/wp-json/typedpress/v1/_live")) live.push({ at: Date.now(), body: JSON.parse(r.postData() ?? "{}") });
   });
   const answers = [];
   page.on("response", async (r) => {
-    if (r.url().endsWith("/__tp/api/v1/_live")) answers.push((await r.json().catch(() => ({}))).data?.results?.map((x) => (x.pending ? "pending" : x.changed ? "changed" : x.error ? "error" : "unchanged")));
+    if (r.url().endsWith("/wp-json/typedpress/v1/_live")) answers.push((await r.json().catch(() => ({}))).data?.results?.map((x) => (x.pending ? "pending" : x.changed ? "changed" : x.error ? "error" : "unchanged")));
   });
-  // Renders are counted around the first `/_live` request only: the page's own render seeds the
-  // region with one page read, which is the server render of the page, not the first poll.
-  let rendersAtFirstAsk = null;
-  page.on("request", (r) => {
-    if (r.url().endsWith("/__tp/api/v1/_live") && rendersAtFirstAsk === null) rendersAtFirstAsk = fetch(`${url}/__tp_test/renders`).then((x) => x.text()).then(Number);
-  });
+  // Count the page GET and its first subscription read together, before either request starts.
+  const rendersBeforeGet = Number(await (await fetch(`${url}/__tp_test/renders`)).text());
   await page.goto(`${url}/board`, { waitUntil: "networkidle" });
   // The first request: one, carrying the region, answered unchanged. Waited for, not slept on.
-  if (answers.length === 0) await page.waitForResponse((r) => r.url().endsWith("/__tp/api/v1/_live"), { timeout: 15000 });
+  if (answers.length === 0) await page.waitForResponse((r) => r.url().endsWith("/wp-json/typedpress/v1/_live"), { timeout: 15000 });
   await page.waitForFunction(() => true); // the response handler above has run
   // The first request is the subscription's own first ask, not a poll: it goes out as the page's
   // modules run, well inside the shortest poll gap (2 s) after the document is ready.
@@ -39,7 +35,7 @@ try {
   out.first = { requests: live.length, regions: live[0]?.body.queries?.map((q) => q.args?.region) ?? null, answer: answers[0] ?? null, beforePoll: live.length > 0 && live[0].at - ready < 2000 };
   // A fresh page with nothing changed is answered by counter: no render ran for that first request.
   const rendersAfterFresh = Number(await (await fetch(`${url}/__tp_test/renders`)).text());
-  out.first.rendered = rendersAfterFresh - (await rendersAtFirstAsk);
+  out.first.rendered = rendersAfterFresh - rendersBeforeGet;
 
   // State a visitor made: a click on the client component and text typed into the input.
   await page.click(".counter");
@@ -49,7 +45,7 @@ try {
   await counterNode.evaluate((el) => { el.dataset.mark = "same node"; });
 
   // Another visitor signs: the region shows it with no reload, by the next poll.
-  const write = await fetch(`${url}/__tp/api/v1/signatures`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Grace" }) });
+  const write = await fetch(`${url}/wp-json/typedpress/v1/signatures`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Grace" }) });
   out.write = write.status;
   await page.waitForFunction(() => [...document.querySelectorAll(".signature")].some((li) => li.textContent === "Grace"), null, { timeout: 45000 })
     .catch((e) => { throw new Error(`${e.message}\n${JSON.stringify({ answers, errors: out.errors })}`); });
@@ -66,11 +62,11 @@ try {
   // A cached copy taken before the data changed (as an edge would serve it): the first request brings
   // the region current, with no poll needed.
   const cached = await (await fetch(`${url}/board`)).text();
-  await fetch(`${url}/__tp/api/v1/signatures`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Ada" }) });
+  await fetch(`${url}/wp-json/typedpress/v1/signatures`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Ada" }) });
   const stale = await browser.newPage();
   await stale.route(`${url}/board`, (route) => route.fulfill({ status: 200, contentType: "text/html", body: cached }));
   const staleRequests = [];
-  stale.on("request", (r) => { if (r.url().endsWith("/__tp/api/v1/_live")) staleRequests.push(Date.now()); });
+  stale.on("request", (r) => { if (r.url().endsWith("/wp-json/typedpress/v1/_live")) staleRequests.push(Date.now()); });
   const staleAt = Date.now();
   await stale.goto(`${url}/board`, { waitUntil: "domcontentloaded" });
   out.stale = { cachedHasAda: cached.includes(">Ada<") };
@@ -90,10 +86,10 @@ try {
     };
   });
   const hiddenRequests = [];
-  background.on("request", (r) => { if (r.url().endsWith("/__tp/api/v1/_live")) hiddenRequests.push(JSON.parse(r.postData() ?? "{}").queries?.length ?? 0); });
+  background.on("request", (r) => { if (r.url().endsWith("/wp-json/typedpress/v1/_live")) hiddenRequests.push(JSON.parse(r.postData() ?? "{}").queries?.length ?? 0); });
   await background.goto(`${url}/board`, { waitUntil: "networkidle" });
   const whileHidden = hiddenRequests.length;
-  await fetch(`${url}/__tp/api/v1/signatures`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Back" }) });
+  await fetch(`${url}/wp-json/typedpress/v1/signatures`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Back" }) });
   await background.evaluate(() => window.__show());
   await background.waitForFunction(() => [...document.querySelectorAll(".signature")].some((li) => li.textContent === "Back"), null, { timeout: 15000 });
   out.background = { whileHidden, afterShown: hiddenRequests.length - whileHidden, regions: hiddenRequests[whileHidden] ?? null };
@@ -110,11 +106,11 @@ try {
     };
   });
   const preRequests = [];
-  prerendered.on("request", (r) => { if (r.url().endsWith("/__tp/api/v1/_live")) preRequests.push(JSON.parse(r.postData() ?? "{}").queries?.length ?? 0); });
+  prerendered.on("request", (r) => { if (r.url().endsWith("/wp-json/typedpress/v1/_live")) preRequests.push(JSON.parse(r.postData() ?? "{}").queries?.length ?? 0); });
   await prerendered.goto(`${url}/board`, { waitUntil: "networkidle" });
   const beforeActivation = preRequests.length;
   await prerendered.evaluate(() => window.__activate());
-  await prerendered.waitForResponse((r) => r.url().endsWith("/__tp/api/v1/_live"), { timeout: 15000 });
+  await prerendered.waitForResponse((r) => r.url().endsWith("/wp-json/typedpress/v1/_live"), { timeout: 15000 });
   out.prerendered = { beforeActivation, afterActivation: preRequests.length - beforeActivation, regions: preRequests[beforeActivation] ?? null };
   await prerendered.close();
 
@@ -122,11 +118,11 @@ try {
   // once on `pageshow` (`persisted`), and a region whose data changed meanwhile updates.
   const restored = await browser.newPage();
   const restoredRequests = [];
-  restored.on("request", (r) => { if (r.url().endsWith("/__tp/api/v1/_live")) restoredRequests.push(Date.now()); });
+  restored.on("request", (r) => { if (r.url().endsWith("/wp-json/typedpress/v1/_live")) restoredRequests.push(Date.now()); });
   await restored.goto(`${url}/board`, { waitUntil: "networkidle" });
-  if (restoredRequests.length === 0) await restored.waitForResponse((r) => r.url().endsWith("/__tp/api/v1/_live"), { timeout: 15000 });
+  if (restoredRequests.length === 0) await restored.waitForResponse((r) => r.url().endsWith("/wp-json/typedpress/v1/_live"), { timeout: 15000 });
   const beforeRestore = restoredRequests.length;
-  await fetch(`${url}/__tp/api/v1/signatures`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Restored" }) });
+  await fetch(`${url}/wp-json/typedpress/v1/signatures`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Restored" }) });
   await restored.evaluate(() => window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true })));
   await restored.waitForFunction(() => [...document.querySelectorAll(".signature")].some((li) => li.textContent === "Restored"), null, { timeout: 15000 });
   out.restored = { asked: restoredRequests.length - beforeRestore };
@@ -139,7 +135,7 @@ try {
   const visitor = await browser.newPage();
   const signedAnswers = [];
   visitor.on("response", async (r) => {
-    if (r.url().endsWith("/__tp/api/v1/_live")) signedAnswers.push((await r.json().catch(() => ({}))).data?.results?.map((x) => (x.changed ? "changed" : x.error ? "error" : "unchanged")));
+    if (r.url().endsWith("/wp-json/typedpress/v1/_live")) signedAnswers.push((await r.json().catch(() => ({}))).data?.results?.map((x) => (x.changed ? "changed" : x.error ? "error" : "unchanged")));
   });
   await visitor.goto(`${url}/`, { waitUntil: "networkidle" });
   const outView = await visitor.$$eval("[data-tp-live='notes'] li.note", (li) => li.map((x) => x.textContent));
@@ -149,7 +145,7 @@ try {
   await Promise.all([visitor.waitForNavigation(), visitor.click("#wp-submit")]);
   if (new URL(visitor.url()).pathname !== "/") await visitor.goto(`${url}/`);
   const answered = signedAnswers.length;
-  await visitor.waitForResponse((r) => r.url().endsWith("/__tp/api/v1/_live"), { timeout: 15000 }).catch(() => {});
+  await visitor.waitForResponse((r) => r.url().endsWith("/wp-json/typedpress/v1/_live"), { timeout: 15000 }).catch(() => {});
   out.signIn = {
     out: outView.includes("Secret draft"),
     in: (await visitor.$$eval("[data-tp-live='notes'] li.note", (li) => li.map((x) => x.textContent))).includes("Secret draft"),
@@ -174,10 +170,10 @@ try {
     };
   });
   const requests2 = [];
-  live2.on("request", (r) => { if (r.url().endsWith("/__tp/api/v1/_live")) requests2.push(Date.now()); });
+  live2.on("request", (r) => { if (r.url().endsWith("/wp-json/typedpress/v1/_live")) requests2.push(Date.now()); });
   out.note = (await fetch(`${url}/__tp_test/note`, { method: "POST" })).status;
   await live2.goto(`${url}/notes/one`, { waitUntil: "networkidle" });
-  if (requests2.length === 0) await live2.waitForResponse((r) => r.url().endsWith("/__tp/api/v1/_live"), { timeout: 15000 });
+  if (requests2.length === 0) await live2.waitForResponse((r) => r.url().endsWith("/wp-json/typedpress/v1/_live"), { timeout: 15000 });
   const before = await live2.$$eval(".typedpress-comment-body", (b) => b.map((x) => x.textContent.trim()));
   const approve = await fetch(`${url}/__tp_test/approve`, { method: "POST" });
   out.approve = approve.status;

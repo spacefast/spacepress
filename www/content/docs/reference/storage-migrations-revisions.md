@@ -2,8 +2,7 @@
 uid: zr_c0f65a9c5941e13d8ec8
 title: Storage migrations and revisions
 description: Design decisions for forward-only migrations, soft deletes, and revisions.
-status: published
-publishedAt: 2026-11-21T18:00:00.000Z
+status: draft
 ---
 # Decision Record: Forward-Only Migrations, Aliasing, Soft Deletes, Native Revisions, and Destructive Plugin Escape Hatch
 

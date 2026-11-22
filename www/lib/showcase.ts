@@ -15,7 +15,7 @@ export const filesRoot = path.join(site, ".build/files");
 export interface Manifest {
   /** The config's `name`: the app plugin is `typedpress-app-<app>`. */
   app: string;
-  /** Every file, sorted, with First names. `blob` is null for a binary file. */
+  /** Every file, sorted by path. `blob` is null for a binary file. */
   files: { path: string; blob: string | null; size: number }[];
   /** The WordPress.org plugins in the lock `typedpress build` wrote, with their versions. */
   wordpressPlugins: { slug: string; version: string }[];

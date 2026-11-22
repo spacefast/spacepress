@@ -285,6 +285,7 @@ impl Compiler<'_, '_> {
 
     /// `notFound()` and `redirect(url, status?)`: they never return.
     pub(super) fn app_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        self.route_opaque(name);
         match name {
             "useFormState" => self.use_form_state(args, span),
             "notFound" => {
@@ -351,6 +352,12 @@ impl Compiler<'_, '_> {
 
     /// `<Content value>`, `<Html value>` and `<Link href>`: the props object is the JSX's.
     pub(super) fn app_component(&mut self, name: &str, props: &Expr, span: Span) -> Result<Out> {
+        if name == "LoginForm" {
+            self.route_private();
+        }
+        if !matches!(name, "Link" | "Pagination" | "Search") {
+            self.route_opaque(name);
+        }
         let ExprKind::Object(fields) = &props.kind else {
             unreachable!("lowering builds a props object literal")
         };

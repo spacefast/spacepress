@@ -139,6 +139,7 @@ $drain();
 $out['meta field rebuilt'] = [fetch("$url/notes/hello/")['prebuilt'], $text(fetch("$url/notes/hello/"), 'summary')];
 // A site-wide setting no content write announces: every file goes, and the next build has it.
 update_option('blogname', 'Renamed');
+\TypedPress\Wp\Purges::flush();
 $out['renamed'] = [fetch("$url/about/")['prebuilt'], fetch("$url/notes/hello/")['prebuilt']];
 do_action('init');
 $drain();

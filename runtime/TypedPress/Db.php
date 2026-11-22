@@ -380,7 +380,7 @@ final class Db
     {
         return $this->current(function () use ($collection, $where, $viewer, $extra): array {
             $opts = Seam::query($collection, ($where === null ? [] : ['where' => $where]) + $extra, $this->schema);
-            $q = $this->compileRead($collection, $opts, '', $viewer);
+            $q = $this->compileRead($collection, $opts, '', $viewer, count: true);
             $q['sql'] = 'SELECT COUNT(*) AS n FROM (' . $q['sql'] . ') first_count';
 
             return $q;
@@ -404,9 +404,9 @@ final class Db
     }
 
     /** One read compiled: query extensions, option checks, the viewer's read guards. */
-    private function compileRead(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false, ?array &$only = null, ?bool &$publishedOnly = null): array
+    private function compileRead(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false, ?array &$only = null, ?bool &$publishedOnly = null, bool $count = false): array
     {
-        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, &$only, &$publishedOnly): array {
+        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, &$only, &$publishedOnly, $count): array {
             if (!$this->schema->hasCollection($collection)) {
                 throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
             }
@@ -435,7 +435,7 @@ final class Db
                     $guards[] = $allowed;
                 }
             }
-            $build = function () use ($collection, &$opts, $ptr, $viewer, $partition, &$guards, $filterViewer, $prune, &$only, &$publishedOnly, $spec, $deleted): array {
+            $build = function () use ($collection, &$opts, $ptr, $viewer, $partition, &$guards, $filterViewer, $prune, &$only, &$publishedOnly, $spec, $deleted, $count): array {
                 if ($viewer !== null) {
                     array_push($guards, ...$this->readGuards($collection, $viewer, forSelect: true, deleted: $deleted));
                 }
@@ -464,7 +464,11 @@ final class Db
                 }
                 unset($opts['searchFields']);
                 // After the query extensions: they may consume options (`with` on a file column) the selection reads.
-                $only = $prune ? $this->selected($collection, $opts, $viewer, $partition) : null;
+                $only = match (true) {
+                    $count => [$spec['primaryKey'] => true],
+                    $prune => $this->selected($collection, $opts, $viewer, $partition),
+                    default => null,
+                };
 
                 return Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
                     $fv === null ? null : fn (string $target): array => $this->readGuards($target, $fv, forSelect: true), $only);

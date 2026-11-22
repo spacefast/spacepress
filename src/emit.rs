@@ -273,6 +273,20 @@ pub(crate) fn public_files(project: &Path) -> std::io::Result<Files> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn bundled_rowbot_excludes_upstream_development_files() {
+        let files: Vec<_> = super::embedded_runtime()
+            .filter_map(|(path, _)| path.strip_prefix("TypedPress/vendor-prefixed/rowbot/"))
+            .collect();
+        assert!(files.contains(&"url/src/URL.php"));
+        assert!(
+            files
+                .iter()
+                .all(|path| { !matches!(path.split('/').nth(1), Some("bin" | "tests" | ".github" | "PHPStan")) }),
+            "{files:?}"
+        );
+    }
+
     use super::write;
 
     #[test]

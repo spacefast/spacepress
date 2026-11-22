@@ -5,7 +5,6 @@ import {
 } from '@wordpress/route';
 import { useEffect, useRef, useState } from 'react';
 import { unlock } from '@typedpress-admin/admin-toolkit';
-import { useRefEffect, useMergeRefs } from '@wordpress/compose';
 import { siteConfig } from '@typedpress-admin/boot';
 import { isUnderAdmin, resolveAdminUrl, slugOf } from './admin-url';
 
@@ -26,21 +25,12 @@ function ClassicAdmin() {
 
 	// Avoid remounting the iframe content when the location is already correct.
 	useEffect( () => {
-		if ( iframeUrl !== iframeRef.current?.contentWindow?.location.href ) {
+		if ( iframeUrl !== iframeRef.current?.contentDocument?.URL ) {
 			setIframeUrlState( iframeUrl );
 		}
 	}, [ iframeUrl ] );
 
-	const handleIframeLoad = (
-		event: React.SyntheticEvent< HTMLIFrameElement >
-	) => {
-		const iframe = event.target as HTMLIFrameElement;
-		if ( ! iframe || ! iframe.contentWindow ) {
-			return;
-		}
-
-		const iframeWindow = iframe.contentWindow;
-
+	function initializeFrameNavigation( iframeWindow: Window ) {
 		function notifyParent( href: string ) {
 			const match = (
 				router.state.pendingMatches ?? router.state.matches
@@ -101,33 +91,37 @@ function ClassicAdmin() {
 
 		// Notify on initial load in case of redirects.
 		notifyParent( iframeWindow.location.href );
-	};
+	}
 
-	const iframeRefEffect = useRefEffect( ( iframe: HTMLIFrameElement ) => {
-		// @ts-expect-error - Custom property added to iframe element
-		iframe._tpAdminLoad = () => {
-			const iframeDoc = iframe.contentDocument;
-			if ( iframeDoc ) {
-				const style = iframeDoc.createElement( 'style' );
-				style.textContent = `
-						#adminmenumain { display: none !important; }
-						#wpadminbar { display: none !important; }
-						#wpfooter { display: none !important; }
-						#wpcontent { margin-left: 0 !important; margin-top: 0 !important; }
-						.folded #wpcontent { margin-left: 0 !important; }
-						html.wp-toolbar { padding-top: 0 !important; }
-						#wpbody-content { padding-bottom: 0 !important; }
-					`;
-				iframeDoc.head.appendChild( style );
+	function handleIframeLoad( {
+		currentTarget: iframe,
+	}: React.SyntheticEvent< HTMLIFrameElement > ) {
+		const iframeDocument = iframe.contentDocument;
+		const iframeWindow = iframeDocument?.defaultView;
+		if ( ! iframeWindow ) {
+			return;
+		}
+
+		const initialize = () => {
+			if ( iframe.isConnected && iframe.contentDocument === iframeDocument ) {
+				initializeFrameNavigation( iframeWindow );
 			}
 		};
-	}, [] );
+
+		// WordPress queues its ready handlers through jQuery, which can run after load.
+		if ( 'jQuery' in iframeWindow && typeof iframeWindow.jQuery === 'function' ) {
+			iframeWindow.jQuery( initialize );
+		} else {
+			initialize();
+		}
+	}
 
 	return (
 		<iframe
-			ref={ useMergeRefs( [ iframeRef, iframeRefEffect ] ) }
+			ref={ iframeRef }
 			src={ iframeUrlState }
 			onLoad={ handleIframeLoad }
+			data-tp-classic-admin=""
 			style={ {
 				width: '100%',
 				height: '100%',

@@ -1495,7 +1495,7 @@
       "sha256": "5f847d298bf0f63c44038b7865623b3b860d99ee145edd2fa865e975b0016a55",
       "path": "lib/classic-route.php",
       "adaptation": "TypedPress integration: renamed to the classic route (/classic/<slug>); review adapter patch",
-      "adaptedSha256": "48345b1afc88449198e073320ff38b30ed9ece918bf0741eb5332ff088f13782",
+      "adaptedSha256": "fcd42e9b29ab7a85ce556de70129e86ca06222cbd8274a705f781240f454f8de",
       "normalizedSha256": "27d81348a2c9482202a514f3dc2f34080b0bce722575b1a94d7ba49fef110630",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/legacy-route.php"
     },
@@ -8578,7 +8578,7 @@
       "sha256": "b9b767def1eb91232bf9fbc71052d4dc1a363c5ecad93c61760984ccba865bf3",
       "path": "apps/routes/classic-admin/stage.tsx",
       "adaptation": "TypedPress integration: renamed to the classic route (/classic/<slug>); review adapter patch",
-      "adaptedSha256": "86471d91dbddd0fb297eb235a828254f0f2192ef939c4c3779cdce00f1e3da8f",
+      "adaptedSha256": "7d0ffde89b5fc442d03681cc2bd8c170efa44e41a61e13bee6b9971673146259",
       "normalizedSha256": "078ac1f28acef075a038803a9491a97d64971611170ef302d47d21fd72c595b6",
       "retainedSourcePath": "upstream-metadata/adapter-originals/routes/legacy-admin/stage.tsx"
     },

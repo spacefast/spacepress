@@ -10,15 +10,48 @@
 const TP_ADMIN_DEVELOPER_MODE_META = 'tp_admin_developer_mode';
 
 /**
- * Handle iframe mode - call the parent window's _tpAdminLoad function if
- * present.
+ * Prepare framed classic wp-admin before it paints.
  */
 function tp_admin_handle_iframe_mode() {
 	add_action(
 		'admin_head',
-		function () {
-			echo '<script>window.frameElement?._tpAdminLoad?.();</script>';
+		static function () {
+			wp_print_inline_script_tag( "if ( window.frameElement?.hasAttribute( 'data-tp-classic-admin' ) ) document.documentElement.classList.add( 'tp-classic-admin-frame' );" );
+			?>
+			<style>
+				.tp-classic-admin-frame :is(#adminmenumain, #wpadminbar, #wpfooter) { display: none !important; }
+				.tp-classic-admin-frame #wpcontent { margin-left: 0 !important; margin-top: 0 !important; }
+				.tp-classic-admin-frame .folded #wpcontent { margin-left: 0 !important; }
+				html.tp-classic-admin-frame.wp-toolbar { padding-top: 0 !important; }
+				.tp-classic-admin-frame #wpbody-content { padding-bottom: 0 !important; }
+			</style>
+			<?php
 		}
+	);
+	add_action(
+		'admin_print_scripts',
+		static function () {
+			if ( ! wp_script_is( 'user-profile' ) ) {
+				return;
+			}
+			// Core reads its form in beforeunload, but first initializes it in jQuery ready.
+			// Install the guard before any head script binds jQuery's shared beforeunload listener.
+			wp_print_inline_script_tag(
+				<<<'JS'
+				(() => {
+					if ( ! window.frameElement?.hasAttribute( 'data-tp-classic-admin' ) ) return;
+					const blockBeforeReady = ( event ) => event.stopImmediatePropagation();
+					window.addEventListener( 'beforeunload', blockBeforeReady, true );
+					document.addEventListener( 'DOMContentLoaded', () => {
+						const unblock = () => window.removeEventListener( 'beforeunload', blockBeforeReady, true );
+						if ( window.jQuery ) window.jQuery( unblock );
+						else unblock();
+					}, { once: true } );
+				})();
+				JS
+			);
+		},
+		0
 	);
 }
 

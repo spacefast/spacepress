@@ -389,7 +389,7 @@ impl Compiler<'_, '_> {
             );
         }
         let url_expr = self.arg(args, 0, span, "a URL")?;
-        let host = static_host(url_expr);
+        let host = static_host(url_expr, |callee| self.is_global(callee, "URL"));
         self.host_use(HostUse::Fetch(host.as_deref()), url_expr.span)?;
         let url = self.expr(url_expr)?;
         let url = self.finish_value(url, url_expr.span)?;

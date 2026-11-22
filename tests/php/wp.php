@@ -54,6 +54,7 @@ final class WpSite
     private bool $loaded = false;
     /** @var resource|null the php -S child that stands in for the web server (private-file probes) */
     private $server = null;
+    private bool $serverIsProcessGroup = false;
     private int $port = 0;
     /** The path the site lives under (`/blog` for a subdirectory install), or '' at the server's root. */
     private string $base = '';
@@ -255,10 +256,18 @@ final class WpSite
      * port was free when chosen; another process may have taken it since, so the server must answer
      * for this site (the router's `/__tp_site`) before it counts as started, else another port is tried.
      */
-    public function startServer(): int
+    public function startServer(int $workers = 1): int
     {
         if ($this->server !== null) {
             return $this->port;
+        }
+        // Start workers in their own process group so stopping the fixture also stops every worker.
+        $processGroup = $workers > 1 && function_exists('posix_setsid') && function_exists('pcntl_exec');
+        $environment = ['TP_TEST_SITE' => $this->dir];
+        $command = [PHP_BINARY];
+        if ($processGroup) {
+            $command = [PHP_BINARY, '-r', 'posix_setsid() < 0 && exit(1); pcntl_exec(PHP_BINARY, array_slice($argv, 1)); exit(1);', '--'];
+            $environment['PHP_CLI_SERVER_WORKERS'] = (string) $workers;
         }
         for ($attempt = 0; $attempt < 10; $attempt++) {
             $port = $this->port;
@@ -267,11 +276,11 @@ final class WpSite
                 // A suite that rewrites schema.php (an app update) is served the new file by the next request.
                 // macOS counts lock-wait sleeps toward PHP's execution limit; each test client
                 // already has its own timeout, and must be allowed to observe the 30s lock timeout.
-                [PHP_BINARY, '-d', 'opcache.revalidate_freq=0', '-d', 'max_execution_time=0', '-S', "127.0.0.1:$port", __DIR__ . '/wp-router.php'],
+                [...$command, '-d', 'opcache.revalidate_freq=0', '-d', 'max_execution_time=0', '-S', "127.0.0.1:$port", __DIR__ . '/wp-router.php'],
                 [1 => ['file', "$this->dir/server.log", 'a'], 2 => ['file', "$this->dir/server.log", 'a']],
                 $pipes,
                 $this->dir,
-                ['TP_TEST_SITE' => $this->dir] + array_filter(getenv(), 'is_string'),
+                $environment + array_filter(getenv(), 'is_string'),
             );
             $deadline = microtime(true) + 10;
             while (microtime(true) < $deadline) {
@@ -281,6 +290,7 @@ final class WpSite
                 $answer = @file_get_contents("http://127.0.0.1:$port/__tp_site", false, stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]));
                 if ($answer === $this->dir) {
                     $this->server = $server;
+                    $this->serverIsProcessGroup = $processGroup;
 
                     return $port;
                 }
@@ -289,8 +299,7 @@ final class WpSite
                 }
                 usleep(20_000);
             }
-            proc_terminate($server);
-            proc_close($server);
+            self::terminateServer($server, $processGroup);
             // Another port: the site's URL moves with it (WP_HOME is defined per process from site.json).
             $this->port = wpFreePort();
             $site = json_decode((string) file_get_contents("$this->dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
@@ -336,10 +345,18 @@ final class WpSite
     public function stopServer(): void
     {
         if ($this->server !== null) {
-            proc_terminate($this->server);
-            proc_close($this->server);
+            self::terminateServer($this->server, $this->serverIsProcessGroup);
             $this->server = null;
         }
+    }
+
+    /** @param resource $server */
+    private static function terminateServer($server, bool $processGroup): void
+    {
+        if (!$processGroup || !posix_kill(-proc_get_status($server)['pid'], SIGTERM)) {
+            proc_terminate($server);
+        }
+        proc_close($server);
     }
 
     public function destroy(): void

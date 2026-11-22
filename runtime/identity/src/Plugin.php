@@ -104,7 +104,7 @@ final class Plugin
                 if (
                     str_starts_with(
                         $request->get_route(),
-                        "/typedpress-identity/v1/",
+                        "/" . Api::apiNamespace() . "/",
                     )
                 ) {
                     header_remove("Access-Control-Allow-Origin");
@@ -585,10 +585,31 @@ final class Plugin
         return !is_wp_error($available) && isset($available[self::TWO_FACTOR_KEY])
             && \Two_Factor_Core::is_user_using_two_factor($user);
     }
-    /** A path below the issuer as an absolute URL: `/authorize?…` → `https://site/identity/authorize?…`. */
+    /**
+     * The issuer's route prefix below home_url() (default `/identity`).
+     * Hosts may override via the SP_AUTH_PREFIX constant or `sp_auth_prefix` filter (e.g. `/__spacefast/auth`).
+     */
+    public static function basePath(): string
+    {
+        $prefix =
+            defined("SP_AUTH_PREFIX") &&
+            is_string(SP_AUTH_PREFIX) &&
+            SP_AUTH_PREFIX !== ""
+                ? SP_AUTH_PREFIX
+                : "/identity";
+        if (function_exists("apply_filters")) {
+            $filtered = apply_filters("sp_auth_prefix", $prefix);
+            if (is_string($filtered) && $filtered !== "") {
+                $prefix = $filtered;
+            }
+        }
+        $normalized = "/" . trim($prefix, "/");
+        return $normalized === "/" ? "/identity" : $normalized;
+    }
+    /** A path below the issuer as an absolute URL: `/authorize?…` → `https://site<basePath>/authorize?…`. */
     private static function url(string $below): string
     {
-        return home_url("/identity" . $below);
+        return home_url(self::basePath() . $below);
     }
     /**
      * This browser's identity session: its own (`zi_session`), or one opened now from the
@@ -643,7 +664,7 @@ final class Plugin
     private static function here(): string
     {
         $home = wp_parse_url(home_url("/"));
-        $uri = (string) ($_SERVER["REQUEST_URI"] ?? "/identity");
+        $uri = (string) ($_SERVER["REQUEST_URI"] ?? self::basePath());
         return $home["scheme"] . "://" . $home["host"] . (isset($home["port"]) ? ":" . $home["port"] : "")
             . (str_starts_with($uri, "/") ? $uri : "/");
     }
@@ -736,10 +757,10 @@ final class Plugin
         wp_redirect(wp_login_url($back));
         exit();
     }
-    /** The issuer's URL path (`/identity`, or `/blog/identity` under a subdirectory install). */
+    /** The issuer's URL path (`/identity`, or host-configured prefix, including any subdirectory install path). */
     public static function path(): string
     {
-        return untrailingslashit((string) wp_parse_url(home_url("/identity"), PHP_URL_PATH));
+        return untrailingslashit((string) wp_parse_url(home_url(self::basePath()), PHP_URL_PATH));
     }
     /** Echo CORS headers for an enabled application's registered origin (`applications.origins`). */
     private static function cors(bool $credentials): void
@@ -779,7 +800,7 @@ final class Plugin
     private static function page(string $file): void
     {
         $path = wp_parse_url($_SERVER["REQUEST_URI"] ?? "/", PHP_URL_PATH);
-        $base = wp_parse_url(home_url("/identity"), PHP_URL_PATH);
+        $base = wp_parse_url(home_url(self::basePath()), PHP_URL_PATH);
         if (
             $path !== "/.well-known/openid-configuration" &&
             !str_starts_with($path, $base)
@@ -795,7 +816,7 @@ final class Plugin
                 $canonical["scheme"] .
                     "://" .
                     $canonicalHost .
-                    ($_SERVER["REQUEST_URI"] ?? "/identity"),
+                    ($_SERVER["REQUEST_URI"] ?? self::basePath()),
                 303,
             );
             exit();
@@ -895,10 +916,10 @@ final class Plugin
                     "reauth" => $signedIn["return_to"] === "/authorize?resume=1" ? "1" : null,
                 ]);
                 if ($result["kind"] === "signed_in" && $signedIn["return_to"] !== "") {
-                    wp_safe_redirect(home_url("/identity" . $signedIn["return_to"]));
+                    wp_safe_redirect(home_url(self::basePath() . $signedIn["return_to"]));
                     exit();
                 }
-                wp_safe_redirect(home_url("/identity") . ($params ? "?" . http_build_query($params) : ""));
+                wp_safe_redirect(home_url(self::basePath()) . ($params ? "?" . http_build_query($params) : ""));
                 exit();
             }
             if ($route === "/authorize") {
@@ -950,7 +971,8 @@ final class Plugin
                     Sessions::cookie($created["secret"], $created["session"]["expires_at"]);
                     wp_safe_redirect(
                         home_url(
-                            "/identity?upgrade=1&return_to=" .
+                            self::basePath() .
+                                "?upgrade=1&return_to=" .
                                 rawurlencode("/authorize?" . http_build_query($query)),
                         ),
                     );
@@ -1040,7 +1062,7 @@ final class Plugin
                 echo '<input type="hidden" name="csrf" value="' .
                     esc_attr($session["csrf"]) .
                     '"><button>Allow and continue</button></form><a href="' .
-                    esc_url(home_url("/identity")) .
+                    esc_url(home_url(self::basePath())) .
                     '">Cancel</a></main></body></html>';
                 exit();
             }
@@ -1061,7 +1083,7 @@ final class Plugin
                 '</title><link rel="stylesheet" href="' .
                 esc_url(plugins_url("build/hosted.css", $file)) .
                 '"></head><body><div id="identity-root" data-api="' .
-                esc_url(rest_url("typedpress-identity/v1/")) .
+                esc_url(rest_url(Api::apiNamespace() . "/")) .
                 '" data-issuer="' .
                 esc_url(OAuth::issuer()) .
                 '" data-login="' .
@@ -1089,7 +1111,7 @@ final class Plugin
     private static function adminPage(string $file): void
     {
         echo '<div id="identity-admin" data-api="' .
-            esc_url(rest_url("typedpress-identity/v1/admin/")) .
+            esc_url(rest_url(Api::apiNamespace() . "/admin/")) .
             '" data-nonce="' .
             esc_attr(wp_create_nonce("wp_rest")) .
             '" data-site="' .

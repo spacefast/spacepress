@@ -4710,6 +4710,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "`mail` can't be used as a value",
                 "call `mail.send({ to, subject, text })` directly",
             ),
+            Value::Builtin(Builtin::Connectors) => err_help(
+                span,
+                "`connectors` can't be used as a value",
+                "call `connectors.call(role, tool, args?)` directly",
+            ),
             Value::Builtin(Builtin::WpFunction(name)) => err_help(
                 span,
                 format!("`{name}` from \"php/wordpress\" can't be used as a value"),
@@ -8587,6 +8592,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         | Builtin::Jobs
                         | Builtin::Env
                         | Builtin::Mail
+                        | Builtin::Connectors
                         | Builtin::Abilities
                         | Builtin::WpFunction(_)),
                     ),
@@ -8611,6 +8617,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     && builtin(self, obj).ok().flatten() == Some(Builtin::Mail) =>
             {
                 self.mail_call(prop, args, span).map(Some)
+            }
+            ExprKind::Member { obj, prop, .. }
+                if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
+                    && builtin(self, obj).ok().flatten() == Some(Builtin::Connectors) =>
+            {
+                self.connectors_call(prop, args, span).map(Some)
             }
             ExprKind::Member { obj, prop, .. }
                 if matches!(&obj.kind, ExprKind::Ident(n) if n != "super")
@@ -8705,6 +8717,73 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(Out::atom(
             format!("\\TypedPress\\Mail::send({})", v.php),
             Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
+        ))
+    }
+
+    /// `connectors.call(role, tool, args?)` from "spacepress" / "typedpress": invokes a host connector.
+    fn connectors_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if name != "call" {
+            return err_help(
+                span,
+                format!("`connectors` has no function `{name}`"),
+                "use `connectors.call(role, tool, args?)`",
+            );
+        }
+        if self.fx().no_db {
+            return err_help(
+                span,
+                "access rules can't call connectors",
+                "move the call into a hook, action, route or job",
+            );
+        }
+        if args.len() < 2 || args.len() > 3 {
+            return err_help(
+                span,
+                "connectors.call() takes a connector role, a tool name, and optional args",
+                "write connectors.call(\"slack\", \"post_message\", { channel, text })",
+            );
+        }
+        let role_expr = self.arg(args, 0, span, "a connector role")?;
+        let role = self.expr(role_expr)?;
+        let role = self.finish_value(role, role_expr.span)?;
+        if !role.ty.is_str() || role.ty.is_nullable() {
+            return err_help(
+                role_expr.span,
+                format!("connectors.call() role must be a string, not {}", role.ty.describe()),
+                "pass the connector role name as a string, e.g. \"slack\"",
+            );
+        }
+        let tool_expr = self.arg(args, 1, span, "a connector tool name")?;
+        let tool = self.expr(tool_expr)?;
+        let tool = self.finish_value(tool, tool_expr.span)?;
+        if !tool.ty.is_str() || tool.ty.is_nullable() {
+            return err_help(
+                tool_expr.span,
+                format!("connectors.call() tool must be a string, not {}", tool.ty.describe()),
+                "pass the connector tool name as a string",
+            );
+        }
+        let args_php = match args.get(2) {
+            None => "null".to_string(),
+            Some(_) => {
+                let e = self.arg(args, 2, span, "connector arguments")?;
+                let v = self.expr(e)?;
+                let v = self.finish_value(v, e.span)?;
+                v.php
+            }
+        };
+        let cap = match (&role_expr.kind, &tool_expr.kind) {
+            (ExprKind::Str(r), ExprKind::Str(t)) => format!("{r}:{t}"),
+            (ExprKind::Str(r), _) => format!("{r}:*"),
+            _ => "*".to_string(),
+        };
+        self.uses("connectors", &cap, span);
+        Ok(Out::atom(
+            format!(
+                "\\TypedPress\\Connectors::call({}, {}, {})",
+                role.php, tool.php, args_php
+            ),
+            Ty::Promise(Box::new(Ty::Unknown)),
         ))
     }
 

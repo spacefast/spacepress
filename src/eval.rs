@@ -292,6 +292,7 @@ pub const TP_EXPORTS: &[&str] = &[
     "once",
     "jobs",
     "mail",
+    "connectors",
     "definePlugin",
     "adminScreen",
     "adminWidget",
@@ -3275,11 +3276,12 @@ impl<'p> Evaluator<'p> {
             Builtin::Once
             | Builtin::Jobs
             | Builtin::Mail
+            | Builtin::Connectors
             | Builtin::Abilities
             | Builtin::WpFunction(_)
             | Builtin::NodeCrypto(_) => err_help(
                 span,
-                "once(), jobs, mail, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                "once(), jobs, mail, connectors, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
                 "move the call into a handler",
             ),
             Builtin::Action | Builtin::Job | Builtin::Route => {
@@ -4491,6 +4493,7 @@ fn tp_export(name: &str, legacy: bool, span: Span) -> R<Value> {
         "jobs" => Builtin::Jobs,
         "once" => Builtin::Once,
         "mail" => Builtin::Mail,
+        "connectors" => Builtin::Connectors,
         "env" => Builtin::Env,
         "select" => Builtin::Field("select"),
         "group" => Builtin::Field("group"),

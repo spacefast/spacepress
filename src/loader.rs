@@ -12,6 +12,13 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub const TP_MODULE: &str = "typedpress";
+/// SpacePress canonical module specifiers (normalized to internal compiler module names on parse).
+pub const SP_MODULE: &str = "spacepress";
+pub const SP_APP_MODULE: &str = "spacepress/app";
+pub const SP_CONTENT_MODULE: &str = "spacepress/content";
+pub const SP_CLIENT_MODULE: &str = "spacepress/client";
+pub const SP_DB_MODULE: &str = "spacepress:db";
+pub const SPACEFAST_APP_MODULE: &str = "spacefast/app";
 /// Email templates (docs/design-react-email.md), beside `typedpress.config.ts`.
 pub const EMAILS_DIR: &str = "emails";
 /// The template that replaces Identity's built-in organization invitation.
@@ -226,7 +233,8 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
 
 #[cfg(feature = "cli")]
 pub(crate) fn stylesheet_inputs(project: &Path) -> Result<Vec<String>> {
-    let program = load_with_styles(Rc::new(Disk), &project.join("typedpress.config.ts"), true)
+    let entry = crate::layout::project_config(|p| p.is_file(), project);
+    let program = load_with_styles(Rc::new(Disk), &entry, true)
         .map_err(|diagnostics| diagnostics.into_iter().next().expect("failed load has diagnostics"))?;
     let mut styles: Vec<_> = program
         .assets
@@ -251,9 +259,10 @@ pub(crate) fn frontend_enabled(fs: &dyn Fs, root: &Path) -> Result<bool> {
         Err(error) => Err(error),
     }
     .map_err(|error| Diag::new(Span::NONE, format!("can't read package.json: {error}")).code(diag::Code::Import))?;
-    Ok(["dependencies", "devDependencies"]
-        .iter()
-        .any(|key| package[*key]["@typedpress/frontend"].is_string()))
+    Ok(["dependencies", "devDependencies"].iter().any(|key| {
+        package[*key]["@spacepress/frontend"].is_string()
+            || package[*key]["@typedpress/frontend"].is_string()
+    }))
 }
 
 #[derive(serde::Deserialize)]
@@ -718,6 +727,7 @@ fn load_module(
                 if prop == "PreviewProps" && matches!(obj.kind, ExprKind::Ident(_)))
         });
     }
+    normalize_spacepress_modules(&mut body, commonjs.as_mut());
     if let Some(alias) = fs.module_alias() {
         rename_module(&mut body, commonjs.as_mut(), alias);
     }
@@ -1449,6 +1459,39 @@ fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> R
     .help(format!(
         "TypedPress loads app code only from tp/: move {shown} to {destination} and import it from there, or install it as an npm package"
     )))
+}
+
+/// Maps `"spacepress"`, `"spacefast/app"`, and `"spacepress/*"` specifiers onto the compiler's
+/// canonical internal module names on parsed AST statements.
+fn normalize_spacepress_spec(spec: &str) -> Option<&'static str> {
+    match spec {
+        SP_MODULE | SPACEFAST_APP_MODULE => Some(TP_MODULE),
+        SP_APP_MODULE => Some(APP_MODULE),
+        SP_CONTENT_MODULE => Some(CONTENT_MODULE),
+        SP_CLIENT_MODULE => Some(CLIENT_MODULE),
+        SP_DB_MODULE => Some(DB_MODULE),
+        _ => None,
+    }
+}
+
+fn normalize_spacepress_modules(body: &mut [Stmt], commonjs: Option<&mut CommonJs>) {
+    for stmt in body {
+        match stmt {
+            Stmt::Import { source, .. }
+            | Stmt::ExportNames { from: Some(source), .. }
+            | Stmt::ExportAll { from: source, .. } => {
+                if let Some(mapped) = normalize_spacepress_spec(source) {
+                    *source = mapped.to_owned();
+                }
+            }
+            _ => {}
+        }
+    }
+    for (spec, _) in commonjs.into_iter().flat_map(|c| c.requires.iter_mut()) {
+        if let Some(mapped) = normalize_spacepress_spec(spec) {
+            *spec = mapped.to_owned();
+        }
+    }
 }
 
 /// Reads every import, re-export and `require` of `alias` as one of `"first"`.

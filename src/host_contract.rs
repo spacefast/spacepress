@@ -105,6 +105,26 @@ pub const HOOKS: &[(&str, &str, &str)] = &[
         "action",
         "the runtime has booted; register commands and seams after it",
     ),
+    (
+        "sp_connectors_call",
+        "filter",
+        "invokes a host-managed connector for `connectors.call(role, tool, args?)`; credentials remain owned by the host",
+    ),
+    (
+        "sp_auth_prefix",
+        "filter",
+        "overrides the OIDC issuer and callback route prefix (default `/identity`, or `SP_AUTH_PREFIX` constant); browser sign-in stays on `wp-login.php`",
+    ),
+    (
+        "sp_api_namespace",
+        "filter",
+        "overrides the app REST API namespace under `/wp-json/` (default `typedpress/v1`, or `SP_API_NAMESPACE` constant)",
+    ),
+    (
+        "sp_identity_api_namespace",
+        "filter",
+        "overrides the identity REST API namespace under `/wp-json/` (default `typedpress-identity/v1`, or `SP_IDENTITY_API_NAMESPACE` constant)",
+    ),
 ];
 
 /// The one site command a host's worker runs, and what it prints.

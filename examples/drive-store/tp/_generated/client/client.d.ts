@@ -2369,6 +2369,8 @@ export interface WooCartState {
 	loading: boolean;
 	/** True while a write waits for Woo. */
 	pending: boolean;
+	/** True after an order succeeds until Woo confirms the cart again. */
+	stale: boolean;
 	/** The last failure. A refused write stays until the next write starts, so a later write that was
 	* already queued and succeeds does not hide it. A failed read stays until Woo next answers with a cart. */
 	error: Error | undefined;

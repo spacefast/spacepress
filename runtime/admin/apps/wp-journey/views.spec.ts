@@ -70,22 +70,23 @@ test.beforeAll(async ({ request }) => {
 test('collection columns persist across reload and fresh sessions, separately for each user', async ({ page, browser }) => {
 	await signIn(page);
 	const path = '/wp-admin/new/collections/authors';
+	const column = 'Published At';
 	await page.goto(`${site}${path}`);
 	await resetView(page);
-	await hideColumn(page, 'Email');
+	await hideColumn(page, column);
 	await page.reload();
 	await expect(page.getByRole('button', { name: 'View options', exact: true })).toBeVisible();
-	await expect(page.getByRole('columnheader', { name: 'Email', exact: true })).toHaveCount(0);
-	await newSession(browser, path, 'Email', true);
-	await newSession(browser, path, 'Email', false, 'editor');
+	await expect(page.getByRole('columnheader', { name: column, exact: true })).toHaveCount(0);
+	await newSession(browser, path, column, true);
+	await newSession(browser, path, column, false, 'editor');
 	await page.getByRole('button', { name: 'View options', exact: true }).click();
 	const saved = page.waitForResponse(r => r.url().includes('/wp/v2/users/') && r.request().method() === 'POST');
 	await page.getByRole('button', { name: 'Reset view', exact: true }).click();
 	expect((await saved).ok()).toBe(true);
 	await page.keyboard.press('Escape');
-	await expect(page.getByRole('columnheader', { name: 'Email', exact: true })).toBeVisible();
+	await expect(page.getByRole('columnheader', { name: column, exact: true })).toBeVisible();
 	await page.reload();
-	await expect(page.getByRole('columnheader', { name: 'Email', exact: true })).toBeVisible();
+	await expect(page.getByRole('columnheader', { name: column, exact: true })).toBeVisible();
 });
 
 test('media remembers columns and sends its saved page size to WordPress after reload', async ({ page, browser }) => {

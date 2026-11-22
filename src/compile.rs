@@ -2477,11 +2477,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     let _ = writeln!(out, "{p}{source} = {src};\n{p}foreach ({source} as {value}) {{");
                 } else {
+                    let inner = pad(indent + 1);
+                    let _ = writeln!(out, "{p}{source} = {src};\n{p}for ({index} = 0; ; {index}++) {{");
+                    // JavaScript array iterators read the current length on every step.
                     let _ = writeln!(
                         out,
-                        "{p}{source} = {src};\n{p}for ({index} = 0; {index} < \\count({source}->a); {index}++) {{"
+                        "{inner}if ({index} >= \\count({source}->a)) {{\n{inner}\tbreak;\n{inner}}}"
                     );
-                    let _ = writeln!(out, "{}{value} = {source}->a[{index}];", pad(indent + 1));
+                    let _ = writeln!(out, "{inner}{value} = {source}->a[{index}];");
                 }
                 let mut previous = None;
                 if *kind == DeclKind::Var {

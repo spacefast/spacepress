@@ -212,7 +212,30 @@ $out['permalink'] = parse_url((string) get_permalink($space), PHP_URL_PATH);
 wp_set_current_user($site->userId('chief'));
 $reference = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'reference'", $type));
 $guides = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'guides'", $type));
+fetch("$url/docs/reference"); // the alternate spelling returns a redirect
+fetch("$url/docs/reference/");
+fetch("$url/docs/reference.md");
+$purges = [];
+add_action('tp_purge_urls', static function (array $paths) use (&$purges): void { array_push($purges, ...$paths); });
+\TypedPress\Wp\Purges::flush();
+$purges = [];
+$db = \TypedPress\db();
+try {
+    $db->transaction(static function () use ($reference, $guides): void {
+        \TypedPress\Wp\Functions::tracked(static fn () => wp_update_post(['ID' => $reference, 'post_parent' => $guides]));
+        throw new \RuntimeException('rollback');
+    });
+} catch (\RuntimeException) {
+}
+$prior = fetch("$url/docs/reference/");
+$out['parent rollback'] = ['purges' => $purges, 'status' => $prior['status'],
+    'reference' => str_contains($prior['body'], 'Reference'),
+    'new status' => fetch("$url/docs/guides/reference/")['status']];
 wp_update_post(['ID' => $reference, 'post_parent' => $guides, 'menu_order' => 0]);
+\TypedPress\Wp\Purges::flush();
+$out['parent purge'] = array_values(array_intersect(
+    ['/docs/reference/', '/docs/reference.md', '/docs/guides/reference/', '/docs/guides/reference.md'], $purges
+));
 wp_set_current_user(0);
 $out['moved'] = doc(fetch("$url/docs/guides/reference/"));
 $out['moved old'] = [fetch("$url/docs/reference/")['status']];

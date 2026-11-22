@@ -470,6 +470,7 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
             .filter_map(|f| module_of(f))
             .collect();
         AppRoute {
+            plan: None,
             prerender: r.kind == RouteKind::Page
                 && files.get(&r.file).map_or(output == Output::Static, |f| {
                     f.prerender.unwrap_or(output == Output::Static)

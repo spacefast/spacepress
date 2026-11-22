@@ -191,7 +191,8 @@ final class PublicFiles
                 && empty($stored['pending'])) {
                 return;
             }
-        } elseif ($hash === '') {
+        } elseif (self::manifest($plugin) === []) {
+            // No public files and nothing recorded to clean up: an app without `public/` records nothing.
             return;
         }
         self::syncSymlinks($plugin);
@@ -396,7 +397,9 @@ final class PublicFiles
         $keptDirs = array_values(array_keys($ownedDirs));
         $hasPending = $pendingLinks !== [] || $pendingDirs || $stale !== [];
 
-        if ($recordedLinks === [] && $keptDirs === [] && $hash === '' && !$hasPending) {
+        // An app with no public files and nothing linked, owned or pending records nothing (its `{}`
+        // manifest still has a hash), so activation leaves what initialize leaves: no option.
+        if ($recordedLinks === [] && $keptDirs === [] && $manifest === [] && !$hasPending) {
             delete_option(self::SYMLINKS_OPTION);
         } else {
             update_option(self::SYMLINKS_OPTION, [

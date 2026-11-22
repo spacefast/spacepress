@@ -3424,7 +3424,7 @@ fn client_components_hydrate_in_the_browser() {
     // The typed client is served from the app plugin as a module the browser imports as is.
     assert_eq!(
         seen["client"],
-        serde_json::json!([200, "text/javascript;charset=UTF-8", "function", "function"]),
+        serde_json::json!([200, "text/javascript; charset=utf-8", "function", "function"]),
         "{seen}"
     );
 }

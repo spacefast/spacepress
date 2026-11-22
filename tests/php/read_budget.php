@@ -89,7 +89,7 @@ if (class_exists(ActionScheduler_DataController::class)) {
 $api = static fn (string $path): string => (string) substr(\TypedPress\Wp\Facade::url($path), strlen(home_url()));
 $routes = match ($app) {
     'drive-store' => ['catalog' => '/', 'product' => '/drives/wd-red-plus-4tb/', 'api-list' => $api('/drives?limit=24')],
-    'www' => ['doc' => '/docs/introduction/', 'route-handler' => '/api/examples.json', 'api-list' => $api('/docs?limit=24')],
+    'www' => ['doc' => '/docs/getting-started/', 'route-handler' => '/api/examples.json', 'api-list' => $api('/docs?limit=24')],
     'shop', 'shop-24' => ['catalog' => '/shop/', 'product' => '/products/ceramic-mug/'],
 };
 if ($app === 'shop-24') {

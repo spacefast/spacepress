@@ -19,6 +19,42 @@ $site = wpSite('page-caching', ['wpContent' => $argv[1], 'muPlugins' => ['host' 
     add_action('tp_purge_urls', static function (array $paths): void {
         $GLOBALS['test_purges'][] = $paths;
     });
+    add_action('plugins_loaded', static function (): void {
+        if (!class_exists(\TypedPress\Wp\Connection::class)) {
+            return;
+        }
+        \TypedPress\Wp\Connection::$observer = static function (string $sql): void {
+            if (str_contains($sql, 'tp__app_reads')) {
+                $GLOBALS['fixture_read_index_sql'] = 1 + ($GLOBALS['fixture_read_index_sql'] ?? 0);
+            }
+        };
+        if (get_option('pagecaching_show_global')) {
+            \TypedPress\Extensions::onRead(static function (array $rows, string $collection): array {
+                if ($collection === 'drives') {
+                    $currency = \TypedPress\db()->globalGet('shop')['currency'];
+                    foreach ($rows as &$row) {
+                        $row['name'] .= ' ' . $currency;
+                    }
+                    unset($row);
+                }
+                return $rows;
+            });
+        }
+    });
+    add_action('tp_app_rendered', static function (): void {
+        header('X-Fixture-Rendered: 1');
+        header('X-Fixture-Read-Index: ' . ($GLOBALS['fixture_read_index_sql'] ?? 0));
+    });
+    add_action('wp_footer', static function (): void {
+        if (($_SERVER['HTTP_X_FIXTURE_LATE_COOKIE'] ?? null) === '1') {
+            setcookie('fixture_footer', '1');
+        }
+    });
+    add_action('wp_footer', static function (): void {
+        if (wp_get_nav_menu_object('Fixture menu')) {
+            wp_nav_menu(['menu' => 'Fixture menu', 'fallback_cb' => false]);
+        }
+    });
     PHP]]);
 wp_set_current_user(1);
 $db = \TypedPress\db();
@@ -26,16 +62,17 @@ $drive = static fn (string $name, string $media, float $price): int => (int) $db
 $alpha = $drive('Alpha', 'nvme', 10);
 $beta = $drive('Beta', 'hdd', 20);
 $gamma = $drive('Gamma', 'ssd', 30);
+add_option('pagecaching_store_notice', 'Open today');
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
 
-function fetch(string $url): array
+function fetch(string $url, array $requestHeaders = []): array
 {
     $ch = curl_init($url);
     $headers = [];
     curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30,
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_HTTPHEADER => $requestHeaders,
         CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$headers): int {
             if (str_contains($line, ':')) {
                 [$name, $value] = explode(':', $line, 2);
@@ -52,6 +89,14 @@ function fetch(string $url): array
         'status' => (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE),
         'cache' => $headers['cache-control'] ?? null,
         'edge' => $headers['a8c-edge-cache'] ?? null,
+        'rendered' => isset($headers['x-fixture-rendered']),
+        'read index SQL' => isset($headers['x-fixture-read-index']) ? (int) $headers['x-fixture-read-index'] : null,
+        'cookie' => $headers['set-cookie'] ?? null,
+        'location' => isset($headers['location']) ? parse_url($headers['location'], PHP_URL_PATH) : null,
+        'prebuilt' => $headers['x-typedpress-prebuilt'] ?? null,
+        'menu' => str_contains($body, 'Fixture menu link'),
+        'template' => str_contains($body, 'Fixture template body'),
+        'rolled template' => str_contains($body, 'Template rollback probe'),
         'items' => $items[1],
         'line' => $line[1] ?? null,
         'currency' => $currency[1] ?? null,
@@ -97,8 +142,20 @@ $out['warm'] = [
     'drive' => fetch("$url/drives/alpha/"),
     'about' => fetch("$url/about/"),
     'twin' => fetch("$url/catalog.md?media=nvme"),
+    'option' => fetch("$url/option/"),
+    'opaque' => fetch("$url/opaque/"),
 ];
 $out['index'] = $index();
+$out['redirect'] = fetch("$url/about");
+$out['late cookie'] = fetch("$url/about/", ['X-Fixture-Late-Cookie: 1']);
+$out['authorization'] = fetch("$url/about/", ['Authorization: Bearer fixture']);
+$out['literal prebuild'] = [
+    'paths' => array_column(\TypedPress\Render\Prebuilt::urls(\TypedPress\Wp\Runtime::plugin())['urls'], 'path'),
+    'before' => fetch("$url/about/")['prebuilt'],
+];
+\TypedPress\Render\Prebuilt::build();
+$out['literal prebuild']['after'] = fetch("$url/about/");
+$out['literal prebuild']['authorization'] = fetch("$url/about/", ['Authorization: Bearer fixture']);
 // A second nvme drive, also the most expensive one: it joins the filtered list and takes the top.
 $delta = 0;
 $grown = $announced(static function () use ($drive, &$delta): void {
@@ -141,6 +198,18 @@ fetch("$url/catalog/?media=nvme");
 $option = $announced(static fn () => update_option('tp_global_shop_currency', 'GBP'));
 $out['global option'] = ['announced' => $has($option, '/catalog/', '/drives/alpha/', '/top/'), 'catalog' => fetch("$url/catalog/")['currency']];
 
+$changed = $announced(static fn () => $db->transaction(static fn () => \TypedPress\Wp\Functions::tracked(
+    static fn () => update_option('pagecaching_store_notice', 'Closed now')
+)));
+$out['option write'] = ['announced' => $has($changed, '/option/', '/option.md', '/about/'), 'line' => fetch("$url/option/")['line']];
+$rolled = $announced(static fn () => $db->transaction(static function (): void {
+    \TypedPress\Wp\Functions::tracked(static fn () => update_option('pagecaching_store_notice', 'Never shown'));
+    throw new \RuntimeException('rollback');
+}));
+$out['option rollback'] = ['announced' => $rolled, 'line' => fetch("$url/option/")['line']];
+$deleted = $announced(static fn () => delete_option('pagecaching_store_notice'));
+$out['option delete'] = ['announced' => $has($deleted, '/option/', '/option.md'), 'line' => fetch("$url/option/")['line']];
+
 // ---- query strings ---------------------------------------------------------------------------
 // A parameter the page doesn't declare is not a page of its own: never shared, never recorded.
 $before = $index();
@@ -180,6 +249,58 @@ $out['variants'] += [
     'after two windows' => fetch("$url/catalog/?media=v" . ($max + 2))['cache'],
     'recorded then' => $count(),
 ];
+
+update_option('pagecaching_show_global', true);
+$hooked = fetch("$url/top/");
+$out['unknown read hook'] = ['line' => $hooked['line'], 'recorded global' => in_array('global:shop * /top/', $index(), true)];
+$announced(static fn () => wp_insert_post([
+    'post_type' => \TypedPress\Wp\Runtime::plugin()->schema->collection('drives')['wp']['postType'],
+    'post_name' => 'unpublished',
+    'post_title' => 'Unpublished',
+    'post_status' => 'draft',
+]));
+$out['negative'] = [
+    'before' => fetch("$url/drives/newly-published/"),
+    'alternate' => fetch("$url/drives/newly-published"),
+    'unpublished' => fetch("$url/drives/unpublished/"),
+];
+$published = $announced(static fn () => $drive('Newly-published', 'hdd', 1));
+$out['negative'] += [
+    'announced' => $has($published, '/drives/newly-published/', '/drives/newly-published.md'),
+    'after' => fetch("$url/drives/newly-published/"),
+];
+
+$menu = wp_create_nav_menu('Fixture menu');
+$out['menu'] = ['before' => fetch("$url/about/")['menu']];
+$changed = $announced(static fn () => wp_update_nav_menu_item($menu, 0, [
+    'menu-item-type' => 'custom', 'menu-item-title' => 'Fixture menu link',
+    'menu-item-url' => home_url('/catalog/'), 'menu-item-status' => 'publish',
+]));
+$out['menu'] += ['announced' => $changed, 'after' => fetch("$url/about/")['menu']];
+
+$template = 0;
+$body = static fn (string $text): string => '<!-- wp:paragraph --><p>' . $text . '</p><!-- /wp:paragraph --><!-- wp:tp/page /-->';
+$out['template'] = ['before' => fetch("$url/about/")['template']];
+$changed = $announced(static function () use ($db, $body, &$template): void {
+    $db->transaction(static function () use ($body, &$template): void {
+        \TypedPress\Wp\Functions::tracked(static function () use ($body, &$template): void {
+            $template = wp_insert_post([
+                'post_type' => 'wp_template', 'post_name' => 'tp-blank', 'post_title' => 'Fixture template',
+                'post_status' => 'publish', 'post_content' => $body('Fixture template body'),
+            ]);
+            wp_set_object_terms($template, get_stylesheet(), 'wp_theme');
+        });
+    });
+});
+$out['template'] += ['announced' => $changed, 'after' => fetch("$url/about/")['template']];
+$rolled = $announced(static fn () => $db->transaction(static function () use ($body, $template): void {
+    \TypedPress\Wp\Functions::tracked(static fn () => wp_update_post([
+        'ID' => $template, 'post_content' => $body('Template rollback probe'),
+    ]));
+    throw new \RuntimeException('rollback');
+}));
+$afterRoll = fetch("$url/about/");
+$out['template rollback'] = ['announced' => $rolled, 'previous' => $afterRoll['template'], 'attempted' => $afterRoll['rolled template']];
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

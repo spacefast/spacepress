@@ -945,9 +945,83 @@ pub struct AppRoute {
     pub preloads: Vec<crate::assets::FontPreload>,
     /// The page is prebuilt: its file says `prerender = true`, or the config says `output: "static"`.
     pub prerender: bool,
+    pub plan: Option<RoutePlan>,
     /// The kind whose `url` this page serves (spec §2.7), with each pattern placeholder's folder
     /// parameter: the page receives that kind's `item`, and a missing one is a 404.
     pub kind: Option<(String, Vec<(String, String)>)>,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CacheClass {
+    Immutable,
+    AnonymousPublic,
+    RequestPrivate,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum RouteDependency {
+    List {
+        collection: String,
+    },
+    Count {
+        collection: String,
+    },
+    Search {
+        collection: String,
+    },
+    Row {
+        collection: String,
+    },
+    RouteItem {
+        collection: String,
+        bindings: std::collections::BTreeMap<String, String>,
+    },
+    Relation {
+        collection: String,
+        field: String,
+        target: String,
+    },
+    Global {
+        name: String,
+        fields: Vec<String>,
+    },
+    Option {
+        name: String,
+    },
+    Opaque {
+        call: String,
+    },
+}
+
+impl RouteDependency {
+    pub fn opaque(call: impl Into<String>) -> Self {
+        Self::Opaque { call: call.into() }
+    }
+
+    pub fn purge_key(&self) -> Option<String> {
+        match self {
+            Self::List { collection } | Self::Count { collection } | Self::Search { collection } => {
+                Some(collection.clone())
+            }
+            Self::Relation { target, .. } => Some(target.clone()),
+            Self::Global { name, .. } => Some(format!("global:{name}")),
+            Self::Option { name } => Some(format!("option:{name}")),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutePlan {
+    pub class: CacheClass,
+    pub window: u32,
+    pub dependencies: Vec<RouteDependency>,
+    pub search: Vec<String>,
+    pub fixed_purge: bool,
 }
 
 #[derive(Debug, Clone, Default)]

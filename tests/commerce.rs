@@ -416,6 +416,20 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
     let source = std::fs::read_to_string(&detail).unwrap();
     std::fs::write(detail, format!("{source}\nexport const prerender = true;\n")).unwrap();
     success(cli("build", project.path()));
+    let functions = std::fs::read_to_string(
+        project
+            .path()
+            .join("tp/dist/wp-content/plugins/typedpress-app-shop/tp/app/functions.php"),
+    )
+    .unwrap();
+    let compact = functions.split_whitespace().collect::<String>().replace(",)", ")");
+    let fields = ["availability", "downloadable", "id", "name", "price", "url", "virtual"]
+        .map(|field| format!("'{field}'=>true"))
+        .join(",");
+    assert!(
+        compact.contains(&format!("Seam::kindList('products',array('columns'=>array({fields}),")),
+        "the catalog must project the fields it renders"
+    );
     let mig_dir = project.path().join("tp/_generated/migrations");
     assert!(
         !mig_dir.exists() || std::fs::read_dir(&mig_dir).unwrap().next().is_none(),

@@ -3540,14 +3540,14 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         assert_eq!(seen[key]["status"], status, "{key}");
         assert_eq!(seen[key]["batcache"], "cancel", "{key}");
     }
-    // The index: `/` listed notes (and read both), each note page read its own row, /about nothing.
+    // The fixed home page is in the purge map. Each note page records its own row.
     let index: Vec<String> = seen["index"]
         .as_array()
         .unwrap()
         .iter()
         .map(|v| v.as_str().unwrap().to_string())
         .collect();
-    assert!(index.contains(&"notes * /".to_string()), "{index:?}");
+    assert!(!index.iter().any(|row| row.ends_with(" /")), "{index:?}");
     // Recorded under the address WordPress links (`/notes/hello/`), though the visit had no slash.
     assert_eq!(
         index.iter().filter(|r| r.ends_with(" /notes/hello/")).count(),
@@ -3646,14 +3646,10 @@ fn one_write_announces_its_purges_once() {
         json!({ "slash": [200, null], "bare": [301, format!("{base}/notes/hello/")] }),
         "{seen}"
     );
-    // Recorded once, under the address WordPress links.
-    assert_eq!(
-        seen["index"],
-        json!(["/", "/notes/hello.md", "/notes/hello/"]),
-        "{seen}"
-    );
-    // The home page lists notes: a listing, though the list held one note when it rendered.
-    assert_eq!(seen["home reads"], json!(["*", "row"]), "{seen}");
+    // The kind item still registers its reads at its canonical address. The compiler maps the
+    // fixed home page directly to notes, so its listing needs no per-render rows.
+    assert_eq!(seen["index"], json!(["/notes/hello.md", "/notes/hello/"]), "{seen}");
+    assert_eq!(seen["home reads"], json!([]), "{seen}");
     let once = |key: &str| {
         let calls = seen[key]["calls"].as_array().unwrap_or_else(|| panic!("{key}: {seen}"));
         assert_eq!(calls.len(), 1, "{key}: one call per write: {seen}");
@@ -3703,6 +3699,58 @@ fn one_write_announces_its_purges_once() {
     );
 }
 
+#[test]
+fn check_reports_page_cache_plans_from_compiled_calls() {
+    let project = fixture("page-caching", "check");
+    let output = first().args(["check", "--json"]).arg(&project).output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let routes = report["routePlan"].as_array().expect("routePlan");
+    let route = |id: &str| {
+        routes
+            .iter()
+            .find(|route| route["id"] == id)
+            .unwrap_or_else(|| panic!("{id}: {report}"))
+    };
+    use serde_json::json;
+    assert_eq!(route("about")["plan"]["class"], "immutable");
+    assert_eq!(route("about")["prerender"], true);
+    assert_eq!(route("private")["plan"]["class"], "request-private");
+    assert_eq!(route("private")["plan"]["window"], 0);
+    assert_eq!(route("catalog")["plan"]["class"], "anonymous-public");
+    assert_eq!(route("catalog")["plan"]["search"], json!(["media"]));
+    assert!(
+        route("catalog")["plan"]["dependencies"]
+            .as_array()
+            .unwrap()
+            .contains(&json!({
+                "type": "global", "name": "shop", "fields": ["currency"]
+            }))
+    );
+    assert_eq!(route("catalog")["plan"]["window"], 300);
+    assert_eq!(
+        route("top")["plan"]["dependencies"],
+        json!([{"type": "list", "collection": "drives"}])
+    );
+    assert_eq!(
+        route("option")["plan"]["dependencies"],
+        json!([{"type": "option", "name": "pagecaching_store_notice"}])
+    );
+    assert_eq!(route("opaque")["plan"]["class"], "unknown");
+    assert_eq!(route("opaque")["plan"]["fixedPurge"], false);
+    assert_eq!(
+        route("opaque")["plan"]["dependencies"],
+        json!([
+            {"type": "list", "collection": "drives"}, {"type": "opaque", "call": "Date.now"}
+        ])
+    );
+    let item = routes.iter().find(|route| route["pattern"] == "/drives/:slug").unwrap();
+    assert!(item["plan"]["dependencies"].as_array().unwrap().contains(&json!({
+        "type": "routeItem", "collection": "drives", "bindings": {"slug": "slug"}
+    })));
+    std::fs::remove_dir_all(&project).unwrap();
+}
+
 /// What a page cache holds and what a write drops from it, on WordPress with a stand-in host
 /// listening on `tp_purge_urls` (tests/php/page_caching.php). Each purge is checked beside the page as
 /// the origin renders it after the write, so every expected path is one whose content changed.
@@ -3743,6 +3791,82 @@ fn page_caches_drop_what_a_write_changed() {
     }
     assert_eq!(seen["warm"]["nvme"]["items"], json!(["Alpha"]), "{seen}");
     assert_eq!(seen["warm"]["top"]["line"], "Gamma", "{seen}");
+    for fixed in ["top", "catalog", "about", "option"] {
+        assert_eq!(seen["warm"][fixed]["read index SQL"], 0, "{fixed}: {seen}");
+    }
+    assert!(seen["warm"]["nvme"]["read index SQL"].as_u64().unwrap() > 0, "{seen}");
+    assert!(seen["warm"]["opaque"]["read index SQL"].as_u64().unwrap() > 0, "{seen}");
+    assert_eq!(
+        seen["unknown read hook"],
+        json!({"line": "Delta GBP", "recorded global": true}),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["menu"],
+        json!({"before": false, "announced": ["/*"], "after": true}),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["template"],
+        json!({"before": false, "announced": ["/*"], "after": true}),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["template rollback"],
+        json!({"announced": null, "previous": true, "attempted": false}),
+        "{seen}"
+    );
+    assert_eq!(seen["redirect"]["status"], 301, "{seen}");
+    assert_eq!(seen["redirect"]["cache"], shared, "{seen}");
+    assert_eq!(seen["redirect"]["location"], "/about/", "{seen}");
+    assert_eq!(seen["redirect"]["rendered"], false, "{seen}");
+    assert_eq!(seen["late cookie"]["cache"], private, "{seen}");
+    assert_eq!(seen["late cookie"]["edge"], "no-cache", "{seen}");
+    assert_eq!(seen["late cookie"]["cookie"], "fixture_footer=1", "{seen}");
+    assert_eq!(seen["late cookie"]["line"], "About this shop", "{seen}");
+    assert_eq!(seen["authorization"]["cache"], private, "{seen}");
+    assert_eq!(seen["literal prebuild"]["paths"], json!(["/about"]), "{seen}");
+    assert_eq!(seen["literal prebuild"]["before"], json!(null), "{seen}");
+    assert_eq!(seen["literal prebuild"]["after"]["prebuilt"], "1", "{seen}");
+    assert_eq!(seen["literal prebuild"]["after"]["line"], "About this shop", "{seen}");
+    assert_eq!(
+        seen["literal prebuild"]["authorization"]["prebuilt"],
+        json!(null),
+        "{seen}"
+    );
+    assert_eq!(seen["literal prebuild"]["authorization"]["cache"], private, "{seen}");
+    assert_eq!(seen["negative"]["before"]["status"], 404, "{seen}");
+    assert_eq!(
+        seen["negative"]["before"]["cache"], "public, max-age=0, s-maxage=60, must-revalidate",
+        "{seen}"
+    );
+    assert_eq!(seen["negative"]["alternate"]["cache"], private, "{seen}");
+    assert_eq!(seen["negative"]["unpublished"]["cache"], private, "{seen}");
+    assert_eq!(
+        seen["negative"]["announced"],
+        json!(["/drives/newly-published/", "/drives/newly-published.md"]),
+        "{seen}"
+    );
+    assert_eq!(seen["negative"]["after"]["status"], 200, "{seen}");
+    assert_eq!(
+        seen["negative"]["after"]["line"], "Newly-published GBP: 1 GBP, 3 in stock",
+        "{seen}"
+    );
+    assert_eq!(
+        seen["option write"],
+        json!({"announced": ["/option/", "/option.md"], "line": "Closed now"}),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["option rollback"],
+        json!({"announced": null, "line": "Closed now"}),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["option delete"],
+        json!({"announced": ["/option/", "/option.md"], "line": "No notice"}),
+        "{seen}"
+    );
     let index: Vec<&str> = seen["index"]
         .as_array()
         .unwrap()
@@ -3753,19 +3877,21 @@ fn page_caches_drop_what_a_write_changed() {
     for row in [
         "drives * /catalog/?media=nvme",
         "drives # /catalog/?media=nvme",
-        "drives * /top/",
         "drives * /catalog.md?media=nvme",
+        "drives * /opaque/",
         // A filter that matched nothing still depends on every write to the kind.
         "drives * /catalog/?media=tape",
-        // The global the catalog and the drive page print.
-        "global:shop * /catalog/",
+        // The parameterized drive page still records its global and its row.
         "global:shop * /drives/alpha/",
     ] {
         assert!(index.contains(&row), "{row} in {index:?}");
     }
-    // The item a URL names is that row alone, and a page that reads nothing records nothing.
+    // The exact item keeps runtime tracking. The query-free catalog, ranked list and literal
+    // page use the fixed map, even though they still render their content at the origin.
     assert!(!index.contains(&"drives * /drives/alpha/"), "{index:?}");
-    assert!(!index.iter().any(|r| r.ends_with(" /about/")), "{index:?}");
+    for path in [" /about/", " /catalog/", " /top/", " /option/"] {
+        assert!(!index.iter().any(|row| row.ends_with(path)), "{path}: {index:?}");
+    }
 
     // A second nvme drive, priced above every other: the filtered list grows from 1 to 2 and the
     // top page shows the new drive. Both URLs, the empty filter and the twin are announced.
@@ -4914,6 +5040,23 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         serde_json::json!({ "Reference [current]": "/docs/guides/reference/" })
     );
     assert_eq!(seen["moved old"], serde_json::json!([404]));
+    assert_eq!(
+        seen["parent rollback"],
+        serde_json::json!({
+            "purges": [], "status": 200, "reference": true, "new status": 404,
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["parent purge"],
+        serde_json::json!([
+            "/docs/reference/",
+            "/docs/reference.md",
+            "/docs/guides/reference/",
+            "/docs/guides/reference.md",
+        ]),
+        "{seen}"
+    );
     // A published page under a draft is as hidden as the draft: its path names an unpublished page.
     assert_eq!(seen["under a draft"], serde_json::json!([404, 404]));
     assert_eq!(seen["under a draft moved"], serde_json::json!([404, 404, 404]));

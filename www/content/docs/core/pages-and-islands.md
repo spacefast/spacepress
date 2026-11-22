@@ -63,3 +63,20 @@ Start a component file with `"use client";`. SpacePress renders its initial HTML
 ## Static export
 
 Set `output: "static"` in `defineConfig()` and export `staticParams()` on dynamic routes, then run `typedpress export` to emit a standalone static site to `tp/dist/static/`.
+
+## Page caching on WordPress
+
+Run `typedpress check --json` and inspect `routePlan` for each route's cache class, shared cache window, declared query parameters, and dependencies. The plan includes the route's layouts and metadata.
+
+| Cache class | Meaning |
+|---|---|
+| `immutable` | A fixed route with literal markup and a blank template. |
+| `anonymous-public` | A route with known data dependencies. |
+| `request-private` | A route that uses viewer state or has a guard. |
+| `unknown` | The compiler could not establish the route's dependencies. |
+
+WordPress can make a response private at runtime. Examples include signed-in requests, WooCommerce cart requests, and pages that set a cookie.
+
+For a fixed route with no query string, the compiler's purge map can cover the reads that the render made. Other shareable pages record their reads by URL, including query variants. Committed writes purge affected URLs and their Markdown twins.
+
+SpacePress automatically prebuilds eligible literal pages on apps without a WooCommerce store, locale routing, or compiled WordPress hooks. Set `export const prerender = false` to opt out. Set `export const prerender = true` to prebuild an eligible page explicitly.

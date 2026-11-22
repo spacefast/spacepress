@@ -255,7 +255,7 @@ final class Routes
         if ($expect !== self::digestOf($current)) {
             return self::stale($collection, $spec, $viewer, $current, "$collection $uid changed since it was read");
         }
-        if (!Trash::trash($collection, $spec, db()->editorRow($collection, $id))) {
+        if (!Trash::trash($collection, $spec, db()->editorRow($collection, $id), $viewer)) {
             db()->delete($collection, [$pk => $id], false, $viewer);
         }
 

@@ -8,6 +8,7 @@ use TypedPress\App;
 use TypedPress\Db;
 use TypedPress\HttpError;
 use TypedPress\Schema;
+use TypedPress\Viewer;
 
 /**
  * The app bootstrap (§4.9). Runtime::app constructs it after compatibility checks;
@@ -988,7 +989,8 @@ final class Plugin
         if ($row !== null) {
             $this->deleting[$postId] = [$collection, $row];
             try {
-                $db->beforeEditorDelete($collection, $row, WpAuth::current());
+                $user = WpAuth::current();
+                $db->beforeEditorDelete($collection, $row, $user === null ? null : new Viewer($user));
             } catch (\Throwable $e) {
                 unset($this->deleting[$postId]);
                 if ($prepared) {

@@ -8,6 +8,7 @@ const harness = object(JSON.parse(readFileSync(process.env.TP_WP_HARNESS ??
 	fileURLToPath(new URL('../../../../tests/wp/.harness.json', import.meta.url)), 'utf8')));
 if (typeof harness.url !== 'string') throw new Error('Missing fixture URL.');
 const site = harness.url;
+const apiUrl = `${site}/wp-json/typedpress/v1`;
 const users = object(harness.users);
 const adminId = object(users.admin).id;
 const editorId = object(users.editor).id;
@@ -34,7 +35,7 @@ async function open(page: Page, role: 'admin' | 'editor', id: number) {
 
 test('upstream collaboration merges simultaneous text edits, shares fields, and saves through TypedPress', async ({ browser, request }) => {
 	const run = Date.now();
-	const created = await request.post(`${site}/__tp/api/v1/documents`, {
+	const created = await request.post(`${apiUrl}/documents`, {
 		headers: auth('admin'),
 		data: { status: 'draft', title: `Coediting ${run}`, body: '<!-- wp:paragraph --><p>Shared paragraph</p><!-- /wp:paragraph -->', summary: 'Initial summary' },
 	});
@@ -119,18 +120,18 @@ test('upstream collaboration merges simultaneous text edits, shares fields, and 
 		const saved = await saving;
 		expect(saved.status(), await saved.text()).toBe(200);
 		expect(saved.request().headers()['x-typedpress-coediting-schemas']).toBeTruthy();
-		const read = await request.get(`${site}/__tp/api/v1/documents/${id}`, { headers: auth('admin') });
+		const read = await request.get(`${apiUrl}/documents/${id}`, { headers: auth('admin') });
 		expect(read.ok()).toBe(true);
 		const persisted = object(object(await read.json()).data);
 		expect(persisted.title).toBe(`Shared title ${run}`);
 		expect(persisted.summary).toBe(`Shared summary ${run}`);
 		expect(persisted.body).toContain(`editor-${run}`);
 		expect(persisted.body).toContain(`admin-${run}`);
-		const history = await request.get(`${site}/__tp/api/v1/documents/${id}/revisions`, { headers: auth('admin') });
+		const history = await request.get(`${apiUrl}/documents/${id}/revisions`, { headers: auth('admin') });
 		expect(history.ok()).toBe(true);
 		const versions: unknown = object(await history.json()).data;
 		expect(Array.isArray(versions) && versions.length >= 2).toBe(true);
-		const audit = await request.get(`${site}/__tp/api/v1/edits?${new URLSearchParams({ where: JSON.stringify({ documentId: id }) })}`, { headers: auth('admin') });
+		const audit = await request.get(`${apiUrl}/edits?${new URLSearchParams({ where: JSON.stringify({ documentId: id }) })}`, { headers: auth('admin') });
 		expect(audit.ok()).toBe(true);
 		const logs: unknown = object(await audit.json()).data;
 		if (!Array.isArray(logs)) throw new Error('Expected fixture audit rows.');
@@ -160,7 +161,7 @@ test('a taxonomy without core REST keeps its assignments through the TypedPress 
 	if (typeof tags.initial !== 'number' || typeof tags.replacement !== 'number')
 		throw new Error('Expected the fixture terms seeded by WP-CLI without REST.');
 	const ids = [tags.initial, tags.replacement];
-	const created = await request.post(`${site}/__tp/api/v1/articles`, {
+	const created = await request.post(`${apiUrl}/articles`, {
 		headers: auth('admin'), data: { title: `Taxonomy ${run}`, labels: [ids[0]] },
 	});
 	expect(created.status(), await created.text()).toBe(201);
@@ -179,6 +180,6 @@ test('a taxonomy without core REST keeps its assignments through the TypedPress 
 		return { before: before.row.labels, after: after.labels, native: api.native('articles') ?? null };
 	}, { id: article.id, replacement: ids[1] });
 	expect(result).toEqual({ before: [ids[0]], after: [ids[1]], native: null });
-	const saved = await request.get(`${site}/__tp/api/v1/articles/${article.id}`, { headers: auth('admin') });
+	const saved = await request.get(`${apiUrl}/articles/${article.id}`, { headers: auth('admin') });
 	expect(object(object(await saved.json()).data).labels).toEqual([ids[1]]);
 });

@@ -5385,7 +5385,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let wp_uses_len = self.wordpress_uses.len();
         let uses_jobs = self.uses_jobs;
         let used_names = self.used_names.clone();
+        // These records are read after compilation. Stage additions without copying the call graphs.
+        let calls = std::mem::take(&mut self.calls);
+        let ability_calls = std::mem::take(&mut self.ability_calls);
+        let personal = std::mem::take(&mut self.personal);
         let built = build(self);
+        for (graph, prior) in [(&mut self.calls, calls), (&mut self.ability_calls, ability_calls)] {
+            let added = std::mem::replace(graph, prior);
+            if built.is_ok() {
+                for (caller, targets) in added {
+                    graph.entry(caller).or_default().extend(targets);
+                }
+            }
+        }
         if built.is_err() {
             self.classes.retain(|k, _| classes.contains(k));
             self.class_ids.retain(|k, _| class_ids.contains(k));
@@ -5398,6 +5410,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.wordpress_uses.truncate(wp_uses_len);
             self.uses_jobs = uses_jobs;
             self.used_names = used_names;
+            self.personal = personal;
+        } else {
+            self.personal.extend(personal);
         }
         built
     }
@@ -11485,8 +11500,8 @@ pub(super) fn static_host(e: &Expr) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::static_host;
-    use crate::diag::Span;
+    use super::{Compiler, static_host};
+    use crate::diag::{Diag, Span};
     use crate::ir::{Expr, ExprKind};
 
     #[test]
@@ -11511,6 +11526,54 @@ mod tests {
         );
         assert_eq!(host("https://api.example.com").as_deref(), Some("api.example.com"));
         assert_eq!(host("https://user@api.example.com/"), None);
+    }
+
+    #[test]
+    fn refused_speculative_build_discards_nested_usage_records() {
+        let project = tempfile::tempdir().unwrap();
+        let entry = project.path().join("typedpress.config.ts");
+        std::fs::write(
+            &entry,
+            r#"import { defineConfig } from "typedpress"; export default defineConfig({ name: "usage-test" });"#,
+        )
+        .unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let mut evaluator = crate::eval::Evaluator::new(&program);
+        let config = evaluator.run().unwrap();
+        let extracted = crate::extract::extract(&config, &mut evaluator, Span::NONE, "usage-test").unwrap();
+        let mut compiler = Compiler::new(&extracted.schema, &mut evaluator, &extracted, &program);
+        compiler.abilities.personal.insert("app/private".into());
+        compiler.current = "root".into();
+        compiler.uses("abilities", "app/kept", Span::NONE);
+        compiler.calls.entry("root".into()).or_default().insert("kept".into());
+
+        let refused = compiler.attempt::<()>(|this| {
+            this.attempt(|nested| {
+                nested.uses("abilities", "app/private", Span::NONE);
+                nested
+                    .calls
+                    .entry("root".into())
+                    .or_default()
+                    .insert("discarded".into());
+                Ok(())
+            })?;
+            Err(Diag::new(Span::NONE, "speculative build refused"))
+        });
+        assert!(refused.is_err());
+
+        compiler
+            .attempt(|this| {
+                this.uses("abilities", "app/accepted", Span::NONE);
+                this.calls.entry("root".into()).or_default().insert("accepted".into());
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(compiler.calls["root"], ["kept".into(), "accepted".into()].into());
+        assert_eq!(
+            compiler.ability_calls["root"],
+            ["app/kept".into(), "app/accepted".into()].into()
+        );
+        assert!(!compiler.personal.contains("root"));
     }
 }
 

@@ -86,7 +86,8 @@ fn migration_snapshot(project: &Path) -> Value {
 }
 
 fn compiled_schema(project: &Path) -> Value {
-    let path = std::fs::read_dir(project.join("tp/dist/wp-content/plugins"))
+    let plugins = project.join("tp/dist/wp-content/plugins");
+    let path = std::fs::read_dir(&plugins)
         .unwrap()
         .map(|entry| entry.unwrap().path())
         .find(|path| {
@@ -98,11 +99,21 @@ fn compiled_schema(project: &Path) -> Value {
         .expect("built application plugin")
         .join("tp/app/schema.php");
     let output = Command::new("php")
-        .args(["-r", "echo json_encode(require $argv[1], JSON_THROW_ON_ERROR);", "--"])
+        .args([
+            "-r",
+            "require $argv[1]; echo json_encode(require $argv[2], JSON_THROW_ON_ERROR);",
+            "--",
+        ])
+        .arg(plugins.join("typedpress-runtime/tp/bootstrap.php"))
         .arg(path)
         .output()
         .unwrap();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
     serde_json::from_slice(&output.stdout).unwrap()
 }
 

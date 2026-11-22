@@ -145,9 +145,9 @@ fn drive_store_reads_stay_within_budget() {
         "drive-store",
         &report,
         &[
-            ("catalog/anonymous", 5, 66, 83),
+            ("catalog/anonymous", 5, 68, 83),
             ("catalog/signed-in", 7, 73, 90),
-            ("product/anonymous", 8, 64, 67),
+            ("product/anonymous", 8, 66, 67),
             ("product/signed-in", 10, 72, 75),
             ("api-list/anonymous", 9, 71, 73),
             ("api-list/signed-in", 9, 73, 76),
@@ -164,14 +164,14 @@ fn website_reads_stay_within_budget() {
     let report = measure("www", &content, seed.as_deref());
     // A doc page is two statements: the doc, and the navigation tree's rows (one read for the
     // sidebar and the pager). It was 4 (5 signed in), and its sidebar asked the object cache for
-    // each of its 14 docs on its own: 44 round trips, now 32, and still 32 with 22 docs.
-    // The API list has 22 rows and costs what drive-store's 4 do. It was 75.
+    // each of its 14 docs on its own: 44 round trips, now 32, and still 32 with 23 published docs.
+    // The API list has 23 published rows and costs what drive-store's 4 do. It was 75.
     // A GET route handler that only reads sends no START TRANSACTION and no COMMIT: 3, now 1.
     hold(
         "www",
         &report,
         &[
-            ("doc/anonymous", 2, 27, 32),
+            ("doc/anonymous", 2, 29, 32),
             ("doc/signed-in", 2, 30, 36),
             ("route-handler/anonymous", 1, 15, 18),
             ("route-handler/signed-in", 1, 17, 21),
@@ -179,7 +179,7 @@ fn website_reads_stay_within_budget() {
             ("api-list/signed-in", 6, 35, 32),
         ],
     );
-    assert_eq!(report["api-list/anonymous"]["rows"], 22, "{report:#}");
+    assert_eq!(report["api-list/anonymous"]["rows"], 23, "{report:#}");
     same_for_everyone("www", &report, "api-list");
     same_for_everyone("www", &report, "route-handler");
 }
@@ -203,7 +203,7 @@ fn shop_reads_stay_within_budget() {
         &[
             ("catalog/anonymous", 9, 74, 74),
             ("catalog/signed-in", 11, 79, 79),
-            ("product/anonymous", 7, 61, 64),
+            ("product/anonymous", 7, 63, 64),
             ("product/signed-in", 9, 66, 69),
         ],
     );
@@ -217,7 +217,7 @@ fn shop_reads_stay_within_budget() {
         &[
             ("catalog/anonymous", 9, 100, 171),
             ("catalog/signed-in", 11, 105, 176),
-            ("product/anonymous", 7, 61, 64),
+            ("product/anonymous", 7, 63, 64),
             ("product/signed-in", 9, 66, 69),
         ],
     );

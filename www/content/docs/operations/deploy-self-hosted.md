@@ -16,6 +16,8 @@ Because SpacePress compiles into standard PHP and WordPress plugins with **zero 
 - HTTPS enabled (required by WordPress for Application Passwords)
 - Pretty permalinks enabled (`/%postname%/`)
 
+On MySQL and MariaDB, SpacePress checks for InnoDB and `utf8mb4` before the first write or locking read in each app transaction. If an app table changes to MyISAM, writes return `503 unavailable` even when the recorded schema and install marker still match. Ordinary reads skip the engine check.
+
 ## Option A: Deploy with `typedpress push` (recommended)
 
 ### 1. Configure a private build store outside the web root

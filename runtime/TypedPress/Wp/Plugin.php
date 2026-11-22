@@ -378,7 +378,7 @@ final class Plugin
     {
         global $wpdb;
 
-        return $this->connection ??= new Connection($wpdb);
+        return $this->connection ??= new Connection($wpdb, $this->requireWritableStorage(...));
     }
 
     /** A URL inside the app plugin's directory (its compiled client modules). */
@@ -649,6 +649,15 @@ final class Plugin
     public function storageProblems(): array
     {
         return $this->migrator()->nonInnoDb();
+    }
+
+    private function requireWritableStorage(): void
+    {
+        $bad = $this->storageProblems();
+        if ($bad !== []) {
+            error_log('[typedpress] TypedPress requires InnoDB and utf8mb4: ' . implode(', ', $bad));
+            throw new \TypedPress\HttpError(503, 'unavailable', self::UNAVAILABLE);
+        }
     }
 
     /**

@@ -679,11 +679,11 @@ check('a later product veto rolls back the whole batch', $batchFailed);
 eq('batch rollback restores the first product database status', $site->scalar('SELECT post_status FROM {prefix}posts WHERE ID = ?', [$batchFirst['id']]), 'publish');
 eq('batch rollback clears the first product native post cache', get_post_status($batchFirst['id']), 'publish');
 $trashFailed = false;
-try { $db->transaction(static fn () => \TypedPress\Sync\Trash::trash('products', $spec, $retired)); } catch (RuntimeException $e) { $trashFailed = str_contains($e->getMessage(), 'Could not move post'); }
+try { $db->transaction(static fn () => \TypedPress\Sync\Trash::trash('products', $spec, $retired, $admin)); } catch (RuntimeException $e) { $trashFailed = str_contains($e->getMessage(), 'Could not move post'); }
 check('a vetoed native product trash is reported as a failure', $trashFailed && get_post_status($retired['id']) !== 'trash');
 remove_filter('pre_trash_post', $vetoTrash, PHP_INT_MAX);
 add_action('woocommerce_trash_product', static function ($id) use (&$wooTrashed, $retired): void { if ((int) $id === $retired['id']) { $wooTrashed++; } });
-$db->transaction(static fn () => \TypedPress\Sync\Trash::trash('products', $spec, $retired));
+$db->transaction(static fn () => \TypedPress\Sync\Trash::trash('products', $spec, $retired, $admin));
 eq('explicit sync retirement uses Woo CRUD and its lifecycle hook', [get_post_status($retired['id']), $wooTrashed], ['trash', 1]);
 problem('trashed products retain ownership of their UID', fn () => $db->insert('products', ['name' => 'Duplicate trashed product UID', 'uid' => $retired['uid']], true, $admin), 409, 'unique_violation', '/uid');
 eq('duplicate refusal preserves the trashed product identity', [get_post_status($retired['id']), get_post_meta($retired['id'], '_tp_uid', true)], ['trash', $retired['uid']]);

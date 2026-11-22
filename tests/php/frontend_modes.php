@@ -47,7 +47,9 @@ wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' 
 // this process is many requests long, so end that one here.
 \TypedPress\Wp\Purges::flush();
 $site->actAs(null);
-$site->startServer();
+$testBrowser = getenv('TP_TEST_BROWSER') === '1';
+// Chromium requests several WordPress scripts at once. Give its fixture parallel HTTP workers.
+$site->startServer($testBrowser ? 4 : 1);
 $url = $site->url();
 
 function fetch(string $url, string $method = 'GET'): array
@@ -246,7 +248,7 @@ $out['authors']['public sitemap'] = $everyone;
 file_put_contents($schemaFile, $schemaPhp);
 // wp-admin and sign-in in a browser, in this mode (TP_TEST_BROWSER=1; the Rust test sets it
 // when the browser test's packages are installed).
-if (getenv('TP_TEST_BROWSER') === '1') {
+if ($testBrowser) {
     $script = dirname(__DIR__) . '/differential/client/admin-login.mjs';
     $browser = shell_exec('node ' . escapeshellarg($script) . ' ' . escapeshellarg($url) . ' 2>&1');
     $out['admin'] = json_decode((string) $browser, true) ?? ['raw' => $browser];

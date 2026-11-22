@@ -1861,42 +1861,37 @@ impl CommonJsScope<'_> {
         Ok(())
     }
 
-    /// A function parameter may rebind `module`, `exports` or `require`; inside the function it
-    /// is a local (see `shadowed`). Other wrapper names stay refused.
-    fn parameter(self, pattern: &Pat) -> Result<()> {
-        match pattern {
-            Pat::Id(name, _) if matches!(name.as_str(), "module" | "exports" | "require") => Ok(()),
-            Pat::Default(pattern, value) => {
-                self.parameter(pattern)?;
-                self.expression(value)
+    fn pattern(self, pattern: &Pat, parameter: bool) -> Result<()> {
+        // Any binding in a parameter can shadow these wrapper names, including a rest binding.
+        let validate = |name: &str, span| {
+            if parameter && matches!(name, "module" | "exports" | "require") {
+                Ok(())
+            } else {
+                validate_commonjs_name(name, span)
             }
-            other => self.pattern(other),
-        }
-    }
-
-    fn pattern(self, pattern: &Pat) -> Result<()> {
+        };
         match pattern {
-            Pat::Id(name, span) => validate_commonjs_name(name, *span),
+            Pat::Id(name, span) => validate(name, *span),
             Pat::Obj { props, rest, .. } => {
                 for (_, pattern) in props {
-                    self.pattern(pattern)?;
+                    self.pattern(pattern, parameter)?;
                 }
                 if let Some((name, span)) = rest {
-                    validate_commonjs_name(name, *span)?;
+                    validate(name, *span)?;
                 }
                 Ok(())
             }
             Pat::Arr { elems, rest, .. } => {
                 for pattern in elems.iter().flatten() {
-                    self.pattern(pattern)?;
+                    self.pattern(pattern, parameter)?;
                 }
                 if let Some((name, span)) = rest {
-                    validate_commonjs_name(name, *span)?;
+                    validate(name, *span)?;
                 }
                 Ok(())
             }
             Pat::Default(pattern, value) => {
-                self.pattern(pattern)?;
+                self.pattern(pattern, parameter)?;
                 self.expression(value)
             }
         }
@@ -1914,7 +1909,7 @@ impl CommonJsScope<'_> {
             ..self
         };
         for parameter in &function.params {
-            scope.parameter(&parameter.pat)?;
+            scope.pattern(&parameter.pat, true)?;
             if let Some(value) = &parameter.default {
                 scope.expression(value)?;
             }
@@ -1928,7 +1923,7 @@ impl CommonJsScope<'_> {
     fn statement(self, statement: &Stmt) -> Result<()> {
         match statement {
             Stmt::Decl { pat, init, .. } => {
-                self.pattern(pat)?;
+                self.pattern(pat, false)?;
                 if let Some(value) = init {
                     self.expression(value)?;
                 }
@@ -1975,7 +1970,7 @@ impl CommonJsScope<'_> {
                     arguments_bound: self.arguments_bound || (*kind != DeclKind::Var && binds_arguments(pat)),
                     ..self
                 };
-                scope.pattern(pat)?;
+                scope.pattern(pat, false)?;
                 scope.expression(iter)?;
                 scope.block(body)?;
             }
@@ -3085,6 +3080,21 @@ mod tests {
             ),
         ]);
         assert_eq!(json(&result), r#"["b,a","target,copied",1,2,"m!"]"#);
+    }
+
+    #[test]
+    fn commonjs_destructured_parameters_can_shadow_wrapper_names() {
+        let result = evaluate(&[
+            (
+                "/p/typedpress.config.ts",
+                "import api from './tp/api.cjs'; export default [api.f({ exports: 3 }), api.g([{}, 4, 5]), api.g([{}])];",
+            ),
+            (
+                "/p/tp/api.cjs",
+                "exports.f = ({ exports }) => exports; exports.g = ([{ named: module = 6 }, require = 7, ...exports]) => module + require + exports.length;",
+            ),
+        ]);
+        assert_eq!(json(&result), "[3,11,13]");
     }
 
     #[test]

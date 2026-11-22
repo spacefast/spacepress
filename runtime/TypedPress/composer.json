@@ -35,6 +35,7 @@
       "delete_vendor_packages": true,
       "exclude_from_copy": {
         "file_patterns": [
+          "^rowbot/[^/]+/(tests|bin|\\.github|PHPStan)/",
           "^wp-php-toolkit/data-liberation/(bin|CSS|EntityReader|EntityWriter|URL|vendor-patched)/",
           "^wp-php-toolkit/data-liberation/BlockMarkup/class-blockmarkupurlprocessor\\.php$",
           "^wp-php-toolkit/data-liberation/Importer/(?!class-importutils\\.php$)",

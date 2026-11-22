@@ -110,12 +110,20 @@ final class Site
      */
     public static function assets(): string
     {
+        if (defined('SP_ASSETS_DIR') && is_string(SP_ASSETS_DIR) && SP_ASSETS_DIR !== '') {
+            return rtrim(SP_ASSETS_DIR, '/');
+        }
+
         return WP_CONTENT_DIR . '/typedpress-assets';
     }
 
     /** The URL of {@see assets()}: where a build's plugins' asset URLs point. */
     public static function url(): string
     {
+        if (defined('SP_ASSETS_URL') && is_string(SP_ASSETS_URL) && SP_ASSETS_URL !== '') {
+            return rtrim(SP_ASSETS_URL, '/');
+        }
+
         return content_url('typedpress-assets');
     }
 

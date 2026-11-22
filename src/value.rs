@@ -305,8 +305,10 @@ pub enum Builtin {
     Once,
     /// `"node:crypto"`: the module namespace (`None`) or one of its supported functions.
     NodeCrypto(Option<&'static str>),
-    /// `mail.send(message)` from "typedpress", compiled to `TypedPress\Mail::send`.
+    /// `mail.send(message)` from "typedpress" / "spacepress", compiled to `TypedPress\Mail::send`.
     Mail,
+    /// `connectors.call(role, tool, args?)` from "spacepress" / "typedpress", compiled to `TypedPress\Connectors::call`.
+    Connectors,
     /// `abilities.call(name, input)` from "php/wordpress", compiled to `TypedPress\Wp\Abilities\Call::run`.
     Abilities,
     /// A catalog WordPress function from "php/wordpress", compiled to `TypedPress\Wp\Functions::call`.

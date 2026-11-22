@@ -6,6 +6,26 @@ namespace TypedPress\Identity;
 
 final class Api
 {
+    public const DEFAULT_NAMESPACE = "typedpress-identity/v1";
+
+    /** Active REST namespace for Identity API (hosts may override via SP_IDENTITY_API_NAMESPACE or `sp_identity_api_namespace`). */
+    public static function apiNamespace(): string
+    {
+        $ns =
+            defined("SP_IDENTITY_API_NAMESPACE") &&
+            is_string(SP_IDENTITY_API_NAMESPACE) &&
+            SP_IDENTITY_API_NAMESPACE !== ""
+                ? SP_IDENTITY_API_NAMESPACE
+                : self::DEFAULT_NAMESPACE;
+        if (function_exists("apply_filters")) {
+            $filtered = apply_filters("sp_identity_api_namespace", $ns);
+            if (is_string($filtered) && $filtered !== "") {
+                $ns = $filtered;
+            }
+        }
+        return trim($ns, "/");
+    }
+
     public function __construct(
         private DB $db,
         private Accounts $accounts,
@@ -16,7 +36,7 @@ final class Api
     public function register(): void
     {
         register_rest_route(
-            "typedpress-identity/v1",
+            self::apiNamespace(),
             "/(?P<operation>[a-z0-9/-]+)",
             [
                 "methods" => ["GET", "POST", "DELETE", "PATCH"],

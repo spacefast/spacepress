@@ -68,7 +68,11 @@ final class IdentityBridge implements Issuer
 
     public function config(bool $guests): array
     {
-        return ['issuer' => untrailingslashit(home_url('/identity')), 'guests' => $guests];
+        $issuer = class_exists(\TypedPress\Identity\OAuth::class)
+            ? \TypedPress\Identity\OAuth::issuer()
+            : untrailingslashit(home_url('/identity'));
+
+        return ['issuer' => $issuer, 'guests' => $guests];
     }
 
     public function guest(): array

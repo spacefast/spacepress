@@ -293,6 +293,7 @@ pub const TP_EXPORTS: &[&str] = &[
     "env",
     "once",
     "mail",
+    "connectors",
     "definePlugin",
     "adminScreen",
     "adminWidget",
@@ -3259,13 +3260,16 @@ impl<'p> Evaluator<'p> {
                 self.built.push(value.clone());
                 Ok(value)
             }
-            Builtin::Once | Builtin::Mail | Builtin::Abilities | Builtin::WpFunction(_) | Builtin::NodeCrypto(_) => {
-                err_help(
-                    span,
-                    "once(), jobs, mail, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
-                    "move the call into a handler",
-                )
-            }
+            Builtin::Once
+            | Builtin::Mail
+            | Builtin::Connectors
+            | Builtin::Abilities
+            | Builtin::WpFunction(_)
+            | Builtin::NodeCrypto(_) => err_help(
+                span,
+                "once(), jobs, mail, connectors, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                "move the call into a handler",
+            ),
             Builtin::Query | Builtin::Mutation | Builtin::Cron => {
                 let (what, example) = match b {
                     Builtin::Query => (
@@ -4491,6 +4495,7 @@ fn tp_export(name: &str, span: Span) -> R<Value> {
         }
         "once" => Builtin::Once,
         "mail" => Builtin::Mail,
+        "connectors" => Builtin::Connectors,
         "env" => Builtin::Env,
         "select" => Builtin::Field("select"),
         "group" => Builtin::Field("group"),

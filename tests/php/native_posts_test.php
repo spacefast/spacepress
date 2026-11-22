@@ -133,6 +133,31 @@ check('a visitor has no read_post on a draft', !current_user_can('read_post', $d
 $response = rest_do_request(new WP_REST_Request('GET', "/wp/v2/posts/$private"));
 check('a visitor can\'t read a private post on core\'s route', $response->get_status() !== 200, $response->get_status());
 
+$locked = wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Locked', 'post_content' => 'Locked body', 'post_password' => 'sesame'], true);
+$zero = wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Zero', 'post_content' => 'Zero body', 'post_password' => '0'], true);
+$concealed = wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Hidden by app', 'post_password' => 'sesame'], true);
+$read = static function (int $post, array $query = []): array {
+    $request = new WP_REST_Request('GET', "/wp/v2/posts/$post");
+    $request->set_query_params($query);
+    $response = rest_do_request($request);
+
+    return [$response->get_status(), $response->get_data()['content']['rendered'] ?? ''];
+};
+eq('core masks a locked post without proof', $read($locked), [404, '']);
+eq('core refuses a wrong password', $read($locked, ['password' => 'Sesame']), [403, '']);
+[$status, $body] = $read($locked, ['password' => 'sesame']);
+check('a visitor with the password reads the body on core’s route', $status === 200 && str_contains($body, 'Locked body'), [$status, $body]);
+eq('the proof expires when the request returns', $read($locked), [404, '']);
+eq('the correct password cannot open a post hidden by the app', $read($concealed, ['password' => 'sesame']), [404, '']);
+eq('the wrong password cannot reveal a post hidden by the app', $read($concealed, ['password' => 'Sesame']), [404, '']);
+require_once ABSPATH . WPINC . '/class-phpass.php';
+$_COOKIE['wp-postpass_' . COOKIEHASH] = (new \PasswordHash(8, true))->HashPassword('sesame');
+[$status, $body] = $read($locked);
+unset($_COOKIE['wp-postpass_' . COOKIEHASH]);
+check('a visitor with a valid cookie reads the body on core’s route', $status === 200 && str_contains($body, 'Locked body'), [$status, $body]);
+[$status, $body] = $read($zero);
+check('WordPress treats an exact password of "0" as public', $status === 200 && str_contains($body, 'Zero body'), [$status, $body]);
+
 // Slugs are WordPress's: a taken one is made unique, as in the block editor.
 [$sa, $a] = $wp->call('POST', '/posts', ['title' => 'Same A', 'slug' => 'same-url'], 'alice');
 [$sb, $b] = $wp->call('POST', '/posts', ['title' => 'Same B', 'slug' => 'same-url'], 'alice');
@@ -177,15 +202,27 @@ add_metadata('post', $rev, 'tp_excerpt', 'Kept excerpt'); // revision meta, as a
 $clash = wp_insert_post(['post_type' => 'tp_posts', 'post_status' => 'publish', 'post_title' => 'Clash', 'post_name' => 'hello-native'], true);
 global $wpdb;
 $wpdb->update($wpdb->posts, ['post_name' => 'hello-native'], ['ID' => $clash]); // as the collection stored it
-// A fresh install of the app (no earlier deploy recorded) leaves leftover tp_posts alone.
-$schemaOption = 'tp_' . \TypedPress\Wp\Plugin::instance()->schema->name() . '_schema';
-$adopted = 'tp_' . \TypedPress\Wp\Plugin::instance()->schema->name() . '_adopted_posts';
-update_option($schemaOption, \TypedPress\Wp\Plugin::instance()->buildHash());
-delete_option($adopted);
-check('a fresh app never adopts another app\'s tp_posts', \TypedPress\Wp\NativePosts::adopt(\TypedPress\Wp\Plugin::instance()) === 0 && get_post_type($old) === 'tp_posts', get_post_type($old));
-// The deploy that follows a build of this app with posts as a collection does.
-update_option($schemaOption, 'an-earlier-build');
-delete_option($adopted);
+$plugin = $wp->plugin();
+$postTypes = 'tp_' . $plugin->schema->name() . '_post_types';
+$schemaOption = 'tp_' . $plugin->schema->name() . '_schema';
+$adopted = 'tp_' . $plugin->schema->name() . '_adopted_posts';
+$nativeInstall = ['schemaHash' => get_option($schemaOption), 'types' => ['post', 'tp_notes']];
+eq('installation records the app’s actual post types', get_option($postTypes), $nativeInstall);
+check('an earlier build with no matching collection leaves other apps’ posts alone',
+    \TypedPress\Wp\NativePosts::adopt($plugin) === 0 && get_post_type($old) === 'tp_posts' && get_option($adopted) === false, get_post_type($old));
+// Model a deployment from a runtime that predates tracking the app's post types.
+delete_option($postTypes);
+check('a schema hash alone does not authorize adoption',
+    \TypedPress\Wp\NativePosts::adopt($plugin) === 0 && get_post_type($old) === 'tp_posts' && get_option($adopted) === false, get_post_type($old));
+// Record a preceding installation in which this app used the custom post type.
+$previous = $plugin->schema->raw();
+$previous['collections']['posts']['native'] = false;
+$previous['collections']['posts']['wp']['postType'] = 'tp_posts';
+$previousHash = hash('sha256', 'previous collection build');
+\TypedPress\Wp\NativePosts::rememberPostTypes(new \TypedPress\Schema($previous), $previousHash);
+check('a post type recorded for a different build cannot authorize adoption',
+    \TypedPress\Wp\NativePosts::adopt($plugin) === 0 && get_post_type($old) === 'tp_posts', get_post_type($old));
+update_option($schemaOption, $previousHash);
 // A failure part way leaves nothing moved: the whole adoption is one transaction, and it runs again.
 $calls = 0;
 $fail = static function (string $slug) use (&$calls): string {
@@ -196,22 +233,24 @@ $fail = static function (string $slug) use (&$calls): string {
 };
 add_filter('wp_unique_post_slug', $fail);
 try {
-    \TypedPress\Wp\NativePosts::adopt(\TypedPress\Wp\Plugin::instance());
+    $plugin->initialize();
     $threw = false;
-} catch (\Throwable) {
-    $threw = true;
+} catch (\RuntimeException $e) {
+    $threw = $e->getMessage() === 'injected failure';
 }
 remove_filter('wp_unique_post_slug', $fail);
 clean_post_cache($old);
 check('an interrupted adoption moves nothing and records nothing', $threw && get_post_type($old) === 'tp_posts' && get_option($adopted) === false, [$threw, get_post_type($old), get_option($adopted)]);
-check('adopt moves the old collection\'s items', \TypedPress\Wp\NativePosts::adopt(\TypedPress\Wp\Plugin::instance()) === 2, get_post_type($old));
+$plugin->initialize();
+eq('deployment records the two old items it moved', get_option($adopted), '2');
+eq('deployment replaces the ownership record with the new post types', get_option($postTypes), $nativeInstall);
 clean_post_cache($old);
 $moved = $db->findFirst('posts', ['where' => ['id' => $old]]);
 check('an adopted item is a post with its excerpt, fields and uid', get_post_type($old) === 'post' && ($moved['excerpt'] ?? null) === 'Kept excerpt'
     && ($moved['minutes'] ?? null) === 7 && get_post_meta($old, '_tp_uid', true) === 'zr_0123456789abcdef0123', $moved);
 check('an adopted item takes comments, as posts do', comments_open($old), get_post($old)->comment_status);
 check('its revisions keep the excerpt', get_post($rev)->post_excerpt === 'Kept excerpt' && (int) get_post($rev)->post_parent === $old, get_post($rev));
-check('adopting again moves nothing', \TypedPress\Wp\NativePosts::adopt(\TypedPress\Wp\Plugin::instance()) === 0, null);
+check('adopting again moves nothing', \TypedPress\Wp\NativePosts::adopt($plugin) === 0, null);
 check('a slug a core post already had is made unique, and the old one redirects', get_post($clash)->post_name !== 'hello-native'
     && in_array('hello-native', get_post_meta($clash, '_wp_old_slug'), true) && get_post($hello)->post_name === 'hello-native', [get_post($clash)->post_name, get_post($hello)->post_name]);
 
@@ -220,7 +259,22 @@ $secret = wp_insert_post(['post_type' => 'post', 'post_status' => 'draft', 'post
 [$ss, $page] = $wp->call('GET', '/sync/posts', null, 'bob', ['first' => '100']);
 $titles = array_map(static fn ($r) => $r['record']['fields']['title'] ?? null, array_filter((array) ($page['records'] ?? []), static fn ($r) => isset($r['record'])));
 check('sync lists published posts to an author', $ss === 200 && in_array('Hello native', $titles, true), [$ss, $page]);
-check('sync never gives an author another\'s draft', !in_array("Ed's secret draft", $titles, true) && !in_array('Unfinished', $titles, true), $titles);
+check('sync hides drafts, private and protected posts from other authors', array_intersect($titles, ["Ed's secret draft", 'Unfinished', 'Private', 'Locked']) === [], $titles);
+$addPost = static fn (string $title, array $extra = []): int => wp_insert_post($extra + [
+    'post_type' => 'post', 'post_status' => 'publish', 'post_title' => $title, 'post_author' => $wp->userId('ed'),
+], true);
+$cursor = $addPost('Before hidden posts');
+$addPost('Hidden draft on page', ['post_status' => 'draft']);
+$addPost('Hidden password on page', ['post_password' => 'private']);
+$addPost('Hidden by app');
+$nextId = $addPost('Visible after hidden posts');
+$addPost('Final readable draft', ['post_status' => 'draft', 'post_author' => $wp->userId('bob')]);
+[$sp, $chunk] = $wp->call('GET', '/sync/posts', null, 'bob', ['first' => '1', 'after' => (string) $cursor]);
+eq('sync filters skipped rows before deciding whether there is a next page', [$sp, $chunk['records'][0]['record']['fields']['title'] ?? null, $chunk['next'] ?? null],
+    [200, 'Visible after hidden posts', $nextId]);
+[$sp, $chunk] = $wp->call('GET', '/sync/posts', null, 'bob', ['first' => '1', 'after' => (string) $nextId]);
+eq('following the sync cursor reaches the final visible row and stops', [$sp, $chunk['records'][0]['record']['fields']['title'] ?? null, $chunk['next'] ?? null],
+    [200, 'Final readable draft', null]);
 $target = array_values(array_filter((array) ($page['records'] ?? []), static fn ($r) => ($r['record']['fields']['title'] ?? null) === 'Hello native'))[0] ?? null;
 [$sx, $px] = $wp->call('POST', '/sync/posts/trash', ['uid' => $target['record']['uid'] ?? '', 'expect' => $target['digest'] ?? ''], 'bob');
 check('an author can\'t trash another author\'s post through sync', $sx === 404 && get_post_status($hello) === 'publish', [$sx, $px, get_post_status($hello)]);

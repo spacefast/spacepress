@@ -7,6 +7,14 @@ require __DIR__ . '/harness.php';
 
 $site = wpSite('commerce', ['wpContent' => $argv[1], 'users' => ['ed' => 'editor'], 'server' => true, 'muPlugins' => [
     'cache-probe' => '<?php function batcache_cancel(): void { if (!headers_sent()) { header("X-Test-Batcache-Cancel: yes"); } }',
+    'deferred-payment' => <<<'PHP'
+<?php
+add_action('woocommerce_rest_checkout_process_payment_with_context', static function ($context, $result): void {
+    if (empty($context->payment_data['defer'])) { return; }
+    $result->set_status('success');
+    $result->set_redirect_url($context->order->get_checkout_order_received_url());
+}, 10, 2);
+PHP,
 ]]);
 $plugin = $site->plugin();
 $db = $site->app()->db;
@@ -237,8 +245,15 @@ eq('the cookie session checkout reads holds the token cart', $items($guestReques
 [, $tokenHeaders] = $guestRequest(curl_init(), $storeApi . '/add-item', ['Content-Type: application/json', 'Cart-Token: ' . $cartToken], ['id' => $mug['id']]);
 $cartToken = $tokenHeaders['cart-token'] ?? '';
 eq('a second checkout link shows the cart as it is now', [$handoff($cartToken)[0], $items($guestRequest($handoffHttp, $storeApi))], [302, 2]);
+[, , $copyBody] = $guestRequest($handoffHttp, $storeApi);
+$copyKey = json_decode((string) $copyBody, true)['items'][0]['key'];
+$changeCopy = static fn (int $quantity): array => $guestRequest($handoffHttp, $storeApi . '/update-item',
+    ['Content-Type: application/json', 'Nonce: ' . ($guestRequest($handoffHttp, $storeApi)[1]['nonce'] ?? '')], ['key' => $copyKey, 'quantity' => $quantity]);
+eq('editing the imported cart updates its quantity', $items($changeCopy(3)), 3);
+$handoff($cartToken);
+eq('reopening the same link preserves edits in the cookie cart', $items($guestRequest($handoffHttp, $storeApi)), 3);
+$changeCopy(2);
 // A cookie cart's own token names the session the cookie already holds: nothing to copy, and no second session.
-// (The receipt address above emptied the first cookie cart, as Woo's order-received page does.)
 $ownHttp = curl_init();
 curl_setopt($ownHttp, CURLOPT_COOKIEFILE, '');
 [, $nonceHeaders] = $guestRequest($ownHttp, $storeApi);
@@ -246,9 +261,32 @@ curl_setopt($ownHttp, CURLOPT_COOKIEFILE, '');
 [$ownStatus, $ownHeaders] = $guestRequest($ownHttp, '/checkout/?session=' . rawurlencode($ownHeaders['cart-token'] ?? ''));
 check('a link carrying the cookie session\'s own token keeps that session', $ownStatus === 302 && !str_contains($ownHeaders['set-cookie'] ?? '', 'wp_woocommerce_session_'), $ownHeaders);
 eq('and its cart', $items($guestRequest($ownHttp, $storeApi)), 1);
-[$sessionStatus, $sessionHeaders] = $guestRequest(curl_init(), '/shop/?session=' . rawurlencode($cartToken));
-check('a catalog address carrying a session token is never shared', $sessionStatus === 302 && ($sessionHeaders['location'] ?? '') === '/shop/'
-    && str_contains($sessionHeaders['cache-control'] ?? '', 'private, no-store') && ($sessionHeaders['a8c-edge-cache'] ?? '') === 'no-cache', $sessionHeaders);
+$guestRequest($ownHttp, '/checkout/?session=' . rawurlencode($cartToken));
+eq('a link for a different token leaves the guest cart in place', $items($guestRequest($ownHttp, $storeApi)), 1);
+$offCheckout = curl_init();
+curl_setopt($offCheckout, CURLOPT_COOKIEFILE, '');
+[$sessionStatus, $sessionHeaders] = $guestRequest($offCheckout, '/shop/?session=' . rawurlencode($cartToken));
+check('a session link outside checkout is private and creates no session', $sessionStatus === 200 && !isset($sessionHeaders['set-cookie'])
+    && str_contains($sessionHeaders['cache-control'] ?? '', 'private, no-store') && ($sessionHeaders['a8c-edge-cache'] ?? '') === 'no-cache');
+$guestRequest($offCheckout, '/checkout/?session=' . rawurlencode($cartToken), ['Content-Type: application/json'], ['probe' => true]);
+eq('POST to the checkout page does not import a cart', $items($guestRequest($offCheckout, $storeApi)), 0);
+$user = $site->userId('ed');
+$expires = time() + HOUR_IN_SECONDS;
+$login = wp_generate_auth_cookie($user, $expires, 'logged_in', WP_Session_Tokens::get_instance($user)->create($expires));
+$previousUser = get_current_user_id();
+$previousLogin = $_COOKIE[LOGGED_IN_COOKIE] ?? null;
+$_COOKIE[LOGGED_IN_COOKIE] = $login;
+wp_set_current_user($user);
+$signedHeaders = ['Cookie: ' . LOGGED_IN_COOKIE . '=' . rawurlencode($login), 'X-WP-Nonce: ' . wp_create_nonce('wp_rest')];
+if ($previousLogin === null) { unset($_COOKIE[LOGGED_IN_COOKIE]); } else { $_COOKIE[LOGGED_IN_COOKIE] = $previousLogin; }
+wp_set_current_user($previousUser);
+$signedIn = curl_init();
+[, $signedNonce] = $guestRequest($signedIn, $storeApi, $signedHeaders);
+$signedCart = $guestRequest($signedIn, $storeApi . '/add-item',
+    [...$signedHeaders, 'Content-Type: application/json', 'Nonce: ' . ($signedNonce['nonce'] ?? '')], ['id' => $mug['id']]);
+eq('the signed-in shopper has a saved cart', $items($signedCart), 1);
+$guestRequest($signedIn, '/checkout/?session=' . rawurlencode($cartToken), $signedHeaders);
+eq("a checkout link preserves the signed-in shopper's saved cart", $items($guestRequest($signedIn, $storeApi, $signedHeaders)), 1);
 [$badStatus, $badHeaders] = $guestRequest(curl_init(), '/shop/?session=not-a-token');
 check('an address with a session Woo does not accept is private and stays where it is', $badStatus === 200 && !isset($badHeaders['set-cookie'])
     && str_contains($badHeaders['cache-control'] ?? '', 'private, no-store'), [$badStatus, $badHeaders]);
@@ -272,18 +310,40 @@ $cartToken = $tokenHeaders['cart-token'] ?? '';
 [$orderStatus] = $guestRequest($handoffHttp, '/wp-json/wc/store/v1/checkout', ['Content-Type: application/json', 'Nonce: ' . ($nonceHeaders['nonce'] ?? '')],
     ['billing_address' => $buyer + ['email' => 'buyer@example.test', 'phone' => '123456789'], 'shipping_address' => $buyer, 'payment_method' => 'cod']);
 eq('an order for an older copy leaves the changed token cart alone', [$orderStatus, $items($guestRequest(curl_init(), $storeApi, ['Cart-Token: ' . $cartToken]))], [200, 2]);
-// A gateway that sends the shopper away to pay empties nothing at checkout: Woo empties the cart on the
-// receipt they come back to. A receipt address without its order's key ends no token cart.
-$paidElsewhere = wc_create_order();
-$paidElsewhere->save();
-$receipt = '/checkout/order-received/' . $paidElsewhere->get_id() . '/?key=';
-$handoff($cartToken);
-$guestRequest($handoffHttp, $receipt . 'wc_order_guess');
-eq('a receipt address without the order key leaves the token cart alone', $items($guestRequest(curl_init(), $storeApi, ['Cart-Token: ' . $cartToken])), 2);
-$handoff($cartToken);
-eq('the handed-over cart is back in the cookie session', $items($guestRequest($handoffHttp, $storeApi)), 2);
-[$receiptStatus] = $guestRequest($handoffHttp, $receipt . $paidElsewhere->get_order_key());
-eq('the receipt a shopper returns to ends both carts', [$receiptStatus, $items($guestRequest($handoffHttp, $storeApi)), $items($guestRequest(curl_init(), $storeApi, ['Cart-Token: ' . $cartToken]))], [200, 0, 0]);
+// An unrelated receipt has no handoff recorded, even when this browser has an imported cart.
+$unrelated = wc_create_order();
+$deferredHttp = curl_init();
+curl_setopt($deferredHttp, CURLOPT_COOKIEFILE, '');
+$guestRequest($deferredHttp, '/checkout/?session=' . rawurlencode($cartToken));
+[$receiptStatus] = $guestRequest($deferredHttp, '/checkout/order-received/' . $unrelated->get_id() . '/?key=' . $unrelated->get_order_key());
+eq('a valid receipt for an unrelated order leaves the token cart alone', [$receiptStatus, $items($guestRequest(curl_init(), $storeApi, ['Cart-Token: ' . $cartToken]))], [200, 2]);
+
+$placeDeferred = static function (string $token) use ($guestRequest, $storeApi, $buyer): array {
+    $client = curl_init();
+    curl_setopt($client, CURLOPT_COOKIEFILE, '');
+    $guestRequest($client, '/checkout/?session=' . rawurlencode($token));
+    [, $headers] = $guestRequest($client, $storeApi);
+    [$status, , $body] = $guestRequest($client, '/wp-json/wc/store/v1/checkout',
+        ['Content-Type: application/json', 'Nonce: ' . ($headers['nonce'] ?? '')],
+        ['billing_address' => $buyer + ['email' => 'buyer@example.test', 'phone' => '123456789'],
+            'shipping_address' => $buyer, 'payment_method' => 'cod', 'payment_data' => [['key' => 'defer', 'value' => true]]]);
+    $order = wc_get_order((int) (json_decode((string) $body, true)['order_id'] ?? 0));
+    eq('deferred checkout placed a pending order', [$status, $order ? $order->get_status() : null], [200, 'pending']);
+    return [$client, $order ? '/checkout/order-received/' . $order->get_id() . '/?key=' : '', $order ? $order->get_order_key() : ''];
+};
+[$receiptHttp, $receipt, $key] = $placeDeferred($cartToken);
+$guestRequest($receiptHttp, $receipt . 'wc_order_guess');
+eq('the wrong order key leaves the token cart alone', $items($guestRequest(curl_init(), $storeApi, ['Cart-Token: ' . $cartToken])), 2);
+[, $tokenHeaders] = $guestRequest(curl_init(), $storeApi . '/add-item', ['Content-Type: application/json', 'Cart-Token: ' . $cartToken], ['id' => $mug['id']]);
+$cartToken = $tokenHeaders['cart-token'] ?? '';
+[$receiptStatus] = $guestRequest($receiptHttp, $receipt . $key);
+eq('a valid receipt preserves token lines changed after checkout', [$receiptStatus, $items($guestRequest(curl_init(), $storeApi, ['Cart-Token: ' . $cartToken]))], [200, 3]);
+[, $receipt, $key] = $placeDeferred($cartToken);
+[$receiptStatus] = $guestRequest(curl_init(), $receipt . $key);
+eq('a valid receipt clears its unchanged source even in a new browser', [$receiptStatus, $items($guestRequest(curl_init(), $storeApi, ['Cart-Token: ' . $cartToken]))], [200, 0]);
+$guestRequest(curl_init(), $storeApi . '/add-item', ['Content-Type: application/json', 'Cart-Token: ' . $cartToken], ['id' => $mug['id'], 'quantity' => 3]);
+$guestRequest(curl_init(), $receipt . $key);
+eq('revisiting a settled receipt preserves a rebuilt cart with identical lines', $items($guestRequest(curl_init(), $storeApi, ['Cart-Token: ' . $cartToken])), 3);
 $actionsOnly = '<!-- wp:woocommerce/checkout --><!-- wp:woocommerce/checkout-actions-block /--><!-- /wp:woocommerce/checkout -->';
 set_query_var('order-pay', ''); unset($GLOBALS['wp']->query_vars['order-pay']);
 eq('Woo renders no form for an actions-only checkout', trim(do_blocks($actionsOnly)), '');

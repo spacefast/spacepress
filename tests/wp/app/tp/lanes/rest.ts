@@ -94,19 +94,19 @@ export const notices = collection({ title: text() },
 
 // Editor saves roll back when a hook throws (§1.7): each hook writes a log row first, then refuses.
 export const fuses = collection({ title: text(), note: text().optional() },
-  { revisions: true, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } }).on({
-  async afterCreate(row: { id: number; title: string; note: string | null; status: string; publishedAt: string | null }) {
+  { revisions: true, softDelete: false, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } }).on({
+  async afterCreate(row) {
     await db.insert(fuseLog).values({ msg: `created ${row.title}` });
     if (row.title.startsWith("Explode")) throw new HttpError(422, "boom", "afterCreate refused this");
   },
-  async afterUpdate(row: { id: number; title: string; note: string | null; status: string; publishedAt: string | null }) {
+  async afterUpdate(row) {
     await db.insert(fuseLog).values({ msg: `updated ${row.title}` });
     if (row.title.startsWith("Explode")) throw new HttpError(422, "boom", "afterUpdate refused this");
   },
-  async beforeDelete(row: { id: number; title: string; note: string | null; status: string; publishedAt: string | null }) {
+  async beforeDelete(row) {
     await db.insert(fuseLog).values({ msg: `deleting ${row.title}` });
   },
-  async afterDelete(row: { id: number; title: string; note: string | null; status: string; publishedAt: string | null }) {
+  async afterDelete(row) {
     if (row.title.startsWith("Keep")) throw new HttpError(409, "kept", "afterDelete refused this");
   },
 });
@@ -118,7 +118,7 @@ export const oracleRows = collection({
   title: text(), ownerId: integer().optional(), code: text().unique().max(191).optional(), badge: integer().unique().access({ read: "admin" }).optional(), publicBadge: integer().unique().optional(),
 }, { uid: true, access: {
   read: (ctx) => ctx.user?.role === "admin" ? true : { ownerId: ctx.user?.id ?? -1 },
-  create: "editor", update: "editor", delete: "editor",
+  create: "editor", update: "editor", delete: "editor", purge: "editor",
 } });
 
 export const oracleRefs = collection({
@@ -147,7 +147,7 @@ export const oraclePeers = collection({
 } });
 
 export const oracleParents = collection({ title: text() },
-  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor", purge: "editor" } });
 
 export const oracleKids = collection({
   title: text(), parentId: ref(oracleParents).optional().onDelete("cascade"),
@@ -171,7 +171,7 @@ export const oracleDefault = collection({
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "admin" } });
 
 export const nullParents = collection({ title: text() },
-  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor", purge: "editor" } });
 
 export const nullChildren = collection({
   title: text(), parentId: ref(nullParents).optional(),
@@ -179,7 +179,7 @@ export const nullChildren = collection({
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
 export const hookParents = collection({ title: text() },
-  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor", purge: "editor" } });
 
 export const hookChildren = collection({
   title: text(), parentId: ref(hookParents).optional(),
@@ -224,7 +224,7 @@ export const derivedRefs = collection({
 });
 
 export const deepRoots = collection({ title: text() },
-  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor", purge: "editor" } });
 
 export const deepNodes = collection({
   title: text(), rootId: ref(deepRoots).optional().onDelete("cascade"),

@@ -170,6 +170,8 @@ test("an agents: true job is the blog/job-stamp ability: editors enqueue it, AS 
 
 test("concurrent calls to a rate-limited mutation on MariaDB: exactly the limit is accepted", async () => {
   // Fourteen calls at once against "10/min", each holding its transaction open: every call counts.
+  const untilNewWindow = 60_000 - Date.now() % 60_000;
+  if (untilNewWindow < 10_000) await new Promise((resolve) => setTimeout(resolve, untilNewWindow));
   const statuses = await Promise.all(
     Array.from({ length: 14 }, () => http("POST", `${api}/actions/jobsLimited`, { as: "editor", body: { wait: 300 } }).then((r) => r.status)),
   );
@@ -293,7 +295,8 @@ test("a committed write reaches a local receiver through Action Scheduler, signe
   assert.equal(mine().length, 2, "the retry delivered again with the same event id");
   const last = mine()[1];
   const event = JSON.parse(last.body);
-  assert.deepEqual({ ...event, at: undefined }, { id: job.id, event: "hook_notes.created", collection: "hook_notes", at: undefined, data: { row: note } });
+  const [row] = first("find", "hook_notes", JSON.stringify({ where: { id: note.id } }));
+  assert.deepEqual({ ...event, at: undefined }, { id: job.id, event: "hook_notes.created", collection: "hook_notes", at: undefined, data: { row } });
   assert.equal(last.headers["typedpress-event-id"], job.id);
   assert.equal(last.headers["typedpress-event"], "hook_notes.created");
   const [, ts, v1] = /^t=(\d+),v1=([0-9a-f]{64})$/.exec(String(last.headers["typedpress-signature"]))!;

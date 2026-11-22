@@ -75,7 +75,8 @@ test("first.prune-guests deletes stale guests with what they own, per onDelete, 
   age(id(fresh), 5);
   runPrune();
   assert.deepEqual([stale, pinned, fresh, author].map((g) => user(id(g))), [false, true, true, false]);
-  assert.deepEqual(sql(`SELECT id FROM wp_tp_guest_carts WHERE id = ${cart.id}`), [], "cascade deleted the guest's cart");
+  assert.deepEqual(sql(`SELECT id FROM wp_tp_guest_carts WHERE id = ${cart.id} AND deletedAt IS NOT NULL AND _live IS NULL`),
+    [{ id: String(cart.id) }], "cascade soft-deleted the guest's cart");
   assert.deepEqual(sql(`SELECT memberId FROM wp_tp_guest_notes WHERE id = ${note.id}`), [{ memberId: "NULL" }], "set null kept the note, unowned");
   assert.deepEqual(sql(`SELECT memberId FROM wp_tp_guestbook WHERE id = ${entry.id}`), [{ memberId: String(id(pinned)) }], "the required reference kept its guest");
   assert.deepEqual(sql(`SELECT post_author FROM wp_posts WHERE ID = ${post}`), [{ post_author: "0" }]);

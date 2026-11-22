@@ -8,7 +8,8 @@ import { auth, core, harness, http, ok, qs, run, sql, wp, first, type Role } fro
 
 const facade = `${harness.url}/wp-json/typedpress/v1`;
 const f = (method: string, path: string, opts: { as?: Role; body?: unknown } = {}) => http(method, facade + path, opts);
-// The pipeline's row without what differs by design: timestamps, and the API's `_rev` (docs/staged.md).
+// The API adds `_rev` and leaves storage-only soft-delete fields out of the row.
+const publicRow = ({ deletedGroup, _live, ...row }: Record<string, unknown>) => row;
 const strip = (row: any) => { const { createdAt, updatedAt, _rev, ...rest } = row; return rest; };
 const unrev = (row: any) => { const { _rev, ...rest } = row; return rest; };
 
@@ -25,7 +26,7 @@ test("lists are First rows with { data, cursor }, the same rows TypedPress's pip
   const where = { id: { in: eventIds } };
   const page1 = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "2" }));
   assert.equal(page1.status, 200, JSON.stringify(page1.json));
-  const firstRows = first("find", "events", JSON.stringify({ where, orderBy: { seats: "desc" } }));
+  const firstRows = first("find", "events", JSON.stringify({ where, orderBy: { seats: "desc" } })).map(publicRow);
   assert.deepEqual(page1.json.data.map(strip), firstRows.slice(0, 2).map(strip));
   assert.equal(typeof page1.json.cursor, "string");
   const second = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "2", cursor: page1.json.cursor }));
@@ -40,7 +41,7 @@ test("lists are First rows with { data, cursor }, the same rows TypedPress's pip
 
 test("items, slugs, writes and deletes map onto core and back", async () => {
   const item = await f("GET", `/events/${eventIds[1]}`);
-  assert.deepEqual(strip(item.json.data), strip(first("find", "events", JSON.stringify({ where: { id: eventIds[1] } }))[0]));
+  assert.deepEqual(strip(item.json.data), strip(publicRow(first("find", "events", JSON.stringify({ where: { id: eventIds[1] } }))[0])));
   const created = await f("POST", "/events", { as: "editor", body: { title: `Fd ${run}`, seats: 7, day: "2026-05-01", kinds: ["social"] } });
   assert.equal(created.status, 201, JSON.stringify(created.json));
   assert.deepEqual([created.json.data.title, created.json.data.seats, created.json.data.day, created.json.data.status], [`Fd ${run}`, 7, "2026-05-01", "published"]);
@@ -55,7 +56,13 @@ test("items, slugs, writes and deletes map onto core and back", async () => {
   assert.deepEqual([overridden.status, (await overridden.json()).data.seats], [200, 9]);
   const removed = await f("DELETE", `/events/${id}`, { as: "editor" });
   assert.deepEqual([removed.status, removed.json.data.id], [200, id]);
-  assert.equal((await f("GET", `/events/${id}`, { as: "editor" })).status, 404);
+  for (const as of ["editor", undefined] as const) {
+    const trashed = await f("GET", `/events/${id}`, { as });
+    const missing = await f("GET", "/events/999999999", { as });
+    assert.deepEqual([trashed.status, trashed.json], [404, missing.json]);
+  }
+  const inTrash = await http("GET", `${core}/tp_events/${id}?context=edit`, { as: "editor" });
+  assert.deepEqual([inTrash.status, inTrash.json.status], [200, "trash"]);
   const post = first("insert", "posts", JSON.stringify({ title: `Facade slug ${run}`, body: "<!-- wp:paragraph --><p>Hello <strong>md</strong></p><!-- /wp:paragraph -->" }))[0];
   const bySlug = await f("GET", `/posts/slug:${post.slug}`);
   assert.equal(bySlug.json.data.id, post.id);
@@ -262,7 +269,7 @@ test("rows carry TypedPress's system fields and every locale, as TypedPress's pi
   const tour = first("insert", "tours", JSON.stringify({ title: `Facade tour ${run}`, price: 4 }))[0];
   const viaFacade = await f("GET", `/tours/${tour.id}`, { as: "editor" });
   assert.equal(typeof viaFacade.json.data._rev, "string", "a collection's row carries its _rev");
-  assert.deepEqual(unrev(viaFacade.json.data), first("find", "tours", JSON.stringify({ where: { id: tour.id }, locale: "*" }))[0]);
+  assert.deepEqual(unrev(viaFacade.json.data), publicRow(first("find", "tours", JSON.stringify({ where: { id: tour.id }, locale: "*" }))[0]));
   const both = await f("GET", "/tours" + qs({ locale: "*", where: { id: tour.id } }), { as: "editor" });
   assert.deepEqual(both.json.data.map((t: any) => [t.id, t.locale]), [[tour.id, "en"]]);
 });

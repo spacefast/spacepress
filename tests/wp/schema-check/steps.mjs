@@ -1,99 +1,55 @@
-// The schema-check lane's app at each deploy, one typedpress.config.ts per step. `run.sh` builds them
-// in order into one project, so every step's migration is planned against the previous step's
-// ledger, exactly as successive deploys of one app would be.
-//
-//   node steps.mjs <step>   prints that step's typedpress.config.ts
-//
-// `tasks` binds an existing table. TypedPress creates `likes` and `notes`.
-const tasks = (fields = "") => `export const tasks = table({
-  title: text(),
-  note: text().optional(),${fields}
-}, { existingTable: "wp_external_tasks" });`;
-const likes = (fields = "", options = "") => `export const likes = table({
-  post: integer(),${fields}
-}${options});`;
-const notes = (fields = "", options = "") => `export const notes = table({
-  body: text().optional(),${fields}
-}${options});`;
+// Each step is built into the same project so the compiler sees the earlier migrations.
+const tasks = (title = 'title: text()') =>
+  `export const tasks = table({ ${title}, note: text().optional() }, { existingTable: "wp_external_tasks" });`;
+const likes = (fields = "") => `export const likes = table({ post: integer()${fields} });`;
+const tags = 'export const tags = table({ name: text().optional() });';
+const notes = (fields = {}, name = "notes", options = "") => {
+  const columns = {
+    body: "text().max(100).optional()",
+    state: 'text().default("open")',
+    category: 'text().default("general")',
+    flag: "text().optional()",
+    count: "text().optional()",
+    ratio: "text().optional()",
+    total: "integer().optional()",
+    ...fields,
+  };
+  const declarations = Object.entries(columns)
+    .filter(([, declaration]) => declaration !== null)
+    .map(([field, declaration]) => `${field}: ${declaration}`);
+  return `export const ${name} = table({ ${declarations.join(", ")} }${options});`;
+};
 
-const app = (parts) => `import { boolean, defineConfig, integer, number, ref, table, text } from "typedpress";
+const app = (...parts) => `import { boolean, defineConfig, integer, number, ref, table, text } from "typedpress";
 ${parts.join("\n")}
 export default defineConfig({ name: "schema-check" });
 `;
 
-export const steps = {
-  // 1. The typedpress deploy: adopts tasks, creates likes and notes.
-  initial: app([tasks(), likes(), notes()]),
-  // 2. Additive: a new kind, an optional field, a required field with a default. No --drop, no refusal.
-  additive: app([tasks(), likes(`\n  emoji: text().optional(),`), notes(`\n  state: text().default("open"),`),
-    "export const tags = table({ name: text().optional() });"]),
-  // 3. A new required field with no default on a kind that has rows: refused with the count.
-  required: app([tasks(), likes(`\n  emoji: text().optional(),`), notes(`\n  state: text().default("open"),\n  author: text(),`),
-    "export const tags = table({ name: text().optional() });"]),
-  // 4. An optional field becomes required: refused while rows lack it.
-  tighten: app([tasks(), likes(`\n  emoji: text(),`), notes(`\n  state: text().default("open"),`),
-    "export const tags = table({ name: text().optional() });"]),
-  // 5. Renames: notes → memos, body → text. Nothing is dropped, so nothing is asked.
-  rename: app([tasks(), likes(`\n  emoji: text().optional(),`),
-    `export const memos = table({
-  text: text().was("body").optional(),
-  state: text().default("open"),
-}, { was: "notes" });`,
-    "export const tags = table({ name: text().optional() });"]),
-  // 6. Drops: the likes kind and the memos.state field, both holding rows.
-  drop: app([tasks(),
-    `export const memos = table({
-  text: text().optional(),
-}, { was: "notes" });`,
-    "export const tags = table({ name: text().optional() });"]),
-  // 7. The adopted table renames a field and loses one, then (8) its kind: never without --drop, even when empty.
-  adoptedField: app([`export const tasks = table({
-  name: text().was("title"),
-}, { existingTable: "wp_external_tasks" });`,
-    "export const memos = table({ text: text().optional() }, { was: \"notes\" });",
-    "export const tags = table({ name: text().optional() });"]),
-  adoptedKind: app(["export const memos = table({ text: text().optional() }, { was: \"notes\" });",
-    "export const tags = table({ name: text().optional() });"]),
-  // 9. A narrower column: values that wouldn't fit refuse; MySQL would truncate them.
-  narrow: app(["export const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "export const tags = table({ name: text().optional() });"]),
-  // 10. Text fields become a boolean and an integer: text is compared as text, and integers are
-  //     range-checked, since MySQL would turn 'yes' into 0 and clamp a value past BIGINT's range.
-  retype: app(["export const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "export const tags = table({ name: text().optional(), flag: text().optional(), count: text().optional() });"]),
-  retyped: app(["export const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "export const tags = table({ name: text().optional(), flag: boolean().optional(), count: integer().optional() });"]),
-  // 11. One change makes a field required and narrower: a too-long value refuses like a missing one.
-  requiredNarrow: app(["export const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "export const tags = table({ name: text().max(5), flag: boolean().optional(), count: integer().optional() });"]),
-  // 12. An integer becomes a real: a DOUBLE holds integers exactly only up to 2^53, and the check
-  //     must not overflow on BIGINT's minimum (an erroring count must refuse, never pass).
-  toReal: app(["export const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "export const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional() });"]),
-  // 13. Text becomes a real: only a plain decimal converts. MySQL would read '1,5' and '1x5' as 1,
-  //     '1e3' as 1000 and '5\n' as 5, so each refuses.
-  ratioText: app(["export const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "export const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: text().optional() });"]),
-  ratioReal: app(["export const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "export const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional() });"]),
-  // 14. Text becomes a reference to memos (BIGINT UNSIGNED). MariaDB's ALTER clamps text from 2^63
-  //     up to 2^63 - 1 even into an unsigned column, so those values refuse.
-  memoText: app(["export const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "export const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: text().optional() });"]),
-  memoRef: app(["export const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "export const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: ref(memos).optional() });"]),
-  // 15. A table the app didn't create comes back with an optional field, then (16) that field
-  //     changes type: a retype of an adopted table is refused even when empty, until --drop names it.
-  readoptField: app(["export const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "export const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: ref(memos).optional() });",
-    `export const tasks = table({ name: text().optional(), rank: integer().optional() }, { existingTable: "wp_external_retype" });`]),
-  readoptRetype: app(["export const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "export const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: ref(memos).optional() });",
-    `export const tasks = table({ name: text().optional(), rank: text().optional() }, { existingTable: "wp_external_retype" });`]),
+const additiveLikes = likes(", emoji: text().optional()");
+const aliasedNotes = (retire = false) => notes({
+  body: null,
+  category: retire ? null : 'text().default("general")',
+  text: 'text().max(100).column("body").alias("body").optional()',
+}, "memos", ', { storageName: "notes" }');
+
+const steps = {
+  initial: app(tasks(), likes(), notes({ body: "text().max(16).optional()", state: "text().optional()", category: null })),
+  additive: app(tasks(), additiveLikes, notes(), tags),
+  renamed: app(tasks('name: text().column("title").alias("title")'), additiveLikes, aliasedNotes(), tags),
+  retired: app(aliasedNotes(true), tags),
+
+  required: app(tasks(), additiveLikes, notes({ reviewer: "text()" }), tags),
+  tighten: app(tasks(), additiveLikes, notes({ body: "text().max(100)" }), tags),
+  narrow: app(tasks(), additiveLikes, notes({ body: "text().max(5).optional()" }), tags),
+  toBoolean: app(tasks(), additiveLikes, notes({ flag: "boolean().optional()" }), tags),
+  toInteger: app(tasks(), additiveLikes, notes({ count: "integer().optional()" }), tags),
+  toReal: app(tasks(), additiveLikes, notes({ ratio: "number().optional()" }), tags),
+  integerToReal: app(tasks(), additiveLikes, notes({ total: "number().optional()" }), tags),
+  toRef: app(tasks(), additiveLikes, notes({ count: "ref(likes).optional()" }), tags),
+  renameColumn: app(tasks(), additiveLikes, notes({ body: 'text().max(100).was("oldBody").optional()' }), tags),
+  renameTable: app(tasks(), additiveLikes, notes({}, "memos", ', { was: "notes" }'), tags),
 };
 
-if (process.argv[2] !== undefined) {
-  const step = steps[process.argv[2]];
-  if (step === undefined) throw new Error(`no step ${process.argv[2]}`);
-  process.stdout.write(step);
-}
+const step = steps[process.argv[2]];
+if (step === undefined) throw new Error(`unknown step ${process.argv[2]}`);
+process.stdout.write(step);

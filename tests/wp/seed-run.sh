@@ -39,9 +39,9 @@ Original locked body.
 MD
 "$target/debug/typedpress" sources "$app/project" --out "$app/source-1"
 "$target/debug/typedpress" compile-sources "$app/source-1" "$app/compiled-1" "$app/source-1"
-# Native build acquires the harness's pinned platform dependencies; execute the hosted plugins.
+# The native build supplies the platform manifest. Install only the hosted build's plugins.
 "$target/debug/typedpress" build "$app/project" --quiet >/dev/null
-rsync -a "$app/project/tp/dist/wp-content/" "$app/content/"
+cp "$app/project/tp/dist/wp-content/typedpress-manifest.json" "$app/content/"
 rsync -a "$app/compiled-1/plugins/" "$app/content/plugins/"
 "$here/harness.sh" up --wp-content "$app/content" > "$app/harness.json"
 "$here/harness.sh" wp typedpress migrate > /dev/null

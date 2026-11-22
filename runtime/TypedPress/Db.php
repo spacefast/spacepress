@@ -1086,7 +1086,9 @@ final class Db
             throw $this->store->mapError($e);
         }
         [$row, $raw] = $this->readByPk($collection, $spec, $pk);
-        $this->recordRevision($collection, $spec, $pk, $raw, 'create', null, $row);
+        $pkColumn = $spec['primaryKey'];
+        $allocatedKey = ($columns[$pkColumn]['autoIncrement'] ?? false) && !array_key_exists($pkColumn, $insert);
+        $this->recordRevision($collection, $spec, $pk, $raw, 'create', null, $row, $allocatedKey);
         $this->hook($collection, $spec, 'afterCreate', $row);
         $this->published($collection, $spec, $row, null);
         Extensions::written('create', $collection, $row, null);
@@ -2379,6 +2381,7 @@ final class Db
         string $op,
         ?array $previous = null,
         ?array $current = null,
+        bool $allocatedKey = false,
     ): void {
         if (!($spec['revisions'] ?? false)) {
             return;
@@ -2401,6 +2404,7 @@ final class Db
             'op' => $op,
             'schemaMigration' => $this->latestSchemaMigration(),
             'changed' => $changed,
+            'allocatedKey' => $allocatedKey,
         ]);
     }
 

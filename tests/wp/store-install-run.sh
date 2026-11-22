@@ -94,7 +94,7 @@ PY
 ok "inspection plans the Pages and one rewrite rebuild, and writes nothing"
 
 receipt=$(host "echo json_encode(TypedPress\\Loader\\Loader::initialize('$root', '$build'));")
-[[ $(json migrations.0 <<< "$receipt") == 0001_init ]] || fail "initialize applies the init migration: $receipt"
+[[ $(json migrations.0 <<< "$receipt") =~ ^[0-9]{14}_[0-9a-hjkmnp-tv-z]{6}_init$ ]] || fail "initialize applies the init migration: $receipt"
 initialized=$(site)
 [[ $(inspect "$build" "['install']") == '[]' ]] || fail "after initialize nothing is left to install"
 # Initialize from WP-CLI set up private files: the secret, the deny rules and a passing probe.

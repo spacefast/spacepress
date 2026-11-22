@@ -138,7 +138,7 @@ ok "typedpress login gets an application password through WordPress's Authorize 
 curl -s -u "$admin" "$api/site" > "$work/answer.json"
 [[ $(json live < "$work/answer.json") == null && -z $(option tp_store_key) ]] || fail "reading a fresh site names no build store: $(cat "$work/answer.json")"
 out=$(push --dry-run) || fail "a dry run: $out"
-[[ $out == *"run migration 0001_init"* && $out == *"--dry-run"* ]] || fail "a dry run uploads and prints the plan: $out"
+[[ $out =~ "run migration "[0-9]{14}_[0-9a-hjkmnp-tv-z]{6}_init && $out == *"--dry-run"* ]] || fail "a dry run uploads and prints the plan: $out"
 [[ $(status "$url/wp-json/typedpress/v1") == 404 && -z $(wp option get tp_live_build 2>/dev/null) ]] || fail "a dry run makes nothing live"
 [[ -n $(option tp_store_key) ]] || fail "the first upload names the build store"
 # The uploaded build's browser files stay private until it is made live.
@@ -151,7 +151,7 @@ print(f"app/{app}/plugins/" + os.path.relpath(image, f"{store}/app/{app}/plugins
 [[ $(status "$url/wp-content/typedpress-assets/$candidate") == 404 ]] || fail "a dry run makes none of the build's files public: $candidate"
 "$harness" compose exec -T wordpress test ! -e /var/www/html/wp-content/typedpress-assets || fail "a dry run creates no public directory"
 out=$(push) || fail "the first deploy: $out"
-[[ $out == *"the site already has this runtime tree"* && $out == *"applied migration 0001_init"* && $out == *"live: $url now runs pluginlane"* ]] || fail "the first deploy reuses the uploaded trees and goes live: $out"
+[[ $out =~ "applied migration "[0-9]{14}_[0-9a-hjkmnp-tv-z]{6}_init && $out == *"the site already has this runtime tree"* && $out == *"live: $url now runs pluginlane"* ]] || fail "the first deploy reuses the uploaded trees and goes live: $out"
 tp_build=$(wp option get tp_live_build)
 [[ $(curl -s "$url/wp-json/typedpress/v1" | json data.name) == pluginlane ]] || fail "TypedPress's API answers for the deployed app"
 [[ $(status "$url/about") == 301 ]] || fail "the page's noncanonical address redirects"
@@ -206,7 +206,7 @@ ok "browser files are served from typedpress-assets; the build store is private,
 # ---- a second version: a migration, and the content written before it ---------------------------
 step additive
 out=$(push) || fail "the second deploy: $out"
-[[ $out == *"the site already has this runtime tree"* && $out == *"uploading the app tree"* && $out == *"run migration 0002"* && $out == *"live:"* ]] || fail "the second deploy sends only the app tree and migrates: $out"
+[[ $out =~ "run migration "[0-9]{14}_[0-9a-hjkmnp-tv-z]{6}_add_entries_state && $out == *"the site already has this runtime tree"* && $out == *"uploading the app tree"* && $out == *"live:"* ]] || fail "the second deploy sends only the app tree and migrates: $out"
 second_build=$(wp option get tp_live_build)
 [[ $second_build != "$tp_build" ]] || fail "the second deploy is a new build"
 [[ $(curl -s "$url/wp-json/typedpress/v1/notes" | json data.0.title) == "Written before the second deploy" && $(status "$url/wp-json/typedpress/v1/tasks") == 200 ]] || fail "content is kept and the new kind answers"
@@ -264,9 +264,9 @@ second_build=$(wp option get tp_live_build)
 ok "a sealed app lists the TypedPress plugin, and the sealed site keeps taking deployments"
 
 # ---- what the site refuses -----------------------------------------------------------------------
-step required
-if out=$(push); then fail "a required field on a kind with rows was deployed: $out"; fi
-[[ $out == *"refuses this build; nothing changed there"*"entries.author is required, and 1 rows have no value for it"*"Change typedpress.config.ts and push again"* ]] || fail "the schema check's refusal names the field and the rows: $out"
+step adoption
+if out=$(push); then fail "a build binding a missing table was deployed: $out"; fi
+[[ $out == *"refuses this build; nothing changed there"*"wp_missing_entries"*"Change typedpress.config.ts and push again"* ]] || fail "the schema check's refusal names the missing table: $out"
 [[ $(wp option get tp_live_build) == "$second_build" ]] || fail "a refused build is not made live"
 [[ $(status "$url/wp-json/typedpress/v1/tasks") == 200 ]] || fail "the live app keeps serving after a refused deploy"
 step additive
@@ -314,7 +314,7 @@ PHP
 [[ $(curl -s -u "$admin" "$api/site" | json closed) == null ]] || fail "without the filter the site is open again"
 
 # Pushes that open a deployment at the same moment each keep theirs. The manifest is the last
-# compiled build's (the refused `required` step, compiled against the live build).
+# compiled build's (the refused adoption, compiled against the live build).
 latest=$(python3 -c 'import glob,json,os,sys; p=max(glob.glob(sys.argv[1]+"/build/*.json"), key=os.path.getmtime); print(json.dumps({"manifest": open(p).read()}))' "$project/.tp/store")
 for n in 1 2 3 4 5 6; do curl -s -u "$admin" -H 'Content-Type: application/json' -d "$latest" "$api/deployments" > "$work/open-$n.json" & done
 wait
@@ -327,7 +327,7 @@ done
 store="$project/.tp/store"
 manifest=$(python3 - "$store" <<'PY'
 import glob, json, sys
-# A build compiled against the live one (the refused `required` step), pointing at an app tree
+# A build compiled against the live one (the refused adoption), pointing at an app tree
 # nobody has.
 path = max(glob.glob(sys.argv[1] + "/build/*.json"), key=lambda p: __import__("os").path.getmtime(p))
 manifest = json.load(open(path))

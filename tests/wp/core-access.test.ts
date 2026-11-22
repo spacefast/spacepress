@@ -3,7 +3,7 @@
 // ledger: owners read and edit their own rows; payroll: anyone reads, salary admin-only).
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { api, core, harness, http, ok, run, wp, first } from "./env.ts";
+import { api, core, harness, http, ok, run, sql, wp, first } from "./env.ts";
 
 let vaultId: number;
 let mine: number;
@@ -674,11 +674,15 @@ test("a many-ref writes and reads its join table over /tp/v1 and through a core 
   const reverse = first("find", "oracle_parents", JSON.stringify({ where: { id: c }, with: { mentees: true } }))[0];
   assert.deepEqual(reverse.mentees.map((k: any) => k.id), [id]);
 
-  // Deleting a linked post removes its links; deleting the kid removes the rest.
+  // Trash hides the linked row from relation reads and saves the links for restore.
+  const mentors = async () => (await ok("GET", `/oracle_kids/${id}?with=mentors`, { as: "editor" })).mentors.map((m: { id: number }) => m.id);
   first("delete", "oracle_parents", JSON.stringify({ id: c }));
-  assert.deepEqual(first("find", "oracle_kids", JSON.stringify({ where: { id } }))[0].mentors, [b]);
+  assert.deepEqual(await mentors(), [b]);
+  await ok("POST", `/oracle_parents/${c}/restore`, { as: "editor" });
+  assert.deepEqual(await mentors(), [c, b]);
   first("delete", "oracle_kids", JSON.stringify({ id }));
-  assert.equal(wp("eval", `global $wpdb; echo $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}tp_oracle_kids_mentors WHERE owner_id = %d", ${id}));`), "0");
+  const links = sql(`SELECT target_id FROM wp_tp__join_oracle_kids_mentors WHERE owner_id = ${id} ORDER BY position`);
+  assert.deepEqual(links.map((link) => Number(link.target_id)), [c, b]);
 });
 
 test("a core update of a TypedPress post sets its featured image and its terms, as core's update does", async () => {

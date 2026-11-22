@@ -69,6 +69,8 @@ test('real offline WordPress backup restores code, native content, schema, media
     assert.equal(preflight.app, 'blog');
     assert.equal(preflight.compilerMetadata, 'present');
     assert.match(preflight.schemaDigest, /^[0-9a-f]{64}$/);
+    const expectedMigrations = preflight.migrations.map(({ id }) => id).sort();
+    assert.ok(expectedMigrations.length > 0, 'the blog artifact includes migrations');
     const poison = join(root, 'user-config.php');
     const globalConfig = join(root, 'user-wp-cli.yml');
     await writeFile(poison, `<?php file_put_contents(${JSON.stringify(join(root, 'user-config-executed'))}, 'unsafe');`);
@@ -104,7 +106,8 @@ test('real offline WordPress backup restores code, native content, schema, media
     assert.ok(seeded.post > 0);
     const before = invoke(['status', '--workspace', original]).data;
     assert.equal(before.diagnostics.sqliteIntegrity, true);
-    assert.ok(before.diagnostics.migrations.some((migration) => migration.app === 'blog' && migration.id === '0001_init'));
+    const appliedMigrations = before.diagnostics.migrations.filter(({ app }) => app === preflight.app).map(({ id }) => id).sort();
+    assert.deepEqual(appliedMigrations, expectedMigrations);
     const locker = spawn(php, ['-r', '$lock=fopen($argv[1],"c+"); flock($lock,LOCK_EX); echo "locked"; fflush(STDOUT); fread(STDIN,1);', join(original, 'lock')], { stdio: ['pipe', 'pipe', 'pipe'] });
     try {
       const [signal] = await once(locker.stdout, 'data');

@@ -25,8 +25,9 @@ export const steps = {
   additive: app([notes(`\n  mood: text().optional(),`), entries(`\n  state: text().default("open"),`), tasks]),
   // The same app, sealed: only the plugins on its list may be activated (docs/sealed.md).
   sealed: app([notes(`\n  mood: text().optional(),`), entries(`\n  state: text().default("open"),`), tasks], ", sealed: true"),
-  // 3. A required column with no default on a table that has rows: the site refuses it.
-  required: app([notes(`\n  mood: text().optional(),`), entries(`\n  state: text().default("open"),\n  author: text(),`), tasks]),
+  // 3. A new binding to a table missing on the site: the site refuses it.
+  adoption: app([notes(`\n  mood: text().optional(),`), entries(`\n  state: text().default("open"),`), tasks,
+    `export const external = table({ title: text() }, { existingTable: "wp_missing_entries" });`]),
 };
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {

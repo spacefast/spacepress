@@ -4,6 +4,7 @@
 
 mod app;
 mod exports;
+mod route_plan;
 use crate::diag::{Diag, Span};
 use crate::extract::Slot;
 use crate::schema::{Access, DefaultKind, Owner};
@@ -161,6 +162,8 @@ pub fn build(
     let islands;
     let wordpress_uses;
     let queried;
+    let route_effects;
+    let route_calls;
     let catalog = crate::wordpress::abilities::Catalog::new(&schema, &read_lock(program)?);
     let theme = read_theme(program)?;
     // Each collection hook kind: its compiled functions, by owning plugin (None: the app).
@@ -262,6 +265,8 @@ pub fn build(
             c.output
                 .push_str(&format!("/**\n * Return the plugin's permitted outbound HTTP hosts.\n *\n * @return string[]|null\n */\nfunction {function}(): ?array {{\n\treturn {value};\n}}\n\n"));
         }
+        route_effects = std::mem::take(&mut c.route_effects);
+        route_calls = std::mem::take(&mut c.calls);
         (std::mem::take(&mut c.output), slots, settled)
     };
     for ((table, kind), list) in hooks {
@@ -365,6 +370,7 @@ pub fn build(
     if let Some(app) = &schema.app {
         self::app::viewer_calls(program, app, &wordpress_uses).map_err(|d| d.phase(diag::Code::Compile))?;
     }
+    route_plan::build(&mut schema, &route_effects, &route_calls);
     schema.wp_views =
         !wordpress_uses.is_empty() && wordpress_uses.iter().any(|u| u.kind != compile::WordPressKind::Ability);
     // Hooks run in a fixed order per collection; sort for stable output.

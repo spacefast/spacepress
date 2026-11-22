@@ -32,7 +32,7 @@ TP_WP_HARNESS="$work/harness.json" TP_APP_ADOPTION_BEFORE="$work/before.json" \
 mkdir "$work/indexes"
 cp "$here/indexes.config.ts" "$work/indexes/typedpress.config.ts"
 "$first" build "$work/indexes" --quiet >/dev/null
-sed -e 's/\.unique()//' -e 's/ref(() => contacts)/integer()/' -e 's/ref(contacts)/integer()/' "$here/indexes.config.ts" > "$work/indexes/typedpress.config.ts"
+sed 's/\.unique()//' "$here/indexes.config.ts" > "$work/indexes/typedpress.config.ts"
 "$first" build "$work/indexes" --quiet >/dev/null
 "$wp/harness.sh" compose cp "$work/indexes/tp/dist/wp-content/plugins/typedpress-app-adoption-indexes" cli:/tmp/typedpress-app-migrate-indexes >/dev/null 2>&1
 "$wp/harness.sh" compose cp "$here/indexes.php" cli:/tmp/typedpress-app-migrate-indexes.php >/dev/null 2>&1

@@ -642,8 +642,11 @@ pub fn render(schema: &Schema) -> String {
                     .collect();
                 format!(", 'preloads' => [{}]", items.join(", "))
             };
+            let plan = r.plan.as_ref().map_or_else(String::new, |plan| {
+                format!(", 'plan' => {}", php_json(&serde_json::json!(plan)))
+            });
             format!(
-                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}]{preloads}, 'kind' => {kind}{navigation}{}]",
+                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}]{preloads}, 'kind' => {kind}{navigation}{plan}{}]",
                 php_str(&r.id),
                 php_str(&r.pattern),
                 opt(&r.page),
@@ -688,6 +691,41 @@ pub fn render(schema: &Schema) -> String {
             literal.join(", "),
             dynamic.join(", ")
         );
+        let mut purge_routes = std::collections::BTreeMap::<String, Vec<&str>>::new();
+        let mut option_names = std::collections::BTreeSet::new();
+        for route in &app.routes {
+            let Some(plan) = &route.plan else { continue };
+            if matches!(plan.class, crate::schema::CacheClass::RequestPrivate) {
+                continue;
+            }
+            for dep in &plan.dependencies {
+                if let crate::schema::RouteDependency::Option { name } = dep {
+                    option_names.insert(name);
+                }
+                if route.pattern.split('/').all(|part| !part.starts_with([':', '*']))
+                    && let Some(key) = dep.purge_key()
+                {
+                    let routes = purge_routes.entry(key).or_default();
+                    if !routes.contains(&route.pattern.as_str()) {
+                        routes.push(&route.pattern);
+                    }
+                }
+            }
+        }
+        if !purge_routes.is_empty() {
+            let _ = writeln!(
+                out,
+                "        'purgeRoutes' => {},",
+                php_json(&serde_json::json!(purge_routes))
+            );
+        }
+        if !option_names.is_empty() {
+            let _ = writeln!(
+                out,
+                "        'purgeOptions' => {},",
+                php_json(&serde_json::json!(option_names))
+            );
+        }
         if let Some(login) = &app.login {
             let _ = writeln!(out, "        'login' => {},", route(login));
         }

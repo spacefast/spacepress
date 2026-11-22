@@ -380,6 +380,7 @@ impl Compiler<'_, '_> {
 
     /// `fetch(url, init?)`, the standard signature, → `Promise<Response>`.
     fn fetch_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
+        self.route_opaque("fetch");
         if args.is_empty() || args.len() > 2 {
             return err_help(
                 span,

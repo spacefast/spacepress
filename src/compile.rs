@@ -18,6 +18,7 @@ mod html;
 mod inputs;
 pub use inputs::apply_inputs;
 mod javascript;
+mod projection;
 
 use crate::builtins::ERROR_CONSTRUCTORS;
 use crate::diag::{Diag, Result, Span, suggest};
@@ -25,7 +26,7 @@ use crate::eval::{BINARY_GLOBALS, Evaluator};
 use crate::extract::{Extracted, Root, Slot};
 use crate::ir::*;
 use crate::num::php_number;
-use crate::schema::{ColType, Column, HookKind, Owner, RelKind, Schema};
+use crate::schema::{ColType, Column, HookKind, Owner, RelKind, RouteDependency, Schema};
 use crate::types::{self, Builder, BuilderKind, JSON_TYPES, Ty};
 use crate::value::*;
 use indexmap::IndexMap;
@@ -493,9 +494,72 @@ pub struct Compiler<'a, 'p> {
     /// The app's own abilities each compiled function calls with `abilities.call`, by ability name.
     /// The pipeline follows the ones that are actions to settle [`Action::personal`].
     pub ability_calls: HashMap<String, HashSet<String>>,
+    pub route_effects: RouteEffects,
+    route_columns: HashMap<Span, std::collections::BTreeSet<String>>,
     plugin_names: Vec<String>,
     /// Each plugin's PHP function answering its locked fetch hosts, written once the lock settles.
     pub host_functions: Vec<String>,
+}
+
+/// Render effects by emitted function, combined with the helper graph after compilation.
+#[derive(Default)]
+pub struct RouteEffects {
+    pub dependencies: HashMap<String, HashSet<RouteDependency>>,
+    pub private: HashSet<String>,
+    pub literal_markup: HashSet<String>,
+}
+
+fn literal_markup(f: &Func, layout: bool) -> bool {
+    #[derive(Clone, Copy)]
+    enum Children<'a> {
+        None,
+        Binding(&'a str),
+        Props(&'a str),
+    }
+
+    fn markup(expr: &Expr, children: Children<'_>) -> bool {
+        match &expr.kind {
+            ExprKind::Str(_) | ExprKind::Num(_) | ExprKind::Bool(_) | ExprKind::Null => true,
+            ExprKind::Ident(name) => matches!(children, Children::Binding(binding) if name == binding),
+            ExprKind::Member { obj, prop, .. } if prop == "children" => {
+                matches!((&obj.kind, children), (ExprKind::Ident(name), Children::Props(binding)) if name == binding)
+            }
+            ExprKind::Jsx(jsx) if !matches!(jsx.kind, JsxKind::Component(_)) => {
+                jsx.attrs
+                    .iter()
+                    .all(|attr| matches!(attr, JsxAttr::Named { value, .. } if markup(value, Children::None)))
+                    && jsx.children.iter().all(|child| markup(child, children))
+            }
+            _ => false,
+        }
+    }
+
+    let children = match f.params.as_slice() {
+        [] => Children::None,
+        [param] if layout && !param.rest && param.default.is_none() => match &param.pat {
+            Pat::Id(name, _) => Children::Props(name),
+            Pat::Obj { props, rest: None, .. } => match props.as_slice() {
+                [(key, Pat::Id(name, _))] if key == "children" => Children::Binding(name),
+                _ => return false,
+            },
+            _ => return false,
+        },
+        _ => return false,
+    };
+    match &f.body {
+        FnBody::Expr(expr) => markup(expr, children),
+        FnBody::Block(stmts) => matches!(stmts.as_slice(), [Stmt::Return(Some(expr), _)] if markup(expr, children)),
+    }
+}
+
+fn object_prop<'a>(expr: &'a Expr, name: &str) -> Option<&'a Expr> {
+    let ExprKind::Object(props) = &expr.kind else {
+        return None;
+    };
+    props.iter().rev().find_map(|prop| match prop {
+        Prop::KV(PropKey::Static(key), value) if key == name => Some(value),
+        _ => None,
+    })
 }
 
 /// What kind of WordPress feature a module uses: the capability kinds a plugin gate counts.
@@ -578,6 +642,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             writes: HashMap::new(),
             personal: HashSet::new(),
             ability_calls: HashMap::new(),
+            route_effects: RouteEffects::default(),
+            route_columns: HashMap::new(),
             host_functions: Vec::new(),
             plugin_names: ext.uses.iter().map(|p| p.name.clone()).collect(),
             abilities: crate::wordpress::abilities::Catalog::default(),
@@ -734,6 +800,28 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         }
         Ok(())
+    }
+
+    fn route_dep(&mut self, dep: RouteDependency) {
+        if self.schema.app.is_some() {
+            self.route_effects
+                .dependencies
+                .entry(self.current.clone())
+                .or_default()
+                .insert(dep);
+        }
+    }
+
+    fn route_opaque(&mut self, call: impl Into<String>) {
+        if self.schema.app.is_some() {
+            self.route_dep(RouteDependency::opaque(call));
+        }
+    }
+
+    fn route_private(&mut self) {
+        if self.schema.app.is_some() {
+            self.route_effects.private.insert(self.current.clone());
+        }
     }
 
     /// Records a capability the plugin compiling now uses; app code is unrestricted.
@@ -1483,6 +1571,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.calls.entry(class).or_default().insert(name.to_string());
         }
         let caller = std::mem::replace(&mut self.current, name.to_string());
+        if self.schema.app.is_some() {
+            if self.javascript_module(f.module) {
+                self.route_opaque("JavaScript module");
+            } else if literal_markup(
+                &f,
+                matches!(slot, Some(Slot::AppPage { file }) if file.ends_with("/layout.tsx")),
+            ) {
+                self.route_effects.literal_markup.insert(name.to_string());
+            }
+        }
+        if matches!(slot, Some(Slot::AppPage { .. }))
+            && let Some((call, fields)) = projection::list_fields(&f)
+        {
+            self.route_columns.insert(call, fields);
+        }
         let result = self.compile_function_body(&f, name, &param_tys, slot);
         self.current = caller;
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
@@ -5458,6 +5561,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let calls = std::mem::take(&mut self.calls);
         let ability_calls = std::mem::take(&mut self.ability_calls);
         let personal = std::mem::take(&mut self.personal);
+        let route_effects = std::mem::take(&mut self.route_effects);
         let built = build(self);
         for (graph, prior) in [(&mut self.calls, calls), (&mut self.ability_calls, ability_calls)] {
             let added = std::mem::replace(graph, prior);
@@ -5466,6 +5570,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     graph.entry(caller).or_default().extend(targets);
                 }
             }
+        }
+        let added = std::mem::replace(&mut self.route_effects, route_effects);
+        if built.is_ok() {
+            for (name, dependencies) in added.dependencies {
+                self.route_effects
+                    .dependencies
+                    .entry(name)
+                    .or_default()
+                    .extend(dependencies);
+            }
+            self.route_effects.private.extend(added.private);
+            self.route_effects.literal_markup.extend(added.literal_markup);
         }
         if built.is_err() {
             self.classes.retain(|k, _| classes.contains(k));
@@ -7954,6 +8070,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         match self.resolve(n, callee.span)? {
             Resolved::Global("Date") => {
+                if args.is_empty() {
+                    self.route_opaque("new Date()");
+                }
                 crate::builtins::check_date_literal(args, span)?;
                 let argv = self.plain_args(args)?;
                 Ok(match argv.as_slice() {
@@ -8955,6 +9074,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if !self.abilities.readonly.contains(ability.as_str()) {
             self.writes(name_expr.span, "calls an ability that isn't read-only");
         }
+        self.route_opaque(format!("ability {ability}"));
         self.use_wordpress(WordPressKind::Ability, ability, name_expr.span);
         Ok(Out::atom(
             format!("\\TypedPress\\Wp\\Abilities\\Call::run({}, {input})", php_str(ability)),
@@ -9014,6 +9134,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
             php.push(v.php);
         }
         php.extend(f.fixed.iter().map(php_json));
+        match (name, args.first()) {
+            (
+                "get_option",
+                Some(ArrEl::Item(Expr {
+                    kind: ExprKind::Str(option),
+                    ..
+                })),
+            ) => {
+                self.route_dep(RouteDependency::Option { name: option.clone() });
+            }
+            ("is_user_logged_in" | "current_user_can" | "get_current_user_id", _) => {
+                self.route_private();
+                self.route_opaque(name);
+            }
+            _ => self.route_opaque(name),
+        }
         self.use_wordpress(WordPressKind::Function, name, span);
         Ok(Out::atom(
             format!(
@@ -9560,6 +9696,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if matches!((g, m), ("Math", "random") | ("Date", "now") | ("crypto", _)) {
+            self.route_opaque(format!("{g}.{m}"));
+        }
         if BINARY_GLOBALS.contains(&g) {
             self.binary_global(g, span)?;
             let argv = self.javascript_args(args)?;
@@ -10609,6 +10748,34 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     // ---- database ---------------------------------------------------------------
 
+    fn projected_list(&self, table: &str, span: Span, options: Option<&Expr>, mut php: String) -> String {
+        let Some(fields) = self.route_columns.get(&span) else {
+            return php;
+        };
+        if options.is_some_and(|opts| object_prop(opts, "columns").is_some() || object_prop(opts, "with").is_some()) {
+            return php;
+        }
+        let spec = &self.schema.collections[table];
+        if !fields.iter().all(|field| {
+            spec.columns.get(field).is_some_and(|col| match col.access.get("read") {
+                None | Some(crate::schema::Access::Allow(true)) => true,
+                Some(crate::schema::Access::Role(role)) => role == "anyone",
+                _ => false,
+            })
+        }) {
+            return php;
+        }
+        debug_assert!(php.starts_with('['));
+        let fields = fields
+            .iter()
+            .map(|field| format!("{} => true", php_str(field)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let comma = if php == "[]" { "" } else { ", " };
+        php.insert_str(1, &format!("'columns' => [{fields}]{comma}"));
+        php
+    }
+
     fn query_call(&mut self, table: &str, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
         let key = self.schema.collections[table].key.clone();
         self.uses("read", key, m_span);
@@ -10631,8 +10798,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Some(ArrEl::Item(o)) => self.query_opts(table, o, m == "findMany")?,
             Some(ArrEl::Spread(x)) => return err(x.span, "spread arguments aren't supported here"),
         };
-        let _ = span;
+        let options = args.first().and_then(|arg| match arg {
+            ArrEl::Item(opts) => Some(opts),
+            ArrEl::Spread(_) => None,
+        });
+        let where_ = args.first().and_then(|arg| match arg {
+            ArrEl::Item(opts) => object_prop(opts, "where"),
+            ArrEl::Spread(_) => None,
+        });
+        let exact = where_.is_some_and(|filter| {
+            self.schema.collections[table].columns.iter().any(|(name, col)| {
+                (col.primary_key || col.unique)
+                    && object_prop(filter, name).is_some_and(|expr| {
+                        matches!(expr.kind, ExprKind::Str(_) | ExprKind::Num(_)) || object_prop(expr, "eq").is_some()
+                    })
+            })
+        });
+        let collection = table.to_string();
+        self.route_dep(if exact {
+            RouteDependency::Row { collection }
+        } else {
+            RouteDependency::List { collection }
+        });
         let (php, ty) = if m == "findMany" {
+            let opts = self.projected_list(table, span, options, opts);
             (
                 format!("\\TypedPress\\Seam::findMany({}, {opts})", php_str(table)),
                 Ty::Array(Box::new(row_ty)),
@@ -10707,6 +10896,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if plain.len() < least || plain.len() > most {
             return err(span, format!("`{key}.{m}` takes {want}"));
         }
+        let collection = table.to_string();
+        match m {
+            "list" | "paginate" => self.route_dep(RouteDependency::List { collection }),
+            "get" => self.route_dep(RouteDependency::Row { collection }),
+            "count" => self.route_dep(RouteDependency::Count { collection }),
+            _ => self.route_opaque(format!("{key}.{m}")),
+        }
         let trusted = if system { "true" } else { "false" };
         let row = types::row(self.schema, table);
         let pk_ty = self.schema.collections[table]
@@ -10735,6 +10931,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Some(o) => self.kind_opts(table, o, true, m == "paginate")?,
                 };
                 if m == "list" {
+                    let opts = self.projected_list(table, span, plain.first().copied(), opts);
                     (
                         format!("\\TypedPress\\Seam::kindList({}, {opts}, {trusted})", php_str(table)),
                         Ty::Array(Box::new(row_ty)),
@@ -11024,6 +11221,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             match k.as_str() {
                 "search" | "cursor" => {
+                    if k == "search" {
+                        self.route_dep(RouteDependency::Search {
+                            collection: table.to_string(),
+                        });
+                    }
                     let x = self.expr(v)?;
                     if !assignable(&x.ty, &Ty::Str.nullable()) {
                         return err(v.span, format!("`{k}` must be a string"));
@@ -11188,6 +11390,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let r = self.check_relation(table, rel, v.span)?.clone();
             let target = self.schema.collections[&r.collection].key.clone();
             self.uses("read", target, v.span);
+            self.route_dep(RouteDependency::Relation {
+                collection: table.to_string(),
+                field: rel.clone(),
+                target: r.collection.clone(),
+            });
             match &v.kind {
                 ExprKind::Bool(true) => {
                     parts.push(format!("{} => true", php_str(rel)));
@@ -11310,6 +11517,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let target = c.relations[name].collection.clone();
                         let key = self.schema.collections[&target].key.clone();
                         self.uses("read", key, v.span);
+                        self.route_dep(RouteDependency::Relation {
+                            collection: table.to_string(),
+                            field: name.to_string(),
+                            target: target.clone(),
+                        });
                         match &v.kind {
                             ExprKind::Bool(true) => "true".to_string(),
                             _ => self.filter(&target, v, true)?,
@@ -11530,6 +11742,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if m == "update" {
             self.writes(m_span, "updates a global");
         }
+        if m == "get" {
+            self.route_dep(RouteDependency::Global {
+                name: name.to_string(),
+                fields: self.schema.globals[name].fields.keys().cloned().collect(),
+            });
+        } else {
+            self.route_opaque(format!("db.globals.{name}.{m}"));
+        }
         // Typed like collection rows: `json<T>()` fields read and write as T.
         let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
@@ -11596,6 +11816,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 );
             }
         };
+        self.route_opaque(format!("db.{m}"));
         crate::builtins::check("db", m, args.len(), crate::builtins::Phase::Emitter, span)?;
         let t = self.arg(args, 0, span, "a collection")?;
         let v = self.expr(t)?;
@@ -11797,6 +12018,7 @@ mod tests {
     use super::{Compiler, static_host};
     use crate::diag::{Diag, Span};
     use crate::ir::{Expr, ExprKind};
+    use crate::schema::RouteDependency;
 
     #[test]
     fn locked_hosts_normalize_like_the_runtime_fetch_check() {
@@ -11834,16 +12056,21 @@ mod tests {
         let program = crate::loader::load(&entry).unwrap();
         let mut evaluator = crate::eval::Evaluator::new(&program);
         let config = evaluator.run().unwrap();
-        let extracted = crate::extract::extract(&config, &mut evaluator, Span::NONE, "usage-test").unwrap();
+        let mut extracted = crate::extract::extract(&config, &mut evaluator, Span::NONE, "usage-test").unwrap();
+        extracted.schema.app = Some(Default::default());
         let mut compiler = Compiler::new(&extracted.schema, &mut evaluator, &extracted, &program);
         compiler.abilities.personal.insert("app/private".into());
         compiler.current = "root".into();
         compiler.uses("abilities", "app/kept", Span::NONE);
         compiler.calls.entry("root".into()).or_default().insert("kept".into());
+        compiler.route_opaque("kept");
 
         let refused = compiler.attempt::<()>(|this| {
             this.attempt(|nested| {
                 nested.uses("abilities", "app/private", Span::NONE);
+                nested.route_private();
+                nested.route_opaque("discarded");
+                nested.route_effects.literal_markup.insert("root".into());
                 nested
                     .calls
                     .entry("root".into())
@@ -11858,6 +12085,7 @@ mod tests {
         compiler
             .attempt(|this| {
                 this.uses("abilities", "app/accepted", Span::NONE);
+                this.route_opaque("accepted");
                 this.calls.entry("root".into()).or_default().insert("accepted".into());
                 Ok(())
             })
@@ -11868,6 +12096,12 @@ mod tests {
             ["app/kept".into(), "app/accepted".into()].into()
         );
         assert!(!compiler.personal.contains("root"));
+        assert!(!compiler.route_effects.private.contains("root"));
+        assert!(!compiler.route_effects.literal_markup.contains("root"));
+        assert_eq!(
+            compiler.route_effects.dependencies["root"],
+            [RouteDependency::opaque("kept"), RouteDependency::opaque("accepted")].into()
+        );
     }
 }
 

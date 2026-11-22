@@ -91,6 +91,12 @@ problem('a visitor selecting it is refused, as before', static fn () => $db->fin
 $opts = ['columns' => ['title' => true], 'orderBy' => ['id' => 'asc']];
 eq('a visitor\'s read of other columns', $read('posts', $opts, $anon)[1], $expected('posts', $opts, $anon));
 
+$statements = [];
+eq('count agrees with the filtered post list', $db->count('posts', ['excerpt' => 'Excerpt 2'], $editor), 1);
+$countSql = current(array_filter($statements, static fn (string $sql): bool => str_contains($sql, 'first_count')));
+check('count joins the filter field only', is_string($countSql) && substr_count($countSql, 'JOIN `wp_postmeta`') === 1
+    && str_contains($countSql, "meta_key = 'tp_excerpt'") && !str_contains($countSql, 'AS `body`'), $countSql);
+
 // ---- table-backed --------------------------------------------------------------------------------
 $opts = ['columns' => ['body' => true], 'orderBy' => ['id' => 'asc'], 'limit' => 3];
 [$sql, $rows] = $read('comments', $opts, null, 'wp_tp_comments');

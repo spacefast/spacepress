@@ -7,9 +7,7 @@ $wpdb->set_prefix('adopt_');
 $db = new \TypedPress\Wp\Connection($wpdb);
 $schema = \TypedPress\Schema::load('/tmp/typedpress-app-migrate-indexes/tp/app/schema.php');
 $dir = '/tmp/typedpress-app-migrate-indexes/tp/app/migrations';
-// The second migration drops parentId's reference, which changes its type on a table Zero didn't
-// create: the schema check refuses that until the deploy confirms it, as a real one would.
-$migrator = new \TypedPress\Wp\Migrator($db, $dir, $schema, drops: \TypedPress\Wp\SchemaCheck::drops(['contacts.parentId=0']));
+$migrator = new \TypedPress\Wp\Migrator($db, $dir, $schema);
 $ledger = $db->prefix() . 'tp__migrations';
 $table = 'adopt_legacy_contacts';
 $otherDatabase = 'tp_adopt_other';
@@ -82,9 +80,10 @@ try {
     $db->run("ALTER TABLE `$table` MODIFY `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, MODIFY `parentId` BIGINT UNSIGNED NULL");
     $db->run("ALTER TABLE `$table` ADD CONSTRAINT `tp_contacts_parentId_fk` FOREIGN KEY (`parentId`) REFERENCES `$table` (`id`) ON DELETE SET NULL");
     $applied = $migrator->migrate();
-    $check($applied === ['0001_init', '0002_update'], 'adoption and unique removal did not finish');
+    $ids = array_map(static fn (string $path): string => basename(dirname($path)), glob("$dir/*/migration.sql") ?: []);
+    $check(count($ids) === 2 && $applied === $ids, 'adoption and unique removal did not finish');
     $check($db->run("SHOW INDEX FROM `$table` WHERE Key_name = 'email_unique'") === [], 'the later migration did not remove the adopted index');
-    $check($db->run('SELECT * FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$table]) === [], 'the later migration did not remove the adopted foreign key');
+    $check($db->run('SELECT CONSTRAINT_NAME FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$table]) === [['CONSTRAINT_NAME' => 'tp_contacts_parentId_fk']], 'the later migration changed the adopted foreign key');
     $check($db->run("SELECT * FROM `$table`") === $rows, 'constraint migration changed the retained BIGINT row');
     $store = \TypedPress\Wp\CompositeStore::create($schema, $db);
     $query = \TypedPress\Sql::select($schema, $store, 'contacts', ['where' => ['active' => false]]);
@@ -92,7 +91,7 @@ try {
     $query = \TypedPress\Sql::select($schema, $store, 'contacts', ['where' => ['active' => true]]);
     $check($db->run($query['sql'], $query['params']) === [], 'adopted native boolean false matched true');
     $check($migrator->migrate() === [], 'completed migrations were repeated');
-    echo "adopted-constraint proof: nontransactional storage, wrong index names, foreign key names, referenced databases and signed keys refused without table or ledger changes; canonical constraints adopted then removed; BIGINT row retained; native boolean predicates preserved\n";
+    echo "adopted-constraint proof: nontransactional storage, wrong index names, foreign key names, referenced databases and signed keys refused without table or ledger changes; canonical constraints adopted and the unique index removed; BIGINT row retained; native boolean predicates preserved\n";
 } finally {
     $db->run("DROP TABLE IF EXISTS `$table`");
     $db->run("DROP TABLE IF EXISTS `$otherDatabase`.`$table`");

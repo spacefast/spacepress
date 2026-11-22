@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TypedPress\Wp;
 
+use TypedPress\Validator;
+
 /**
  * The project's `public/` folder, stored under `wp-content/` and symlinked into the document root
  * (`tp_public_root`, default `ABSPATH`, skipped on multisite or read-only roots) so the web server
@@ -570,7 +572,7 @@ final class PublicFiles
         if ($extension === 'svg' || $extension === 'xml') {
             $headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
         }
-        if (self::matches(wp_unslash((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? '')), $etag)) {
+        if (Validator::matches($etag)) {
             self::emit(304, $headers, null);
         }
         $headers['Content-Length'] = (string) $size;
@@ -767,19 +769,6 @@ final class PublicFiles
         foreach ($app['routes'] ?? [] as $route) {
             $pattern = (string) ($route['pattern'] ?? '');
             if (!str_contains($pattern, ':') && !str_contains($pattern, '*') && AppRouter::match([$route], $path) !== null) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /** Whether `If-None-Match` names this ETag: `*`, a list, weak forms (`W/"…"`) included. */
-    private static function matches(string $header, string $etag): bool
-    {
-        foreach (explode(',', $header) as $tag) {
-            $tag = trim($tag);
-            if ($tag === '*' || (str_starts_with($tag, 'W/') ? substr($tag, 2) : $tag) === $etag) {
                 return true;
             }
         }

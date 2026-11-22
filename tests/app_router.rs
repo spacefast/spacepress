@@ -2680,6 +2680,18 @@ fn forms_submit_in_place_in_the_browser() {
         serde_json::json!({ "from": "tp-blank", "to": "tp-page", "voted": "Voted bare", "header": 1, "regions": 1, "url": "/" }),
         "{seen}"
     );
+    // A stale answer in another block template is dropped after a `<Link>` navigation or a newer
+    // submit (#537).
+    assert_eq!(
+        seen["otherTemplateStaleLink"],
+        serde_json::json!({ "url": "/other/", "other": true, "template": "tp-page", "marker": "same document" }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["otherTemplateOvertaken"],
+        serde_json::json!({ "url": "/?ref=nav", "done": "Subscribed three@example.test for 1 (weekly: false)", "template": "tp-page", "marker": "same document", "message": 1 }),
+        "{seen}"
+    );
 }
 
 /// `<Comments for={item} />` and the policy behind it (docs/decisions/2026-11-14-comments.md), with
@@ -4554,7 +4566,7 @@ fn public_files_serve_at_the_site_root() {
         seen["wellKnown"],
         serde_json::json!({
             "cache": "public, max-age=300",
-            "notModified": [304, 304, 304, 200],
+            "notModified": [304, 304, 304, 304, 200, 200, 200, 200],
             "cors": ["*", "*", null]
         })
     );

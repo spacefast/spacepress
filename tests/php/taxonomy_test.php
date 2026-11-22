@@ -197,6 +197,37 @@ eq('deleting a term removes its meta', (function () use ($db, $sports): array {
     return get_term_meta($sports['id']);
 })(), []);
 
+// Deleting a parent term must not reparent child terms the viewer can't read (#522).
+(static function () use ($wp, $schema): void {
+    $db = \TypedPress\db();
+    $parent = $db->insert('topics', ['name' => 'Visible Parent'], true)[0];
+    $child = $db->insert('topics', ['name' => 'Hidden Child', 'parent' => $parent['id']], true)[0];
+    $restricted = $schema;
+    $restricted['taxonomies']['topics']['access']['read'] = ['fn' => static fn (): array => ['id' => ['ne' => $child['id']]]];
+    $restrictedSchema = new \TypedPress\Schema($restricted);
+    $store = \TypedPress\Wp\CompositeStore::create($restrictedSchema, $wp->connection());
+    $restrictedDb = new \TypedPress\Db($store, $restrictedSchema, $db->media());
+    $editor = new \TypedPress\Viewer(['id' => $wp->userId('ed'), 'name' => 'ed', 'role' => 'editor']);
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($restrictedDb);
+    try {
+        problem(
+            'deleting a parent term refuses when a child term may be hidden from the viewer',
+            fn () => $restrictedDb->delete('topics', ['id' => $parent['id']], false, $editor),
+            409,
+            'reference_violation',
+        );
+        eq('the parent term stays', $db->findFirst('topics', ['where' => ['id' => $parent['id']]])['name'] ?? null, 'Visible Parent');
+        eq('the hidden child keeps its parent', $db->findFirst('topics', ['where' => ['id' => $child['id']]])['parent'] ?? null, $parent['id']);
+    } finally {
+        \TypedPress\Db::setInstance($previous);
+    }
+    // A viewer who can read every term in the taxonomy can still delete the parent.
+    $db->delete('topics', ['id' => $parent['id']], false, $editor);
+    eq('with full read visibility, deleting the parent reparents the child to root', $db->findFirst('topics', ['where' => ['id' => $child['id']]])['parent'], null);
+    $db->delete('topics', ['id' => $child['id']]);
+})();
+
 // ================================================================ core internals the term route relies on
 // TermsController subclasses core's WP_REST_Terms_Controller and TermMeta its WP_REST_Term_Meta_Fields
 // (docs/wordpress-internals.md). A core release that renames, hides or reshapes one of these fails here

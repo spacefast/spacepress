@@ -137,7 +137,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             // A refused class registers nothing, so the next reference compiles it again and reports
             // the refusal (`instanceof` narrowing compiles the class speculatively; see `attempt`).
             let caller = std::mem::replace(&mut self.current, format!("%class{id}"));
+            // Helper signatures can depend on the provisional class shape. Keep their failures
+            // local to this build, just as receiver typing keeps its own failure cache.
+            let outer_failures = std::mem::take(&mut self.failed_helpers);
             let compiled = self.attempt(|this| this.compile_class(id, class));
+            self.failed_helpers = outer_failures;
             self.current = caller;
             compiled?;
         }

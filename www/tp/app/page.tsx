@@ -31,8 +31,9 @@ const GENERATED_TREE = `my-app/
       functions.php      Compiled PHP handlers, hooks, jobs & SSR pages
     _generated/
       migrations/
-        0001_init.sql    Numbered SQL migrations
-        snapshot.json    Schema ledger & safe rename tracking
+        <id>/            Forward-only migration entry
+          ops.json       Schema operations
+          migration.sql  SQL applied to the database
       db.d.ts            Strict TypeScript database types
       openapi.json       Validated OpenAPI 3.1 specification
       client/
@@ -430,20 +431,20 @@ export default function HomePage() {
           <div className="sp-section-head">
             <h2>Change a schema, get an instant SQL migration</h2>
             <p>
-              SpacePress tracks a <Link href="/docs/core/schema-and-storage" className="sp-inline-link">schema snapshot</Link> in <code>tp/_generated/migrations/snapshot.json</code>. Try adding a field, changing a type, or renaming <code>title</code> with <code>.was(&quot;title&quot;)</code> below — watch the incremental <code>0002_*.sql</code> migration update live.
+              SpacePress reads <Link href="/docs/core/schema-and-storage" className="sp-inline-link">migration history</Link> from <code>tp/_generated/migrations/</code>. Try adding a field or renaming <code>title</code> with <code>.was(&quot;title&quot;)</code> below to generate a new migration folder.
             </p>
           </div>
 
           <Sandbox
             title="Live Schema Evolution -> Incremental SQL Migration"
             base={MIGRATION_BASE}
-            defaultTab="0002"
+            defaultTab="migration.sql"
             diff
             presets={[
               {
                 label: "Schema Diff",
-                description: "Compiled against a baseline snapshot containing only `title` and `closed`. Edit the TypeScript to generate a fresh SQL migration in real time.",
-                output: "0002",
+                description: "The first migration creates `title` and `closed`. Edit the TypeScript to generate a new migration from that history.",
+                output: "migration.sql",
                 code: MIGRATION_NEXT,
               },
             ]}

@@ -58,7 +58,7 @@ function writeOut(relPath, content) {
 const HANDBOOK_SECTIONS = [
   { id: "mental-model", num: "01", title: "Project Layout & Mental Model", desc: "typedpress.config.ts, tp/ modules, and how the compiler emits native WordPress artifacts." },
   { id: "compiler", num: "02", title: "Rust & OXC Compiler", desc: "TypeScript/TSX parsing in Rust, emitted PHP/SQL/OpenAPI/types, and capital_P_dangit lint." },
-  { id: "data-modeling", num: "03", title: "Data Modeling & Migrations", desc: "collection(), table(), global(), wp.posts.extend(), snapshot.json, and .was() safe renames." },
+  { id: "data-modeling", num: "03", title: "Data Modeling & Migrations", desc: "collection(), table(), global(), wp.posts.extend(), forward-only migration folders, and .was() safe renames." },
   { id: "queries-access", num: "04", title: "Queries, Validation & Access", desc: "Typed db queries, row-level filters, field-level .access(), and .validate()." },
   { id: "hooks", num: "05", title: "Hooks & Lifecycle Events", desc: "Transactional collection hooks (.on) and typed WordPress core hooks in tp/wp-hooks/." },
   { id: "actions-jobs-routes", num: "06", title: "Actions, Jobs, Routes & Files", desc: "Typed RPC action(), Action Scheduler job(), custom HTTP route.ts, and file buckets." },
@@ -262,7 +262,7 @@ export function generateAiAssets() {
     "",
     "- **Server TypeScript compiles to native PHP — not Node.js.** Never import Node built-ins (`fs`, `path`, `crypto`, `process`, `buffer`, `child_process`) or arbitrary npm packages inside `typedpress.config.ts`, `tp/app/`, actions, hooks, jobs, or routes.",
     "- **Headful WordPress is the default.** Files under `tp/app/**/page.tsx` and `layout.tsx` compile directly into server-rendered PHP inside WordPress. Interactive widgets belong in `\"use client\"` components compiled to the WordPress Interactivity API. Only wire `tp/_generated/client/` or `@typedpress/astro` when the user explicitly wants a separate headless frontend.",
-    "- **Never edit `tp/_generated/` or `tp/dist/`.** `typedpress build` regenerates them. Commit `tp/_generated/` (migrations, snapshots, types, plugin lockfile); git-ignore `tp/dist/` and `.tp/`.",
+    "- **Never edit `tp/_generated/` or `tp/dist/`.** `typedpress build` regenerates them. Commit `tp/_generated/` (migration folders, types, plugin lockfile). Ignore `tp/dist/` and `.tp/` in Git.",
     "- **Pre-release identifier:** The framework brand is SpacePress (`spacepress.dev`), while the npm package, CLI binary, config file (`typedpress.config.ts`), `tp/` directory, and imports (`\"typedpress\"`, `\"typedpress:db\"`, `\"typedpress/app\"`, `\"typedpress/client\"`) use `typedpress` during v0.",
     "",
     "## Exact import boundaries",

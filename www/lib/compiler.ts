@@ -7,10 +7,6 @@ export interface Request {
   name: string;
   /** Sources by project-relative path; `typedpress.config.ts` is the entry. */
   files: Record<string, string>;
-  /** The last build's `tp/_generated/migrations/snapshot.json`, or null for a first build. */
-  previous?: unknown;
-  /** The file names beside that snapshot; they number the next migration like `typedpress build` does. */
-  migrationFiles?: string[];
   /** Refuse plugin grants beyond `tp/_generated/plugins.lock.json` in `files`, like `typedpress check --frozen` and CI. */
   frozen?: boolean;
 }
@@ -50,9 +46,8 @@ export interface Envelope {
 export interface Output {
   schemaPhp: string;
   functionsPhp: string;
-  /** New migration files as `[name, sql]`. */
+  /** New migration files as `[path within the ledger, contents]`. */
   migrations: [string, string][];
-  snapshot: unknown;
   /** `types.ts` and `schema.ts`; the runtime half of the client is not generated here. */
   client: Record<string, string>;
   genTs: string;
@@ -62,7 +57,7 @@ export interface Output {
   hints: string[];
   /**
    * Every file of the `typedpress-app-<name>` plugin `typedpress build` writes, by path below the plugins
-   * directory: the `.sql` files under `tp/_generated/migrations/` in the request and this
+   * directory: the migration folders under `tp/_generated/migrations/` in the request and this
    * compile's new migrations. Its `tp/app/openapi.json` is the app's API as an OpenAPI 3.1
    * document, the file `typedpress build` also writes to `tp/_generated/openapi.json`.
    */

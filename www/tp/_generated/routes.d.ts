@@ -16,6 +16,7 @@ declare module "typedpress/app" {
     "guide": { path: `/guide`; params: {  } };
     "handbook": { path: `/handbook`; params: {  } };
     "play": { path: `/play`; params: {  } };
+    "playground-plugins": { path: `/playground-plugins`; params: {  } };
     "quick-start": { path: `/quick-start`; params: {  } };
     "/": { path: `/`; params: {  } };
   }

@@ -293,18 +293,18 @@ export function Part1Foundation() {
 
         <h3>Interactive Schema Evolution &amp; SQL Migration Diff</h3>
         <p>
-          The sandbox below compiles against a baseline snapshot containing a 3-column <code>bookmarks</code> table. Edit the evolved schema — add a field, change a constraint, or rename <code>title</code> using <code>.was(&quot;title&quot;)</code> — and watch the numbered <code>0002_*.sql</code> migration update live.
+          The first migration creates a <code>bookmarks</code> table with three columns. Add a field or rename <code>title</code> using <code>.was(&quot;title&quot;)</code> below to see the SQL for the next migration.
         </p>
         <Sandbox
           title="Interactive Migration Generator (with Live Diff)"
           base={MIGRATION_BASE_GUIDE}
-          defaultTab="0002"
+          defaultTab="migration.sql"
           diff
           presets={[
             {
               label: "Evolved Schema",
-              description: "Comparing against the baseline snapshot (title, url, archived). Toggle 'Diff' or edit any column to see the exact SQL statements emitted.",
-              output: "0002",
+              description: "The first migration creates title, url, and archived. Toggle 'Diff' or edit a column to see the SQL statements.",
+              output: "migration.sql",
               code: MIGRATION_EVOLVED_GUIDE,
             },
           ]}

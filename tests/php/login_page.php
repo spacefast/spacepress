@@ -135,7 +135,8 @@ function view(array $r): array
         'inputs' => $inputs,
         'errors' => $texts("//p[@class='problem']"),
         'notices' => $texts("//p[@class='notice']"),
-        'stylesheet' => str_contains($r['body'], 'tp/app/assets/site-'),
+        // site.css is under 4 KB, so it is inlined (TypedPress\Assets::INLINE_LIMIT), not linked.
+        'stylesheet' => preg_match('/typedpress-app-site-[0-9a-f]{16}-css/', $r['body']) === 1,
         'robots' => str_contains($r['body'], 'noindex'),
         'cache' => $r['headers']['cache-control'][0] ?? null,
         'methods link' => $texts("//p[@class='typedpress-identity-methods']/a")[0] ?? null,

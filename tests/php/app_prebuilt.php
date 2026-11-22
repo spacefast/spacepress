@@ -213,6 +213,22 @@ $started = microtime(true) - 5;
 $m = new ReflectionMethod(\TypedPress\Render\Prebuilt::class, 'write');
 $out['forget race'] = [$m->invoke(null, \TypedPress\Render\Prebuilt::dir() . '/about.html', 'old', '/about', $started), is_file(\TypedPress\Render\Prebuilt::dir() . '/about.html')];
 
+// A prebuilt path longer than the read index holds (Cache::MAX_URL): the render can't be recorded,
+// so no write would mark a file stale. Neither the page nor its twin becomes a file.
+wp_set_current_user(1);
+$long = str_repeat('a', 190);
+\TypedPress\db()->insert('notes', ['title' => 'Long', 'slug' => $long, 'status' => 'published'], true);
+\TypedPress\Wp\Purges::flush();
+$site->actAs(null);
+do_action('init');
+$drain();
+$longPage = fetch("$url/notes/$long/");
+$longTwin = fetch("$url/notes/$long.md");
+$out['long address'] = [
+    is_file(\TypedPress\Render\Prebuilt::dir() . "/notes/$long.html"), is_file(\TypedPress\Render\Prebuilt::dir() . "/notes/$long.md"),
+    $longPage['status'], $longPage['prebuilt'], $longTwin['status'], $longTwin['prebuilt'],
+];
+
 // A loose deployment can replace only a public module and its map, with the same size and mtime.
 // Its prebuilt HTML must still stop sending the old digest in a script URL.
 wp_mkdir_p($dir);

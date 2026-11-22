@@ -5672,3 +5672,43 @@ fn a_form_posts_to_a_mutation_not_a_query() {
     );
     assert!(stderr.contains("--> tp/app/page.tsx:3:"), "{stderr}");
 }
+
+/// Refused helper chains called in narrowing positions (`if (f())`) must stay linear, not retry
+/// exponentially across speculative `attempt()` rollbacks (#232).
+#[test]
+fn refused_helper_chain_stays_linear_on_speculative_retries() {
+    let mut src = String::from("import { query, defineConfig } from \"typedpress\";\n");
+    for i in 0..20 {
+        let next = i + 1;
+        src.push_str(&format!(
+            "function f{i}(): number {{ if (f{next}()) return 1; return 0; }}\n"
+        ));
+    }
+    src.push_str("function f20(): number { return [1].sort(function (a, b) { return b > a ? 1 : -1; })[0]; }\n");
+    let dir = tempfile::tempdir().unwrap();
+    for (entry, method) in [
+        ("f0()", ""),
+        (
+            "api.value()",
+            "const api = { count: 1, value(): number { if (f0()) return this.count; return 0; } };",
+        ),
+    ] {
+        let config = format!(
+            "{src}\n{method}\nexport const run = query({{ access: \"anyone\" }}, () => {{ if ({entry}) return 1; return 0; }});\nexport default defineConfig({{ name: \"chain\" }});\n"
+        );
+        std::fs::write(dir.path().join("typedpress.config.ts"), config).unwrap();
+        let start = std::time::Instant::now();
+        let out = first().args(["check"]).arg(dir.path()).output().unwrap();
+        let elapsed = start.elapsed();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "refused helper chain ({entry}):\n{stderr}");
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "refused 20-deep helper chain ({entry}) took {elapsed:?}"
+        );
+        assert!(
+            stderr.contains("number | undefined"),
+            "unexpected diagnostic ({entry}):\n{stderr}"
+        );
+    }
+}

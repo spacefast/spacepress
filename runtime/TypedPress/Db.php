@@ -28,6 +28,13 @@ final class Db
     private ?string $activeDeleteGroup = null;
     /** Prevents re-entering group child restore while restoring children of a deletedGroup. */
     private bool $restoringGroup = false;
+    /** @var array<string, array<int|string, int|string>> primary keys currently being deleted, by collection */
+    private array $deleting = [];
+    /** @var ?array<string, array<int|string, int>> deletion order within the current traversal */
+    private ?array $deleted = null;
+    /** @var array<string, array<int|string, array>> deleted row snapshots within the current traversal */
+    private array $deletedRows = [];
+    private int $deleteSequence = 0;
 
     public function __construct(
         private readonly Store $store,
@@ -897,10 +904,7 @@ final class Db
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'delete', $viewer, null);
             $opts = ['where' => $where];
             $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
-            $out = [];
-            foreach ($rows as $row) {
-                $out[] = $this->deleteOne($collection, $row, $viewer);
-            }
+            $out = $this->deleteRows($collection, $rows, $viewer);
 
             return $returning ? $this->present($out, $collection, $viewer) : null;
         });
@@ -948,9 +952,7 @@ final class Db
                 $opts['deleted'] = $onlyDeleted ? 'only' : 'include';
             }
             $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
-            foreach ($rows as $row) {
-                $this->purgeOne($collection, $row, $viewer);
-            }
+            $this->purgeRows($collection, $rows, $viewer);
 
             return $returning ? $this->present($rows, $collection, $viewer) : null;
         });
@@ -1190,50 +1192,89 @@ final class Db
         }
     }
 
-    private function deleteOne(string $collection, array $row, ?Viewer $viewer, ?string $group = null): array
+    /** A prior row's cascade can delete a later row in the same selection. @return list<array> */
+    private function deleteRows(string $collection, array $rows, ?Viewer $viewer, ?string $group = null): array
     {
+        $root = $this->deleted === null;
+        $this->deleted ??= [];
+        $selectedAt = $this->deleteSequence;
         $spec = $this->schema->collection($collection);
-        $existing = $row;
-        Extensions::write('delete', $collection, $row, $existing, $viewer, $existing);
-        $this->hook($collection, $spec, 'beforeDelete', $row);
-        if (($spec['softDelete'] ?? false) && method_exists($this->store, 'softDelete')) {
-            $group ??= $this->activeDeleteGroup ?? self::uuid();
-            $this->softReferentialActions($collection, $row, $group, $viewer);
-            $at = Js::iso(Js::now());
-            $userId = $this->actor['id'] ?? null;
-            $pkValue = $this->pkValue($spec, $row);
+        $out = [];
+        try {
+            foreach ($rows as $row) {
+                $pk = $this->pkValue($spec, $row);
+                if (($this->deleted[$collection][$pk] ?? 0) <= $selectedAt) {
+                    $deleted = $this->deleteOne($collection, $spec, $row, $pk, $viewer, $group);
+                    $out[] = $deleted ?? $this->deletedRows[$collection][$pk] ?? $row;
+                } else {
+                    $out[] = $this->deletedRows[$collection][$pk] ?? $row;
+                }
+            }
+
+            return $out;
+        } finally {
+            if ($root) {
+                $this->deleted = null;
+                $this->deletedRows = [];
+                $this->deleteSequence = 0;
+            }
+        }
+    }
+
+    private function deleteOne(string $collection, array $spec, array $row, int|string $pk, ?Viewer $viewer, ?string $group = null): ?array
+    {
+        if (isset($this->deleting[$collection][$pk])) {
+            return null;
+        }
+        $this->deleting[$collection][$pk] = $pk;
+        try {
+            $existing = $row;
+            Extensions::write('delete', $collection, $row, $existing, $viewer, $existing);
+            $this->hook($collection, $spec, 'beforeDelete', $row);
+            if (($spec['softDelete'] ?? false) && method_exists($this->store, 'softDelete')) {
+                $group ??= $this->activeDeleteGroup ?? self::uuid();
+                $this->softReferentialActions($collection, $row, $group, $viewer);
+                $at = Js::iso(Js::now());
+                $userId = $this->actor['id'] ?? null;
+                try {
+                    $this->store->softDelete($collection, $pk, $at, is_int($userId) ? $userId : null, $group);
+                } catch (\Throwable $e) {
+                    throw $this->store->mapError($e);
+                }
+                $row['deletedAt'] = $at;
+                $row['deletedBy'] = is_int($userId) ? $userId : null;
+                if (array_key_exists('deletedGroup', $row)) {
+                    $row['deletedGroup'] = $group;
+                }
+                if (array_key_exists('_live', $row)) {
+                    $row['_live'] = null;
+                }
+                $this->deleted[$collection][$pk] = ++$this->deleteSequence;
+                $this->deletedRows[$collection][$pk] = $row;
+                if ($spec['revisions'] ?? false) {
+                    [, $rawDeleted] = $this->readByPk($collection, $spec, $pk, deleted: 'include');
+                    $this->recordRevision($collection, $spec, $pk, $rawDeleted, 'delete', $existing, $row);
+                }
+                $this->hook($collection, $spec, 'afterDelete', $row);
+                Extensions::written('delete', $collection, $row, $existing);
+
+                return $row;
+            }
+            $this->referentialActions($collection, $row, $viewer);
             try {
-                $this->store->softDelete($collection, $pkValue, $at, is_int($userId) ? $userId : null, $group);
+                $this->store->delete($collection, $pk);
             } catch (\Throwable $e) {
                 throw $this->store->mapError($e);
             }
-            $row['deletedAt'] = $at;
-            $row['deletedBy'] = is_int($userId) ? $userId : null;
-            if (array_key_exists('deletedGroup', $row)) {
-                $row['deletedGroup'] = $group;
-            }
-            if (array_key_exists('_live', $row)) {
-                $row['_live'] = null;
-            }
-            if ($spec['revisions'] ?? false) {
-                [, $rawDeleted] = $this->readByPk($collection, $spec, $pkValue, deleted: 'include');
-                $this->recordRevision($collection, $spec, $pkValue, $rawDeleted, 'delete', $existing, $row);
-            }
+            $this->deleted[$collection][$pk] = ++$this->deleteSequence;
+            $this->deletedRows[$collection][$pk] = $row;
             $this->hook($collection, $spec, 'afterDelete', $row);
             Extensions::written('delete', $collection, $row, $existing);
 
             return $row;
+        } finally {
+            unset($this->deleting[$collection][$pk]);
         }
-        $this->referentialActions($collection, $row, $viewer);
-        try {
-            $this->store->delete($collection, $this->pkValue($spec, $row));
-        } catch (\Throwable $e) {
-            throw $this->store->mapError($e);
-        }
-        $this->hook($collection, $spec, 'afterDelete', $row);
-        Extensions::written('delete', $collection, $row, $existing);
-
-        return $row;
     }
 
     private function restoreOne(string $collection, array $row, ?Viewer $viewer, bool $cascadeChildren = true): array
@@ -1295,24 +1336,54 @@ final class Db
         }
     }
 
-    private function purgeOne(string $collection, array $row, ?Viewer $viewer): void
+    /** A prior row's cascade purge can purge a later row in the same selection. */
+    private function purgeRows(string $collection, array $rows, ?Viewer $viewer): void
     {
+        $root = $this->deleted === null;
+        $this->deleted ??= [];
+        $selectedAt = $this->deleteSequence;
         $spec = $this->schema->collection($collection);
-        $existing = $row;
-        $this->hook($collection, $spec, 'beforePurge', $row);
-        $pkValue = $this->pkValue($spec, $row);
-        if ($spec['revisions'] ?? false) {
-            [, $rawPurged] = $this->readByPk($collection, $spec, $pkValue, deleted: 'include');
-            $this->recordRevision($collection, $spec, $pkValue, $rawPurged, 'purge', $existing, null);
-        }
-        $this->referentialActions($collection, $row, $viewer, purge: true);
         try {
-            $this->store->delete($collection, $pkValue);
-        } catch (\Throwable $e) {
-            throw $this->store->mapError($e);
+            foreach ($rows as $row) {
+                $pk = $this->pkValue($spec, $row);
+                if (($this->deleted[$collection][$pk] ?? 0) <= $selectedAt) {
+                    $this->purgeOne($collection, $spec, $row, $pk, $viewer);
+                }
+            }
+        } finally {
+            if ($root) {
+                $this->deleted = null;
+                $this->deletedRows = [];
+                $this->deleteSequence = 0;
+            }
         }
-        $this->hook($collection, $spec, 'afterPurge', $row);
-        Extensions::written('delete', $collection, $row, $existing);
+    }
+
+    private function purgeOne(string $collection, array $spec, array $row, int|string $pkValue, ?Viewer $viewer): void
+    {
+        if (isset($this->deleting[$collection][$pkValue])) {
+            return;
+        }
+        $this->deleting[$collection][$pkValue] = $pkValue;
+        try {
+            $existing = $row;
+            $this->hook($collection, $spec, 'beforePurge', $row);
+            if ($spec['revisions'] ?? false) {
+                [, $rawPurged] = $this->readByPk($collection, $spec, $pkValue, deleted: 'include');
+                $this->recordRevision($collection, $spec, $pkValue, $rawPurged, 'purge', $existing, null);
+            }
+            $this->referentialActions($collection, $row, $viewer, purge: true);
+            try {
+                $this->store->delete($collection, $pkValue);
+            } catch (\Throwable $e) {
+                throw $this->store->mapError($e);
+            }
+            $this->deleted[$collection][$pkValue] = ++$this->deleteSequence;
+            $this->hook($collection, $spec, 'afterPurge', $row);
+            Extensions::written('delete', $collection, $row, $existing);
+        } finally {
+            unset($this->deleting[$collection][$pkValue]);
+        }
     }
 
     /** Referential actions for soft delete: enforces restrict against active children, cascades deletedGroup, preserves many-ref links for restore. */
@@ -1351,7 +1422,13 @@ final class Db
                 $action = strtolower($ref['onDelete'] ?? 'no action');
                 if ($action === 'cascade') {
                     $depOpts = ['where' => $where];
-                    $dependents = $this->selectDecoded((string) $child, $depOpts, '', null);
+                    $dependents = array_values(array_filter(
+                        $this->selectDecoded((string) $child, $depOpts, '', null),
+                        fn (array $dependent): bool => !isset($this->deleting[$child][$this->pkValue($cspec, $dependent)]),
+                    ));
+                    if ($dependents === []) {
+                        continue;
+                    }
                     if ($viewer !== null) {
                         $cpk = $cspec['primaryKey'];
                         $prevGroup = $this->activeDeleteGroup;
@@ -1371,11 +1448,7 @@ final class Db
                             throw self::hiddenReference();
                         }
                     } else {
-                        $this->nested(function () use ($child, $dependents, $group): void {
-                            foreach ($dependents as $dependent) {
-                                $this->deleteOne((string) $child, $dependent, null, $group);
-                            }
-                        });
+                        $this->nested(fn () => $this->deleteRows((string) $child, $dependents, null, $group));
                     }
                 } elseif ($action === 'set null' || $action === 'set default') {
                     $depOpts = ['where' => $where];
@@ -1435,6 +1508,15 @@ final class Db
             return;
         }
         $seen[$at] = true;
+        // WordPress reparents child terms on delete. The implicit parent column has no schema reference.
+        if (($parent['taxonomy'] ?? false) && ($parent['hierarchical'] ?? false) && isset($parent['columns']['parent'])) {
+            $pk = $parent['primaryKey'];
+            if (FieldAccess::mayHide($parent['columns'][$pk], $viewer) || FieldAccess::mayHide($parent['columns']['parent'], $viewer)
+                || !Extensions::constraintReadsSafe()) {
+                throw self::hiddenReference();
+            }
+            $this->hasReadableReferences($collection, ['parent' => $row[$pk]], $viewer);
+        }
         // Every relationship to this kind, before any is skipped for a null key: whether a hidden key
         // is null is itself what the viewer can't read.
         foreach ($this->relationships($collection) as [, , , $def]) {
@@ -1444,17 +1526,8 @@ final class Db
             }
         }
         foreach ($this->referencing($collection, $row) as [$child, $spec, $col, $def, $where]) {
-            $trusted = $this->countRows($child, $where, null);
-            if ($trusted === 0) {
+            if (!$this->hasReadableReferences($child, $where, $viewer)) {
                 continue;
-            }
-            try {
-                $visible = $this->countRows($child, $where, $viewer);
-            } catch (HttpError) {
-                throw self::hiddenReference();
-            }
-            if ($visible !== $trusted) {
-                throw self::hiddenReference();
             }
             if ($def['type'] !== 'refList' && strtolower($def['references']['onDelete'] ?? 'no action') === 'cascade') {
                 foreach ($this->referencingRows($child, $spec, $where, $viewer) as $dependent) {
@@ -1462,6 +1535,25 @@ final class Db
                 }
             }
         }
+    }
+
+    /** Whether any rows match. Refuses the delete if any matching row is hidden. */
+    private function hasReadableReferences(string $collection, array $where, Viewer $viewer): bool
+    {
+        $trusted = $this->countRows($collection, $where, null);
+        if ($trusted === 0) {
+            return false;
+        }
+        try {
+            $visible = $this->countRows($collection, $where, $viewer);
+        } catch (HttpError) {
+            throw self::hiddenReference();
+        }
+        if ($visible !== $trusted) {
+            throw self::hiddenReference();
+        }
+
+        return true;
     }
 
     /**
@@ -1474,7 +1566,7 @@ final class Db
      */
     private function viewerReferentialWrites(string $collection, array $row, Viewer $viewer): void
     {
-        foreach ($this->referencing($collection, $row) as [$child, $spec, $col, $def, $where]) {
+        foreach ($this->referencing($collection, $row, skipActiveCascades: true) as [$child, $spec, $col, $def, $where]) {
             $many = $def['type'] === 'refList';
             $action = strtolower($def['references']['onDelete'] ?? ($many ? 'cascade' : 'no action'));
             $expected = $this->countRows($child, $where, null);
@@ -1518,7 +1610,7 @@ final class Db
         }
         // Whatever hooks did meanwhile, nothing may still reference the row: the trusted referential
         // actions never run for a viewer's delete.
-        foreach ($this->referencing($collection, $row) as [$child, , , $def, $where]) {
+        foreach ($this->referencing($collection, $row, skipActiveCascades: true) as [$child, , , , $where]) {
             if ($this->countRows($child, $where, null) > 0) {
                 throw self::hiddenReference();
             }
@@ -1530,7 +1622,7 @@ final class Db
      *
      * @return list<array{string, array, string, array, array}> child, its spec, column, column def, where
      */
-    private function referencing(string $collection, array $row): array
+    private function referencing(string $collection, array $row, bool $skipActiveCascades = false): array
     {
         $out = [];
         foreach ($this->relationships($collection) as [$child, $spec, $col, $def]) {
@@ -1539,7 +1631,14 @@ final class Db
                 continue;
             }
             // A many-ref's referencing rows are the owners of links to this row, filtered in SQL.
-            $out[] = [$child, $spec, $col, $def, [$col => $def['type'] === 'refList' ? ['has' => $value] : $value]];
+            $many = $def['type'] === 'refList';
+            $where = [$col => $many ? ['has' => $value] : $value];
+            // A cascade back into an active delete is completed by that delete's own call.
+            $active = $this->deleting[$child] ?? [];
+            if ($skipActiveCascades && $active !== [] && !$many && strtolower($def['references']['onDelete'] ?? 'no action') === 'cascade') {
+                $where = ['AND' => [$where, [$spec['primaryKey'] => ['notIn' => array_values($active)]]]];
+            }
+            $out[] = [$child, $spec, $col, $def, $where];
         }
 
         return $out;
@@ -1706,16 +1805,16 @@ final class Db
                 $opts = ['where' => $where, 'limit' => 1, 'deleted' => $deletedMode];
                 $action = strtolower($ref['onDelete'] ?? 'no action');
                 if ($action === 'cascade') {
-                    $this->nested(function () use ($child, $where, $viewer, $purge, $deletedMode): void {
-                        $opts = ['where' => $where, 'deleted' => $deletedMode];
-                        foreach ($this->selectDecoded((string) $child, $opts, '', null) as $dependent) {
-                            if ($purge) {
-                                $this->purgeOne((string) $child, $dependent, $viewer);
-                            } else {
-                                $this->deleteOne((string) $child, $dependent, $viewer);
-                            }
-                        }
-                    });
+                    $cascadeOpts = ['where' => $where, 'deleted' => $deletedMode];
+                    $dependents = array_values(array_filter(
+                        $this->selectDecoded((string) $child, $cascadeOpts, '', null),
+                        fn (array $dependent): bool => !isset($this->deleting[$child][$this->pkValue($cspec, $dependent)]),
+                    ));
+                    if ($dependents !== []) {
+                        $this->nested(fn () => $purge
+                            ? $this->purgeRows((string) $child, $dependents, $viewer)
+                            : $this->deleteRows((string) $child, $dependents, $viewer));
+                    }
                 } elseif ($action === 'set null' || $action === 'set default') {
                     // No rows, no write: a generator must not run (or fail) for a branch it won't change.
                     if ($this->selectDecoded((string) $child, $opts, '', null) === []) {
@@ -2194,13 +2293,22 @@ final class Db
     /** Before an editor-side delete: beforeDelete($row) and the pipeline FK actions. */
     public function beforeEditorDelete(string $collection, array $row, ?array $user = null): void
     {
-        $this->asEditor($user, function () use ($collection, $row, $user) {
-            $spec = $this->schema->collection($collection);
-            $existing = $row;
-            Extensions::write('delete', $collection, $row, $existing, null, $existing);
-            $this->hook($collection, $spec, 'beforeDelete', $row);
-            $this->referentialActions($collection, $row, $user === null ? null : new Viewer($user));
-        });
+        $pk = $this->pkValue($this->schema->collection($collection), $row);
+        if (isset($this->deleting[$collection][$pk])) {
+            return;
+        }
+        $this->deleting[$collection][$pk] = $pk;
+        try {
+            $this->asEditor($user, function () use ($collection, $row, $user) {
+                $spec = $this->schema->collection($collection);
+                $existing = $row;
+                Extensions::write('delete', $collection, $row, $existing, null, $existing);
+                $this->hook($collection, $spec, 'beforeDelete', $row);
+                $this->referentialActions($collection, $row, $user === null ? null : new Viewer($user));
+            });
+        } finally {
+            unset($this->deleting[$collection][$pk]);
+        }
     }
 
     /** After an editor-side delete: afterDelete($row). */

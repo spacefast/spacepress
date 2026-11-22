@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TypedPress\Wp;
 
+use TypedPress\Validator;
+
 /**
  * The project's `public/` folder, stored under `wp-content/` and symlinked into the document root
  * (`tp_public_root`, default `ABSPATH`, skipped on multisite or read-only roots) so the web server
@@ -13,8 +15,10 @@ namespace TypedPress\Wp;
  *   `wp-content/.../tp/app/assets/<stem>-<hash>.<ext>` (immutable, 1-year cache).
  * - `public/` holds untouched root-URL files symlinked into the document root pointing into
  *   `wp-content/`. `metadata.scripts` appends `?tpv=<hash>` from `tp/app/public-files.json`.
- * - `/.well-known/*` is the one exception kept on `do_parse_request` in PHP, so `/.well-known/`
- *   files work at the site root even on hosts with a read-only document root.
+ * - PHP answers on `do_parse_request` for what is not linked: `/.well-known/*` (so it works even on
+ *   hosts with a read-only document root), a child whose parent directory shadows a literal app
+ *   route, and the top-level `index.html` at `/index.html` (never linked, so `/` stays WordPress's
+ *   home page under the web server's DirectoryIndex).
  */
 final class PublicFiles
 {
@@ -174,6 +178,12 @@ final class PublicFiles
     /** Sync root symlinks when the manifest, source, root, or literal routes changed (or removals are pending). */
     private static function maybeSyncSymlinks(Plugin $plugin): void
     {
+        // No public files and no option recorded: nothing to link or clean up. The option is always
+        // written autoloaded, so its absence is known from the autoloaded options without a query
+        // (get_option() on a missing option costs a SELECT on every request without a persistent cache).
+        if (self::manifest($plugin) === [] && !array_key_exists(self::SYMLINKS_OPTION, wp_load_alloptions())) {
+            return;
+        }
         $root = self::documentRoot();
         if ($root === null) {
             return;
@@ -191,8 +201,6 @@ final class PublicFiles
                 && empty($stored['pending'])) {
                 return;
             }
-        } elseif ($hash === '') {
-            return;
         }
         self::syncSymlinks($plugin);
     }
@@ -396,7 +404,9 @@ final class PublicFiles
         $keptDirs = array_values(array_keys($ownedDirs));
         $hasPending = $pendingLinks !== [] || $pendingDirs || $stale !== [];
 
-        if ($recordedLinks === [] && $keptDirs === [] && $hash === '' && !$hasPending) {
+        // An app with no public files and nothing linked, owned or pending records nothing (its `{}`
+        // manifest still has a hash), so activation leaves what initialize leaves: no option.
+        if ($recordedLinks === [] && $keptDirs === [] && $manifest === [] && !$hasPending) {
             delete_option(self::SYMLINKS_OPTION);
         } else {
             update_option(self::SYMLINKS_OPTION, [
@@ -523,24 +533,32 @@ final class PublicFiles
         return is_dir($root) && is_writable($root) ? $root : null;
     }
 
-    /** Serve `/.well-known/*` and route-shadowed `public/` children via PHP when not symlinked. */
-    private static function serveFallback(Plugin $plugin): void
+    /**
+     * The `public/` file PHP answers this request with (one the document root has no link for:
+     * `/.well-known/*`, a route-shadowed child, the top-level `index.html`), or null.
+     */
+    public static function fallbackFile(Plugin $plugin): ?string
     {
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
         if ($method !== 'GET' && $method !== 'HEAD' || MarkdownTwins::negotiating()) {
-            return;
+            return null;
         }
         $reqPath = self::requestPath();
         if ($reqPath === null || self::literalPage($plugin->schema, $reqPath)) {
+            return null;
+        }
+
+        return self::wellKnownFile($plugin->dir . '/public', $reqPath) ?? self::unlinkedPublicFile($plugin, $reqPath);
+    }
+
+    /** Serve `/.well-known/*`, route-shadowed `public/` children and `/index.html` via PHP. */
+    private static function serveFallback(Plugin $plugin): void
+    {
+        $file = self::fallbackFile($plugin);
+        if ($file === null) {
             return;
         }
-        $file = self::wellKnownFile($plugin->dir . '/public', $reqPath);
-        if ($file === null) {
-            $file = self::shadowedPublicFile($plugin, $reqPath);
-        }
-        if ($file === null) {
-            return;
-        }
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
         $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
         $size = (int) filesize($file);
         $etag = '"' . dechex($size) . '-' . dechex((int) filemtime($file)) . '"';
@@ -554,18 +572,27 @@ final class PublicFiles
         if ($extension === 'svg' || $extension === 'xml') {
             $headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
         }
-        if (self::matches(wp_unslash((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? '')), $etag)) {
+        if (Validator::matches($etag)) {
             self::emit(304, $headers, null);
         }
         $headers['Content-Length'] = (string) $size;
         self::emit(200, $headers, $method === 'HEAD' ? null : $file);
     }
 
-    /** Resolves a `public/` file whose parent directory shadows a literal app route (so it wasn't symlinked). */
-    private static function shadowedPublicFile(Plugin $plugin, string $path): ?string
+    /**
+     * Resolves a `public/` file the document root has no link for: the top-level `index.html` (or
+     * `index.htm`), asked for by name, or a file whose parent directory shadows a literal app route.
+     */
+    private static function unlinkedPublicFile(Plugin $plugin, string $path): ?string
     {
         $rel = self::relativePath($path, $plugin->schema->reserved());
-        if ($rel === null || !isset(self::manifest($plugin)[$rel]) || !self::parentShadowsLiteralPage($plugin->schema, $rel)) {
+        if ($rel === null || !isset(self::manifest($plugin)[$rel])) {
+            return null;
+        }
+        // `/` stays WordPress's home page: relativePath() gives no name for it, so only a request
+        // that names the file (`/index.html`) reaches it.
+        $rootIndex = in_array(strtolower($rel), ['index.html', 'index.htm'], true) && !str_ends_with($path, '/');
+        if (!$rootIndex && !self::parentShadowsLiteralPage($plugin->schema, $rel)) {
             return null;
         }
         $publicDir = self::publicDir($plugin) ?? ($plugin->dir . '/public');
@@ -742,19 +769,6 @@ final class PublicFiles
         foreach ($app['routes'] ?? [] as $route) {
             $pattern = (string) ($route['pattern'] ?? '');
             if (!str_contains($pattern, ':') && !str_contains($pattern, '*') && AppRouter::match([$route], $path) !== null) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /** Whether `If-None-Match` names this ETag: `*`, a list, weak forms (`W/"…"`) included. */
-    private static function matches(string $header, string $etag): bool
-    {
-        foreach (explode(',', $header) as $tag) {
-            $tag = trim($tag);
-            if ($tag === '*' || (str_starts_with($tag, 'W/') ? substr($tag, 2) : $tag) === $etag) {
                 return true;
             }
         }

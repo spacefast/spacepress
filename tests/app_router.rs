@@ -248,20 +248,13 @@ fn app_router_serves_pages_on_wordpress() {
         ]),
         "{social}"
     );
-    assert!(
-        social["links"].as_array().unwrap().contains(&serde_json::json!([
-            "describedby",
-            format!("{base}/llms.txt"),
-            "text/plain"
-        ])),
-        "{social}"
-    );
-    assert!(
-        social["links"].as_array().unwrap().contains(&serde_json::json!([
-            "alternate",
-            format!("{base}/notes/hello.md"),
-            "text/markdown"
-        ])),
+    // The page repeats the layout's link with its keys in another order: it is in the head once.
+    assert_eq!(
+        social["links"],
+        serde_json::json!([
+            ["describedby", format!("{base}/llms.txt"), "text/plain"],
+            ["alternate", format!("{base}/notes/hello.md"), "text/markdown"]
+        ]),
         "{social}"
     );
     // `metadata.scripts`: script modules, a path made absolute.
@@ -979,6 +972,42 @@ fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A fresh clone of a project that builds its stylesheets with `@typedpress/frontend` has no
+/// `tp/_generated/frontend-styles.json` (it stays out of Git). `check` and `check --json` compile it
+/// without reading `@import "tailwindcss"` as a copied stylesheet; `build` needs the built file.
+#[test]
+fn checks_a_fresh_clone_before_its_first_frontend_build() {
+    let dir = std::env::temp_dir().join(format!("typedpress-app-fresh-styles-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    for (path, source) in [
+        (
+            "typedpress.config.ts",
+            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"fresh\" });\n",
+        ),
+        (
+            "package.json",
+            r#"{"devDependencies":{"@typedpress/frontend":"0.1.0"}}"#,
+        ),
+        (
+            "tp/app/page.tsx",
+            "import \"./site.css\";\nexport default function P() { return <h1 className=\"text-4xl\">Hi</h1>; }\n",
+        ),
+        ("tp/app/site.css", "@import \"tailwindcss\" source(\"../\");\n"),
+    ] {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    }
+    let check = first().arg("check").arg(&dir).output().unwrap();
+    assert!(check.status.success(), "{}", String::from_utf8_lossy(&check.stderr));
+    let json = first().arg("check").arg(&dir).arg("--json").output().unwrap();
+    assert!(json.status.success(), "{}", String::from_utf8_lossy(&json.stdout));
+    // No frontend build ran: `check` writes nothing.
+    assert!(!dir.join("tp/_generated/frontend-styles.json").exists());
+    assert!(!dir.join("public/typedpress-styles").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Shapes the router can't serve, and route files that would silently do nothing, are build
 /// errors at the file, with the fix.
 #[test]
@@ -1627,6 +1656,9 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     assert_eq!(seen["bare about"], json!([301, false]));
     // A render that began before forget() leaves no file behind.
     assert_eq!(seen["forget race"], json!([false, false]));
+    // A prebuilt address longer than the read index holds can't be recorded, so no write would
+    // rebuild its file: neither the page nor its twin is written, and it renders per request.
+    assert_eq!(seen["long address"], json!([false, false, 200, false, 200, false]));
     assert_eq!(
         seen["public script updated"],
         json!([true, true, true, 200, false, true])
@@ -2660,6 +2692,18 @@ fn forms_submit_in_place_in_the_browser() {
         serde_json::json!({ "from": "tp-blank", "to": "tp-page", "voted": "Voted bare", "header": 1, "regions": 1, "url": "/" }),
         "{seen}"
     );
+    // A stale answer in another block template is dropped after a `<Link>` navigation or a newer
+    // submit (#537).
+    assert_eq!(
+        seen["otherTemplateStaleLink"],
+        serde_json::json!({ "url": "/other/", "other": true, "template": "tp-page", "marker": "same document" }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["otherTemplateOvertaken"],
+        serde_json::json!({ "url": "/?ref=nav", "done": "Subscribed three@example.test for 1 (weekly: false)", "template": "tp-page", "marker": "same document", "message": 1 }),
+        "{seen}"
+    );
 }
 
 /// `<Comments for={item} />` and the policy behind it (docs/decisions/2026-11-14-comments.md), with
@@ -3404,7 +3448,7 @@ fn client_components_hydrate_in_the_browser() {
     // The typed client is served from the app plugin as a module the browser imports as is.
     assert_eq!(
         seen["client"],
-        serde_json::json!([200, "text/javascript;charset=UTF-8", "function", "function"]),
+        serde_json::json!([200, "text/javascript; charset=utf-8", "function", "function"]),
         "{seen}"
     );
 }
@@ -3482,6 +3526,13 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         seen["missing"],
         serde_json::json!({ "status": 404, "cache": private, "edge": "no-cache", "batcache": "cancel" })
     );
+    // `//notes/other/` renders the note (the router reads the path as WordPress does) but no purge
+    // names that URL: private, and filed under no other page (`/other/` on the host `notes`).
+    assert_eq!(
+        seen["double slash"],
+        serde_json::json!({ "status": 200, "cache": private, "edge": "no-cache", "batcache": "cancel" })
+    );
+    assert_eq!(seen["double slash index"], serde_json::json!([]));
     // TypedPress's API and Identity's answer for whoever asks: Batcache never keeps them, signed in
     // by an application password or not, nor Identity's own API, which finds its session from its
     // cookie without WordPress setting the user.
@@ -4492,7 +4543,8 @@ fn public_files_serve_at_the_site_root() {
             "/.well-known/ai.json": [200, "application/json", 13],
             "/notes.md": [200, "text/markdown; charset=utf-8", 15],
             "/robots-extra.txt": [200, "text/plain; charset=utf-8", 14],
-            "/it's.txt": [200, "text/plain; charset=utf-8", 1]
+            "/it's.txt": [200, "text/plain; charset=utf-8", 1],
+            "/index.html": [200, "text/html; charset=utf-8", 21]
         })
     );
     assert_eq!(
@@ -4526,7 +4578,7 @@ fn public_files_serve_at_the_site_root() {
         seen["wellKnown"],
         serde_json::json!({
             "cache": "public, max-age=300",
-            "notModified": [304, 304, 304, 200],
+            "notModified": [304, 304, 304, 304, 200, 200, 200, 200],
             "cors": ["*", "*", null]
         })
     );

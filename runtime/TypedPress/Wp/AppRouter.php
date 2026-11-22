@@ -208,11 +208,12 @@ final class AppRouter
     /**
      * The request's path, as WordPress and WooCommerce read it: `//host/shop/` is the path
      * `/host/shop/`, not `/shop/` on another host. Every reader of the request path uses this one,
-     * so no two of them take the same request for different pages.
+     * so no two of them take the same request for different pages. `$uri` is a request URI other
+     * than this request's (the page cache's read index names a URL by it).
      */
-    public static function requestPath(): string
+    public static function requestPath(?string $uri = null): string
     {
-        return (string) (wp_parse_url('/' . ltrim((string) ($_SERVER['REQUEST_URI'] ?? '/'), '/'), PHP_URL_PATH) ?? '/');
+        return (string) (wp_parse_url('/' . ltrim($uri ?? (string) ($_SERVER['REQUEST_URI'] ?? '/'), '/'), PHP_URL_PATH) ?? '/');
     }
 
     private function path(): ?string
@@ -834,6 +835,10 @@ final class AppRouter
         // variant too many) can't be purged, so its response is this visitor's alone.
         if (!$shared) {
             $this->cacheControl = \TypedPress\Render\Cache::PRIVATE;
+            // Nor may it become a prebuilt file, which no write would know to rebuild.
+            if ($status === 200) {
+                \TypedPress\Render\Prebuilt::unrecorded();
+            }
         }
         do_action('tp_app_rendered', (string) $route['id'], (string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         $this->document($status, $head, $body);
@@ -1275,15 +1280,26 @@ final class AppRouter
                     continue;
                 }
                 if ($key === 'links' && is_array($value)) {
-                    // Compare stylesheet links with their default type omitted, keeping the first link as written.
+                    // Each link once, the first as written. Two links are the same whatever order
+                    // their keys are in, and a stylesheet's default type is left out of the comparison.
                     $links = [...($out['links'] ?? []), ...array_values($value)];
-                    $normalized = array_map(static function ($link) {
-                        if (is_array($link) && ($link['rel'] ?? null) === 'stylesheet' && ($link['type'] ?? null) === 'text/css') {
-                            unset($link['type']);
+                    $seen = [];
+                    $out['links'] = [];
+                    foreach ($links as $link) {
+                        $key = $link;
+                        if (is_array($key)) {
+                            if (($key['rel'] ?? null) === 'stylesheet' && ($key['type'] ?? null) === 'text/css') {
+                                unset($key['type']);
+                            }
+                            ksort($key);
                         }
-                        return $link;
-                    }, $links);
-                    $out['links'] = array_values(array_intersect_key($links, array_unique($normalized, SORT_REGULAR)));
+                        // Invalid UTF-8 is substituted, not a failed encoding every such link would share.
+                        $key = json_encode($key, JSON_INVALID_UTF8_SUBSTITUTE) ?: serialize($key);
+                        if (!isset($seen[$key])) {
+                            $seen[$key] = true;
+                            $out['links'][] = $link;
+                        }
+                    }
                     continue;
                 }
                 if (($key === 'openGraph' || $key === 'twitter') && is_array($value)) {

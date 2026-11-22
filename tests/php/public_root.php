@@ -60,7 +60,9 @@ $out['packaged'] = [
 ];
 
 // Direct root paths (served directly via symlinks without PHP) and /.well-known/ai.json (via PHP).
-foreach (['/compiler.wasm', '/logo.svg', '/files/blog.json', '/files/blobs/0a1b.txt', '/files/', '/og/index.png', '/.well-known/ai.json', '/notes.md', '/robots-extra.txt', "/it's.txt"] as $path) {
+// The top-level index.html is never linked (DirectoryIndex would serve it for `/`), so PHP answers
+// it at /index.html.
+foreach (['/compiler.wasm', '/logo.svg', '/files/blog.json', '/files/blobs/0a1b.txt', '/files/', '/og/index.png', '/.well-known/ai.json', '/notes.md', '/robots-extra.txt', "/it's.txt", '/index.html'] as $path) {
     $r = fetch("$url$path");
     $out['served'][$path] = [$r['status'], $r['type'], strlen($r['body'])];
 }
@@ -105,7 +107,11 @@ $out['wellKnown'] = [
         fetch("$url/.well-known/ai.json", 'GET', ["If-None-Match: $etag"])['status'],
         fetch("$url/.well-known/ai.json", 'GET', ["If-None-Match: W/$etag"])['status'],
         fetch("$url/.well-known/ai.json", 'GET', ["If-None-Match: \"other\", $etag"])['status'],
+        fetch("$url/.well-known/ai.json", 'GET', ['If-None-Match: *'])['status'],
         fetch("$url/.well-known/ai.json", 'GET', ['If-None-Match: "other"'])['status'],
+        fetch("$url/.well-known/ai.json", 'GET', ['If-None-Match: "a,*,b"'])['status'],
+        fetch("$url/.well-known/ai.json", 'GET', ["If-None-Match: w/$etag"])['status'],
+        fetch("$url/.well-known/ai.json", 'GET', ["If-None-Match: *, $etag"])['status'],
     ],
     'cors' => [
         fetch("$url/.well-known/ai.json", 'GET', ['Origin: https://playground.wordpress.net'])['headers']['access-control-allow-origin'] ?? null,

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page, type Response } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { submitSignIn } from './sign-in';
@@ -51,27 +51,32 @@ test('upstream collaboration merges simultaneous text edits, shares fields, and 
 	const peers = new Set<number>();
 	for (const page of pages) {
 		page.on('pageerror', (error) => errors.push(error.message));
-		page.on('response', async (response) => {
+		page.on('response', (response) => {
 			if (!new URL(response.url()).pathname.includes('/wp-sync/v1/')) return;
 			if (!response.ok()) failedSync.push(response.status());
 			const schema = response.request().headers()['x-typedpress-coediting-schemas'];
 			if (response.ok() && schema) successfulSyncHeaders.push(schema);
-			if (!response.ok() || !response.url().includes('/updates')) return;
-			const payload = object(await response.json());
-			if (!Array.isArray(payload.rooms)) return;
-			for (const raw of payload.rooms) {
-				const awareness = map(object(raw).awareness ?? {});
-				for (const value of Object.values(awareness)) {
-					if (Array.isArray(value)) continue;
-					const user = object(object(value).collaboratorInfo ?? {});
-					if (typeof user.id === 'number') peers.add(user.id);
-				}
-			}
 		});
 	}
+	const collectPeers = async (response: Response) => {
+		if (!response.ok() || !new URL(response.url()).pathname.endsWith('/wp-sync/v1/updates')) return;
+		const payload = object(await response.json());
+		if (!Array.isArray(payload.rooms)) return;
+		for (const raw of payload.rooms) {
+			const awareness = map(object(raw).awareness ?? {});
+			for (const value of Object.values(awareness)) {
+				if (Array.isArray(value)) continue;
+				const user = object(object(value).collaboratorInfo ?? {});
+				if (typeof user.id === 'number') peers.add(user.id);
+			}
+		}
+	};
+	const stopReadingPeers = () => Promise.all(contexts.map((context) =>
+		context.removeAllListeners('response', { behavior: 'wait' })));
 	try {
 		await open(pages[0], 'editor', id);
 		await open(pages[1], 'admin', id);
+		for (const context of contexts) context.on('response', collectPeers);
 		await expect(paragraph(pages[0])).toHaveText('Shared paragraph');
 		await expect(paragraph(pages[1])).toHaveText('Shared paragraph');
 
@@ -107,6 +112,8 @@ test('upstream collaboration merges simultaneous text edits, shares fields, and 
 		await expect(title(pages[1])).toHaveText(`Shared title ${run}`);
 		await expect(pages[0].getByRole('textbox', { name: 'Summary', exact: true })).toHaveValue(`Shared summary ${run}`);
 		await expect.poll(() => peers.has(adminId) && peers.has(editorId)).toBe(true);
+		// A navigation can invalidate response bodies. Finish reading peer updates before saving or reloading.
+		await stopReadingPeers();
 		// The normal REST record is still unchanged: these checks prove sharing before the user saves.
 		const before = await request.get(`${site}/wp-json/wp/v2/tp_documents/${id}?context=edit`, { headers: auth('admin') });
 		expect(before.ok()).toBe(true);
@@ -151,7 +158,11 @@ test('upstream collaboration merges simultaneous text edits, shares fields, and 
 		await pages[0].screenshot({ path: test.info().outputPath('coediting-editor.png'), animations: 'disabled' });
 		await pages[1].screenshot({ path: test.info().outputPath('coediting-admin.png'), animations: 'disabled' });
 	} finally {
-		await Promise.all(contexts.map((context) => context.close()));
+		try {
+			await stopReadingPeers();
+		} finally {
+			await Promise.all(contexts.map((context) => context.close()));
+		}
 	}
 });
 

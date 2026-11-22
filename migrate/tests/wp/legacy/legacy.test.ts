@@ -166,15 +166,29 @@ test("a failed term recount, the last write, rolls the whole migration back", ()
 test("the migration keeps every record, field, status, date and author, read through /wp-json/typedpress/v1", async () => {
   const r = migrate();
   assert.equal(r.code, 0, JSON.stringify(r.out));
-  const published = (id: number) => site.posts.find((p: any) => Number(p.ID) === id).post_date_gmt.replace(" ", "T") + ".000Z";
+  // Drafts can have an unset GMT date. The test site stores its local dates in UTC.
+  const iso = (gmt: string, local: string) => (gmt === "0000-00-00 00:00:00" ? local : gmt).replace(" ", "T") + ".000Z";
   // `_rev` is each row's revision token (staged versions), not a migrated field.
   const projects = (await ok("GET", "/projects" + q({ orderBy: "id" }), { as: "admin" })).map(({ _rev, ...row }: any) => row);
-  assert.deepEqual(projects, [
-    { id: ids.apollo, title: "Apollo 11", budget: 25, active: true, kickoff: "2026-03-01T10:00:00.000Z", reviewedAt: "2026-03-01T10:00:00.000Z", stage: "live", tags: ["red", "blue"], cover: ids.media[0], gallery: ids.media, status: "published", publishedAt: published(ids.apollo) },
+  const expected = [
+    { id: ids.apollo, title: "Apollo 11", budget: 25, active: true, kickoff: "2026-03-01T10:00:00.000Z", reviewedAt: "2026-03-01T10:00:00.000Z", stage: "live", tags: ["red", "blue"], cover: ids.media[0], gallery: ids.media, status: "published" },
     // Saved through the SCF form (wp-admin's path), as a draft.
-    { id: ids.gemini, title: "Gemini", budget: 7, active: false, kickoff: null, reviewedAt: "2026-03-01T10:00:00.000Z", stage: "idea", tags: [], cover: null, gallery: null, status: "draft", publishedAt: null },
-    { id: ids.scheduled, title: "Artemis", budget: null, active: null, kickoff: null, reviewedAt: "2026-03-01T10:00:00.000Z", stage: null, tags: null, cover: null, gallery: null, status: "scheduled", publishedAt: "2031-01-01T09:00:00.000Z" },
-  ]);
+    { id: ids.gemini, title: "Gemini", budget: 7, active: false, kickoff: null, reviewedAt: "2026-03-01T10:00:00.000Z", stage: "idea", tags: [], cover: null, gallery: null, status: "draft" },
+    { id: ids.scheduled, title: "Artemis", budget: null, active: null, kickoff: null, reviewedAt: "2026-03-01T10:00:00.000Z", stage: null, tags: null, cover: null, gallery: null, status: "scheduled" },
+  ].map((project) => {
+    const original = site.posts.find((post: { ID: string }) => Number(post.ID) === project.id);
+    const createdAt = iso(original.post_date_gmt, original.post_date);
+    return {
+      ...project,
+      publishedAt: project.status === "draft" ? null : createdAt,
+      author: Number(original.post_author),
+      createdAt,
+      updatedAt: iso(original.post_modified_gmt, original.post_modified),
+      deletedAt: null,
+      deletedBy: null,
+    };
+  });
+  assert.deepEqual(projects, expected);
   // Anonymous readers see only the published record, as in the original app (publicRead).
   assert.deepEqual((await ok("GET", "/projects")).map((p: any) => p.id), [ids.apollo]);
   // Authors and post dates are the rows' own: the editor still owns the tasks it wrote.

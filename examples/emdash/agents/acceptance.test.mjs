@@ -176,7 +176,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
   const core = await request('/wp-json/wp-abilities/v1/abilities?category=agents&per_page=100', { who: 'editor' });
   assert.equal(core.status, 200, JSON.stringify(core.json));
   assert.deepEqual(core.json.map((entry) => entry.name).sort(), descriptors.filter((entry) => entry.meta.show_in_rest).map((entry) => entry.name).sort());
-  const echoAbility = await ability('echo', { message: 'core' }, 'editor');
+  const echoAbility = await ability('echo', { message: 'core' }, 'editor', 'GET');
   assert.deepEqual([echoAbility.status, echoAbility.json], [200, { message: 'core', length: 4 }]);
   // Agent opt-out changes discoverability, not canonical API authorization or availability.
   assert.deepEqual(ok(await api('/actions/operatorNote', { who: 'admin', method: 'POST', body: { note: 'API only' } })), { note: 'API only' });
@@ -215,7 +215,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
   const anonymousWrite = await api('/articles', { method: 'POST', body: { title: 'Forbidden' } });
   assert.deepEqual([anonymousWrite.status, anonymousWrite.json.code], [401, 'unauthenticated']);
   const badRest = await api('/actions/echo', { who: 'editor', method: 'POST', body: { message: '' } });
-  const badCore = await ability('echo', { message: '' }, 'editor');
+  const badCore = await ability('echo', { message: '' }, 'editor', 'GET');
   const badMcp = await call('editor', 'echo', { message: '' });
   assert.deepEqual([badRest.status, badRest.json.code, badRest.json.pointer], [422, 'invalid_input', '/message']);
   assert.match(badRest.type, /^application\/problem\+json/);

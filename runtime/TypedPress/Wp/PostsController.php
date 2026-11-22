@@ -141,6 +141,9 @@ final class PostsController extends \WP_REST_Posts_Controller
             return $denied;
         }
         $post = $this->get_post($request['id']);
+        if ($post instanceof \WP_Post && $post->post_status === 'trash' && Facade::dispatching()) {
+            return new \WP_Error('rest_post_invalid_id', __('Invalid post ID.'), ['status' => 404]);
+        }
         if ($post instanceof \WP_Post && !empty($request->get_query_params()['password'])) {
             $native = parent::get_item_permissions_check($request);
             if (is_wp_error($native) && $native->get_error_code() === 'rest_post_incorrect_password') {

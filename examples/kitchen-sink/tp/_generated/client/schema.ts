@@ -252,6 +252,7 @@ export const SCHEMA = {
   ],
   "actions": [
     "bookSeats",
+    "contactKitchen",
     "cancelSeats",
     "upcoming",
     "closeRegistration",

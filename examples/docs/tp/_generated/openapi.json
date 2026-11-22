@@ -369,50 +369,6 @@
         }
       }
     },
-    "/docs/{id}/purge": {
-      "delete": {
-        "tags": ["Docs"],
-        "operationId": "docs.purge",
-        "summary": "Purge a docs row",
-        "x-typedpress-access": "editor",
-        "description": "Permanently deletes one docs row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Doc" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/docs/{id}/revisions": {
       "get": {
         "tags": ["Docs"],
@@ -3727,14 +3683,15 @@
           "from": { "type": ["integer", "null"] },
           "to": { "type": "integer" },
           "changes": {
-            "type": "object",
-            "additionalProperties": {
+            "type": "array",
+            "items": {
               "type": "object",
               "properties": {
-                "before": {},
-                "after": {}
+                "field": { "type": "string" },
+                "from": {},
+                "to": {}
               },
-              "required": ["before", "after"]
+              "required": ["field", "from", "to"]
             }
           }
         },

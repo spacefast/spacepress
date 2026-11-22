@@ -66,7 +66,7 @@ The app API is `/wp-json/typedpress/v1`; actions are `POST /wp-json/typedpress/v
 
 | Hook | Kind | What |
 |---|---|---|
-| `tp_mail_transport` | filter | delivers `mail.send` messages; without it, the app's mail is refused |
+| `tp_mail_transport` | filter | optional: delivers `mail.send` messages itself by returning `true`, refuses one for a retry with `false` or a throw, or returns `null` to leave it to WordPress's `wp_mail()` (before this, `null` was a refusal and managed builds refused mail without a transport) |
 | `tp_purge_urls` | action | the root-relative URLs a committed content write changed, for a host's page cache, each with the query string a page was cached under (only parameters the page declares as `search`; a request with any other parameter is answered `private, no-store` and never named here); `/*` after a new build goes live |
 | `tp_private_probe_url` | filter | the URL the private-files probe fetches, when the public URL is not reachable from the server |
 | `tp_prebuild_url` | filter | the URL a prebuilt page is rendered from, when the site cannot reach its own address (`output: "server"` with `prerender`) |
@@ -74,7 +74,8 @@ The app API is `/wp-json/typedpress/v1`; actions are `POST /wp-json/typedpress/v
 | `tp_identity_rest_cookie_auth` | filter | lets the identity session cookie authenticate the app's REST API (a host serving its own frontend) |
 | `tp_fetch_allow_address` | filter | allows an outgoing `fetch` to an address TypedPress denies by default |
 | `tp_runtime_loaded` | action | the runtime has booted; register commands and seams after it |
-| `sp_connectors_call` | filter | invokes a host-managed connector for `connectors.call(role, tool, args?)`; credentials remain owned by the host |
+| `sp_connectors_call` | filter | invokes a host-managed connector with `(null, $role, $tool, $args, $context)`: now for `connectors.call(role, tool, args?)` (`$context['mode']` is `call`), or after commit from the built-in `typedpress.connector` job for `connectors.enqueue(role, tool, args?, { key?, delay? })` (`mode` is `queued`, with `jobId` and `attempt`; a `WP_Error`, a throw or `null` retries with backoff; a queued call runs at least once and may repeat, so de-duplicate by `jobId`); register with 5 accepted args to receive `$context`; credentials remain owned by the host |
+| `sp_identity_callback_url` | filter | the redirect URI an OpenID provider is sent back to, with `($url, $provider, $pathUrl)`: the default `<prefix>/provider/callback?provider=<name>`, or `$pathUrl`, `<prefix>/callback/<name>`; both are served |
 | `sp_auth_prefix` | filter | overrides the OIDC issuer and callback route prefix (default `/identity`, or `SP_AUTH_PREFIX` constant); browser sign-in stays on `wp-login.php` |
 | `sp_api_namespace` | filter | overrides the app REST API namespace under `/wp-json/` (default `typedpress/v1`, or `SP_API_NAMESPACE` constant) |
 | `sp_identity_api_namespace` | filter | overrides the identity REST API namespace under `/wp-json/` (default `typedpress-identity/v1`, or `SP_IDENTITY_API_NAMESPACE` constant) |
@@ -136,6 +137,7 @@ the ordinary 35-character limit shown below.
     "tp_fetch_allow_address",
     "tp_runtime_loaded",
     "sp_connectors_call",
+    "sp_identity_callback_url",
     "sp_auth_prefix",
     "sp_api_namespace",
     "sp_identity_api_namespace"

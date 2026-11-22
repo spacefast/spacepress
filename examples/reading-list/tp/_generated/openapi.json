@@ -367,50 +367,6 @@
         }
       }
     },
-    "/books/{id}/purge": {
-      "delete": {
-        "tags": ["Books"],
-        "operationId": "books.purge",
-        "summary": "Purge a books row",
-        "x-typedpress-access": "editor",
-        "description": "Permanently deletes one books row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Book" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/books/{id}/revisions": {
       "get": {
         "tags": ["Books"],
@@ -1382,51 +1338,6 @@
         "responses": {
           "200": {
             "description": "The restored row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Read" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/reads/{id}/purge": {
-      "delete": {
-        "tags": ["Reads"],
-        "operationId": "reads.purge",
-        "summary": "Purge a reads row",
-        "x-typedpress-access": "rule",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "Permanently deletes one reads row (bypasses soft delete) and returns it as it was.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4026,14 +3937,15 @@
           "from": { "type": ["integer", "null"] },
           "to": { "type": "integer" },
           "changes": {
-            "type": "object",
-            "additionalProperties": {
+            "type": "array",
+            "items": {
               "type": "object",
               "properties": {
-                "before": {},
-                "after": {}
+                "field": { "type": "string" },
+                "from": {},
+                "to": {}
               },
-              "required": ["before", "after"]
+              "required": ["field", "from", "to"]
             }
           }
         },

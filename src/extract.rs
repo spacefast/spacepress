@@ -144,7 +144,6 @@ const CONFIG_KEYS: &[&str] = &[
     "xmlrpc",
     "pings",
     "sealed",
-    "services",
     "use",
     "frontend",
     "output",

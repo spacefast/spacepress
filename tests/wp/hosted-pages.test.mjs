@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHmac } from 'node:crypto';
-import { appendFileSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -251,11 +251,15 @@ test('a route sees the caller WordPress REST would: Bearer always, cookie on GET
 });
 
 test('while storage is behind, a claimed route path answers 503 instead of falling through to WordPress', { timeout: 120000 }, async () => {
-  const appDir = join(app, 'content/plugins/typedpress-app-fullsite/tp/app/');
-  const schema = readFileSync(appDir + 'schema.php');
-  writeFileSync(appDir + 'migrations/9997_route_probe.sql', 'INSERT INTO `{prefix}missing_route_probe` (`n`) VALUES (1);\n');
-  appendFileSync(appDir + 'schema.php', '\n// route upgrade probe\n');
+  const appDir = join(app, 'content/plugins/typedpress-app-fullsite/tp/app');
+  const schemaFile = join(appDir, 'schema.php');
+  const schema = readFileSync(schemaFile);
+  const migrationDir = join(appDir, 'migrations/99991231235959_000000_route_probe');
+  const migration = join(migrationDir, 'migration.sql');
+  mkdirSync(migrationDir);
   try {
+    writeFileSync(migration, 'INSERT INTO `{prefix}missing_route_probe` (`n`) VALUES (1);\n');
+    appendFileSync(schemaFile, '\n// route upgrade probe\n');
     const deadline = Date.now() + 30000;
     let feed;
     while ((feed = await http('/api/feed.json')).status !== 503) {
@@ -267,8 +271,9 @@ test('while storage is behind, a claimed route path answers 503 instead of falli
     assert.equal((await http('/api/probe/42')).status, 503, 'parameter routes too');
     assert.equal((await http('/unclaimed/other.json')).status, 404, 'paths no route claims still belong to WordPress');
   } finally {
-    rmSync(appDir + 'migrations/9997_route_probe.sql');
-    writeFileSync(appDir + 'schema.php', schema);
+    unlinkSync(migration);
+    rmdirSync(migrationDir);
+    writeFileSync(schemaFile, schema);
   }
   const deadline = Date.now() + 30000;
   while ((await http('/api/feed.json')).status !== 200) assert.ok(Date.now() < deadline, 'routes came back after the upgrade cleared');

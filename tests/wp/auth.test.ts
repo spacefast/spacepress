@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
-import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 // The test app's own typed client (run.sh builds tests/wp/app before the suites).
 import { createClient } from "./app/tp/_generated/client/index.ts";
@@ -629,7 +629,9 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
   const rendered = await (await fetch(`${site}/wp-admin/profile.php`, { headers: { cookie: iu.cookie } })).text();
   const appDir = fileURLToPath(new URL(`.wp-content/plugins/${harness.plugin}/tp/app/`, import.meta.url));
   const schema = readFileSync(appDir + "schema.php");
-  writeFileSync(appDir + "migrations/9998_profile_probe.sql", "INSERT INTO `{prefix}missing_profile_table` (`n`) VALUES (1);\n");
+  const migrationDir = appDir + "migrations/20990101000000_probe1_profile";
+  mkdirSync(migrationDir);
+  writeFileSync(migrationDir + "/migration.sql", "INSERT INTO `{prefix}missing_profile_table` (`n`) VALUES (1);\n");
   appendFileSync(appDir + "schema.php", "\n// profile upgrade probe\n");
   const waitForStatus = async (status: number) => {
     const deadline = Date.now() + 30_000;
@@ -644,7 +646,7 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
     assert.equal(unavailable.status, 503);
     assert.match(unavailable.text, /Storage is being upgraded/);
   } finally {
-    rmSync(appDir + "migrations/9998_profile_probe.sql");
+    rmSync(migrationDir, { recursive: true });
     writeFileSync(appDir + "schema.php", schema);
     await waitForStatus(200);
   }

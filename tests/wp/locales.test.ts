@@ -74,10 +74,13 @@ test("locale reads: the locale's row, else the group's default-locale row, combi
   await problem("GET", "/posts" + qs({ locale: "en" }), {}, { status: 400, code: "invalid_query", pointer: "/locale" });
 });
 
-test("delete removes one post; Polylang's group shrinks", async () => {
+test("delete hides one translation and keeps it in Polylang's group for restore", async () => {
   const { en, fr } = await pair("Delete");
   await ok("DELETE", `/tours/${fr.id}`, { as: "editor" });
-  assert.deepEqual(polylang(en.id), ["en", { en: en.id }]);
+  await problem("GET", `/tours/${fr.id}`, { as: "editor" }, { status: 404, code: "not_found", pointer: undefined });
+  assert.deepEqual(polylang(en.id), ["en", { en: en.id, fr: fr.id }]);
+  await ok("POST", `/tours/${fr.id}/restore`, { as: "editor" });
+  assert.deepEqual((await ok("GET", `/tours/${fr.id}`, { as: "editor" })).translations, { en: en.id, fr: fr.id });
 });
 
 test("a translation linked outside the API (Polylang's +) adopts the group's synced columns", async () => {

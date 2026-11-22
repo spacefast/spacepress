@@ -1,6 +1,4 @@
 /// <reference path="./db.d.cts" />
-import type { ServicesConfig } from "./services";
-export type { ServicesConfig, ServiceForm, ServiceFormField, ServiceProduct } from "./services";
 
 /**
  * Type declarations for the `"typedpress"` module.
@@ -1413,8 +1411,6 @@ export interface ConfigInput<TLocales extends LocalesConfig = LocalesConfig> {
   /** Project name: plugin slug (`typedpress-<name>`), wp-admin menu, client docs. Default: the project directory name. */
   name?: string;
   webhooks?: Webhook[];
-  /** Private native forms, queued mail, publication search and server-priced checkout. */
-  services?: ServicesConfig;
   /** Import synced content when the standalone plugin starts. Existing editorial content is preserved. */
   seed?: boolean;
   uploads?: UploadsConfig;
@@ -1811,6 +1807,20 @@ export declare const mail: {
   send(message: MailMessage): Promise<{ id: string }>;
   /** The HTML and plain text of an `emails/` template's default export, rendered with `props`. */
   render<P>(template: (props: P) => unknown, props: P): { html: string; text: string };
+};
+
+/**
+ * Host-managed connectors (a Space's Slack, GitHub, …), reached through the host's
+ * `sp_connectors_call` filter. Credentials stay with the host.
+ *
+ * `call` runs the connector now and resolves to its JSON answer; a refusal is the request's error.
+ * `enqueue` queues the call in the handler's transaction, like `mail.send`: a rollback queues
+ * nothing, and after commit the job runner makes the call outside the database transaction,
+ * retrying a failure with backoff. `key` keeps one queued call per key; `delay` waits that many seconds.
+ */
+export declare const connectors: {
+  call(role: string, tool: string, args?: Record<string, unknown>): Promise<unknown>;
+  enqueue(role: string, tool: string, args?: Record<string, unknown>, options?: { key?: string; delay?: number }): Promise<{ id: string }>;
 };
 
 export interface EnvValue { readonly [envBrand]: true }

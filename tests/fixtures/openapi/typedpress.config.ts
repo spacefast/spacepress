@@ -6,5 +6,4 @@ export const decks = files({ accept: ["text/plain"], maxBytes: 100_000, access: 
 
 export default defineConfig({
   name: "openapi",
-  services: { search: { notes: ["title"] } },
 });

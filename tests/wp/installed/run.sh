@@ -16,10 +16,8 @@ trap cleanup EXIT
 src="$work/src" bin="$work/bin" home="$work/my home" project="$work/project"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
-mkdir -p "$src/scripts" "$bin" "$home" "$project"
-rsync -a --exclude node_modules --exclude target \
-  "$repo"/{build.rs,Cargo.toml,Cargo.lock,rust-toolchain,crates,src,runtime} "$src/"
-rsync -a "$repo/scripts/dev" "$repo/scripts/deploy" "$src/scripts/"
+mkdir -p "$src" "$bin" "$home" "$project"
+git -C "$repo" ls-files -z | rsync -a --from0 --files-from=- "$repo/" "$src/"
 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" CARGO_TARGET_DIR="$target" \
   cargo build -q --release --locked --manifest-path "$src/Cargo.toml"
 cp "$target/release/typedpress" "$bin/typedpress"

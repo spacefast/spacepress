@@ -67,10 +67,6 @@
       "name": "Live",
       "description": "Reads a page is subscribed to, kept current without a push transport."
     },
-    {
-      "name": "Services",
-      "description": "Forms, search and checkout from `services` in the app's config."
-    },
     { "name": "Search", "description": "One search over every kind with a searchable field." },
     { "name": "Schema", "description": "The app described to its clients." }
   ],
@@ -1767,50 +1763,6 @@
         }
       }
     },
-    "/posts/{id}/purge": {
-      "delete": {
-        "tags": ["Posts"],
-        "operationId": "posts.purge",
-        "summary": "Purge a posts row",
-        "x-typedpress-access": "author",
-        "description": "Permanently deletes one posts row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `author` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Post" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/posts/{id}/revisions": {
       "get": {
         "tags": ["Posts"],
@@ -3118,50 +3070,6 @@
         "responses": {
           "200": {
             "description": "The restored row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Recipe" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/recipes/{id}/purge": {
-      "delete": {
-        "tags": ["Recipes"],
-        "operationId": "recipes.purge",
-        "summary": "Purge a recipes row",
-        "x-typedpress-access": "editor",
-        "description": "Permanently deletes one recipes row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4509,50 +4417,6 @@
         }
       }
     },
-    "/handbook/{id}/purge": {
-      "delete": {
-        "tags": ["Handbook"],
-        "operationId": "handbook.purge",
-        "summary": "Purge a handbook row",
-        "x-typedpress-access": "editor",
-        "description": "Permanently deletes one handbook row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Handbook" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/handbook/{id}/revisions": {
       "get": {
         "tags": ["Handbook"],
@@ -5852,45 +5716,6 @@
         }
       }
     },
-    "/registrations/{id}/purge": {
-      "delete": {
-        "tags": ["Registrations"],
-        "operationId": "registrations.purge",
-        "summary": "Purge a registrations row",
-        "x-typedpress-access": "admin",
-        "description": "Permanently deletes one registrations row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Registration" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/registrations/{id}/revisions": {
       "get": {
         "tags": ["Registrations"],
@@ -6353,45 +6178,6 @@
         "responses": {
           "200": {
             "description": "The restored row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Activity" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/activity/{id}/purge": {
-      "delete": {
-        "tags": ["Activity"],
-        "operationId": "activity.purge",
-        "summary": "Purge a activity row",
-        "x-typedpress-access": "admin",
-        "description": "Permanently deletes one activity row (bypasses soft delete) and returns it as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The purged row.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8895,6 +8681,62 @@
           "400": { "$ref": "#/components/responses/Problem" },
           "401": { "$ref": "#/components/responses/Problem" },
           "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/actions/contactKitchen": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.contactKitchen",
+        "summary": "Call contactKitchen",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Runs the `contactKitchen` action with the input sent and returns its result.\n\nAccess: Anyone may do this, signed in or not.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string" },
+                  "message": { "type": "string" }
+                },
+                "required": ["email", "message"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "delivery": { "type": "string" }
+                      },
+                      "required": ["delivery"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
           "422": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
@@ -11471,121 +11313,6 @@
         }
       }
     },
-    "/services/forms/contact": {
-      "post": {
-        "tags": ["Services"],
-        "operationId": "services.forms.contact",
-        "summary": "Submit the contact form",
-        "x-typedpress-access": "anyone",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "Stores one submission and queues its mail.\n\nAccess: Anyone may do this, signed in or not.",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
-            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "description": "The form's fields under `data`. `website` is a trap for bots and must stay empty.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "data": {
-                    "type": "object",
-                    "properties": {
-                      "email": { "type": "string", "maxLength": 191 },
-                      "message": { "type": "string", "minLength": 3, "maxLength": 2000 }
-                    },
-                    "required": ["email", "message"]
-                  },
-                  "website": { "type": "string", "maxLength": 0 }
-                },
-                "required": ["data"]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "The stored submission.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "id": { "type": "string" },
-                        "message": { "type": "string" },
-                        "delivery": { "type": "string" }
-                      },
-                      "required": ["id", "message", "delivery"]
-                    }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "413": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "429": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/services/submissions/{id}": {
-      "get": {
-        "tags": ["Services"],
-        "operationId": "services.submission",
-        "summary": "Get a form submission",
-        "x-typedpress-access": "editor",
-        "description": "One stored submission, with the state of its mail.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The submission's id.",
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The submission.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "type": "object" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/search": {
       "get": {
         "tags": ["Search"],
@@ -11886,14 +11613,15 @@
           "from": { "type": ["integer", "null"] },
           "to": { "type": "integer" },
           "changes": {
-            "type": "object",
-            "additionalProperties": {
+            "type": "array",
+            "items": {
               "type": "object",
               "properties": {
-                "before": {},
-                "after": {}
+                "field": { "type": "string" },
+                "from": {},
+                "to": {}
               },
-              "required": ["before", "after"]
+              "required": ["field", "from", "to"]
             }
           }
         },

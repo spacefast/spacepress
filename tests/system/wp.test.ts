@@ -27,6 +27,8 @@ const core = `${receipt.url}/wp-json/wp/v2`;
 const harness = join(repo, "tests/wp/harness.sh");
 const project = join(work, "wp-site");
 const artifact = join(work, "wp-artifact");
+const migrationIds = (dir: string) => readdirSync(join(dir, "tp/_generated/migrations")).sort();
+const initialMigrations = migrationIds(join(repo, "examples/site"));
 
 /** The order a site owner activates in: each plugin after every plugin its header requires. */
 // TypedPress Admin ships with every build and registers only once the app has (plugins_loaded order): last.
@@ -42,6 +44,7 @@ const wpFails = (...args: string[]) => {
   assert.fail(`wp ${args.join(" ")} succeeded`);
 };
 const sql = (query: string) => execFileSync(harness, ["sql", query], { encoding: "utf8" }).trim().split("\n").slice(1);
+const appliedMigrations = () => sql("SELECT id FROM wp_tp__migrations WHERE app = 'site' ORDER BY id");
 const active = () => JSON.parse(wp("plugin", "list", "--status=active", "--field=name", "--format=json")) as string[];
 const basic = (role: Exclude<Role, "anonymous">) => ({ Authorization: "Basic " + btoa(`${role}:${receipt.users[role].appPassword}`) });
 const headers = (role: Role) => (role === "anonymous" ? {} : basic(role));
@@ -163,7 +166,7 @@ test("installing the artifact: activation order, platform requirements, doctor",
 
   // The runtime created the shared system tables; the app ran its migrations.
   assert.equal(wp("option", "get", "tp_runtime_tables"), wp("eval", "echo \\TypedPress\\Wp\\Runtime::tablesVersion();"));
-  assert.deepEqual(sql("SELECT id FROM wp_tp__migrations"), ["0001_init", "0002_update"]);
+  assert.deepEqual(appliedMigrations(), initialMigrations);
   // Feature lanes add shared runtime tables of their own; the app's are these.
   const tables = sql("SHOW TABLES LIKE 'wp\\_tp\\_%'");
   for (const table of ["wp_tp__migrations", "wp_tp__revisions", "wp_tp_comments", "wp_tp_subscribers"]) {
@@ -219,6 +222,7 @@ test("the site journey on WordPress", async (t) => {
       get authorId() {
         return authorId;
       },
+      editorUserId: receipt.users.editor.id,
       editor: {
         async upload(bytes, type, filename, alt) {
           const media = await wpRest("editor", "POST", "/media", undefined, { bytes, type, filename });
@@ -262,16 +266,18 @@ test("the site journey on WordPress", async (t) => {
       async upgrade() {
         upgrade(project);
         first("build", project, "--out", artifact, "--quiet");
+        const expectedMigrations = migrationIds(project);
+        assert.deepEqual(expectedMigrations.slice(0, -1), initialMigrations, "the upgrade appends one migration");
         install(artifact);
         // The new plugin is on disk and nobody opens wp-admin: the next public API request migrates.
         // PHP's opcache revalidates files every couple of seconds, so poll that request.
-        assert.deepEqual(sql("SELECT id FROM wp_tp__migrations"), ["0001_init", "0002_update"]);
+        assert.deepEqual(appliedMigrations(), initialMigrations);
         const deadline = Date.now() + 30_000;
-        while (sql("SELECT id FROM wp_tp__migrations").length < 3) {
+        while (appliedMigrations().length < expectedMigrations.length) {
           assert.ok(Date.now() < deadline, "the upgrade's migration never ran");
           assert.equal((await fetch(`${api}/comments?limit=1`)).status, 200, "the site serves throughout the upgrade");
         }
-        assert.deepEqual(sql("SELECT id FROM wp_tp__migrations"), ["0001_init", "0002_update", "0003_update"]);
+        assert.deepEqual(appliedMigrations(), expectedMigrations);
         assert.deepEqual(failing(doctor(project, "--out", artifact, "--site", receipt.url)), []);
         return clientOf(project, (make, role) => make({ url: api, headers: headers(role) }));
       },
@@ -361,6 +367,8 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
     };
   };
   const before = await snapshot();
+  const migrations = appliedMigrations();
+  assert.deepEqual(migrations, migrationIds(project));
   for (const kind of ["posts", "authors", "comments", "subscribers", "announcements", "members", "media", "manuscripts"] as const) assert.ok(before[kind].length > 0, `no ${kind} to preserve`);
   assert.ok(before.revisions.some((r) => r.length > 0), "no revisions to preserve");
   assert.ok([...before.files, ...before.manuscripts].every((entry) => entry.includes(200)), "every file was served before");
@@ -369,7 +377,7 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   assert.equal((await fetch(`${api}/posts`)).status, 404, "the app's routes go away with the plugin");
   wp("plugin", "activate", "typedpress-runtime", "typedpress-identity", "typedpress-app-site", "typedpress-admin");
   assert.deepEqual(await snapshot(), before);
-  assert.deepEqual(sql("SELECT CONCAT(app, '/', id) FROM wp_tp__migrations"), ["site/0001_init", "site/0002_update", "site/0003_update"], "reactivation re-applies nothing");
+  assert.deepEqual(appliedMigrations(), migrations, "reactivation re-applies nothing");
 
   // Uninstall (delete in wp-admin): options, capabilities and scheduled actions go, content stays.
   const caps = () => JSON.parse(wp("eval", "echo wp_json_encode(array_map(fn ($r) => array_values(array_filter(array_keys($r->capabilities), fn ($c) => str_contains($c, 'tp_') || $c === 'unrelated_cap')), wp_roles()->role_objects));"));
@@ -396,6 +404,8 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   const options = "('tp_site_schema', 'tp_runtime_tables', 'tp_runtime_secret', 'tp_runtime_private_ok', 'tp_runtime_private_checked')";
   assert.equal(sql(`SELECT COUNT(*) FROM wp_options WHERE option_name IN ${options}`)[0], "5");
   const posts = sql("SELECT COUNT(*) FROM wp_posts WHERE post_type = 'tp_posts'")[0];
+  const commentRows = () => sql("SELECT id, deletedAt FROM wp_tp_comments ORDER BY id");
+  const comments = commentRows();
   // The owner deactivates everything, Action Scheduler included, then deletes TypedPress's plugins.
   wp("plugin", "deactivate", "typedpress-admin", "typedpress-app-site", "typedpress-identity", "typedpress-runtime", "mcp-adapter", "action-scheduler");
   wp("plugin", "uninstall", "typedpress-admin", "typedpress-app-site", "typedpress-identity", "typedpress-runtime");
@@ -411,7 +421,7 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   assert.equal(sql(`SELECT COUNT(*) FROM wp_options WHERE option_name IN ${options}`)[0], "0");
   assert.deepEqual(sql(`SELECT state FROM wp_tp__jobs WHERE id = '${queued}'`), ["pending"], "queued work is kept");
   assert.equal(sql("SELECT COUNT(*) FROM wp_posts WHERE post_type = 'tp_posts'")[0], posts);
-  assert.equal(sql("SELECT COUNT(*) FROM wp_tp_comments")[0], String(before.comments.length));
+  assert.deepEqual(commentRows(), comments, "uninstall keeps live and trashed comments");
   assert.ok(Number(sql("SELECT COUNT(*) FROM wp_options WHERE option_name LIKE 'tp\\_global\\_settings\\_%'")[0]) > 0, "globals are content");
   wp("role", "delete", "desk");
   wp("plugin", "activate", "action-scheduler", "mcp-adapter");

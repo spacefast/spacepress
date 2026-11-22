@@ -99,15 +99,37 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
   assert.deepEqual(sql(`SELECT id FROM ${table} ORDER BY id`), [{ id: "41" }, { id: "42" }, { id: "9007199254740900" }]);
   const schemaOption = `tp_${harness.plugin.slice("typedpress-app-".length)}_schema`;
   const schemaBefore = sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`);
+  const installMarker = () => sql("SELECT option_value FROM wp_options WHERE option_name = 'tp_installed'");
+  const markerBefore = installMarker();
+  assert.equal(markerBefore.length, 1);
   const ledgerBefore = sql("SELECT app, id FROM wp_tp__migrations ORDER BY app, id");
   // Legacy prefix indexes exceed MyISAM's key limit; restore them after the engine probe.
   sql(`ALTER TABLE ${table} DROP INDEX by_owner, DROP INDEX by_done, ENGINE=MyISAM`);
-  // Storage falls behind the way a site sees it: through WordPress's option API, whose hook drops the
-  // install marker (InstallMarker), so the next request checks storage again. A raw SQL edit would not
-  // (docs/runtime-contract.md).
-  wp("option", "update", schemaOption, "pending-storage-upgrade");
-  assert.equal(sql("SELECT COUNT(*) AS n FROM wp_options WHERE option_name = 'tp_installed'")[0].n, "0");
   try {
+    const write = await fetch(`${api}/actions/setDone`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "41", done: true }),
+    });
+    const writeProblem: unknown = await write.json();
+    assert.equal(write.status, 503, JSON.stringify(writeProblem));
+    assert.ok(typeof writeProblem === "object" && writeProblem !== null && "code" in writeProblem);
+    assert.equal(writeProblem.code, "unavailable");
+    const read = await fetch(`${api}/actions/get?id=41`);
+    assert.equal(read.status, 200);
+    assert.deepEqual(await read.json(), { data: cleared });
+    assert.deepEqual(sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`), schemaBefore);
+    assert.deepEqual(installMarker(), markerBefore);
+    assert.deepEqual(sql("SELECT app, id FROM wp_tp__migrations ORDER BY app, id"), ledgerBefore);
+  } finally {
+    sql(`ALTER TABLE ${table} ENGINE=InnoDB, ADD KEY by_owner (owner(191), createdAt(191), id), ADD KEY by_done (done(191), createdAt(191), id)`);
+  }
+  assert.equal(row(await action("setDone", { id: "41", done: false })).done, false);
+  assert.deepEqual(installMarker(), markerBefore);
+
+  // When the schema option is stale too, the install path must refuse the incompatible table.
+  sql(`ALTER TABLE ${table} DROP INDEX by_owner, DROP INDEX by_done, ENGINE=MyISAM`);
+  try {
+    wp("option", "update", schemaOption, "pending-storage-upgrade");
+    assert.deepEqual(installMarker(), []);
     const refused = await fetch(`${api}/actions/list`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     const problem: unknown = await refused.json();
     assert.equal(refused.status, 503);

@@ -6,7 +6,7 @@ declare(strict_types=1);
  * Localization (§7.3) on custom tables, on WordPress in-process (tests/php/wp.php): one row per locale
  * in a translation group (the `translationGroup` column, as the compiler emits for `editor: false`
  * collections); synced columns follow the group; reads pick a locale and fall back to the default per
- * group. Post-backed collections keep their group in Polylang, proven in tests/wp/locales.test.ts.
+ * group. Post-backed collections keep their group in Polylang.
  */
 
 require __DIR__ . '/wp.php';
@@ -46,6 +46,8 @@ $schema = ['name' => 'pages', 'locales' => ['default' => 'en', 'all' => ['en', '
         ]],
     'notes' => ['primaryKey' => 'id', 'access' => $open, 'api' => $api, 'relations' => [],
         'columns' => ['id' => $id, 'pageId' => ['type' => 'integer'], 'body' => ['type' => 'text', 'notNull' => true]]],
+    'parents' => ['primaryKey' => 'id', 'access' => $open, 'api' => $api, 'relations' => [],
+        'columns' => ['id' => $id, 'label' => ['type' => 'text']]],
     'chapters' => ['primaryKey' => 'id', 'localized' => true, 'access' => $open, 'api' => $api, 'relations' => [],
         'columns' => [
             'id' => $id,
@@ -56,8 +58,27 @@ $schema = ['name' => 'pages', 'locales' => ['default' => 'en', 'all' => ['en', '
             'translationGroup' => ['type' => 'text', 'system' => true, 'hidden' => true],
         ]],
 ]];
+$children = $schema['collections']['chapters'];
+$children['access']['read'] = ['fn' => 'localizedChildren__read'];
+$children['hooks']['beforeUpdate'] = 'localizedChildren__beforeUpdate';
+$children['hooks']['afterUpdate'] = 'localizedChildren__afterUpdate';
+$children['columns']['pageId'] += ['localized' => true, 'references' => ['collection' => 'parents', 'column' => 'id', 'onDelete' => 'set null']];
+$children['columns']['detached'] = ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => false]];
+$schema['collections']['localizedChildren'] = $children;
+$articles = ['editor' => true, 'title' => 'heading', 'hooks' => []] + $children;
+unset($articles['columns']['pageId'], $articles['columns']['translationGroup']);
+$schema['collections']['articles'] = $articles;
 
 $functions = <<<'PHP'
+    function localizedChildren__read($ctx) { return $ctx->p['user'] === null ? new \TypedPress\JsObject(['locale' => 'en']) : true; }
+    function localizedChildren__beforeUpdate($patch) {
+        if (array_key_exists('pageId', $patch->p) && $patch->p['pageId'] === null) {
+            $patch->p['detached'] = true;
+        }
+        return $patch;
+    }
+    function localizedChildren__afterUpdate() { $GLOBALS['localizedChildrenUpdates']++; }
+
     // Records every afterUpdate as "<locale>:<price>", so per-row hooks during group sync are observable.
     // Rewrites a synced value on one translation: group sync must refuse rather than split the group.
     function pages__beforeUpdate($patch, $existing) {
@@ -124,7 +145,12 @@ $functions = <<<'PHP'
     }
     PHP;
 
-$wp = wpSite('locales', ['schema' => $schema, 'functions' => $functions]);
+$wp = wpSite('locales', [
+    'schema' => $schema,
+    'functions' => $functions,
+    // In-process App::handle calls lack the REST URL Polylang uses to select its context.
+    'muPlugins' => ['polylang-context' => "<?php add_filter('pll_context', static fn (\$class) => \$class ?: 'PLL_REST_Request');"],
+]);
 $db = \TypedPress\db();
 $anon = new \TypedPress\Viewer(null);
 $editor = new \TypedPress\Viewer($wp->user('editor'));
@@ -137,6 +163,39 @@ $rest = static function (string $method, string $path, array $query = [], mixed 
     return [$status, $json['data'] ?? $json];
 };
 $titles = static fn (array $rows): array => array_map(static fn ($r) => $r['locale'] . ':' . $r['title'], $rows);
+
+$one = $db->insert('parents', ['label' => 'One'], true)[0]['id'];
+$two = $db->insert('parents', ['label' => 'Two'], true)[0]['id'];
+$en = $db->insert('localizedChildren', ['heading' => 'English', 'pageId' => $one], true)[0]['id'];
+$fr = $db->insert('localizedChildren', ['heading' => 'French', 'pageId' => $two, 'locale' => 'fr', 'translationOf' => $en], true)[0]['id'];
+$GLOBALS['localizedChildrenUpdates'] = 0;
+$refusal = [409, 'reference_violation', "Rows you can't read may reference this row", null];
+$answer = static function (string $method, string $path, ?array $body = null) use ($wp): array {
+    [$status, $problem] = $wp->call($method, $path, $body, null);
+
+    return [$status, $problem['code'] ?? null, $problem['detail'] ?? null, $problem['pointer'] ?? null];
+};
+eq('a delete whose set-null hook would sync a hidden translation refuses', $answer('DELETE', "/parents/$one"), $refusal);
+eq('an ordinary PATCH that would sync a hidden translation refuses the same way', $answer('PATCH', "/localizedChildren/$en", ['detached' => true]), $refusal);
+eq('both refusals precede afterUpdate', $GLOBALS['localizedChildrenUpdates'], 0);
+check('the refused delete leaves its parent in place', $db->findFirst('parents', ['where' => ['id' => $one]]) !== null);
+$translationState = static fn (): array => array_map(
+    static fn (array $row): array => [$row['pageId'], $row['detached']],
+    $db->findMany('localizedChildren', ['where' => ['id' => ['in' => [$en, $fr]]], 'locale' => '*', 'orderBy' => ['id' => 'asc']]),
+);
+eq('both translations keep their values', $translationState(), [[$one, false], [$two, false]]);
+eq('repeating a synced value leaves the hidden translation untouched', $answer('PATCH', "/localizedChildren/$en", ['detached' => false])[0], 200);
+eq('a localized-only PATCH can leave the hidden translation untouched', $answer('PATCH', "/localizedChildren/$en", ['heading' => 'New heading'])[0], 200);
+$db->delete('parents', ['id' => $one], viewer: $editor);
+eq('the same set-null hook syncs when the viewer can read both translations', $translationState(), [[null, true], [$two, true]]);
+
+$article = $db->insert('articles', ['heading' => 'English article'], true)[0]['id'];
+$translation = $db->insert('articles', ['heading' => 'French article', 'locale' => 'fr', 'translationOf' => $article], true)[0]['id'];
+eq('Polylang links the post translations', pll_get_post_translations($article), ['en' => $article, 'fr' => $translation]);
+eq('PATCH refuses a hidden post translation with the same body', $answer('PATCH', "/articles/$article", ['detached' => true]), $refusal);
+eq('the hidden post translation keeps its synced value', $db->editorRow('articles', $translation)['detached'], false);
+$db->update('articles', ['detached' => true], ['id' => $article], viewer: $editor);
+eq('a viewer who reads both Polylang translations can sync them', $db->editorRow('articles', $translation)['detached'], true);
 
 // create: default and explicit locale; translationOf joins the group and copies synced columns
 $tea = $db->insert('pages', ['title' => 'Tea', 'price' => 3, 'tags' => ['a']], true)[0];

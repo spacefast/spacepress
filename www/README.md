@@ -39,6 +39,21 @@ TP_APP_PASSWORD="admin:<app-password>" npm run seed
 
 Stop the local server at any time with `../target/release/typedpress dev stop`.
 
+### Test Run in WordPress with local plugin ZIPs
+
+By default, **Run in WordPress** fetches the shared plugin ZIPs from
+`https://spacepress.dev/playground-plugins/`. To test ZIPs from your local build,
+set `PLUGINS_URL` to the origin where your browser can reach the dev site.
+
+```bash
+PLUGINS_URL=http://localhost:8960 bun run build
+```
+
+The build copies the ZIPs to `public/playground-plugins/` and records the origin in
+`public/play-data.json`. Serve the ZIPs with a CORS header that allows
+`https://playground.wordpress.net`. Chrome may prompt for local network access when
+the ZIPs are hosted on localhost or a private network.
+
 ## Scripts
 
 - `node scripts/build-wasm.mjs` — builds `src/wasm.rs` (`wasm32-unknown-unknown`) into `.build/compiler.wasm`

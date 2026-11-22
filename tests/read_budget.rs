@@ -23,7 +23,10 @@ fn copy(from: &Path, to: &Path) {
         let entry = entry.unwrap();
         let name = entry.file_name();
         // Another build's output and downloads: never part of the source.
-        if matches!(name.to_str(), Some(".tp" | "node_modules" | "dist")) {
+        if matches!(
+            name.to_str(),
+            Some(".tp" | ".build" | ".showcase" | ".wp-plugins.build.lock" | "node_modules" | "dist")
+        ) {
             continue;
         }
         let target = to.join(&name);

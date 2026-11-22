@@ -73,7 +73,7 @@ function form(string $html, string $button): ?array
 }
 
 /** Posts a page's form as a browser without JavaScript does, and returns the page it comes back to. */
-function submit(string $page, string $button, array $values, string $as): array
+function submit(string $page, string $button, array $values, ?string $as = null): array
 {
     global $site;
     // Cookie jars, like the upload files below, live in the site's directory and go with it.
@@ -288,18 +288,18 @@ check('a guest gets no handout link', !str_contains(visit('/events/bread-basics/
 [$status, $problem] = $site->call('PATCH', "/events/$eventId", ['demoUrl' => 'http://example.com/demo'], as: 'host');
 eq('the demo link\'s validate() refuses plain http', [$status, $problem['pointer'] ?? null, $problem['detail'] ?? null], [422, '/demoUrl', 'Link to the demo over https.']);
 
-// ---- the contact page: a client component calling the contactKitchen mutation, which queues mail
-[, $contact] = visit('/contact/');
-check('the contact form is a client component', preg_match('~data-wp-interactive="kitchen-sink/ContactForm"~', $contact) === 1, $contact);
-[$status, $receipt] = $site->call('POST', '/actions/contactKitchen', ['email' => 'visitor@example.test', 'message' => 'Do you run classes for children?']);
+// ---- the contact page: a plain <form action={contactKitchen}>, which queues mail to the site's admin
+$mailed = count(mailbox($site));
+[$status, $refused] = submit('/contact/', 'Send', ['email' => 'visitor@example.test', 'message' => 'Hi']);
+eq('the form refuses a message that is too short, keeps what was typed, and sends nothing',
+    [$status, notices($refused), str_contains($refused, 'value="visitor@example.test"'), count(mailbox($site)) - $mailed], [200, ['message must be 3 to 2000 characters'], true, 0]);
+[$status, $refused] = submit('/contact/', 'Send', ['email' => 'not an@address', 'message' => 'Do you run classes?']);
+eq('the form refuses a bad address', [$status, notices($refused), count(mailbox($site)) - $mailed], [200, ['email must be an email address'], 0]);
+[$status, $thanks] = submit('/contact/', 'Send', ['email' => 'visitor@example.test', 'message' => 'Do you run classes for children?']);
 $queued = mailbox($site)[0] ?? [];
 eq('a visitor\'s message is queued as mail to the site\'s admin, replying to the visitor',
-    [$status, is_string($receipt['delivery'] ?? null), $queued['to'][0]['email'] ?? null, $queued['replyTo']['email'] ?? null, $queued['text'] ?? null],
-    [200, true, get_option('admin_email'), 'visitor@example.test', 'Do you run classes for children?']);
-[$status, $problem] = $site->call('POST', '/actions/contactKitchen', ['email' => 'visitor@example.test', 'message' => 'Hi']);
-eq('the form refuses a message that is too short', [$status, $problem['pointer'] ?? null], [422, '/message']);
-[$status, $problem] = $site->call('POST', '/actions/contactKitchen', ['email' => 'not an@address', 'message' => 'Do you run classes?']);
-eq('the form refuses a bad address', [$status, $problem['pointer'] ?? null], [422, '/email']);
+    [$status, notices($thanks), $queued['to'][0]['email'] ?? null, $queued['replyTo']['email'] ?? null, $queued['text'] ?? null],
+    [200, ['Thanks. We read every message.'], get_option('admin_email'), 'visitor@example.test', 'Do you run classes for children?']);
 
 // ---- collection hooks, the job they queue, and the staff tools that show the result
 [$status, $class] = $site->call('POST', '/events', ['title' => '  Knife skills  ', 'startsOn' => '2020-03-01', 'registrationOpen' => false, 'status' => 'published'], as: 'host');

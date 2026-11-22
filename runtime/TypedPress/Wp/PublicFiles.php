@@ -15,8 +15,10 @@ use TypedPress\Validator;
  *   `wp-content/.../tp/app/assets/<stem>-<hash>.<ext>` (immutable, 1-year cache).
  * - `public/` holds untouched root-URL files symlinked into the document root pointing into
  *   `wp-content/`. `metadata.scripts` appends `?tpv=<hash>` from `tp/app/public-files.json`.
- * - `/.well-known/*` is the one exception kept on `do_parse_request` in PHP, so `/.well-known/`
- *   files work at the site root even on hosts with a read-only document root.
+ * - PHP answers on `do_parse_request` for what is not linked: `/.well-known/*` (so it works even on
+ *   hosts with a read-only document root), a child whose parent directory shadows a literal app
+ *   route, and the top-level `index.html` at `/index.html` (never linked, so `/` stays WordPress's
+ *   home page under the web server's DirectoryIndex).
  */
 final class PublicFiles
 {
@@ -531,24 +533,32 @@ final class PublicFiles
         return is_dir($root) && is_writable($root) ? $root : null;
     }
 
-    /** Serve `/.well-known/*` and route-shadowed `public/` children via PHP when not symlinked. */
-    private static function serveFallback(Plugin $plugin): void
+    /**
+     * The `public/` file PHP answers this request with (one the document root has no link for:
+     * `/.well-known/*`, a route-shadowed child, the top-level `index.html`), or null.
+     */
+    public static function fallbackFile(Plugin $plugin): ?string
     {
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
         if ($method !== 'GET' && $method !== 'HEAD' || MarkdownTwins::negotiating()) {
-            return;
+            return null;
         }
         $reqPath = self::requestPath();
         if ($reqPath === null || self::literalPage($plugin->schema, $reqPath)) {
+            return null;
+        }
+
+        return self::wellKnownFile($plugin->dir . '/public', $reqPath) ?? self::unlinkedPublicFile($plugin, $reqPath);
+    }
+
+    /** Serve `/.well-known/*`, route-shadowed `public/` children and `/index.html` via PHP. */
+    private static function serveFallback(Plugin $plugin): void
+    {
+        $file = self::fallbackFile($plugin);
+        if ($file === null) {
             return;
         }
-        $file = self::wellKnownFile($plugin->dir . '/public', $reqPath);
-        if ($file === null) {
-            $file = self::shadowedPublicFile($plugin, $reqPath);
-        }
-        if ($file === null) {
-            return;
-        }
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
         $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
         $size = (int) filesize($file);
         $etag = '"' . dechex($size) . '-' . dechex((int) filemtime($file)) . '"';
@@ -569,11 +579,20 @@ final class PublicFiles
         self::emit(200, $headers, $method === 'HEAD' ? null : $file);
     }
 
-    /** Resolves a `public/` file whose parent directory shadows a literal app route (so it wasn't symlinked). */
-    private static function shadowedPublicFile(Plugin $plugin, string $path): ?string
+    /**
+     * Resolves a `public/` file the document root has no link for: the top-level `index.html` (or
+     * `index.htm`), asked for by name, or a file whose parent directory shadows a literal app route.
+     */
+    private static function unlinkedPublicFile(Plugin $plugin, string $path): ?string
     {
         $rel = self::relativePath($path, $plugin->schema->reserved());
-        if ($rel === null || !isset(self::manifest($plugin)[$rel]) || !self::parentShadowsLiteralPage($plugin->schema, $rel)) {
+        if ($rel === null || !isset(self::manifest($plugin)[$rel])) {
+            return null;
+        }
+        // `/` stays WordPress's home page: relativePath() gives no name for it, so only a request
+        // that names the file (`/index.html`) reaches it.
+        $rootIndex = in_array(strtolower($rel), ['index.html', 'index.htm'], true) && !str_ends_with($path, '/');
+        if (!$rootIndex && !self::parentShadowsLiteralPage($plugin->schema, $rel)) {
             return null;
         }
         $publicDir = self::publicDir($plugin) ?? ($plugin->dir . '/public');

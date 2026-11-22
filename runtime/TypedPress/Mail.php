@@ -14,9 +14,12 @@ use TypedPress\Jobs\Jobs;
  * `replyTo`, `headers`. It is normalized and checked here, before queueing, so a bad address fails
  * the request instead of a background attempt.
  *
- * Delivery goes through the `tp_mail_transport` filter when a host supplies one (Spacefast routes
- * it to the Space's own sender, with its domain check and recipient allowance), otherwise through
- * `wp_mail` and whatever mail plugin the site runs. Nothing here opens an SMTP connection.
+ * Delivery first offers the message to the optional `tp_mail_transport` filter, so a host can send
+ * it itself (Spacefast routes it to the Space's own sender, with its domain check and recipient
+ * allowance). A transport answers `true` when it sent the message, and `false` or a throw to refuse
+ * it for a retry. When no transport takes it (the filter answers `null`), the message goes through
+ * `wp_mail` and whatever mail plugin or host mail service the site runs, managed builds included.
+ * Nothing here opens an SMTP connection.
  */
 final class Mail
 {
@@ -131,17 +134,14 @@ final class Mail
         if (!is_array($payload) || !isset($payload['to'], $payload['subject'], $payload['from'])) {
             throw new \RuntimeException('Queued message is missing');
         }
-        // A managed host owns sending: a Space's mail must leave through its own sender, domain check
-        // and allowance, never a second path. Without the host's transport a managed app refuses.
-        if (function_exists('has_filter') && has_filter('tp_mail_transport')) {
-            $accepted = apply_filters('tp_mail_transport', null, $payload);
-            if ($accepted !== true) {
-                throw new \RuntimeException('The site mail transport did not accept the message');
-            }
+        // A host transport that answers takes the message: true is sent, anything else but null is a
+        // refusal the runner retries. null means no transport took it, so WordPress sends it.
+        $accepted = apply_filters('tp_mail_transport', null, $payload);
+        if ($accepted === true) {
             return;
         }
-        if (Wp\Runtime::managed()) {
-            throw new \RuntimeException('This host has not connected its mail transport (tp_mail_transport)');
+        if ($accepted !== null) {
+            throw new \RuntimeException('The site mail transport did not accept the message');
         }
         $mail = self::wpMailArguments($payload);
         if (!self::sendWordPress($mail['to'], $mail['subject'], $mail['message'], $mail['headers'], $mail['alt'])) {

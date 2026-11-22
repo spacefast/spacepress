@@ -174,4 +174,38 @@ $wp->sql("UPDATE {prefix}tp__jobs SET `runAt` = '2000-01-01T00:00:00.000Z' WHERE
 \TypedPress\Jobs\Runner::run($row['id']);
 eq('the retry reaches the host transport and completes', [count($offered), $wp->sql("SELECT `state` FROM {prefix}tp__jobs WHERE `id` = ?", [$row['id']])[0]['state']], [2, 'done']);
 
+// ---- the host transport is optional: a transport that takes nothing leaves the message to wp_mail
+remove_all_filters('tp_mail_transport');
+$declined = [];
+add_filter('tp_mail_transport', static function ($accepted, array $payload) use (&$declined) {
+    $declined[] = $payload['to'][0]['email'];
+    return $accepted;
+}, 10, 2);
+$sent = [];
+Mail::deliver($plain('passthrough@example.test'), []);
+eq('a transport that answers null is asked, then wp_mail sends the message',
+    [$declined, array_column($sent, 'to')], [['passthrough@example.test'], [['passthrough@example.test']]]);
+remove_all_filters('tp_mail_transport');
+
+// ---- a managed build with no host transport sends through wp_mail (WP Cloud, Pressable, VIP mail)
+$managed = new \ReflectionProperty(\TypedPress\Wp\Runtime::class, 'managed');
+$managed->setValue(null, true);
+try {
+    $sent = [];
+    Mail::deliver($plain('managed@example.test'), []);
+    eq('a managed build without tp_mail_transport hands the message to wp_mail', [\TypedPress\Wp\Runtime::managed(), array_column($sent, 'to')], [true, [['managed@example.test']]]);
+    // ...and a refusing wp_mail is still a failed attempt for the runner to retry.
+    remove_all_filters('pre_wp_mail');
+    add_filter('pre_wp_mail', static fn () => false);
+    $refused = null;
+    try {
+        Mail::deliver($plain('refused@example.test'), []);
+    } catch (\RuntimeException $e) {
+        $refused = $e->getMessage();
+    }
+    eq('a managed build whose wp_mail refuses fails the attempt', $refused, 'Mail transport did not accept the message');
+} finally {
+    $managed->setValue(null, false);
+}
+
 finish('mail');

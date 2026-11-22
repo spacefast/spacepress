@@ -54,6 +54,20 @@ export const bookSeats = mutation({ access: "authenticated" }, async ({ eventId,
   return { code: booking.code };
 });
 
+// The contact page's form: anyone may write, and the message is mailed to the site's admin address
+// after the request commits. The visitor's address is the Reply-To, never the sender.
+export const contactKitchen = mutation({ access: "anyone", rateLimit: "5/hour" }, async ({ email, message }: { email: string; message: string }) => {
+  if (email.length > 191 || !/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(email)) throw new HttpError(422, "invalid_input", "email must be an email address", "/email");
+  if (message.length < 3 || message.length > 2000) throw new HttpError(422, "invalid_input", "message must be 3 to 2000 characters", "/message");
+  const sent = await mail.send({
+    to: String(get_option("admin_email")),
+    subject: "A message from the contact page",
+    text: message,
+    replyTo: email,
+  });
+  return { delivery: sent.id };
+});
+
 export const cancelSeats = mutation({ access: "authenticated" }, async ({ eventId }: { eventId: number }, ctx) => {
   if (!Number.isInteger(eventId)) throw new HttpError(422, "invalid_input", "eventId must be an integer", "/eventId");
   const member = ctx.user;

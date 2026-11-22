@@ -4952,7 +4952,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Value::Builtin(Builtin::Connectors) => err_help(
                 span,
                 "`connectors` can't be used as a value",
-                "call `connectors.call(role, tool, args?)` directly",
+                "call `connectors.call(role, tool, args?)` or `connectors.enqueue(role, tool, args?, opts?)` directly",
             ),
             Value::Builtin(Builtin::WpFunction(name)) => err_help(
                 span,
@@ -8970,15 +8970,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
         ))
     }
 
-    /// `connectors.call(role, tool, args?)` from "spacepress" / "typedpress": invokes a host connector.
+    /// `connectors.call(role, tool, args?)` from "spacepress" / "typedpress" invokes a host connector
+    /// now; `connectors.enqueue(role, tool, args?, { delay?, key? })` queues the call in the caller's
+    /// transaction as the built-in `typedpress.connector` job, which runs after commit.
     fn connectors_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
-        if name != "call" {
-            return err_help(
-                span,
-                format!("`connectors` has no function `{name}`"),
-                "use `connectors.call(role, tool, args?)`",
-            );
-        }
+        let queued = match name {
+            "call" => false,
+            "enqueue" => true,
+            _ => {
+                return err_help(
+                    span,
+                    format!("`connectors` has no function `{name}`"),
+                    "use `connectors.call(role, tool, args?)` or `connectors.enqueue(role, tool, args?, { key?, delay? })`",
+                );
+            }
+        };
         if self.fx().no_db {
             return err_help(
                 span,
@@ -8986,11 +8992,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "move the call into a hook, action, route or job",
             );
         }
-        if args.len() < 2 || args.len() > 3 {
+        let max = if queued { 4 } else { 3 };
+        if args.len() < 2 || args.len() > max {
             return err_help(
                 span,
-                "connectors.call() takes a connector role, a tool name, and optional args",
-                "write connectors.call(\"slack\", \"post_message\", { channel, text })",
+                format!(
+                    "connectors.{name}() takes a connector role, a tool name, {}",
+                    if queued {
+                        "optional args and optional options"
+                    } else {
+                        "and optional args"
+                    }
+                ),
+                if queued {
+                    "write connectors.enqueue(\"slack\", \"post_message\", { channel, text }, { key: \"order-42\" })"
+                } else {
+                    "write connectors.call(\"slack\", \"post_message\", { channel, text })"
+                },
             );
         }
         let role_expr = self.arg(args, 0, span, "a connector role")?;
@@ -8999,7 +9017,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if !role.ty.is_str() || role.ty.is_nullable() {
             return err_help(
                 role_expr.span,
-                format!("connectors.call() role must be a string, not {}", role.ty.describe()),
+                format!("connectors.{name}() role must be a string, not {}", role.ty.describe()),
                 "pass the connector role name as a string, e.g. \"slack\"",
             );
         }
@@ -9009,7 +9027,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if !tool.ty.is_str() || tool.ty.is_nullable() {
             return err_help(
                 tool_expr.span,
-                format!("connectors.call() tool must be a string, not {}", tool.ty.describe()),
+                format!("connectors.{name}() tool must be a string, not {}", tool.ty.describe()),
                 "pass the connector tool name as a string",
             );
         }
@@ -9028,12 +9046,46 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => "*".to_string(),
         };
         self.uses("connectors", &cap, span);
+        if !queued {
+            return Ok(Out::atom(
+                format!(
+                    "\\TypedPress\\Connectors::call({}, {}, {})",
+                    role.php, tool.php, args_php
+                ),
+                Ty::Promise(Box::new(Ty::Unknown)),
+            ));
+        }
+        self.writes(span, "queues a connector call");
+        let opts = match args.get(3) {
+            None => "null".to_string(),
+            Some(_) => {
+                let e = self.arg(args, 3, span, "options")?;
+                let v = self.expr(e)?;
+                let v = self.finish_value(v, e.span)?;
+                let mut fields = IndexMap::new();
+                fields.insert("delay".to_string(), (Ty::Num, true));
+                fields.insert("key".to_string(), (Ty::Str, true));
+                let want = Ty::Obj(fields);
+                if !assignable(&v.ty, &want) {
+                    return err_help(
+                        e.span,
+                        format!(
+                            "connectors.enqueue() options are {}, not {}",
+                            want.describe(),
+                            v.ty.describe()
+                        ),
+                        "use { delay: seconds, key: \"dedupe-key\" }",
+                    );
+                }
+                v.php
+            }
+        };
         Ok(Out::atom(
             format!(
-                "\\TypedPress\\Connectors::call({}, {}, {})",
+                "\\TypedPress\\Connectors::enqueue({}, {}, {}, {opts})",
                 role.php, tool.php, args_php
             ),
-            Ty::Promise(Box::new(Ty::Unknown)),
+            Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
         ))
     }
 

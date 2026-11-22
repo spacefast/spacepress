@@ -12,9 +12,6 @@ require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 putenv('KITCHEN_REGISTRATION_SECRET=local-test-registration-key');
-putenv('KITCHEN_CONTACT_TO=desk@kitchen.example');
-putenv('KITCHEN_CONTACT_FROM=forms@kitchen.example');
-putenv('TP_SERVICES_RATE_SECRET=' . bin2hex(random_bytes(32)));
 $site = wpSite('kitchen-sink', [
     'wpContent' => $argv[1],
     'users' => ['cook' => 'subscriber', 'host' => 'editor'],
@@ -291,19 +288,18 @@ check('a guest gets no handout link', !str_contains(visit('/events/bread-basics/
 [$status, $problem] = $site->call('PATCH', "/events/$eventId", ['demoUrl' => 'http://example.com/demo'], as: 'host');
 eq('the demo link\'s validate() refuses plain http', [$status, $problem['pointer'] ?? null, $problem['detail'] ?? null], [422, '/demoUrl', 'Link to the demo over https.']);
 
-// ---- the contact page: a client component posting to the native services form
+// ---- the contact page: a client component calling the contactKitchen mutation, which queues mail
 [, $contact] = visit('/contact/');
-check('the contact form is a client component that knows the form\'s endpoint', preg_match('~data-wp-interactive="kitchen-sink/ContactForm" data-wp-context="([^"]+)"~', $contact, $island) === 1
-    && str_ends_with(json_decode(html_entity_decode($island[1], ENT_QUOTES), true)['endpoint'] ?? '', '/services/forms/contact'), $island[1] ?? $contact);
-$endpoint = json_decode(html_entity_decode($island[1] ?? '{}', ENT_QUOTES), true)['endpoint'] ?? '';
-$message = json_encode(['website' => '', 'data' => ['email' => 'visitor@example.test', 'message' => 'Do you run classes for children?']]);
-[$status, $receipt] = visit($endpoint, ['Content-Type: application/json', 'Idempotency-Key: kitchen-contact-1'], $message);
-$received = json_decode($receipt, true)['data'] ?? [];
-[$status2, $saved] = $site->call('GET', '/services/submissions/' . ($received['id'] ?? 0), as: 'host');
-eq('a visitor\'s message is saved for the staff to read, and its notification queued',
-    [$status, $received['delivery'] ?? null, $status2, $saved['body']['message'] ?? null], [201, 'queued', 200, 'Do you run classes for children?']);
-[$status, $problem] = visit($endpoint, ['Content-Type: application/json', 'Idempotency-Key: kitchen-contact-2'], json_encode(['website' => '', 'data' => ['email' => 'not-an-address', 'message' => 'Hi']]));
-eq('the form refuses a bad address', [$status, json_decode($problem, true)['code'] ?? null], [422, 'invalid_input']);
+check('the contact form is a client component', preg_match('~data-wp-interactive="kitchen-sink/ContactForm"~', $contact) === 1, $contact);
+[$status, $receipt] = $site->call('POST', '/actions/contactKitchen', ['email' => 'visitor@example.test', 'message' => 'Do you run classes for children?']);
+$queued = mailbox($site)[0] ?? [];
+eq('a visitor\'s message is queued as mail to the site\'s admin, replying to the visitor',
+    [$status, is_string($receipt['delivery'] ?? null), $queued['to'][0]['email'] ?? null, $queued['replyTo']['email'] ?? null, $queued['text'] ?? null],
+    [200, true, get_option('admin_email'), 'visitor@example.test', 'Do you run classes for children?']);
+[$status, $problem] = $site->call('POST', '/actions/contactKitchen', ['email' => 'visitor@example.test', 'message' => 'Hi']);
+eq('the form refuses a message that is too short', [$status, $problem['pointer'] ?? null], [422, '/message']);
+[$status, $problem] = $site->call('POST', '/actions/contactKitchen', ['email' => 'not an@address', 'message' => 'Do you run classes?']);
+eq('the form refuses a bad address', [$status, $problem['pointer'] ?? null], [422, '/email']);
 
 // ---- collection hooks, the job they queue, and the staff tools that show the result
 [$status, $class] = $site->call('POST', '/events', ['title' => '  Knife skills  ', 'startsOn' => '2020-03-01', 'registrationOpen' => false, 'status' => 'published'], as: 'host');

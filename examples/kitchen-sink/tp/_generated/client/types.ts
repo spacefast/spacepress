@@ -101,6 +101,9 @@ export interface SettingsPatch { siteTitle?: string; announcement?: string | nul
 export interface BookSeatsInput { eventId: number; seats: number; allergies?: string }
 export type BookSeatsOutput = { code: string };
 
+export interface ContactKitchenInput { email: string; message: string }
+export type ContactKitchenOutput = { delivery: string };
+
 export interface CancelSeatsInput { eventId: number }
 export type CancelSeatsOutput = { seats: number };
 
@@ -161,6 +164,7 @@ export interface Globals {
 
 export interface Actions {
   bookSeats: { input: BookSeatsInput; output: BookSeatsOutput };
+  contactKitchen: { input: ContactKitchenInput; output: ContactKitchenOutput };
   cancelSeats: { input: CancelSeatsInput; output: CancelSeatsOutput };
   upcoming: { input: UpcomingInput; output: UpcomingOutput };
   closeRegistration: { input: CloseRegistrationInput; output: CloseRegistrationOutput };

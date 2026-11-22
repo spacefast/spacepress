@@ -3158,6 +3158,13 @@ export interface BookSeatsInput {
 export type BookSeatsOutput = {
 	code: string;
 };
+export interface ContactKitchenInput {
+	email: string;
+	message: string;
+}
+export type ContactKitchenOutput = {
+	delivery: string;
+};
 export interface CancelSeatsInput {
 	eventId: number;
 }
@@ -3357,6 +3364,10 @@ export interface Actions {
 	bookSeats: {
 		input: BookSeatsInput;
 		output: BookSeatsOutput;
+	};
+	contactKitchen: {
+		input: ContactKitchenInput;
+		output: ContactKitchenOutput;
 	};
 	cancelSeats: {
 		input: CancelSeatsInput;
@@ -3647,7 +3658,7 @@ export declare const SCHEMA: {
 		};
 	};
 	readonly globals: readonly ["settings"];
-	readonly actions: readonly ["bookSeats", "cancelSeats", "upcoming", "closeRegistration", "scheduleAgain", "cancelWorkshop", "restoreWorkshop", "purgeWorkshop", "workshopHistory", "revertWorkshop", "postAnnouncement", "draftRecap", "checkSchedule", "scheduleMetrics"];
+	readonly actions: readonly ["bookSeats", "contactKitchen", "cancelSeats", "upcoming", "closeRegistration", "scheduleAgain", "cancelWorkshop", "restoreWorkshop", "purgeWorkshop", "workshopHistory", "revertWorkshop", "postAnnouncement", "draftRecap", "checkSchedule", "scheduleMetrics"];
 	readonly buckets: readonly ["handouts"];
 };
 export type SchemaDescriptor = typeof SCHEMA;

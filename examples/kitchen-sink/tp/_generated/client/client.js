@@ -220,6 +220,7 @@ export const SCHEMA = {
 	"globals": ["settings"],
 	"actions": [
 		"bookSeats",
+		"contactKitchen",
 		"cancelSeats",
 		"upcoming",
 		"closeRegistration",

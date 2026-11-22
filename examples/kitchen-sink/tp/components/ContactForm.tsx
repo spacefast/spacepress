@@ -1,23 +1,23 @@
 "use client";
 
 import { useState } from "typedpress/client";
+import { contactKitchen } from "../server";
 
-// Posts to the native contact form (typedpress.config.ts, `services.forms.contact`): WordPress
-// validates the fields, saves the submission and queues the notification mail.
-export function ContactForm({ endpoint }: { endpoint: string }) {
+// Calls the `contactKitchen` mutation (tp/server.ts): it checks the fields and queues the mail to
+// the kitchen in the request's transaction.
+export function ContactForm() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState("idle");
   const send = async (event: SubmitEvent) => {
     event.preventDefault();
     setStatus("sending");
-    const response = await window.fetch(endpoint, {
-      method: "POST",
-      // The key makes a retried submit the same submission. `website` is the form's spam trap.
-      headers: { "content-type": "application/json", "idempotency-key": window.crypto.randomUUID() },
-      body: JSON.stringify({ website: "", data: { email, message } }),
-    });
-    setStatus(response.ok ? "sent" : "failed");
+    try {
+      await contactKitchen({ email, message });
+      setStatus("sent");
+    } catch {
+      setStatus("failed");
+    }
   };
 
   return (

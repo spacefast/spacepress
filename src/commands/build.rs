@@ -600,6 +600,24 @@ pub(crate) fn check(project: &Path, frozen: bool) -> (serde_json::Value, Option<
     {
         envelope["warnings"] = serde_json::to_value(&built.lint_warnings).expect("lint warnings serialize");
     }
+    if let Ok(built) = &built
+        && let Some(app) = &built.schema.app
+    {
+        envelope["routePlan"] = serde_json::Value::Array(
+            app.routes
+                .iter()
+                .chain(app.not_found.iter())
+                .chain(app.login.iter())
+                .filter_map(|route| {
+                    route.plan.as_ref().map(|plan| {
+                        serde_json::json!({
+                            "id": route.id, "pattern": route.pattern, "prerender": route.prerender, "plan": plan,
+                        })
+                    })
+                })
+                .collect(),
+        );
+    }
     (envelope, built.ok())
 }
 

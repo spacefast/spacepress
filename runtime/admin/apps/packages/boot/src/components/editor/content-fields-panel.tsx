@@ -63,9 +63,9 @@ function DocumentFields({
 			if (!base || !edited) return undefined;
 			return {
 				...edited,
-				acf: {
-					...map(object(base).acf ?? {}),
-					...map(object(edited).acf ?? {}),
+				meta: {
+					...map(object(base).meta ?? {}),
+					...map(object(edited).meta ?? {}),
 				},
 			};
 		},
@@ -83,7 +83,7 @@ function DocumentFields({
 		[collection, id]
 	);
 	const { editEntityRecord } = useDispatch(coreStore);
-	const values = state.kind === 'ready' && record ? fromNative(state.value, record, objects) : undefined;
+	const values = state.kind === 'ready' && record ? fromNative(state.value, record) : undefined;
 	const omit = state.kind === 'ready' ? [state.value.primaryKey, state.value.title ?? '', state.value.content ?? '', state.value.slug ?? '', 'status', 'publishedAt'] : [];
 	const jsonDrafts = useFieldDrafts(state.kind === 'ready' && values ? { fields: state.value.columns, values, objects, omit } : undefined);
 	const valid = jsonDrafts.valid;
@@ -113,12 +113,13 @@ function DocumentFields({
 					jsonDrafts={jsonDrafts}
 					omit={omit}
 					onChange={(key, value) => {
-						const edits = toNative(state.value, { [key]: value }, objects);
-						void editEntityRecord('postType', transport.postType, id, {
-							acf: {
-								...object(object(pending ?? {}).acf ?? {}),
-								...object(edits.acf ?? {}),
-							},
+						const edits = toNative(state.value, { [key]: value });
+					void editEntityRecord('postType', transport.postType, id, {
+						...edits,
+						...(edits.meta ? { meta: {
+							...map(object(pending ?? {}).meta ?? {}),
+							...object(edits.meta ?? {}),
+						} } : {}),
 						});
 					}}
 				/>

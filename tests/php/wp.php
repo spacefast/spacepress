@@ -67,12 +67,13 @@ final class WpSite
     // ================================================================ building the site
 
     /**
-     * @param array{schema: array, functions?: string, migration?: string, identity?: bool, users?: array<string, string>, server?: bool, akismet?: bool, muPlugins?: array<string, string>} $fixture
+     * @param array{schema: array, functions?: string, migration?: string, identity?: bool, users?: array<string, string>, server?: bool, akismet?: bool, muPlugins?: array<string, string>, plugins?: array<string, array{version: string, sha256: string}>} $fixture
      *   schema: the app's schema.php array (name, collections, ...); functions: PHP after `namespace TypedPressApp;`;
      *   migration: MySQL DDL for the app's `editor: false` tables ({prefix} replaced);
      *   identity: install typedpress-identity too; users: extra WordPress users (name => role);
      *   server: start a php -S that answers the private-files probe (needed for file buckets);
      *   akismet: activate the Akismet core ships (Jetpack's), with no key unless the suite sets one;
+     *   plugins: extra pinned WordPress.org plugins, activated before the runtime;
      *   base: a path such as `/blog` the site lives under (WordPress in a subdirectory); the web
      *   server answers only below it.
      */
@@ -123,6 +124,10 @@ final class WpSite
                 if ($slug === 'polylang' && !$localized) {
                     continue;
                 }
+                wpCopy(wpPlugin($slug, $pin['version'], $pin['sha256']), "$dir/content/plugins/$slug");
+                $activate[] = $slug;
+            }
+            foreach ($fixture['plugins'] ?? [] as $slug => $pin) {
                 wpCopy(wpPlugin($slug, $pin['version'], $pin['sha256']), "$dir/content/plugins/$slug");
                 $activate[] = $slug;
             }

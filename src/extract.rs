@@ -5453,6 +5453,7 @@ mod legacy {
                 styles: Vec::new(),
                 preloads: Vec::new(),
                 prerender: false,
+                plan: None,
             });
         }
         // The runtime takes the first match: most specific first, as the 0.3.0 runtime ranked them

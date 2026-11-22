@@ -8,6 +8,7 @@ use TypedPress\App;
 use TypedPress\Db;
 use TypedPress\HttpError;
 use TypedPress\Schema;
+use TypedPress\Viewer;
 
 /**
  * The app bootstrap (§4.9). Runtime::app constructs it after compatibility checks;
@@ -379,7 +380,7 @@ final class Plugin
     {
         global $wpdb;
 
-        return $this->connection ??= new Connection($wpdb);
+        return $this->connection ??= new Connection($wpdb, $this->requireWritableStorage(...));
     }
 
     /** A URL inside the app plugin's directory (its compiled client modules). */
@@ -643,6 +644,15 @@ final class Plugin
     public function storageProblems(): array
     {
         return $this->migrator()->nonInnoDb();
+    }
+
+    private function requireWritableStorage(): void
+    {
+        $bad = $this->storageProblems();
+        if ($bad !== []) {
+            error_log('[typedpress] TypedPress requires InnoDB and utf8mb4: ' . implode(', ', $bad));
+            throw new \TypedPress\HttpError(503, 'unavailable', self::UNAVAILABLE);
+        }
     }
 
     /**
@@ -972,7 +982,8 @@ final class Plugin
         if ($row !== null) {
             $this->deleting[$postId] = [$collection, $row];
             try {
-                $db->beforeEditorDelete($collection, $row, WpAuth::current());
+                $user = WpAuth::current();
+                $db->beforeEditorDelete($collection, $row, $user === null ? null : new Viewer($user));
             } catch (\Throwable $e) {
                 unset($this->deleting[$postId]);
                 if ($prepared) {

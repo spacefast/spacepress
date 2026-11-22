@@ -162,14 +162,15 @@ final class WpTableStore implements Store, Links
         return $this->dialect->quote($this->db->prefix() . 'tp__join_' . $join);
     }
 
-    public function links(string $join, string $by, array $ids): array
+    public function links(string $join, string $by, array $ids, bool $forUpdate = false): array
     {
         if ($ids === []) {
             return [];
         }
         $by = $by === 'target_id' ? 'target_id' : 'owner_id';
         $rows = $this->db->run(
-            'SELECT `owner_id`, `target_id`, `position` FROM ' . $this->linkTable($join) . " WHERE `$by` IN (" . implode(', ', array_fill(0, count($ids), '?')) . ') ORDER BY `owner_id`, `position`',
+            'SELECT `owner_id`, `target_id`, `position` FROM ' . $this->linkTable($join) . " WHERE `$by` IN (" . implode(', ', array_fill(0, count($ids), '?')) . ') ORDER BY `owner_id`, `position`'
+            . ($forUpdate ? $this->dialect->writeLock() : ''),
             array_values(array_map('intval', $ids)),
         );
 

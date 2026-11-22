@@ -255,7 +255,7 @@ final class WpPostStore implements Store
             $hasher = new \PasswordHash(8, true);
             $passwords = $this->db->run(
                 'SELECT DISTINCT HEX(post_password) AS password FROM `' . $this->db->wpdb()->posts . '` WHERE post_type = ? AND HEX(post_password) NOT IN (?, ?)'
-                . ($scope === null ? '' : ' AND ID IN (' . $scope['sql'] . ')'),
+                . ($scope === null ? '' : ' AND ID IN (' . $scope['sql'] . ')' . $this->dialect->writeLock()),
                 [$spec['wp']['postType'], '', '30', ...($scope['params'] ?? [])],
             );
             foreach ($passwords as $row) {

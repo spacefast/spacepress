@@ -149,6 +149,23 @@ eq('plain MySQL table: full statement', $q, [
     'params' => ['warn'],
 ]);
 
+$locking = static fn (Store $store): array => Sql::select($schema, $store, 'logs',
+    ['where' => ['noteId' => 42]], guards: [['note' => ['status' => 'published']]], only: ['id' => true], forUpdate: true);
+$locked = $locking($wp);
+eq('MySQL dependency selection locks both the referencing rows and relation guards', $locked, [
+    'sql' => 'SELECT t0.`id` AS `id` FROM `wp_tp_logs` t0 WHERE t0.`noteId` = ? AND (EXISTS (SELECT 1 FROM `wp_posts` t1 WHERE '
+        . "t1.post_type = 'tp_notes' AND t1.post_status NOT IN ('trash', 'auto-draft', 'inherit') AND t1.ID = t0.`noteId` AND "
+        . "CASE t1.post_status WHEN 'publish' THEN 'published' WHEN 'future' THEN 'scheduled' ELSE 'draft' END = ? FOR UPDATE)) FOR UPDATE",
+    'params' => [42, 'published'],
+]);
+$translated = Dialect::mysqlOnSqlite();
+$sqlite = new CompileOnlyStore($translated, [
+    'notes' => postSource($columns),
+    'logs' => Source::plain($translated, '`wp_tp_logs`', $schema->collection('logs')['columns']),
+]);
+$locked['sql'] = str_replace(' FOR UPDATE', '', $locked['sql']);
+eq('SQLite omits both locks from dependency selection', $locking($sqlite), $locked);
+
 $q = Sql::select($schema, $wp, 'notes', ['where' => ['rating' => ['gte' => 3]], 'orderBy' => ['rating' => 'desc']]);
 check('post-backed: base table, baseWhere, a typed CAST for filter + order, one join per column',
     str_starts_with($q['sql'], 'SELECT t0.ID AS `id`, t0.post_title AS `title`, t0.post_content AS `body`, t0.post_name AS `slug`, NULLIF(t0_m4.meta_value, \'\') AS `rating`, ')

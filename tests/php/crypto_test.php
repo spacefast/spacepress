@@ -11,7 +11,7 @@ use TypedPress\HttpError;
 use TypedPress\JsError;
 use TypedPress\JsObject;
 
-// The vectors the original runtime's crypto broker pins (crypto.rs tests), plus the other digests.
+// Published test vectors, plus the other digests.
 eq('SHA-256 of "abc" is the FIPS 180-2 B.1 digest', Crypto::hash('sha256', ['abc'], 'hex'),
     'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
 eq('digests are over the UTF-8 bytes of every update, in hex, base64 or base64url',

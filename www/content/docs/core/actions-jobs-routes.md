@@ -6,30 +6,26 @@ order: 3
 status: published
 publishedAt: 2026-11-21T09:06:00.000Z
 ---
-## Server actions
+## Server functions
 
-Export an `action()` to mount a validated endpoint at `POST /__tp/api/v1/actions/<name>` (and expose it to `"use client"` components and the typed client):
+Export `query(options, handler)` for reads and `mutation(options, handler)` for writes. Both accept validated input and are available to client code and WordPress Abilities.
 
 ```ts
-import { action, integer, HttpError, db } from "typedpress";
+import { HttpError, mutation } from "typedpress";
+import { tasks } from "typedpress:db";
 
-export const archiveTask = action({
-  input: { id: integer() },
-  access: "editor",
-  idempotent: true,
-  async handler({ id }) {
-    const [row] = await db.update(tasks).set({ done: true }).where({ id }).returning();
-    if (!row) throw new HttpError(404, "not_found", "Task not found");
-    return row;
-  },
+export const archiveTask = mutation({ access: "editor", idempotent: true }, async ({ id }: { id: number }) => {
+  const row = await tasks.update(id, { done: true });
+  if (!row) throw new HttpError(404, "not_found", "Task not found");
+  return row;
 });
 ```
 
-Set `readonly: true` or `destructive: true` to annotate the generated WordPress Ability for AI agents, or `signature` to verify incoming HMAC webhooks.
+Call the mutation at `POST /wp-json/typedpress/v1/actions/archiveTask`. Queries are marked read-only. Set `destructive: true` on destructive mutations or configure `signature` to verify a webhook.
 
 ## Background jobs
 
-Export a `job()` and enqueue it with `jobs.<name>.enqueue(input, { delay?, key? })`. Jobs run asynchronously on WordPress Action Scheduler, commit atomically with the enclosing database transaction, support automatic `retries`, and can guard non-idempotent side effects with `once(key, fn)`.
+Export `job(options, handler)` and call `myJob.enqueue(input, { delay, key })`, with optional delay and deduplication key. Jobs run in WordPress Action Scheduler. Enqueueing commits with the enclosing database transaction. Use `retries` for retries and `once(key, fn)` to guard side effects. Set `every: "1h"` on a job or export `cron("0 3 * * *", handler)` for recurring work.
 
 ## Transactional hooks & WordPress hooks
 

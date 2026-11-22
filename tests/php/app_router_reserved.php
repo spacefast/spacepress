@@ -32,7 +32,6 @@ echo json_encode([
     'connector POST' => answer("$url/__spacefast/connectors/crm/create_deal", 'POST'),
     'space client' => answer("$url/__spacefast/client.js"),
     'first' => answer("$url/__tp/client.js"),
-    'zero' => answer("$url/__zero/client.js"),
     'rest' => answer("$url/wp-json/"),
 ], JSON_UNESCAPED_SLASHES), "\n";
 $site->destroy();

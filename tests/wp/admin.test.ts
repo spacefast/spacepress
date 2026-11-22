@@ -2,7 +2,7 @@
 // `typedpress-admin` and the harness activates it after the app. What this proves: the plugin is active,
 // serves its page at the upstream mount /wp-admin/new/ to signed-in users only, loads the committed
 // build rather than an empty shell, lands users there after login, frames classic wp-admin pages
-// unless the user turned developer mode on, and redirects the earlier /typedpress-admin/ and /legacy/
+// unless the user turned developer mode on.
 // addresses.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -154,18 +154,6 @@ test("activating TypedPress Admin from the Plugins screen writes the rule withou
     assert.ok((await deep.text()).includes('id="typedpress-admin-app"'));
   } finally {
     if (wp("plugin", "get", "typedpress-admin", "--field=status") !== "active") wp("plugin", "activate", "typedpress-admin");
-  }
-});
-
-test("the earlier /typedpress-admin/ address redirects to the same route at /wp-admin/new/", async () => {
-  for (const [from, to] of [
-    ["/typedpress-admin", "/wp-admin/new/"],
-    ["/typedpress-admin/", "/wp-admin/new/"],
-    ["/typedpress-admin/collections/posts?search=Draft", "/wp-admin/new/collections/posts?search=Draft"],
-  ]) {
-    const response = await fetch(`${site}${from}`, { redirect: "manual" });
-    assert.equal(response.status, 301, from);
-    assert.equal(response.headers.get("location"), `${site}${to}`, from);
   }
 });
 
@@ -406,23 +394,6 @@ test("developer mode is a user setting on core's user route, and decides whether
   const other = await fetch(`${site}/wp-json/wp/v2/users/${harness.users.admin.id}`, { method: "POST", headers: { ...auth("editor"), "content-type": "application/json" }, body: JSON.stringify({ tp_admin_developer_mode: true }) });
   assert.notEqual(other.status, 200);
   assert.equal(wp("eval", `echo get_user_meta(${harness.users.admin.id}, 'tp_admin_developer_mode', true);`), "");
-});
-
-test("the classic route's earlier address /legacy/<slug> redirects to /classic/<slug>", async () => {
-  const cookie = await loginCookie(site, "editor", `${site}/wp-admin/new/`);
-  const pretty = await fetch(`${site}/wp-admin/new/legacy/options-media.php`, { headers: { cookie }, redirect: "manual" });
-  assert.equal(pretty.status, 301);
-  assert.equal(pretty.headers.get("location"), `${site}/wp-admin/new/classic/options-media.php`);
-  const query = await fetch(`${site}/wp-admin/admin.php?page=typedpress-admin&p=${encodeURIComponent("/legacy/options-media.php")}`, { headers: { cookie }, redirect: "manual" });
-  assert.equal(query.status, 301);
-  assert.equal(new URL(query.headers.get("location")!).searchParams.get("p"), "/classic/options-media.php");
-  // A bookmark with a query (a plugin page) keeps it, in the encoding the classic route reads.
-  const plugin = await fetch(`${site}/wp-admin/new/legacy/admin.php%3Fpage%3Dtypedpress-identity%26tab%3Dclients`, { headers: { cookie }, redirect: "manual" });
-  assert.equal(plugin.status, 301);
-  assert.equal(plugin.headers.get("location"), `${site}/wp-admin/new/classic/admin.php%253Fpage%253Dtypedpress-identity%2526tab%253Dclients`);
-  const pluginQuery = await fetch(`${site}/wp-admin/admin.php?page=typedpress-admin&p=${encodeURIComponent("/legacy/admin.php%3Fpage%3Dtypedpress-identity")}`, { headers: { cookie }, redirect: "manual" });
-  assert.equal(pluginQuery.status, 301);
-  assert.equal(new URL(pluginQuery.headers.get("location")!).searchParams.get("p"), "/classic/admin.php%253Fpage%253Dtypedpress-identity");
 });
 
 test("the sidebar reaches classic-only screens through /classic/ and leaves out what the app turned off", async () => {

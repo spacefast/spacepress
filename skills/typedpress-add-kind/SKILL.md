@@ -66,10 +66,9 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 4. To add a field to a kind that already has rows, make it `.optional()` or give it a `.default()`.
    A new required field with no default is refused at deploy when rows lack it.
 
-5. To rename a `table()` field keep its data with `.was("oldName")`. To remove a field or kind
-   that holds rows, the deploy refuses it and answers with the exact `--drop=…` value that confirms
-   the row count (`typedpress migrate --drop=…`; copy it from the refusal's `drop`). On the
-   local dev site, `typedpress dev --allow-destructive` passes it once.
+5. Use `.column("old_name")` when renaming a field and `storageName: "old_table"` when
+   renaming a table export to keep its physical SQL name. Removing a field or table retires it
+   and preserves its data.
 
 6. Run `typedpress check`, then `typedpress build`. The build writes the SQL change to
    `tp/_generated/migrations/` and the types to `tp/_generated/db.d.ts`. Commit both; never

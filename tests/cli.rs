@@ -101,14 +101,14 @@ fn help_lists_build_and_site_commands_from_one_table() {
 fn site_commands_forward_arguments_stdin_and_exit_status_to_wp_cli() {
     let wp = fake_wp();
     let mut command = first();
-    command.args(["migrate-legacy", "-", "--dry-run", "--site", "@prod", "--space=s1"]);
+    command.args(["seed", "-", "--dry-run", "--site", "@test"]);
     with_path(&mut command, wp.path());
     let out = run_with_stdin(command, "<?php return [];");
     assert_eq!(out.status.code(), Some(7), "{}", text(&out.stderr));
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         seen["args"],
-        serde_json::json!(["@prod", "typedpress", "migrate-legacy", "-", "--dry-run", "--space=s1"])
+        serde_json::json!(["@test", "typedpress", "seed", "-", "--dry-run"])
     );
     assert_eq!(seen["stdin"], "<?php return [];");
 
@@ -123,6 +123,56 @@ fn site_commands_forward_arguments_stdin_and_exit_status_to_wp_cli() {
         seen["args"],
         serde_json::json!(["@staging", "plugin", "list", "--format=json"])
     );
+}
+
+#[test]
+fn migrate_takes_flags_only_and_points_an_import_at_the_importer() {
+    // `typedpress migrate` applies the app's database migrations on the site, with its flags.
+    let wp = fake_wp();
+    let mut command = first();
+    command.args([
+        "migrate",
+        "--site",
+        "@prod",
+        "--drop=likes=3",
+        "--mark-applied=0002_likes",
+    ]);
+    with_path(&mut command, wp.path());
+    let out = command.output().unwrap();
+    assert_eq!(out.status.code(), Some(7), "{}", text(&out.stderr));
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        seen["args"],
+        serde_json::json!([
+            "@prod",
+            "typedpress",
+            "migrate",
+            "--drop=likes=3",
+            "--mark-applied=0002_likes"
+        ])
+    );
+    // A word after it never reaches the site, wherever --site sits.
+    for args in [
+        vec!["migrate", "app", "--from", "zero-0.8", "x", "--out", "y"],
+        vec!["migrate", "config"],
+        vec!["migrate", "--site", "@prod", "app"],
+        vec!["migrate", "--site=@prod", "--drop=likes=3", "app"],
+    ] {
+        let mut command = first();
+        command.args(&args);
+        with_path(&mut command, wp.path());
+        let out = command.output().unwrap();
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        assert!(out.stdout.is_empty(), "{args:?} must not reach WP-CLI");
+        let word = if args.contains(&"config") { "config" } else { "app" };
+        assert_eq!(
+            text(&out.stderr),
+            format!(
+                "no command migrate {word}: typedpress migrate applies this app's database migrations. To import a project, run typedpress-migrate --from <source> <operation>\nusage: typedpress migrate [--drop=<kind>=<rows>,...] [--mark-applied=<id>]\n"
+            ),
+            "{args:?}"
+        );
+    }
 }
 
 #[test]
@@ -3083,8 +3133,6 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
             "typedpress-dev-site",
             "typedpress-fix-diagnostic",
             "typedpress-markdown-sync",
-            "typedpress-migrate",
-            "typedpress-migrate-astro",
             "typedpress-security-audit",
             "typedpress-woocommerce",
             "typedpress-write-action"

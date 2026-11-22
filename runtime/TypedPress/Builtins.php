@@ -25,8 +25,6 @@ final class Builtins
         'typedpress.taxonomy' => null,
         'typedpress.terms' => null,
         'typedpress.defineConfig' => null,
-        'typedpress.action' => null,
-        'typedpress.route' => null,
         'typedpress.env' => null,
         'typedpress.adminScreen' => null,
         'typedpress.adminWidget' => null,

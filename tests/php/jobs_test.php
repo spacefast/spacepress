@@ -70,7 +70,6 @@ $app = $wp->app();
 $db = $app->db;
 $jobs = static fn (?string $state = null) => $wp->sql('SELECT * FROM {prefix}tp__jobs' . ($state === null ? '' : " WHERE `state` = '$state'") . ' ORDER BY `createdAt`, `id`');
 $job = static fn (string $id) => $wp->sql('SELECT * FROM {prefix}tp__jobs WHERE `id` = ?', [$id])[0] ?? null;
-$outbox = static fn () => (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}tp__outbox');
 $actionsFor = static fn (string $id): int => (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}actionscheduler_actions WHERE `hook` = ? AND `args` = ? AND `status` = ?', ['tp_job', json_encode(['id' => $id]), 'pending']);
 /** Action Scheduler's pending delivery for a job: its scheduled time, or null. */
 $delivery = static fn (string $id) => $wp->scalar('SELECT `scheduled_date_gmt` FROM {prefix}actionscheduler_actions WHERE `hook` = ? AND `args` = ? AND `status` = ? ORDER BY `action_id` DESC',
@@ -106,31 +105,26 @@ $pid = $created['data']['id'];
 $queued = $jobs();
 check('the job is queued with its validated input', count($queued) === 1 && $queued[0]['state'] === 'pending'
     && json_decode($queued[0]['input'], true) === ['postId' => $created['data']['id'], 'note' => null] && $queued[0]['runAt'] === $at(0), $queued);
-eq('with one pending action, and nothing in the outbox', [$actionsFor($queued[0]['id']), $outbox()], [1, 0]);
+eq('with one pending action', $actionsFor($queued[0]['id']), 1);
 [$status] = $post('Explode');
 eq('a throwing hook fails the request', $status, 500);
-eq('rollback: no job and no outbox row', [count($jobs()), $outbox()], [1, 0]);
+eq('rollback records no new job', count($jobs()), 1);
 problem('enqueue validates input like an action', static fn () => $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => 'x'])), 422, 'invalid_input', '/postId');
 
-// A runtime before this one left a committed job's ticket in the outbox (a crash between commit and
-// dispatch), and another whose action exists, and one for a job since cancelled. The next request
-// gives the first its action, once, and leaves every ticket in the table.
+// Only waiting jobs without a delivery need recovery.
 $stranded = ['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000003'];
 foreach ($stranded as $n => $id) {
     $wp->exec('INSERT INTO {prefix}tp__jobs (`id`, `job`, `input`, `state`, `attempts`, `runAt`, `createdAt`) VALUES (?, ?, ?, ?, 0, ?, ?)', [$id, 'notify', json_encode(['postId' => $pid]), $n === 2 ? 'dead' : 'pending', $at(0), $at(0)]);
-    $wp->exec('INSERT INTO {prefix}tp__outbox VALUES (?, ?, ?, NULL, ?, ?)', [$id, 'notify', json_encode(['postId' => $pid]), $at(0), $at(0)]);
 }
 as_schedule_single_action(time(), 'tp_job', ['id' => $stranded[1]], 'typedpress-blog');
 delete_option(\TypedPress\Wp\Jobs\ActionSchedulerQueue::PREPARED);
 do_action('action_scheduler_init');
 do_action('action_scheduler_init');
 eq('the next request gives a stranded ticket its action, once, and no job a second one', array_map($actionsFor, $stranded), [1, 1, 0]);
-eq('the outbox rows stay: data is never deleted', $outbox(), 3);
 eq('the groups are recorded as prepared, with the version of the step', get_option(\TypedPress\Wp\Jobs\ActionSchedulerQueue::PREPARED), 'v1:typedpress,typedpress-blog');
 // The moved job runs with the others below; the two helper rows are this case's own.
 as_unschedule_all_actions('tp_job', ['id' => $stranded[1]]);
 $wp->exec('DELETE FROM {prefix}tp__jobs WHERE `id` IN (?, ?)', [$stranded[1], $stranded[2]]);
-$wp->exec('DELETE FROM {prefix}tp__outbox');
 
 // ---- dedupe key: one pending job per (job, key) ------------------------------------------------------------------
 $first = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => $pid], ['key' => 'k1']));
@@ -332,24 +326,7 @@ check('and refuses every statement after the reconnect, which would commit on it
         'point' => 1, 'set' => [2, true, true], 'map' => [2, true, true], 'date' => [true, true, true, 0], 'undefined' => true]);
 })();
 
-// Object shape captured at b7d5989d, before message ownership and sticky regex state; namespaces adapted for TypedPress.
-(static function () use ($wp, $at): void {
-    $snapshot = base64_decode(file_get_contents(__DIR__ . '/../fixtures/receipts/builtin-legacy.serialized.base64'), true);
-    $wp->exec('INSERT INTO {prefix}tp__receipts VALUES (?, ?, ?, ?, ?, ?, ?)', [
-        'fn', 'legacy-builtins', (int) (\TypedPress\db()->actor()['id'] ?? 0), hash('sha256', ''), 'done', $snapshot, $at(0),
-    ]);
-    $restored = \TypedPress\Jobs\Receipts::once('fn', 'legacy-builtins', static fn () => throw new \RuntimeException('receipt replay must not rerun the operation'));
-    $r = $restored->p['regex'];
-    $initialIndex = $r->lastIndex;
-    $matched = $r->test('ba');
-    $matchIndex = $r->lastIndex;
-    $failed = $r->test('ba');
-    eq('legacy builtin receipts restore messages, regex state and aliases without rerunning', [
-        $restored->p['error']->getMessage(),
-        \TypedPress\Js::dynamicStaticCall('Object', 'hasOwn', new \TypedPress\JsArray([$restored->p['error'], 'message'])),
-        $r === $restored->p['again'], $r->source, $r->flags, $initialIndex,
-        $matched, $matchIndex, $failed, $r->lastIndex,
-    ], ['snapshot', true, true, '(a)', 'g', 1, true, 2, false, 0]);
+(static function (): void {
     $current = new \TypedPress\RegExp('a/b', 'gy');
     $current->lastIndex = 1;
     $replayed = unserialize(serialize($current));
@@ -414,7 +391,7 @@ $done = static fn (): int => (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}tp_
 eq('a tick exits 0 and prints its counts', $code, 0);
 $pass = $first['data'];
 check('the first tick stays within its limit and says more is left', $pass['remaining'] === true && $pass['processed'] <= 4
-    && $pass['outboxDispatched'] === 0 && $pass['requeued'] === 1 && $pass['receiptsExpired'] === 1, $pass);
+    && $pass['requeued'] === 1 && $pass['receiptsExpired'] === 1, $pass);
 eq('due jobs ran directly: at most half the limit', $done(), 2);
 eq('the stuck job is pending again', $wp->scalar('SELECT `state` FROM {prefix}tp__jobs WHERE `id` = ?', [$tickId(10)]), 'pending');
 eq('the expired receipt is gone', (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}tp__receipts WHERE CAST(`key` AS CHAR) = 'old'"), 0);

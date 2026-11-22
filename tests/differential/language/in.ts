@@ -1,4 +1,4 @@
-// The `in` operator, which live Zero 0.8 apps use (first#138 census): own and inherited
+// The `in` operator: own and inherited
 // properties, arrays, arguments, class instances and statics, built-in values, union narrowing,
 // and the TypeError for a primitive right side. Every action runs under Node and as compiled PHP;
 // the JSON results must be byte-identical. `in-helpers.mjs` runs the same checks untyped.

@@ -57,11 +57,6 @@ final class AppRouter
         }
         self::$instance = new self($plugin, $app);
         add_filter('do_parse_request', [self::$instance, 'handlers'], 0);
-        // A 0.3.0 capture's `routes` config, read onto this table (`legacyRoutes`), never owned the
-        // front end: the theme keeps rendering everything its routes don't serve.
-        if ($app['legacyRoutes'] ?? false) {
-            return;
-        }
         // wp-login.php's sign-in view, once wp-login.php has decided what it shows: `login.tsx`, or
         // the sign-in block template an owner edited in the Site Editor.
         add_filter('wp_login_errors', [self::$instance, 'login'], PHP_INT_MAX, 2);
@@ -121,7 +116,7 @@ final class AppRouter
 
     private function matchPath(string $path): ?array
     {
-        return self::match($this->app['routes'], $path, $this->app['routeIndex'] ?? null);
+        return self::match($this->app['routes'], $path, $this->app['routeIndex']);
     }
 
     /**
@@ -130,7 +125,7 @@ final class AppRouter
      *
      * @return ?array{route: array<string, mixed>, params: array<string, string|list<string>>}
      */
-    public static function match(array $routes, string $path, ?array $index = null): ?array
+    public static function match(array $routes, string $path, array $index): ?array
     {
         $segments = [];
         foreach (explode('/', trim($path, '/')) as $raw) {
@@ -146,15 +141,13 @@ final class AppRouter
             }
             $segments[] = $decoded;
         }
-        if ($index !== null) {
-            $literal = $index['literal']['/' . implode('/', $segments)] ?? null;
-            if ($literal !== null) {
-                return ['route' => $routes[$literal], 'params' => []];
-            }
+        $literal = $index['literal']['/' . implode('/', $segments)] ?? null;
+        if ($literal !== null) {
+            return ['route' => $routes[$literal], 'params' => []];
         }
-        // The compiler preserves specificity order in the dynamic list. Older builds use the full table.
-        foreach ($index === null ? $routes : $index['dynamic'] as $candidate) {
-            $route = $index === null ? $candidate : $routes[$candidate];
+        // The compiler preserves specificity order in the dynamic list.
+        foreach ($index['dynamic'] as $candidate) {
+            $route = $routes[$candidate];
             $pattern = $route['pattern'] === '/' ? [] : explode('/', trim((string) $route['pattern'], '/'));
             $params = [];
             $ok = true;
@@ -185,18 +178,6 @@ final class AppRouter
             }
         }
         return null;
-    }
-
-    /**
-     * A 0.3.0 `routes` table's routes for one request method (HEAD as GET), in table order: 0.3.0
-     * matched a path only among the routes of its method, so `GET /a/b` and `POST /a/:id` both serve.
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function legacyRoutes(string $method): array
-    {
-        $method = $method === 'HEAD' ? 'GET' : $method;
-        return array_values(array_filter($this->app['routes'], fn (array $route): bool => isset($this->file($route['handler'] ?? null)['methods'][$method])));
     }
 
     /** WordPress's and TypedPress's own entry points (the compiler's list): never a page, never the app's 404 (spec §5). */
@@ -347,15 +328,8 @@ final class AppRouter
             return $parse;
         }
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
-        $legacy = $this->app['legacyRoutes'] ?? false;
-        $match = $legacy ? self::match($this->legacyRoutes($method), $path) : $this->matchPath($path);
+        $match = $this->matchPath($path);
         if ($match === null) {
-            // 0.3.0 answered a path its routes serve with another method with a 405.
-            if ($legacy && $this->matchPath($path) !== null) {
-                $this->emit(405, ['Content-Type' => 'application/problem+json'], (string) Js::jsonStringify([
-                    'type' => 'about:blank', 'title' => 'Method not allowed', 'status' => 405, 'code' => 'method_not_allowed', 'detail' => "$method is not allowed on $path",
-                ]));
-            }
             return $parse;
         }
         $route = $match['route'];
@@ -405,9 +379,8 @@ final class AppRouter
         $query = RouteRequest::query((string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '')));
         $url = RouteRequest::url((string) ($_SERVER['HTTP_HOST'] ?? (wp_parse_url(home_url('/'), PHP_URL_HOST) ?? '')), (string) ($_SERVER['REQUEST_URI'] ?? '/'));
         // An unsigned handler reads as its caller, like a page; a signed webhook runs as the
-        // system (spec §3), so its reads are trusted. A 0.3.0 `routes` handler's reads were
-        // trusted (`db` in hooks, actions and routes), and still are.
-        $viewer = $spec['signature'] !== null || $legacy ? null : new Viewer($user);
+        // system (spec §3), so its reads are trusted.
+        $viewer = $spec['signature'] !== null ? null : new Viewer($user);
         [$status, $out, $body] = Seam::asViewer($viewer, fn (): array => $this->plugin->app()->serveRoute(
             ['name' => (string) $route['id'], 'route' => $spec, 'params' => $params],
             $method, $path, $query, (string) file_get_contents('php://input'), $headers, $user, $url,

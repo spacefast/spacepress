@@ -20,7 +20,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { repo } from "../lib/examples.ts";
-import { toTypedPress } from "../lib/names.ts";
 import { filesRoot, showcaseRoot, type Manifest } from "../lib/showcase.ts";
 import { blueprint, sharedPlugins } from "../lib/blueprint.ts";
 import { platformVersions } from "../lib/platform.ts";
@@ -44,18 +43,8 @@ function walk(root: string, rel = ""): string[] {
 	return found;
 }
 
-// Files of WordPress.org plugins are shown as their authors wrote them. Everything TypedPress wrote reads
-// with TypedPress names, as the code will after the rename.
-// WordPress.org plugins are copied as published: the platform's pinned ones, and the ones an app's
-// lock adds (tests/fixtures/platform.json, tp/_generated/wp-plugins.lock.json). Only files TypedPress
-// wrote get TypedPress names.
 const platformPlugins = Object.keys((JSON.parse(readFileSync(path.join(repo, "tests/fixtures/platform.json"), "utf8")) as { plugins: Record<string, unknown> }).plugins);
 const thirdParty = (lock: string[]) => new Set([...platformPlugins, ...lock]);
-const firstWrote = (file: string, published: Set<string>) => {
-	const plugin = /^tp\/dist\/wp-content\/plugins\/([^/.]+)[/.]/.exec(file)?.[1];
-	return plugin === undefined || !published.has(plugin);
-};
-
 const binary = process.env.TP_BIN ?? path.resolve(repo, process.env.CARGO_TARGET_DIR ?? "target", "debug/typedpress");
 if (!process.env.TP_BIN) run("cargo", ["build", "--locked", "--bin", "typedpress"], repo);
 const pluginOrigin = new URL(process.env.PLUGINS_URL ?? "https://spacepress.dev").origin;
@@ -117,16 +106,15 @@ for (const { name, landing, seed } of siteExamples) {
 		} catch {
 			contents = null;
 		}
-		const shown = firstWrote(file, published) && contents !== null ? toTypedPress(contents) : contents;
 		let blob: string | null = null;
-		if (shown !== null) {
-			blob = createHash("sha256").update(shown).digest("hex").slice(0, 24);
+		if (contents !== null) {
+			blob = createHash("sha256").update(contents).digest("hex").slice(0, 24);
 			if (!written.has(blob)) {
-				writeFileSync(path.join(filesRoot, "blobs", `${blob}.txt`), shown);
+				writeFileSync(path.join(filesRoot, "blobs", `${blob}.txt`), contents);
 				written.add(blob);
 			}
 		}
-		manifest.files.push({ path: toTypedPress(file), blob, size: bytes.length });
+		manifest.files.push({ path: file, blob, size: bytes.length });
 	}
 	writeFileSync(path.join(filesRoot, `${name}.json`), JSON.stringify(manifest));
 

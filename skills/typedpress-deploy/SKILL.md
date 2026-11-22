@@ -61,7 +61,7 @@ Run `typedpress doctor --site https://example.com --links` to verify live plugin
 ## Failure modes / debugging
 
 - **401 / Application Password rejected:** Ensure HTTPS is enabled and the user has the Administrator role; re-run `typedpress login https://example.com`.
-- **Migration refusal:** Never force-drop live columns without checking data; add `.was("oldName")` for renames.
+- **Migration refusal:** Use `.column("old_name")` to retain a renamed field’s existing SQL column.
 - **Static assets 404 on WP Cloud:** Copy `public/` root static files into `/srv/htdocs/` and purge edge cache.
 
 ## Escalation

@@ -42,9 +42,9 @@ npx typedpress init --check   # fails CI if AGENTS.md or skills are stale
 
 | Skill                       | When an agent uses it                                                                                                      |
 |-----------------------------|----------------------------------------------------------------------------------------------------------------------------|
-| `typedpress-add-kind`       | Adding or updating `collection()` / `table()` kinds, fields, `ref()`, access rules, or `.was()` renames                    |
+| `typedpress-add-kind`       | Adding or updating `collection()` / `table()` kinds, fields, `ref()`, access rules, or physical storage names                    |
 | `typedpress-add-page`       | Building headful `tp/app/**/page.tsx`, `layout.tsx`, dynamic segments, or custom `route.ts` endpoints                      |
-| `typedpress-write-action`   | Adding typed `action()` RPC endpoints and retryable Action Scheduler `job()` queues                                        |
+| `typedpress-write-action`   | Adding typed `query()` and `mutation()` RPC endpoints and retryable Action Scheduler `job()` queues                                        |
 | `typedpress-dev-site`       | Starting, inspecting, querying, or resetting the local WordPress + SQLite dev site                                         |
 | `typedpress-fix-diagnostic` | Reading `typedpress check --json` diagnostics and fixing TS-to-PHP compiler errors or lint warnings                        |
 | `typedpress-woocommerce`    | Scaffolding and configuring `store()`, `product()`, shipping zones, orders, and optimistic cart hooks                      |
@@ -52,8 +52,6 @@ npx typedpress init --check   # fails CI if AGENTS.md or skills are stale
 | `typedpress-security-audit` | Auditing `.access()` rules, field-level leaks, `typedpress:db` vs `db`, route guards, and Abilities flags                  |
 | `typedpress-deploy`         | Safe preflight (`check`, `push --dry-run`), explicit production consent, WP Cloud static-asset notes, and `doctor --links` |
 | `typedpress-connect-mcp`    | Connecting an agent to a running site's authenticated WordPress MCP endpoint                                               |
-| `typedpress-migrate`        | Converting existing EmDash, Payload, Sanity, or Zero schemas with `typedpress migrate config`                              |
-| `typedpress-migrate-astro`  | Wiring an optional external Astro frontend with `@typedpress/astro`                                                        |
 
 ## Two MCP servers: dev-time vs runtime
 
@@ -74,11 +72,11 @@ Pass `--allow-writes` to additionally expose `run_action`, `insert`, and `update
 
 ### 2. Runtime WordPress MCP (`/wp-json/mcp/typedpress-<app>`)
 
-Every running SpacePress site exposes an authenticated WordPress MCP endpoint with one tool per collection operation and `action()`, authenticated as a WordPress user via Application Passwords or scoped agent credentials (`typedpress identity agent add`).
+Every running SpacePress site exposes an authenticated WordPress MCP endpoint with one tool per collection operation and exported server function, authenticated as a WordPress user via Application Passwords or scoped agent credentials (`typedpress identity agent add`).
 
 ## WordPress Abilities API
 
-Every collection, global, action, and job is registered as a WordPress Ability by default (`agents: false` opts out). Annotate actions with `readonly: true` or `destructive: true` to guide agent safety checks.
+Every collection, global, action, and job is registered as a WordPress Ability by default (`agents: false` opts out). Queries are marked read-only. Set `destructive: true` on mutations that perform destructive work.
 
 To invoke abilities provided by WordPress core or installed plugins with full TypeScript types:
 

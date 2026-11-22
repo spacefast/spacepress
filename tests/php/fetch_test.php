@@ -8,7 +8,7 @@ require __DIR__ . '/harness.php';
 use TypedPress\Fetch;
 use TypedPress\HttpError;
 
-// The address policy, without a network: the same ranges the original Zero runtime denied.
+// The address policy, without a network: every range fetch denies.
 $denied = [
     '0.0.0.0', '10.1.2.3', '100.64.0.1', '127.0.0.1', '169.254.169.254', '172.16.0.1', '172.31.255.255',
     '192.0.0.8', '192.0.2.1', '192.88.99.1', '192.168.1.1', '198.18.0.1', '198.51.100.1', '203.0.113.9',

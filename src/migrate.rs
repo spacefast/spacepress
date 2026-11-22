@@ -395,9 +395,6 @@ fn table_snapshot(c: &Collection, schema: &Schema) -> Json {
     if let Some(name) = &c.existing_table {
         table["existingTable"] = name.clone().into();
     }
-    if let Some(name) = c.adopted_as.as_ref().filter(|name| **name != c.table) {
-        table["adoptedAs"] = name.clone().into();
-    }
     if c.auth {
         table["auth"] = true.into();
     }
@@ -797,8 +794,7 @@ fn create_table_with_fks(
                 "onUpdate": r["onUpdate"].as_str().unwrap_or("restrict").to_uppercase() }))
             })
             .collect();
-        let name = def["adoptedAs"].as_str().unwrap_or(t);
-        let adoption = json!({ "table": def["existingTable"], "name": name, "indexes": expected_indexes,
+        let adoption = json!({ "table": def["existingTable"], "indexes": expected_indexes,
             "foreignKeys": foreign_keys, "integerColumns": integer_columns });
         return format!(
             "-- typedpress-adopt {adoption}\nSELECT {} FROM {} LIMIT 0;",

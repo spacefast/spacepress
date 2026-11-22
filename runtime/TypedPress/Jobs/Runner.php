@@ -118,9 +118,8 @@ final class Runner
 
     /**
      * Waiting (pending or failed) jobs that have no `tp_job` action at all get one, at their runAt.
-     * A job and its action are written in one transaction, so this finds only jobs a runtime before
-     * this one left in `tp__outbox`, ones queued before Action Scheduler was ready in a request that
-     * died, and ones whose actions someone deleted. A job with any action, even one an administrator
+     * This finds jobs queued before Action Scheduler was ready in a request that died, and jobs
+     * whose actions someone deleted. A job with any action, even one an administrator
      * cancelled in Tools > Scheduled Actions, is left alone (`wp typedpress jobs cancel` cancels a job).
      * At most $max jobs per call, in pages of 100 in runAt order (the jobs table's `due` index).
      *

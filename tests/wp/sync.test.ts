@@ -275,7 +275,7 @@ test("sync on WordPress", async (t) => {
         return [$response->status, array_key_exists('current', json_decode($response->body, true))];
       });
       // A trashed post restored by a push whose snapshot is outdated stays in the trash.
-      $db->transaction(fn () => \\TypedPress\\Sync\\Trash::trash('guides', $db->schema()->collection('guides'), $db->editorRow('guides', $id)));
+      $db->transaction(fn () => \\TypedPress\\Sync\\Trash::trash('guides', $db->schema()->collection('guides'), $db->editorRow('guides', $id), $viewer));
       $restore = $db->transaction(function () use ($app, $db, $other, $id, $record, $viewer) {
         $db->findFirst('guides', ['where' => ['id' => $id]]);
         $other->query("INSERT INTO {$GLOBALS['wpdb']->postmeta} (post_id, meta_key, meta_value) VALUES ($id, 'tp_summary', 'later')");

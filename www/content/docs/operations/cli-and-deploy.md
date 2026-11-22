@@ -23,6 +23,8 @@ Target local dev (default) or any remote site (`--site <dir | workspace | @alias
 - `typedpress wp <args...>` — run any WP-CLI command.
 - `typedpress migrate`, `seed`, `jobs`, `staged`, `publish-due`, `identity`, `find`, `insert`, `update`, `delete`, `action`, `abilities`, `run`.
 
+`typedpress migrate` accepts flags and applies the current project’s database migrations. To import an existing project, install the repository’s standalone `migrate/` package and run `typedpress-migrate --from <source> <operation>`.
+
 ## Hosting & deployment guides
 
 SpacePress runs anywhere WordPress 7.1+ and PHP 8.2+ run:

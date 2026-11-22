@@ -4,12 +4,11 @@
 //
 //   node steps.mjs <step>   prints that step's typedpress.config.ts
 //
-// `tasks` is bound to a table the app did not create (`existingTable`), as `typedpress migrate app
-// --from zero-0.8 --space <id>` binds a migrated Space's tables. `likes` and `notes` are TypedPress's.
+// `tasks` binds an existing table. TypedPress creates `likes` and `notes`.
 const tasks = (fields = "") => `export const tasks = table({
   title: text(),
   note: text().optional(),${fields}
-}, { existingTable: "sf_spc_schema_check_tasks_510ec462fc" });`;
+}, { existingTable: "wp_external_tasks" });`;
 const likes = (fields = "", options = "") => `export const likes = table({
   post: integer(),${fields}
 }${options});`;
@@ -50,7 +49,7 @@ export const steps = {
   // 7. The adopted table renames a field and loses one, then (8) its kind: never without --drop, even when empty.
   adoptedField: app([`export const tasks = table({
   name: text().was("title"),
-}, { existingTable: "sf_spc_schema_check_tasks_510ec462fc" });`,
+}, { existingTable: "wp_external_tasks" });`,
     "export const memos = table({ text: text().optional() }, { was: \"notes\" });",
     "export const tags = table({ name: text().optional() });"]),
   adoptedKind: app(["export const memos = table({ text: text().optional() }, { was: \"notes\" });",
@@ -87,10 +86,10 @@ export const steps = {
   //     changes type: a retype of an adopted table is refused even when empty, until --drop names it.
   readoptField: app(["export const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
     "export const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: ref(memos).optional() });",
-    `export const tasks = table({ name: text().optional(), rank: integer().optional() }, { existingTable: "sf_spc_schema_check_retype_082186420c" });`]),
+    `export const tasks = table({ name: text().optional(), rank: integer().optional() }, { existingTable: "wp_external_retype" });`]),
   readoptRetype: app(["export const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
     "export const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: ref(memos).optional() });",
-    `export const tasks = table({ name: text().optional(), rank: text().optional() }, { existingTable: "sf_spc_schema_check_retype_082186420c" });`]),
+    `export const tasks = table({ name: text().optional(), rank: text().optional() }, { existingTable: "wp_external_retype" });`]),
 };
 
 if (process.argv[2] !== undefined) {

@@ -5,7 +5,7 @@ declare(strict_types=1);
 /*
  * The install marker (TypedPress\Wp\InstallMarker) on WordPress on SQLite, over HTTP through php -S: once
  * a request has found everything this build installs in place, the next requests run none of the
- * install checks (the ledger read, the system-tables, stored-name, search and Action Scheduler
+ * install checks (the ledger read, the system-tables, search and Action Scheduler
  * checks), and whatever changes what those checks cover makes the next request check again. A
  * failed install is never hidden by it.
  */
@@ -61,7 +61,6 @@ function checks(array $statements): array
             'ledger' => 'information_schema.COLUMNS',
             'schema hash' => "option_name = 'tp_blog_schema'",
             'system tables' => "option_name = 'tp_runtime_tables'",
-            'stored names' => "option_name = 'tp_zero_names'",
             'search table' => 'tp__search` LIMIT 1',
             'search shape' => "option_name = 'tp_search_shape'",
             'scheduled actions' => "a.hook='tp_jobs_maintain'",
@@ -121,7 +120,6 @@ $recheck('the app deactivated', static function (): void {
 $recheck('the search shape cleared', static fn () => delete_option('tp_search_shape'));
 $recheck('a recurring action cancelled', static fn () => as_unschedule_all_actions('tp_jobs_maintain', [], 'typedpress'));
 check('which the checking request scheduled again', as_has_scheduled_action('tp_jobs_maintain', [], 'typedpress'));
-// A site an older runtime scheduled daily keeps that interval until a check replaces it with the hourly one.
 $maintenance = static function (): array {
     $store = ActionScheduler::store();
     $ids = $store->query_actions(['hook' => 'tp_jobs_maintain', 'group' => 'typedpress', 'status' => ActionScheduler_Store::STATUS_PENDING]);
@@ -129,28 +127,21 @@ $maintenance = static function (): array {
     return array_map(static fn ($id): int => (int) $store->fetch_action((string) $id)->get_schedule()->get_recurrence(), $ids);
 };
 eq('maintenance recurs hourly', $maintenance(), [HOUR_IN_SECONDS]);
-$recheck('maintenance on an older runtime\'s daily interval', static function (): void {
-    as_unschedule_all_actions('tp_jobs_maintain', [], 'typedpress');
-    as_schedule_recurring_action(time() + DAY_IN_SECONDS, DAY_IN_SECONDS, 'tp_jobs_maintain', [], 'typedpress');
-});
-eq('which the checking request replaced with one hourly schedule', $maintenance(), [HOUR_IN_SECONDS]);
-// A refused schedule keeps the old run, and the request that hit it keeps serving: the site is
-// never left without maintenance, and the next request retries.
+// If Action Scheduler refuses the new schedule, the site keeps serving and retries.
 $refuser = $wp->dir . '/content/mu-plugins/refuse-maintenance.php';
 file_put_contents($refuser, <<<'PHP'
     <?php
     add_filter('pre_as_schedule_recurring_action', static fn ($pre, $at, $every, $hook) => $hook === 'tp_jobs_maintain' ? 0 : $pre, 10, 4);
     PHP);
 as_unschedule_all_actions('tp_jobs_maintain', [], 'typedpress');
-as_schedule_recurring_action(time() + DAY_IN_SECONDS, DAY_IN_SECONDS, 'tp_jobs_maintain', [], 'typedpress');
 wp_cache_flush();
 [$status] = request($url, '/');
 eq('a request whose maintenance schedule is refused still serves', $status, 200);
-eq('and keeps the daily run it would have replaced', $maintenance(), [DAY_IN_SECONDS]);
+eq('and no maintenance action was scheduled', $maintenance(), []);
 eq('and records no marker, so the next request retries', $marker(), null);
 unlink($refuser);
 [$status] = request($url, '/');
-eq('which replaces it once Action Scheduler accepts', [$status, $maintenance()], [200, [HOUR_IN_SECONDS]]);
+eq('which schedules it once Action Scheduler accepts', [$status, $maintenance()], [200, [HOUR_IN_SECONDS]]);
 
 // ---- a failed install is never hidden ------------------------------------------------------------------
 // A migration the database refuses: the request that runs it fails, records nothing, and every request

@@ -487,7 +487,7 @@ final class WpSite
     public function route(string $method, string $path): array
     {
         $app = $this->plugin()->schema->app();
-        $match = \TypedPress\Wp\AppRouter::match($app['routes'], $path) ?? throw new \RuntimeException("no route takes $path");
+        $match = \TypedPress\Wp\AppRouter::match($app['routes'], $path, $app['routeIndex']) ?? throw new \RuntimeException("no route takes $path");
         $file = $app['files'][$match['route']['handler'] ?? $match['route']['page']];
         return [
             'name' => (string) $match['route']['id'],

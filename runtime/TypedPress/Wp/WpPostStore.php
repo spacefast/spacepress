@@ -1113,29 +1113,6 @@ final class WpPostStore implements Store
         return $pk . self::STAGED_SUFFIX;
     }
 
-    /**
-     * Staged revisions written before they had their own status are `inherit`, so core listed them as
-     * autosaves. Give them the staged status; nothing else about them changes. A guarded runtime
-     * upgrade step ({@see Runtime::boot()}): it runs once per site, and again finds nothing to do.
-     */
-    public static function upgradeStagedStatus(\TypedPress\Store $store): void
-    {
-        $db = $store instanceof CompositeStore ? $store->db : null;
-        if ($db === null) {
-            return;
-        }
-        $posts = $db->wpdb()->posts;
-        foreach ($db->run("SELECT ID, post_parent, post_name FROM `$posts` WHERE post_type = 'revision' AND post_status = 'inherit' AND post_name LIKE ?", ['%-autosave-staged-v1']) as $row) {
-            $name = self::stagedName((int) $row['post_parent']);
-            if ($row['post_name'] === $name) {
-                // The name again: a promote or discard that committed since the read renamed it, and
-                // that retired revision must stay `inherit`, in the item's history.
-                $db->run("UPDATE `$posts` SET post_status = ? WHERE ID = ? AND post_status = 'inherit' AND post_name = ?", [self::STAGED_STATUS, (int) $row['ID'], $name]);
-                clean_post_cache((int) $row['ID']);
-            }
-        }
-    }
-
     /** The id of the item's staged revision, or null when nothing is staged. */
     public function stagedId(int $pk): ?int
     {

@@ -14,17 +14,6 @@ require __DIR__ . '/wp.php';
 // The webhook secret, as a wp-config constant would set it (env() reads constants first).
 $site = wpSite('app', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscriber', 'chief' => 'editor'],
     'muPlugins' => ['secret' => "<?php define('APPROUTER_HOOK_SECRET', 'hook-secret');"]]);
-// An older app has no route index. Both representations must select the same route and parameters.
-$app = \TypedPress\Wp\Runtime::plugin()->schema->app();
-if (!isset($app['routeIndex'])) {
-    throw new RuntimeException('Missing compiled route index');
-}
-foreach (['/', '/notes/', '/notes/hello', '/notes/%68ello/', '/docs', '/docs/a/b', '/missing', '/notes/%2F', '/notes/%zz'] as $path) {
-    $indexed = \TypedPress\Wp\AppRouter::match($app['routes'], $path, $app['routeIndex']);
-    if ($indexed !== \TypedPress\Wp\AppRouter::match($app['routes'], $path)) {
-        throw new RuntimeException("Compiled route lookup disagrees with the ordered matcher for $path");
-    }
-}
 wp_set_current_user(1);
 \TypedPress\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'secret' => 'desk only', 'status' => 'published']);
 \TypedPress\db()->insert('notes', ['title' => 'Draft', 'slug' => 'draft', 'status' => 'draft']);

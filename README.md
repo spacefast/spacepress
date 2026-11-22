@@ -99,8 +99,8 @@ export default async function Home() {
 
 ## Core Capabilities
 
-- **Dual Storage Engine:** Combine `collection()` (WordPress posts, Gutenberg, drafts, revisions, staged versions, comments, hierarchical URLs) with `table()` (custom SQL tables, compound indexes, numbered SQL migrations, safe `.was()` renames), `global()`, `taxonomy()`, `userProjection()`, and `wp.posts.extend()`.
-- **Zero-Node Native PHP Compiler:** Rust + OXC parses TypeScript/TSX and emits deterministic `schema.php`, `functions.php`, numbered SQL migrations, `db.d.ts`, `routes.d.ts`, `openapi.json`, and a typed client.
+- **Dual Storage Engine:** Combine `collection()` (WordPress posts, Gutenberg, drafts, revisions, staged versions, comments, hierarchical URLs) with `table()` (custom SQL tables, compound indexes, forward-only migrations, stable physical names), `global()`, `taxonomy()`, `userProjection()`, and `wp.posts.extend()`.
+- **Zero-Node Native PHP Compiler:** Rust + OXC parses TypeScript/TSX and emits deterministic `schema.php`, `functions.php`, forward-only SQL migrations, `db.d.ts`, `routes.d.ts`, `openapi.json`, and a typed client.
 - **File-Based TSX Pages & `"use client"` Islands:** Server-rendered pages, layouts, custom `route.ts` HTTP endpoints, progressive zero-JS `<form action={...}>`, and `"use client"` Interactivity API components (`useState`, `useLive`, `sharedState`). Export static HTML with `output: "static"`.
 - **Declarative Access & Identity:** Ordered role ladder (`guest < subscriber < author < editor < admin`), row-level filter rules compiled into SQL/PHP, field-level `.access()` masks, and `typedpress-identity` (passkeys, TOTP, JWT, application tokens).
 - **Server Actions, Jobs & Private Files:** Validated RPC actions (`/wp-json/typedpress/v1/actions/<name>`), Action Scheduler background jobs with retries/dedupe keys, HMAC-signed webhooks, and local/S3 `files()` buckets with signed URLs.
@@ -110,6 +110,10 @@ export default async function Home() {
 - **MCP Server & WordPress Abilities:** Run `typedpress init` and `typedpress mcp` for AI coding agents, and expose or invoke typed WordPress Abilities (`abilities.call()`).
 
 ---
+
+## Importing an existing project
+
+Install the standalone importer with `cargo install --path migrate`. See the [import guide](migrate/README.md) for supported source projects and commands.
 
 ## Architecture
 

@@ -8,7 +8,7 @@ import { sql, wp, wpTry } from "../env.ts";
 
 const content = process.env.TP_SCHEMA_CHECK_CONTENT ?? "";
 const live = process.env.TP_SCHEMA_CHECK_LIVE ?? "";
-const adopted = "sf_spc_schema_check_tasks_510ec462fc";
+const adopted = "wp_external_tasks";
 
 /** Installs a step's build the way a file-copy deploy does: the app plugin's files are replaced. */
 function install(step: string) {
@@ -58,7 +58,7 @@ const rows = (table: string, where = "1") => Number(sql(`SELECT COUNT(*) AS n FR
 test("the first deploy adopts the existing table and creates the rest", () => {
   // `up` activated the app, which migrated: the adopted rows are there, untouched.
   assert.deepEqual(applied(), ["0001_init"]);
-  assert.deepEqual(sql(`SELECT title, note FROM ${adopted} ORDER BY id`), [{ title: "kept", note: "from 0.8" }, { title: "also kept", note: "NULL" }]);
+  assert.deepEqual(sql(`SELECT title, note FROM ${adopted} ORDER BY id`), [{ title: "kept", note: "existing row" }, { title: "also kept", note: "NULL" }]);
   for (let i = 0; i < 3; i++) wp("typedpress", "insert", "likes", JSON.stringify({ post: i + 1 }));
   wp("typedpress", "insert", "notes", JSON.stringify({ body: "first" }));
   wp("typedpress", "insert", "notes", JSON.stringify({ body: "second" }));
@@ -363,15 +363,15 @@ test("a field of a table the app didn't create changes type only with --drop, ev
   install("readoptField");
   assert.ok(applied().includes("0018_update"), "adopting the table and its field needs nothing");
   install("readoptRetype");
-  const columns = sql("SHOW COLUMNS FROM sf_spc_schema_check_retype_082186420c");
+  const columns = sql("SHOW COLUMNS FROM wp_external_retype");
   const retype = refused();
   assert.deepEqual(retype.refusals.map((r) => [r.code, r.name, r.rows]), [["drop_adopted_table", "tasks.rank", 0]]);
-  assert.match(retype.refusals[0].message, /sf_spc_schema_check_retype_082186420c/);
-  assert.deepEqual(sql("SHOW COLUMNS FROM sf_spc_schema_check_retype_082186420c"), columns, "a refused retype changed the table");
+  assert.match(retype.refusals[0].message, /wp_external_retype/);
+  assert.deepEqual(sql("SHOW COLUMNS FROM wp_external_retype"), columns, "a refused retype changed the table");
   assert.ok(applied("--drop=tasks.rank=0").includes("0019_update"));
-  const rank = sql("SHOW COLUMNS FROM sf_spc_schema_check_retype_082186420c").find((c) => c.Field === "rank");
+  const rank = sql("SHOW COLUMNS FROM wp_external_retype").find((c) => c.Field === "rank");
   assert.equal(String(rank?.Type).toLowerCase(), "longtext", "the confirmed retype made rank text");
-  assert.deepEqual(sql("SELECT name FROM sf_spc_schema_check_retype_082186420c"), [{ name: "from 0.8" }], "the adopted rows are kept");
+  assert.deepEqual(sql("SELECT name FROM wp_external_retype"), [{ name: "existing row" }], "the adopted rows are kept");
 });
 
 test("a migration that failed after a rename resumes: later checks find the table under its new name", () => {

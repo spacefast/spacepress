@@ -67,8 +67,7 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
         fs::read_to_string(compiled_first.join("source-migrations/snapshot.json")).unwrap(),
         r#"{"version":2,"tables":{}}"#
     );
-    // A capture taken by an older compiler keeps its ledger under `tp/migrations/`; recompiling
-    // it with this one still archives those files.
+    // Refuse a capture with a ledger outside the current path.
     let older = work.path().join("older");
     fs::create_dir(&older).unwrap();
     fs::copy(
@@ -97,11 +96,9 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     };
     fs::write(older.join("manifest.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
     let compiled_older = work.path().join("compiled-older");
-    typedpress::bundle::compile(&older, &compiled_older, &older, None).unwrap();
-    assert_eq!(
-        fs::read_to_string(compiled_older.join("source-migrations/0001_adopt.sql")).unwrap(),
-        "SELECT 'archived only';"
-    );
+    let refusal = typedpress::bundle::compile(&older, &compiled_older, &older, None).unwrap_err();
+    assert!(refusal.message.contains("tp/migrations/ moved"), "{refusal:?}");
+    assert!(!compiled_older.exists());
     let path = "plugins/typedpress-app-app/tp/app/functions.php";
     let before = fs::read(compiled_first.join(path)).unwrap();
     let compiled = std::process::Command::new(env!("CARGO_BIN_EXE_typedpress"))
@@ -210,11 +207,9 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
     }
 }
 
-/// A bundle captured before the `tp/` import fence keeps its helpers beside `typedpress.config.ts`
-/// (`./lib/message`). A stored bundle is frozen data, so the host recompiles it as captured; only a
-/// live project is held to the fence.
+/// Hosted compiles enforce the same import fence as checkouts.
 #[test]
-fn a_bundle_captured_before_the_import_fence_still_compiles() {
+fn hosted_bundles_enforce_the_import_fence() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("app");
     write(
@@ -225,7 +220,7 @@ fn a_bundle_captured_before_the_import_fence_still_compiles() {
     write(&project, "tp/message.ts", "export const message = 'kept';");
     let bundle = work.path().join("bundle");
     typedpress::bundle::sources(&project, &bundle).unwrap();
-    // Rewrite the capture to the layout an older compiler took: the helper at the project root.
+    // Rewrite the capture so the helper sits at the project root, outside tp/.
     let app = bundle.join(typedpress::bundle::APP_FILE);
     let mut captured: serde_json::Value = serde_json::from_slice(&fs::read(&app).unwrap()).unwrap();
     let old = |s: &str| {
@@ -254,9 +249,9 @@ fn a_bundle_captured_before_the_import_fence_still_compiles() {
     fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
     fs::remove_dir_all(&project).unwrap();
     let compiled = work.path().join("compiled");
-    if let Err(e) = typedpress::bundle::compile(&bundle, &compiled, &bundle, None) {
-        panic!("a stored pre-fence bundle must recompile: {}", e.message);
-    }
+    let refusal = typedpress::bundle::compile(&bundle, &compiled, &bundle, None).unwrap_err();
+    assert!(refusal.message.contains("outside tp/"), "{refusal:?}");
+    assert!(!compiled.exists());
 }
 
 /// A hosted compile types `abilities.call` from the captured `tp/_generated/abilities.json`: the bundle's
@@ -277,8 +272,7 @@ fn captured_ability_lock_types_hosted_calls() {
     if let Err(e) = typedpress::bundle::compile(&bundle, &compiled, &bundle, None) {
         panic!("{}", e.message);
     }
-    // A bundle captured before `tp/_generated/` names the lock `tp/abilities.json`. Hosts keep
-    // stored bundles and recompile them, so it compiles the same.
+    // A captured lock must be at the current path.
     let app = bundle.join(typedpress::bundle::APP_FILE);
     let mut captured: serde_json::Value = serde_json::from_slice(&fs::read(&app).unwrap()).unwrap();
     for map in ["files", "canonical"] {
@@ -311,7 +305,7 @@ fn captured_ability_lock_types_hosted_calls() {
         .into();
     fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
     let older = work.path().join("compiled-older");
-    if let Err(e) = typedpress::bundle::compile(&bundle, &older, &bundle, None) {
-        panic!("{}", e.message);
-    }
+    let refusal = typedpress::bundle::compile(&bundle, &older, &bundle, None).unwrap_err();
+    assert!(refusal.message.contains("tp/abilities.json moved"), "{refusal:?}");
+    assert!(!older.exists());
 }

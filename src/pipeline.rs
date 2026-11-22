@@ -117,7 +117,7 @@ pub fn build(
     runtime: impl Fn(&str) -> Option<&'static [u8]>,
 ) -> Result<Built, Diag> {
     // A checkout from before `tp/_generated/` would have its locks ignored (and replaced) and an old
-    // client loaded as app code. A stored source bundle maps those paths instead (`layout::current`).
+    // client loaded as app code.
     let root = program.modules[program.entry]
         .path
         .parent()
@@ -388,9 +388,6 @@ pub fn build(
     );
     let functions_php = crate::php_layout::format(&functions_php);
     let previous = previous_value;
-    adopted_names(&mut schema, &previous.snapshot);
-    // A 0.3.0 capture keeps the indexes its build had: recompiling a stored Space plans no migration.
-    let queried = if ev.legacy() { Default::default() } else { queried };
     let snapshot = migrate::snapshot_with(&schema, &queried);
     for (stored, prev_def) in &previous.folded.tables {
         let successor = snapshot["tables"].get(stored);
@@ -491,33 +488,6 @@ pub fn build(
         plugin_report: settled.report,
         wordpress_uses,
     })
-}
-
-/// Sets `adopted_as` on every `existingTable` collection: the registry key its binding was first
-/// built under, carried in the snapshot (`adoptedAs`) across `was` renames. A Zero 0.8 table's name
-/// ends in a digest over that key, which the runtime checks (`TypedPress\Wp\Guard::names`). A table
-/// stored without `adoptedAs` (a snapshot from before it) gives its stored name, not the current
-/// key, which may be a later alias; only a binding new in this build takes its key.
-fn adopted_names(schema: &mut schema::Schema, previous: &serde_json::Value) {
-    let empty = serde_json::Map::new();
-    let stored = previous["tables"].as_object().unwrap_or(&empty);
-    for c in schema.collections.values_mut() {
-        if c.existing_table.is_none() {
-            continue;
-        }
-        let renamed = c
-            .was
-            .clone()
-            .filter(|old| !stored.contains_key(&c.table) && stored.contains_key(old));
-        let before = stored.get(renamed.as_deref().unwrap_or(&c.table));
-        c.adopted_as = Some(match before {
-            Some(t) => t["adoptedAs"]
-                .as_str()
-                .map(str::to_owned)
-                .unwrap_or_else(|| renamed.unwrap_or_else(|| c.table.clone())),
-            None => c.key.clone(),
-        });
-    }
 }
 
 /// Each `tp/wp-hooks/` file becomes a root: its default export is the handler, an optional

@@ -55,7 +55,6 @@ pub mod wpml_config;
 pub mod cli;
 #[cfg(feature = "cli")]
 mod commands;
-pub mod config_migrate;
 #[cfg(feature = "host")]
 mod emit;
 #[cfg(feature = "cli")]
@@ -101,5 +100,3 @@ fn hex_is_lowercase_two_digits_a_byte() {
 }
 
 pub mod bundle;
-#[cfg(feature = "host")]
-mod zero_bundle;

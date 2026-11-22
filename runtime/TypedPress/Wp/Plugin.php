@@ -22,7 +22,7 @@ final class Plugin
     public const MIN_SCF = Platform::PLUGINS['secure-custom-fields']['version'];
 
     private static ?self $instance = null;
-    private static ?bool $keyed = null;
+    private static ?bool $hasLedger = null;
 
     private ?App $app = null;
     private string $mainFile;
@@ -438,9 +438,7 @@ final class Plugin
 
     public function maybeMigrate(): void
     {
-        // Storage from before the rename that hasn't moved yet: migrating now would create empty
-        // tables under the names the data is about to take. The runtime reports why (Runtime::boot).
-        if (!Runtime::installs() || ZeroNames::pending() || $this->current()) {
+        if (!Runtime::installs() || $this->current()) {
             return;
         }
         // A schema refusal holds until someone confirms or changes something: this build, or the
@@ -514,7 +512,7 @@ final class Plugin
     private function refusalState(): string
     {
         $migrator = $this->migrator();
-        $done = $migrator->keyed() ? $migrator->applied() : [];
+        $done = $migrator->hasLedger() ? $migrator->applied() : [];
 
         return hash('sha256', $this->schemaHash() . "\0" . implode("\n", $done));
     }
@@ -604,11 +602,6 @@ final class Plugin
     }
 
     /**
-     * Storage matches this build: the schema hash is recorded and the ledger is keyed by app. A
-     * runtime update alone (same app build, older ledger) is therefore an upgrade too; the per-request
-     * check costs one cached option read, plus one information_schema read the first time per process.
-     */
-    /**
      * Storage matches this build: nothing refused or held back, and every migration file of the build
      * is in the ledger. A build whose migrations haven't all run (WP-CLI before `typedpress migrate`, a
      * refused or held-back build, a ledger rewound by hand) may name tables that don't exist yet.
@@ -629,13 +622,13 @@ final class Plugin
     {
         if ($fresh) {
             wp_cache_delete($this->schemaOption(), 'options');
-            self::$keyed = null;
+            self::$hasLedger = null;
         }
         if (get_option($this->schemaOption()) !== $this->schemaHash()) {
             return false;
         }
 
-        return self::$keyed ??= $this->migrator()->keyed();
+        return self::$hasLedger ??= $this->migrator()->hasLedger();
     }
 
     private function migrator(): Migrator

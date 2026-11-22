@@ -8,10 +8,9 @@ use TypedPress\Jobs\Jobs;
 
 /**
  * `mail.send(message)` from "typedpress": queue one email inside the caller's transaction and hand it to
- * WordPress after commit, as the original runtime's `ctx.email.send` did through its outbox. A
- * rollback sends nothing; a failed hand-off is retried by the job runner.
+ * WordPress after commit. A rollback sends nothing; a failed hand-off is retried by the job runner.
  *
- * The message is the original `EmailMessage`: `from`, `to`, `subject`, `text`/`html`, `cc`, `bcc`,
+ * The message has `from`, `to`, `subject`, `text`/`html`, `cc`, `bcc`,
  * `replyTo`, `headers`. It is normalized and checked here, before queueing, so a bad address fails
  * the request instead of a background attempt.
  *
@@ -49,8 +48,7 @@ final class Mail
     }
 
     /**
-     * The original runtime's `emailPayload`: the same required fields, address coercion and header
-     * rules, so a message that sent from a 0.8 handler sends from here.
+     * Validate message fields, recipients, and headers before enqueueing a send.
      *
      * @return array<string, mixed>
      */

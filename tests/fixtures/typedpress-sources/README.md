@@ -28,9 +28,7 @@ layouts).
 
 ## The rule
 
-- **Until the first release is tagged:** TypedPress has no released authoring API and no managed site
-  holds TypedPress source yet (sites that ran the 0.3.0 compiler hold 0.3 bundles; `tests/zero_bundle.rs`
-  covers those). A PR that deliberately changes what the authoring surface accepts recaptures `head`
+- **Until the first release is tagged:** A PR that deliberately changes what the authoring surface accepts recaptures `head`
   in the same PR (`capture.sh head`) and adds a row to the table of breaks below. The suite still
   catches every change nobody meant: a plan, a storage description or a refusal that differs from the
   capture fails it.

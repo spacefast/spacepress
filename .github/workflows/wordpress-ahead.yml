@@ -135,7 +135,6 @@ jobs:
       - name: WordPress lane (tests/wp)
         run: tests/wp/run.sh 2>&1 | tee "$RUNNER_TEMP/wp.log"
         env:
-          TP_WP_SKIP_MIGRATE: '1'
           TP_WP_CORE_ZIP: ${{ steps.core.outputs.zip }}
       - name: Summary
         if: always()

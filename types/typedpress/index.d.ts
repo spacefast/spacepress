@@ -612,8 +612,11 @@ export type SoftDeleteColumns = {
 type WithId<TCols extends ColumnsConfig> = [PrimaryKeyOf<TCols>] extends [never]
   ? "id" extends keyof TCols ? TCols : TCols & { id: ColumnBuilder<"id", number, true, true, false, true> }
   : TCols;
-type WithSystem<TCols extends ColumnsConfig> = TCols & Omit<SystemColumns, keyof TCols> & Omit<SoftDeleteColumns, keyof TCols>;
-type StoredColumns<TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined> = WithId<TCols> & Omit<SystemColumns, keyof TCols> & Omit<SoftDeleteColumns, keyof TCols> & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>;
+type StoredColumns<
+  TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined,
+  TExisting extends string | undefined = undefined,
+> = WithId<TCols> & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>
+  & (TExisting extends string ? {} : Omit<SystemColumns, keyof TCols> & Omit<SoftDeleteColumns, keyof TCols>);
 
 /** WordPress posts, native editor, drafts and revisions. Registry key supplies identity. */
 export declare function collection<
@@ -625,14 +628,16 @@ export declare function collection<
 /** Relational application data in its own SQL table, regardless of field names. */
 export declare function table<
   TCols extends ColumnsConfig, TUid extends boolean = false, TSync extends string | undefined = undefined,
+  TExisting extends string | undefined = undefined,
 >(fields: TCols,
-  options: NoInfer<CollectionOptions<Collection<string, StoredColumns<TCols, TUid, TSync> & DraftColumns, false, "table">>> & { drafts: true } & IdentityOptions<TUid, TSync>,
-): Collection<string, StoredColumns<TCols, TUid, TSync> & DraftColumns, false, "table">;
+  options: NoInfer<CollectionOptions<Collection<string, StoredColumns<TCols, TUid, TSync, TExisting> & DraftColumns, false, "table">>> & { drafts: true; existingTable?: TExisting } & IdentityOptions<TUid, TSync>,
+): Collection<string, StoredColumns<TCols, TUid, TSync, TExisting> & DraftColumns, false, "table">;
 export declare function table<
   TCols extends ColumnsConfig, TUid extends boolean = false, TSync extends string | undefined = undefined,
+  TExisting extends string | undefined = undefined,
 >(fields: TCols,
-  options?: NoInfer<CollectionOptions<Collection<string, StoredColumns<TCols, TUid, TSync>, false, "table">>> & { drafts?: false } & IdentityOptions<TUid, TSync>,
-): Collection<string, StoredColumns<TCols, TUid, TSync>, false, "table">;
+  options?: NoInfer<CollectionOptions<Collection<string, StoredColumns<TCols, TUid, TSync, TExisting>, false, "table">>> & { drafts?: false; existingTable?: TExisting } & IdentityOptions<TUid, TSync>,
+): Collection<string, StoredColumns<TCols, TUid, TSync, TExisting>, false, "table">;
 
 /** One projection over existing wp_users/wp_usermeta, never a post or a second user table. */
 export declare function userProjection<TCols extends ColumnsConfig, TUid extends boolean = false>(fields: TCols,

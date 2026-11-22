@@ -435,7 +435,7 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
                     ),
                 );
             }
-            file.signature = Some(extract::signature_config(signature, span, ev.legacy())?);
+            file.signature = Some(extract::signature_config(signature, span)?);
         }
         if let Some(value) = exports.get("guard") {
             register_guard(
@@ -507,7 +507,6 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         login: program.app.login.as_ref().map(route),
         files,
         content: indexmap::IndexMap::new(),
-        legacy_routes: false,
     });
     Ok(())
 }

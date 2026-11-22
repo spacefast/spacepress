@@ -250,7 +250,7 @@ final class ActionSchedulerQueue
     private static function schedule_jobs(): void
     {
         $plugin = Runtime::plugin();
-        if ($plugin === null || $plugin->unavailable() !== null || \TypedPress\Wp\ZeroNames::pending()) {
+        if ($plugin === null || $plugin->unavailable() !== null) {
             return;
         }
         $done = self::fingerprint($plugin);
@@ -307,15 +307,13 @@ final class ActionSchedulerQueue
     }
 
     /**
-     * Once per site and app: create TypedPress's Action Scheduler groups outside any transaction, then give
-     * every waiting job that has no action one (Runner::recover), which covers the jobs a runtime before
-     * this one left in `tp__outbox`. The outbox rows themselves stay: data is never deleted
-     * automatically. Runs again for a new app name, and on the next request after a failure.
+     * Create the Action Scheduler groups outside app transactions. Retry on the next request
+     * after a failure.
      */
     private static function prepare(): void
     {
         $plugin = Runtime::plugin();
-        if ($plugin === null || $plugin->unavailable() !== null || \TypedPress\Wp\ZeroNames::pending()) {
+        if ($plugin === null || $plugin->unavailable() !== null) {
             return; // storage is behind this build; a later request prepares
         }
         $groups = ['typedpress', 'typedpress-' . $plugin->schema->name()];
@@ -340,8 +338,7 @@ final class ActionSchedulerQueue
                     throw new \RuntimeException('TypedPress needs InnoDB tables for Action Scheduler; these are not: ' . implode(', ', $myisam));
                 }
                 self::createGroups($connection, $groups);
-                // Jobs a runtime before this one left in `tp__outbox` (committed, never handed to
-                // Action Scheduler) get their action now; the hourly maintenance repeats the sweep.
+                // Recover waiting jobs whose delivery is missing.
                 $plugin->app();
                 Runner::recover();
                 update_option(self::PREPARED, $done, true); // read on every request

@@ -93,8 +93,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("typedpress", &["product", "productCategory", "productTag", "order"], overload("options?: object", arity(0, 1), None, None)),
     ("typedpress", &["taxonomy"], overload("fields?: object, options?: object", arity(0, 2), None, None)),
     ("typedpress", &["terms"], overload("taxonomy: Taxonomy | () => Taxonomy", arity(1, 1), None, None)),
-    ("typedpress", &["defineConfig", "action", "route", "env", "adminScreen", "adminWidget", "adminDashboard", "item"], overload("one configuration or environment name", arity(1, 1), None, None)),
-    // `job` takes one object in a 0.3.0 capture (`eval::legacy`), which checks its own arguments.
+    ("typedpress", &["defineConfig", "env", "adminScreen", "adminWidget", "adminDashboard", "item"], overload("one configuration or environment name", arity(1, 1), None, None)),
     ("typedpress", &["query", "mutation", "job"], overload("options: object, handler: function", arity(2, 2), None, None)),
     ("typedpress", &["cron"], overload("schedule: string, handler: function", arity(2, 2), None, None)),
     ("typedpress", &["files"], overload("options: object", arity(1, 2), None, None)),

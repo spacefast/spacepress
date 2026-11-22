@@ -420,10 +420,6 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
         }
         return Err(e.error);
     }
-    let legacy = project.join(".tp/wp");
-    if !root.starts_with(&legacy) && legacy.is_dir() {
-        std::fs::remove_dir_all(legacy)?;
-    }
     Ok(root)
 }
 

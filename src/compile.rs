@@ -2477,12 +2477,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     let _ = writeln!(out, "{p}{source} = {src};\n{p}foreach ({source} as {value}) {{");
                 } else {
-                    let len = self.tmp_var();
+                    let inner = pad(indent + 1);
+                    let _ = writeln!(out, "{p}{source} = {src};\n{p}for ({index} = 0; ; {index}++) {{");
+                    // JavaScript array iterators read the current length on every step.
                     let _ = writeln!(
                         out,
-                        "{p}{source} = {src};\n{p}{len} = \\count({source}->a);\n{p}for ({index} = 0; {index} < {len}; {index}++) {{"
+                        "{inner}if ({index} >= \\count({source}->a)) {{\n{inner}\tbreak;\n{inner}}}"
                     );
-                    let _ = writeln!(out, "{}{value} = {source}->a[{index}];", pad(indent + 1));
+                    let _ = writeln!(out, "{inner}{value} = {source}->a[{index}];");
                 }
                 let mut previous = None;
                 if *kind == DeclKind::Var {
@@ -4957,11 +4959,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "`abilities` can't be used as a value",
                 "call `abilities.call(\"vendor/name\", input)` directly",
             ),
-            Value::Builtin(Builtin::Jobs) => err_help(
-                span,
-                "`jobs` can't be used as a value",
-                "call `jobs.<name>.enqueue(input)` directly",
-            ),
             Value::Job(_) => err_help(
                 span,
                 format!("`{n}` is a job: it runs on the queue, not as a function"),
@@ -4975,9 +4972,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Value::Builtin(_)
             | Value::Column(_)
             | Value::ColRef(_)
-            | Value::Relation(_)
             | Value::Action(_)
-            | Value::Route(_)
             | Value::Plugin(_)
             | Value::Screen(_)
             | Value::FileBucket(_)
@@ -8814,19 +8809,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     // ---- jobs (§6.1, lane D) ------------------------------------------------------
 
-    /// `once(key, fn)`, `jobs.<name>.enqueue(input, opts?)` and `env("NAME")`; None for any other call.
+    /// `once(key, fn)`, `jobName.enqueue(input, opts?)` and `env("NAME")`; None for any other call.
     fn jobs_call(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Option<Out>> {
         let builtin = |this: &mut Self, e: &Expr| -> Result<Option<Builtin>> {
             let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
             Ok(match this.resolve(n, e.span)? {
                 Resolved::Value(
                     Value::Builtin(
-                        b @ (Builtin::Once
-                        | Builtin::Jobs
-                        | Builtin::Env
-                        | Builtin::Mail
-                        | Builtin::Abilities
-                        | Builtin::WpFunction(_)),
+                        b
+                        @ (Builtin::Once | Builtin::Env | Builtin::Mail | Builtin::Abilities | Builtin::WpFunction(_)),
                     ),
                     _,
                 ) => Some(b),
@@ -8857,16 +8848,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.abilities_call(prop, args, span).map(Some)
             }
             ExprKind::Member { obj, prop, .. } if prop == "enqueue" => match &obj.kind {
-                // A 0.3.0 capture's `jobs.<name>.enqueue(...)`; inside a plugin, the plugin's own job.
-                ExprKind::Member {
-                    obj: root, prop: job, ..
-                } if builtin(self, root)? == Some(Builtin::Jobs) => {
-                    let registered = match &self.plugin {
-                        Some((_, plugin)) => format!("{plugin}_{job}"),
-                        None => job.to_string(),
-                    };
-                    self.enqueue_call(&registered, obj.span, args, span).map(Some)
-                }
                 // `notifyLowStock.enqueue(...)` on the job's own export.
                 ExprKind::Ident(n) => match self.resolve(n, obj.span).map_err(|d| {
                     if d.help.is_none() {

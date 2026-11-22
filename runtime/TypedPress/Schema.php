@@ -71,7 +71,7 @@ final class Schema
 
     public function version(): int
     {
-        return $this->raw['version'] ?? 5;
+        return $this->raw['version'];
     }
 
     public function runtime(): ?string
@@ -84,9 +84,6 @@ final class Schema
         return (string) ($this->raw['name'] ?? 'app');
     }
 
-    /** The compiler's list (src/kind_url.rs), for an app built before it was in every schema. */
-    private const RESERVED = ['wp-admin', 'wp-json', 'wp-content', 'wp-includes', 'wp-login.php', 'wp-signup.php', 'wp-cron.php', 'wp-sitemap.xml', 'xmlrpc.php', 'feed', '__tp', '__spacefast', 'llms.txt', 'robots.txt', 'favicon.ico', 'sitemap.xml', 'author', 'category', 'tag', 'search', 'page', 'comments', 'embed', 'type', 'attachment', 'trackback', 'wp-activate.php', 'wp-trackback.php', 'wp-comments-post.php', 'wp-mail.php', '.well-known', '__zero', 'identity', 'index.php', 'wp-config.php', 'typedpress-admin', 'auth'];
-
     /**
      * WordPress's and TypedPress's own first path segments (`wp-admin`, `wp-json`, `__tp`, `feed`, …),
      * lowercased: what the app's files never answer for.
@@ -95,8 +92,7 @@ final class Schema
      */
     public function reserved(): array
     {
-        // An app built before the list was in every schema: the app router's copy, else the runtime's.
-        return array_map('strtolower', (array) ($this->raw['reserved'] ?? $this->raw['app']['reserved'] ?? self::RESERVED));
+        return array_map('strtolower', $this->raw['reserved']);
     }
 
     /**
@@ -358,7 +354,7 @@ final class Schema
             return null;
         }
 
-        return ($spec['commentPolicy'] ?? []) + ['guests' => false, 'moderation' => 'first-time', 'threaded' => 3, 'closeAfterDays' => null, 'types' => []];
+        return $spec['commentPolicy'];
     }
 
     public function global(string $name): array

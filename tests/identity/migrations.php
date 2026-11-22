@@ -56,6 +56,18 @@ try {
     check(($sessionColumns['previous_secret_hash'] ?? null) === 'char(64)' && isset($sessionColumns['previous_until']), 'v4 sessions keep a reopened secret for a short grace (previous_secret_hash, previous_until)');
     check($connection->get_var("SELECT option_value FROM {$connection->options} WHERE option_name='tp_identity_schema_version'") === '4', 'schema version 4 recorded on the migrated prefix');
     check(($sessions->find($token)['id'] ?? null) === $session['id'], 'a rerun keeps existing sessions live');
+    // Storage another schema version wrote is refused untouched, and the refusal says what to do.
+    $connection->update($connection->options, ['option_value' => '3'], ['option_name' => 'tp_identity_schema_version']);
+    $refusal = null;
+    try {
+        Schema::migrate($db);
+    } catch (\TypedPress\Identity\Failure $failure) {
+        $refusal = $failure;
+    }
+    $connection->update($connection->options, ['option_value' => '4'], ['option_name' => 'tp_identity_schema_version']);
+    check($refusal !== null && $refusal->status === 503 && str_contains($refusal->getMessage(), 'is schema version 3 and this build reads only version 4')
+        && str_contains($refusal->getMessage(), 'tp_identity_schema_version') && str_contains($refusal->getMessage(), 'tp_identity_* tables'), 'storage of another schema version is refused with the two ways out');
+    check(($sessions->find($token)['id'] ?? null) === $session['id'], 'the refusal changes nothing');
     $db->run("UPDATE {$db->prefix}sessions SET expires_at=%d WHERE id=%s", time(), $session['id']);
     check($sessions->find($token) === null, 'session lookup honours expiry');
     $db->run("UPDATE {$db->prefix}sessions SET expires_at=%d WHERE id=%s", time() + 3600, $session['id']);

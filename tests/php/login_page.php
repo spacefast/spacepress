@@ -26,8 +26,8 @@ $site = wpSite('login-page', ['wpContent' => $argv[1], 'identity' => true, 'base
     // its initialize (version 3). The storage itself is already 4, so whatever Identity's boot reruns
     // on seeing 3 changes nothing.
     if (($_SERVER['HTTP_X_TEST_IDENTITY_SCHEMA'] ?? '') === '3') {
-        add_filter('option_tp_identity_schema_version', static fn () => '3', PHP_INT_MAX);
-        add_filter('pre_option_tp_identity_schema_version', static fn () => '3', PHP_INT_MAX);
+        add_filter('option_tp_identity_schema_version', static fn () => '0', PHP_INT_MAX);
+        add_filter('pre_option_tp_identity_schema_version', static fn () => '0', PHP_INT_MAX);
     }
     PHP, 'captcha' => <<<'PHP'
     <?php

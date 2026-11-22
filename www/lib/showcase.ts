@@ -7,7 +7,6 @@ import path from "node:path";
 
 import { runRequest, type ExampleRun, type Ledger } from "./blueprint.ts";
 import { compileFiles, repo, site } from "./examples.ts";
-import { compilerEntry } from "./playground-catalog.ts";
 import { siteFiles, type SiteExample } from "./site-examples.ts";
 
 export const showcaseRoot = path.join(site, ".showcase");
@@ -16,7 +15,7 @@ export const filesRoot = path.join(site, ".build/files");
 export interface Manifest {
   /** The config's `name`: the app plugin is `typedpress-app-<app>`. */
   app: string;
-  /** Every file, sorted, with First names. `blob` is null for a binary file. */
+  /** Every file, sorted by path. `blob` is null for a binary file. */
   files: { path: string; blob: string | null; size: number }[];
   /** The WordPress.org plugins in the lock `typedpress build` wrote, with their versions. */
   wordpressPlugins: { slug: string; version: string }[];
@@ -45,7 +44,7 @@ export function manifest(name: string): Manifest {
   const copy = path.join(showcaseRoot, name);
   const stale = sourcesOf(example).filter((file) => !existsSync(path.join(copy, file)) || readFileSync(path.join(example, file), "utf8") !== readFileSync(path.join(copy, file), "utf8"));
   if (stale.length) throw new Error(`examples/${name} changed since \`npm run showcase\` built it (${stale.join(", ")}); run it again`);
-  if (!built.files.some((file) => file.path === "typedpress.config.ts")) throw new Error(`examples/${name} has no ${compilerEntry}`);
+  if (!built.files.some((file) => file.path === "typedpress.config.ts")) throw new Error(`examples/${name} has no typedpress.config.ts`);
   return built;
 }
 

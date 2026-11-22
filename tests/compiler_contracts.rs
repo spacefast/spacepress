@@ -1816,7 +1816,7 @@ import { createHmac } from "node:crypto";
 // The send happens in a helper the handler calls with what it read. Package TypeScript compiles
 // as checked JavaScript, where awaiting a helper's result isn't supported, so the helper awaits.
 async function push(body: string) {
-  const response = await fetch("https://hooks.example.com/in", { method: "POST", body: String(body), headers: { authorization: process.env.SYNC_KEY ?? "", "x-signature": createHmac("sha256", process.env.SYNC_SIGNING!).update(body).digest("hex") } });
+  const response = await fetch(new URL("https://hooks.example.com/in"), { method: "POST", body: String(body), headers: { authorization: process.env.SYNC_KEY ?? "", "x-signature": createHmac("sha256", process.env.SYNC_SIGNING!).update(body).digest("hex") } });
   return response.status;
 }
 export default () => definePlugin({
@@ -3920,6 +3920,112 @@ fn a_method_replaced_by_a_later_property_is_not_callable() {
 }
 
 #[test]
+fn compiler_followups_preserve_spread_receivers_and_class_narrowing_in_php() {
+    let cases = [
+        (
+            "function maybeA(present: boolean): { a?: number } { return present ? { a: 7 } : {}; }",
+            "{ const absent = { a: 's', ...maybeA(false) }; const present = { a: 's', ...maybeA(true) }; return [Number(absent.a ?? 0), Number(present.a ?? 0)]; }",
+            json!([null, 7]),
+        ),
+        (
+            "function maybeF(present: boolean): { f?: () => number } { return present ? { f: () => 9 } : {}; }",
+            "{ const absent: { n: number; f: (() => number) | undefined } = { n: 2, f() { return this.n; }, ...maybeF(false) }; const present = { n: 2, f() { return this.n; }, ...maybeF(true) }; const f = absent.f; const g = present.f; return [f ? f.call(absent) : 0, g ? g() : 0]; }",
+            json!([2, 9]),
+        ),
+        (
+            "class Box { constructor(public n: number) {} top(): number { return makeBox().n; } } function makeBox(): Box { return new Box(4); }",
+            "{ const value = makeBox().top(); const u: unknown = new Box(4); const both = u instanceof Box && u.top() === value; if (u instanceof Box) return [value, both, u.top()]; return []; }",
+            json!([4, true, 4]),
+        ),
+        (
+            "const captured = { a() { const self = this; return self.n; }, b() { return this.a(); }, c() { const self = this; return self.a(); }, n: 3 };",
+            "{ const inline = { a() { const self = this; return self.n; }, b() { return this.a(); }, c() { const self = this; return self.a(); }, n: 4 }; return [captured.a(), captured.b(), captured.c(), inline.a(), inline.b(), inline.c()]; }",
+            json!([3, 3, 3, 4, 4, 4]),
+        ),
+    ];
+    let project = tempfile::tempdir().unwrap();
+    let mut source = String::from("import { defineConfig, mutation } from 'typedpress';\n");
+    let mut expected = serde_json::Map::new();
+    for (i, (declarations, body, result)) in cases.into_iter().enumerate() {
+        source.push_str(&format!(
+            "{declarations}\nexport const p{i} = mutation({{}}, () => {body});\n"
+        ));
+        expected.insert(format!("p{i}"), result);
+    }
+    for (i, (body, result)) in [
+        (r#"return this["b"]();"#, json!(3)),
+        (r#"return this?.["b"]();"#, json!(3)),
+        ("const { b } = this; return b();", json!("undefined")),
+        ("const self = this; return self.b();", json!(3)),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let sibling = if i == 2 {
+            "return typeof this;"
+        } else {
+            "return this.n;"
+        };
+        let literal = format!("{{ a() {{ {body} }}, b() {{ {sibling} }}, n: 3 }}");
+        source.push_str(&format!(
+            "const api{i} = {literal};\nexport const receiver{i} = mutation({{}}, () => [api{i}.a(), ({literal}).a()]);\n"
+        ));
+        expected.insert(format!("receiver{i}"), json!([result, result]));
+    }
+    source.push_str("export default defineConfig({ name: 'compiler-followups' });\n");
+    std::fs::write(project.path().join("typedpress.config.ts"), source).unwrap();
+    let content = build_wp(project.path());
+    let actual = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $out = [];
+        foreach ($schema['actions'] as $name => $action) {
+            $fn = '\\TypedPressApp\\' . $action['handler'];
+            $out[$name] = $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user' => null]));
+        }
+        echo \TypedPress\Js::jsonStringify(new \TypedPress\JsObject($out));
+        "#,
+        &[
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-compiler-followups/tp/app"),
+        ],
+    );
+    assert_eq!(actual, Value::Object(expected));
+}
+
+#[test]
+fn commonjs_whole_receiver_refusal_uses_the_source_name() {
+    let project = tempfile::tempdir().unwrap();
+    write_app(
+        project.path().join("tp/api.cjs"),
+        "exports.v = 1; exports.get = () => this;",
+    )
+    .unwrap();
+    std::fs::write(
+        project.path().join("typedpress.config.ts"),
+        "import { defineConfig, mutation } from 'typedpress'; import api from './tp/api.cjs'; export const probe = mutation({}, () => api.get()); export default defineConfig({});",
+    )
+    .unwrap();
+    let (out, report) = checked(project.path());
+    assert_eq!(out.status.code(), Some(1), "{report}");
+    let diagnostic = &report["diagnostics"][0];
+    assert!(
+        diagnostic["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("`this` holds functions"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic["help"].as_str().unwrap().contains("`this.get(...)`"),
+        "{diagnostic}"
+    );
+    assert!(!report.to_string().contains("%commonjs-this"), "{report}");
+}
+
+#[test]
 fn language_constructs_match_node_through_generated_php() {
     let dir = root().join("tests/differential/language");
     let mut apps: Vec<_> = std::fs::read_dir(&dir)
@@ -4708,17 +4814,24 @@ fn language_refusals_carry_a_location_and_a_fix() {
         ),
         (
             "module-level literal method calling itself without a return type",
-            "const api = { n: 1, fact(k: number) { return k ? this.n * this.fact(k - 1) : 1; } };",
-            "api.fact(2)",
+            "const api = { n: 1, fact(k: number, j: string) { return k ? this.n * this.fact(k - 1, j) : j.length; } };",
+            "api.fact(2, 'a')",
             "has no field `fact`",
-            "`fact` calls itself through `this`; annotate its return type, e.g. `fact(k: number): number`",
+            "`fact` calls itself through `this`; annotate its return type, e.g. `fact(k: number, j: string): number`",
         ),
         (
-            "module-level literal method reaching a sibling through a variable",
-            "const api = { n: 1, first() { const self = this; return self.second(); }, second() { return this.n; } };",
-            "api.first()",
-            "has no field `second`",
-            "through `this` held in a variable",
+            "three module-level methods in a cycle",
+            "const api = { a() { return this.b(); }, b() { return this.c(); }, c() { return this.a(); } };",
+            "api.a()",
+            "has no field `a`",
+            "a cycle through `this`; annotate the return type of `a`",
+        ),
+        (
+            "three local methods in a cycle",
+            "",
+            "({ a() { return this.b(); }, b() { return this.c(); }, c() { return this.a(); } }).a()",
+            "has no field `a`",
+            "a cycle through `this`; annotate the return type of `a`",
         ),
         (
             "receiver-typed callback",
@@ -4726,6 +4839,20 @@ fn language_refusals_carry_a_location_and_a_fix() {
             "[1].map(function (this: { x: number }, value) { return this.x + value; })",
             "so `this` is undefined, not { x: number }",
             "",
+        ),
+        (
+            "receiver-typed callback by reference",
+            "function add(this: { x: number }, v: number) { return this.x + v; }",
+            "[1].map(add)",
+            "so `this` is undefined, not { x: number }",
+            "capture the object",
+        ),
+        (
+            "an annotated method's receiver does not type a nested ordinary function",
+            "",
+            "({ n: 2, f(this: { n: number }) { void this; function g() { return this.n; } return g(); } }).f()",
+            "`this` without a type in a function that isn't a method",
+            "declare it",
         ),
         (
             "this before super",

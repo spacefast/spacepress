@@ -1457,14 +1457,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 continue;
             }
             if i == 0 && receives_this(&f) && p.ann.is_none() && !self.javascript_module(f.module) {
-                return Err(Diag::new(
-                    p.span,
-                    "TypedPress code doesn't support `this` without a type in a function that isn't a method of an object literal",
-                )
-                .code(crate::diag::Code::Unsupported)
-                .help(
-                    "declare it, e.g. `function f(this: { count: number })`, or write the function as a method in the object literal it is called on",
-                ));
+                return Err(untyped_this(p.span));
             }
             let declared = match &p.ann {
                 // `PageProps`/`LayoutProps` from "typedpress/app" are whatever the router passes this route.
@@ -3872,15 +3865,108 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.javascript_object(props)?
             }
             ExprKind::Object(props) => {
+                struct DeferredMethod<'a> {
+                    slot: usize,
+                    func: &'a Rc<Func>,
+                    key_php: String,
+                    name: String,
+                    optional_overrides: Vec<Ty>,
+                }
+
+                impl DeferredMethod<'_> {
+                    fn field_type(&self, ty: Ty) -> Ty {
+                        Ty::union(std::iter::once(ty).chain(self.optional_overrides.iter().cloned()))
+                    }
+                }
+
+                #[derive(Clone, Copy)]
+                enum MethodState {
+                    Pending,
+                    Typing,
+                    Done,
+                    Deferred(usize),
+                }
+
+                struct MethodTyping<'a, 'f> {
+                    methods: &'a [DeferredMethod<'f>],
+                    owner: &'a HashMap<String, usize>,
+                    untyped: HashSet<&'a str>,
+                    states: Vec<MethodState>,
+                    fields: &'a mut IndexMap<String, (Ty, bool)>,
+                    parts: &'a mut [String],
+                }
+
+                impl MethodTyping<'_, '_> {
+                    fn compile(&mut self, c: &mut Compiler<'_, '_>, i: usize, speculative: bool) -> Result<()> {
+                        match self.states[i] {
+                            MethodState::Typing | MethodState::Done => return Ok(()),
+                            // Retry speculative failures once another sibling's type is known.
+                            MethodState::Deferred(count) if speculative && count == self.untyped.len() => return Ok(()),
+                            _ => {}
+                        }
+                        self.states[i] = MethodState::Typing;
+                        let result = self.compile_pending(c, i, speculative);
+                        self.states[i] = if result.is_ok() {
+                            MethodState::Done
+                        } else {
+                            MethodState::Deferred(self.untyped.len())
+                        };
+                        result
+                    }
+
+                    fn compile_pending(&mut self, c: &mut Compiler<'_, '_>, i: usize, speculative: bool) -> Result<()> {
+                        let method = &self.methods[i];
+                        let mut whole = false;
+                        for read in &method.func.this_reads {
+                            match read {
+                                ThisRead::Field(key) if self.untyped.contains(key.as_str()) => {
+                                    self.compile(c, self.owner[key], speculative)?;
+                                }
+                                ThisRead::Whole => whole = true,
+                                ThisRead::Field(_) => {}
+                            }
+                        }
+                        if whole {
+                            // Try untyped siblings first. A sibling that depends on this method
+                            // can still be typed after it if the method never reads that sibling.
+                            for (j, sibling) in self.methods.iter().enumerate() {
+                                if self.untyped.contains(sibling.name.as_str()) && self.owner[&sibling.name] == j {
+                                    let _ = self.compile(c, j, true);
+                                }
+                            }
+                        }
+                        let this = Ty::Obj(
+                            self.fields
+                                .iter()
+                                .filter(|(key, _)| !self.untyped.contains(key.as_str()))
+                                .map(|(key, (ty, optional))| (key.clone(), (widen_fresh_literals(ty), *optional)))
+                                .collect(),
+                        );
+                        let build = |c: &mut Compiler<'_, '_>| c.method_with_this(method.func, this);
+                        let result = if speculative { c.attempt(build) } else { build(c) };
+                        let v = result.map_err(|d| {
+                            this_cycle_help(d, &method.name, method.func, self.untyped.iter().copied(), |key| {
+                                self.owner.get(key).map(|i| self.methods[*i].func.clone())
+                            })
+                        })?;
+                        if self.owner.get(&method.name) == Some(&i) {
+                            self.fields[&method.name].0 = method.field_type(v.ty);
+                            self.untyped.remove(method.name.as_str());
+                        }
+                        self.parts[method.slot] = format!("[{} => {}]", method.key_php, v.php);
+                        Ok(())
+                    }
+                }
+
                 let mut parts = Vec::new();
                 let mut fields: IndexMap<String, (Ty, bool)> = IndexMap::new();
                 let mut map_values = Vec::new();
                 let mut is_map = false;
                 // TypeScript types `this` in an object literal's methods as the literal itself.
-                // Methods that read `this` compile after every other property (creating a
+                // Methods with an inferred `this` compile after every other property (creating a
                 // function evaluates nothing, so this keeps JavaScript's order), typed by the
                 // finished fields; their PHP fills the slot reserved at their position.
-                let mut deferred: Vec<(usize, &Rc<Func>, String, String)> = Vec::new();
+                let mut deferred: Vec<DeferredMethod<'_>> = Vec::new();
                 // The deferred method each key still holds; a later property or spread with the
                 // same key replaces it, and the literal's field takes that value's type.
                 let mut owner: HashMap<String, usize> = HashMap::new();
@@ -3903,12 +3989,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             };
                             if let (ExprKind::Func(f), Some(k)) = (&value.kind, name)
                                 && receives_this(f)
+                                && f.params.first().is_some_and(|p| p.ann.is_none())
                                 && !self.javascript_module(f.module)
                             {
                                 fields.shift_remove(k);
                                 fields.insert(k.clone(), (Ty::Unknown, false));
                                 owner.insert(k.clone(), deferred.len());
-                                deferred.push((parts.len(), f, key_php, k.clone()));
+                                deferred.push(DeferredMethod {
+                                    slot: parts.len(),
+                                    func: f,
+                                    key_php,
+                                    name: k.clone(),
+                                    optional_overrides: Vec::new(),
+                                });
                                 parts.push(String::new());
                                 continue;
                             }
@@ -3931,10 +4024,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             };
                             match shape {
                                 Ty::Obj(f) => {
-                                    for (k, t) in f {
-                                        owner.remove(&k);
-                                        fields.shift_remove(&k);
-                                        fields.insert(k, t);
+                                    for (key, (ty, optional)) in f {
+                                        if optional {
+                                            // An absent spread key leaves the previous value in place.
+                                            if let Some(&i) = owner.get(&key) {
+                                                deferred[i].optional_overrides.push(ty);
+                                                continue;
+                                            }
+                                            if let Some((previous, _)) = fields.get_mut(&key) {
+                                                *previous = Ty::union([previous.clone(), ty]);
+                                                continue;
+                                            }
+                                        }
+                                        owner.remove(&key);
+                                        fields.shift_remove(&key);
+                                        fields.insert(key, (ty, optional));
                                     }
                                 }
                                 Ty::Map(t) => {
@@ -3958,78 +4062,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // then each method once, after the sibling methods it reads through `this`
                     // (`Func::this_reads`). A method reading one that isn't typed yet (a cycle
                     // without annotations) sees no such field and is refused.
-                    let live = |i: usize, name: &str, owner: &HashMap<String, usize>| owner.get(name) == Some(&i);
-                    for (i, (_, f, _, name)) in deferred.iter().enumerate() {
-                        if live(i, name, &owner)
-                            && let Some(ty) = self.declared_signature(f)?
-                            && let Some(entry) = fields.get_mut(name)
+                    for (i, method) in deferred.iter().enumerate() {
+                        if owner.get(&method.name) == Some(&i)
+                            && let Some(ty) = self.declared_signature(method.func)?
                         {
-                            entry.0 = ty;
+                            fields[&method.name].0 = method.field_type(ty);
                         }
                     }
                     // Keys still held by a method with no type yet: left out of `this`.
-                    let mut untyped: HashSet<String> = deferred
+                    let untyped = owner
                         .iter()
-                        .enumerate()
-                        .filter(|(i, (_, _, _, name))| {
-                            live(*i, name, &owner) && fields.get(name).is_some_and(|(t, _)| *t == Ty::Unknown)
-                        })
-                        .map(|(_, (_, _, _, name))| name.clone())
+                        .filter(|(name, _)| fields[*name].0 == Ty::Unknown)
+                        .map(|(name, _)| name.as_str())
                         .collect();
-                    let by_name: HashMap<&str, usize> = owner.iter().map(|(k, i)| (k.as_str(), *i)).collect();
-                    let mut order = Vec::with_capacity(deferred.len());
-                    let mut state = vec![0u8; deferred.len()];
-                    fn visit(
-                        i: usize,
-                        deferred: &[(usize, &Rc<Func>, String, String)],
-                        by_name: &HashMap<&str, usize>,
-                        untyped: &HashSet<String>,
-                        state: &mut [u8],
-                        order: &mut Vec<usize>,
-                    ) {
-                        if state[i] != 0 {
-                            return;
-                        }
-                        state[i] = 1;
-                        for read in &deferred[i].1.this_reads {
-                            if untyped.contains(read)
-                                && let Some(&j) = by_name.get(read.as_str())
-                            {
-                                visit(j, deferred, by_name, untyped, state, order);
-                            }
-                        }
-                        state[i] = 2;
-                        order.push(i);
-                    }
+                    let mut typing = MethodTyping {
+                        methods: &deferred,
+                        owner: &owner,
+                        untyped,
+                        states: vec![MethodState::Pending; deferred.len()],
+                        fields: &mut fields,
+                        parts: &mut parts,
+                    };
                     for i in 0..deferred.len() {
-                        visit(i, &deferred, &by_name, &untyped, &mut state, &mut order);
-                    }
-                    for i in order {
-                        let this: IndexMap<String, (Ty, bool)> = fields
-                            .iter()
-                            .filter(|(k, _)| !untyped.contains(*k))
-                            .map(|(k, (t, o))| (k.clone(), (widen_fresh_literals(t), *o)))
-                            .collect();
-                        let (slot, f, key_php, name) = &deferred[i];
-                        // A cycle without annotations reads a method before it has a type.
-                        let early = f
-                            .this_reads
-                            .iter()
-                            .find(|r| untyped.contains(*r) && *r != name)
-                            .cloned();
-                        let v = self.method_with_this(f, Ty::Obj(this)).map_err(|d| match &early {
-                            Some(m) if d.message.ends_with(&format!("has no field `{m}`")) => d.help(format!(
-                                "`{m}` and `{name}` call each other through `this`; annotate the return type of `{m}`, e.g. `{m}(): number`"
-                            )),
-                            _ => d,
-                        })?;
-                        if live(i, name, &owner)
-                            && let Some(entry) = fields.get_mut(name)
-                        {
-                            entry.0 = v.ty.clone();
-                            untyped.remove(name);
-                        }
-                        parts[*slot] = format!("[{key_php} => {}]", v.php);
+                        typing.compile(self, i, false)?;
                     }
                 }
                 let ty = if is_map {
@@ -4726,6 +4781,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// `member`: the value was read through a static member chain (`ns.a.b`), so its type
     /// is the widened property type rather than a `const` binding's literal.
     fn captured_use(&mut self, n: &str, v: Value, b: &Binding, span: Span, callee: bool, member: bool) -> Result<Out> {
+        let n = if n == crate::lower::COMMONJS_THIS { "this" } else { n };
         let home_receiver = self.home_receiver.take();
         if b.mutable && b.module_level && !self.javascript_module(self.fx.as_ref().expect("fn").module) {
             return err_help(
@@ -4794,7 +4850,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 let caller = self.current.clone();
                 self.calls.entry(caller).or_default().insert(name.clone());
-                let Some(ty) = self.helper_types.get(&key).cloned() else {
+                let ty = match self.helper_types.get(&key) {
+                    Some(ty) => Some(ty.clone()),
+                    // Resolving the helper's annotations can compile a class that calls it before
+                    // compile_function publishes its signature. The class now has its field types.
+                    None => self.declared_signature(&c.func)?,
+                };
+                let Some(ty) = ty else {
                     return err_help(
                         span,
                         format!("`{n}` calls itself, so it needs a return type"),
@@ -5414,53 +5476,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let result = self
             .home_this_type(home, home_path, &c.func.this_reads, &binding, span, &mut Vec::new())
             .and_then(|(this, left_out)| {
-                self.compile_helper_now(c, name, Some(this))
-                    .map_err(|d| self.this_cycle_help(d, home, path, &left_out))
+                self.compile_helper_now(c, name, Some(this)).map_err(|d| {
+                    let method = path.rsplit('.').next().unwrap_or(path);
+                    this_cycle_help(
+                        d,
+                        method,
+                        &c.func,
+                        left_out.iter().map(String::as_str),
+                        |key| match home.borrow().get(key) {
+                            Some(Value::Closure(c)) => Some(c.func.clone()),
+                            _ => None,
+                        },
+                    )
+                })
             });
         self.typing_this.remove(&typing);
         self.failed_helpers = outer_failures;
         result
-    }
-
-    /// The fix for a `this` read refused because a sibling method had no type yet: a method that
-    /// calls itself, or methods calling each other, need one return type annotated; a method
-    /// reached through `this` held in a variable, spread or destructured isn't compiled first.
-    fn this_cycle_help(&self, d: Diag, home: &Obj, path: &str, left_out: &[String]) -> Diag {
-        let method = path.rsplit('.').next().unwrap_or(path);
-        let Some(m) = left_out
-            .iter()
-            .find(|m| d.message.ends_with(&format!("has no field `{m}`")))
-        else {
-            return d;
-        };
-        let Some(Value::Closure(c)) = home.borrow().get(m).cloned() else {
-            return d;
-        };
-        let params = c
-            .func
-            .params
-            .iter()
-            .skip(usize::from(receives_this(&c.func)))
-            .map(|p| match &p.pat {
-                Pat::Id(n, _) => format!("{n}: number"),
-                _ => "value: number".into(),
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        let calls_back = c.func.this_reads.iter().any(|r| r == method || r == m);
-        let reads_directly = path_reads(home, method).is_some_and(|reads| reads.iter().any(|r| r == m));
-        let help = if m == method {
-            format!("`{m}` calls itself through `this`; annotate its return type, e.g. `{m}({params}): number`")
-        } else if calls_back && reads_directly {
-            format!(
-                "`{m}` and `{method}` call each other through `this`; annotate the return type of `{m}`, e.g. `{m}({params}): number`"
-            )
-        } else {
-            format!(
-                "`{method}` reaches `{m}` through `this` held in a variable, spread or destructured, so `{m}` isn't typed first; call it as `this.{m}(...)`, or annotate its parameters and return type, e.g. `{m}({params}): number`"
-            )
-        };
-        d.help(help)
     }
 
     /// The type of `home` as a method's `this`, and the keys left out because their method is
@@ -5469,7 +5501,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         &mut self,
         home: &Obj,
         path: &str,
-        reads: &[String],
+        reads: &[ThisRead],
         binding: &Binding,
         span: Span,
         seen: &mut Vec<usize>,
@@ -5478,8 +5510,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let members: Vec<(String, Value)> = home.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         let mut fields = IndexMap::new();
         let mut left_out = Vec::new();
+        let whole = reads.iter().any(|read| matches!(read, ThisRead::Whole));
         for (key, member) in members {
-            let needed = reads.contains(&key);
+            let named = reads
+                .iter()
+                .any(|read| matches!(read, ThisRead::Field(name) if name == &key));
+            let needed = named || whole;
             let member_path = format!("{path}.{key}");
             let ty = match &member {
                 Value::Closure(c) => {
@@ -5488,10 +5524,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     } else if let Some(ty) = self.declared_signature(&c.func)? {
                         Some(ty)
                     } else if needed && !self.typing_this.contains(&(self.owner(), closure_key(c))) {
-                        self.attempt(|this| {
+                        let built = self.attempt(|this| {
                             this.home_receiver = Some(Rc::as_ptr(home) as usize);
                             this.captured_use(&member_path, member.clone(), binding, span, true, true)
-                        })?;
+                        });
+                        if named {
+                            built?;
+                        }
                         self.helper_types.get(&closure_key(c)).cloned()
                     } else {
                         None
@@ -5502,12 +5541,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         None
                     } else {
                         // A nested object's methods are compiled when the method reads it.
-                        let all: Vec<String> = if needed {
-                            o.borrow().keys().cloned().collect()
-                        } else {
-                            Vec::new()
-                        };
-                        Some(self.home_this_type(o, &member_path, &all, binding, span, seen)?.0)
+                        let reads = if needed { &[ThisRead::Whole][..] } else { &[] };
+                        Some(self.home_this_type(o, &member_path, reads, binding, span, seen)?.0)
                     }
                 }
                 _ => match self
@@ -5768,8 +5803,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let Ty::Fn(declared, _) = &v.ty else {
             return err(e.span, format!("expected a function, got {}", v.ty.describe()));
         };
+        self.check_callback_reference(e)?;
         check_callback_parameters(params, declared, e.span)?;
         Ok(checked_function(v))
+    }
+
+    fn check_callback_reference(&mut self, e: &Expr) -> Result<()> {
+        if let Some((_, Value::Closure(c), _)) = self.static_receiver(e)?
+            && receives_this(&c.func)
+            && let Some(ann) = c.func.params.first().and_then(|p| p.ann.as_ref())
+        {
+            let receiver = self.resolve_runtime_ann(ann, c.func.module)?;
+            check_callback_receiver(&receiver, e.span)?;
+        }
+        Ok(())
     }
 
     /// An object-literal method that reads `this`, compiled with `this` typed as the literal.
@@ -5811,6 +5858,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn closure_with_types(&mut self, f: &Rc<Func>, params: Option<&[Ty]>) -> Result<Out> {
+        let implicit_this = self.implicit_this.take();
         if !f.type_params.is_empty() {
             return err_help(
                 f.span,
@@ -5835,28 +5883,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     ps.get(i).cloned()
                 }
             });
-            let implicit_this = (is_this && p.ann.is_none())
-                .then(|| self.implicit_this.take())
-                .flatten();
+            let implicit_this = implicit_this.as_ref().filter(|_| is_this);
             let t = match (&p.ann, implicit_this) {
-                (None, Some(this)) => this,
+                (None, Some(this)) => this.clone(),
                 // A callback is called without a receiver it could rely on.
                 (None, None) if is_this && params.is_some() => Ty::Unknown,
                 (Some(a), _) => {
                     let declared = self.resolve_runtime_ann(a, module)?;
                     // A callback is called without a receiver, so its `this` is undefined.
-                    if is_this
-                        && params.is_some()
-                        && check_parameter_argument(&Ty::Undefined, &declared, p.span).is_err()
-                    {
-                        return err_help(
-                            p.span,
-                            format!(
-                                "this callback is called without a receiver, so `this` is undefined, not {}",
-                                declared.describe()
-                            ),
-                            "capture the object in a variable or use an arrow function, and read it instead of `this`",
-                        );
+                    if is_this && params.is_some() {
+                        check_callback_receiver(&declared, p.span)?;
                     }
                     if let Some(given) = &given {
                         check_parameter_argument(given, &parameter_input_type(p, declared.clone()), p.span)?;
@@ -5874,6 +5910,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             Ty::Dynamic
                         }
                     }
+                    None if is_this => return Err(untyped_this(p.span)),
                     None => return err(p.span, "this callback parameter is never given a value"),
                 },
             };
@@ -10331,6 +10368,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             } else {
                 let rep = self.expr(rep_e)?;
                 if let Ty::Fn(declared, _) = &rep.ty {
+                    self.check_callback_reference(rep_e)?;
                     check_callback_parameters(&parameters(declared.len()), declared, rep_e.span)?;
                     checked_function(rep)
                 } else if !rep.ty.is_str() {
@@ -11992,9 +12030,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 }
 
-/// The host of a URL whose `https://host/` prefix is written in the source: a string, a template
-/// or a `+` chain starting with one. Anything else is built at runtime.
-pub(super) fn static_host(e: &Expr) -> Option<String> {
+/// The host of a source-written HTTPS URL or a built-in URL constructed from literals.
+pub(super) fn static_host(e: &Expr, is_builtin_url: impl FnOnce(&Expr) -> bool) -> Option<String> {
     let complete = matches!(e.kind, ExprKind::Str(_));
     let prefix = match &e.kind {
         ExprKind::Str(s) => s.clone(),
@@ -12010,7 +12047,31 @@ pub(super) fn static_host(e: &Expr) -> Option<String> {
                 _ => return None,
             }
         }
-        ExprKind::As(inner, _) | ExprKind::NonNull(inner) => return static_host(inner),
+        ExprKind::As(inner, _) | ExprKind::NonNull(inner) => return static_host(inner, is_builtin_url),
+        ExprKind::New { callee, args, .. } if is_builtin_url(callee) => {
+            let literal = |arg: &ArrEl| match arg {
+                ArrEl::Item(Expr {
+                    kind: ExprKind::Str(s), ..
+                }) => Some(s.clone()),
+                _ => None,
+            };
+            let (input, base) = match args.as_slice() {
+                [input] => (literal(input)?, None),
+                [input, base] => (literal(input)?, Some(url::Url::parse(&literal(base)?).ok()?)),
+                _ => return None,
+            };
+            // Even a literal path can name a different authority (`//other.example/path`).
+            let url = url::Url::options().base_url(base.as_ref()).parse(&input).ok()?;
+            if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
+                return None;
+            }
+            return Some(
+                url.host_str()?
+                    .trim_matches(['[', ']'])
+                    .trim_end_matches('.')
+                    .to_ascii_lowercase(),
+            );
+        }
         _ => return None,
     };
     let rest = prefix
@@ -12038,16 +12099,19 @@ pub(super) fn static_host(e: &Expr) -> Option<String> {
 mod tests {
     use super::{Compiler, static_host};
     use crate::diag::{Diag, Span};
-    use crate::ir::{Expr, ExprKind};
+    use crate::ir::{ArrEl, Expr, ExprKind};
     use crate::schema::RouteDependency;
 
     #[test]
     fn locked_hosts_normalize_like_the_runtime_fetch_check() {
         let host = |url: &str| {
-            static_host(&Expr {
-                kind: ExprKind::Str(url.to_string()),
-                span: Span::NONE,
-            })
+            static_host(
+                &Expr {
+                    kind: ExprKind::Str(url.to_string()),
+                    span: Span::NONE,
+                },
+                |_| false,
+            )
         };
         assert_eq!(
             host("https://[2606:4700:4700::1111]/").as_deref(),
@@ -12063,6 +12127,43 @@ mod tests {
         );
         assert_eq!(host("https://api.example.com").as_deref(), Some("api.example.com"));
         assert_eq!(host("https://user@api.example.com/"), None);
+    }
+
+    #[test]
+    fn literal_url_constructors_lock_the_resolved_https_host() {
+        let expr = |kind| Expr { kind, span: Span::NONE };
+        let new_url = |input: ExprKind, base: Option<&str>, builtin: bool| {
+            let args = std::iter::once(input)
+                .chain(base.map(|s| ExprKind::Str(s.into())))
+                .map(|kind| ArrEl::Item(expr(kind)))
+                .collect();
+            static_host(
+                &expr(ExprKind::New {
+                    callee: Box::new(expr(ExprKind::Ident("URL".into()))),
+                    args,
+                    type_args: vec![],
+                }),
+                |_| builtin,
+            )
+        };
+        let base = Some("https://API.Example.com.:8443/v1/");
+        assert_eq!(
+            new_url(ExprKind::Str("item".into()), base, true).as_deref(),
+            Some("api.example.com")
+        );
+        assert_eq!(
+            new_url(ExprKind::Str("//other.example/a".into()), base, true).as_deref(),
+            Some("other.example")
+        );
+        assert_eq!(
+            new_url(ExprKind::Str("http://other.example/a".into()), base, true),
+            None
+        );
+        assert_eq!(new_url(ExprKind::Ident("input".into()), base, true), None);
+        assert_eq!(
+            new_url(ExprKind::Str("https://other.example/a".into()), None, false),
+            None
+        );
     }
 
     #[test]
@@ -12555,6 +12656,31 @@ fn check_parameter_argument(given: &Ty, declared: &Ty, span: Span) -> Result<()>
     Ok(())
 }
 
+fn untyped_this(span: Span) -> Diag {
+    Diag::new(
+        span,
+        "TypedPress code doesn't support `this` without a type in a function that isn't a method of an object literal",
+    )
+    .code(crate::diag::Code::Unsupported)
+    .help(
+        "declare it, e.g. `function f(this: { count: number })`, or write the function as a method in the object literal it is called on",
+    )
+}
+
+fn check_callback_receiver(receiver: &Ty, span: Span) -> Result<()> {
+    if check_parameter_argument(&Ty::Undefined, receiver, span).is_ok() {
+        return Ok(());
+    }
+    err_help(
+        span,
+        format!(
+            "this callback is called without a receiver, so `this` is undefined, not {}",
+            receiver.describe()
+        ),
+        "capture the object in a variable or use an arrow function, and read it instead of `this`",
+    )
+}
+
 fn check_callback_parameters(given: &[Ty], declared: &[Ty], span: Span) -> Result<()> {
     for (i, declared) in declared.iter().enumerate() {
         if let Ty::Rest(container) = declared {
@@ -12629,12 +12755,44 @@ fn parameter_default_suffix(parameters: &[Param], types: &[Ty]) -> &'static str 
     }
 }
 
-/// The `this.<key>` names the method stored under `key` in `home` reads (`Func::this_reads`).
-fn path_reads(home: &Obj, key: &str) -> Option<Vec<String>> {
-    match home.borrow().get(key) {
-        Some(Value::Closure(c)) => Some(c.func.this_reads.clone()),
-        _ => None,
+/// A method that reads a sibling still being inferred needs an annotation to break the cycle.
+fn this_cycle_help<'a>(
+    d: Diag,
+    method: &str,
+    function: &Func,
+    untyped: impl IntoIterator<Item = &'a str>,
+    lookup: impl FnOnce(&str) -> Option<Rc<Func>>,
+) -> Diag {
+    let Some(missing) = untyped.into_iter().find(|key| {
+        function.this_reads.iter().any(|read| read.needs(key)) && d.message.ends_with(&format!("has no field `{key}`"))
+    }) else {
+        return d;
+    };
+    let Some(sibling) = lookup(missing) else { return d };
+    let reads_field = |f: &Func, key: &str| {
+        f.this_reads
+            .iter()
+            .any(|read| matches!(read, ThisRead::Field(name) if name == key))
+    };
+    let mut help = if method == missing {
+        format!("`{method}` calls itself through `this`; annotate its return type")
+    } else if reads_field(function, missing) && reads_field(&sibling, method) {
+        format!("`{missing}` and `{method}` call each other through `this`; annotate the return type of `{missing}`")
+    } else {
+        format!(
+            "`{method}` and `{missing}` are part of a cycle through `this`; annotate the return type of `{missing}`"
+        )
+    };
+    if let Some(params) = sibling
+        .params
+        .iter()
+        .skip(usize::from(receives_this(&sibling)))
+        .map(|p| crate::diag::source_text(p.span))
+        .collect::<Option<Vec<_>>>()
+    {
+        let _ = write!(help, ", e.g. `{missing}({}): number`", params.join(", "));
     }
+    d.help(help)
 }
 
 /// Whether an ordinary function takes its receiver as the hidden `this` parameter.

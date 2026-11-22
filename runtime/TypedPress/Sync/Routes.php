@@ -165,7 +165,10 @@ final class Routes
         $pk = $spec['primaryKey'];
         $current = self::current($collection, $uid, $viewer);
         $trashed = $current === null && $expect === 'absent' ? Trash::trashed($spec, $uid) : null;
-        $op = $current === null && $trashed === null ? 'create' : 'update';
+        $softDeleted = $current === null && $trashed === null && $expect === 'absent' && !Trash::postBacked($spec) && ($spec['softDelete'] ?? false)
+            ? (db()->findFirst($collection, ['where' => ['uid' => $uid], 'deleted' => 'only'])[$pk] ?? null)
+            : null;
+        $op = $current === null && $trashed === null && $softDeleted === null ? 'create' : 'update';
         // A rule that refuses this viewer whatever the values refuses before anything is looked up.
         if ($viewer !== null && Access::isShorthand(Access::collectionRules($spec)[$op]) && Access::evaluate(Access::collectionRules($spec)[$op], $viewer, $op) === false) {
             throw Access::deny($viewer->user, "$op $collection rows");
@@ -188,6 +191,14 @@ final class Routes
             $current = self::current($collection, $uid, $viewer);
             // Decode again against the restored row, so a body it already holds isn't rewritten (and a
             // read-only one doesn't refuse the restore).
+            $data = Wire::decode($collection, $record, false, $missing, $current['row'] ?? null, $viewer);
+        } elseif ($softDeleted !== null) {
+            if ($viewer !== null && Access::evaluate(Access::collectionRules($spec)['update'], $viewer, 'update', $data, $spec['columns'], $collection) !== true) {
+                throw Access::deny($viewer->user, "restore $collection rows");
+            }
+            self::raiseMissing($missing);
+            db()->restore($collection, [$pk => $softDeleted], false, $viewer);
+            $current = self::current($collection, $uid, $viewer);
             $data = Wire::decode($collection, $record, false, $missing, $current['row'] ?? null, $viewer);
         } elseif ($current === null) {
             if ($viewer !== null) {

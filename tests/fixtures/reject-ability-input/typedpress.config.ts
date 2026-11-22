@@ -1,5 +1,5 @@
-import { action, defineConfig } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 import { abilities } from "php/wordpress";
-export const a = action({ input: {}, access: "anyone", handler: () => abilities.call("acme/site-info", { field: "title" }) });
+export const a = mutation({ access: "anyone" }, () => abilities.call("acme/site-info", { field: "title" }));
 
 export default defineConfig({});

@@ -1,6 +1,6 @@
 import {
-  action, blocks, boolean, collection, db, defineConfig, env, group, integer, job, jobs, json, media, repeater, richText, slug,
-  table, text, ref,
+  blocks, boolean, collection, db, defineConfig, env, group, integer, job, json, media, repeater, richText, slug,
+  table, text, ref, mutation, HttpError
 } from "typedpress";
 
 const access = { read: "anyone", create: "editor", update: "editor", delete: "editor" };
@@ -27,22 +27,19 @@ export const tasks = table({
   processed: boolean().default(false),
 }, { access }).on({
   beforeCreate(data) { data.label = data.label.trim(); },
-  async afterCreate(row) { await jobs.processTask.enqueue({ taskId: row.id }); },
+  async afterCreate(row) { await processTask.enqueue({ taskId: row.id }); },
 });
 export const guides = collection({ title: text(), body: richText().optional(), slug: slug({ source: "title" }).optional() }, {
   title: "title", content: "body", sync: "content/guides/*.md", drafts: true, revisions: true, access,
 });
 export const deliveries = table({ message: text() }, { access: { read: "editor" } });
 
-export const processTask = job({ input: { taskId: integer() }, handler: async ({ taskId }) => {
+export const processTask = job({}, async ({ taskId }: { taskId: number }) => {
+  if (!Number.isInteger(taskId)) throw new HttpError(422, "invalid_input", "taskId must be an integer", "/taskId");
   await db.update(tasks).set({ processed: true }).where({ id: taskId });
-} });
-
-export const receive = action({
-  input: { message: text() },
-  signature: { secret: env("PLATFORM_HOOK_SECRET"), header: "typedpress-signature", scheme: "hmac-sha256" },
-  handler: async ({ message }) => { await db.insert(deliveries).values({ message }); return { received: message }; },
 });
+
+export const receive = mutation({ signature: { secret: env("PLATFORM_HOOK_SECRET"), header: "typedpress-signature", scheme: "hmac-sha256" } }, async ({ message }: { message: string }) => { await db.insert(deliveries).values({ message }); return { received: message }; });
 
 export default defineConfig({
   name: "platform",

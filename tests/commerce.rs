@@ -310,14 +310,14 @@ fn commerce_references_names_and_existing_store_scaffolding() {
     std::fs::write(
         project.path().join("typedpress.config.ts"),
         r#"
-import {defineConfig,store,product,productCategory,order,table,ref,text,action,db} from 'typedpress';
+import {defineConfig,store,product,productCategory,order,table,ref,text,query,db} from 'typedpress';
 export const shop=store({currency:'USD',country:'PL',shipping:[{name:'Rest  of world',countries:'rest',methods:[]}]});
 export const catalogItems=product();
 export const categories=productCategory();
 export const orders=order();
 export const wooCarts=table({name:text()});
 export const links=table({product:ref(catalogItems),order:ref(()=>orders)});
-export const catalog=action({access:'anyone',handler:async()=>await db.query.categories.findMany({with:{catalogItems:true}})});
+export const catalog=query({access:'anyone'},async()=>await db.query.categories.findMany({with:{catalogItems:true}}));
 export default defineConfig({name:'commerce'});
 "#,
     )
@@ -416,12 +416,10 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
     let source = std::fs::read_to_string(&detail).unwrap();
     std::fs::write(detail, format!("{source}\nexport const prerender = true;\n")).unwrap();
     success(cli("build", project.path()));
-    let snapshot: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(project.path().join("tp/_generated/migrations/snapshot.json")).unwrap())
-            .unwrap();
+    let mig_dir = project.path().join("tp/_generated/migrations");
     assert!(
-        snapshot["tables"].as_object().unwrap().is_empty(),
-        "Woo owns all commerce storage: {snapshot}"
+        !mig_dir.exists() || std::fs::read_dir(&mig_dir).unwrap().next().is_none(),
+        "Woo owns all commerce storage: no SQL migrations should be emitted"
     );
     let manifest: serde_json::Value = serde_json::from_slice(
         &std::fs::read(project.path().join("tp/dist/wp-content/typedpress-manifest.json")).unwrap(),

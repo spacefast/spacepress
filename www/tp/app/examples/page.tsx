@@ -1,6 +1,6 @@
-import { jobs } from "typedpress";
 import { examples } from "typedpress:db";
 import { Link } from "typedpress/app";
+import { refreshStars } from "../../server";
 
 export const metadata = {
   title: "Examples",
@@ -15,7 +15,7 @@ export default async function ExamplesPage() {
   const cutoff = new Date(Date.now() - ONE_DAY_MS).toISOString();
   const stale = rows.some((row) => !row.starsAt || row.starsAt < cutoff);
   if (rows.length > 0 && stale) {
-    await jobs.refreshStars.enqueue({}, { key: "refresh-stars" });
+    await refreshStars.enqueue({}, { key: "refresh-stars" });
   }
 
   return (

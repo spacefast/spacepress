@@ -1,5 +1,5 @@
-import { action, defineConfig } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 type Keys = keyof { id: number; title: string };
-export const example = action({ input: {}, handler: () => { const key: Keys = "other"; return key; } });
+export const example = mutation({}, () => { const key: Keys = "other"; return key; });
 
 export default defineConfig({});

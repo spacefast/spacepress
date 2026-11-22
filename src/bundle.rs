@@ -220,8 +220,18 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
     let migration_dir = project.join(crate::pipeline::LEDGER);
     if fs.is_dir(&migration_dir) {
         for path in fs.read_dir(&migration_dir).map_err(io)? {
-            safe_migration_name(&path.file_name().unwrap_or_default().to_string_lossy())?;
-            recording.read_to_string(&path).map_err(io)?;
+            let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            if fs.is_dir(&path) {
+                for child in fs.read_dir(&path).map_err(io)? {
+                    let file = child.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                    let rel = format!("{name}/{file}");
+                    safe_migration_name(&rel)?;
+                    recording.read_to_string(&child).map_err(io)?;
+                }
+            } else {
+                safe_migration_name(&name)?;
+                recording.read_to_string(&path).map_err(io)?;
+            }
         }
     }
     let mut sync_bytes = 0usize;
@@ -392,6 +402,13 @@ fn safe_input(path: &str) -> Result<(), Diag> {
 
 fn safe_migration_name(name: &str) -> Result<(), Diag> {
     safe_input(name)?;
+    if let Some((id, file)) = name.split_once('/')
+        && !file.contains('/')
+        && crate::migrate::is_migration_id(id)
+        && matches!(file, "ops.json" | "migration.sql")
+    {
+        return Ok(());
+    }
     if name == "snapshot.json"
         || (name.len() > 9
             && name.as_bytes()[..4].iter().all(u8::is_ascii_digit)
@@ -1076,26 +1093,28 @@ pub(crate) fn compile_tree(
         module_alias: legacy.then_some(crate::zero_bundle::MODULE),
     });
     let program = loader::load_from(fs.clone(), &root.join("typedpress.config.ts")).map_err(|mut d| d.remove(0))?;
-    let snapshot = previous
-        .map(|p| {
-            std::fs::read(p.join("snapshot.json"))
-                .map_err(io)
-                .and_then(|b| serde_json::from_slice(&b).map_err(|e| failure(e.to_string())))
-        })
-        .transpose()?;
     let previous_migrations = previous.map(|p| p.join("migrations"));
-    let names: Vec<String> = match &previous_migrations {
-        Some(p) => std::fs::read_dir(p)
-            .map_err(io)?
-            .map(|e| e.map(|e| e.file_name().to_string_lossy().into_owned()))
-            .collect::<Result<_, _>>()
-            .map_err(io)?,
-        None => Vec::new(),
-    };
+    let mut prev_entries: Vec<(String, serde_json::Value)> = Vec::new();
+    let mut prev_folders: Vec<String> = Vec::new();
+    if let Some(p) = &previous_migrations
+        && p.is_dir()
+    {
+        for entry in std::fs::read_dir(p).map_err(io)? {
+            let entry = entry.map_err(io)?;
+            let path = entry.path();
+            if path.is_dir() {
+                let id = entry.file_name().to_string_lossy().into_owned();
+                let ops_bytes = std::fs::read(path.join("ops.json")).map_err(io)?;
+                let ops: serde_json::Value = serde_json::from_slice(&ops_bytes).map_err(|e| failure(e.to_string()))?;
+                prev_entries.push((id.clone(), ops));
+                prev_folders.push(id);
+            }
+        }
+    }
     let built = pipeline::build(
         Path::new(&name),
         &program,
-        || pipeline::Previous::from_project(snapshot, names.iter().map(String::as_str)),
+        || pipeline::Previous::from_entries(prev_entries),
         crate::emit::runtime_file,
     )?;
     if built.plugins.as_ref().is_some_and(|p| !p.plugins.is_empty()) {
@@ -1110,7 +1129,11 @@ pub(crate) fn compile_tree(
         let archive = output.join("source-migrations");
         std::fs::create_dir(&archive).map_err(io)?;
         for (name, text) in source_migrations {
-            std::fs::write(archive.join(name), text).map_err(io)?;
+            let dest = archive.join(&name);
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent).map_err(io)?;
+            }
+            std::fs::write(dest, text).map_err(io)?;
         }
     }
     if !seeds.is_empty() {
@@ -1126,12 +1149,26 @@ pub(crate) fn compile_tree(
     let migrations = output.join("migrations");
     std::fs::create_dir(&migrations).map_err(io)?;
     if let Some(previous) = previous_migrations {
-        for name in &names {
-            std::fs::copy(previous.join(name), migrations.join(name)).map_err(io)?;
+        for id in &prev_folders {
+            let dst = migrations.join(id);
+            std::fs::create_dir_all(&dst).map_err(io)?;
+            for file in ["ops.json", "migration.sql"] {
+                let src_f = previous.join(id).join(file);
+                if src_f.is_file() {
+                    std::fs::copy(src_f, dst.join(file)).map_err(io)?;
+                }
+            }
         }
     }
-    for (name, sql) in &built.migrations {
-        std::fs::write(migrations.join(name), sql).map_err(io)?;
+    for entry in &built.migrations {
+        let dst = migrations.join(&entry.id);
+        std::fs::create_dir_all(&dst).map_err(io)?;
+        std::fs::write(
+            dst.join("ops.json"),
+            serde_json::to_string_pretty(&entry.ops).map_err(|e| failure(e.to_string()))? + "\n",
+        )
+        .map_err(io)?;
+        std::fs::write(dst.join("migration.sql"), &entry.sql).map_err(io)?;
     }
     std::fs::write(
         output.join("snapshot.json"),

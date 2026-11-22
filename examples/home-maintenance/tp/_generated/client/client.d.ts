@@ -1,3 +1,6 @@
+export type Id<Kind extends string = string> = number & {
+	readonly __tp_kind?: Kind;
+};
 export type Role = "guest" | "subscriber" | "author" | "editor" | "admin";
 export interface User {
 	id: number;
@@ -38,16 +41,29 @@ export interface PrivateFile {
 }
 export interface RevisionSummary {
 	id: number;
+	version: number;
+	op: "create" | "update" | "delete" | "restore" | "purge";
 	at: string;
 	user: {
 		id: number;
 		name: string;
 	} | null;
+	schemaMigration: string | null;
+	changed: string[] | null;
+}
+export interface RevisionDiff<T = Record<string, unknown>> {
+	from: number;
+	to: number;
+	changes: {
+		field: keyof T & string;
+		from: unknown;
+		to: unknown;
+	}[];
 }
 export type Status = "draft" | "published" | "scheduled";
 export type Locale = never;
 export interface System {
-	id: number;
+	id: Id<"systems">;
 	name: string;
 	ownerId: number;
 	room: string;
@@ -58,6 +74,11 @@ export interface System {
 	manual: number | null;
 	status: "draft" | "published" | "scheduled";
 	publishedAt: string | null;
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 }
 export interface SystemInsert {
 	name: string;
@@ -257,18 +278,78 @@ export interface SystemFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	tasks?: true | TaskFilter;
 	doneLogs?: true | DoneLogFilter;
 	AND?: SystemFilter[];
 	OR?: SystemFilter[];
 	NOT?: SystemFilter;
 }
-export type SystemOrder = Partial<Record<"id" | "name" | "ownerId" | "room" | "kind" | "make" | "model" | "installedOn" | "manual" | "status" | "publishedAt", "asc" | "desc">> | string;
+export type SystemOrder = Partial<Record<"id" | "name" | "ownerId" | "room" | "kind" | "make" | "model" | "installedOn" | "manual" | "status" | "publishedAt" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy", "asc" | "desc">> | string;
 export interface Task {
-	id: number;
+	id: Id<"tasks">;
 	title: string;
 	ownerId: number;
-	systemId: number;
+	systemId: Id<"systems">;
 	everyDays: number;
 	lastDoneOn: string | null;
 	nextDueOn: string;
@@ -276,11 +357,16 @@ export interface Task {
 	overdueAt: string | null;
 	status: "draft" | "published" | "scheduled";
 	publishedAt: string | null;
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 }
 export interface TaskInsert {
 	title: string;
 	ownerId: number;
-	systemId: number;
+	systemId: Id<"systems">;
 	everyDays?: number;
 	lastDoneOn?: string | null;
 	nextDueOn?: string;
@@ -462,30 +548,95 @@ export interface TaskFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	doneLogs?: true | DoneLogFilter;
 	AND?: TaskFilter[];
 	OR?: TaskFilter[];
 	NOT?: TaskFilter;
 }
-export type TaskOrder = Partial<Record<"id" | "title" | "ownerId" | "systemId" | "everyDays" | "lastDoneOn" | "nextDueOn" | "instructions" | "overdueAt" | "status" | "publishedAt", "asc" | "desc">> | string;
+export type TaskOrder = Partial<Record<"id" | "title" | "ownerId" | "systemId" | "everyDays" | "lastDoneOn" | "nextDueOn" | "instructions" | "overdueAt" | "status" | "publishedAt" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy", "asc" | "desc">> | string;
 export interface DoneLog {
-	id: number;
+	id: Id<"doneLogs">;
 	title: string;
 	ownerId: number;
-	taskId: number;
-	systemId: number;
+	taskId: Id<"tasks">;
+	systemId: Id<"systems">;
 	doneOn: string;
 	notes: string | null;
 	costCents: number;
 	photo: number | null;
 	status: "draft" | "published" | "scheduled";
 	publishedAt: string | null;
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 }
 export interface DoneLogInsert {
 	title?: string;
 	ownerId: number;
-	taskId: number;
-	systemId: number;
+	taskId: Id<"tasks">;
+	systemId: Id<"systems">;
 	doneOn?: string;
 	notes?: string | null;
 	costCents?: number;
@@ -667,11 +818,71 @@ export interface DoneLogFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	AND?: DoneLogFilter[];
 	OR?: DoneLogFilter[];
 	NOT?: DoneLogFilter;
 }
-export type DoneLogOrder = Partial<Record<"id" | "title" | "ownerId" | "taskId" | "systemId" | "doneOn" | "notes" | "costCents" | "photo" | "status" | "publishedAt", "asc" | "desc">> | string;
+export type DoneLogOrder = Partial<Record<"id" | "title" | "ownerId" | "taskId" | "systemId" | "doneOn" | "notes" | "costCents" | "photo" | "status" | "publishedAt" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy", "asc" | "desc">> | string;
 export interface DueNextInput {
 	days?: number;
 }
@@ -681,8 +892,8 @@ export type DueNextOutput = {
 };
 export interface MarkDoneInput {
 	taskId: number;
-	notes?: string | null;
-	costCents?: number | null;
+	notes?: string;
+	costCents?: number;
 }
 export type MarkDoneOutput = {
 	log?: DoneLog;
@@ -749,6 +960,7 @@ export declare const SCHEMA: {
 			readonly primaryKey: "id";
 			readonly drafts: true;
 			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly tasks: {
@@ -771,6 +983,7 @@ export declare const SCHEMA: {
 			readonly primaryKey: "id";
 			readonly drafts: true;
 			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly systemId: {
@@ -793,6 +1006,7 @@ export declare const SCHEMA: {
 			readonly primaryKey: "id";
 			readonly drafts: true;
 			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly taskId: {
@@ -875,6 +1089,8 @@ export type ListQuery<
 	limit?: number;
 	offset?: number;
 	with?: W;
+	/** Soft-delete filter: `"exclude"` (default), `"include"`, or `"only"`. Non-default modes require `restore` or `delete` access. */
+	deleted?: "exclude" | "include" | "only";
 } & StatusQuery<K> & LocaleQuery<K>;
 /**
 * A read. Await it for one answer, or `subscribe` to keep it current: the callback gets the result
@@ -932,12 +1148,18 @@ export interface CollectionClient<K extends CollectionKey> {
 	*/
 	update(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<Row<K>>;
 	delete(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
+	/** Restores a soft-deleted row (and any cascade-deleted children sharing its deletion group). */
+	restore(id: IdOf<K>): Promise<Row<K>>;
+	/** Permanently removes the row from storage (default access `"system"`). */
+	purge(id: IdOf<K>): Promise<Row<K>>;
 	/** `list(q).subscribe(onRows, onError)`. Returns a function that stops watching. */
 	watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q: ListQuery<K, ExactWith<K, W>> | undefined, onRows: (rows: RowWith<K, W>[]) => void, onError?: (error: TypedPressError) => void): () => void;
 	revisions: {
 		/** Newest first. Needs `update` access on the row. */
 		list(id: IdOf<K>): Promise<RevisionSummary[]>;
 		get(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
+		/** Diffs two revisions (by version or revision id) as this viewer may read them. */
+		diff(id: IdOf<K>, fromVersion: number, toVersion: number): Promise<RevisionDiff<Row<K>>>;
 		/** Runs the update pipeline with the revision as the patch; returns the updated row. */
 		restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
 	};

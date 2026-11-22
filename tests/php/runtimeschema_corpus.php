@@ -201,7 +201,7 @@ $grown = Changes::resolve($kinds, $site['state'], $set(
 ));
 $schema = Loader::apply($kinds, $grown['state']);
 eq('fields, a label and presentation land on kinds the site added', [array_keys($schema['collections']['events']['columns']), $schema['collections']['events']['label'], $schema['globals']['banner']['fields']],
-    [['id', 'title', 'starts', 'status', 'publishedAt', 'venue'], 'What\'s on', ['text' => ['type' => 'text', 'ui' => ['help' => 'Shown on every page']], 'on' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => false]]]]);
+    [['id', 'title', 'starts', 'status', 'publishedAt', 'author', 'createdAt', 'updatedAt', 'deletedAt', 'deletedBy', 'deletedGroup', 'venue'], 'What\'s on', ['text' => ['type' => 'text', 'ui' => ['help' => 'Shown on every page']], 'on' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => false]]]]);
 eq('a required field added to an existing global needs its default', $verdict($set(['op' => 'addGlobalField', 'global' => 'banner', 'field' => 'cta', 'definition' => ['type' => 'text', 'notNull' => true]]), $kinds, $site['state']), '422 schema_invalid /changes/0/definition');
 eq('a field that came with a kind goes with the kind, not alone', $verdict($removeField('events', 'starts'), $kinds, $grown['state']), '422 schema_build_only /changes/0/field');
 eq('a global field is removed through `global`', $verdict($set(['op' => 'removeField', 'global' => 'banner', 'field' => 'on']), $kinds, $grown['state']), 'accept');
@@ -290,7 +290,7 @@ $withVenueKind = Changes::resolve($kinds, $empty, $set(['op' => 'addCollection',
 $eventsBuilt = $kinds;
 $eventsBuilt['collections']['events'] = Kinds::expandCollection('events', ['fields' => ['title' => ['type' => 'text', 'notNull' => true]]]);
 eq('a build that declares a runtime collection with fewer fields keeps the rest', $deploy($eventsBuilt, $withVenueKind)['kept'], ['events.venue']);
-eq('and serves them', array_keys(Loader::apply($eventsBuilt, ['format' => Loader::FORMAT, 'version' => 1, 'hash' => 'h'] + $withVenueKind)['collections']['events']['columns']), ['id', 'title', 'status', 'publishedAt', 'venue']);
+eq('and serves them', array_keys(Loader::apply($eventsBuilt, ['format' => Loader::FORMAT, 'version' => 1, 'hash' => 'h'] + $withVenueKind)['collections']['events']['columns']), ['id', 'title', 'status', 'publishedAt', 'author', 'createdAt', 'updatedAt', 'deletedAt', 'deletedBy', 'deletedGroup', 'venue']);
 eq('a body the build doesn\'t declare can\'t be served on another field: it is refused', $codes($deploy($eventsBuilt, Changes::resolve($kinds, $empty, $set(['op' => 'addCollection', 'kind' => 'events', 'definition' => ['fields' => ['title' => ['type' => 'text', 'notNull' => true], 'content' => ['type' => 'richText']]]]))['state'])), ['runtime_body_dropped events']);
 $asGlobal = $kinds;
 $asGlobal['globals']['events'] = Kinds::expandGlobal('events', ['fields' => ['title' => $text]]);
@@ -336,13 +336,15 @@ eq('an override carries a label and field presentation only; presentation a chan
 $title = ['title' => ['type' => 'text', 'notNull' => true]];
 $forged = ['format' => Loader::FORMAT, 'version' => 1, 'hash' => 'h',
     'added' => ['collections' => ['users' => ['fields' => $title], 'posts' => ['fields' => $title]]],
-    'collections' => ['articles' => ['columns' => ['staged' => ['type' => 'json'], 'system' => ['type' => 'json'], 'author' => ['type' => 'integer'],
+    'collections' => ['articles' => ['columns' => ['staged' => ['type' => 'json'], 'system' => ['type' => 'json'], 'author' => ['type' => 'text'], 'terms' => ['type' => 'text'],
         str_repeat('x', 200) => $text, 'required' => ['type' => 'text', 'notNull' => true], 'seo_title' => ['type' => 'integer'], 'fine' => $text]]],
     'overrides' => ['collections' => ['votes' => ['label' => 'Ballots', 'ui' => ['weight' => ['label' => 'W']]], 'articles' => ['ui' => ['status' => ['label' => 'S'], 'id' => ['label' => 'I']]]]]];
 $served = Loader::apply($kinds, $forged);
 eq('kinds every site has are not served from the option', [isset($served['collections']['users']), isset($served['collections']['posts'])], [false, false]);
 eq('nor fields under reserved names, over-long names, required without a default, or on another field\'s keys; a field a change could add still is',
-    array_values(array_intersect(array_keys($served['collections']['articles']['columns']), ['staged', 'system', 'author', str_repeat('x', 200), 'required', 'seo_title', 'fine'])), ['fine']);
+    array_values(array_intersect(array_keys($served['collections']['articles']['columns']), ['staged', 'system', 'terms', str_repeat('x', 200), 'required', 'seo_title', 'fine'])), ['fine']);
+eq('and a forged reserved system column does not overwrite the built-in system column',
+    $served['collections']['articles']['columns']['author'], $kinds['collections']['articles']['columns']['author']);
 eq('nor a label or presentation on a table() kind, a system field or the primary key',
     [$served['collections']['votes']['label'], $served['collections']['votes']['columns']['weight'], $served['collections']['articles']['columns']['status'], $served['collections']['articles']['columns']['id']],
     [$kinds['collections']['votes']['label'], $kinds['collections']['votes']['columns']['weight'], $kinds['collections']['articles']['columns']['status'], $kinds['collections']['articles']['columns']['id']]);

@@ -259,7 +259,9 @@ check('a member reads only their own reservation', !str_contains($second, (strin
 // ---- cancelling: db.delete, through the page's other form
 [$status, $cancelled] = submit('/events/bread-basics/', 'Cancel my reservation', [], 'subscriber');
 check('a member cancels their reservation', $status === 200 && notices($cancelled) === ['Your reservation of 1 seat(s) is cancelled.'], [$status, notices($cancelled) ?: $cancelled]);
-eq('the cancelled reservation is gone', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_registrations'), 1);
+eq('the cancelled reservation is soft-deleted',
+    [(int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_registrations WHERE `_live` = 1'), (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_registrations WHERE `deletedAt` IS NOT NULL')],
+    [1, 1]);
 
 // ---- media and the private handout on the workshop page
 $png = tempnam($site->dir, 'kspng');
@@ -308,19 +310,21 @@ eq('the form refuses a bad address', [$status, json_decode($problem, true)['code
 eq('beforeCreate trims the title', [$status, $class['title'] ?? null], [201, 'Knife skills']);
 drain();
 eq('afterCreate queued the job, which ran once: the option and the log entry', [(bool) get_option('kitchen_has_workshops'),
-    (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `summary` = ?', [$class['id'], 'Workshop created'])], [true, 1]);
-eq('afterPublish logs the publication', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `summary` = ?', [$class['id'], 'Workshop published']), 1);
+    (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `message` = ?', [$class['id'], 'Workshop created'])], [true, 1]);
+eq('afterPublish logs the publication', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `message` = ?', [$class['id'], 'Workshop published']), 1);
 [$status, $problem] = $site->call('PATCH', "/events/{$class['id']}", ['registrationOpen' => true], as: 'host');
 eq('beforeUpdate refuses to reopen a past workshop', [$status, $problem['code'] ?? null], [409, 'workshop_over']);
 $body = '{"desk":"front"}';
 [$status] = visit('/api/registration?workshop=' . rawurlencode('Bread Basics'), ['x-kitchen-signature: ' . hash_hmac('sha256', $body, 'local-test-registration-key'), 'Content-Type: application/json'], $body);
 eq('the signed route closes registration, finding the workshop by its title', [$status, (bool) get_post_meta($eventId, 'tp_registrationOpen', true)], [204, false]);
-eq('afterUpdate logs the closing', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `summary` = ?', [$eventId, 'Registration closed']), 1);
+eq('afterUpdate logs the closing', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `message` = ?', [$eventId, 'Registration closed']), 1);
 [$status, $problem] = $site->call('DELETE', "/events/$eventId", as: 'admin');
 eq('beforeDelete keeps a workshop that has reservations', [$status, $problem['code'] ?? null, get_post($eventId) !== null], [409, 'has_registrations', true]);
 eq('an admin deletes a workshop that has none', $site->call('DELETE', "/events/{$class['id']}", as: 'admin')[0], 200);
 eq('afterDelete logs the deletion, and the log keeps its rows without the workshop',
-    $site->sql('SELECT `eventId`, `summary` FROM {prefix}tp_activity WHERE `summary` LIKE ?', ['Workshop deleted%']), [['eventId' => null, 'summary' => 'Workshop deleted: Knife skills']]);
+    $site->sql('SELECT `eventId`, `message` FROM {prefix}tp_activity WHERE `message` LIKE ?', ['Workshop deleted%']), [['eventId' => null, 'message' => 'Workshop deleted: Knife skills']]);
+$aliasRows = \TypedPress\Db::instance()->findMany('activity', ['where' => ['message' => 'Workshop published']]);
+eq('column alias works in where filters and returns the canonical field name', $aliasRows[0]['summary'] ?? null, 'Workshop published');
 eq('the deleted workshop\'s earlier entries stay, unlinked', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` IS NULL'), 3);
 
 [$status, $staff] = submit('/staff/', 'Check the schedule', [], 'host');
@@ -334,10 +338,33 @@ check('an editor has no link to the site settings', !str_contains($staff, 'optio
 [$status, $again] = $site->call('POST', '/actions/scheduleAgain', ['id' => $eventId], as: 'host');
 eq('the schedule screen copies a workshop to the next week as a draft', [$status, $again['startsOn'] ?? null, get_post_status((int) ($again['id'] ?? 0))], [200, '2027-01-22', 'draft']);
 check('the staff page counts the draft through the kind\'s system API', str_contains(visit('/staff/', as: 'host')[1], '1 draft workshop(s) waiting for review.'));
-eq('only an admin cancels a workshop; the delete hooks keep one that has reservations',
+eq('only an admin cancels a workshop (soft-delete to trash); the delete hooks keep one that has reservations',
     [$site->call('POST', '/actions/cancelWorkshop', ['id' => $again['id'] ?? 0], as: 'host')[0], $site->call('POST', '/actions/cancelWorkshop', ['id' => $again['id'] ?? 0], as: 'admin')[0],
-        get_post((int) ($again['id'] ?? 0)), $site->call('POST', '/actions/cancelWorkshop', ['id' => $eventId], as: 'admin')[1]['code'] ?? null],
-    [403, 200, null, 'has_registrations']);
+        get_post_status((int) ($again['id'] ?? 0)), $site->call('POST', '/actions/cancelWorkshop', ['id' => $eventId], as: 'admin')[1]['code'] ?? null],
+    [403, 200, 'trash', 'has_registrations']);
+eq('an admin can restore and then permanently purge a soft-deleted workshop',
+    [$site->call('POST', '/actions/restoreWorkshop', ['id' => $again['id'] ?? 0], as: 'admin')[0], get_post_status((int) ($again['id'] ?? 0)),
+        $site->call('POST', '/actions/purgeWorkshop', ['id' => $again['id'] ?? 0], as: 'admin')[0], get_post((int) ($again['id'] ?? 0))],
+    [200, 'draft', 200, null]);
+// Native revisions + table _rev optimistic concurrency end-to-end on real WordPress:
+[$status, $hist] = $site->call('POST', '/actions/workshopHistory', ['id' => $eventId], as: 'host');
+check('workshopHistory exercises kind.revisions.{list,get,diff} on real WordPress',
+    $status === 200 && ($hist['count'] ?? 0) >= 2 && ($hist['firstTitle'] ?? '') === 'Bread basics' && is_array($hist['diff']['changes'] ?? null),
+    [$status, $hist]);
+[$status, $actRow] = $site->call('GET', '/activity', as: 'host', query: ['limit' => '1']);
+$actId = $actRow[0]['id'] ?? 0;
+$actRev = $actRow[0]['_rev'] ?? '';
+check('table() rows carry _rev token on REST reads', $status === 200 && $actId > 0 && is_string($actRev) && $actRev !== '', [$status, $actRow[0] ?? null]);
+[$s1, $u1] = $site->call('PATCH', "/activity/$actId", ['summary' => 'Updated once', '_rev' => $actRev], as: 'admin');
+[$s2, $u2] = $site->call('PATCH', "/activity/$actId", ['summary' => 'Stale write', '_rev' => $actRev], as: 'admin');
+eq('table() PATCH accepts fresh _rev and refuses stale _rev with 409 stale_revision',
+    [$s1, $u1['summary'] ?? null, $s2, $u2['code'] ?? null],
+    [200, 'Updated once', 409, 'stale_revision']);
+[$s3, $tRevs] = $site->call('GET', "/activity/$actId/revisions", as: 'admin');
+[$s4, $tDiff] = $site->call('GET', "/activity/$actId/revisions/diff", as: 'admin', query: ['from' => '1', 'to' => '2']);
+check('table() exposes /revisions and /revisions/diff over REST',
+    $s3 === 200 && count($tRevs) >= 2 && $s4 === 200 && array_column($tDiff['changes'] ?? [], 'field') === ['summary'],
+    [$s3, $tRevs, $s4, $tDiff]);
 [$status, $recap] = $site->call('POST', '/actions/draftRecap', ['id' => $eventId], as: 'host');
 eq('the schedule screen\'s recap action drafts a WordPress post', [$status, $recap['title'] ?? null, $recap['status'] ?? null, get_post_type((int) ($recap['postId'] ?? 0))], [200, 'Recap: Bread basics', 'draft', 'post']);
 

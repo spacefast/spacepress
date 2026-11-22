@@ -559,6 +559,10 @@ fn page_md_is_a_wordpress_page() {
     build(&project);
     // A later build of the same app: one file changed in each of three ways, one removed, one added.
     let second = fixture("app-router", "content-second");
+    copy(
+        &project.join("tp/_generated/migrations"),
+        &second.join("tp/_generated/migrations"),
+    );
     let app = second.join("tp/app");
     std::fs::remove_dir_all(app.join("hidden")).unwrap();
     std::fs::create_dir_all(app.join("news")).unwrap();
@@ -575,6 +579,10 @@ fn page_md_is_a_wordpress_page() {
     build(&second);
     // A third build takes two pages away from visitors: one becomes a draft, one moves under a guard.
     let third = fixture("app-router", "content-third");
+    copy(
+        &second.join("tp/_generated/migrations"),
+        &third.join("tp/_generated/migrations"),
+    );
     let app = third.join("tp/app");
     std::fs::remove_dir_all(app.join("hidden")).unwrap();
     std::fs::remove_dir_all(app.join("colophon")).unwrap();
@@ -596,6 +604,10 @@ fn page_md_is_a_wordpress_page() {
     // A fourth: the guide, still `status: draft`, moves to another route group (same URL) and
     // gets a typo fixed; /colophon is now a page.tsx route.
     let fourth = fixture("app-router", "content-fourth");
+    copy(
+        &third.join("tp/_generated/migrations"),
+        &fourth.join("tp/_generated/migrations"),
+    );
     std::fs::remove_dir_all(fourth.join("tp/app")).unwrap();
     copy(&third.join("tp/app"), &fourth.join("tp/app"));
     let app = fourth.join("tp/app");
@@ -2400,7 +2412,7 @@ export const nope = state.result?.nope;
         "{seen}"
     );
     assert_eq!(seen["handler error"], serde_json::json!("Five seats at most"));
-    assert_eq!(seen["not a number"], serde_json::json!("seats must be an integer"));
+    assert_eq!(seen["not a number"], serde_json::json!("seats must be a finite number"));
     assert_eq!(seen["open redirect"], serde_json::json!(true));
     // A form on a page's other spelling (`/join`) comes back to the page's one address, and the
     // result shows there: the router never moves a request that carries a result.
@@ -3039,7 +3051,7 @@ fn refuses_forms_it_cannot_post() {
     let dir = std::env::temp_dir().join(format!("typedpress-forms-reject-{}", std::process::id()));
     let server = (
         "tp/server.ts",
-        "import { action, text } from \"typedpress\";\nexport const send = action({ input: { name: text() }, access: \"anyone\", async handler({ name }) { return name; } });\n",
+        "import { text, mutation } from \"typedpress\";\nexport const send = mutation({ access: \"anyone\" }, async ({ name }: { name: string }) => { return name; });\n",
     );
     let page = |body: &str| {
         format!("import {{ useFormState }} from \"typedpress/app\";\nimport {{ send }} from \"../server\";\n{body}\n")
@@ -5683,7 +5695,7 @@ fn static_export_refuses_what_needs_a_server() {
     );
     write(
         "tp/actions.ts",
-        "import { action } from \"typedpress\";\nexport const ping = action({ input: {}, access: \"anyone\", async handler() { return 1; } });\n",
+        "import { mutation } from \"typedpress\";\nexport const ping = mutation({ access: \"anyone\" }, async () => { return 1; });\n",
     );
     write(
         "tp/components/Ping.tsx",
@@ -5801,11 +5813,20 @@ fn drive_store_example_sells_on_wordpress() {
         std::fs::copy(source.join("tp").join(name), project.join("tp").join(name)).unwrap();
     }
     build(&project);
-    let snapshot: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(project.join("tp/_generated/migrations/snapshot.json")).unwrap())
-            .unwrap();
-    let tables = snapshot["tables"].as_object().unwrap();
-    assert_eq!(tables.keys().collect::<Vec<_>>(), ["stock_movements"]);
+    let init_dir = std::fs::read_dir(project.join("tp/_generated/migrations"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.is_dir())
+        .expect("init migration folder");
+    let ops: serde_json::Value = serde_json::from_slice(&std::fs::read(init_dir.join("ops.json")).unwrap()).unwrap();
+    let tables: Vec<&str> = ops["ops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|op| op["op"] == "createTable" && op["table"] != "tp__revisions")
+        .filter_map(|op| op["table"].as_str())
+        .collect();
+    assert_eq!(tables, ["stock_movements"]);
 
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
@@ -6677,6 +6698,10 @@ fn pages_render_in_block_templates() {
     // The same app without login.tsx, installed over the first after the owner saved a sign-in
     // template that only holds the Page content block.
     let without_login = fixture("block-templates", "no-login");
+    copy(
+        &project.join("tp/_generated/migrations"),
+        &without_login.join("tp/_generated/migrations"),
+    );
     std::fs::remove_file(without_login.join("tp/app/login.tsx")).unwrap();
     build(&without_login);
     let out = Command::new("php")

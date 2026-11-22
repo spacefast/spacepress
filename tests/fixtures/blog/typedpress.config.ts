@@ -2,8 +2,8 @@
 // PHP suites (tests/php/blog_app.php) run against that schema. examples/blog grows; this file does not.
 import {
   collection, global, text, integer, boolean, timestamp, richText, media, slug, select,
-  repeater, group, blocks, email, url, defineConfig, action, db, HttpError,
-  table, ref,
+  repeater, group, blocks, email, url, defineConfig, db, HttpError,
+  table, ref, query, mutation,
 } from "typedpress";
 
 export const authors = collection({
@@ -81,23 +81,15 @@ export const settings = global({
   social: repeater({ label: text().max(40), href: url() }).optional(),
 }, { label: "Site settings" });
 
-export const approveComment = action({
-  input: { id: integer() },
-  access: "editor",
-  async handler({ id }) {
-    const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
-    if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
-    return row;
-  },
+export const approveComment = mutation({ access: "editor" }, async ({ id }: { id: number }) => {
+  const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
+  if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
+  return row;
 });
 
-export const publishedCount = action({
-  input: {},
-  access: "anyone",
-  async handler() {
-    const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
-    return { count: rows.length };
-  },
+export const publishedCount = query({ access: "anyone" }, async () => {
+  const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
+  return { count: rows.length };
 });
 
 export default defineConfig({

@@ -351,7 +351,7 @@ function names(array $rows): array
 // ================================================================ boot + migrate
 
 eq('activation applied the init migration and recorded it in the per-app ledger',
-    $wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), [['id' => '0001_init']]);
+    $wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), [['id' => '20261121000000_000000_init']]);
 eq('the app plugin is active with current storage', [$wp->plugin()->unavailable(), $wp->plugin()->pendingMigrations()], [null, []]);
 eq('the runtime describes its database as SQLite through the official plugin', \TypedPress\Wp\Platform::versions()['database']['kind'], 'sqlite');
 eq('platform problems accept SQLite Database Integration', \TypedPress\Wp\Platform::problems(), []);
@@ -685,21 +685,33 @@ eq('runtime FK cascade is on', $db->findFirst('items', ['where' => ['id' => $lam
 
 // ================================================================ migrations: a later file, the ledger, a failing statement
 
-// An app update ships 0002: adding a column to a table with rows. `wp typedpress migrate` applies it in
-// order, records it per app, and the next request sees current storage.
+// An app update ships a second sortable folder migration: adding a column to a table with rows.
+$writeMig = static function (string $id, string $sql) use ($wp): void {
+    $dir = $wp->plugin()->dir . "/tp/app/migrations/$id";
+    if (!is_dir($dir)) {
+        mkdir($dir, 0777, true);
+    }
+    file_put_contents("$dir/migration.sql", $sql);
+};
+$rmMig = static function (string $id) use ($wp): void {
+    $dir = $wp->plugin()->dir . "/tp/app/migrations/$id";
+    @unlink("$dir/migration.sql");
+    @unlink("$dir/ops.json");
+    @rmdir($dir);
+};
 $childrenBefore = $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]);
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0002_note.sql', 'ALTER TABLE `{prefix}tp_locations` ADD COLUMN `note` LONGTEXT;');
-eq('`wp typedpress migrate` applies the pending file', $wp->wpCli(['migrate']), [0, ['data' => ['applied' => ['0002_note']]]]);
+$writeMig('20261121000001_000001_note', 'ALTER TABLE `{prefix}tp_locations` ADD COLUMN `note` LONGTEXT;');
+eq('`wp typedpress migrate` applies the pending folder', $wp->wpCli(['migrate']), [0, ['data' => ['applied' => ['20261121000001_000001_note']]]]);
 eq('child rows survive the parent change (no cascade fired)', $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]), $childrenBefore);
-eq('the table has the new column and the ledger the file', [
+eq('the table has the new column and the ledger the migration', [
     $wp->scalar('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$wp->connection()->prefix() . 'tp_locations', 'note']),
     array_column($wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), 'id'),
-], [1, ['0001_init', '0002_note']]);
+], [1, ['20261121000000_000000_init', '20261121000001_000001_note']]);
 problem('the unique index still holds', fn () => $db->insert('locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
 // Migration text is SQL as the compiler or an operator writes it: a leading comment, a `?` inside a
 // literal default, and a constraint over rows that break it.
-$migrate = static function (string $id, string $sql) use ($wp): ?array {
-    file_put_contents($wp->plugin()->dir . "/tp/app/migrations/$id.sql", $sql);
+$migrate = static function (string $id, string $sql) use ($wp, $writeMig): ?array {
+    $writeMig($id, $sql);
 
     return $wp->wpCli(['migrate'])[1]['data']['applied'] ?? null;
 };
@@ -722,7 +734,7 @@ eq('a comment between the keywords', $alter('ALTER /* inline */ TABLE `{prefix}t
 eq('a line comment ending in a carriage return', $alter("-- note\rALTER TABLE `{prefix}tp_rf_parent` ADD COLUMN `c3` LONGTEXT", 'c3'), [1, 1]);
 eq('an executable comment this server\'s version satisfies is the statement', $alter('/*!80000 ALTER TABLE `{prefix}tp_rf_parent` ADD COLUMN `c4` LONGTEXT */', 'c4'), [1, 1]);
 eq('an executable comment for a newer server is a comment, and the ALTER behind it still keeps the children', $alter('/*!99999 SELECT 1 */ ALTER TABLE `{prefix}tp_rf_parent` ADD COLUMN `c5` LONGTEXT', 'c5'), [1, 1]);
-eq('a migration file carrying such a statement reaches the same path', [$migrate('0002b_commented', "/* adds */ ALTER /* inline */ TABLE `{prefix}tp_locations` ADD COLUMN `prompt` VARCHAR(191) DEFAULT 'Continue?';"), $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]) === $childrenBefore, $wp->scalar('SELECT `prompt` FROM {prefix}tp_locations WHERE `name` = ?', ['Garage'])], [['0002b_commented'], true, 'Continue?']);
+eq('a migration file carrying such a statement reaches the same path', [$migrate('20261121000002_000002_commented', "/* adds */ ALTER /* inline */ TABLE `{prefix}tp_locations` ADD COLUMN `prompt` VARCHAR(191) DEFAULT 'Continue?';"), $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]) === $childrenBefore, $wp->scalar('SELECT `prompt` FROM {prefix}tp_locations WHERE `name` = ?', ['Garage'])], [['20261121000002_000002_commented'], true, 'Continue?']);
 eq('`--` without a space is subtraction', $wp->sql('SELECT 1--? AS n', [1])[0]['n'], 2);
 eq('a parameter inside an executable comment this server reads is bound', $wp->sql('SELECT /*!80000 ? */ AS n', [42])[0]['n'], 42);
 eq('a `?` inside an executable comment for a newer server is text, not a parameter', $wp->sql('SELECT 3 AS n /*!99999 , ? AS m */')[0], ['n' => 3]);
@@ -732,14 +744,14 @@ eq('an odd run of backslashes escapes the quote: the `?` inside stays text', $wp
 $wp->exec('INSERT INTO {prefix}tp_logs (`message`, `at`) VALUES (?, ?)', ['orphan', '2026-01-01T00:00:00.000Z']);
 $wp->exec('ALTER TABLE {prefix}tp_logs ADD COLUMN `itemId` BIGINT UNSIGNED');
 $wp->exec('UPDATE {prefix}tp_logs SET `itemId` = 424242 WHERE `message` = ?', ['orphan']);
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0002c_fk.sql', 'ALTER TABLE `{prefix}tp_logs` ADD CONSTRAINT `tp_logs_itemId_fk` FOREIGN KEY (`itemId`) REFERENCES `{prefix}tp_items` (`id`) ON DELETE SET NULL;');
+$writeMig('20261121000003_000003_fk', 'ALTER TABLE `{prefix}tp_logs` ADD CONSTRAINT `tp_logs_itemId_fk` FOREIGN KEY (`itemId`) REFERENCES `{prefix}tp_items` (`id`) ON DELETE SET NULL;');
 putenv('TP_DEBUG=1');
 [$code, $out] = $wp->wpCli(['migrate']);
 putenv('TP_DEBUG');
 check('a constraint added over rows that break it fails the migration and changes nothing', $code === 1 && str_contains($out['error']['detail'] ?? '', 'foreign key constraint fails')
     && $wp->scalar('SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?', [$wp->connection()->prefix() . 'tp_logs', 'tp_logs_itemId_fk']) === 0, $out);
 $wp->exec('DELETE FROM {prefix}tp_logs WHERE `message` = ?', ['orphan']);
-eq('with the orphan gone the same file applies', $wp->wpCli(['migrate'])[1]['data']['applied'] ?? null, ['0002c_fk']);
+eq('with the orphan gone the same file applies', $wp->wpCli(['migrate'])[1]['data']['applied'] ?? null, ['20261121000003_000003_fk']);
 // Migrations run under one site-wide lock across processes: while this process holds it, another
 // process can't take it (and gives up at its timeout); once released, it can.
 file_put_contents($wp->dir . '/lock.php', <<<'PHP'
@@ -758,61 +770,34 @@ eq('a second process can\'t take a held migration lock, and can once it is relea
 eq('the lock is per name', $wp->connection()->locked('first:other', 1, $other), 'held');
 
 // A statement that fails stops the file; what ran before it is recorded step by step, nothing after it runs.
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0003_broken.sql', "DELETE FROM `{prefix}tp_logs` WHERE `message` = 'hello';\n--> statement-breakpoint\nALTER TABLE `{prefix}tp_nope` ADD COLUMN `x` LONGTEXT;\n--> statement-breakpoint\nDELETE FROM `{prefix}tp_logs`;");
-putenv('TP_DEBUG=1'); // the problem's detail carries the migration's own message, as the operator sees it in the log
+$writeMig('20261121000004_000004_broken', "DELETE FROM `{prefix}tp_logs` WHERE `message` = 'hello';\n--> statement-breakpoint\nALTER TABLE `{prefix}tp_nope` ADD COLUMN `x` LONGTEXT;\n--> statement-breakpoint\nDELETE FROM `{prefix}tp_logs`;");
+putenv('TP_DEBUG=1');
 [$code, $out] = $wp->wpCli(['migrate']);
 putenv('TP_DEBUG');
-check('a failing statement fails the command and names its position', $code === 1 && str_contains($out['error']['detail'] ?? '', '0003_broken failed at statement 2'), $out);
+check('a failing statement fails the command and names its position', $code === 1 && str_contains($out['error']['detail'] ?? '', '20261121000004_000004_broken failed at statement 2'), $out);
 eq('the statements before it ran and are recorded; the ones after it did not run', [
     count($db->findMany('logs', ['where' => ['message' => 'hello']])), count($db->findMany('logs')) > 0,
-    array_column($wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ? ORDER BY `id`', ['dbtest', '0003%']), 'id'),
-], [0, true, ['0003_broken:1']]);
-unlink($wp->plugin()->dir . '/tp/app/migrations/0003_broken.sql');
-$wp->exec('DELETE FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ?', ['dbtest', '0003%']);
-eq('with the file gone, migrate is a no-op and the CLI serves again', [$wp->wpCli(['migrate'])[1], $wp->wpCli(['find', 'items', '{"where":{"name":"Hammer"},"columns":{"name":true}}'])[1]],
+    array_column($wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ? ORDER BY `id`', ['dbtest', '20261121000004%']), 'id'),
+], [0, true, ['20261121000004_000004_broken:1']]);
+$rmMig('20261121000004_000004_broken');
+$wp->exec('DELETE FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ?', ['dbtest', '20261121000004%']);
+eq('with the folder gone, migrate is a no-op and the CLI serves again', [$wp->wpCli(['migrate'])[1], $wp->wpCli(['find', 'items', '{"where":{"name":"Hammer"},"columns":{"name":true}}'])[1]],
     [['data' => ['applied' => []]], ['data' => [['name' => 'Hammer']]]]);
 
-// ================================================================ migrations: the deploy-time schema check on SQLite (spec §2.9)
+// ================================================================ forward-only runtime guard & unified audit ledger
 
-// Statements as `typedpress build` plans a `was` rename and a drop. The SQLite driver has no RENAME TABLE and
-// its RENAME COLUMN loses values, so the migrator copies the table and changes the column instead:
-// rows, the auto-increment, and a child's foreign key (dropped and added back as the plan does) survive.
-$wp->exec('CREATE TABLE {prefix}tp_sc_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `body` LONGTEXT, `state` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
-$wp->exec('CREATE TABLE {prefix}tp_sc_kids (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `noteId` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `tp_sc_kids_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES {prefix}tp_sc_notes (`id`) ON DELETE CASCADE) ENGINE=InnoDB');
-$wp->exec("INSERT INTO {prefix}tp_sc_notes (`body`, `state`) VALUES ('first', 'open'), ('second', NULL)");
-$wp->exec('INSERT INTO {prefix}tp_sc_kids (`noteId`) VALUES (1)');
-$checked = static fn (array $check, string $sql): string => '-- typedpress-check ' . json_encode($check, JSON_UNESCAPED_SLASHES) . "\n" . $sql;
-$p = '{prefix}';
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0004_rename.sql', implode("\n--> statement-breakpoint\n", [
-    "ALTER TABLE `{$p}tp_sc_kids` DROP FOREIGN KEY `tp_sc_kids_noteId_fk`;",
-    $checked(['check' => 'rename', 'table' => "{$p}tp_sc_notes", 'to' => "{$p}tp_sc_memos"], "RENAME TABLE `{$p}tp_sc_notes` TO `{$p}tp_sc_memos`;"),
-    $checked(['check' => 'rename', 'name' => 'sc_memos.body', 'table' => "{$p}tp_sc_notes", 'column' => 'body', 'to' => 'text', 'definition' => '`text` LONGTEXT', 'adopted' => false],
-        "ALTER TABLE `{$p}tp_sc_memos` RENAME COLUMN `body` TO `text`;"),
-    "ALTER TABLE `{$p}tp_sc_kids` ADD CONSTRAINT `tp_sc_kids_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES `{$p}tp_sc_memos` (`id`) ON DELETE CASCADE;",
-]));
-// A second pending file drops a column under the new name: its check counts the rows still in sc_notes.
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0005_drop.sql', $checked(
-    ['check' => 'drop', 'name' => 'sc_memos.state', 'table' => "{$p}tp_sc_memos", 'column' => 'state', 'adopted' => false],
-    "ALTER TABLE `{$p}tp_sc_memos` DROP COLUMN `state`;",
-));
+$writeMig('20261121000005_000005_drop', 'ALTER TABLE `{prefix}tp_locations` DROP COLUMN `note`;');
+putenv('TP_DEBUG=1');
 [$code, $out] = $wp->wpCli(['migrate']);
-eq('a drop pending behind a rename is counted under the old name, and refused with nothing run', [$code, $out['error']['code'] ?? null,
-    array_map(static fn (array $r): array => [$r['code'], $r['name'], $r['rows']], $out['error']['refusals'] ?? []), $out['error']['drop'] ?? null,
-    (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}tp_sc_notes')],
-    [1, 'schema_refused', [['drop_has_rows', 'sc_memos.state', 1]], ['sc_memos.state=1'], 2]);
-eq('a bare --drop is refused, not ignored', $wp->wpCli(['migrate'], ['drop' => true])[1]['error']['code'] ?? null, 'invalid_drop');
-eq('--drop with the live count applies both files', $wp->wpCli(['migrate'], ['drop' => 'sc_memos.state=1'])[1]['data']['applied'] ?? null, ['0004_rename', '0005_drop']);
-eq('the renamed table kept its rows, values and auto-increment, and its child kept its row and key', [
-    $wp->sql('SELECT `id`, `text` FROM {prefix}tp_sc_memos ORDER BY `id`'),
-    $wp->scalar('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$wp->connection()->prefix() . 'tp_sc_notes']),
-    $wp->sql('SELECT `noteId` FROM {prefix}tp_sc_kids'),
-], [[['id' => 1, 'text' => 'first'], ['id' => 2, 'text' => 'second']], 0, [['noteId' => 1]]]);
-$wp->exec("INSERT INTO {prefix}tp_sc_memos (`text`) VALUES ('third')");
-eq('the copy keeps counting ids where the table left off', (int) $wp->scalar('SELECT MAX(`id`) FROM {prefix}tp_sc_memos'), 3);
-$wp->exec('DELETE FROM {prefix}tp_sc_memos WHERE `id` = 1');
-eq('the child key points at the renamed table (ON DELETE CASCADE fires)', (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}tp_sc_kids'), 0);
-$wp->exec('DROP TABLE {prefix}tp_sc_kids');
-$wp->exec('DROP TABLE {prefix}tp_sc_memos');
+putenv('TP_DEBUG');
+check('core Migrator refuses destructive DROP COLUMN in forward-only schema migrations',
+    $code === 1 && str_contains($out['error']['detail'] ?? '', 'Refusing destructive DDL'), $out);
+$rmMig('20261121000005_000005_drop');
+$migrator = new \TypedPress\Wp\Migrator($wp->connection(), $wp->plugin()->dir . '/tp/app/migrations', $wp->plugin()->schema);
+$migrator->recordAudit('20261121000006_000006_purge', 'destructive', str_repeat('a', 64), 'admin', 'cleanup retired column', 0);
+$audit = $wp->sql('SELECT `kind`, `actor`, `reason`, `rows_affected` FROM {prefix}tp__migrations WHERE `app` = ? AND `id` = ?', ['dbtest', '20261121000006_000006_purge']);
+eq('unified ledger records destructive audit metadata', $audit, [['kind' => 'destructive', 'actor' => 'admin', 'reason' => 'cleanup retired column', 'rows_affected' => 0]]);
+$wp->exec('DELETE FROM {prefix}tp__migrations WHERE `app` = ? AND `id` = ?', ['dbtest', '20261121000006_000006_purge']);
 
 // ================================================================ CLI
 
@@ -1159,7 +1144,7 @@ $byName = static fn (array $rows) => array_column($rows, null, 'name');
 
 // read: shorthand rules once per page, function rules per row; hidden keys are removed, not nulled.
 $anon = $byName($as(null, 'GET', '/profiles')[1]);
-eq('anonymous rows lack every column it may not read, at every level', [array_keys($anon['Alice']), $anon['Alice']['notes']], [['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId'], ['public' => 'hi', 'pinned' => true, 'tag' => null]]);
+eq('anonymous rows lack every column it may not read, at every level', [array_keys($anon['Alice']), $anon['Alice']['notes']], [['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId', '_rev'], ['public' => 'hi', 'pinned' => true, 'tag' => null]]);
 $alice = $byName($as('fa_alice', 'GET', '/profiles')[1]);
 eq('a function read rule runs per row (author sees only her own salary)', [$alice['Alice']['salary'] ?? 'hidden', $alice['Bob']['salary'] ?? 'hidden', isset($alice['Alice']['email'])], [10, 'hidden', false]);
 $editor = $as('fa_ed', 'GET', "/profiles/{$theirs['id']}")[1];
@@ -1906,7 +1891,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     foreach (['parent' => 'name LONGTEXT', 'protected' => 'parentId BIGINT', 'trigger' => 'parentId BIGINT', 'error' => 'parentId BIGINT, secret LONGTEXT', 'tag' => 'name LONGTEXT', 'card' => 'locked TINYINT'] as $name => $cols) {
         $wp->exec("CREATE TABLE {prefix}tp_q516_$name (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, $cols, PRIMARY KEY(id)) ENGINE=InnoDB");
     }
-    $wp->exec('CREATE TABLE {prefix}tp_q516_card_tags (owner_id BIGINT UNSIGNED NOT NULL, target_id BIGINT UNSIGNED NOT NULL, position INT NOT NULL, PRIMARY KEY(owner_id,target_id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp__join_q516_card_tags (owner_id BIGINT UNSIGNED NOT NULL, target_id BIGINT UNSIGNED NOT NULL, position INT NOT NULL, PRIMARY KEY(owner_id,target_id)) ENGINE=InnoDB');
     $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
     $previous = \TypedPress\Db::instance();
     \TypedPress\Db::setInstance($probe);
@@ -1958,7 +1943,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     foreach (['parents' => 'ownerId BIGINT', 'data' => 'parentId BIGINT', 'field' => 'parentId BIGINT', 'tags' => 'name LONGTEXT', 'cards' => 'name LONGTEXT', 'extension' => 'parentId BIGINT, backupId BIGINT'] as $name => $cols) {
         $wp->exec("CREATE TABLE {prefix}tp_rv_$name (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, " . ($cols === '' ? '' : "$cols, ") . 'PRIMARY KEY(id)) ENGINE=InnoDB');
     }
-    $wp->exec('CREATE TABLE {prefix}tp_rv_cards_tags (owner_id BIGINT UNSIGNED NOT NULL, target_id BIGINT UNSIGNED NOT NULL, position INT NOT NULL, PRIMARY KEY(owner_id,target_id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp__join_rv_cards_tags (owner_id BIGINT UNSIGNED NOT NULL, target_id BIGINT UNSIGNED NOT NULL, position INT NOT NULL, PRIMARY KEY(owner_id,target_id)) ENGINE=InnoDB');
     $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
     $previous = \TypedPress\Db::instance();
     \TypedPress\Db::setInstance($probe);
@@ -2044,6 +2029,236 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('visible nondefault-locale cascade removes child', $probe->findMany('rv_lchild'), []);
 })();
 
+// ================================================================ Slice 2: Soft deletes, retention, strict undefined filters, system fields
+(static function (): void {
+    $wp = $GLOBALS['wp'];
+    $now = ['now' => true];
+    $purgedLog = [];
+    $restoredLog = [];
+    $sdSchema = new \TypedPress\Schema([
+        'version' => 5,
+        'runtime' => \TypedPress\Schema::SERIES,
+        'retention' => ['deletedSeconds' => 86400, 'revisions' => null],
+        'collections' => [
+            'sd_parents' => [
+                'primaryKey' => 'id', 'editor' => false, 'softDelete' => true, 'table' => 'tp_sd_parents',
+                'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']],
+                'hooks' => [
+                    'afterRestore' => static function (array $row) use (&$restoredLog): void { $restoredLog[] = $row['email']; },
+                    'afterPurge' => static function (array $row) use (&$purgedLog): void { $purgedLog[] = $row['email']; },
+                ],
+                'columns' => [
+                    'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                    'email' => ['type' => 'email', 'notNull' => true, 'unique' => true],
+                    'bio' => ['type' => 'text'],
+                    'author' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'readOnly' => true, 'system' => true],
+                    'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'onUpdate' => $now, 'readOnly' => true, 'system' => true],
+                    'deletedAt' => ['type' => 'timestamp', 'readOnly' => true, 'system' => true],
+                    'deletedBy' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'deletedGroup' => ['type' => 'text', 'rules' => ['max' => 36], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                    '_live' => ['type' => 'boolean', 'default' => ['value' => true], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                ],
+            ],
+            'sd_children' => [
+                'primaryKey' => 'id', 'editor' => false, 'softDelete' => true, 'table' => 'tp_sd_children',
+                'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']],
+                'columns' => [
+                    'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                    'parentId' => ['type' => 'integer', 'notNull' => true, 'references' => ['collection' => 'sd_parents', 'column' => 'id', 'onDelete' => 'cascade']],
+                    'note' => ['type' => 'text', 'notNull' => true],
+                    'author' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'readOnly' => true, 'system' => true],
+                    'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'onUpdate' => $now, 'readOnly' => true, 'system' => true],
+                    'deletedAt' => ['type' => 'timestamp', 'readOnly' => true, 'system' => true],
+                    'deletedBy' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'deletedGroup' => ['type' => 'text', 'rules' => ['max' => 36], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                    '_live' => ['type' => 'boolean', 'default' => ['value' => true], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                ],
+            ],
+            'sd_articles' => [
+                'primaryKey' => 'id', 'editor' => true, 'drafts' => true, 'revisions' => true, 'softDelete' => true,
+                'title' => 'title', 'slug' => 'slug', 'wp' => ['postType' => 'tp_sd_articles', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_sd_articles_'],
+                'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']],
+                'columns' => [
+                    'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                    'title' => ['type' => 'text', 'notNull' => true],
+                    'slug' => ['type' => 'slug', 'notNull' => true, 'unique' => true, 'source' => 'title'],
+                    'status' => ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true],
+                    'publishedAt' => ['type' => 'timestamp', 'system' => true],
+                    'author' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'readOnly' => true, 'system' => true],
+                    'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'onUpdate' => $now, 'readOnly' => true, 'system' => true],
+                    'deletedAt' => ['type' => 'timestamp', 'readOnly' => true, 'system' => true],
+                    'deletedBy' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'deletedGroup' => ['type' => 'text', 'rules' => ['max' => 36], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                ],
+            ],
+        ],
+    ]);
+    register_post_type('tp_sd_articles', ['public' => false, 'supports' => ['title', 'revisions']]);
+    $wp->exec('CREATE TABLE {prefix}tp_sd_parents (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `email` VARCHAR(191) NOT NULL, `bio` LONGTEXT, `author` BIGINT, `createdAt` CHAR(24) NOT NULL, `updatedAt` CHAR(24) NOT NULL, `deletedAt` CHAR(24), `deletedBy` BIGINT, `deletedGroup` VARCHAR(36), `_live` TINYINT(1) DEFAULT 1, PRIMARY KEY (`id`), UNIQUE KEY `email_unique` (`email`, `_live`), INDEX `deletedAt_idx` (`deletedAt`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_sd_children (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `parentId` BIGINT UNSIGNED NOT NULL, `note` LONGTEXT NOT NULL, `author` BIGINT, `createdAt` CHAR(24) NOT NULL, `updatedAt` CHAR(24) NOT NULL, `deletedAt` CHAR(24), `deletedBy` BIGINT, `deletedGroup` VARCHAR(36), `_live` TINYINT(1) DEFAULT 1, PRIMARY KEY (`id`), INDEX `deletedAt_idx` (`deletedAt`)) ENGINE=InnoDB');
+    $store = \TypedPress\Wp\CompositeStore::create($sdSchema, $wp->connection());
+    $db = new \TypedPress\Db($store, $sdSchema, \TypedPress\db()->media());
+    $editor = new \TypedPress\Viewer(['id' => 42, 'name' => 'Ed', 'role' => 'editor']);
+    $guest = new \TypedPress\Viewer(null);
+
+    // System fields auto-populated + read-only to callers
+    $db->setActor($editor->user);
+    problem('read-only system field rejected on create', fn () => $db->insert('sd_parents', ['email' => 'ro@x.test', 'createdAt' => '2020-01-01T00:00:00.000Z'], true), 422, 'invalid_input', '/createdAt');
+    $p1 = $db->insert('sd_parents', ['email' => 'alice@x.test', 'bio' => 'hello'], true)[0];
+    check('system fields populated on create (author, createdAt, updatedAt, deletedAt=null)', $p1['author'] === 42 && is_string($p1['createdAt']) && is_string($p1['updatedAt']) && $p1['deletedAt'] === null, $p1);
+    $c1 = $db->insert('sd_children', ['parentId' => $p1['id'], 'note' => 'child-1'], true)[0];
+
+    // Strict Drizzle 1.0 filter semantics: explicit undefined rejected, update ignores undefined and clears null
+    problem('undefined in where filter throws 422 invalid_input', fn () => $db->findMany('sd_parents', ['where' => ['email' => \TypedPress\JsUndefined::Value]]), 422, 'invalid_input', '/where/email');
+    problem('undefined in operator object throws 422 invalid_input', fn () => $db->findMany('sd_parents', ['where' => ['email' => ['eq' => \TypedPress\JsUndefined::Value]]]), 422, 'invalid_input', '/where/email/eq');
+    problem('undefined in in-list throws 422 invalid_input', fn () => $db->findMany('sd_parents', ['where' => ['id' => ['in' => [\TypedPress\JsUndefined::Value]]]]), 422, 'invalid_input', '/where/id/in/0');
+    $u1 = $db->update('sd_parents', ['email' => \TypedPress\JsUndefined::Value, 'bio' => null], ['id' => $p1['id']], true)[0];
+    eq('update ignores undefined and clears null', [$u1['email'], $u1['bio']], ['alice@x.test', null]);
+
+    // Soft delete + deletedGroup cascade
+    $del = $db->delete('sd_parents', ['id' => $p1['id']], true, $editor)[0];
+    check('soft delete sets deletedAt and deletedBy', is_string($del['deletedAt']) && $del['deletedBy'] === 42, $del);
+    eq('default list excludes soft-deleted parent and cascaded child', [count($db->findMany('sd_parents')), count($db->findMany('sd_children'))], [0, 0]);
+    problem('deleted: only refused to anonymous visitor without restore/delete access', fn () => $db->findMany('sd_parents', ['deleted' => 'only'], $guest), 401, 'unauthenticated');
+    eq('deleted: only visible to editor', [count($db->findMany('sd_parents', ['deleted' => 'only'], $editor)), count($db->findMany('sd_children', ['deleted' => 'only'], $editor))], [1, 1]);
+
+    // Active-row unique reuse while soft-deleted + restore 409 collision
+    $p2 = $db->insert('sd_parents', ['email' => 'alice@x.test', 'bio' => 'reused'], true, $editor)[0];
+    eq('unique email reused while original row is soft-deleted', $p2['email'], 'alice@x.test');
+    problem('restore collides with active row holding same unique email (409)', fn () => $db->restore('sd_parents', ['id' => $p1['id']], true, $editor), 409, 'unique_violation', '/email');
+
+    // Delete second row, then restore first -> restores parent AND cascaded child via deletedGroup!
+    $db->delete('sd_parents', ['id' => $p2['id']], true, $editor);
+    $restored = $db->restore('sd_parents', ['id' => $p1['id']], true, $editor)[0];
+    eq('restore clears deletedAt/deletedBy, restores cascaded child, fires afterRestore', [
+        $restored['deletedAt'], $restored['deletedBy'], count($db->findMany('sd_children')), $restoredLog,
+    ], [null, null, 1, ['alice@x.test']]);
+
+    // Purge: denied to untrusted editor (default "system"), succeeds when trusted, fires afterPurge
+    problem('purge denied to untrusted editor by default (system only)', fn () => $db->purge('sd_parents', ['id' => $p2['id']], true, $editor), 403, 'forbidden');
+    $db->purge('sd_parents', ['id' => $p2['id']], true);
+    eq('trusted purge permanently deletes row and fires afterPurge', [count($db->findMany('sd_parents', ['deleted' => 'include'])), $purgedLog], [1, ['alice@x.test']]);
+
+    // Soft delete on post-backed collection(): WP Trash + restore prior status + purge
+    $art = $db->insert('sd_articles', ['title' => 'Hello Trash'], true, $editor)[0];
+    eq('post collection system fields populated', [$art['author'], is_string($art['createdAt']), $art['deletedAt']], [42, true, null]);
+    $trashed = $db->delete('sd_articles', ['id' => $art['id']], true, $editor)[0];
+    eq('post soft delete moves to WP trash with deletedAt/deletedBy', [get_post_status($art['id']), is_string($trashed['deletedAt']), $trashed['deletedBy']], ['trash', true, 42]);
+    eq('post list excludes trashed by default, finds with deleted: only', [count($db->findMany('sd_articles')), count($db->findMany('sd_articles', ['deleted' => 'only'], $editor))], [0, 1]);
+    $untrashed = $db->restore('sd_articles', ['id' => $art['id']], true, $editor)[0];
+    eq('post restore calls wp_untrash_post and restores published status', [$untrashed['status'], $untrashed['deletedAt'], get_post_status($art['id'])], ['published', null, 'publish']);
+    $db->purge('sd_articles', ['id' => $art['id']], true);
+    eq('post purge permanently deletes post', get_post($art['id']), null);
+
+    // Retention helper: blocks wp_scheduled_delete for TypedPress softDelete post types + reads configured seconds
+    eq('Retention blocks wp_scheduled_delete for softDelete post types', \TypedPress\Wp\Retention::blocksWpScheduledDelete($sdSchema, 'tp_sd_articles'), true);
+    eq('Retention reads configured deletedSeconds', \TypedPress\Wp\Retention::deletedSeconds($sdSchema, 'sd_parents'), 86400);
+    $db->setActor(null);
+})();
+
+// ================================================================ Slice 3: native revisions, diff, schema-aware decode, table _rev
+(static function () use ($wp): void {
+    $revSchema = new \TypedPress\Schema([
+        'name' => 'rev_test',
+        'collections' => [
+            'docs' => [
+                'primaryKey' => 'id', 'editor' => false, 'table' => 'tp_rev_docs',
+                'revisions' => true, 'softDelete' => true,
+                'access' => [
+                    'read' => ['role' => 'anyone'],
+                    'create' => ['role' => 'anyone'],
+                    'update' => ['role' => 'anyone'],
+                    'delete' => ['role' => 'anyone'],
+                    'restore' => ['role' => 'anyone'],
+                    'purge' => ['role' => 'anyone'],
+                ],
+                'columns' => [
+                    'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                    'summary' => ['type' => 'text', 'notNull' => true, 'column' => 'legacy_title', 'aliases' => ['oldTitle']],
+                    'note' => ['type' => 'text', 'default' => ['value' => 'default-note']],
+                    'secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]],
+                    'author' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => ['now' => true], 'readOnly' => true, 'system' => true],
+                    'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => ['now' => true], 'onUpdate' => ['now' => true], 'readOnly' => true, 'system' => true],
+                    'deletedAt' => ['type' => 'timestamp', 'readOnly' => true, 'system' => true],
+                    'deletedBy' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'deletedGroup' => ['type' => 'text', 'rules' => ['max' => 36], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                    '_live' => ['type' => 'boolean', 'default' => ['value' => true], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                ],
+                'relations' => [], 'hooks' => [],
+            ],
+        ],
+    ]);
+    $wp->exec('DROP TABLE IF EXISTS {prefix}tp_rev_docs');
+    $wp->exec("CREATE TABLE {prefix}tp_rev_docs (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `legacy_title` LONGTEXT NOT NULL, `note` LONGTEXT DEFAULT ('default-note'), `secret` LONGTEXT, `author` BIGINT, `createdAt` CHAR(24) NOT NULL, `updatedAt` CHAR(24) NOT NULL, `deletedAt` CHAR(24), `deletedBy` BIGINT, `deletedGroup` VARCHAR(36), `_live` TINYINT(1) DEFAULT 1, PRIMARY KEY (`id`)) ENGINE=InnoDB");
+    $wp->exec("DELETE FROM {prefix}tp__migrations WHERE `app` = 'rev_test'");
+    $wp->exec("INSERT INTO {prefix}tp__migrations (`app`, `id`, `kind`, `applied_at`) VALUES ('rev_test', '20261121180000_aaaaaa_init', 'schema', '2026-11-21T18:00:00.000Z')");
+
+    $store = \TypedPress\Wp\CompositeStore::create($revSchema, $wp->connection());
+    $rdb = new \TypedPress\Db($store, $revSchema, \TypedPress\db()->media());
+
+    // 1. Create -> update -> soft delete -> restore -> purge all emit monotonic versioned revisions with op, changed, schemaMigration.
+    $doc = $rdb->insert('docs', ['summary' => 'V1', 'secret' => 's1'], true)[0];
+    $rdb->update('docs', ['summary' => 'V2', 'secret' => 's2'], ['id' => $doc['id']], true);
+    $rdb->delete('docs', ['id' => $doc['id']], true);
+    $rdb->restore('docs', ['id' => $doc['id']], true);
+
+    $list = $rdb->revisions('docs', $doc['id']);
+    eq('table revisions record create/update/delete/restore with monotonic versions',
+        array_map(static fn (array $r) => [$r['version'], $r['op'], $r['schemaMigration']], $list),
+        [
+            [4, 'restore', '20261121180000_aaaaaa_init'],
+            [3, 'delete', '20261121180000_aaaaaa_init'],
+            [2, 'update', '20261121180000_aaaaaa_init'],
+            [1, 'create', '20261121180000_aaaaaa_init'],
+        ]);
+    eq('update revision lists changed non-hidden fields', $list[2]['changed'], ['summary', 'secret']);
+
+    // 2. Diff between v1 and v2 masks hidden fields for non-admin viewer.
+    $guest = new \TypedPress\Viewer(null);
+    $admin = new \TypedPress\Viewer(['id' => 1, 'role' => 'admin']);
+    $diffGuest = $rdb->diffRevisions('docs', $doc['id'], 1, 2, $guest, byVersion: true);
+    $diffAdmin = $rdb->diffRevisions('docs', $doc['id'], 1, 2, $admin, byVersion: true);
+    eq('diff masks restricted fields from non-admin viewer',
+        array_column($diffGuest['changes'], 'field'), ['summary']);
+    eq('diff shows all changed fields to admin',
+        $diffAdmin['changes'], [
+            ['field' => 'summary', 'from' => 'V1', 'to' => 'V2'],
+            ['field' => 'secret', 'from' => 's1', 'to' => 's2'],
+        ]);
+
+    // 3. Restore by version restores V1 cleanly.
+    $restored = $rdb->restoreRevision('docs', $doc['id'], 1, $admin, byVersion: true);
+    eq('restoreRevision by version restores v1 values', [$restored['summary'], $restored['secret']], ['V1', 's1']);
+
+    // 4. Schema-aware revision decoding handles aliased column names, physical column names, retired columns, and newly added defaulted columns.
+    $decoded = \TypedPress\Db::decodeRevisionPayload($revSchema->collection('docs'), [
+        'id' => 99,
+        'oldTitle' => 'From Alias',
+        'retired_col' => 'should be dropped',
+        'createdAt' => '2026-01-01T00:00:00.000Z',
+        'updatedAt' => '2026-01-01T00:00:00.000Z',
+    ]);
+    eq('schema-aware decode resolves alias, fills default for newly added column, and drops retired columns',
+        [$decoded['summary'], $decoded['note'], array_key_exists('retired_col', $decoded)],
+        ['From Alias', 'default-note', false]);
+    $decodedPhys = \TypedPress\Db::decodeRevisionPayload($revSchema->collection('docs'), [
+        'id' => 100,
+        'legacy_title' => 'From Physical',
+        'createdAt' => '2026-01-01T00:00:00.000Z',
+        'updatedAt' => '2026-01-01T00:00:00.000Z',
+    ]);
+    eq('schema-aware decode resolves physical column name to logical field name', $decodedPhys['summary'], 'From Physical');
+
+    // 5. Purge records a final purge revision that survives row deletion.
+    $rdb->purge('docs', ['id' => $doc['id']], true);
+    $afterPurge = $store->revisions('docs', $doc['id']);
+    eq('purge writes a final audit revision in tp__revisions', $afterPurge[0]['op'], 'purge');
+})();
+
 // PR #516 review: a referential update on visible rows can't answer with hidden values, a many-ref
 // link from a hidden row refuses, hidden volume can't change the answer, and a read extension that may
 // hide rows makes every relationship refuse.
@@ -2075,7 +2290,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $wp->exec('CREATE TABLE {prefix}tp_r_defaulted (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, parentId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
     $wp->exec('CREATE TABLE {prefix}tp_r_tags (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, name LONGTEXT, PRIMARY KEY(id)) ENGINE=InnoDB');
     $wp->exec('CREATE TABLE {prefix}tp_r_cards (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, ownerId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
-    $wp->exec('CREATE TABLE {prefix}tp_r_cards_tags (owner_id BIGINT UNSIGNED NOT NULL, target_id BIGINT UNSIGNED NOT NULL, position INT NOT NULL, PRIMARY KEY(owner_id, target_id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp__join_r_cards_tags (owner_id BIGINT UNSIGNED NOT NULL, target_id BIGINT UNSIGNED NOT NULL, position INT NOT NULL, PRIMARY KEY(owner_id, target_id)) ENGINE=InnoDB');
     $wp->exec('CREATE TABLE {prefix}tp_r_bulky (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, body LONGTEXT, tagId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
     $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
     $previous = \TypedPress\Db::instance();
@@ -2150,7 +2365,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         for ($i = 0; $i < 6; $i++) {
             $wp->connection()->run('INSERT INTO wp_tp_r_cards (ownerId) SELECT ownerId FROM wp_tp_r_cards WHERE ownerId = 8');
         }
-        $wp->connection()->run('INSERT INTO wp_tp_r_cards_tags (owner_id, target_id, position) SELECT id, ?, 0 FROM wp_tp_r_cards WHERE ownerId = 8', [$many['id']]);
+        $wp->connection()->run('INSERT INTO wp_tp__join_r_cards_tags (owner_id, target_id, position) SELECT id, ?, 0 FROM wp_tp_r_cards WHERE ownerId = 8', [$many['id']]);
         $limit = ini_get('memory_limit');
         ini_set('memory_limit', '128M');
         try {
@@ -2181,7 +2396,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $anon = new \TypedPress\Viewer(null);
     $member = new \TypedPress\Viewer(['id' => 1, 'name' => 'm', 'role' => 'subscriber']);
     [$red, $green, $blue, $hidden] = $db->insert('labels', [['name' => 'red'], ['name' => 'green'], ['name' => 'blue'], ['name' => 'hidden', 'secret' => true]], true);
-    $links = static fn (string $table) => array_map(static fn (array $r) => array_map('intval', $r), $wp->sql("SELECT `owner_id`, `target_id`, `position` FROM {prefix}tp_$table ORDER BY `owner_id`, `position`"));
+    $links = static fn (string $table) => array_map(static fn (array $r) => array_map('intval', $r), $wp->sql("SELECT `owner_id`, `target_id`, `position` FROM {prefix}tp__join_$table ORDER BY `owner_id`, `position`"));
 
     $card = $db->insert('cards', ['title' => 'one', 'labels' => [$blue['id'], $red['id']]], true)[0];
     eq('a many-ref reads back as its ids in write order; an omitted optional one is []', [$card['labels'], $card['pinned']], [[$blue['id'], $red['id']], []]);
@@ -2221,10 +2436,10 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     problem('restrict refuses deleting a target that is still linked', fn () => $db->delete('labels', ['id' => $green['id']]), 409, 'reference_violation');
     eq('… and keeps it and its links', [count($db->findMany('labels', ['where' => ['id' => $green['id']]])), $db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels']], [1, [$red['id'], $green['id']]]);
     $db->delete('labels', ['id' => $red['id']]);
-    eq('deleting a target removes the links pointing at it', [$db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels'], count($wp->sql('SELECT 1 FROM {prefix}tp_cards_labels WHERE `target_id` = ?', [$red['id']]))], [[$green['id']], 0]);
+    eq('deleting a target removes the links pointing at it', [$db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels'], count($wp->sql('SELECT 1 FROM {prefix}tp__join_cards_labels WHERE `target_id` = ?', [$red['id']]))], [[$green['id']], 0]);
     $db->update('cards', ['pinned' => []], ['id' => $two['id']]);
     $db->delete('cards', ['id' => $two['id']]);
-    eq('deleting the owner removes its links', count($wp->sql('SELECT 1 FROM {prefix}tp_cards_labels WHERE `owner_id` = ?', [$two['id']])), 0);
+    eq('deleting the owner removes its links', count($wp->sql('SELECT 1 FROM {prefix}tp__join_cards_labels WHERE `owner_id` = ?', [$two['id']])), 0);
     $db->delete('labels', ['id' => $green['id']]);
     eq('with the last link gone, restrict lets the target go', $db->findFirst('cards', ['where' => ['id' => $card['id']]])['labels'], [$blue['id']]);
 

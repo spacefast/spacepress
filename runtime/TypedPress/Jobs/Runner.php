@@ -191,7 +191,7 @@ final class Runner
         $recovered = self::recover();
         $now = Js::now();
 
-        return db()->transaction(static function () use ($now, $recovered): array {
+        $result = db()->transaction(static function () use ($now, $recovered): array {
             $stuck = Storage::run('SELECT "id" FROM {jobs} WHERE "state" = \'running\' AND "lockedAt" < ?' . Storage::forUpdate(), [Js::iso($now - self::STUCK_MS)]);
             foreach ($stuck as $row) {
                 Storage::run('UPDATE {jobs} SET "state" = \'pending\', "lockedAt" = NULL, "runAt" = ? WHERE "id" = ?', [Js::iso($now), $row['id']]);
@@ -202,5 +202,11 @@ final class Runner
 
             return ['recovered' => $recovered, 'requeued' => count($stuck), 'swept' => (int) $old[0]['n']];
         });
+        $plugin = \TypedPress\Wp\Plugin::instance();
+        if ($plugin !== null) {
+            \TypedPress\Wp\Retention::sweep($plugin);
+        }
+
+        return $result;
     }
 }

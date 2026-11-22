@@ -37,10 +37,10 @@ export const shoppingList = table({
   done: boolean().default(false),
 });
 
-// Renames (spec §2.5, §2.6): a field and a table declare the names they were stored under.
+// Aliasing: decouple TypeScript field/table names from physical SQL names with zero DDL.
 export const errands = table({
-  label: text().was("name"),
-}, { was: "chores" });
+  label: text().column("name").alias("name"),
+}, { storageName: "chores" });
 
 export const authors = collection({
   name: text().max(80),

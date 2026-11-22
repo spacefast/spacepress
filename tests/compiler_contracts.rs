@@ -212,13 +212,21 @@ fn a_declared_index_is_created_and_listed() {
     let (out, report) = checked(tmp.path());
     assert!(out.status.success(), "{report}");
     assert!(
-        report["indexes"].as_array().unwrap().contains(&json!({ "table": "likes", "name": "idx_post_author", "unique": true, "columns": ["post", "author"], "reason": "declared with .index([\"post\", \"author\"], { unique: true })" })),
+        report["indexes"].as_array().unwrap().contains(&json!({ "table": "likes", "name": "idx_post_author", "unique": true, "columns": ["post", "author", "_live"], "reason": "declared with .index([\"post\", \"author\"], { unique: true })" })),
         "{report}"
     );
     let built = first().args(["build", "--quiet"]).arg(tmp.path()).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let sql = std::fs::read_to_string(tmp.path().join("tp/_generated/migrations/0001_init.sql")).unwrap();
-    assert!(sql.contains("UNIQUE KEY `idx_post_author` (`post`, `author`)"), "{sql}");
+    let init_dir = std::fs::read_dir(tmp.path().join("tp/_generated/migrations"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.is_dir())
+        .expect("init migration folder");
+    let sql = std::fs::read_to_string(init_dir.join("migration.sql")).unwrap();
+    assert!(
+        sql.contains("UNIQUE KEY `idx_post_author` (`post`, `author`, `_live`)"),
+        "{sql}"
+    );
 
     write_app(
         tmp.path().join("tp/schema.ts"),
@@ -261,7 +269,7 @@ fn json_check_lists_each_index_with_its_reason() {
     assert_eq!(find("items", "PRIMARY")["reason"], "primary key");
     assert_eq!(
         find("items", "slug_unique"),
-        json!({ "table": "items", "name": "slug_unique", "unique": true, "columns": ["slug"], "reason": "`slug` is .unique()" })
+        json!({ "table": "items", "name": "slug_unique", "unique": true, "columns": ["slug", "_live"], "reason": "`slug` is .unique()" })
     );
     assert_eq!(
         find("items", "tp_items_locationId_fk")["reason"],
@@ -335,27 +343,27 @@ export { notes }; export default defineConfig({ name: "presentation" });"#;
     assert_eq!(field["placeholder"], "Jane");
     assert_eq!(field["wrapper"]["width"], 50);
     assert_eq!(got["json"]["instructions"], "Enter valid JSON.");
-    let snapshot = tmp.path().join("tp/_generated/migrations/snapshot.json");
-    let before = std::fs::read(&snapshot).unwrap();
+    let ledger = || -> Vec<(String, Vec<u8>)> {
+        let mut out = Vec::new();
+        for e in std::fs::read_dir(tmp.path().join("tp/_generated/migrations")).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                let name = p.file_name().unwrap().to_string_lossy().into_owned();
+                out.push((name, std::fs::read(p.join("ops.json")).unwrap()));
+            }
+        }
+        out.sort();
+        out
+    };
+    let before = ledger();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
         config.replace("width: 50", "width: 100"),
     )
     .unwrap();
     build_wp(tmp.path());
-    assert_eq!(
-        std::fs::read(snapshot).unwrap(),
-        before,
-        "presentation changes cannot change storage"
-    );
-    assert_eq!(
-        std::fs::read_dir(tmp.path().join("tp/_generated/migrations"))
-            .unwrap()
-            .filter(|entry| entry.as_ref().unwrap().path().extension().is_some_and(|e| e == "sql"))
-            .count(),
-        1,
-        "a presentation change planned a migration"
-    );
+    assert_eq!(ledger(), before, "presentation changes cannot change storage");
+    assert_eq!(ledger().len(), 1, "a presentation change planned a migration");
 }
 
 #[test]
@@ -389,11 +397,11 @@ fn uri_vectors_agree_in_node_pure_evaluation_and_generated_php() {
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("typedpress.config.ts"), format!(r#"
-import {{ collection, text, json, action, defineConfig }} from "typedpress";
+import {{ collection, text, json, defineConfig, mutation }} from "typedpress";
 const values = {values};
 const encoded = values.map(value => [encodeURI(value), encodeURIComponent(value)]);
 const notes = collection({{ title: text(), result: json().default(encoded).optional() }}, {{ title: "title" }});
-export {{ notes }}; const __encode = action({{ input: {{}}, handler: () => values.map(value => [encodeURI(value), encodeURIComponent(value)]) }}); export {{ __encode as encode }}; export default defineConfig({{ name: "uri" }});
+export {{ notes }}; const __encode = mutation({{}}, () => values.map(value => [encodeURI(value), encodeURIComponent(value)])); export {{ __encode as encode }}; export default defineConfig({{ name: "uri" }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
     let app = content.join("plugins/typedpress-app-uri/tp/app");
@@ -428,7 +436,7 @@ fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
         "export function pending(){ setTimeout(() => {}, 5); return 1; }\nexport function cleared(){ const h = setTimeout(() => {}, 5); clearTimeout(h); AbortSignal.timeout(5); return 2; }\nexport function late(){ const h = setTimeout(() => {}, 'x'); return typeof h; }",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {pending,cleared,late} from './tp/timers.js';const __pending = action({handler:()=>pending()}); export { __pending as pending }; const __cleared = action({handler:()=>cleared()}); export { __cleared as cleared }; const __late = action({handler:()=>late()}); export { __late as late }; export default defineConfig({ name:'timers' });").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {pending,cleared,late} from './tp/timers.js';const __pending = mutation({}, ()=>pending()); export { __pending as pending }; const __cleared = mutation({}, ()=>cleared()); export { __cleared as cleared }; const __late = mutation({}, ()=>late()); export { __late as late }; export default defineConfig({ name:'timers' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';
@@ -525,9 +533,9 @@ fn url_vectors_agree_in_node_and_generated_php() {
     std::fs::write(tmp.path().join("cases.json"), Value::Array(cases).to_string()).unwrap();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
-        r#"import { action, defineConfig } from "typedpress";
+        r#"import { defineConfig, mutation } from "typedpress";
 import { parseAll, searchParams, invalid } from "./tp/url.js";
-const __probe = action({ input: {}, handler: () => [searchParams(), invalid()] }); export { __probe as probe }; export default defineConfig({ name: "url" });
+const __probe = mutation({}, () => [searchParams(), invalid()]); export { __probe as probe }; export default defineConfig({ name: "url" });
 "#,
     )
     .unwrap();
@@ -662,9 +670,9 @@ fn tagged_templates_refuse_lone_surrogates_except_under_string_raw() {
             tmp.path().join("typedpress.config.ts"),
             format!(
                 r#"
-import {{ collection, text, action, defineConfig }} from "typedpress";
+import {{ collection, text, defineConfig, mutation }} from "typedpress";
 const notes = collection({{ title: text() }}, {{ title: "title" }});
-const __raw = action({{ input: {{}}, handler: {handler} }});
+const __raw = mutation({{}}, {handler});
 export {{ notes, __raw as raw }}; export default defineConfig({{}});
 "#
             ),
@@ -700,10 +708,10 @@ fn uri_encoding_refuses_coercion_and_discarded_arguments() {
                 expression.to_string()
             };
             std::fs::write(tmp.path().join("typedpress.config.ts"), format!(r#"
-import {{ collection, text, action, defineConfig }} from "typedpress";
+import {{ collection, text, defineConfig, mutation }} from "typedpress";
 const result = {invocation};
 const notes = collection({{ title: text() }}, {{ title: "title" }});
-export {{ notes }}; const __encode = action({{ input: {{}}, handler: {handler_body} }}); export {{ __encode as encode }}; export default defineConfig({{}});
+export {{ notes }}; const __encode = mutation({{}}, {handler_body}); export {{ __encode as encode }}; export default defineConfig({{}});
 "#, handler_body = if handler { "result".to_string() } else { "() => result".to_string() })).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
@@ -763,9 +771,9 @@ fn type_guards_validate_their_domains_and_boolean_returns() {
             tmp.path().join("typedpress.config.ts"),
             format!(
                 r#"
-import {{ action, defineConfig }} from "typedpress";
+import {{ defineConfig, mutation }} from "typedpress";
 {helper}
-const __probe = action({{ input: {{}}, handler: () => guard }}); export {{ __probe as probe }}; export default defineConfig({{}});
+const __probe = mutation({{}}, () => guard); export {{ __probe as probe }}; export default defineConfig({{}});
 "#
             ),
         )
@@ -870,11 +878,11 @@ function nonempty() {
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(tmp.path().join("typedpress.config.ts"), format!(r#"
-import {{ action, defineConfig }} from 'typedpress';
+import {{ defineConfig, mutation as server }} from 'typedpress';
 import {{ combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects }} from './tp/helpers.mjs';
 {mutation}
 function nullable(value: string | null) {{ return value.trim(); }}
-const __probe = action({{ input: {{}}, handler: () => {expression} }}); export {{ __probe as probe }}; const __dynamicError = action({{ input: {{}}, handler: () => {{ try {{ read(2); return false; }} catch {{ return true; }} }} }}); export {{ __dynamicError as dynamicError }}; const __nullableError = action({{ input: {{}}, handler: () => {{ try {{ nullable(null); return false; }} catch {{ return true; }} }} }}); export {{ __nullableError as nullableError }}; export default defineConfig({{ name: 'js-values' }});
+const __probe = server({{}}, () => {expression}); export {{ __probe as probe }}; const __dynamicError = server({{}}, () => {{ try {{ read(2); return false; }} catch {{ return true; }} }}); export {{ __dynamicError as dynamicError }}; const __nullableError = server({{}}, () => {{ try {{ nullable(null); return false; }} catch {{ return true; }} }}); export {{ __nullableError as nullableError }}; export default defineConfig({{ name: 'js-values' }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
     let actual = php(
@@ -900,13 +908,13 @@ echo \TypedPress\Js::jsonStringify($result);
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
         r#"
-import { action, defineConfig } from 'typedpress';
-const __probe = action({ input: {}, handler: (): string => {
+import { defineConfig, mutation } from 'typedpress';
+const __probe = mutation({}, (): string => {
   const values = Array.from(['first']);
   const alias = values;
   alias.pop();
   return values[0];
-} }); export { __probe as probe }; export default defineConfig({});
+}); export { __probe as probe }; export default defineConfig({});
 "#,
     )
     .unwrap();
@@ -930,13 +938,13 @@ const __probe = action({ input: {}, handler: (): string => {
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
         r#"
-import { action, defineConfig } from 'typedpress';
+import { defineConfig, mutation } from 'typedpress';
 import { change } from './tp/helpers.mjs';
-const __probe = action({ input: {}, handler: (): number => {
+const __probe = mutation({}, (): number => {
   const values: number[] = [1];
   change(values);
   return values.reduce((sum, value) => sum + value, 0);
-} }); export { __probe as probe }; export default defineConfig({});
+}); export { __probe as probe }; export default defineConfig({});
 "#,
     )
     .unwrap();
@@ -967,14 +975,14 @@ const __probe = action({ input: {}, handler: (): number => {
         std::fs::write(
             tmp.path().join("typedpress.config.ts"),
             r#"
-import { action, defineConfig } from 'typedpress';
+import { defineConfig, mutation } from 'typedpress';
 import { change } from './tp/helpers.mjs';
-const __probe = action({ input: {}, handler: (): number => {
+const __probe = mutation({}, (): number => {
   const object = { count: 1 };
   const values = [object, object];
   change(values);
   return object.count + 1;
-} }); export { __probe as probe }; export default defineConfig({});
+}); export { __probe as probe }; export default defineConfig({});
 "#,
         )
         .unwrap();
@@ -1018,14 +1026,12 @@ fn binary_data_matches_node_through_generated_php() {
     assert!(names.len() >= 14, "{expected}");
     let actions: Vec<String> = names
         .iter()
-        .map(|name| {
-            format!("export const {name} = action({{ input: {{}}, handler: async () => await cases.{name}() }});")
-        })
+        .map(|name| format!("export const {name} = mutation({{}}, async () => await cases.{name}());"))
         .collect();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
         format!(
-            "import {{ action, defineConfig }} from 'typedpress';\nimport * as cases from './tp/binary.mjs';\n{}\nexport default defineConfig({{ name: 'binary-tests' }});\n",
+            "import {{ defineConfig, mutation }} from 'typedpress';\nimport * as cases from './tp/binary.mjs';\n{}\nexport default defineConfig({{ name: 'binary-tests' }});\n",
             actions.join("\n")
         ),
     )
@@ -1124,7 +1130,7 @@ fn binary_globals_refuse_shared_memory_and_typed_code_with_fixes() {
         write_app(tmp.path().join("tp").join(file), source).unwrap();
         std::fs::write(
             tmp.path().join("typedpress.config.ts"),
-            format!("import {{ action, defineConfig }} from 'typedpress';\nimport {{ make }} from './tp/{file}';\nconst __probe = action({{ handler: () => {{ make(); return 1; }} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
+            format!("import {{ defineConfig, mutation }} from 'typedpress';\nimport {{ make }} from './tp/{file}';\nconst __probe = mutation({{}}, () => {{ make(); return 1; }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -1170,15 +1176,13 @@ fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let actions = cases
         .iter()
-        .map(|name| {
-            format!("export const {name} = action({{ input: {{}}, handler: async () => await cases.{name}() }});")
-        })
+        .map(|name| format!("export const {name} = mutation({{}}, async () => await cases.{name}());"))
         .collect::<Vec<_>>()
         .join("\n");
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
         format!(
-            "import {{ action, defineConfig }} from 'typedpress';\nimport * as cases from './tp/async.mjs';\n{actions}\nexport default defineConfig({{ name: 'async-diff' }});\n"
+            "import {{ defineConfig, mutation }} from 'typedpress';\nimport * as cases from './tp/async.mjs';\n{actions}\nexport default defineConfig({{ name: 'async-diff' }});\n"
         ),
     )
     .unwrap();
@@ -1212,7 +1216,7 @@ echo \TypedPress\Js::jsonStringify(new \TypedPress\JsArray($result));
     .unwrap();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
-        "import { action, defineConfig } from 'typedpress';\nimport * as cases from './tp/async.mjs';\nexport const lost = action({ input: {}, handler: async () => await cases.lost() });\nexport const stuck = action({ input: {}, handler: async () => await cases.stuck() });\nexport default defineConfig({ name: 'async-diff' });\n",
+        "import { defineConfig, mutation } from 'typedpress';\nimport * as cases from './tp/async.mjs';\nexport const lost = mutation({}, async () => await cases.lost());\nexport const stuck = mutation({}, async () => await cases.stuck());\nexport default defineConfig({ name: 'async-diff' });\n",
     )
     .unwrap();
     let content = build_wp(tmp.path());
@@ -1238,7 +1242,7 @@ echo json_encode($result);
         errors,
         json!([
             "lost",
-            "This promise can never settle: nothing left to run (awaited at typedpress.config.ts:4:63)"
+            "This promise can never settle: nothing left to run (awaited at typedpress.config.ts:4:47)"
         ])
     );
 }
@@ -1257,10 +1261,10 @@ fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() 
     );
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("typedpress.config.ts"), format!(r#"
-import {{ collection, text, json, action, defineConfig }} from "typedpress";
+import {{ collection, text, json, defineConfig, mutation }} from "typedpress";
 const measured = {expression};
 const notes = collection({{ title: text(), result: json().default(measured).optional() }}, {{ title: "title" }});
-export {{ notes }}; const __measure = action({{ input: {{}}, handler: () => {expression} }}); export {{ __measure as measure }}; export default defineConfig({{ name: "differences" }});
+export {{ notes }}; const __measure = mutation({{}}, () => {expression}); export {{ __measure as measure }}; export default defineConfig({{ name: "differences" }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
     let result = php(
@@ -1361,9 +1365,9 @@ fn static_commonjs_packages_match_node_through_generated_php() {
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
         r#"
-import { action, defineConfig, text } from "typedpress";
+import { defineConfig, text, mutation } from "typedpress";
 import run from "./tp/probe.cjs";
-const __probe = action({ access: "anyone", input: { glob: text() }, handler: (input) => run(input.glob) }); export { __probe as probe }; export default defineConfig({ name: "commonjs" });
+const __probe = mutation({ access: "anyone" }, (input: { glob: string }) => run(input.glob)); export { __probe as probe }; export default defineConfig({ name: "commonjs" });
 "#,
     )
     .unwrap();
@@ -1662,12 +1666,13 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        let input = if message == "JSON schemas cannot use class instance types" {
+        // A class can't type a stored JSON value either.
+        let fields = if message == "JSON schemas cannot use class instance types" {
             "{ value: json<C>().optional() }"
         } else {
             "{}"
         };
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{ table, json, action, defineConfig }} from 'typedpress';\n{declarations}\nconst __n = table({{}}); export {{ __n as n }}; const __test = action({{input: {input}, handler: () => {handler} }}); export {{ __test as test }}; export default defineConfig({{}});\n")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{ table, json, defineConfig, mutation }} from 'typedpress';\n{declarations}\nconst __n = table({fields}); export {{ __n as n }}; const __test = mutation({{}}, () => {handler}); export {{ __test as test }}; export default defineConfig({{}});\n")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{message}: {report}");
         let diagnostic = report["diagnostics"]
@@ -1805,7 +1810,7 @@ export { posts }; export default defineConfig({ name: "flows", use: [sync()] });
     .unwrap();
     std::fs::write(
         tmp.path().join("node_modules/typedpress-plugin-sync/src/index.ts"),
-        r#"import { action, db, definePlugin } from "typedpress";
+        r#"import { db, definePlugin, mutation } from "typedpress";
 import { abilities, esc_html } from "php/wordpress";
 import { createHmac } from "node:crypto";
 // The send happens in a helper the handler calls with what it read. Package TypeScript compiles
@@ -1817,12 +1822,12 @@ async function push(body: string) {
 export default () => definePlugin({
   name: "sync",
   actions: {
-    export: action({ input: {}, async handler() { const rows = await db.query.posts.findMany(); push(JSON.stringify(rows)); return true; } }),
-    count: action({ input: {}, async handler() { return (await db.query.posts.findMany()).length; } }),
+    export: mutation({}, async () => { const rows = await db.query.posts.findMany(); push(JSON.stringify(rows)); return true; }),
+    count: mutation({}, async () => { return (await db.query.posts.findMany()).length; }),
     // A WordPress ability is a capability like any other: here the app's own `posts` list.
-    list: action({ input: {}, async handler() { const rows = await abilities.call("flows/posts-list", {}); return rows; } }),
+    list: mutation({}, async () => { const rows = await abilities.call("flows/posts-list", {}); return rows; }),
     // So is a WordPress function, recorded with the module it comes from.
-    title: action({ input: {}, handler() { return esc_html("<b>"); } }),
+    title: mutation({}, () => { return esc_html("<b>"); }),
   },
 });"#,
     )
@@ -1978,9 +1983,9 @@ export const describe = (shape: Shape): string => (shape.kind === "circle" ? `r=
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
         r#"
-import { action, defineConfig, text } from 'typedpress';
+import { defineConfig, text, mutation } from 'typedpress';
 import { run } from 'typed-lib';
-const __probe = action({ input: { key: text() }, handler: (input) => run(input.key) }); export { __probe as probe }; export default defineConfig({ name: 'typed-lib' });
+const __probe = mutation({}, (input: { key: string }) => run(input.key)); export { __probe as probe }; export default defineConfig({ name: 'typed-lib' });
 "#,
     )
     .unwrap();
@@ -2021,7 +2026,7 @@ echo \TypedPress\Js::jsonStringify($fn($input, new \TypedPress\JsObject()));
         std::fs::write(
             tmp.path().join("typedpress.config.ts"),
             format!(
-                "import {{ action, defineConfig, text }} from 'typedpress'; {source} const __probe = action({{ input: {{ key: text() }}, handler: (input) => read(input.key) }}); export {{ __probe as probe }}; export default defineConfig({{}});"
+                "import {{ defineConfig, text, mutation }} from 'typedpress'; {source} const __probe = mutation({{}}, (input: {{ key: string }}) => read(input.key)); export {{ __probe as probe }}; export default defineConfig({{}});"
             ),
         )
         .unwrap();
@@ -2060,7 +2065,7 @@ fn checked_javascript_reads_and_calls_inherited_class_methods_like_node() {
     "#,
     )
     .unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress'; import {test} from './tp/helper.js'; const __test = action({input:{},handler:()=>test()}); export { __test as test }; export default defineConfig({ name:'classboundary' });").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress'; import {test} from './tp/helper.js'; const __test = mutation({}, ()=>test()); export { __test as test }; export default defineConfig({ name:'classboundary' });").unwrap();
     let content = build_wp(tmp.path());
     let app = content.join("plugins/typedpress-app-classboundary/tp/app");
     let actual = php(
@@ -2150,7 +2155,7 @@ export function probe() {
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
-        "import { action, defineConfig } from 'typedpress'; import { probe, unmodeled } from './tp/helpers.mjs'; const __probe = action({ input: {}, handler: () => probe() }); export { __probe as probe }; const __unmodeled = action({ input: {}, handler: () => unmodeled() }); export { __unmodeled as unmodeled }; export default defineConfig({ name: 'symbols' });",
+        "import { defineConfig, mutation } from 'typedpress'; import { probe, unmodeled } from './tp/helpers.mjs'; const __probe = mutation({}, () => probe()); export { __probe as probe }; const __unmodeled = mutation({}, () => unmodeled()); export { __unmodeled as unmodeled }; export default defineConfig({ name: 'symbols' });",
     )
     .unwrap();
     let content = build_wp(tmp.path());
@@ -2176,19 +2181,19 @@ echo \TypedPress\Js::jsonStringify(new \TypedPress\JsArray([$run('probe'), $run(
     // Authored TypeScript has no symbol type and no weak collections; both are located refusals.
     for (source, message) in [
         (
-            "const s = Symbol('x'); const __a = action({ input: {}, handler: () => typeof s }); export { __a as a }; export default defineConfig({});",
+            "const s = Symbol('x'); const __a = mutation({}, () => typeof s); export { __a as a }; export default defineConfig({});",
             "symbols aren't supported in TypeScript code yet",
         ),
         (
-            "const __a = action({ input: {}, handler: () => typeof Symbol.for('x') }); export { __a as a }; export default defineConfig({});",
+            "const __a = mutation({}, () => typeof Symbol.for('x')); export { __a as a }; export default defineConfig({});",
             "symbols aren't supported in TypeScript code yet",
         ),
         (
-            "const __a = action({ input: {}, handler: () => { const m = new WeakMap(); return 1; } }); export { __a as a }; export default defineConfig({});",
+            "const __a = mutation({}, () => { const m = new WeakMap(); return 1; }); export { __a as a }; export default defineConfig({});",
             "`new WeakMap` isn't supported",
         ),
         (
-            "const m = new WeakMap(); const __a = action({ input: {}, handler: () => typeof m }); export { __a as a }; export default defineConfig({});",
+            "const m = new WeakMap(); const __a = mutation({}, () => typeof m); export { __a as a }; export default defineConfig({});",
             "which TypeScript code here can't use",
         ),
         (
@@ -2200,11 +2205,11 @@ echo \TypedPress\Js::jsonStringify(new \TypedPress\JsArray([$run('probe'), $run(
             "symbol-keyed properties can't be created while the config is evaluated",
         ),
         (
-            "const __a = action({ input: {}, handler: () => typeof globalThis.Buffer }); export { __a as a }; export default defineConfig({});",
+            "const __a = mutation({}, () => typeof globalThis.Buffer); export { __a as a }; export default defineConfig({});",
             "`globalThis.Buffer` depends on the host",
         ),
         (
-            "const __a = action({ input: {}, handler: () => typeof globalThis.myPolyfill }); export { __a as a }; export default defineConfig({});",
+            "const __a = mutation({}, () => typeof globalThis.myPolyfill); export { __a as a }; export default defineConfig({});",
             "`globalThis.myPolyfill` depends on the host",
         ),
         (
@@ -2212,14 +2217,14 @@ echo \TypedPress\Js::jsonStringify(new \TypedPress\JsArray([$run('probe'), $run(
             "`globalThis.fetch` depends on the host",
         ),
         (
-            "const __a = action({ input: {}, handler: () => globalThis.Bun() }); export { __a as a }; export default defineConfig({});",
+            "const __a = mutation({}, () => globalThis.Bun()); export { __a as a }; export default defineConfig({});",
             "`globalThis.Bun` is undefined in TypedPress",
         ),
     ] {
         std::fs::remove_file(tmp.path().join("tp/helpers.mjs")).ok();
         std::fs::write(
             tmp.path().join("typedpress.config.ts"),
-            format!("import {{ action, defineConfig }} from 'typedpress';\n{source}"),
+            format!("import {{ defineConfig, mutation }} from 'typedpress';\n{source}"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -2261,20 +2266,18 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
         } else {
             expression.to_string()
         };
-        actions.push(format!(
-            "export const {name} = action({{ input: {{}}, handler: () => ({body}) }});"
-        ));
+        actions.push(format!("export const {name} = mutation({{}}, () => ({body}));"));
         if v["fold"] == true {
             declarations.push_str(&format!("const folded_{name}_value = {expression};\n"));
             actions.push(format!(
-                "export const folded_{name} = action({{ input: {{}}, handler: () => folded_{name}_value }});"
+                "export const folded_{name} = mutation({{}}, () => folded_{name}_value);"
             ));
         }
     }
     write_app(tmp.path().join("tp/helper.js"), javascript).unwrap();
     // The app and its helper modules live under tp/; the root config re-exports it.
     let entry = tmp.path().join("tp/app.ts");
-    std::fs::write(&entry, format!("import {{ action, defineConfig }} from 'typedpress';\n{declarations}\n{}\nexport default defineConfig({{name: 'builtinparity'}});", actions.join("\n"))).unwrap();
+    std::fs::write(&entry, format!("import {{ defineConfig, mutation }} from 'typedpress';\n{declarations}\n{}\nexport default defineConfig({{name: 'builtinparity'}});", actions.join("\n"))).unwrap();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
         "export { default } from './tp/app.ts';\n",
@@ -2406,7 +2409,7 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
             } else {
                 (format!("const folded = {expression};"), "folded".into())
             };
-            std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig}} from 'typedpress';\n{declaration}\nconst __probe = action({{input:{{}},handler:()=>{result}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'refusal' }});")).unwrap();
+            std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\n{declaration}\nconst __probe = mutation({{}}, ()=>{result}); export {{ __probe as probe }}; export default defineConfig({{ name:'refusal' }});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}, handler={handler}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -2431,7 +2434,7 @@ fn javascript_invalid_regex_literals_receive_syntax_diagnostics() {
         assert!(!node.status.success(), "{expression}");
         assert!(String::from_utf8_lossy(&node.stderr).contains("SyntaxError"));
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';const __probe = action({{handler:()=>{expression}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';const __probe = mutation({{}}, ()=>{expression}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2473,7 +2476,7 @@ fn unsupported_features_have_positions_and_actionable_help() {
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig}} from 'typedpress';\nconst __probe = action({{input:{{}},handler:()=>{{ {source} }} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'diagnostics' }});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst __probe = mutation({{}}, ()=>{{ {source} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'diagnostics' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2491,7 +2494,7 @@ fn configuration_refuses_unsupported_coercion_at_the_call_site() {
         "'a,b,c'.split(',', {valueOf: () => 2})",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig}} from 'typedpress';\nconst result = {expression};\nconst __probe = action({{input:{{}},handler:()=>result}}); export {{ __probe as probe }}; export default defineConfig({{ name:'coercion' }});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst result = {expression};\nconst __probe = mutation({{}}, ()=>result); export {{ __probe as probe }}; export default defineConfig({{ name:'coercion' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2505,7 +2508,7 @@ fn configuration_refuses_unsupported_coercion_at_the_call_site() {
 fn query_calls_refuse_extra_options_arguments_at_the_call_site() {
     for method in ["findMany", "findFirst"] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig, table, db}} from 'typedpress';\nconst notes = table({{}});\nexport {{ notes }}; const __probe = action({{input:{{}},handler:async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'queryarity' }});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, table, db, mutation}} from 'typedpress';\nconst notes = table({{}});\nexport {{ notes }}; const __probe = mutation({{}}, async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}); export {{ __probe as probe }}; export default defineConfig({{ name:'queryarity' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2538,7 +2541,7 @@ fn database_builders_refuse_discarded_arguments_at_the_call_site() {
         "(n++, db.insert(notes).values({count: 1}))",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig, table, integer, db}} from 'typedpress';\nconst notes=table({{count:integer().optional()}});\nexport {{ notes }}; const __probe = action({{input:{{}},handler:async()=>{{let n=0; await {expression}; return n;}}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'builderarity' }});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, table, integer, db, mutation}} from 'typedpress';\nconst notes=table({{count:integer().optional()}});\nexport {{ notes }}; const __probe = mutation({{}}, async()=>{{let n=0; await {expression}; return n;}}); export {{ __probe as probe }}; export default defineConfig({{ name:'builderarity' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2580,7 +2583,7 @@ fn configuration_validates_callbacks_before_empty_input_shortcuts() {
         "[].map(Math)",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig}} from 'typedpress';\nconst value = (() => {{try {{ {expression}; return 0; }} catch (e) {{ return 1; }} }})();\nconst __probe = action({{input:{{}},handler:()=>value}}); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst value = (() => {{try {{ {expression}; return 0; }} catch (e) {{ return 1; }} }})();\nconst __probe = mutation({{}}, ()=>value); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2598,11 +2601,11 @@ fn schema_builders_refuse_discarded_arguments_at_the_call_site() {
         "json<string>(1)",
         "select(['a'], 1)",
         "defineConfig({}, 1)",
-        "action({handler:()=>1}, 1)",
+        "mutation({}, ()=>1, 1)",
         "new HttpError(400, 'bad', 'message')",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{text, json, select, action, defineConfig, HttpError}} from 'typedpress';\nconst invalid = {expression};\nconst __probe = action({{handler:()=>1}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{text, json, select, defineConfig, HttpError, mutation}} from 'typedpress';\nconst invalid = {expression};\nconst __probe = mutation({{}}, ()=>1); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2630,7 +2633,7 @@ fn configuration_refuses_calls_that_lose_an_extracted_method_receiver() {
         "const methods=[' abc '.trim]; const result=methods['0']();",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';\n{source}\nconst __probe = action({{handler:()=>result}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\n{source}\nconst __probe = mutation({{}}, ()=>result); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2663,7 +2666,7 @@ fn prototype_setter_literals_are_refused_in_configuration_and_handlers() {
         } else {
             format!("Object.hasOwn({expression}, '__proto__')")
         };
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';\n{declaration}\nconst __probe = action({{handler:()=>{body}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\n{declaration}\nconst __probe = mutation({{}}, ()=>{body}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2690,7 +2693,7 @@ fn unknown_configuration_builtin_properties_are_located_refusals() {
         "typeof [1, 2]['+1']",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';\nconst folded={expression};\nconst __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst folded={expression};\nconst __probe = mutation({{}}, ()=>folded); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         assert!(
@@ -2708,7 +2711,7 @@ fn unknown_configuration_builtin_properties_are_located_refusals() {
 fn console_results_preserve_undefined_and_emit_the_log() {
     let tmp = tempfile::tempdir().unwrap();
     let entry = tmp.path().join("typedpress.config.ts");
-    std::fs::write(&entry, "import {action,defineConfig} from 'typedpress'; const __probe = action({input:{},handler:()=>{const result=console.warn('builtin-return-marker');return [typeof result,result===undefined,result===null];}}); export { __probe as probe }; export default defineConfig({ name:'logresult' });").unwrap();
+    std::fs::write(&entry, "import {defineConfig, mutation} from 'typedpress'; const __probe = mutation({}, ()=>{const result=console.warn('builtin-return-marker');return [typeof result,result===undefined,result===null];}); export { __probe as probe }; export default defineConfig({ name:'logresult' });").unwrap();
     let node = Command::new("node")
         .arg(root().join("tests/differential/run-node.mjs"))
         .arg(&entry)
@@ -2731,7 +2734,7 @@ fn console_results_preserve_undefined_and_emit_the_log() {
 #[test]
 fn dynamic_engine_dependent_math_fails_explicitly() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); const log=(value:number)=>Math.log(value); const exp=(value:number)=>Math.exp(value); const __probe = action({handler:()=>{const out:string[]=[];try{power(3,35);}catch{out.push('power');}try{power(45.29,-1);}catch{out.push('reciprocal');}try{log(3);}catch{out.push('log');}try{exp(1);}catch{out.push('exp');}return out;}}); export { __probe as probe }; export default defineConfig({ name:'powerrefusal' });").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); const log=(value:number)=>Math.log(value); const exp=(value:number)=>Math.exp(value); const __probe = mutation({}, ()=>{const out:string[]=[];try{power(3,35);}catch{out.push('power');}try{power(45.29,-1);}catch{out.push('reciprocal');}try{log(3);}catch{out.push('log');}try{exp(1);}catch{out.push('exp');}return out;}); export { __probe as probe }; export default defineConfig({ name:'powerrefusal' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\TypedPressApp\\'.$schema['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn());"#,
@@ -2753,7 +2756,7 @@ fn configuration_refuses_unmodeled_inherited_properties() {
         "typeof ({}).hasOwnProperty",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';\nconst folded={expression};\nconst __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst folded={expression};\nconst __probe = mutation({{}}, ()=>folded); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         assert!(
@@ -2776,7 +2779,7 @@ fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
         "Date",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{json,action,defineConfig}} from 'typedpress';\nconst __probe = action({{input:{{values:json<{annotation}>()}},handler:(input)=>input.values}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{json,table,defineConfig}} from 'typedpress';\nconst __rows = table({{ values: json<{annotation}>().optional() }}); export {{ __rows as rows }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2793,7 +2796,7 @@ fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
 fn action_results_refuse_implicit_typed_date_serialization() {
     for expression in ["new Date(0)", "({date: new Date(0)})", "[new Date(0)]"] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';\nconst __probe = action({{handler:()=>({expression})}}); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst __probe = mutation({{}}, ()=>({expression})); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2814,7 +2817,7 @@ fn typed_date_coercion_requires_explicit_formatting() {
         "new Date(0) + ''",
         "''.concat(new Date(0))",
     ] {
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';\nconst __probe = action({{handler:()=>({expression})}}); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst __probe = mutation({{}}, ()=>({expression})); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         assert_eq!(
@@ -2829,7 +2832,7 @@ fn typed_date_coercion_requires_explicit_formatting() {
 fn dynamic_array_prototype_writes_are_refused() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(tmp.path().join("tp/helper.js"), "export function probe(){const key='__proto__';const a=[];try {a[key]=1;} catch(e) {return [e.name,Object.hasOwn(a,key)];} return ['accepted'];}").unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {probe} from './tp/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({ name:'prototyperefusal' });").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {probe} from './tp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({ name:'prototyperefusal' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\TypedPressApp\\'.$s['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user'=>null])));"#,
@@ -2844,7 +2847,7 @@ fn dynamic_array_prototype_writes_are_refused() {
 #[test]
 fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';\nconst __probe = action({handler:()=>String(()=>1)}); export { __probe as probe }; export default defineConfig({});").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';\nconst __probe = mutation({}, ()=>String(()=>1)); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert_eq!(
@@ -2856,7 +2859,7 @@ fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
         "function convert(value){return String(value);} export function probe(){try{return convert(()=>1);}catch(e){return e.name;}}",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {probe} from './tp/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({ name:'functionrefusal' });").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {probe} from './tp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({ name:'functionrefusal' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\TypedPressApp\\'.$s['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(),\TypedPress\Seam::ctx(['user'=>null])));"#,
@@ -2879,9 +2882,9 @@ fn non_iso_date_literals_are_refused_at_the_call() {
                     format!("export const probe=()=>new Date({text:?}).getTime();"),
                 )
                 .unwrap();
-                std::fs::write(tmp.path().join("typedpress.config.ts"),"import {action,defineConfig} from 'typedpress';import {probe} from './tp/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});").unwrap();
+                std::fs::write(tmp.path().join("typedpress.config.ts"),"import {defineConfig, mutation} from 'typedpress';import {probe} from './tp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({});").unwrap();
             } else {
-                std::fs::write(tmp.path().join(name),format!("import {{action,defineConfig}} from 'typedpress';const __probe = action({{handler:()=>new Date({text:?}).getTime()}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+                std::fs::write(tmp.path().join(name),format!("import {{defineConfig, mutation}} from 'typedpress';const __probe = mutation({{}}, ()=>new Date({text:?}).getTime()); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
             }
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{report}");
@@ -2898,7 +2901,7 @@ fn non_iso_date_literals_are_refused_at_the_call() {
 fn native_error_inspection_is_refused_during_configuration_evaluation() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(tmp.path().join("tp/helper.js"), "export function probe(){try{arguments.callee;}catch(e){return [Object.hasOwn(e,'name'),Object.hasOwn(e,'message'),Object.keys(e)];}}").unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {probe} from './tp/helper.js';const folded=probe();const __probe = action({handler:()=>folded}); export { __probe as probe }; export default defineConfig({});").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {probe} from './tp/helper.js';const folded=probe();const __probe = mutation({}, ()=>folded); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert_eq!(
@@ -2920,7 +2923,7 @@ fn undefined_cannot_be_narrowed_through_a_null_annotation_or_conditional_var() {
         "try {if(true) throw Error('stop'); var x=1;} catch {} return String(x+1);",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{action,defineConfig}} from 'typedpress';\nconst __probe = action({{input:{{}},handler:()=>{{{body}}}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'undefinedflow' }});" )).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{defineConfig, mutation}} from 'typedpress';\nconst __probe = mutation({{}}, ()=>{{{body}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'undefinedflow' }});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{body}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2982,7 +2985,7 @@ fn engine_dependent_properties_and_unmodeled_flat_depths_are_located_refusals() 
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig}} from 'typedpress';\nconst __probe = action({{input:{{}},handler:()=>{{ {source} }} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'boundaries' }});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst __probe = mutation({{}}, ()=>{{ {source} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'boundaries' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let d = &report["diagnostics"][0];
@@ -3013,7 +3016,7 @@ fn optional_chains_refuse_unguarded_continuations_at_source() {
             } else {
                 ""
             };
-            std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{action,defineConfig}} from 'typedpress';{import}const __probe = action({{handler:{handler}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+            std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{defineConfig, mutation}} from 'typedpress';{import}const __probe = mutation({{}}, {handler}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -3049,7 +3052,7 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
         "function g(a:{x:number}|null){f(a?.['x']);}g(null);",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{action,defineConfig}} from 'typedpress';const __probe = action({{handler:()=>{{function f(v:number|null){{return typeof Number(v);}}{source}return 0;}}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{defineConfig, mutation}} from 'typedpress';const __probe = mutation({{}}, ()=>{{function f(v:number|null){{return typeof Number(v);}}{source}return 0;}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3069,7 +3072,7 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
 fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(tmp.path().join("tp/helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'union'),read([],'copyWithin'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {probe} from './tp/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({ name:'nativeproperties' });").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {probe} from './tp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({ name:'nativeproperties' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\TypedPressApp\\'.$s['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user'=>null])));"#,
@@ -3094,14 +3097,14 @@ fn unsupported_native_properties_are_not_fabricated_as_undefined() {
 fn typed_data_reads_refuse_unmodeled_inherited_values() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("typedpress.config.ts"), r#"
-import {action,defineConfig} from 'typedpress';
-const __probe = action({handler:()=>{
-    const o:Record<string,undefined>={};
-    const key='to'+'String';
-    const optional:{toString?:undefined}={};
-    const cases=[()=>typeof o.toString,()=>typeof o['valueOf'],()=>typeof o[key],()=>{const {toString}=o;return typeof toString;},()=>typeof optional.toString,()=>typeof optional['toString'],()=>{const n:Record<string,number>={};n.valueOf ||=1;return typeof 0;}];
-    return cases.map(f=>{try{return ['accepted',f()];}catch(e){return [e.name,e.message];}});
-}}); export { __probe as probe }; export default defineConfig({ name:'typeddatareads' });
+import {defineConfig, mutation} from 'typedpress';
+const __probe = mutation({}, ()=>{
+  const o:Record<string,undefined>={};
+  const key='to'+'String';
+  const optional:{toString?:undefined}={};
+  const cases=[()=>typeof o.toString,()=>typeof o['valueOf'],()=>typeof o[key],()=>{const {toString}=o;return typeof toString;},()=>typeof optional.toString,()=>typeof optional['toString'],()=>{const n:Record<string,number>={};n.valueOf ||=1;return typeof 0;}];
+  return cases.map(f=>{try{return ['accepted',f()];}catch(e){return [e.name,e.message];}});
+}); export { __probe as probe }; export default defineConfig({ name:'typeddatareads' });
 "#).unwrap();
     let content = build_wp(tmp.path());
     let result = php(
@@ -3160,15 +3163,15 @@ fn parameter_default_scope_limits_are_located_refusals() {
                     format!("export function probe(){{{source}return 0;}}"),
                 )
                 .unwrap();
-                "import {probe} from './tp/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});".to_string()
+                "import {probe} from './tp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({});".to_string()
             } else {
                 format!(
-                    "{source}const __probe = action({{handler:()=>0}}); export {{ __probe as probe }}; export default defineConfig({{}});"
+                    "{source}const __probe = mutation({{}}, ()=>0); export {{ __probe as probe }}; export default defineConfig({{}});"
                 )
             };
             std::fs::write(
                 tmp.path().join("typedpress.config.ts"),
-                format!("import {{action,defineConfig}} from 'typedpress';{body}"),
+                format!("import {{defineConfig}} from 'typedpress';{body}"),
             )
             .unwrap();
             let (out, report) = checked(tmp.path());
@@ -3195,7 +3198,7 @@ fn missing_string_compound_reads_do_not_fabricate_a_string_result_type() {
         ("const o:string[]=[];", "o[0]"),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{action,defineConfig}} from 'typedpress';const __probe = action({{handler:()=>{{{declaration}const v=({access}+=1);return [String(v),`${{v}}`];}}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{defineConfig, mutation}} from 'typedpress';const __probe = mutation({{}}, ()=>{{{declaration}const v=({access}+=1);return [String(v),`${{v}}`];}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3238,15 +3241,15 @@ fn undefined_bindings_are_located_refusals_in_all_runtime_binding_forms() {
                     format!("{source}export function probe(){{return 0;}}"),
                 )
                 .unwrap();
-                "import {probe} from './tp/binding-probe.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});".to_string()
+                "import {probe} from './tp/binding-probe.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({});".to_string()
             } else {
                 format!(
-                    "{source}const __probe = action({{handler:()=>0}}); export {{ __probe as probe }}; export default defineConfig({{}});"
+                    "{source}const __probe = mutation({{}}, ()=>0); export {{ __probe as probe }}; export default defineConfig({{}});"
                 )
             };
             std::fs::write(
                 tmp.path().join("typedpress.config.ts"),
-                format!("import {{action,defineConfig}} from 'typedpress';{body}"),
+                format!("import {{defineConfig}} from 'typedpress';{body}"),
             )
             .unwrap();
             let (out, report) = checked(tmp.path());
@@ -3292,7 +3295,7 @@ fn deferred_lexical_captures_and_missing_required_callback_slots_are_located_ref
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{action,defineConfig}} from 'typedpress';const __probe = action({{handler:()=>{{{source}}}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{defineConfig, mutation}} from 'typedpress';const __probe = mutation({{}}, ()=>{{{source}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3326,7 +3329,7 @@ fn lexical_initialization_refusals_cover_loop_sources_reads_and_assignments() {
             } else {
                 (format!("const folded=(()=>{{{body}}})();"), "folded".into())
             };
-            std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';{declaration}const __probe = action({{handler:()=>{result}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+            std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';{declaration}const __probe = mutation({{}}, ()=>{result}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{body}, handler={handler}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -3349,7 +3352,7 @@ fn lexical_initialization_refusals_cover_loop_sources_reads_and_assignments() {
 fn error_options_refuse_inherited_causes_in_typed_and_checked_javascript() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(tmp.path().join("tp/helper.js"), "class Base {cause(){}} class Options extends Base {} export function read(){try{return Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){return [e.name,e.message];}}").unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {read} from './tp/helper.js';class Base {cause(){}} class Options extends Base {} const __test = action({input:{},handler:()=>{let typed:string[]=[];try{Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){typed=[e.name,e.message];}return [typed,read()];}}); export { __test as test }; export default defineConfig({ name:'errorcause' });").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {read} from './tp/helper.js';class Base {cause(){}} class Options extends Base {} const __test = mutation({}, ()=>{let typed:string[]=[];try{Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){typed=[e.name,e.message];}return [typed,read()];}); export { __test as test }; export default defineConfig({ name:'errorcause' });").unwrap();
     let content = build_wp(tmp.path());
     let app = content.join("plugins/typedpress-app-errorcause/tp/app");
     let actual = php(
@@ -3395,7 +3398,7 @@ fn writes_to_named_exports_refuse_before_importers_can_go_stale() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         write_app(tmp.path().join(file), source).unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';{import}inc();const folded=value;const __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';{import}inc();const folded=value;const __probe = mutation({{}}, ()=>folded); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3419,7 +3422,7 @@ fn typed_array_calls_refuse_own_overrides_installed_by_javascript() {
         "export function installArrayOverrides(a,b){a.map=()=>[99];b.join=()=>'own';}",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {installArrayOverrides} from './tp/array-overrides.js';const __test = action({input:{},handler:()=>{const a=[1,2],b=[1,2];installArrayOverrides(a,b);let mapped:string[]=[];let joined:string[]=[];try{a.map(x=>x+1);}catch(e){mapped=[e.name,e.message];}try{b.join('-');}catch(e){joined=[e.name,e.message];}return [mapped,joined];}}); export { __test as test }; export default defineConfig({ name:'arraynative' });").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {installArrayOverrides} from './tp/array-overrides.js';const __test = mutation({}, ()=>{const a=[1,2],b=[1,2];installArrayOverrides(a,b);let mapped:string[]=[];let joined:string[]=[];try{a.map(x=>x+1);}catch(e){mapped=[e.name,e.message];}try{b.join('-');}catch(e){joined=[e.name,e.message];}return [mapped,joined];}); export { __test as test }; export default defineConfig({ name:'arraynative' });").unwrap();
     let content = build_wp(tmp.path());
     let app = content.join("plugins/typedpress-app-arraynative/tp/app");
     let actual = php(
@@ -3448,7 +3451,7 @@ fn typed_array_calls_refuse_own_overrides_installed_by_javascript() {
 #[test]
 fn configuration_evaluation_refuses_destructured_var_loops_like_handlers() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';const folded=(()=>{for(var [x] of [[1]])return x;return 0;})();const __probe = action({handler:()=>folded}); export { __probe as probe }; export default defineConfig({});").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';const folded=(()=>{for(var [x] of [[1]])return x;return 0;})();const __probe = mutation({}, ()=>folded); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     let diagnostic = &report["diagnostics"][0];
@@ -3471,13 +3474,13 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
         "const x=7;const folded=()=> (function x(){return typeof x;})();",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';{declaration}const __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';{declaration}const __probe = mutation({{}}, ()=>folded); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(0), "{declaration}: {report}");
     }
     // Strict JavaScript throws on a write to the name, so it is refused where it is written.
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';\nconst f=function g(){ g = () => 1; return 1; };\nconst __probe = action({handler:()=>f()}); export { __probe as probe }; export default defineConfig({});").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';\nconst f=function g(){ g = () => 1; return 1; };\nconst __probe = mutation({}, ()=>f()); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     let diagnostic = &report["diagnostics"][0];
@@ -3500,7 +3503,7 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
         "export const run = () => { const fn = function f(x = (f = () => 1)) { return x; }; return fn(); };\n",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';\nimport { run } from './tp/h.mjs';\nconst __probe = action({handler:()=>run()}); export { __probe as probe }; export default defineConfig({});").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';\nimport { run } from './tp/h.mjs';\nconst __probe = mutation({}, ()=>run()); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert!(
@@ -3880,7 +3883,7 @@ fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled(
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
             tmp.path().join("typedpress.config.ts"),
-            format!("import {{ action, defineConfig }} from 'typedpress';\n{declarations}\nconst __probe = action({{ input: {{}}, handler: {handler} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
+            format!("import {{ defineConfig, mutation }} from 'typedpress';\n{declarations}\nconst __probe = mutation({{}}, {handler}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -3904,7 +3907,7 @@ fn a_method_replaced_by_a_later_property_is_not_callable() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
             tmp.path().join("typedpress.config.ts"),
-            format!("import {{ action, defineConfig }} from 'typedpress';\nconst __probe = action({{ input: {{}}, handler: () => {body} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
+            format!("import {{ defineConfig, mutation }} from 'typedpress';\nconst __probe = mutation({{}}, () => {body}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -4103,9 +4106,9 @@ fn effects_on_an_object_graph_stay_bounded_and_keep_php_equal_to_node() {
     std::fs::write(tmp.path().join("package.json"), r#"{"type":"module"}"#).unwrap();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
-        r#"import { action, defineConfig, text } from "typedpress";
+        r#"import { defineConfig, text, mutation } from "typedpress";
 import { run } from "./tp/run.mjs";
-const __a = action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }); export { __a as a }; export default defineConfig({ name: "graph" });
+const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { return { v: run(input.s) }; }); export { __a as a }; export default defineConfig({ name: "graph" });
 "#,
     )
     .unwrap();
@@ -4232,9 +4235,9 @@ fn widened_effects_are_deterministic_and_keep_php_equal_to_node() {
     std::fs::write(tmp.path().join("package.json"), r#"{"type":"module"}"#).unwrap();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
-        r#"import { action, defineConfig, text } from "typedpress";
+        r#"import { defineConfig, text, mutation } from "typedpress";
 import { run } from "./tp/run.mjs";
-const __a = action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }); export { __a as a }; export default defineConfig({ name: "tokens" });
+const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { return { v: run(input.s) }; }); export { __a as a }; export default defineConfig({ name: "tokens" });
 "#,
     )
     .unwrap();
@@ -4348,7 +4351,7 @@ fn language_construct_type_rules() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
             tmp.path().join("typedpress.config.ts"),
-            format!("import {{ action, defineConfig }} from 'typedpress';\n{declarations}\nconst __probe = action({{ input: {{}}, handler: () => {handler} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'rules' }});"),
+            format!("import {{ defineConfig, mutation }} from 'typedpress';\n{declarations}\nconst __probe = mutation({{}}, () => {handler}); export {{ __probe as probe }}; export default defineConfig({{ name: 'rules' }});"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -4403,10 +4406,10 @@ export default main;
         tmp.path().join("typedpress.config.ts"),
         format!(
             r#"
-import {{ action, defineConfig }} from 'typedpress';
+import {{ defineConfig, mutation }} from 'typedpress';
 import match from './tp/utils.mjs';
 import * as utils from './tp/utils.mjs';
-const __probe = action({{ input: {{}}, handler: () => {expression} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'namespaces' }});
+const __probe = mutation({{}}, () => {expression}); export {{ __probe as probe }}; export default defineConfig({{ name: 'namespaces' }});
 "#
         ),
     )
@@ -4493,7 +4496,7 @@ echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(), new \TypedPre
             "build time only",
         ),
     ] {
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig}} from 'typedpress';\n{declarations}\nconst __probe = action({{input:{{}},handler:()=>{handler}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'namespaces' }});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\n{declarations}\nconst __probe = mutation({{}}, ()=>{handler}); export {{ __probe as probe }}; export default defineConfig({{ name:'namespaces' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -4543,7 +4546,7 @@ fn typed_for_await_accepts_only_settled_sync_iterables() {
         .unwrap();
         std::fs::write(
             tmp.path().join("typedpress.config.ts"),
-            format!("import {{ action, defineConfig }} from 'typedpress';\nimport {{ untyped }} from './tp/h.mjs';\nconst __probe = action({{ input: {{}}, handler: async () => {{ {source} }} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'awaits' }});"),
+            format!("import {{ defineConfig, mutation }} from 'typedpress';\nimport {{ untyped }} from './tp/h.mjs';\nconst __probe = mutation({{}}, async () => {{ {source} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'awaits' }});"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -4670,7 +4673,7 @@ fn language_refusals_carry_a_location_and_a_fix() {
         ),
         (
             "handler reading this",
-            "export const other = action({ input: {}, handler: function () { return typeof this; } });",
+            "export const other = mutation({}, function () { return typeof this; });",
             "1",
             "without a receiver, so `this` is undefined",
             "",
@@ -4740,7 +4743,7 @@ fn language_refusals_carry_a_location_and_a_fix() {
         .unwrap();
         std::fs::write(
             tmp.path().join("typedpress.config.ts"),
-            format!("import {{ action, defineConfig }} from 'typedpress';\n{declarations}\nconst __probe = action({{ input: {{}}, handler: () => {handler} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
+            format!("import {{ defineConfig, mutation }} from 'typedpress';\n{declarations}\nconst __probe = mutation({{}}, () => {handler}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -4760,76 +4763,81 @@ fn language_refusals_carry_a_location_and_a_fix() {
     }
 }
 
-/// `.was()` renames a stored column, so it is refused where there's none to rename, and a `was`
-/// rename can't move a kind onto or off a table TypedPress didn't create (spec §2.5, §2.6, §2.9).
+/// `.was()` and `was:` are removed in favor of forward-only `.column()` / `storageName`, and
+/// an `existingTable` binding cannot change once adopted.
 #[test]
 fn was_renames_only_what_a_table_stores() {
     let tmp = tempfile::tempdir().unwrap();
-    let build = |config: &str, previous: Option<Value>| -> Result<typedpress::pipeline::Built, String> {
+    let build = |config: &str, entries: Vec<(String, Value)>| -> Result<typedpress::pipeline::Built, String> {
         std::fs::write(tmp.path().join("typedpress.config.ts"), config).unwrap();
         let program = typedpress::loader::load(&tmp.path().join("typedpress.config.ts")).map_err(|d| d.message)?;
         typedpress::pipeline::build(
             tmp.path(),
             &program,
-            || typedpress::pipeline::Previous::from_project(previous, []),
+            || typedpress::pipeline::Previous::from_entries(entries.clone()),
             |_| None,
         )
         .map_err(|d| d.message)
     };
-    let refused = |config: &str| build(config, None).err().unwrap_or_default();
+    let refused = |config: &str| build(config, vec![]).err().unwrap_or_default();
     let head = "import { defineConfig, collection, table, text, group } from 'typedpress';";
     assert!(
         refused(&format!("{head} const posts = collection({{ title: text(), body: text().was('copy').optional() }}, {{ title: 'title' }}); export {{ posts }}; export default defineConfig({{}});"))
-            .contains("`.was()` renames a column of a table()"),
+            .contains("`.was()`"),
     );
     assert!(
         refused(&format!("{head} const notes = table({{ meta: group({{ tag: text().was('label').optional() }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"))
-            .contains("`.was()` renames a stored column"),
+            .contains("`.was()`"),
     );
-    // A TypedPress-created table renamed onto an adopted one (or back) would alter a table TypedPress didn't create.
+    // `was` on table() is refused: forward-only migrations keep physical table names via `storageName`.
     let first = build(
         &format!("{head} const notes = table({{}}); export {{ notes }}; export default defineConfig({{}});"),
-        None,
+        vec![],
     )
     .unwrap();
+    let entries: Vec<(String, Value)> = first.migrations.iter().map(|m| (m.id.clone(), m.ops.clone())).collect();
+    let was_table = build(
+        &format!(
+            "{head} const memos = table({{}}, {{ was: 'notes' }}); export {{ memos }}; export default defineConfig({{}});"
+        ),
+        entries.clone(),
+    );
+    assert!(was_table.err().unwrap_or_default().contains("`was` is gone"),);
+    // Changing storageName onto an existingTable binding is refused.
     let onto = build(
         &format!(
-            "{head} const memos = table({{}}, {{ was: 'notes', existingTable: 'sf_space_memos' }}); export {{ memos }}; export default defineConfig({{}});"
+            "{head} const memos = table({{}}, {{ storageName: 'notes', existingTable: 'sf_space_memos' }}); export {{ memos }}; export default defineConfig({{}});"
         ),
-        Some(first.snapshot.clone()),
+        entries.clone(),
     );
-    assert!(
-        onto.err()
-            .unwrap_or_default()
-            .contains("including through a `was` rename")
-    );
-    // The same rename between two TypedPress-created tables plans a RENAME, not a drop and a create.
-    let renamed = build(
-        &format!("{head} const memos = table({{}}, {{ was: 'notes' }}); export {{ memos }}; export default defineConfig({{}});"),
-        Some(first.snapshot),
+    assert!(onto.err().unwrap_or_default().contains("existingTable binding"),);
+    // Keeping the same physical table under a new TS export via `storageName` needs no DDL rename or drop.
+    let kept = build(
+        &format!("{head} const memos = table({{}}, {{ storageName: 'notes' }}); export {{ memos }}; export default defineConfig({{}});"),
+        entries,
     )
     .unwrap();
-    let sql = &renamed.migrations[0].1;
     assert!(
-        sql.contains("RENAME TABLE `{prefix}tp_notes` TO `{prefix}tp_memos`;") && !sql.contains("DROP TABLE"),
-        "{sql}"
+        kept.migrations.is_empty(),
+        "expected no DDL migration when keeping storageName: {:?}",
+        kept.migrations
     );
 }
 
 /// A Zero 0.8 table's name ends in a digest over the 0.8 table name, which the converter gives the
 /// binding collection's key. The runtime checks it (`TypedPress\Wp\Guard`), so the key the binding was
-/// first built under travels as `adoptedAs` in the snapshot, the adoption record and schema.php,
-/// and survives a `was` rename of the collection.
+/// first built under travels as `adoptedAs` in the folded ops state, the adoption record and schema.php,
+/// and survives renaming the TS export while keeping `storageName`.
 #[test]
 fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
     let tmp = tempfile::tempdir().unwrap();
-    let build = |config: &str, previous: Option<Value>| -> typedpress::pipeline::Built {
+    let build = |config: &str, entries: Vec<(String, Value)>| -> typedpress::pipeline::Built {
         std::fs::write(tmp.path().join("typedpress.config.ts"), config).unwrap();
         let program = typedpress::loader::load(&tmp.path().join("typedpress.config.ts")).unwrap();
         typedpress::pipeline::build(
             tmp.path(),
             &program,
-            || typedpress::pipeline::Previous::from_project(previous, ["0001_init.sql"]),
+            || typedpress::pipeline::Previous::from_entries(entries.clone()),
             |_| None,
         )
         .unwrap_or_else(|d| panic!("{}", d.message))
@@ -4840,10 +4848,10 @@ fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
         &format!(
             "{head} export const myTasks = table({{ title: text() }}, {{ existingTable: '{legacy}' }}); export default defineConfig({{}});"
         ),
-        None,
+        vec![],
     );
     assert_eq!(adopted.snapshot["tables"]["my_tasks"]["adoptedAs"], "myTasks");
-    let sql = &adopted.migrations[0].1;
+    let sql = &adopted.migrations[0].sql;
     let record: Value = serde_json::from_str(
         sql.lines()
             .find_map(|l| l.strip_prefix("-- typedpress-adopt "))
@@ -4853,82 +4861,52 @@ fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
     assert_eq!((&record["table"], &record["name"]), (&json!(legacy), &json!("myTasks")));
     assert!(typedpress::schema_php::render(&adopted.schema).contains("'adoptedAs' => 'myTasks',"));
 
-    // Renamed with `was`: the table and the name it was adopted under stay.
+    let mut entries: Vec<(String, Value)> = adopted
+        .migrations
+        .iter()
+        .map(|m| (m.id.clone(), m.ops.clone()))
+        .collect();
+
+    // Renamed TS export with `storageName: 'my_tasks'`: the table and the name it was adopted under stay.
     let renamed = build(
         &format!(
-            "{head} export const items = table({{ title: text() }}, {{ was: 'my_tasks', existingTable: '{legacy}' }}); export default defineConfig({{}});"
+            "{head} export const items = table({{ title: text() }}, {{ storageName: 'my_tasks', existingTable: '{legacy}' }}); export default defineConfig({{}});"
         ),
-        Some(adopted.snapshot.clone()),
+        entries.clone(),
     );
-    assert_eq!(renamed.snapshot["tables"]["items"]["adoptedAs"], "myTasks");
+    assert_eq!(renamed.snapshot["tables"]["my_tasks"]["adoptedAs"], "myTasks");
     assert!(typedpress::schema_php::render(&renamed.schema).contains("'adoptedAs' => 'myTasks',"));
-    // Renamed again, and on a snapshot from before `adoptedAs` (the stored name stands for it).
-    let again = build(
-        &format!(
-            "{head} export const things = table({{ title: text() }}, {{ was: 'items', existingTable: '{legacy}' }}); export default defineConfig({{}});"
-        ),
-        Some(renamed.snapshot.clone()),
-    );
-    assert_eq!(again.snapshot["tables"]["things"]["adoptedAs"], "myTasks");
-    let mut old = adopted.snapshot.clone();
-    old["tables"]["my_tasks"].as_object_mut().unwrap().remove("adoptedAs");
-    let from_old = build(
-        &format!(
-            "{head} export const items = table({{ title: text() }}, {{ was: 'my_tasks', existingTable: '{legacy}' }}); export default defineConfig({{}});"
-        ),
-        Some(old),
-    );
-    assert_eq!(from_old.snapshot["tables"]["items"]["adoptedAs"], "my_tasks");
+    entries.extend(renamed.migrations.iter().map(|m| (m.id.clone(), m.ops.clone())));
 
-    // A key that is its own stored name writes nothing new: earlier snapshots stay as they are.
+    // A key that is its own stored name writes nothing new.
     let plain = build(
         &format!(
             "{head} export const tasks = table({{ title: text() }}, {{ existingTable: 'sf_spc_x_tasks_0123456789' }}); export default defineConfig({{}});"
         ),
-        None,
+        vec![],
     );
     assert!(plain.snapshot["tables"]["tasks"].get("adoptedAs").is_none());
     assert!(!typedpress::schema_php::render(&plain.schema).contains("adoptedAs"));
-    // A table stored before `adoptedAs` keeps its stored name, even under a new key: the key may be
-    // a later alias (`storageName` keeps the storage), not the name the 0.8 table was made from.
-    let mut old = plain.snapshot.clone();
-    old["tables"]["tasks"].as_object_mut().unwrap().remove("adoptedAs");
-    let aliased = build(
-        &format!(
-            "{head} export const chores = table({{ title: text() }}, {{ storageName: 'tasks', existingTable: 'sf_spc_x_tasks_0123456789' }}); export default defineConfig({{}});"
-        ),
-        Some(old),
-    );
-    assert!(
-        aliased.snapshot["tables"]["tasks"].get("adoptedAs").is_none(),
-        "{:#}",
-        aliased.snapshot
-    );
 
-    // Removing a renamed binding: the drop's check names the table it was adopted under, so the
-    // runtime can check that adoption again even with no collection left to give the name.
+    // Removing a renamed binding retires the table instead of emitting DROP TABLE.
     let with_notes = build(
         &format!(
-            "{head} export const items = table({{ title: text() }}, {{ was: 'my_tasks', existingTable: '{legacy}' }}); export const notes = table({{ title: text() }}); export default defineConfig({{}});"
+            "{head} export const items = table({{ title: text() }}, {{ storageName: 'my_tasks', existingTable: '{legacy}' }}); export const notes = table({{ title: text() }}); export default defineConfig({{}});"
         ),
-        Some(renamed.snapshot.clone()),
+        entries.clone(),
     );
+    entries.extend(with_notes.migrations.iter().map(|m| (m.id.clone(), m.ops.clone())));
     let removed = build(
         &format!("{head} export const notes = table({{ title: text() }}); export default defineConfig({{}});"),
-        Some(with_notes.snapshot.clone()),
+        entries,
     );
-    let sql = &removed.migrations[0].1;
-    let drop: Value = serde_json::from_str(
-        sql.lines()
-            .filter_map(|l| l.strip_prefix("-- typedpress-check "))
-            .find(|c| c.contains("\"drop\""))
-            .expect("a drop check"),
-    )
-    .unwrap();
-    assert_eq!(
-        (&drop["name"], &drop["table"], &drop["adoptedAs"]),
-        (&json!("items"), &json!(legacy), &json!("myTasks")),
-        "{sql}"
+    let sql = &removed.migrations[0].sql;
+    assert!(!sql.contains("DROP TABLE"), "{sql}");
+    let ops = removed.migrations[0].ops["ops"].as_array().expect("ops array");
+    assert!(
+        ops.iter()
+            .any(|op| op["op"] == "retireTable" && op["table"] == "my_tasks"),
+        "expected retireTable op for my_tasks: {ops:?}"
     );
 }
 

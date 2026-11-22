@@ -40,18 +40,23 @@ fn json(path: &Path) -> serde_json::Value {
     serde_json::from_slice(&fs::read(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))).unwrap()
 }
 
-/// File name → contents of a migrations directory.
+/// Relative file path → contents of a migrations directory (walks `<id>/{ops.json,migration.sql}`).
 fn migrations(dir: &Path) -> BTreeMap<String, String> {
-    fs::read_dir(dir)
-        .unwrap()
-        .map(|e| {
-            let e = e.unwrap();
-            (
-                e.file_name().to_string_lossy().into_owned(),
-                fs::read_to_string(e.path()).unwrap(),
-            )
-        })
-        .collect()
+    let mut out = BTreeMap::new();
+    for e in fs::read_dir(dir).unwrap() {
+        let e = e.unwrap();
+        let name = e.file_name().to_string_lossy().into_owned();
+        if e.path().is_dir() {
+            for child in fs::read_dir(e.path()).unwrap() {
+                let child = child.unwrap();
+                let rel = format!("{name}/{}", child.file_name().to_string_lossy());
+                out.insert(rel, fs::read_to_string(child.path()).unwrap());
+            }
+        } else {
+            out.insert(name, fs::read_to_string(e.path()).unwrap());
+        }
+    }
+    out
 }
 
 #[test]
@@ -163,7 +168,9 @@ fn a_new_filter_plans_an_inferred_index_and_stores_the_same() {
     typedpress::bundle::compile(&sources, &output, &sources, Some(&fixture.join("baseline"))).unwrap();
     let added: Vec<String> = migrations(&output.join("migrations"))
         .into_iter()
-        .filter(|(file, _)| !fixture.join("baseline/migrations").join(file).exists())
+        .filter(|(file, _)| {
+            file.ends_with("/migration.sql") && !fixture.join("baseline/migrations").join(file).exists()
+        })
         .map(|(_, sql)| sql)
         .collect();
     assert_eq!(

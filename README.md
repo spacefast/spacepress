@@ -32,8 +32,9 @@ Define WordPress collections, custom SQL tables, access rules, hooks, server act
 // typedpress.config.ts
 import {
   wp, table, text, integer, boolean,
-  ref, action, job, jobs, db, HttpError, defineConfig,
+  ref, mutation, job, HttpError, defineConfig,
 } from "typedpress";
+import { tasks } from "typedpress:db";
 
 // Native WordPress posts extended with typed fields, URL routing, comments & Markdown sync
 export const posts = wp.posts.extend({
@@ -44,7 +45,7 @@ export const posts = wp.posts.extend({
   comments: { moderation: "first-time", threaded: 2 },
 });
 
-// Stored in its own SQL table with automatic numbered migrations
+// Stored in its own SQL table with forward-only migrations, soft deletes & revisions
 export const tasks = table({
   title: text().min(1).max(120),
   done: boolean().default(false),
@@ -53,26 +54,18 @@ export const tasks = table({
   access: { read: "anyone", create: "authenticated", update: "authenticated", delete: "editor" },
 }).on({
   async afterCreate(row) {
-    await jobs.notifyTask.enqueue({ taskId: row.id }, { key: `task-${row.id}` });
+    await notifyTask.enqueue({ taskId: row.id }, { key: `task-${row.id}` });
   },
 });
 
-export const notifyTask = job({
-  input: { taskId: integer() },
-  retries: 3,
-  async handler({ taskId }) {
-    await db.query.tasks.findFirst({ where: { id: taskId } });
-  },
+export const notifyTask = job({ retries: 3 }, async ({ taskId }: { taskId: number }) => {
+  await tasks.system.get(taskId);
 });
 
-export const completeTask = action({
-  input: { id: integer() },
-  access: "authenticated",
-  async handler({ id }) {
-    const [row] = await db.update(tasks).set({ done: true }).where({ id }).returning();
-    if (!row) throw new HttpError(404, "not_found", "Task not found");
-    return row;
-  },
+export const completeTask = mutation({ access: "authenticated" }, async ({ id }: { id: number }) => {
+  const row = await tasks.update(id, { done: true });
+  if (!row) throw new HttpError(404, "not_found", "Task not found");
+  return row;
 });
 
 export default defineConfig({ name: "my-app", seed: true });

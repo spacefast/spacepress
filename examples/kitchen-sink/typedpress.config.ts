@@ -9,6 +9,8 @@ export default defineConfig({
   plugins: { "classic-editor": "1.6.7" },
   // The journal names its authors: author archives and the users sitemap stay as WordPress ships them.
   publicAuthors: true,
+  // Keep soft-deleted rows and revisions indefinitely unless explicitly purged.
+  retention: { deleted: "forever", revisions: "forever" },
   // The kitchen takes no remote publishing or pingbacks.
   xmlrpc: false,
   pings: false,

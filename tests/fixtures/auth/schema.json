@@ -65,6 +65,7 @@
             "editor": false,
             "drafts": false,
             "revisions": true,
+            "softDelete": true,
             "comments": false,
             "uid": false,
             "sync": null,
@@ -93,6 +94,60 @@
                         "column": "id",
                         "onDelete": "restrict"
                     }
+                },
+                "author": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "createdAt": {
+                    "type": "timestamp",
+                    "notNull": true,
+                    "default": {
+                        "now": true
+                    },
+                    "readOnly": true,
+                    "system": true
+                },
+                "updatedAt": {
+                    "type": "timestamp",
+                    "notNull": true,
+                    "default": {
+                        "now": true
+                    },
+                    "onUpdate": {
+                        "now": true
+                    },
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedAt": {
+                    "type": "timestamp",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedBy": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedGroup": {
+                    "type": "text",
+                    "rules": {
+                        "max": 36
+                    },
+                    "hidden": true,
+                    "readOnly": true,
+                    "system": true
+                },
+                "_live": {
+                    "type": "boolean",
+                    "default": {
+                        "value": true
+                    },
+                    "hidden": true,
+                    "readOnly": true,
+                    "system": true
                 }
             },
             "relations": {

@@ -24,13 +24,13 @@ fn widgets_dashboards_and_kind_ui_compile_into_schema_php() {
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
         r#"import {
-  action,
   adminDashboard,
   adminWidget,
   collection,
   defineConfig,
   global,
   integer,
+  query,
   richText,
   text,
 } from "typedpress";
@@ -65,12 +65,10 @@ export const siteCopy = global(
   },
 );
 
-export const salesMetrics = action({
-  input: {},
-  readonly: true,
-  access: "editor",
-  handler: () => ({ orders: 12, revenue: 450 }),
-});
+export const salesMetrics = query(
+  { access: "editor" },
+  () => ({ orders: 12, revenue: 450 }),
+);
 
 export const salesPulse = adminWidget({
   title: "Sales pulse",
@@ -129,13 +127,12 @@ fn rejects_non_readonly_widget_action_and_duplicate_home_dashboards() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
-        r#"import { action, adminWidget, defineConfig } from "typedpress";
+        r#"import { mutation, adminWidget, defineConfig } from "typedpress";
 
-export const mutate = action({
-  input: {},
-  access: "editor",
-  handler: () => ({ ok: true }),
-});
+export const mutate = mutation(
+  { access: "editor" },
+  () => ({ ok: true }),
+);
 
 export const bad = adminWidget({
   title: "Bad",

@@ -1,13 +1,9 @@
-import { action, defineConfig, text } from "typedpress";
+import { defineConfig, text, query } from "typedpress";
 
 import { getReadingTime } from "./tp/backend/reading-time";
 
 // The kinds are in tp/kinds.ts: posts, pages, the category, tag and credits taxonomies, and the widgets global.
-export const readingTime = action({
-  input: { content: text() },
-  access: "anyone",
-  handler: ({ content }) => ({ minutes: getReadingTime([{ _type: "block", children: [{ _type: "span", text: content }] }]) }),
-});
+export const readingTime = query({ access: "anyone" }, ({ content }: { content: string }) => ({ minutes: getReadingTime([{ _type: "block", children: [{ _type: "span", text: content }] }]) }));
 
 export default defineConfig({
   name: "emdash-starter",

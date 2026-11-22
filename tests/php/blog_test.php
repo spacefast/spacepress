@@ -516,7 +516,8 @@ eq('restore uses full revision data while hiding response fields', [
     $db->findFirst('posts', ['where' => ['id' => $p['id']]])['excerpt'],
     count(req('GET', "/posts/{$p['id']}/revisions", as: 'alice')[1]),
 ], [200, 'Rev 1', false, 'first', 3]);
-isProblem('collections without revisions', req('GET', "/comments/{$c1['id']}/revisions", as: 'ed'), 404, 'not_found');
+eq('table() kinds have native revisions by default', req('GET', "/comments/{$c1['id']}/revisions", as: 'ed')[0], 200);
+isProblem('collections without revisions', req('GET', "/openNotes/{$openNote['id']}/revisions", as: 'ed'), 404, 'not_found');
 
 // ================================================================ globals (§3.6)
 

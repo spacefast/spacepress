@@ -413,6 +413,29 @@ final class PostsController extends \WP_REST_Posts_Controller
         }
     }
 
+    /** Native REST `DELETE ?force=true` (or deleting an already-trashed post) enforces TypedPress `purge` access. */
+    public function delete_item_permissions_check($request)
+    {
+        $post = $this->get_post($request['id']);
+        if (is_wp_error($post)) {
+            return $post;
+        }
+        $plugin = Plugin::instance();
+        $spec = $plugin?->schema->hasCollection($this->collection) ? $plugin->schema->collection($this->collection) : null;
+        $forcing = !empty($request['force']) || $post->post_status === 'trash';
+        if ($spec !== null && ($spec['softDelete'] ?? false) && $forcing && !Facade::dispatching()) {
+            $viewer = CoreAccess::viewer();
+            $store = $plugin->db()->store();
+            $check = fn (): bool => $viewer !== null && $plugin->db()->permits($this->collection, 'purge', $post->ID, $viewer);
+            $allowed = $store instanceof CompositeStore ? $store->posts->withTrash($check) : $check();
+            if (!$allowed) {
+                return CoreAccess::error(\TypedPress\Access::deny($viewer?->user, "purge {$this->collection} rows"));
+            }
+        }
+
+        return parent::delete_item_permissions_check($request);
+    }
+
     /** A hook refusing the delete is the editor's 4xx with its message (§1.7), and nothing is deleted. */
     public function delete_item($request)
     {

@@ -61,9 +61,9 @@ function typedSource(probe, source) {
 const importLine = (entry, specifier) =>
   `import ${entry.named ? "{" + entry.binding + "}" : entry.binding} from ${JSON.stringify(specifier)};`;
 // Each case builds this app and runs only its action in PHP: no admin plugin to write and zip.
-const config = `import {action, defineConfig} from "typedpress";
+const config = `import {defineConfig, query} from "typedpress";
 import {run} from "./tp/run";
-export const probe = action({access: "anyone", input: {}, handler: () => run()});
+export const probe = query({ access: "anyone" }, () => run());
 export default defineConfig({name: "npm-compat", admin: false});
 `;
 if (!options.isolated) await rm(work, { recursive: true, force: true });

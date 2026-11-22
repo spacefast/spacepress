@@ -65,6 +65,7 @@
             "editor": true,
             "drafts": true,
             "revisions": true,
+            "softDelete": true,
             "comments": false,
             "uid": false,
             "sync": null,
@@ -127,6 +128,51 @@
                 "publishedAt": {
                     "type": "timestamp",
                     "system": true
+                },
+                "author": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "createdAt": {
+                    "type": "timestamp",
+                    "notNull": true,
+                    "default": {
+                        "now": true
+                    },
+                    "readOnly": true,
+                    "system": true
+                },
+                "updatedAt": {
+                    "type": "timestamp",
+                    "notNull": true,
+                    "default": {
+                        "now": true
+                    },
+                    "onUpdate": {
+                        "now": true
+                    },
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedAt": {
+                    "type": "timestamp",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedBy": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedGroup": {
+                    "type": "text",
+                    "rules": {
+                        "max": 36
+                    },
+                    "hidden": true,
+                    "readOnly": true,
+                    "system": true
                 }
             },
             "relations": {
@@ -175,6 +221,7 @@
             "editor": true,
             "drafts": true,
             "revisions": true,
+            "softDelete": true,
             "comments": false,
             "uid": false,
             "sync": null,
@@ -348,6 +395,30 @@
                 "publishedAt": {
                     "type": "timestamp",
                     "system": true
+                },
+                "author": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedAt": {
+                    "type": "timestamp",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedBy": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedGroup": {
+                    "type": "text",
+                    "rules": {
+                        "max": 36
+                    },
+                    "hidden": true,
+                    "readOnly": true,
+                    "system": true
                 }
             },
             "relations": {
@@ -404,7 +475,8 @@
             "label": "Comments",
             "editor": false,
             "drafts": false,
-            "revisions": false,
+            "revisions": true,
+            "softDelete": true,
             "comments": false,
             "uid": false,
             "sync": null,
@@ -461,6 +533,51 @@
                     "default": {
                         "now": true
                     }
+                },
+                "author": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "updatedAt": {
+                    "type": "timestamp",
+                    "notNull": true,
+                    "default": {
+                        "now": true
+                    },
+                    "onUpdate": {
+                        "now": true
+                    },
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedAt": {
+                    "type": "timestamp",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedBy": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedGroup": {
+                    "type": "text",
+                    "rules": {
+                        "max": 36
+                    },
+                    "hidden": true,
+                    "readOnly": true,
+                    "system": true
+                },
+                "_live": {
+                    "type": "boolean",
+                    "default": {
+                        "value": true
+                    },
+                    "hidden": true,
+                    "readOnly": true,
+                    "system": true
                 }
             },
             "relations": {
@@ -571,7 +688,7 @@
         "approveComment": {
             "input": {
                 "id": {
-                    "type": "integer",
+                    "type": "real",
                     "notNull": true
                 }
             },
@@ -581,7 +698,6 @@
             },
             "agents": true,
             "idempotent": false,
-            "signature": null,
             "readonly": false,
             "destructive": false,
             "output": {
@@ -610,6 +726,27 @@
                     },
                     "createdAt": {
                         "type": "string"
+                    },
+                    "author": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
+                    },
+                    "updatedAt": {
+                        "type": "string"
+                    },
+                    "deletedAt": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "deletedBy": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
                     }
                 },
                 "required": [
@@ -618,9 +755,14 @@
                     "name",
                     "body",
                     "approved",
-                    "createdAt"
+                    "createdAt",
+                    "author",
+                    "updatedAt",
+                    "deletedAt",
+                    "deletedBy"
                 ]
-            }
+            },
+            "signature": null
         },
         "publishedCount": {
             "input": [],
@@ -630,8 +772,7 @@
             },
             "agents": true,
             "idempotent": false,
-            "signature": null,
-            "readonly": false,
+            "readonly": true,
             "destructive": false,
             "output": {
                 "type": "object",
@@ -646,7 +787,8 @@
                 "required": [
                     "count"
                 ]
-            }
+            },
+            "signature": null
         }
     }
 }

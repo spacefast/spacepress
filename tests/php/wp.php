@@ -207,7 +207,10 @@ final class WpSite
         file_put_contents("$plugin/tp/app/functions.php", $functions);
         $migration = $fixture['migration'] ?? wpDdl($fixture['schema']);
         if ($migration !== '') {
-            file_put_contents("$plugin/tp/app/migrations/0001_init.sql", $migration);
+            $initDir = "$plugin/tp/app/migrations/20261121000000_000000_init";
+            mkdir($initDir, 0777, true);
+            file_put_contents("$initDir/migration.sql", $migration);
+            file_put_contents("$initDir/ops.json", json_encode(['version' => 1, 'id' => '20261121000000_000000_init', 'ops' => []]));
         }
     }
 
@@ -585,7 +588,7 @@ function wpDdl(array $schema): string
                 $join = $def['references']['join'];
                 $fk = static fn (string $side, string $c) => isset($tables[$c]) && isset($tables[$def['references']['collection']])
                     ? ",\n\tCONSTRAINT `tp_{$join}_{$side}_fk` FOREIGN KEY (`$side`) REFERENCES `{prefix}{$tables[$c]}` (`id`) ON DELETE CASCADE" : '';
-                $joins[] = "CREATE TABLE `{prefix}tp_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
+                $joins[] = "CREATE TABLE `{prefix}tp__join_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
                     . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)" . $fk('owner_id', $name) . $fk('target_id', $def['references']['collection']) . "\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
                 continue;
             }
@@ -653,15 +656,17 @@ function wpDdl(array $schema): string
             // A `terms` field's links are core's term relationships (`term:<taxonomy>`): no table.
             if (($def['type'] ?? null) === 'refList' && !str_starts_with($def['references']['join'], 'term:')) {
                 $join = $def['references']['join'];
-                $joins[] = "CREATE TABLE `{prefix}tp_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
+                $joins[] = "CREATE TABLE `{prefix}tp__join_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
                     . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
             }
         }
     }
     array_push($statements, ...$joins);
     if ($revisions) {
-        $statements[] = "CREATE TABLE `{prefix}tp__revisions` (\n\t`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n\t`collection` VARCHAR(64) NOT NULL,\n\t`pk` VARCHAR(64) NOT NULL,"
-            . "\n\t`at` CHAR(24) NOT NULL,\n\t`userId` BIGINT,\n\t`row` LONGTEXT NOT NULL,\n\tPRIMARY KEY (`id`),\n\tKEY `row` (`collection`, `pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+        $statements[] = "CREATE TABLE `{prefix}tp__revisions` (\n\t`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n\t`collection` VARCHAR(64) NOT NULL,\n\t`pk` VARCHAR(191) NOT NULL,"
+            . "\n\t`version` BIGINT UNSIGNED NOT NULL DEFAULT 1,\n\t`op` VARCHAR(16) NOT NULL DEFAULT 'update',"
+            . "\n\t`at` CHAR(24) NOT NULL,\n\t`userId` BIGINT UNSIGNED NULL,\n\t`schemaMigration` VARCHAR(191) NULL,"
+            . "\n\t`row` LONGTEXT NOT NULL,\n\t`changed` LONGTEXT NULL,\n\tPRIMARY KEY (`id`),\n\tKEY `row` (`collection`, `pk`),\n\tUNIQUE KEY `row_version` (`collection`, `pk`, `version`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
     }
 
     return implode("\n--> statement-breakpoint\n", $statements) . ($statements === [] ? '' : "\n");

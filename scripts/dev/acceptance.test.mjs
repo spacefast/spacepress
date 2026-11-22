@@ -19,14 +19,14 @@ const exec = promisify(execFile);
 const first = resolve(process.env.TP_BIN ?? 'target/debug/typedpress');
 const command = async (args, env = process.env) => (await exec(first, args, { env, timeout: 600000, maxBuffer: 4 * 1024 * 1024 })).stdout.trim();
 const config = (version, extra = '', admin = true) => `
-import { defineConfig, table, collection, text, boolean, integer, json, richText, action, job, jobs, db } from 'typedpress';
+import { defineConfig, table, collection, text, boolean, json, richText, job, db, mutation } from 'typedpress';
 export const items = table({ name: text(), processed: boolean().default(false), ${extra} })
-  .on({ afterCreate: async (item) => { await jobs.stamp.enqueue({ itemId: item.id }); } });
+  .on({ afterCreate: async (item) => { await stamp.enqueue({ itemId: item.id }); } });
 export const stories = collection({ title: text().max(160), body: richText().optional(), details: json().optional() }, { title: 'title', content: 'body', access: { read: 'anyone', create: 'editor', update: 'editor', delete: 'editor' } });
-export const stamp = job({ input: { itemId: integer() }, handler: async ({ itemId }) => {
+export const stamp = job({}, async ({ itemId }: { itemId: number }) => {
   await db.update(items).set({ processed: true }).where({ id: itemId });
-} });
-export const version = action({ input: {}, handler() { return '${version}'; } });
+});
+export const version = mutation({}, () => { return '${version}'; });
 export default defineConfig({ admin: ${admin} });
 `;
 

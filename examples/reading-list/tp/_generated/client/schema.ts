@@ -9,6 +9,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "reads": {
@@ -25,7 +26,8 @@ export const SCHEMA = {
       "path": "reads",
       "primaryKey": "id",
       "drafts": false,
-      "revisions": false,
+      "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "bookId": {

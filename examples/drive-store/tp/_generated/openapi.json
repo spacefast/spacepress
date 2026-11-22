@@ -66,12 +66,18 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `drive`, `change`, `reason`, `order`, `at`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `drive`, `change`, `reason`, `order`, `at`, `author`, `createdAt`, `updatedAt`, `deletedAt`, `deletedBy`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
           { "$ref": "#/components/parameters/offset" },
-          { "$ref": "#/components/parameters/cursor" }
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "deleted",
+            "in": "query",
+            "description": "Soft-deleted rows filter: `exclude` (default), `include`, or `only`.",
+            "schema": { "type": "string", "enum": ["exclude", "include", "only"] }
+          }
         ],
         "responses": {
           "200": {
@@ -244,6 +250,12 @@
             "required": true,
             "description": "The row's id.",
             "schema": { "type": "integer" }
+          },
+          {
+            "name": "_rev",
+            "in": "query",
+            "description": "The `_rev` of your read: the delete is refused with `409 stale_revision` if the row changed since.",
+            "schema": { "type": "string" }
           }
         ],
         "responses": {
@@ -265,6 +277,234 @@
           "403": { "$ref": "#/components/responses/Problem" },
           "404": { "$ref": "#/components/responses/Problem" },
           "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/stock_movements/{id}/restore": {
+      "post": {
+        "tags": ["Stock movements"],
+        "operationId": "stockMovements.restore",
+        "summary": "Restore a soft-deleted stock_movements",
+        "x-typedpress-access": false,
+        "description": "Restores a soft-deleted stock_movements row and returns it.\n\nAccess: Nobody may do this over the API.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The restored row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/StockMovement" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/stock_movements/{id}/revisions": {
+      "get": {
+        "tags": ["Stock movements"],
+        "operationId": "stockMovements.revisions.list",
+        "summary": "Revisions of stock_movements",
+        "x-typedpress-access": false,
+        "description": "Each saved version of the row, newest first, with its version, op, time, author, schemaMigration, and changed fields, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Nobody may do this over the API.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/RevisionSummary" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/stock_movements/{id}/revisions/diff": {
+      "get": {
+        "tags": ["Stock movements"],
+        "operationId": "stockMovements.revisions.diff",
+        "summary": "Diff two revisions of stock_movements",
+        "x-typedpress-access": false,
+        "description": "Field-by-field before/after diff between two revision ids or versions.\n\nAccess: Nobody may do this over the API.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "The starting revision id or version (optional).",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "The target revision id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The changed fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/RevisionDiff" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/stock_movements/{id}/revisions/{revision}": {
+      "get": {
+        "tags": ["Stock movements"],
+        "operationId": "stockMovements.revisions.get",
+        "summary": "Get a revision of stock_movements",
+        "x-typedpress-access": false,
+        "description": "The row as this revision saved it.\n\nAccess: Nobody may do this over the API.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "description": "The revision's id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row as it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/StockMovement" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/stock_movements/{id}/revisions/{revision}/restore": {
+      "post": {
+        "tags": ["Stock movements"],
+        "operationId": "stockMovements.revisions.restore",
+        "summary": "Restore a revision of stock_movements",
+        "x-typedpress-access": false,
+        "description": "Makes the revision the current row, as an update of the row.\n\nAccess: Nobody may do this over the API.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "description": "The revision's id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row after the restore.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/StockMovement" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
       }
@@ -2152,8 +2392,8 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "drive": { "type": "integer", "minimum": 1 },
-                  "quantity": { "type": "integer", "minimum": 1, "maximum": 500 }
+                  "drive": { "type": "number" },
+                  "quantity": { "type": "number" }
                 },
                 "required": ["drive", "quantity"]
               }
@@ -2213,7 +2453,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "order": { "type": "integer", "minimum": 1 }
+                  "order": { "type": "number" }
                 },
                 "required": ["order"]
               }
@@ -4107,6 +4347,8 @@
         "type": "object",
         "properties": {
           "id": { "type": "integer" },
+          "version": { "type": "integer" },
+          "op": { "type": "string", "enum": ["create", "update", "delete", "restore", "purge"] },
           "at": { "type": "string", "format": "date-time" },
           "user": {
             "type": ["object", "null"],
@@ -4114,9 +4356,34 @@
               "id": { "type": "integer" },
               "name": { "type": "string" }
             }
+          },
+          "schemaMigration": { "type": ["string", "null"] },
+          "changed": {
+            "type": ["array", "null"],
+            "items": { "type": "string" }
           }
         },
-        "required": ["id", "at", "user"]
+        "required": ["id", "version", "op", "at", "user", "schemaMigration", "changed"]
+      },
+      "RevisionDiff": {
+        "type": "object",
+        "properties": {
+          "from": { "type": ["integer", "null"] },
+          "to": { "type": "integer" },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": { "type": "string" },
+                "from": {},
+                "to": {}
+              },
+              "required": ["field", "from", "to"]
+            }
+          }
+        },
+        "required": ["from", "to", "changes"]
       },
       "Media": {
         "type": "object",
@@ -4161,7 +4428,16 @@
           "change": { "type": "number" },
           "reason": { "type": "string", "enum": ["sale", "restock", "return"] },
           "order": { "type": ["integer", "null"], "minimum": 1 },
-          "at": { "type": "string", "format": "date-time" }
+          "at": { "type": "string", "format": "date-time" },
+          "author": { "type": ["integer", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": ["string", "null"], "format": "date-time" },
+          "deletedBy": { "type": ["integer", "null"] },
+          "_rev": {
+            "type": "string",
+            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
+          }
         }
       },
       "StockMovementInsert": {
@@ -4182,7 +4458,11 @@
           "change": { "type": "number" },
           "reason": { "type": "string", "enum": ["sale", "restock", "return"] },
           "order": { "type": ["integer", "null"], "minimum": 1 },
-          "at": { "type": ["string", "integer"] }
+          "at": { "type": ["string", "integer"] },
+          "_rev": {
+            "type": "string",
+            "description": "The `_rev` of your read: the write is refused with `409 stale_revision` if the row changed since."
+          }
         }
       },
       "IntegerFilter": {
@@ -4288,6 +4568,11 @@
           "reason": { "$ref": "#/components/schemas/StringFilter" },
           "order": { "$ref": "#/components/schemas/IntegerFilter" },
           "at": { "$ref": "#/components/schemas/StringFilter" },
+          "author": { "$ref": "#/components/schemas/IntegerFilter" },
+          "createdAt": { "$ref": "#/components/schemas/StringFilter" },
+          "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedBy": { "$ref": "#/components/schemas/IntegerFilter" },
           "AND": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/StockMovementFilter" }

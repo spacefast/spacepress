@@ -65,8 +65,21 @@ final class Sql
         $src = $this->source($collection);
         $alias = $this->alias();
         $conds = [];
+        $deleted = $opts['deleted'] ?? 'exclude';
         if ($src->baseWhere !== '') {
-            $conds[] = $this->sub($src->baseWhere, $alias, '');
+            $base = $deleted === 'exclude'
+                ? $src->baseWhere
+                : str_replace("NOT IN ('trash', ", 'NOT IN (', $src->baseWhere);
+            $conds[] = $this->sub($base, $alias, '');
+            if ($deleted === 'only') {
+                $conds[] = $alias . ".post_status = 'trash'";
+            }
+        } elseif (($spec['softDelete'] ?? false) && isset($src->columns['_live'])) {
+            if ($deleted === 'exclude') {
+                $conds[] = $this->cmpRef($collection, '_live', $alias) . ' = 1';
+            } elseif ($deleted === 'only') {
+                $conds[] = $this->cmpRef($collection, '_live', $alias) . ' IS NULL';
+            }
         }
         if (isset($opts['where'])) {
             $conds[] = $this->filter($collection, $opts['where'], $alias, $ptr . '/where');
@@ -205,6 +218,7 @@ final class Sql
             throw HttpError::invalidQuery('orderBy must be an object', $ptr);
         }
         $spec = $this->schema->collection($collection);
+        $orderBy = Schema::resolveAliases($spec, $orderBy, $ptr);
         $out = [];
         foreach ($orderBy as $col => $dir) {
             $col = (string) $col;
@@ -255,10 +269,14 @@ final class Sql
             throw HttpError::invalidQuery('Filter must be an object', $ptr);
         }
         $spec = $this->schema->collection($collection);
+        $where = Schema::resolveAliases($spec, $where, $ptr);
         $parts = [];
         foreach ($where as $key => $value) {
             $kptr = $ptr . HttpError::seg($key);
             $key = (string) $key;
+            if ($value === JsUndefined::Value) {
+                throw HttpError::invalidInput("Filter value for '$key' cannot be undefined; omit the key or pass null explicitly", $kptr);
+            }
             if ($key === 'OR' || $key === 'AND') {
                 $parts[] = $this->combine($key, $value, $kptr, fn ($f, $p) => $this->filter($collection, $f, $alias, $p));
             } elseif ($key === 'NOT') {
@@ -329,6 +347,9 @@ final class Sql
 
     private function op(string $collection, string $name, string $op, mixed $arg, string $alias, string $ptr): string
     {
+        if ($arg === JsUndefined::Value) {
+            throw HttpError::invalidInput("Filter operator '$op' on '$name' cannot be undefined", $ptr);
+        }
         $col = $this->schema->collection($collection)['columns'][$name];
         $src = $this->source($collection);
         $ref = $src->columns[$name];
@@ -417,6 +438,9 @@ final class Sql
             return $negate ? '1 = 1' : '0 = 1';
         }
         foreach ($list as $i => $v) {
+            if ($v === JsUndefined::Value) {
+                throw HttpError::invalidInput("Filter value in list on '$name' cannot be undefined", $ptr . '/' . $i);
+            }
             $this->params[] = $this->param($collection, $name, $v, $ptr . '/' . $i);
         }
 
@@ -538,6 +562,8 @@ final class Sql
         $conds = [];
         if ($src->baseWhere !== '') {
             $conds[] = $this->sub($src->baseWhere, $inner, '');
+        } elseif (($this->schema->collection($target)['softDelete'] ?? false) && isset($src->columns['_live'])) {
+            $conds[] = $this->cmpRef($target, '_live', $inner) . ' = 1';
         }
         $conds[] = isset($rel['through'])
             ? $this->cmpRef($target, $this->schema->collection($target)['primaryKey'], $inner) . ' IN (' . $this->linked($collection, $rel['through'], $alias) . ')'

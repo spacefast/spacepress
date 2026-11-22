@@ -42,7 +42,7 @@ fn wordpress_secrets_are_refused_on_every_env_path() {
     rejects(
         "reject-process-env-host",
         "`DB_PASSWORD` is a host setting",
-        "typedpress.config.ts:3:",
+        "typedpress.config.ts:2:",
     );
     rejects(
         "reject-env-host-secret",
@@ -52,7 +52,7 @@ fn wordpress_secrets_are_refused_on_every_env_path() {
     rejects(
         "reject-hmac-host-secret",
         "`AUTH_KEY` is a host setting",
-        "typedpress.config.ts:4:",
+        "typedpress.config.ts:3:",
     );
 }
 
@@ -124,7 +124,7 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     // A default export has no name to register under.
     rejects(
         "reject-default-export-kind",
-        "a kind, action or job can't be a default export",
+        "a kind, query, mutation or job can't be a default export",
         "tp/notes.ts:3:16",
     );
     // wp-hooks/ beside typedpress.config.ts is from before tp/wp-hooks/: refused, never dropped.
@@ -168,7 +168,7 @@ fn removed_registry_keys_name_the_export_that_replaces_them() {
         (
             "actions",
             "`actions` is gone: an action registers by its export",
-            "the client call is `first.like()`",
+            "the client calls it as `like()`",
         ),
         (
             "jobs",
@@ -207,23 +207,33 @@ fn config_file_exports_register_under_their_export_name() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
-        r#"import { action, defineConfig, table, text } from "typedpress";
+        r#"import { defineConfig, table, text, mutation } from "typedpress";
 const variants = table({ name: text() }, { access: { read: "anyone" } });
 export { variants as productVariants };
-export const ping = action({ input: {}, access: "anyone", handler: () => 1 });
+export const ping = mutation({ access: "anyone" }, () => 1);
 export default defineConfig({ name: "exported" });
 "#,
     )
     .unwrap();
     let out = first().arg("build").arg(tmp.path()).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    let snapshot: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(tmp.path().join("tp/_generated/migrations/snapshot.json")).unwrap())
-            .unwrap();
-    assert_eq!(
-        snapshot["tables"].as_object().unwrap().keys().collect::<Vec<_>>(),
-        ["product_variants"]
-    );
+    let migrations_dir = tmp.path().join("tp/_generated/migrations");
+    let mut folders: Vec<PathBuf> = std::fs::read_dir(&migrations_dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.is_dir())
+        .collect();
+    folders.sort();
+    assert_eq!(folders.len(), 1, "expected 1 migration folder: {folders:?}");
+    let ops: serde_json::Value = serde_json::from_slice(&std::fs::read(folders[0].join("ops.json")).unwrap()).unwrap();
+    let created_tables: Vec<&str> = ops["ops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|op| op["op"] == "createTable" && op["table"] != "tp__revisions")
+        .filter_map(|op| op["table"].as_str())
+        .collect();
+    assert_eq!(created_tables, ["product_variants"]);
     let schema = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
         .arg(
@@ -357,11 +367,6 @@ fn replaced_field_forms_name_their_replacement() {
             "reject-ref-many-sync",
             "`tags` is a `ref().many()` list, which sync can't carry yet",
             "tp/schema.ts:3:56",
-        ),
-        (
-            "reject-ref-many-input",
-            "`ref()` isn't allowed on an action input (`ids`)",
-            "typedpress.config.ts:3:43",
         ),
     ] {
         rejects(fixture, message, at);
@@ -501,11 +506,6 @@ fn rejects_what_taxonomies_and_terms_do_not_build_yet() {
             "reject-terms-global",
             "`terms()` isn't allowed on a global field (`featured`)",
             "typedpress.config.ts:4:44",
-        ),
-        (
-            "reject-terms-input",
-            "`terms()` isn't allowed on an action input (`ids`)",
-            "typedpress.config.ts:3:43",
         ),
         (
             "reject-terms-many",
@@ -727,7 +727,7 @@ fn mail_send_needs_recipients_a_subject_and_a_body() {
     rejects(
         "reject-mail-message",
         "mail.send() needs { to, subject, text or html }",
-        "typedpress.config.ts:3:",
+        "typedpress.config.ts:2:",
     );
     let out = first()
         .args(["check"])
@@ -923,9 +923,9 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         ),
         ("", "uploads: { backend: 'local', bucket: 'uploads' }", "has no option"),
         (
-            "export const notes = collection({ title: text() }, { revisions: false });",
+            "export const notes = collection({ title: text() }, { revisions: false, staged: true });",
             "",
-            "collections always have native revisions",
+            "staged versions require `revisions: true`",
         ),
         (
             "export const notes = table({ title: text().optional() }, { comments: true });",
@@ -1385,17 +1385,32 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         "build failed:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let init = std::fs::read_to_string(project.join("tp/_generated/migrations/0001_init.sql")).unwrap();
+    let migration_dirs = |dir: &Path| -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().is_dir())
+            .map(|e| e.file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        names
+    };
+    let init_dirs = migration_dirs(&project.join("tp/_generated/migrations"));
+    assert_eq!(init_dirs.len(), 1, "{init_dirs:?}");
+    let init = std::fs::read_to_string(
+        project
+            .join("tp/_generated/migrations")
+            .join(&init_dirs[0])
+            .join("migration.sql"),
+    )
+    .unwrap();
     assert!(init.contains("CREATE TABLE `{prefix}tp_items`"), "{init}");
     // A second build with no changes adds no migration.
     let again = first().arg("build").arg(&project).output().unwrap();
     assert!(again.status.success());
-    assert!(!project.join("tp/_generated/migrations/0002_update.sql").exists());
+    assert_eq!(migration_dirs(&project.join("tp/_generated/migrations")), init_dirs);
     for example in ["pantry", "blog", "site"] {
-        let stored: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(root().join(format!("examples/{example}/tp/_generated/migrations/snapshot.json"))).unwrap(),
-        )
-        .unwrap();
+        let original = migration_dirs(&root().join(format!("examples/{example}/tp/_generated/migrations")));
         let persisted = tmp.join(format!("preserved-{example}"));
         copy(&root().join(format!("examples/{example}")), &persisted);
         let result = first().arg("build").arg(&persisted).output().unwrap();
@@ -1404,47 +1419,31 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             "{example}: {}",
             String::from_utf8_lossy(&result.stderr)
         );
-        let actual: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(persisted.join("tp/_generated/migrations/snapshot.json")).unwrap())
-                .unwrap();
-        assert_eq!(
-            actual, stored,
-            "{example}: the authoring change must preserve stored resources"
-        );
-        let migrations = std::fs::read_dir(persisted.join("tp/_generated/migrations"))
-            .unwrap()
-            .filter_map(Result::ok)
-            .filter(|e| e.path().extension().is_some_and(|e| e == "sql"))
-            .count();
-        let original = std::fs::read_dir(root().join(format!("examples/{example}/tp/_generated/migrations")))
-            .unwrap()
-            .filter_map(Result::ok)
-            .filter(|e| e.path().extension().is_some_and(|e| e == "sql"))
-            .count();
-        assert_eq!(
-            migrations, original,
-            "{example}: no new SQL for an authoring-only change"
-        );
+        let actual = migration_dirs(&persisted.join("tp/_generated/migrations"));
+        assert_eq!(actual, original, "{example}: no new migration for an unchanged build");
     }
-    // Main-built storage, including FK targets and revision storage, survives the authoring cut.
+    // Historical storage-upgrade fixture keeps its committed migrations unchanged on rebuild.
     let upgraded = tmp.join("storage-upgrade");
     let fixture = root().join("tests/fixtures/storage-upgrade");
     copy(&fixture, &upgraded);
+    let original = migration_dirs(&fixture.join("tp/_generated/migrations"));
     let built = first().arg("build").arg(&upgraded).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    for file in ["snapshot.json", "0001_init.sql"] {
-        assert_eq!(
-            std::fs::read(upgraded.join("tp/_generated/migrations").join(file)).unwrap(),
-            std::fs::read(fixture.join("tp/_generated/migrations").join(file)).unwrap(),
-            "the historical ledger must remain unchanged"
-        );
-    }
     assert_eq!(
-        std::fs::read_dir(upgraded.join("tp/_generated/migrations"))
-            .unwrap()
-            .count(),
-        2
+        migration_dirs(&upgraded.join("tp/_generated/migrations")),
+        original,
+        "the historical ledger must remain unchanged"
     );
+    for id in &original {
+        for file in ["ops.json", "migration.sql"] {
+            assert_eq!(
+                std::fs::read(upgraded.join("tp/_generated/migrations").join(id).join(file)).unwrap(),
+                std::fs::read(fixture.join("tp/_generated/migrations").join(id).join(file)).unwrap(),
+                "the historical ledger must remain unchanged: {id}/{file}"
+            );
+        }
+    }
+    assert_eq!(migration_dirs(&upgraded.join("tp/_generated/migrations")).len(), 1);
 
     // Neither camel-case names nor canonical names behind aliases may be silently replaced.
     let conflict = tmp.join("name-conflict");
@@ -1452,31 +1451,29 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     std::fs::write(conflict.join("typedpress.config.ts"), "import { table, defineConfig } from 'typedpress'; const __stockItems = table({}); export { __stockItems as stockItems }; export default defineConfig({});").unwrap();
     let built = first().arg("build").arg(&conflict).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let ledger = conflict.join("tp/_generated/migrations/snapshot.json");
+    let init_id = migration_dirs(&conflict.join("tp/_generated/migrations"))[0].clone();
+    let ledger = conflict
+        .join("tp/_generated/migrations")
+        .join(&init_id)
+        .join("ops.json");
     let canonical: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
+    // Pinning `storageName` keeps an existing physical table under a new TypeScript export with no new migration.
     for stored_name in ["stockItems", "inventory"] {
         let mut legacy = canonical.clone();
-        let tables = legacy["tables"].as_object_mut().unwrap();
-        let stored = tables.remove("stock_items").unwrap();
-        tables.insert(stored_name.into(), stored);
+        for op in legacy["ops"].as_array_mut().unwrap() {
+            if op["op"] == "createTable" && op["table"] == "stock_items" {
+                op["table"] = serde_json::json!(stored_name);
+            }
+        }
         let legacy_bytes = serde_json::to_vec(&legacy).unwrap();
         std::fs::write(&ledger, &legacy_bytes).unwrap();
-        let refused = first().arg("build").arg(&conflict).output().unwrap();
-        assert_eq!(refused.status.code(), Some(1));
-        let error = String::from_utf8_lossy(&refused.stderr);
-        assert!(error.contains(&format!("stored resource `{stored_name}`")), "{error}");
-        assert!(
-            error.contains("an authoring change cannot rename persisted storage"),
-            "{error}"
-        );
-        assert_eq!(std::fs::read(&ledger).unwrap(), legacy_bytes);
-        assert_eq!(
-            std::fs::read_dir(conflict.join("tp/_generated/migrations"))
-                .unwrap()
-                .count(),
-            2
-        );
-        std::fs::write(conflict.join("typedpress.config.ts"), format!("import {{ table, defineConfig }} from 'typedpress'; const __stockItems = table({{}}, {{ storageName: \"{stored_name}\" }}); export {{ __stockItems as stockItems }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(
+            conflict.join("typedpress.config.ts"),
+            format!(
+                "import {{ table, defineConfig }} from 'typedpress'; const __stockItems = table({{}}, {{ storageName: \"{stored_name}\" }}); export {{ __stockItems as stockItems }}; export default defineConfig({{}});"
+            ),
+        )
+        .unwrap();
         let preserved = first().arg("build").arg(&conflict).output().unwrap();
         assert!(
             preserved.status.success(),
@@ -1485,38 +1482,8 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         );
         let actual: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
         assert_eq!(actual, legacy);
-        assert_eq!(
-            std::fs::read_dir(conflict.join("tp/_generated/migrations"))
-                .unwrap()
-                .count(),
-            2
-        );
-        std::fs::write(conflict.join("typedpress.config.ts"), "import { table, defineConfig } from 'typedpress'; const __stockItems = table({}); export { __stockItems as stockItems }; export default defineConfig({});").unwrap();
+        assert_eq!(migration_dirs(&conflict.join("tp/_generated/migrations")).len(), 1);
     }
-    // Physical-only siblings do not establish who owned the retained resource.
-    let mut siblings = canonical.clone();
-    siblings["tables"]["stockItems"] = canonical["tables"]["stock_items"].clone();
-    let sibling_bytes = serde_json::to_vec(&siblings).unwrap();
-    std::fs::write(&ledger, &sibling_bytes).unwrap();
-    let refused = first().arg("build").arg(&conflict).output().unwrap();
-    assert_eq!(
-        refused.status.code(),
-        Some(1),
-        "{}",
-        String::from_utf8_lossy(&refused.stderr)
-    );
-    let error = String::from_utf8_lossy(&refused.stderr);
-    assert!(
-        error.contains("stored resource `stockItems` conflicts with canonical physical name `stock_items`"),
-        "{error}"
-    );
-    assert_eq!(std::fs::read(&ledger).unwrap(), sibling_bytes);
-    assert_eq!(
-        std::fs::read_dir(conflict.join("tp/_generated/migrations"))
-            .unwrap()
-            .count(),
-        2
-    );
 
     // Writes default to editor access: the site's editor signs in with an application password.
     let content = project.join("tp/dist/wp-content");
@@ -2337,13 +2304,18 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         String::from_utf8_lossy(&out.stderr)
     );
     let plugin = project.join("tp/dist/wp-content/plugins/typedpress-app-blog");
-    for rel in [
-        "typedpress-app-blog.php",
-        "tp/app/functions.php",
-        "tp/app/migrations/0001_init.sql",
-    ] {
+    for rel in ["typedpress-app-blog.php", "tp/app/functions.php", "tp/app/migrations"] {
         assert!(plugin.join(rel).exists(), "plugin is missing {rel}");
     }
+    let init_mig_dir = std::fs::read_dir(plugin.join("tp/app/migrations"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.is_dir())
+        .expect("plugin is missing initial migration directory");
+    assert!(
+        init_mig_dir.join("migration.sql").is_file(),
+        "plugin is missing migration.sql"
+    );
     assert!(
         project
             .join("tp/dist/wp-content/plugins/typedpress-app-blog.zip")
@@ -2414,7 +2386,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     // The blog has no localized post types. The localized fixture below checks the XML contents.
     assert!(!plugin.join("wpml-config.xml").exists());
     // Post-backed collections have no MySQL table; editor:false ones do (no FK to a post type).
-    let mysql = std::fs::read_to_string(plugin.join("tp/app/migrations/0001_init.sql")).unwrap();
+    let mysql = std::fs::read_to_string(init_mig_dir.join("migration.sql")).unwrap();
     assert!(mysql.contains("CREATE TABLE `{prefix}tp_comments`"), "{mysql}");
     assert!(
         !mysql.contains("tp_posts`") && !mysql.contains("FOREIGN KEY"),
@@ -2525,8 +2497,6 @@ fn rejects_phase2_static_contracts() {
             "`.primaryKey()` is gone: every kind has an integer `id`",
         ),
         ("reject-sync-reference", "sync references need uid: true on a"),
-        ("reject-job-reference", "`ref()` isn't allowed on an action input"),
-        ("reject-job-unique", "`.unique()` isn't allowed on an action input"),
         ("reject-job-retries", "job retries must be a whole number from 0 to 20"),
         ("reject-once-key", "once key must be a string"),
         ("reject-env-placement", "env() is only allowed in webhooks/signature"),
@@ -2541,7 +2511,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-env-hasown", "env() is only allowed in webhooks/signature"),
         ("reject-signature-access", "signature cannot be combined with access"),
         ("reject-webhook-collection", "webhook event names an unknown collection"),
-        ("reject-enqueue-unknown-job", "unknown job `send`"),
+        ("reject-enqueue-unknown-job", "`send` isn't defined"),
         (
             "reject-env-captured",
             "env() values can't be stored inside captured data",
@@ -2958,8 +2928,13 @@ fn phase2_schema_and_closures_match_the_contract() {
     // A second build with no changes plans no migration.
     let again = first().arg("build").arg(&tmp).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
-    assert!(
-        !tmp.join("tp/_generated/migrations/0002_update.sql").exists(),
+    assert_eq!(
+        std::fs::read_dir(tmp.join("tp/_generated/migrations"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().is_dir())
+            .count(),
+        1,
         "a rebuild planned a migration"
     );
     // §7.3 drift guard: the generated wpml-config.xml (copy synced metas, translate localized ones).
@@ -3038,7 +3013,7 @@ fn phase2_schema_and_closures_match_the_contract() {
         $ctx = ['user' => null, 'attempt' => 2, 'jobId' => 'job-test'];
         $fn = '\\TypedPressApp\\' . $job['handler'];
         $db->transaction(static fn () => $fn(\TypedPress\Seam::toJs($input, $job['input']), \TypedPress\Seam::ctx($ctx)));
-        echo \TypedPress\Js::jsonStringify([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $subscriberUpdate], $bucketGuest, $db->findMany('audit')]);
+        echo \TypedPress\Js::jsonStringify([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $subscriberUpdate], $bucketGuest, $db->findMany('audit', ['columns' => ['id' => true, 'note' => true]])]);
     "#,
         &serde_json::Value::Null,
     );
@@ -3091,7 +3066,14 @@ fn builds_wordpress_and_knows_no_target_option() {
     let built = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     assert!(tmp.join("tp/dist/wp-content/typedpress-manifest.json").is_file());
-    assert!(tmp.join("tp/_generated/migrations/0001_init.sql").is_file());
+    let init_dirs: Vec<_> = std::fs::read_dir(tmp.join("tp/_generated/migrations"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.is_dir())
+        .collect();
+    assert_eq!(init_dirs.len(), 1, "{init_dirs:?}");
+    assert!(init_dirs[0].join("migration.sql").is_file());
+    assert!(init_dirs[0].join("ops.json").is_file());
     let _ = std::fs::remove_dir_all(tmp);
 }
 
@@ -3319,7 +3301,12 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
     let built = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     let migrations = tmp.join("tp/_generated/migrations");
-    let snapshot = std::fs::read_to_string(migrations.join("snapshot.json")).unwrap();
+    let init_folder = std::fs::read_dir(&migrations)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.is_dir())
+        .expect("initial migration folder");
+    let init = std::fs::read_to_string(init_folder.join("migration.sql")).unwrap();
     /// Every file under the project with its bytes, so a refusal is proven to write nothing anywhere.
     fn tree(dir: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
         let mut out = std::collections::BTreeMap::new();
@@ -3333,6 +3320,13 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
         }
         out
     }
+    let count_migrations = || -> usize {
+        std::fs::read_dir(&migrations)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().is_dir())
+            .count()
+    };
     let refused = |message: &str| {
         let before = tree(&tmp);
         let out = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
@@ -3349,30 +3343,24 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
     refused("tp/migrations/ moved to tp/_generated/migrations/");
     std::fs::remove_dir(&migrations).unwrap();
     // A pre-flat checkout moved as-is keeps its `wp/` and `sqlite/` subdirectories: still refused
-    // at the new path, so following the first message can't restart the numbering.
+    // at the new path, so following the first message can't restart the ledger.
     std::fs::rename(&old, &migrations).unwrap();
-    let init = std::fs::read_to_string(migrations.join("0001_init.sql")).unwrap();
     for nested in ["wp", "sqlite"] {
         std::fs::create_dir_all(migrations.join(nested)).unwrap();
         std::fs::write(migrations.join(nested).join("0001_init.sql"), &init).unwrap();
         refused(&format!("tp/_generated/migrations/{nested}/ is from an earlier layout"));
         std::fs::remove_dir_all(migrations.join(nested)).unwrap();
     }
-    let mut v1: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
-    v1["version"] = serde_json::json!(1);
-    std::fs::write(
-        migrations.join("snapshot.json"),
-        serde_json::to_string_pretty(&v1).unwrap() + "\n",
-    )
-    .unwrap();
-    refused("is a version 1 snapshot");
+    // A legacy snapshot.json file in the folder-based ledger is also refused.
+    std::fs::write(migrations.join("snapshot.json"), "{\"version\":2}\n").unwrap();
+    refused("legacy");
+    std::fs::remove_file(migrations.join("snapshot.json")).unwrap();
     // Restored, the project builds again and plans nothing new.
-    std::fs::write(migrations.join("snapshot.json"), &snapshot).unwrap();
     let again = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
-    assert!(!migrations.join("0002_update.sql").exists());
+    assert_eq!(count_migrations(), 1);
     // A checkout from before `tp/_generated/`: the ledger still in `tp/migrations/` and nothing
-    // generated beside it. Building there would start a second 0001_init.sql, so the build names
+    // generated beside it. Building there would start a second init migration, so the build names
     // the move; running exactly the command it prints is enough.
     let old = tmp.join("tp/migrations");
     std::fs::rename(&migrations, &old).unwrap();
@@ -3395,7 +3383,7 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
     assert!(moved.status.success(), "{}", String::from_utf8_lossy(&moved.stderr));
     let moved = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(moved.status.success(), "{}", String::from_utf8_lossy(&moved.stderr));
-    assert!(!migrations.join("0002_update.sql").exists());
+    assert_eq!(count_migrations(), 1);
     // The other committed files from before `tp/_generated/`: each is refused, writing nothing,
     // and the printed command is the whole fix. Left in place, a lock would be ignored (and
     // replaced) and an old client would load as app code.
@@ -3499,17 +3487,20 @@ fn a_stored_table_declared_with_collection_is_refused_before_anything_is_written
         .unwrap();
     };
     let ledger = || {
+        fn walk(dir: &Path, base: &Path, out: &mut Vec<(String, Vec<u8>)>) {
+            for e in std::fs::read_dir(dir).unwrap() {
+                let p = e.unwrap().path();
+                if p.is_dir() {
+                    walk(&p, base, out);
+                } else {
+                    let rel = p.strip_prefix(base).unwrap().to_string_lossy().into_owned();
+                    out.push((rel, std::fs::read(&p).unwrap()));
+                }
+            }
+        }
         let dir = project.join("tp/_generated/migrations");
-        let mut files: Vec<(String, Vec<u8>)> = std::fs::read_dir(&dir)
-            .unwrap()
-            .map(|e| {
-                let e = e.unwrap();
-                (
-                    e.file_name().to_string_lossy().into_owned(),
-                    std::fs::read(e.path()).unwrap(),
-                )
-            })
-            .collect();
+        let mut files = Vec::new();
+        walk(&dir, &dir, &mut files);
         files.sort();
         files
     };
@@ -3558,11 +3549,19 @@ fn a_stored_table_declared_with_collection_is_refused_before_anything_is_written
     assert!(declare("collection").status.success());
     let warned = declare("table");
     assert!(warned.status.success(), "{}", String::from_utf8_lossy(&warned.stderr));
-    assert!(
-        String::from_utf8_lossy(&warned.stderr).contains("creates an empty SQL table for \"memos\""),
-        "{}",
-        String::from_utf8_lossy(&warned.stderr)
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(posts.path().join("tp/_generated/migrations"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.is_dir())
+        .collect();
+    dirs.sort();
+    assert_eq!(
+        dirs.len(),
+        2,
+        "switching collection() to table() plans a new table migration: {dirs:?}"
     );
+    let sql = std::fs::read_to_string(dirs[1].join("migration.sql")).unwrap();
+    assert!(sql.contains("CREATE TABLE `{prefix}tp_memos`"), "{sql}");
 }
 
 #[test]
@@ -3728,9 +3727,9 @@ fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
     std::fs::write(tmp.path().join("tp/run.mjs"), body).unwrap();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
-        r#"import { action, defineConfig, text } from "typedpress";
+        r#"import { defineConfig, text, mutation } from "typedpress";
 import { run } from "./tp/run.mjs";
-const __a = action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }); export { __a as a }; export default defineConfig({ name: "p" });
+const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { return { v: run(input.s) }; }); export { __a as a }; export default defineConfig({ name: "p" });
 "#,
     )
     .unwrap();
@@ -3789,11 +3788,22 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
         let out = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     };
+    let sorted_migrations = || -> Vec<PathBuf> {
+        let mut dirs: Vec<PathBuf> = std::fs::read_dir(tmp.join("tp/_generated/migrations"))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.is_dir())
+            .collect();
+        dirs.sort();
+        dirs
+    };
     build();
-    let migration = std::fs::read_to_string(tmp.join("tp/_generated/migrations/0001_init.sql")).unwrap();
+    let dirs = sorted_migrations();
+    assert_eq!(dirs.len(), 1, "{dirs:?}");
+    let migration = std::fs::read_to_string(dirs[0].join("migration.sql")).unwrap();
     // Both sides custom tables: constraints cascade. A post-backed side: no constraint.
-    assert!(migration.contains("CREATE TABLE `{prefix}tp_notes_tags` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`),\n\tCONSTRAINT `tp_notes_tags_owner_id_fk` FOREIGN KEY (`owner_id`) REFERENCES `{prefix}tp_notes` (`id`) ON DELETE CASCADE,\n\tCONSTRAINT `tp_notes_tags_target_id_fk` FOREIGN KEY (`target_id`) REFERENCES `{prefix}tp_tags` (`id`) ON DELETE CASCADE\n)"), "{migration}");
-    assert!(migration.contains("CREATE TABLE `{prefix}tp_posts_tags` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)\n)"), "{migration}");
+    assert!(migration.contains("CREATE TABLE `{prefix}tp__join_notes_tags` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`),\n\tCONSTRAINT `tp_notes_tags_owner_id_fk` FOREIGN KEY (`owner_id`) REFERENCES `{prefix}tp_notes` (`id`) ON DELETE CASCADE,\n\tCONSTRAINT `tp_notes_tags_target_id_fk` FOREIGN KEY (`target_id`) REFERENCES `{prefix}tp_tags` (`id`) ON DELETE CASCADE\n)"), "{migration}");
+    assert!(migration.contains("CREATE TABLE `{prefix}tp__join_posts_tags` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)\n)"), "{migration}");
     assert!(
         !migration.contains("ADD COLUMN `tags`") && !migration.contains("`tags` LONGTEXT"),
         "{migration}"
@@ -3829,7 +3839,7 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
 
     let dts = std::fs::read_to_string(tmp.join("tp/_generated/db.d.ts")).unwrap();
     assert!(
-        dts.contains("'tags': ColumnBuilder<'refList', number[], false, false, false, false>;"),
+        dts.contains("'tags': ColumnBuilder<'refList', Id<'tags'>[], false, false, false, false>;"),
         "{dts}"
     );
     assert!(
@@ -3837,34 +3847,35 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
         "{dts}"
     );
 
-    // Another many-ref adds its table; removing one drops it only through the deploy's `drop` check,
-    // which refuses while links exist unless `--drop` names them.
-    let migration = |n: &str| {
-        let dir = tmp.join("tp/_generated/migrations");
-        let name = std::fs::read_dir(&dir)
-            .unwrap()
-            .map(|e| e.unwrap().file_name().into_string().unwrap())
-            .find(|f| f.starts_with(n))
-            .unwrap_or_else(|| panic!("no migration {n}"));
-        std::fs::read_to_string(dir.join(name)).unwrap()
-    };
+    // Another many-ref adds its join table; removing one retires it in ops.json (forward-only: no DROP TABLE).
     std::fs::write(
         tmp.join("tp/schema.ts"),
         schema(", related: ref(() => notes).many().reverse(\"relatedFrom\")"),
     )
     .unwrap();
     build();
+    let dirs2 = sorted_migrations();
+    assert_eq!(dirs2.len(), 2, "{dirs2:?}");
+    let added = std::fs::read_to_string(dirs2[1].join("migration.sql")).unwrap();
     assert!(
-        migration("0002").starts_with("CREATE TABLE `{prefix}tp_notes_related` ("),
-        "{}",
-        migration("0002")
+        added.starts_with("CREATE TABLE `{prefix}tp__join_notes_related` ("),
+        "{added}"
     );
     std::fs::write(tmp.join("tp/schema.ts"), schema("")).unwrap();
     build();
-    let dropped = migration("0003");
-    assert_eq!(
-        dropped.trim_end(),
-        "-- typedpress-check {\"check\":\"drop\",\"name\":\"notes_related\",\"table\":\"{prefix}tp_notes_related\",\"adopted\":false}\nDROP TABLE `{prefix}tp_notes_related`;"
+    let dirs3 = sorted_migrations();
+    assert_eq!(dirs3.len(), 3, "{dirs3:?}");
+    let retired_sql = std::fs::read_to_string(dirs3[2].join("migration.sql")).unwrap();
+    assert!(!retired_sql.contains("DROP TABLE"), "{retired_sql}");
+    let retired_ops: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dirs3[2].join("ops.json")).unwrap()).unwrap();
+    assert!(
+        retired_ops["ops"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|op| op["op"] == "retireTable" && op["table"] == "notes_related"),
+        "{retired_ops}"
     );
     let _ = std::fs::remove_dir_all(tmp);
 }
@@ -3890,8 +3901,22 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
     let plain =
         "import { collection, text } from \"typedpress\";\nexport const posts = collection({ title: text() });\n";
     build(plain);
-    let snapshot = || std::fs::read_to_string(tmp.join("tp/_generated/migrations/snapshot.json")).unwrap();
-    let before = snapshot();
+    let ledger = || -> Vec<(String, String)> {
+        let mut out: Vec<(String, String)> = std::fs::read_dir(tmp.join("tp/_generated/migrations"))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.is_dir())
+            .map(|p| {
+                let name = p.file_name().unwrap().to_string_lossy().into_owned();
+                let ops = std::fs::read_to_string(p.join("ops.json")).unwrap();
+                (name, ops)
+            })
+            .collect();
+        out.sort();
+        out
+    };
+    let before = ledger();
+    assert_eq!(before.len(), 1, "{before:?}");
     build(
         "import { collection, taxonomy, terms, text } from \"typedpress\";\n\
          export const tags = taxonomy({}, { url: \"/tags/:slug\" });\n\
@@ -3899,13 +3924,7 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
          export const topics = taxonomy({ color: text().optional() }, { hierarchical: true, on: [posts], access: { create: \"author\" } });\n",
     );
     // No SQL: terms, term meta and links are core's.
-    assert_eq!(snapshot(), before);
-    let migrations: Vec<_> = std::fs::read_dir(tmp.join("tp/_generated/migrations"))
-        .unwrap()
-        .map(|e| e.unwrap().file_name().into_string().unwrap())
-        .filter(|f| f.ends_with(".sql"))
-        .collect();
-    assert_eq!(migrations, ["0001_init.sql"]);
+    assert_eq!(ledger(), before);
 
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
@@ -3950,7 +3969,7 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
     assert!(dts.contains("'topics': Collection<'topics', {"), "{dts}");
     assert!(dts.contains("}, false, 'taxonomy'>;"), "{dts}");
     assert!(
-        dts.contains("'topics': ColumnBuilder<'refList', number[], true, true, false, false>;"),
+        dts.contains("'topics': ColumnBuilder<'refList', Id<'topics'>[], true, true, false, false>;"),
         "{dts}"
     );
     assert!(
@@ -3960,7 +3979,7 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
 
     // Removing the taxonomy again changes no stored schema either.
     build(plain);
-    assert_eq!(snapshot(), before);
+    assert_eq!(ledger(), before);
     let _ = std::fs::remove_dir_all(tmp);
 }
 
@@ -5299,15 +5318,92 @@ fn the_openapi_document_describes_what_the_api_answers() {
         &json(json!({ "name": "Grace" })),
         201,
     );
+    let second_id = &second["data"]["id"];
     check(
-        "DELETE",
-        &format!("/authors/{}", second["data"]["id"]),
+        "PATCH",
+        &format!("/authors/{second_id}"),
+        Some("editor"),
+        &[],
+        &json(json!({ "name": "Grace Hopper" })),
+        200,
+    );
+    let second_revs = check(
+        "GET",
+        &format!("/authors/{second_id}/revisions"),
+        Some("editor"),
+        &[],
+        b"",
+        200,
+    );
+    check(
+        "GET",
+        &format!(
+            "/authors/{second_id}/revisions/diff?from={}&to={}",
+            second_revs["data"][1]["id"], second_revs["data"][0]["id"]
+        ),
+        Some("editor"),
+        &[],
+        b"",
+        200,
+    );
+    check("DELETE", &format!("/authors/{second_id}"), Some("admin"), &[], b"", 200);
+    check(
+        "POST",
+        &format!("/authors/{second_id}/restore"),
         Some("admin"),
         &[],
         b"",
         200,
     );
+    // `access.purge` defaults to "system", so HTTP purge is refused and omitted from OpenAPI.
+    assert!(document["paths"].get("/authors/{id}/purge").is_none());
+
+    let note_revs = check("GET", &format!("/notes/{id}/revisions"), Some("editor"), &[], b"", 200);
+    let note_rev_id = &note_revs["data"][0]["id"];
+    check(
+        "GET",
+        &format!("/notes/{id}/revisions/diff?from={note_rev_id}&to={note_rev_id}"),
+        Some("editor"),
+        &[],
+        b"",
+        200,
+    );
     check("DELETE", &format!("/notes/{id}"), Some("editor"), &[], b"", 200);
+    check("POST", &format!("/notes/{id}/restore"), Some("editor"), &[], b"", 200);
+
+    let tally_revs = check(
+        "GET",
+        &format!("/tallies/{tally_id}/revisions"),
+        Some("editor"),
+        &[],
+        b"",
+        200,
+    );
+    let tally_rev_id = &tally_revs["data"][0]["id"];
+    check(
+        "GET",
+        &format!("/tallies/{tally_id}/revisions/{tally_rev_id}"),
+        Some("editor"),
+        &[],
+        b"",
+        200,
+    );
+    check(
+        "GET",
+        &format!("/tallies/{tally_id}/revisions/diff?from={tally_rev_id}&to={tally_rev_id}"),
+        Some("editor"),
+        &[],
+        b"",
+        200,
+    );
+    check(
+        "POST",
+        &format!("/tallies/{tally_id}/revisions/{tally_rev_id}/restore"),
+        Some("editor"),
+        &[],
+        b"",
+        200,
+    );
 
     // A path outside the document is a problem document as well.
     let (status, content_type, _) = api(&server, "GET", "/nope", None, &[], b"");
@@ -5326,11 +5422,262 @@ fn the_openapi_document_describes_what_the_api_answers() {
     );
 }
 
+/// `query()`, `mutation()`, `job(options, handler)`, `cron()` and `x.enqueue()` on WordPress with Action
+/// Scheduler (tests/php/server_functions.php): typed input and its defaults, one transaction with the job
+/// a mutation queues, rate limits that count failed calls, and schedules installed once per build and
+/// removed with the job.
+#[test]
+fn queries_mutations_jobs_and_schedules_run_on_wordpress() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("fns");
+    copy(&root().join("tests/fixtures/server-functions"), &project);
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/server_functions.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && stdout.contains(", 0 failed"),
+        "{stdout}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// A query may not write: a write in it, or in a function it calls, fails the build where it writes.
+#[test]
+fn a_query_that_writes_fails_the_build_at_the_write() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("typedpress.config.ts"),
+        r#"import { defineConfig, query, table, text } from "typedpress";
+export const notes = table({ title: text() });
+async function touch(id: number) { await notes.update(id, { title: "x" }); }
+export const read = query({}, async ({ id }: { id: number }) => { await touch(id); return 1; });
+export default defineConfig({ name: "q" });
+"#,
+    )
+    .unwrap();
+    let out = first().arg("check").arg(tmp.path()).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("`read` is a query, so it can't write: this updates a row (in a function the query calls)"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("--> typedpress.config.ts:3:"), "{stderr}");
+    assert!(stderr.contains("make it a mutation"), "{stderr}");
+}
+
+/// The forms `query()`, `mutation()`, `job(options, handler)` and `x.enqueue()` replaced are refused with the
+/// new spelling, and a typed input the site can't validate or the queue can't carry fails at the source.
+#[test]
+fn server_function_mistakes_are_refused_with_the_new_spelling() {
+    for (source, message, help) in [
+        (
+            "import { action } from \"typedpress\";\nexport const a = action({ input: {}, handler() { return 1; } });",
+            "`action()` is gone",
+            "mutation({ access: \"subscriber\" }",
+        ),
+        (
+            "import { job } from \"typedpress\";\nexport const a = job({ input: {}, handler() {} });",
+            "`job({ input, handler })` is gone",
+            "job({ retries: 3 }, async ({ postId }: { postId: number })",
+        ),
+        (
+            "import { jobs } from \"typedpress\";\nexport const a = 1;",
+            "`jobs` is gone",
+            ".enqueue(",
+        ),
+        (
+            "import { mutation } from \"typedpress\";\nexport const a = mutation({ input: {} }, async () => 1);",
+            "mutation() has no option `input`",
+            "the input is the handler's parameter type",
+        ),
+        (
+            "import { mutation } from \"typedpress\";\nexport const a = mutation({ readonly: true }, async () => 1);",
+            "mutation() has no option `readonly`",
+            "a function that only reads is a query()",
+        ),
+        (
+            "import { query } from \"typedpress\";\nexport const a = query({}, async (input) => 1);",
+            "this parameter has none",
+            "type it",
+        ),
+        (
+            "import { query } from \"typedpress\";\nexport const a = query({}, async (at: { when: Date }) => 1);",
+            "input field `when` is Date, which JSON can't carry",
+            "a date is an ISO string",
+        ),
+        (
+            "import { mutation } from \"typedpress\";\nexport const a = mutation({ rateLimit: \"5/fortnight\" }, async () => 1);",
+            "rateLimit \"5/fortnight\" isn't a count per period",
+            "10/min",
+        ),
+        (
+            "import { job } from \"typedpress\";\nexport const a = job({ every: \"30s\" }, async () => {});",
+            "every \"30s\" is under a minute",
+            "1m",
+        ),
+        (
+            "import { cron } from \"typedpress\";\nexport const a = cron(\"every day\", async () => {});",
+            "\"every day\" isn't a cron schedule",
+            "0 3 * * *",
+        ),
+        (
+            "import { cron } from \"typedpress\";\nexport const a = cron(\"99 88 77 66 55\", async () => {});",
+            "\"99 88 77 66 55\" isn't a cron schedule",
+            "a range `1-5`",
+        ),
+        (
+            "import { cron } from \"typedpress\";\nexport const a = cron(\"0 9 * * 7-1\", async () => {});",
+            "isn't a cron schedule",
+            "",
+        ),
+        (
+            "import { query } from \"typedpress\";\nimport { update_option } from \"php/wordpress\";\nexport const a = query({}, async () => { update_option(\"x\", 1); return 1; });",
+            "`a` is a query, so it can't write: this calls a WordPress function that writes",
+            "make it a mutation",
+        ),
+        (
+            "import { query } from \"typedpress\";\nexport const a = query({}, async () => (await fetch(\"https://api.example.com/x\", { method: \"POST\" })).status);",
+            "`a` is a query, so it can't write: this sends a request that isn't a GET",
+            "make it a mutation",
+        ),
+        (
+            "import { query, mutation } from \"typedpress\";\nimport { abilities } from \"php/wordpress\";\nexport const w = mutation({}, async () => 1);\nexport const a = query({}, async () => await abilities.call(\"m/w\", {}));",
+            "`a` is a query, so it can't write: this calls an ability that isn't read-only",
+            "make it a mutation",
+        ),
+        (
+            "import { query, table, text } from \"typedpress\";\nexport const notes = table({ title: text() });\nclass Writer { async run(id: number) { await notes.update(id, { title: \"x\" }); } }\nexport const a = query({}, async ({ id }: { id: number }) => { await new Writer().run(id); return 1; });",
+            "`a` is a query, so it can't write: this updates a row (in a function the query calls)",
+            "make it a mutation",
+        ),
+        (
+            "import { query } from \"typedpress\";\nexport const a = query({}, async (input: { pick: { kind: \"a\"; n: number } | { kind: \"b\"; s: string } }) => 1);",
+            "has no JSON shape the site can check",
+            "`kind` field",
+        ),
+        (
+            "import { job } from \"typedpress\";\nexport const a = job({ every: \"1h\" }, async ({ id }: { id: number }) => {});",
+            "a job on a schedule runs with no input",
+            "make every field optional",
+        ),
+        (
+            "import { job, mutation } from \"typedpress\";\nexport const j = job({}, async ({ id }: { id: number }) => {});\nexport const m = mutation({}, async () => { await j.enqueue({ id: \"one\" }); });",
+            "doesn't fit job `j`",
+            "",
+        ),
+        (
+            "import { job, mutation } from \"typedpress\";\nexport const j = job({}, async ({ id }: { id: number }) => {});\nexport const m = mutation({}, async () => { await j({ id: 1 }); });",
+            "`j` is a job: it runs on the queue, not as a function",
+            "j.enqueue(",
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("typedpress.config.ts"),
+            format!("import {{ defineConfig }} from \"typedpress\";\n{source}\nexport default defineConfig({{ name: \"m\" }});\n"),
+        )
+        .unwrap();
+        let out = first().arg("check").arg(tmp.path()).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{source}\n{stderr}");
+        assert!(stderr.contains(message), "{source}\nexpected {message:?} in:\n{stderr}");
+        assert!(stderr.contains("--> typedpress.config.ts:"), "{source}\n{stderr}");
+        assert!(stderr.contains(help), "{source}\nexpected help {help:?} in:\n{stderr}");
+    }
+}
+
+/// After `if (a.b != null && a.b < 1) throw ...`, the member path `a.b` keeps its type on the false
+/// side of the `&&` (it isn't narrowed to `never`), so the next check on it compiles.
+#[test]
+fn a_member_path_keeps_its_type_after_a_conjunction_that_throws() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("typedpress.config.ts"),
+        r#"import { defineConfig, query, HttpError } from "typedpress";
+export const range = query({}, async (input: { q?: number | null }) => {
+  if (input.q != null && input.q < 1) throw new HttpError(422, "low", "low");
+  if (input.q != null && input.q > 5) throw new HttpError(422, "high", "high");
+  return input.q ?? 0;
+});
+export default defineConfig({ name: "n" });
+"#,
+    )
+    .unwrap();
+    let out = first().arg("check").arg(tmp.path()).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+/// examples/pantry works end to end on WordPress (tests/php/pantry_example.php): the `consume` mutation,
+/// the `expiringSoon` query, the job its hook queues with `notifyLowStock.enqueue()` run by Action
+/// Scheduler, and the weekly `cron()` schedule.
+#[test]
+fn the_pantry_example_runs_its_query_mutation_job_and_schedule_on_wordpress() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("pantry");
+    copy(&root().join("examples/pantry"), &project);
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    assert!(
+        !String::from_utf8_lossy(&built.stdout).contains("new migrations"),
+        "the example's committed migrations are current: {}",
+        String::from_utf8_lossy(&built.stdout)
+    );
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/pantry_example.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && stdout.contains(", 0 failed"),
+        "{stdout}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// A query, a read, is never a form's action: a page form posting to one fails the build.
+#[test]
+fn a_form_posts_to_a_mutation_not_a_query() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join("tp/app")).unwrap();
+    std::fs::write(
+        tmp.path().join("typedpress.config.ts"),
+        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"f\" });\n",
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("tp/server.ts"),
+        "import { query } from \"typedpress\";\nexport const read = query({ access: \"anyone\" }, async () => 1);\n",
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("tp/app/page.tsx"),
+        "import { read } from \"../server\";\nexport default function Home() {\n  return <form action={read}><button>Go</button></form>;\n}\n",
+    )
+    .unwrap();
+    let out = first().arg("check").arg(tmp.path()).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("`read` is a query, which a form can't post to"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("--> tp/app/page.tsx:3:"), "{stderr}");
+}
+
 /// Refused helper chains called in narrowing positions (`if (f())`) must stay linear, not retry
 /// exponentially across speculative `attempt()` rollbacks (#232).
 #[test]
 fn refused_helper_chain_stays_linear_on_speculative_retries() {
-    let mut src = String::from("import { action, defineConfig } from \"typedpress\";\n");
+    let mut src = String::from("import { query, defineConfig } from \"typedpress\";\n");
     for i in 0..20 {
         let next = i + 1;
         src.push_str(&format!(
@@ -5347,7 +5694,7 @@ fn refused_helper_chain_stays_linear_on_speculative_retries() {
         ),
     ] {
         let config = format!(
-            "{src}\n{method}\nexport const run = action({{ access: \"anyone\", handler: () => {{ if ({entry}) return 1; return 0; }} }});\nexport default defineConfig({{ name: \"chain\" }});\n"
+            "{src}\n{method}\nexport const run = query({{ access: \"anyone\" }}, () => {{ if ({entry}) return 1; return 0; }});\nexport default defineConfig({{ name: \"chain\" }});\n"
         );
         std::fs::write(dir.path().join("typedpress.config.ts"), config).unwrap();
         let start = std::time::Instant::now();

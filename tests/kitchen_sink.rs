@@ -90,12 +90,7 @@ const INTERFACES: &[(&str, &str, &str, &[Reach])] = &[
         "<kind> from typedpress:db",
         &[Reach::Import("typedpress:db"), Reach::SystemOf("typedpress:db")],
     ),
-    (
-        "typedpress",
-        "JobHandle",
-        "jobs.<job>",
-        &[Reach::AnyMemberOf("typedpress", "jobs")],
-    ),
+    ("typedpress", "Job", "<job>", &[Reach::Chain("typedpress", "job")]),
     ("typedpress", "CollectionHooks", "collection hook", &[Reach::HookKey]),
     ("typedpress", "ConfigInput", "defineConfig", &[Reach::ConfigKey]),
 ];
@@ -112,8 +107,6 @@ enum Reach {
     Member(&'static str, &'static str),
     /// `<name>.<prop>.<anything>.method(...)`.
     MemberOf(&'static str, &'static str, &'static str),
-    /// `<name>.<anything>.method(...)`.
-    AnyMemberOf(&'static str, &'static str),
     /// `<any named import of the module>.method(...)`.
     Import(&'static str),
     /// `<any named import of the module>.system.method(...)`.
@@ -441,6 +434,8 @@ fn scan(path: &Path, app: &Path, used: &mut Used) {
 
     // Imported names by symbol: (module, exported name). A default import is "default".
     let mut imported = BTreeMap::new();
+    // Locals bound directly to a call of an imported builder (e.g. `const x = job(...)`).
+    let mut bound_from = BTreeMap::new();
     for statement in &parsed.program.body {
         match statement {
             Statement::ImportDeclaration(import) => {
@@ -506,6 +501,16 @@ fn scan(path: &Path, app: &Path, used: &mut Used) {
     };
 
     for node in nodes.iter() {
+        if let AstKind::VariableDeclarator(decl) = node.kind()
+            && let BindingPattern::BindingIdentifier(id) = &decl.id
+            && let Some(init) = &decl.init
+            && matches!(unwrap(init), Expression::CallExpression(_))
+            && let Some((module, name)) = chain_root(init).and_then(&resolve)
+        {
+            bound_from.insert(id.symbol_id.get().unwrap(), (module.clone(), name.clone()));
+        }
+    }
+    for node in nodes.iter() {
         match node.kind() {
             AstKind::CallExpression(call) => {
                 let callee = unwrap(&call.callee);
@@ -513,6 +518,14 @@ fn scan(path: &Path, app: &Path, used: &mut Used) {
                     // A method called on the result of a call: a link of a chain.
                     if matches!(unwrap(&member.object), Expression::CallExpression(_))
                         && let Some((module, name)) = chain_root(&member.object).and_then(resolve)
+                    {
+                        used.chain_calls
+                            .insert((module.clone(), name.clone(), member.property.name.to_string()));
+                    }
+                    // A method called on a local bound to a builder call (e.g. `recordEvent.enqueue(...)`).
+                    if let Expression::Identifier(id) = unwrap(&member.object)
+                        && let Some(sym) = scoping.get_reference(id.reference_id()).symbol_id()
+                        && let Some((module, name)) = bound_from.get(&sym)
                     {
                         used.chain_calls
                             .insert((module.clone(), name.clone(), member.property.name.to_string()));
@@ -638,14 +651,10 @@ fn unused(types: &Path, app: &Path) -> BTreeSet<String> {
                 Reach::MemberOf(module, name, prop) => used.member_calls.iter().any(|(m, n, path)| {
                     m == module && n == name && path.len() == 3 && path[0] == *prop && path[2] == *method
                 }),
-                Reach::AnyMemberOf(module, name) => used
-                    .member_calls
-                    .iter()
-                    .any(|(m, n, path)| m == module && n == name && path.len() == 2 && path[1] == *method),
                 Reach::Import(module) => used
                     .member_calls
                     .iter()
-                    .any(|(m, _, path)| m == module && path.as_slice() == [method.clone()]),
+                    .any(|(m, _, path)| m == module && path.first() == Some(method)),
                 Reach::SystemOf(module) => used
                     .member_calls
                     .iter()

@@ -1,3 +1,6 @@
+export type Id<Kind extends string = string> = number & {
+	readonly __tp_kind?: Kind;
+};
 export type Role = "guest" | "subscriber" | "author" | "editor" | "admin";
 export interface User {
 	id: number;
@@ -39,22 +42,40 @@ export interface PrivateFile {
 }
 export interface RevisionSummary {
 	id: number;
+	version: number;
+	op: "create" | "update" | "delete" | "restore" | "purge";
 	at: string;
 	user: {
 		id: number;
 		name: string;
 	} | null;
+	schemaMigration: string | null;
+	changed: string[] | null;
+}
+export interface RevisionDiff<T = Record<string, unknown>> {
+	from: number;
+	to: number;
+	changes: {
+		field: keyof T & string;
+		from: unknown;
+		to: unknown;
+	}[];
 }
 export type Status = "draft" | "published" | "scheduled";
 export type Locale = never;
 export interface Author {
-	id: number;
+	id: Id<"authors">;
 	name: string;
 	bio: string | null;
 	avatar: number | null;
 	userId: number | null;
 	status: "draft" | "published" | "scheduled";
 	publishedAt: string | null;
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 	uid: string | null;
 }
 export interface AuthorInsert {
@@ -182,6 +203,66 @@ export interface AuthorFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	uid?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -203,9 +284,9 @@ export interface AuthorFilter {
 	OR?: AuthorFilter[];
 	NOT?: AuthorFilter;
 }
-export type AuthorOrder = Partial<Record<"id" | "name" | "bio" | "avatar" | "userId" | "status" | "publishedAt" | "uid", "asc" | "desc">> | string;
+export type AuthorOrder = Partial<Record<"id" | "name" | "bio" | "avatar" | "userId" | "status" | "publishedAt" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy" | "uid", "asc" | "desc">> | string;
 export interface Post {
-	id: number;
+	id: Id<"posts">;
 	title: string;
 	slug: string | null;
 	body: string | null;
@@ -215,7 +296,7 @@ export interface Post {
 	topics: ("culture" | "science" | "tech")[];
 	featured: boolean;
 	deskNotes?: string | null;
-	authorId: number | null;
+	authorId: Id<"authors"> | null;
 	seo: {
 		noindex: boolean;
 		metaTitle: string | null;
@@ -236,6 +317,10 @@ export interface Post {
 	updatedAt: string;
 	status: "draft" | "published" | "scheduled";
 	publishedAt: string | null;
+	author: number | null;
+	createdAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 	uid: string | null;
 }
 export interface PostInsert {
@@ -248,7 +333,7 @@ export interface PostInsert {
 	topics?: ("culture" | "science" | "tech")[];
 	featured?: boolean;
 	deskNotes?: string | null;
-	authorId?: number | null;
+	authorId?: Id<"authors"> | null;
 	seo?: {
 		noindex?: boolean;
 		metaTitle?: string | null;
@@ -583,6 +668,54 @@ export interface PostFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	uid?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -606,17 +739,21 @@ export interface PostFilter {
 	OR?: PostFilter[];
 	NOT?: PostFilter;
 }
-export type PostOrder = Partial<Record<"id" | "title" | "slug" | "body" | "dek" | "cover" | "manuscript" | "featured" | "deskNotes" | "authorId" | "updatedAt" | "status" | "publishedAt" | "uid", "asc" | "desc">> | string;
+export type PostOrder = Partial<Record<"id" | "title" | "slug" | "body" | "dek" | "cover" | "manuscript" | "featured" | "deskNotes" | "authorId" | "updatedAt" | "status" | "publishedAt" | "author" | "createdAt" | "deletedAt" | "deletedBy" | "uid", "asc" | "desc">> | string;
 export interface Comment {
-	id: number;
-	postId: number;
+	id: Id<"comments">;
+	postId: Id<"posts">;
 	name: string;
 	body: string;
 	approved: boolean;
 	createdAt: string;
+	author: number | null;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 }
 export interface CommentInsert {
-	postId: number;
+	postId: Id<"posts">;
 	name: string;
 	body: string;
 	approved?: boolean;
@@ -719,20 +856,72 @@ export interface CommentFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	AND?: CommentFilter[];
 	OR?: CommentFilter[];
 	NOT?: CommentFilter;
 }
-export type CommentOrder = Partial<Record<"id" | "postId" | "name" | "body" | "approved" | "createdAt", "asc" | "desc">> | string;
+export type CommentOrder = Partial<Record<"id" | "postId" | "name" | "body" | "approved" | "createdAt" | "author" | "updatedAt" | "deletedAt" | "deletedBy", "asc" | "desc">> | string;
 export interface Subscriber {
-	id: number;
+	id: Id<"subscribers">;
 	email: string;
-	postId: number | null;
+	postId: Id<"posts"> | null;
 	createdAt: string;
+	author: number | null;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 }
 export interface SubscriberInsert {
 	email: string;
-	postId?: number | null;
+	postId?: Id<"posts"> | null;
 	createdAt?: string;
 }
 export interface SubscriberPatch {
@@ -802,19 +991,72 @@ export interface SubscriberFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	AND?: SubscriberFilter[];
 	OR?: SubscriberFilter[];
 	NOT?: SubscriberFilter;
 }
-export type SubscriberOrder = Partial<Record<"id" | "email" | "postId" | "createdAt", "asc" | "desc">> | string;
+export type SubscriberOrder = Partial<Record<"id" | "email" | "postId" | "createdAt" | "author" | "updatedAt" | "deletedAt" | "deletedBy", "asc" | "desc">> | string;
 export interface Announcement {
-	id: number;
-	postId: number;
+	id: Id<"announcements">;
+	postId: Id<"posts">;
 	recipients?: number;
 	attempt: number;
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 }
 export interface AnnouncementInsert {
-	postId: number;
+	postId: Id<"posts">;
 	recipients: number;
 	attempt: number;
 }
@@ -881,13 +1123,73 @@ export interface AnnouncementFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	AND?: AnnouncementFilter[];
 	OR?: AnnouncementFilter[];
 	NOT?: AnnouncementFilter;
 }
-export type AnnouncementOrder = Partial<Record<"id" | "postId" | "recipients" | "attempt", "asc" | "desc">> | string;
+export type AnnouncementOrder = Partial<Record<"id" | "postId" | "recipients" | "attempt" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy", "asc" | "desc">> | string;
 export interface Member {
-	id: number;
+	id: Id<"members">;
 	email: string;
 	name: string;
 	plan: "free" | "supporter";
@@ -1010,7 +1312,7 @@ export interface SettingsPatch {
 }
 export interface SubscribeNewsletterInput {
 	email: string;
-	postId?: number | null;
+	postId?: number;
 }
 export type SubscribeNewsletterOutput = {
 	accepted: boolean;
@@ -1120,6 +1422,7 @@ export declare const SCHEMA: {
 			readonly primaryKey: "id";
 			readonly drafts: true;
 			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly posts: {
@@ -1137,6 +1440,7 @@ export declare const SCHEMA: {
 			readonly primaryKey: "id";
 			readonly drafts: true;
 			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly authorId: {
@@ -1179,7 +1483,8 @@ export declare const SCHEMA: {
 			readonly path: "comments";
 			readonly primaryKey: "id";
 			readonly drafts: false;
-			readonly revisions: false;
+			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly postId: {
@@ -1196,7 +1501,8 @@ export declare const SCHEMA: {
 			readonly path: "subscribers";
 			readonly primaryKey: "id";
 			readonly drafts: false;
-			readonly revisions: false;
+			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly postId: {
@@ -1213,7 +1519,8 @@ export declare const SCHEMA: {
 			readonly path: "announcements";
 			readonly primaryKey: "id";
 			readonly drafts: false;
-			readonly revisions: false;
+			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly postId: {
@@ -1231,6 +1538,7 @@ export declare const SCHEMA: {
 			readonly primaryKey: "id";
 			readonly drafts: false;
 			readonly revisions: false;
+			readonly softDelete: false;
 			readonly localized: false;
 			readonly relations: {};
 			readonly media: readonly [];
@@ -1302,6 +1610,8 @@ export type ListQuery<
 	limit?: number;
 	offset?: number;
 	with?: W;
+	/** Soft-delete filter: `"exclude"` (default), `"include"`, or `"only"`. Non-default modes require `restore` or `delete` access. */
+	deleted?: "exclude" | "include" | "only";
 } & StatusQuery<K> & LocaleQuery<K>;
 /**
 * A read. Await it for one answer, or `subscribe` to keep it current: the callback gets the result
@@ -1359,12 +1669,18 @@ export interface CollectionClient<K extends CollectionKey> {
 	*/
 	update(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<Row<K>>;
 	delete(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
+	/** Restores a soft-deleted row (and any cascade-deleted children sharing its deletion group). */
+	restore(id: IdOf<K>): Promise<Row<K>>;
+	/** Permanently removes the row from storage (default access `"system"`). */
+	purge(id: IdOf<K>): Promise<Row<K>>;
 	/** `list(q).subscribe(onRows, onError)`. Returns a function that stops watching. */
 	watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q: ListQuery<K, ExactWith<K, W>> | undefined, onRows: (rows: RowWith<K, W>[]) => void, onError?: (error: TypedPressError) => void): () => void;
 	revisions: {
 		/** Newest first. Needs `update` access on the row. */
 		list(id: IdOf<K>): Promise<RevisionSummary[]>;
 		get(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
+		/** Diffs two revisions (by version or revision id) as this viewer may read them. */
+		diff(id: IdOf<K>, fromVersion: number, toVersion: number): Promise<RevisionDiff<Row<K>>>;
 		/** Runs the update pipeline with the revision as the patch; returns the updated row. */
 		restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
 	};

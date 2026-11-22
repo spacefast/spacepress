@@ -1,26 +1,25 @@
-import { action, adminScreen, db, integer, item } from "typedpress";
+import { adminScreen, db, HttpError, item, mutation, query } from "typedpress";
 import { abilities } from "php/wordpress";
 import { stockMovements } from "./schema";
 
-export const restock = action({
-  input: { drive: integer().min(1), quantity: integer().min(1).max(500) },
+export const restock = mutation({
   access: "admin",
   idempotent: true,
-  async handler({ drive, quantity }) {
-    const stock = await abilities.call("drive-store/increase-product-stock", { id: drive, quantity });
-    await db.insert(stockMovements).values({ drive, change: quantity, reason: "restock" });
-    return { stock };
-  },
+}, async ({ drive, quantity }: { drive: number; quantity: number }) => {
+  if (!Number.isInteger(drive) || drive < 1) throw new HttpError(422, "invalid_input", "drive must be a positive integer", "/drive");
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 500) throw new HttpError(422, "invalid_input", "quantity must be an integer between 1 and 500", "/quantity");
+  const stock = await abilities.call("drive-store/increase-product-stock", { id: drive, quantity });
+  await db.insert(stockMovements).values({ drive, change: quantity, reason: "restock" });
+  return { stock };
 });
 
-export const markShipped = action({
-  input: { order: integer().min(1) },
+export const markShipped = mutation({
   access: "admin",
   idempotent: true,
-  async handler({ order }) {
-    const id = await abilities.call("drive-store/complete-order", { id: order });
-    return { id };
-  },
+}, async ({ order }: { order: number }) => {
+  if (!Number.isInteger(order) || order < 1) throw new HttpError(422, "invalid_input", "order must be a positive integer", "/order");
+  const id = await abilities.call("drive-store/complete-order", { id: order });
+  return { id };
 });
 
 export async function processingOrders() {
@@ -32,14 +31,11 @@ export async function processingOrders() {
   });
 }
 
-export const pendingOrders = action({
-  input: {},
+export const pendingOrders = query({
   access: "admin",
-  readonly: true,
-  async handler() {
-    const orders = await processingOrders();
-    return { rows: orders.map((order) => ({ id: order.id, total: `${order.total} ${order.currency}`, drives: order.lines.map((line) => `${line.quantity} × ${line.name}`).join(", ") })) };
-  },
+}, async () => {
+  const orders = await processingOrders();
+  return { rows: orders.map((order) => ({ id: order.id, total: `${order.total} ${order.currency}`, drives: order.lines.map((line) => `${line.quantity} × ${line.name}`).join(", ") })) };
 });
 
 export const shipping = adminScreen({

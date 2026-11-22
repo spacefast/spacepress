@@ -1,5 +1,5 @@
 import {
-  table, text, integer, date, timestamp, defineConfig, action, job, jobs, once, db, HttpError, type InferSelectModel, select, ref,
+  table, text, integer, date, timestamp, defineConfig, job, once, db, HttpError, type InferSelectModel, select, ref, query, mutation,
 } from "typedpress";
 import { advanceRenewal, monthlyAmount } from "./tp/lib/calendar";
 
@@ -97,87 +97,78 @@ type Subscription = InferSelectModel<typeof subscriptions>;
 
 async function scheduleReminder(row: Subscription) {
   if (row.status !== "active" || row.remindedAt !== null) return;
-  await jobs.remindRenewal.enqueue({ subscriptionId: row.id, renewal: row.nextRenewal }, {
+  await remindRenewal.enqueue({ subscriptionId: row.id, renewal: row.nextRenewal }, {
     key: `renewal-${row.id}-${row.nextRenewal}`,
     delay: Math.max(0, (new Date(row.nextRenewal).getTime() - Date.now()) / 1000 - 3 * 86_400),
   });
 }
 
-export const remindRenewal = job({
-  input: { subscriptionId: integer(), renewal: date() },
-  retries: 2,
-  async handler({ subscriptionId, renewal }) {
-    const row = await db.query.subscriptions.findFirst({ where: { id: subscriptionId, nextRenewal: renewal, status: "active" } });
-    if (!row || row.remindedAt !== null) return;
-    await db.update(subscriptions).set({ remindedAt: new Date().toISOString() }).where({ id: row.id, ownerId: row.ownerId, nextRenewal: renewal });
-  },
+export const remindRenewal = job({ retries: 2 }, async ({ subscriptionId, renewal }: { subscriptionId: number; renewal: string }) => {
+  if (!Number.isInteger(subscriptionId)) throw new HttpError(422, "invalid_input", "subscriptionId must be an integer", "/subscriptionId");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(renewal)) throw new HttpError(422, "invalid_input", "renewal must be a date (YYYY-MM-DD)", "/renewal");
+  const row = await db.query.subscriptions.findFirst({ where: { id: subscriptionId, nextRenewal: renewal, status: "active" } });
+  if (!row || row.remindedAt !== null) return;
+  await db.update(subscriptions).set({ remindedAt: new Date().toISOString() }).where({ id: row.id, ownerId: row.ownerId, nextRenewal: renewal });
 });
 
-export const monthlyBurn = action({
-  input: {}, access: "authenticated",
-  async handler(_input, ctx) {
-    const user = ctx.user;
-    if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");
-    const rows = await db.query.subscriptions.findMany({ where: { ownerId: user.id, status: "active" } });
-    // Totals by currency, then by category: a running sum per key, kept as a list to keep order.
-    const currencies: { currency: string; amount: number; categories: { category: string; amount: number }[] }[] = [];
-    for (const row of rows) {
-      const amount = monthlyAmount(row.amount, row.cycle);
-      const found = currencies.findIndex((entry) => entry.currency === row.currency);
-      const at = found >= 0 ? found : currencies.push({ currency: row.currency, amount: 0, categories: [] }) - 1;
-      const total = currencies[at]!;
-      total.amount += amount;
-      const index = total.categories.findIndex((entry) => entry.category === row.category);
-      if (index >= 0) total.categories[index]!.amount += amount;
-      else total.categories.push({ category: row.category, amount });
-    }
-    return { currencies: currencies.map((total) => ({
-      currency: total.currency, amount: Math.round(total.amount),
-      categories: total.categories.map((category) => ({ category: category.category, amount: Math.round(category.amount) })),
-    })) };
-  },
+export const monthlyBurn = query({ access: "authenticated" }, async (_input: {}, ctx) => {
+  const user = ctx.user;
+  if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");
+  const rows = await db.query.subscriptions.findMany({ where: { ownerId: user.id, status: "active" } });
+  // Totals by currency, then by category: a running sum per key, kept as a list to keep order.
+  const currencies: { currency: string; amount: number; categories: { category: string; amount: number }[] }[] = [];
+  for (const row of rows) {
+    const amount = monthlyAmount(row.amount, row.cycle);
+    const found = currencies.findIndex((entry) => entry.currency === row.currency);
+    const at = found >= 0 ? found : currencies.push({ currency: row.currency, amount: 0, categories: [] }) - 1;
+    const total = currencies[at]!;
+    total.amount += amount;
+    const index = total.categories.findIndex((entry) => entry.category === row.category);
+    if (index >= 0) total.categories[index]!.amount += amount;
+    else total.categories.push({ category: row.category, amount });
+  }
+  return { currencies: currencies.map((total) => ({
+    currency: total.currency, amount: Math.round(total.amount),
+    categories: total.categories.map((category) => ({ category: category.category, amount: Math.round(category.amount) })),
+  })) };
 });
 
-export const renewingSoon = action({
-  input: { days: integer().default(7).min(0).max(366) }, access: "authenticated",
-  async handler({ days }, ctx) {
-    const user = ctx.user;
-    if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");
-    const today = new Date().toISOString().slice(0, 10);
-    const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
-    return await db.query.subscriptions.findMany({
-      where: { ownerId: user.id, status: "active", nextRenewal: { gte: today, lte: cutoff } },
-      orderBy: { nextRenewal: "asc" },
-    });
-  },
+export const renewingSoon = query({ access: "authenticated" }, async ({ days = 7 }: { days?: number }, ctx) => {
+  if (!Number.isInteger(days)) throw new HttpError(422, "invalid_input", "days must be an integer", "/days");
+  if (days < 0) throw new HttpError(422, "invalid_input", "days must be at least 0", "/days");
+  if (days > 366) throw new HttpError(422, "invalid_input", "days must be at most 366", "/days");
+  const user = ctx.user;
+  if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");
+  const today = new Date().toISOString().slice(0, 10);
+  const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  return await db.query.subscriptions.findMany({
+    where: { ownerId: user.id, status: "active", nextRenewal: { gte: today, lte: cutoff } },
+    orderBy: { nextRenewal: "asc" },
+  });
 });
 
-export const logCharge = action({
-  input: { subscriptionId: integer() }, access: "authenticated", idempotent: true,
-  async handler({ subscriptionId }, ctx) {
-    const user = ctx.user;
-    if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");
-    const row = await db.query.subscriptions.findFirst({ where: { id: subscriptionId, ownerId: user.id } });
-    if (!row) throw new HttpError(404, "not_found", "Subscription not found");
-    if (row.status !== "active") throw new HttpError(409, "inactive_subscription", "Resume this subscription before logging a charge");
-    return await once(`charge-${row.id}-${row.nextRenewal}`, async () => {
-      const [charge] = await db.insert(charges).values({ subscriptionId: row.id, amount: row.amount, chargedOn: row.nextRenewal }).returning();
-      const [subscription] = await db.update(subscriptions).set({ nextRenewal: advanceRenewal(row.nextRenewal, row.cycle) }).where({ id: row.id, ownerId: user.id }).returning();
-      return { subscription, charge };
-    });
-  },
+export const logCharge = mutation({ access: "authenticated", idempotent: true }, async ({ subscriptionId }: { subscriptionId: number }, ctx) => {
+  if (!Number.isInteger(subscriptionId)) throw new HttpError(422, "invalid_input", "subscriptionId must be an integer", "/subscriptionId");
+  const user = ctx.user;
+  if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");
+  const row = await db.query.subscriptions.findFirst({ where: { id: subscriptionId, ownerId: user.id } });
+  if (!row) throw new HttpError(404, "not_found", "Subscription not found");
+  if (row.status !== "active") throw new HttpError(409, "inactive_subscription", "Resume this subscription before logging a charge");
+  return await once(`charge-${row.id}-${row.nextRenewal}`, async () => {
+    const [charge] = await db.insert(charges).values({ subscriptionId: row.id, amount: row.amount, chargedOn: row.nextRenewal }).returning();
+    const [subscription] = await db.update(subscriptions).set({ nextRenewal: advanceRenewal(row.nextRenewal, row.cycle) }).where({ id: row.id, ownerId: user.id }).returning();
+    return { subscription, charge };
+  });
 });
 
-export const cancel = action({
-  input: { subscriptionId: integer() }, access: "authenticated",
-  async handler({ subscriptionId }, ctx) {
-    const user = ctx.user;
-    if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");
-    const row = await db.query.subscriptions.findFirst({ where: { id: subscriptionId, ownerId: user.id } });
-    if (!row) throw new HttpError(404, "not_found", "Subscription not found");
-    const [subscription] = await db.update(subscriptions).set({ status: "cancelled" }).where({ id: row.id, ownerId: user.id }).returning();
-    return { subscription, cancelUrl: row.cancelUrl };
-  },
+export const cancel = mutation({ access: "authenticated" }, async ({ subscriptionId }: { subscriptionId: number }, ctx) => {
+  if (!Number.isInteger(subscriptionId)) throw new HttpError(422, "invalid_input", "subscriptionId must be an integer", "/subscriptionId");
+  const user = ctx.user;
+  if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");
+  const row = await db.query.subscriptions.findFirst({ where: { id: subscriptionId, ownerId: user.id } });
+  if (!row) throw new HttpError(404, "not_found", "Subscription not found");
+  const [subscription] = await db.update(subscriptions).set({ status: "cancelled" }).where({ id: row.id, ownerId: user.id }).returning();
+  return { subscription, cancelUrl: row.cancelUrl };
 });
 
 export default defineConfig({

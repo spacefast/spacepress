@@ -1,4 +1,4 @@
-import { action, collection, defineConfig, email, global, integer, richText, table, text } from "typedpress";
+import { collection, defineConfig, email, global, integer, richText, table, text, query, mutation } from "typedpress";
 
 // One collection that turns comments on and one that doesn't, for the comments switch.
 // `mood` is a field SCF renders, for the schema lock.
@@ -16,8 +16,8 @@ export const contacts = table({
 }, { access: { read: "subscriber", create: "editor", update: "editor", delete: "editor" } });
 
 // A readonly action (an agent credential without writes may run it) and a writing one.
-export const countNotes = action({ input: {}, access: "subscriber", readonly: true, handler: () => ({ ok: true }) });
-export const touchNotes = action({ input: {}, access: "editor", handler: () => ({ ok: true }) });
+export const countNotes = query({ access: "subscriber" }, () => ({ ok: true }));
+export const touchNotes = mutation({ access: "editor" }, () => ({ ok: true }));
 
 // XML-RPC and pings are WordPress's own by default; this app turns them off so the lane proves both
 // switches (hardening.test.ts puts the defaults back for one test).

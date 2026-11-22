@@ -9,6 +9,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "posts": {
@@ -28,6 +29,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "authorId": {
@@ -74,7 +76,8 @@ export const SCHEMA = {
       "path": "comments",
       "primaryKey": "id",
       "drafts": false,
-      "revisions": false,
+      "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "postId": {
@@ -91,7 +94,8 @@ export const SCHEMA = {
       "path": "subscribers",
       "primaryKey": "id",
       "drafts": false,
-      "revisions": false,
+      "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "postId": {
@@ -108,7 +112,8 @@ export const SCHEMA = {
       "path": "announcements",
       "primaryKey": "id",
       "drafts": false,
-      "revisions": false,
+      "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "postId": {
@@ -126,6 +131,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": false,
       "localized": false,
       "relations": {},
       "media": [],

@@ -538,8 +538,8 @@ eq('the admin promotes it whole', array_intersect_key($db->findFirst('posts', ['
 // ================================================================ a deleted item takes its staged version with it
 
 api('PATCH', "/posts/{$other['id']}/staged", ['title' => 'Going away'], 'ed');
-$db->delete('posts', ['id' => $other['id']]);
-eq('deleting the item deletes its staged revision', $stagedPosts($other['id']), []);
+$db->purge('posts', ['id' => $other['id']]);
+eq('purging the item deletes its staged revision', $stagedPosts($other['id']), []);
 
 // ================================================================ _rev tokens and edit locks
 
@@ -549,7 +549,7 @@ $token = $read['_rev'] ?? null;
 check('an item read carries an opaque _rev', is_string($token) && $token !== '', $read);
 eq('every reader gets the same live _rev, whoever asks', [api('GET', "/posts/$rev")[1]['_rev'] ?? null, api('GET', "/posts/$rev", as: 'admin')[1]['_rev'] ?? null], [$token, $token]);
 eq('a list row carries it too', array_column(array_filter(api('GET', '/posts', as: 'ed', query: ['where' => json_encode(['id' => $rev])])[1], static fn ($r) => $r['id'] === $rev), '_rev'), [$token]);
-eq('a table row carries none', array_key_exists('_rev', api('GET', '/comments', as: 'ed')[1][0] ?? []), false);
+eq('a table row with revisions carries _rev too', is_string(api('GET', '/comments', as: 'ed')[1][0]['_rev'] ?? null), true);
 
 // A list reads its page's tokens together: each one is the token the item's own read gives, with
 // something staged or not, for every reader, and the statements a list runs don't grow with it.

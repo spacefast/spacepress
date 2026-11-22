@@ -1,5 +1,5 @@
-import { action, defineConfig } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 import { ORDER } from "./tp/order.mjs";
-export const order = action({ input: {}, handler: () => ORDER });
+export const order = mutation({}, () => ORDER);
 
 export default defineConfig({ name: "generatorcomparator" });

@@ -1,11 +1,9 @@
 import {
-  action,
   boolean,
   defineConfig,
   global,
-  integer,
   table,
-  text, ref,
+  text, ref, query, HttpError,
 } from "typedpress";
 import {
   consume,
@@ -62,11 +60,7 @@ export const settings = global(
   { access: { read: "anyone", update: "editor" } },
 );
 
-export const previewHeadline = action({
-  access: "anyone",
-  input: { title: text().min(1).max(120) },
-  handler: ({ title }) => new Headline(title).preview(),
-});
+export const previewHeadline = query({ access: "anyone" }, ({ title }: { title: string }) => { if (title.length < 1) throw new HttpError(422, "invalid_input", "title must be at least 1 character", "/title"); if (title.length > 120) throw new HttpError(422, "invalid_input", "title must be at most 120 characters", "/title"); return new Headline(title).preview(); });
 
 export default defineConfig({
   name: "showcase",

@@ -8,7 +8,8 @@ export const SCHEMA = {
       "path": "stock_movements",
       "primaryKey": "id",
       "drafts": false,
-      "revisions": false,
+      "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {},
       "media": [],
@@ -20,6 +21,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": false,
       "localized": false,
       "relations": {
         "categories": {
@@ -46,6 +48,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": false,
       "localized": false,
       "relations": {
         "drives": {
@@ -63,6 +66,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": false,
       "localized": false,
       "relations": {
         "drives": {
@@ -80,6 +84,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": false,
       "localized": false,
       "relations": {},
       "media": [],

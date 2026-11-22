@@ -314,9 +314,9 @@ fn a_site_changes_its_schema_the_project_pulls_it_and_the_next_build_contains_it
     std::fs::create_dir_all(project.join("tp/server")).unwrap();
     std::fs::write(
         project.join("tp/server/headlines.ts"),
-        "import { action } from \"typedpress\";\nimport { articles } from \"typedpress:db\";\n\n\
-         export const headlines = action({\n  access: \"anyone\",\n  input: {},\n  handler: async () => {\n    \
-         const rows = await articles.list({ limit: 5 });\n    return rows.map((row) => row.subtitle ?? row.title);\n  },\n});\n",
+        "import { query } from \"typedpress\";\nimport { articles } from \"typedpress:db\";\n\n\
+         export const headlines = query({ access: \"anyone\" }, async () => {\n  \
+         const rows = await articles.list({ limit: 5 });\n  return rows.map((row) => row.subtitle ?? row.title);\n});\n",
     )
     .unwrap();
     let out = build(&project);
@@ -331,7 +331,11 @@ fn a_site_changes_its_schema_the_project_pulls_it_and_the_next_build_contains_it
         "{schema_php}"
     );
     // No SQL was planned for any of it: collections, their fields and globals are posts, meta and options.
-    assert!(!project.join("tp/_generated/migrations/0002_update.sql").exists());
+    let mig_count = std::fs::read_dir(project.join("tp/_generated/migrations"))
+        .unwrap()
+        .filter(|e| e.as_ref().is_ok_and(|e| e.file_type().is_ok_and(|t| t.is_dir())))
+        .count();
+    assert_eq!(mig_count, 1);
 
     // Deploying that build changes nothing a client sees, and the site's additions have nothing left to add.
     let (_, pre) = site.call(Some(&site.admin), "GET", "/schema-versions/lock", None);
@@ -387,10 +391,14 @@ fn a_site_changes_its_schema_the_project_pulls_it_and_the_next_build_contains_it
     let (_, read) = site.call(None, "GET", &format!("/articles/{article}"), None);
     assert_eq!(read["data"]["mood"], "calm", "{read}");
 
-    // A build made without pulling (the original project) is deployed over the site's changes: nothing is dropped.
+    // A build made without pulling (the original project with the same committed initial migration) is deployed over the site's changes: nothing is dropped.
     let stale = std::env::temp_dir().join(format!("typedpress-rtschema-stale-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&stale);
     copy_tree(&root().join("tests/runtime-schema/base"), &stale);
+    copy_tree(
+        &project.join("tp/_generated/migrations"),
+        &stale.join("tp/_generated/migrations"),
+    );
     assert!(build(&stale).status.success());
     site.deploy(&stale);
     let kept = site.described();

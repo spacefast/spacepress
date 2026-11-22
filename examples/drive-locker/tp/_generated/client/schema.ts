@@ -8,7 +8,8 @@ export const SCHEMA = {
       "path": "places",
       "primaryKey": "id",
       "drafts": false,
-      "revisions": false,
+      "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "drives": {
@@ -25,7 +26,8 @@ export const SCHEMA = {
       "path": "drives",
       "primaryKey": "id",
       "drafts": false,
-      "revisions": false,
+      "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "placeId": {
@@ -52,7 +54,8 @@ export const SCHEMA = {
       "path": "health_readings",
       "primaryKey": "id",
       "drafts": false,
-      "revisions": false,
+      "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "driveId": {
@@ -69,7 +72,8 @@ export const SCHEMA = {
       "path": "contents",
       "primaryKey": "id",
       "drafts": false,
-      "revisions": false,
+      "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "driveId": {
@@ -87,6 +91,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": false,
       "localized": false,
       "relations": {},
       "media": [],

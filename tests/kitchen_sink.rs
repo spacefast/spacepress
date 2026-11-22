@@ -145,6 +145,20 @@ const NOT_USED: &[(&str, &str)] = &[
         "defineConfig.runtimeSchema",
         "the example commits no site-made schema changes",
     ),
+    // Connectors are a host's (`sp_connectors_call`); the example runs on plain WordPress, where a
+    // call answers 503. tests/spacepress_cutover.rs and tests/php/connectors_test.php cover them.
+    (
+        "typedpress::connectors",
+        "connectors need a host transport the example site lacks",
+    ),
+    (
+        "connectors.call",
+        "connectors need a host transport the example site lacks",
+    ),
+    (
+        "connectors.enqueue",
+        "connectors need a host transport the example site lacks",
+    ),
     // GET and POST handlers already go through the HTTP handler compiler.
     ("page export PUT", "GET and POST exercise the handler compiler"),
     ("page export PATCH", "GET and POST exercise the handler compiler"),

@@ -67,10 +67,6 @@
       "name": "Live",
       "description": "Reads a page is subscribed to, kept current without a push transport."
     },
-    {
-      "name": "Services",
-      "description": "Forms, search and checkout from `services` in the app's config."
-    },
     { "name": "Search", "description": "One search over every kind with a searchable field." },
     { "name": "Schema", "description": "The app described to its clients." }
   ],
@@ -8690,6 +8686,62 @@
         }
       }
     },
+    "/actions/contactKitchen": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.contactKitchen",
+        "summary": "Call contactKitchen",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Runs the `contactKitchen` action with the input sent and returns its result.\n\nAccess: Anyone may do this, signed in or not.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string" },
+                  "message": { "type": "string" }
+                },
+                "required": ["email", "message"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "delivery": { "type": "string" }
+                      },
+                      "required": ["delivery"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
     "/actions/cancelSeats": {
       "post": {
         "tags": ["Actions"],
@@ -11257,121 +11309,6 @@
           "405": { "$ref": "#/components/responses/Problem" },
           "413": { "$ref": "#/components/responses/Problem" },
           "422": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/services/forms/contact": {
-      "post": {
-        "tags": ["Services"],
-        "operationId": "services.forms.contact",
-        "summary": "Submit the contact form",
-        "x-typedpress-access": "anyone",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "Stores one submission and queues its mail.\n\nAccess: Anyone may do this, signed in or not.",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
-            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "description": "The form's fields under `data`. `website` is a trap for bots and must stay empty.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "data": {
-                    "type": "object",
-                    "properties": {
-                      "email": { "type": "string", "maxLength": 191 },
-                      "message": { "type": "string", "minLength": 3, "maxLength": 2000 }
-                    },
-                    "required": ["email", "message"]
-                  },
-                  "website": { "type": "string", "maxLength": 0 }
-                },
-                "required": ["data"]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "The stored submission.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "id": { "type": "string" },
-                        "message": { "type": "string" },
-                        "delivery": { "type": "string" }
-                      },
-                      "required": ["id", "message", "delivery"]
-                    }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "413": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "429": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/services/submissions/{id}": {
-      "get": {
-        "tags": ["Services"],
-        "operationId": "services.submission",
-        "summary": "Get a form submission",
-        "x-typedpress-access": "editor",
-        "description": "One stored submission, with the state of its mail.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The submission's id.",
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The submission.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "type": "object" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
       }

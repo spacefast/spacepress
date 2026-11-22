@@ -411,32 +411,6 @@ fn filter(c: &Column) -> Option<(&'static str, Value)> {
     ))
 }
 
-/// One field of a `services` form, as the parsed config holds it (`services_config::parse`): its
-/// type, whether it is required, and its bounds.
-fn service_field(field: &Value) -> Value {
-    let mut schema = match field["type"].as_str() {
-        Some("integer") => json!({ "type": "integer" }),
-        Some("boolean") => json!({ "type": "boolean" }),
-        _ => json!({ "type": "string" }),
-    };
-    let (min, max) = if field["type"] == "integer" {
-        ("minimum", "maximum")
-    } else {
-        ("minLength", "maxLength")
-    };
-    if let Some(n) = field["rules"].get("min") {
-        schema[min] = n.clone();
-    }
-    if let Some(n) = field["rules"].get("max") {
-        schema[max] = n.clone();
-    }
-    if field["notNull"] == true {
-        schema
-    } else {
-        js::nullable(schema)
-    }
-}
-
 /// A WordPress user as core shows them to the caller (`Wp\Kinds::userRow`): fields core leaves out
 /// for this caller are absent.
 fn wordpress_user() -> Value {
@@ -1770,100 +1744,10 @@ impl Builder<'_> {
             }, "required": ["results", "poll"] })))
             .errors(&[405, 413]));
     }
-
-    fn services(&mut self, services: &Value) {
-        let tag = "Services";
-        let description = "Forms, search and checkout from `services` in the app's config.";
-        for (name, form) in services["forms"].as_object().into_iter().flatten() {
-            self.tag(tag, description);
-            let mut properties = Map::new();
-            let mut required = Vec::new();
-            for (field, spec) in form["fields"].as_object().into_iter().flatten() {
-                properties.insert(field.clone(), service_field(spec));
-                if spec["notNull"] == true {
-                    required.push(json!(field));
-                }
-            }
-            let mut data = json!({ "type": "object", "properties": properties });
-            if !required.is_empty() {
-                data["required"] = Value::Array(required);
-            }
-            self.paths.add(&format!("/services/forms/{}", segment(name)), "post", Op::new(tag, format!("services.forms.{name}"), format!("Submit the {name} form"), "Stores one submission and queues its mail.")
-                .rule(&Access::anyone())
-                .params([idempotency_key(true)])
-                .body(body("The form's fields under `data`. `website` is a trap for bots and must stay empty.", json!({
-                    "type": "object", "properties": { "data": data, "website": { "type": "string", "maxLength": 0 } }, "required": ["data"],
-                })))
-                .ok(201, envelope("The stored submission.", json!({ "type": "object", "properties": {
-                    "id": { "type": "string" }, "message": { "type": "string" }, "delivery": { "type": "string" },
-                }, "required": ["id", "message", "delivery"] })))
-                .errors(&[404, 413, 429]));
-        }
-        if let Some(search) = services["search"].as_object() {
-            self.tag(tag, description);
-            let collections: Vec<&String> = search.keys().collect();
-            self.paths.add("/services/search", "get", Op::new(tag, "services.search", "Search published content", "Finds published rows of one kind whose configured fields hold every word of the text, each at the start of a word, through the search index. At most 20 rows.")
-                .rule(&Access::anyone())
-                .params([
-                    json!({ "name": "collection", "in": "query", "required": true, "description": "The kind to search.", "schema": { "type": "string", "enum": collections } }),
-                    json!({ "name": "q", "in": "query", "required": true, "description": "The text to find.", "schema": { "type": "string", "minLength": 2, "maxLength": 100 } }),
-                ])
-                .ok(200, envelope("The matches.", json!({ "type": "object", "properties": {
-                    "provider": { "type": "string" }, "results": { "type": "array", "items": { "type": "object" } }, "limit": { "type": "integer" },
-                }, "required": ["provider", "results", "limit"] })))
-                .errors(&[404, 422]));
-        }
-        if let Some(products) = services["products"].as_object() {
-            self.tag(tag, description);
-            let delivery = json!({ "type": "object", "properties": {
-                "state": { "type": "string" }, "attempts": { "type": "integer" }, "doneAt": { "type": ["string", "null"] },
-            } });
-            self.paths.add("/services/checkout", "post", Op::new(tag, "services.checkout", "Start a checkout", "Prices the product on the server and starts a hosted checkout.")
-                .rule(&Access::anyone())
-                .params([idempotency_key(true)])
-                .body(body("The product to buy, by name. Prices belong to the server.", json!({
-                    "type": "object", "properties": { "product": { "type": "string", "enum": products.keys().collect::<Vec<_>>() } }, "required": ["product"],
-                })))
-                .ok(202, envelope("The checkout, with the path to read its status from.", json!({ "type": "object", "properties": {
-                    "token": { "type": "string" }, "state": { "type": "string" }, "statusPath": { "type": "string" },
-                }, "required": ["token", "state", "statusPath"] })))
-                .errors(&[404, 429, 503]));
-            self.paths.add("/services/checkout/{token}", "get", Op::new(tag, "services.checkoutStatus", "Read a checkout's status", "The checkout's state and, once it is ready, the URL to send the buyer to. The token is the permission.")
-                .unauthenticated()
-                .params([path_param("token", "The checkout's token.", json!({ "type": "string", "pattern": "^[a-f0-9]{64}$" }))])
-                .ok(200, envelope("The checkout.", json!({ "type": "object", "properties": {
-                    "state": { "type": "string" }, "product": { "type": "string" }, "amount": { "type": "integer" },
-                    "currency": { "type": "string" }, "checkoutUrl": { "type": ["string", "null"] }, "delivery": delivery,
-                } })))
-                .errors(&[404]));
-            self.paths.add("/services/stripe/webhook", "post", Op::new(tag, "services.stripeWebhook", "Receive a Stripe event", "Stripe calls this with signed events about a checkout.")
-                .unauthenticated()
-                .params([json!({ "name": "Stripe-Signature", "in": "header", "required": true, "description": "Stripe's signature of the raw body.", "schema": { "type": "string" } })])
-                .body(body("The Stripe event.", json!({ "type": "object" })))
-                .ok(200, envelope("The outcome.", json!({}))));
-        }
-        if services["forms"].is_object() {
-            self.paths.add(
-                "/services/submissions/{id}",
-                "get",
-                Op::new(
-                    tag,
-                    "services.submission",
-                    "Get a form submission",
-                    "One stored submission, with the state of its mail.",
-                )
-                .rule(&Access::editor())
-                .params([path_param("id", "The submission's id.", json!({ "type": "string" }))])
-                .ok(200, envelope("The submission.", json!({ "type": "object" })))
-                .errors(&[404]),
-            );
-        }
-    }
 }
 
-/// The app's API as an OpenAPI 3.1 document. `services` is the app's parsed `services` config
-/// ([`crate::services_config::parse`]), when it has one.
-pub fn document(schema: &Schema, services: Option<&Value>) -> Value {
+/// The app's API as an OpenAPI 3.1 document.
+pub fn document(schema: &Schema) -> Value {
     let label = crate::schema::title_case(&schema.name);
     let names = crate::client::names(schema);
     let mut taken = HashSet::new();
@@ -1955,9 +1839,6 @@ pub fn document(schema: &Schema, services: Option<&Value>) -> Value {
     b.wordpress();
     b.account();
     b.live();
-    if let Some(services) = services {
-        b.services(services);
-    }
     b.search();
     b.tag("Schema", "The app described to its clients.");
     b.paths.add("/", "get", Op::new("Schema", "schema", "Describe the app", "The app's kinds with the WordPress route behind each, their fields and access rules, its globals and its actions. `typedpress sync` and `typedpress doctor` read it.")

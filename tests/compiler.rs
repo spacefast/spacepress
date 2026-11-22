@@ -5221,11 +5221,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
     check("DELETE", "/auth/session", None, &[("Authorization", &bearer)], b"", 200);
     check("DELETE", "/auth/session", None, &[], b"", 401);
 
-    // Services and sync.
-    let found = check("GET", "/services/search?collection=notes&q=First", None, &[], b"", 200);
-    assert_eq!(found["data"]["results"][0]["id"], id, "{found}");
-    check("GET", "/services/search?collection=notes&q=F", None, &[], b"", 422);
-    check("GET", "/services/search?collection=nope&q=First", None, &[], b"", 404);
+    // Search and sync.
     // The site-wide search, and `search` on a table, answer as the document says.
     let site_wide = check(
         "GET",

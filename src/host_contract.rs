@@ -59,7 +59,7 @@ pub const HOOKS: &[(&str, &str, &str)] = &[
     (
         "tp_mail_transport",
         "filter",
-        "delivers `mail.send` messages; without it, the app's mail is refused",
+        "optional: delivers `mail.send` messages itself by returning `true`, refuses one for a retry with `false` or a throw, or returns `null` to leave it to WordPress's `wp_mail()` (before this, `null` was a refusal and managed builds refused mail without a transport)",
     ),
     (
         "tp_purge_urls",
@@ -99,7 +99,12 @@ pub const HOOKS: &[(&str, &str, &str)] = &[
     (
         "sp_connectors_call",
         "filter",
-        "invokes a host-managed connector for `connectors.call(role, tool, args?)`; credentials remain owned by the host",
+        "invokes a host-managed connector with `(null, $role, $tool, $args, $context)`: now for `connectors.call(role, tool, args?)` (`$context['mode']` is `call`), or after commit from the built-in `typedpress.connector` job for `connectors.enqueue(role, tool, args?, { key?, delay? })` (`mode` is `queued`, with `jobId` and `attempt`; a `WP_Error`, a throw or `null` retries with backoff; a queued call runs at least once and may repeat, so de-duplicate by `jobId`); register with 5 accepted args to receive `$context`; credentials remain owned by the host",
+    ),
+    (
+        "sp_identity_callback_url",
+        "filter",
+        "the redirect URI an OpenID provider is sent back to, with `($url, $provider, $pathUrl)`: the default `<prefix>/provider/callback?provider=<name>`, or `$pathUrl`, `<prefix>/callback/<name>`; both are served",
     ),
     (
         "sp_auth_prefix",
@@ -156,8 +161,7 @@ pub const PREBUILT: &str = "A build with prebuilt pages writes their HTML and Ma
 /// The table-prefix rule.
 pub const TABLE_PREFIX: &str = "TypedPress puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}tp_<table>`, system tables `{prefix}tp__<name>`, identity tables `{prefix}tp_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads. An app's `existingTable` must be under that prefix, and not WordPress's, TypedPress's, Action Scheduler's, identity's or WooCommerce's own table, nor under another site's longer prefix, which need not end in `_`.";
 
-/// The longest system name TypedPress adds after the prefix: `tp_identity_recovery_codes` (29) and
-/// `tp__services_submissions` (27). An app table adds `tp_` to a name the app chose, so a
+/// The longest system name TypedPress adds after the prefix: `tp_identity_recovery_codes` (29). An app table adds `tp_` to a name the app chose, so a
 /// longer table name is the app's choice and is refused at deploy by MySQL's 64-character limit.
 pub const MAX_SUFFIX: usize = 29;
 

@@ -899,12 +899,13 @@ final class Plugin
                 wp_redirect($url);
                 exit();
             }
-            if ($route === "/provider/callback") {
+            $provider = Providers::callbackProvider($route, $_GET);
+            if ($provider !== null) {
                 $signedIn = (new Providers(
                     self::$security,
                     self::$accounts,
                     self::$sessions,
-                ))->callback(sanitize_key($_GET["provider"] ?? ""));
+                ))->callback($provider);
                 $result = self::$api->providerLogin($signedIn["uid"]);
                 // A pending application authorization continues after the provider (and MFA).
                 $params = array_filter([

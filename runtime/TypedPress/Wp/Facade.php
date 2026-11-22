@@ -242,7 +242,7 @@ final class Facade
             return self::global($plugin, $method, $name, $body);
         }
         if (\TypedPress\Extensions::routeHandler($name) !== null && ($name !== 'media' || ($segments[2] ?? null) === 'file')) {
-            // TypedPress's own features with no core route (sign-in, sync, services, private files and the
+            // TypedPress's own features with no core route (sign-in, sync, private files and the
             // streams of uploads kept off the web root): their one implementation, under the facade's
             // prefix. Media rows themselves are the built-in kind, served by core's media route.
             [$status, $headers, $out] = $plugin->app()->handle($method, '/' . implode('/', array_map('rawurlencode', $segments)), $query, $body, self::headers(), $_FILES, $_POST);

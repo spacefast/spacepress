@@ -65,13 +65,17 @@ foreach (['/missing/', '/notes/missing/'] as $path) {
 $document = new DOMDocument();
 @$document->loadHTML($home);
 $xpath = new DOMXPath($document);
+// A stylesheet of 4 KB or less is inlined in <head> (TypedPress\Assets::INLINE_LIMIT); a larger one is linked.
+$inline = $xpath->evaluate('string(//style[starts-with(@id, "typedpress-app-site-") and contains(@id, "-css-inline-css")])');
 $stylesheet = $xpath->evaluate('string(//link[@rel="stylesheet" and contains(@href, "/assets/site-")]/@href)');
-check('the layout links its stylesheet', $stylesheet !== '');
+check('the layout inlines or links its stylesheet', $inline !== '' || $stylesheet !== '');
 if ($stylesheet !== '') {
     [$status, $css] = request($stylesheet);
     eq('stylesheet returns 200', $status, 200);
-    check('stylesheet includes the starter rules', str_contains($css, '.masthead'));
+} else {
+    $css = $inline;
 }
+check('the stylesheet includes the starter rules', str_contains($css, '.masthead'));
 
 $form = $xpath->query('//form[.//input[@name="name"]]')->item(0);
 if (!$form instanceof DOMElement) {

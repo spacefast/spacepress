@@ -1697,7 +1697,22 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         // Deletes look at the rows that reference this row only
         // (docs/decisions/2026-11-16-per-row-delete-visibility.md).
         $unreferenced = $db->insert('notes', ['body' => 'no children'], true)[0];
-        problem('a hidden referencing row refuses the delete', fn () => $db->delete('notes', ['id' => $note['id']], true, $editor), 409, 'reference_violation');
+        $where = ['noteId' => $note['id']];
+        $mysqlStore = new \TypedPress\Wp\CompositeStore($schema, $store->db, $store->posts,
+            new \TypedPress\Wp\WpTableStore($store->db, $schema, \TypedPress\Dialect::mysql()));
+        $mysqlDb = new \TypedPress\Db($mysqlStore, $schema, $db->media());
+        $inner = 'SELECT t0.`id` AS `id` FROM `' . $store->db->prefix() . 'tp_tags` t0 WHERE t0.`noteId` = ?';
+        eq('MySQL locks the rows counted by delete preflight', $mysqlDb->countQuery('tags', $where, forUpdate: true), [
+            'sql' => "SELECT COUNT(*) AS n FROM ($inner FOR UPDATE) first_count", 'params' => [$note['id']],
+        ]);
+        $statements = [];
+        \TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$statements): void { $statements[] = $sql; };
+        try {
+            problem('a hidden referencing row refuses the delete', fn () => $db->delete('notes', ['id' => $note['id']], true, $editor), 409, 'reference_violation');
+        } finally {
+            \TypedPress\Wp\Connection::$observer = null;
+        }
+        check('SQLite delete preflight runs the count without a lock clause', in_array("SELECT COUNT(*) AS n FROM ($inner) first_count", $statements, true), $statements);
         eq('the refused delete keeps the parent', $count('notes'), 2);
         $db->insert('tags', ['name' => 'second hidden', 'noteId' => $note['id']], true);
         $one = $failure(fn () => $db->delete('notes', ['id' => $note['id']], true, $editor));

@@ -11,6 +11,7 @@ namespace TypedPress;
  *
  * A null $viewer means trusted (hooks, actions, CLI): no access checks, every status visible.
  * The request's user (`actor`) is what hooks/validators see as ctx.user, trusted or not.
+ * A viewer without a user is anonymous. The actor only supplies hook and revision attribution.
  */
 final class Db
 {
@@ -215,10 +216,10 @@ final class Db
      * @param list<array> $guards extra filters (access) — read guards are added here when $viewer is set
      * @return list<array>
      */
-    private function fetch(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?array &$decoded = null): array
+    private function fetch(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?array &$decoded = null, bool $forUpdate = false): array
     {
         $publishedOnly = false;
-        $decoded = $this->selectDecoded($collection, $opts, $ptr, $viewer, $partition, $guards, prune: true, publishedOnly: $publishedOnly);
+        $decoded = $this->selectDecoded($collection, $opts, $ptr, $viewer, $partition, $guards, prune: true, publishedOnly: $publishedOnly, forUpdate: $forUpdate);
         // What a page render read (its purges): only a read that named its rows and found them all
         // depends on those rows alone.
         $named = Render\Reads::recording() ? $this->named($collection, $opts, $partition, $publishedOnly) : null;
@@ -297,12 +298,12 @@ final class Db
      * Select full storage rows without presentation transforms; write guards remain SQL filters.
      * $filterViewer confines a write selector's relation filters to rows that viewer may read.
      */
-    private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false, ?bool &$publishedOnly = null): array
+    private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false, ?bool &$publishedOnly = null, bool $forUpdate = false): array
     {
-        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, &$publishedOnly): array {
+        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, &$publishedOnly, $forUpdate): array {
             $spec = $this->schema->hasCollection($collection) ? $this->schema->collection($collection) : null;
             $only = null;
-            $q = $this->compileRead($collection, $opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, $only, $publishedOnly);
+            $q = $this->compileRead($collection, $opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, $only, $publishedOnly, $forUpdate);
             if ($partition !== null && $partition[1] === []) {
                 return [];
             }
@@ -310,7 +311,7 @@ final class Db
 
             return array_map(
                 static fn (array $raw) => Schema::decodeRow($columns, $raw),
-                $this->withLinks($collection, $this->store->select($collection, $q), $only),
+                $this->withLinks($collection, $this->store->select($collection, $q), $only, $forUpdate),
             );
         });
     }
@@ -376,11 +377,14 @@ final class Db
      *
      * @return array{sql: string, params: list<int|float|string|null>}
      */
-    public function countQuery(string $collection, mixed $where = null, ?Viewer $viewer = null, array $extra = []): array
+    public function countQuery(string $collection, mixed $where = null, ?Viewer $viewer = null, array $extra = [], bool $forUpdate = false): array
     {
-        return $this->current(function () use ($collection, $where, $viewer, $extra): array {
+        return $this->current(function () use ($collection, $where, $viewer, $extra, $forUpdate): array {
             $opts = Seam::query($collection, ($where === null ? [] : ['where' => $where]) + $extra, $this->schema);
-            $q = $this->compileRead($collection, $opts, '', $viewer);
+            $only = $forUpdate ? [$this->schema->collection($collection)['primaryKey'] => true] : null;
+            // The inner SELECT scans the referencing rows and their index ranges. Locking only the
+            // aggregate would leave the inner read on the transaction's old snapshot.
+            $q = $this->compileRead($collection, $opts, '', $viewer, only: $only, forUpdate: $forUpdate);
             $q['sql'] = 'SELECT COUNT(*) AS n FROM (' . $q['sql'] . ') first_count';
 
             return $q;
@@ -404,9 +408,9 @@ final class Db
     }
 
     /** One read compiled: query extensions, option checks, the viewer's read guards. */
-    private function compileRead(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false, ?array &$only = null, ?bool &$publishedOnly = null): array
+    private function compileRead(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false, ?array &$only = null, ?bool &$publishedOnly = null, bool $forUpdate = false): array
     {
-        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, &$only, &$publishedOnly): array {
+        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, &$only, &$publishedOnly, $forUpdate): array {
             if (!$this->schema->hasCollection($collection)) {
                 throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
             }
@@ -435,7 +439,7 @@ final class Db
                     $guards[] = $allowed;
                 }
             }
-            $build = function () use ($collection, &$opts, $ptr, $viewer, $partition, &$guards, $filterViewer, $prune, &$only, &$publishedOnly, $spec, $deleted): array {
+            $build = function () use ($collection, &$opts, $ptr, $viewer, $partition, &$guards, $filterViewer, $prune, &$only, &$publishedOnly, $spec, $deleted, $forUpdate): array {
                 if ($viewer !== null) {
                     array_push($guards, ...$this->readGuards($collection, $viewer, forSelect: true, deleted: $deleted));
                 }
@@ -464,10 +468,10 @@ final class Db
                 }
                 unset($opts['searchFields']);
                 // After the query extensions: they may consume options (`with` on a file column) the selection reads.
-                $only = $prune ? $this->selected($collection, $opts, $viewer, $partition) : null;
+                $only = $prune ? $this->selected($collection, $opts, $viewer, $partition) : $only;
 
                 return Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
-                    $fv === null ? null : fn (string $target): array => $this->readGuards($target, $fv, forSelect: true), $only);
+                    $fv === null ? null : fn (string $target): array => $this->readGuards($target, $fv, forSelect: true), $only, $forUpdate);
             };
 
             return $deleted !== 'exclude' ? $this->withTrashFor($collection, $build) : $build();
@@ -548,10 +552,10 @@ final class Db
         ));
     }
 
-    private function keyQuery(string $collection, ?array $where, array $guards): array
+    private function keyQuery(string $collection, ?array $where, array $guards, bool $forUpdate = false): array
     {
         $pk = $this->schema->collection($collection)['primaryKey'];
-        return Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], guards: $guards, only: [$pk => true]);
+        return Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], guards: $guards, only: [$pk => true], forUpdate: $forUpdate);
     }
 
     /**
@@ -595,7 +599,7 @@ final class Db
      * @param list<array<string, mixed>> $raw storage rows
      * @return list<array<string, mixed>>
      */
-    private function withLinks(string $collection, array $raw, ?array $only = null): array
+    private function withLinks(string $collection, array $raw, ?array $only = null, bool $forUpdate = false): array
     {
         $spec = $this->schema->collection($collection);
         $pk = $spec['primaryKey'];
@@ -604,7 +608,7 @@ final class Db
                 continue;
             }
             $ids = [];
-            foreach ($this->links()->links($col['references']['join'], 'owner_id', array_column($raw, $pk)) as $link) {
+            foreach ($this->links()->links($col['references']['join'], 'owner_id', array_column($raw, $pk), $forUpdate) as $link) {
                 $ids[$link['owner_id']][] = $link['target_id'];
             }
             foreach ($raw as &$row) {
@@ -873,7 +877,8 @@ final class Db
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $set);
             $out = [];
             $opts = ['where' => $where];
-            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
+            // A referential update must use the same current rows the delete preflight locked.
+            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer, forUpdate: $viewer !== null && $this->deleting !== []);
             $pk = $spec['primaryKey'];
             $bulk = new BulkUpdate($collection, $spec, $set, $viewer, array_map(static fn (array $row) => self::key($row[$pk]), $rows), $errorViewer);
             $this->bulk[] = $bulk;
@@ -903,7 +908,7 @@ final class Db
         return $this->nested(function () use ($collection, $where, $returning, $viewer) {
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'delete', $viewer, null);
             $opts = ['where' => $where];
-            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
+            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer, forUpdate: $viewer !== null);
             $out = $this->deleteRows($collection, $rows, $viewer);
 
             return $returning ? $this->present($out, $collection, $viewer) : null;
@@ -951,7 +956,7 @@ final class Db
             if ($spec['softDelete'] ?? false) {
                 $opts['deleted'] = $onlyDeleted ? 'only' : 'include';
             }
-            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
+            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer, forUpdate: $viewer !== null);
             $this->purgeRows($collection, $rows, $viewer);
 
             return $returning ? $this->present($rows, $collection, $viewer) : null;
@@ -1169,6 +1174,7 @@ final class Db
             $set[$name] = Schema::store($columns[$name], $v);
         }
         $this->requireIncomingVisibility($collection, $set, $viewer ?? $errorViewer);
+        Locale\GroupSync::requireReadableSiblings($collection, $norm + $previous, $previous, $viewer ?? $errorViewer);
         try {
             $this->store->update($collection, $pkValue, $set);
             $this->writeLinks($columns, $pkValue, $links);
@@ -1179,7 +1185,7 @@ final class Db
         $this->recordRevision($collection, $spec, $pkValue, $raw, 'update', $previous, $row);
         $this->hook($collection, $spec, 'afterUpdate', $row, $previous);
         $this->published($collection, $spec, $row, $previous);
-        Extensions::written('update', $collection, $row, $previous);
+        Extensions::written('update', $collection, $row, $previous, $viewer ?? $errorViewer);
 
         return $row;
     }
@@ -1402,12 +1408,12 @@ final class Db
                     }
                     if (strtolower($ref['onDelete'] ?? 'cascade') === 'restrict') {
                         $id = $row[$ref['column']];
-                        $links = $this->links()->links($ref['join'], 'target_id', [$id]);
+                        $links = $this->links()->links($ref['join'], 'target_id', [$id], forUpdate: $viewer !== null);
                         if ($links !== []) {
                             $owners = array_values(array_unique(array_column($links, 'owner_id')));
                             $cpk = $cspec['primaryKey'];
                             $opts = ['where' => [$cpk => ['in' => $owners]], 'limit' => 1];
-                            if ($this->selectDecoded((string) $child, $opts, '', null) !== []) {
+                            if ($this->selectDecoded((string) $child, $opts, '', null, forUpdate: $viewer !== null) !== []) {
                                 throw new HttpError(409, 'reference_violation', "Rows in $child still link to this row");
                             }
                         }
@@ -1423,7 +1429,7 @@ final class Db
                 if ($action === 'cascade') {
                     $depOpts = ['where' => $where];
                     $dependents = array_values(array_filter(
-                        $this->selectDecoded((string) $child, $depOpts, '', null),
+                        $this->selectDecoded((string) $child, $depOpts, '', null, forUpdate: $viewer !== null),
                         fn (array $dependent): bool => !isset($this->deleting[$child][$this->pkValue($cspec, $dependent)]),
                     ));
                     if ($dependents === []) {
@@ -1452,7 +1458,7 @@ final class Db
                     }
                 } elseif ($action === 'set null' || $action === 'set default') {
                     $depOpts = ['where' => $where];
-                    $dependents = $this->selectDecoded((string) $child, $depOpts, '', null);
+                    $dependents = $this->selectDecoded((string) $child, $depOpts, '', null, forUpdate: $viewer !== null);
                     if ($dependents === []) {
                         continue;
                     }
@@ -1475,7 +1481,7 @@ final class Db
                         $value = $action === 'set default' && isset($c['default']) ? Schema::generate($c['default'], $c) : null;
                         $this->update((string) $child, [$col => $value], $where);
                     }
-                } elseif ($this->selectDecoded((string) $child, $opts, '', null) !== []) {
+                } elseif ($this->selectDecoded((string) $child, $opts, '', null, forUpdate: $viewer !== null) !== []) {
                     throw new HttpError(409, 'reference_violation', "Rows in $child still reference this row");
                 }
             }
@@ -1491,12 +1497,18 @@ final class Db
         return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
     }
 
+    /** Run the viewer's delete visibility check inside the transaction that will remove the row. */
+    public function requireDeleteVisibility(string $collection, array $row, Viewer $viewer): void
+    {
+        $this->refuseHiddenReferences($collection, $row, $viewer);
+    }
+
     /**
      * Before a viewer's delete writes anything: every row that references this one must be readable by
      * the viewer (docs/decisions/2026-11-16-per-row-delete-visibility.md). The rows referencing this
-     * row are counted twice in SQL, trusted and as the viewer, WordPress's trash included, without
-     * loading them; visible cascades are followed to every depth. Any difference, a referencing column
-     * or referenced key that may be hidden, or a read extension that may hide rows, is the one refusal
+     * row are counted twice in SQL using current, locking reads on MySQL, trusted and as the viewer.
+     * WordPress's trash is included. Visible cascades are followed to every depth. Any difference,
+     * a referencing column or referenced key that may be hidden, or a read extension that may hide rows, is the one refusal
      * ({@see hiddenReference()}). What the delete then does to those rows is the viewer's own writes
      * ({@see viewerReferentialWrites()}).
      */
@@ -1515,7 +1527,7 @@ final class Db
                 || !Extensions::constraintReadsSafe()) {
                 throw self::hiddenReference();
             }
-            $this->hasReadableReferences($collection, ['parent' => $row[$pk]], $viewer);
+            $this->hasOnlyReadableRows($collection, ['parent' => $row[$pk]], $viewer);
         }
         // Every relationship to this kind, before any is skipped for a null key: whether a hidden key
         // is null is itself what the viewer can't read.
@@ -1526,7 +1538,7 @@ final class Db
             }
         }
         foreach ($this->referencing($collection, $row) as [$child, $spec, $col, $def, $where]) {
-            if (!$this->hasReadableReferences($child, $where, $viewer)) {
+            if (!$this->hasOnlyReadableRows($child, $where, $viewer)) {
                 continue;
             }
             if ($def['type'] !== 'refList' && strtolower($def['references']['onDelete'] ?? 'no action') === 'cascade') {
@@ -1537,15 +1549,15 @@ final class Db
         }
     }
 
-    /** Whether any rows match. Refuses the delete if any matching row is hidden. */
-    private function hasReadableReferences(string $collection, array $where, Viewer $viewer): bool
+    /** Whether any rows match. Refuses the write if any matching row is hidden. */
+    private function hasOnlyReadableRows(string $collection, array $where, Viewer $viewer, bool $includeTrash = true): bool
     {
-        $trusted = $this->countRows($collection, $where, null);
+        $trusted = $this->countRows($collection, $where, null, $includeTrash);
         if ($trusted === 0) {
             return false;
         }
         try {
-            $visible = $this->countRows($collection, $where, $viewer);
+            $visible = $this->countRows($collection, $where, $viewer, $includeTrash);
         } catch (HttpError) {
             throw self::hiddenReference();
         }
@@ -1554,6 +1566,19 @@ final class Db
         }
 
         return true;
+    }
+
+    /** Check the visibility of a pipeline write's translation siblings before propagation. */
+    public function requireReadableTranslations(string $collection, array $ids, Viewer $viewer): void
+    {
+        if ($ids === []) {
+            return;
+        }
+        if (!Extensions::constraintReadsSafe()) {
+            throw self::hiddenReference();
+        }
+        $pk = $this->schema->collection($collection)['primaryKey'];
+        $this->hasOnlyReadableRows($collection, [$pk => ['in' => $ids]], $viewer, includeTrash: false);
     }
 
     /**
@@ -1668,14 +1693,19 @@ final class Db
     {
         $opts = ['where' => $where] + (($spec['localized'] ?? false) ? ['locale' => '*'] : []);
 
-        return $this->withTrashFor($child, fn () => $this->sqlVisibility($child, $where, fn () => $this->findMany($child, $opts, $viewer)));
+        return $this->current(fn () => $this->withTrashFor($child, fn () => $this->sqlVisibility($child, $where, function () use ($child, $opts, $viewer): array {
+            $opts = Seam::query($child, $opts, $this->schema);
+            $rows = $this->fetch($child, $opts, '', $viewer, forUpdate: true);
+
+            return $this->project($rows, $child, $opts, '');
+        })));
     }
 
     /**
      * How many rows match $where, trusted or as $viewer, in SQL, WordPress's trash included: trashed
      * posts keep their references and links (core's term delete removes those links too).
      */
-    private function countRows(string $collection, array $where, ?Viewer $viewer): int
+    private function countRows(string $collection, array $where, ?Viewer $viewer, bool $includeTrash = true): int
     {
         $store = $this->store;
         if (!$store instanceof Wp\CompositeStore) {
@@ -1683,11 +1713,13 @@ final class Db
         }
         $extra = $viewer !== null && ($this->schema->collection($collection)['localized'] ?? false) ? ['locale' => '*'] : [];
 
-        return $this->withTrashFor($collection, fn () => $this->sqlVisibility($collection, $where, function () use ($collection, $where, $viewer, $extra, $store): int {
-            $q = $this->countQuery($collection, $where, $viewer, $extra);
+        $count = fn () => $this->sqlVisibility($collection, $where, function () use ($collection, $where, $viewer, $extra, $store): int {
+            $q = $this->countQuery($collection, $where, $viewer, $extra, forUpdate: true);
 
             return (int) ($store->db->run($q['sql'], $q['params'])[0]['n'] ?? 0);
-        }));
+        });
+
+        return $includeTrash ? $this->withTrashFor($collection, $count) : $count();
     }
 
     private function withTrashFor(string $collection, callable $fn): mixed
@@ -1708,7 +1740,7 @@ final class Db
         if (!$store instanceof Wp\CompositeStore || !$store->isPostBacked($collection)) {
             return $fn();
         }
-        $scope = $this->current(fn () => $this->keyQuery($collection, $where, []));
+        $scope = $this->current(fn () => $this->keyQuery($collection, $where, [], forUpdate: true));
 
         return $store->posts->withSqlVisibility($fn, [$collection => $scope]);
     }
@@ -2291,7 +2323,7 @@ final class Db
     }
 
     /** Before an editor-side delete: beforeDelete($row) and the pipeline FK actions. */
-    public function beforeEditorDelete(string $collection, array $row, ?array $user = null): void
+    public function beforeEditorDelete(string $collection, array $row, ?Viewer $viewer = null): void
     {
         $pk = $this->pkValue($this->schema->collection($collection), $row);
         if (isset($this->deleting[$collection][$pk])) {
@@ -2299,12 +2331,12 @@ final class Db
         }
         $this->deleting[$collection][$pk] = $pk;
         try {
-            $this->asEditor($user, function () use ($collection, $row, $user) {
+            $this->asEditor($viewer?->user, function () use ($collection, $row, $viewer) {
                 $spec = $this->schema->collection($collection);
                 $existing = $row;
-                Extensions::write('delete', $collection, $row, $existing, null, $existing);
+                Extensions::write('delete', $collection, $row, $existing, $viewer, $existing);
                 $this->hook($collection, $spec, 'beforeDelete', $row);
-                $this->referentialActions($collection, $row, $user === null ? null : new Viewer($user));
+                $this->referentialActions($collection, $row, $viewer);
             });
         } finally {
             unset($this->deleting[$collection][$pk]);

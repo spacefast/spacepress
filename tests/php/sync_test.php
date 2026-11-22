@@ -95,6 +95,9 @@ $functions = <<<'PHP'
     // A hook that tries to rewrite identity: the runtime must refuse it after the hook.
     // A compiled hook returning `{}` replaces the patch with nothing to change.
     function notes__beforeUpdate($patch, $existing) { return match ($patch->p['title'] ?? null) { 'steal uid' => new \TypedPress\JsObject($patch->p + ['uid' => 'zr_99999999999999999999']), 'drop it' => new \TypedPress\JsObject(), default => $patch }; }
+    function guestReferences__read($ctx) {
+        return $ctx->p['user'] === null ? new \TypedPress\JsObject(['visible' => true]) : true;
+    }
     PHP;
 
 foreach (['seedAuthors' => 'seedArticles', 'seedArticles' => 'seedAuthors', 'aSeedItems' => 'seedAuthors'] as $name => $target) {
@@ -114,6 +117,19 @@ $schema['collections']['seedNodes']['sync']['dir'] = 'content/seedNodes';
 $schema['collections']['seedNodes']['columns']['parent'] = $schema['collections']['seedNodes']['columns']['peer'];
 $schema['collections']['seedNodes']['columns']['parent']['references']['collection'] = 'seedNodes';
 unset($schema['collections']['seedNodes']['columns']['peer']);
+$schema['collections']['guestPosts'] = $schema['collections']['notes'];
+$schema['collections']['guestPosts']['access'] = ['delete' => ['role' => 'anyone']] + $editor;
+$schema['collections']['guestPosts']['sync']['dir'] = 'content/guestPosts';
+$schema['collections']['guestPosts']['hooks'] = [];
+$schema['collections']['guestReferences'] = [
+    'primaryKey' => 'id', 'editor' => false, 'access' => ['read' => ['fn' => 'guestReferences__read']] + $editor,
+    'api' => $api, 'relations' => [],
+    'columns' => [
+        'id' => $schema['collections']['notes']['columns']['id'],
+        'postId' => ['type' => 'integer', 'references' => ['collection' => 'guestPosts', 'column' => 'id', 'onDelete' => 'cascade']],
+        'visible' => ['type' => 'boolean', 'notNull' => true],
+    ],
+];
 $wp = wpSite('sync', ['schema' => $schema, 'functions' => $functions, 'users' => ['ed' => 'editor', 'au' => 'author']]);
 $app = $wp->app();
 $db = \TypedPress\db();
@@ -332,6 +348,27 @@ try {
 }
 
 // ================================================================ paging and trash
+
+$guest = $db->insert('guestPosts', ['title' => 'Guest post with a hidden reference'], true)[0];
+$public = $db->insert('guestPosts', ['title' => 'Guest post with a readable reference'], true)[0];
+$hiddenRef = $db->insert('guestReferences', ['postId' => $guest['id'], 'visible' => false], true)[0]['id'];
+$publicRef = $db->insert('guestReferences', ['postId' => $public['id'], 'visible' => true], true)[0]['id'];
+$guestRecords = pull('guestPosts');
+$guestTrash = static fn (array $post): array => req('POST', '/sync/guestPosts/trash', [
+    'uid' => $post['uid'], 'expect' => $guestRecords[$post['uid']]['digest'],
+], as: null);
+$directRefusal = problem('an anonymous delete refuses a hidden reference',
+    fn () => $db->delete('guestPosts', ['id' => $guest['id']], viewer: new \TypedPress\Viewer(null)),
+    409, 'reference_violation');
+if ($directRefusal !== null) {
+    eq('anonymous sync trash returns the same refusal as direct delete', $guestTrash($guest), [409, \TypedPress\App::problem($directRefusal)]);
+}
+eq('refused sync trash leaves the post published and referenced', [
+    get_post_status($guest['id']), $db->findFirst('guestReferences', ['where' => ['id' => $hiddenRef]])['postId'],
+], ['publish', $guest['id']]);
+eq('anonymous sync trash succeeds with a readable reference and preserves it', [
+    $guestTrash($public), get_post_status($public['id']), $db->findFirst('guestReferences', ['where' => ['id' => $publicRef]])['postId'],
+], [[200, ['uid' => $public['uid'], 'status' => 'applied']], 'trash', $public['id']]);
 
 foreach (range(1, 4) as $i) {
     $db->insert('notes', ['title' => "Page $i"]);

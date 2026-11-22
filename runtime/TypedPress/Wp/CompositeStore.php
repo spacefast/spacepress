@@ -205,9 +205,9 @@ final class CompositeStore implements Store, Links
         return $this->linksFor($join)->linkTable($join);
     }
 
-    public function links(string $join, string $by, array $ids): array
+    public function links(string $join, string $by, array $ids, bool $forUpdate = false): array
     {
-        return $this->linksFor($join)->links($join, $by, $ids);
+        return $this->linksFor($join)->links($join, $by, $ids, $forUpdate);
     }
 
     public function setLinks(string $join, int|string $owner, array $targets): void

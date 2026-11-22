@@ -189,6 +189,10 @@
       "feature": "ctx.email in a query or read-only endpoint"
     },
     {
+      "code": "Z08_PROTECTED_PROMISE_RETURN",
+      "feature": "unawaited context promise returned inside try"
+    },
+    {
       "code": "Z08_CTX_DYNAMIC",
       "feature": "ctx passed on or read dynamically"
     },

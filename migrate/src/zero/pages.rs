@@ -142,24 +142,35 @@ fn static_markup(text: &str, at: &str) -> Result<Vec<String>, Failure> {
     }
     let mut imports = vec![];
     for s in &parsed.program.body {
-        if let Statement::ImportDeclaration(i) = s {
-            let source = i.source.value.as_str();
-            let type_only = i.import_kind == ImportOrExportKind::Type
-                || i.specifiers.as_ref().is_some_and(|ss| {
-                    !ss.is_empty()
-                        && ss.iter().all(|s| matches!(s, ImportDeclarationSpecifier::ImportSpecifier(x) if x.import_kind == ImportOrExportKind::Type))
-                });
-            // A specifier with a lone UTF-16 surrogate names no file, so it isn't local data.
-            let local_data = source.is_some_and(|source| {
-                source.starts_with("../shared/") || source.starts_with("./") && !source.ends_with(".tsx")
-            });
-            if !type_only && !local_data {
-                return Err(fail(at, reason(text, "a 0.8 page")));
-            }
-            if let (false, Some(source)) = (type_only, source) {
-                imports.push(source.to_string());
-            }
+        let (source, type_only) = match s {
+            Statement::ImportDeclaration(i) => (
+                &i.source,
+                i.import_kind == ImportOrExportKind::Type
+                    || i.specifiers.as_ref().is_some_and(|ss| {
+                        !ss.is_empty()
+                            && ss.iter().all(|s| matches!(s, ImportDeclarationSpecifier::ImportSpecifier(x) if x.import_kind == ImportOrExportKind::Type))
+                    }),
+            ),
+            Statement::ExportFromDeclaration(e) => (
+                &e.source,
+                e.export_kind == ImportOrExportKind::Type
+                    || !e.specifiers.is_empty() && e.specifiers.iter().all(|s| s.export_kind == ImportOrExportKind::Type),
+            ),
+            Statement::ExportAllDeclaration(e) => (&e.source, e.export_kind == ImportOrExportKind::Type),
+            _ => continue,
+        };
+        if type_only {
+            continue;
         }
+        // A specifier with a lone UTF-16 surrogate names no file, so it isn't local data.
+        let Some(source) = source
+            .value
+            .as_str()
+            .filter(|source| source.starts_with("../shared/") || source.starts_with("./") && !source.ends_with(".tsx"))
+        else {
+            return Err(fail(at, reason(text, "a 0.8 page")));
+        };
+        imports.push(source.to_string());
     }
     // A "use client" page hydrated in 0.8, but one with no handlers, hooks or browser reads
     // hydrates to the markup it already rendered, so it moves like a document page.

@@ -501,6 +501,17 @@ pub static RULES: &[Rule] = &[
         ),
     },
     Rule {
+        code: "Z08_PROTECTED_PROMISE_RETURN",
+        feature: "unawaited context promise returned inside try",
+        v2: "an awaited call with the original rejection and finally behavior",
+        fix: "Port the control flow so the call's rejection bypasses the original catch and finally runs before waiting for the result.",
+        test: |_, r| r.starts_with("an unawaited promise returned inside try"),
+        example: (
+            "/endpoints/e/ctx",
+            "an unawaited promise returned inside try can reject after the block exits in 0.8",
+        ),
+    },
+    Rule {
         code: "Z08_CTX_DYNAMIC",
         feature: "ctx passed on or read dynamically",
         v2: "a HookCtx value passed to typed helpers",

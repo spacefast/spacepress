@@ -8,7 +8,9 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use typedpress::diag::{self, Span};
-use typedpress::ir::{ArrEl, DeclKind, Expr, ExprKind as E, FnBody, Func, ImportName, Pat, Prop, PropKey, Stmt, TyAnn};
+use typedpress::ir::{
+    ArrEl, DeclKind, Expr, ExprKind as E, FnBody, Func, ImportName, LogOp, Pat, Prop, PropKey, Stmt, TyAnn,
+};
 use typedpress::lower::Lowerer;
 
 pub(super) fn parse(path: &Path, text: &str) -> Result<Vec<Stmt>, Failure> {
@@ -2225,8 +2227,8 @@ struct Rewrite<'a> {
     inline_subject: Option<bool>,
     /// A helper read the caller's subject, so a writing caller needs the 401 gate.
     reads_subject: bool,
-    /// Inside a `try` block whose `catch` or `finally` would run if a returned promise were awaited
-    /// there: a promise returned unawaited escaped them in 0.8, so it can't become `await`.
+    /// Inside a `try` where awaiting a returned promise could change rejection handling or when
+    /// `finally` runs.
     protected_try: u32,
 }
 
@@ -2259,6 +2261,28 @@ fn services_pattern(pat: &Pat) -> Option<Vec<(String, String)>> {
             _ => None,
         })
         .collect()
+}
+
+/// Tracks expressions whose value can be passed through a return without awaiting it.
+fn returned_values(e: &Expr, spans: &mut Vec<Span>) {
+    spans.push(e.span);
+    match &e.kind {
+        E::As(value, _)
+        | E::NonNull(value)
+        | E::Chain(value)
+        | E::Assign { op: None, value, .. }
+        | E::Logical(LogOp::And, _, value) => returned_values(value, spans),
+        E::Cond(_, a, b) | E::Logical(_, a, b) => {
+            returned_values(a, spans);
+            returned_values(b, spans);
+        }
+        E::Sequence(values) => {
+            if let Some(last) = values.last() {
+                returned_values(last, spans);
+            }
+        }
+        _ => {}
+    }
 }
 
 impl Rewrite<'_> {
@@ -2317,6 +2341,16 @@ impl Rewrite<'_> {
     /// the awaited rejection would reach, where 0.8's unawaited promise escaped them.
     fn returned_unprotected(&self, span: Span) -> bool {
         self.returned_here(span) && self.protected_try == 0
+    }
+
+    fn check_promise_return(&self, span: Span, at: &str) -> Result<(), Failure> {
+        if self.protected_try > 0 && self.returned_here(span) {
+            return Err(fail(
+                at,
+                "an unawaited promise returned inside try can reject after the block exits in 0.8; port the return explicitly to preserve that behavior",
+            ));
+        }
+        Ok(())
     }
 
     /// The route request parameter itself.
@@ -2442,7 +2476,7 @@ impl Rewrite<'_> {
             return Ok(());
         }
         if let E::Await(inner) = &e.kind
-            && let Some(text) = self.db(inner)?
+            && let Some(text) = self.db(inner, true)?
         {
             self.edits.push((e.span, text));
             return Ok(());
@@ -2461,6 +2495,9 @@ impl Rewrite<'_> {
             && let E::Member { obj, prop, .. } = &callee.kind
             && self.service_of(obj) == Some("crypto")
         {
+            if !awaited {
+                self.check_promise_return(e.span, &pointer(&pointer(self.at, "ctx"), "crypto"))?;
+            }
             if !["sha256", "hmacSha256", "timingSafeEqual"].contains(&prop.as_str()) {
                 return Err(fail(
                     &pointer(&pointer(self.at, "ctx"), "crypto"),
@@ -2482,7 +2519,6 @@ impl Rewrite<'_> {
             // An unawaited call is returned or awaited later in 0.8 code; the value stands in for
             // its promise either way. Storing it unawaited (`const p = ctx.crypto...`) and then
             // awaiting it is refused by the v2 compiler's await check, which is the port pointer.
-            let _ = awaited;
             self.edits.push((e.span, format!("({text})")));
             return Ok(());
         }
@@ -2516,11 +2552,14 @@ impl Rewrite<'_> {
             // avatarUrl is synchronous in both. profile fetches: a returned promise was awaited by
             // the 0.8 runtime, so it's awaited here; one stored for later needs a port.
             let text = if prop == "profile" {
-                if !awaited && !self.returned.contains(&e.span) {
-                    return Err(fail(
-                        &at,
-                        "an unawaited ctx.gravatar.profile needs a manual port; await it",
-                    ));
+                if !awaited {
+                    self.check_promise_return(e.span, &at)?;
+                    if !self.returned_here(e.span) {
+                        return Err(fail(
+                            &at,
+                            "an unawaited ctx.gravatar.profile needs a manual port; await it",
+                        ));
+                    }
                 }
                 format!("await {text}")
             } else {
@@ -2557,13 +2596,16 @@ impl Rewrite<'_> {
             // 0.8 resolved to true on transport acceptance; v2 resolves once the message is queued.
             let send = format!("(await __z08Mail.send({message}), true)");
             // A returned promise was awaited by the 0.8 runtime; one left floating raced the response.
-            if !awaited && !self.returned.contains(&e.span) {
-                return Err(fail(&at, "an unawaited ctx.email.send needs a manual port; await it"));
+            if !awaited {
+                self.check_promise_return(e.span, &at)?;
+                if !self.returned_here(e.span) {
+                    return Err(fail(&at, "an unawaited ctx.email.send needs a manual port; await it"));
+                }
             }
             self.edits.push((e.span, format!("({send})")));
             return Ok(());
         }
-        if let Some(text) = self.db(e)? {
+        if let Some(text) = self.db(e, false)? {
             self.edits.push((e.span, text));
             return Ok(());
         }
@@ -2674,24 +2716,24 @@ impl Rewrite<'_> {
             let passes_request = args
                 .iter()
                 .any(|a| matches!(a, ArrEl::Item(x) if self.is_request_expr(x)));
-            if passes_request && self.returned_here(e.span) && !self.returned_unprotected(e.span) {
-                return Err(fail(&pointer(&pointer(self.at, "request"), "returned"), REQUEST_API));
-            }
             // A sync helper can't await. Returning a sync helper's value needs none; returning an
             // async one's promise, which 0.8's caller awaited later, has no v2 form, since Zero
             // awaits every async call where it is made.
             let sync_caller = self.inline_subject == Some(false);
-            if passes_request && callee_async && sync_caller && self.returned_here(e.span) {
-                return Err(fail(&pointer(&pointer(self.at, "request"), "returned"), REQUEST_API));
-            }
-            if !sync_caller && self.returned_here(e.span) {
-                self.edits.push((
-                    Span {
-                        end: e.span.start,
-                        ..e.span
-                    },
-                    "await ".into(),
-                ));
+            if callee_async && self.returned_here(e.span) {
+                if passes_request && (sync_caller || !self.returned_unprotected(e.span)) {
+                    return Err(fail(&pointer(&pointer(self.at, "request"), "returned"), REQUEST_API));
+                }
+                self.check_promise_return(e.span, &pointer(self.at, "ctx"))?;
+                if !sync_caller {
+                    self.edits.push((
+                        Span {
+                            end: e.span.start,
+                            ..e.span
+                        },
+                        "await ".into(),
+                    ));
+                }
             }
             let requests: Vec<(usize, Span)> = args
                 .iter()
@@ -2775,14 +2817,13 @@ impl Rewrite<'_> {
                 }) {
                     return Err(fail(self.at, "shadowed context binding requires a manual port"));
                 }
-                match &f.body {
-                    FnBody::Expr(e) => self.expr(e)?,
-                    FnBody::Block(ss) => {
-                        for s in ss {
-                            self.stmt(s)?;
-                        }
-                    }
-                }
+                let outer_try = std::mem::take(&mut self.protected_try);
+                let rewritten = match &f.body {
+                    FnBody::Expr(e) => self.expr(e),
+                    FnBody::Block(ss) => ss.iter().try_for_each(|s| self.stmt(s)),
+                };
+                self.protected_try = outer_try;
+                rewritten?;
             }
             E::Unary(_, e)
             | E::IsNullish(e, _)
@@ -2871,7 +2912,13 @@ impl Rewrite<'_> {
             }
             Stmt::Expr(e) | Stmt::Throw(e) | Stmt::ExportDefault(e) => self.expr(e)?,
             Stmt::Return(Some(e), _) => {
-                self.expr(e)?;
+                let previously_returned = self.returned.len();
+                if self.protected_try > 0 {
+                    returned_values(e, &mut self.returned);
+                }
+                let rewritten = self.expr(e);
+                self.returned.truncate(previously_returned);
+                rewritten?;
                 // `return response.json()` returned a promise the 0.8 runtime awaited; an endpoint's
                 // return then passes through 0.8's result rules.
                 let body_read = returns_body_read(e);
@@ -3342,7 +3389,7 @@ impl Rewrite<'_> {
         self.helpers.len()
     }
 
-    fn db(&mut self, e: &Expr) -> Result<Option<String>, Failure> {
+    fn db(&mut self, e: &Expr, awaited: bool) -> Result<Option<String>, Failure> {
         let mut cursor = e;
         let mut chain = Vec::new();
         while let E::Call {
@@ -3388,6 +3435,9 @@ impl Rewrite<'_> {
         let at = pointer(&pointer(&pointer(self.at, "ctx"), "db"), name);
         if ["insert", "update", "delete"].contains(op) && !self.writes {
             return Err(fail(&at, "writes are only allowed in legacy mutations"));
+        }
+        if !awaited {
+            self.check_promise_return(e.span, &at)?;
         }
         let code = match *op {
             "get" if a.len() == 1 && chain.len() == 1 => format!("await __z08_{name}_get({})", self.render(a[0])?),

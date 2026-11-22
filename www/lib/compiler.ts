@@ -46,9 +46,8 @@ export interface Envelope {
 export interface Output {
   schemaPhp: string;
   functionsPhp: string;
-  /** New migration files as `[relativePath, text]` pairs. */
+  /** New migration files as `[path within the ledger, contents]`. */
   migrations: [string, string][];
-  snapshot: unknown;
   /** `types.ts` and `schema.ts`; the runtime half of the client is not generated here. */
   client: Record<string, string>;
   genTs: string;

@@ -5,9 +5,9 @@
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import type { ExampleRun, Ledger } from "./blueprint.ts";
-import { example, repo, site } from "./examples.ts";
-import { siteExamples, siteFiles } from "./site-examples.ts";
+import { runRequest, type ExampleRun, type Ledger } from "./blueprint.ts";
+import { compileFiles, repo, site } from "./examples.ts";
+import { siteFiles, type SiteExample } from "./site-examples.ts";
 
 export const showcaseRoot = path.join(site, ".showcase");
 export const filesRoot = path.join(site, ".build/files");
@@ -72,35 +72,36 @@ function walk(root: string, rel = ""): string[] {
   return found;
 }
 
-/** The committed migration files, relative to the ledger directory. */
-export function migrationFiles(dir: string): Record<string, string> {
-  const root = path.join(dir, "tp/_generated/migrations");
-  if (!existsSync(root)) return {};
-  return Object.fromEntries(walk(root)
-    .filter((file) => /^[^/]+\/(ops\.json|migration\.sql)$/.test(file))
-    .map((file) => [file, readFileSync(path.join(root, file), "utf8")]));
-}
-
-/** The files to pass to the browser compiler alongside the example's sources. */
-export function ledger(dir: string): Ledger {
-  const root = path.join(dir, "public");
-  const publicFiles = existsSync(root)
-    ? Object.fromEntries(walk(root).map((file) => [file, new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path.join(root, file)))]))
+/**
+ * An example's migration folders and its `public/` files, which `typedpress build` copies into the
+ * app plugin. When public files are included, they must be UTF-8 text.
+ */
+export function ledger(dir: string, includePublic = true): Ledger {
+  const ledgerDir = path.join(dir, "tp/_generated/migrations");
+  const publicDir = path.join(dir, "public");
+  const publicFiles = includePublic && existsSync(publicDir)
+    ? Object.fromEntries(walk(publicDir).map((file) => [file, new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path.join(publicDir, file)))]))
     : {};
-  return { files: migrationFiles(dir), public: publicFiles };
+  const files = existsSync(ledgerDir)
+    ? walk(ledgerDir).filter((file) => /^[^/]+\/(ops\.json|migration\.sql)$/.test(file))
+    : [];
+  return {
+    files: Object.fromEntries(files.map((file) => [file, readFileSync(path.join(ledgerDir, file), "utf8")])),
+    public: publicFiles,
+  };
 }
 
 /** What the playground page needs to run an edited copy of a site example (lib/blueprint.ts `editedBlueprint`). */
-export async function exampleRun(name: (typeof siteExamples)[number]["name"]): Promise<ExampleRun> {
-  const { landing, seed } = siteExamples.find((e) => e.name === name)!;
+export async function exampleRun({ name, landing, seed }: SiteExample, files: Record<string, string>): Promise<ExampleRun> {
   const built = manifest(name);
+  const history = ledger(path.join(showcaseRoot, name));
   return {
     lock: built.wordpressPlugins,
     landing,
     seed,
     syncSeed: built.syncSeed,
     appPages: built.appPages,
-    schemaPhp: (await example(name)).output.schemaPhp,
-    ledger: ledger(path.join(repo, "examples", name)),
+    schemaPhp: (await compileFiles(runRequest(name, files, history))).schemaPhp,
+    ledger: history,
   };
 }

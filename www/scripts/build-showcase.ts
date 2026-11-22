@@ -4,7 +4,7 @@
 //
 // Each example is copied to .showcase/<name>/ first (its committed migrations come along; nothing
 // under examples/ is written) and built there. An example with npm dependencies gets its locked
-// packages installed, since the compiler turns their code into PHP. Then public/files/ gets:
+// packages installed, since the compiler turns their code into PHP. Then .build/files/ gets:
 //
 //   <name>.json        every path of the example, with the blob that holds each text file
 //   blobs/<hash>.txt   each distinct text file once: the runtime is the same for every example
@@ -19,17 +19,15 @@ import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, re
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { repo } from "../lib/examples.ts";
 import { filesRoot, showcaseRoot, type Manifest } from "../lib/showcase.ts";
 import { blueprint, sharedPlugins } from "../lib/blueprint.ts";
 import { platformVersions } from "../lib/platform.ts";
 import { siteExamples, siteFiles } from "../lib/site-examples.ts";
 
-const site = path.dirname(path.dirname(new URL(import.meta.url).pathname));
-const repo = path.dirname(site);
-const target = process.env.CARGO_TARGET_DIR ?? path.join(repo, "target");
-
 const run = (command: string, args: string[], cwd: string) => {
 	const result = spawnSync(command, args, { cwd, stdio: "inherit" });
+	if (result.error) throw result.error;
 	if (result.status !== 0) process.exit(result.status ?? 1);
 };
 
@@ -45,8 +43,11 @@ function walk(root: string, rel = ""): string[] {
 	return found;
 }
 
-const binary = path.join(target, "release", "typedpress");
-if (!existsSync(binary)) run("cargo", ["build", "--locked", "--release"], repo);
+const platformPlugins = Object.keys((JSON.parse(readFileSync(path.join(repo, "tests/fixtures/platform.json"), "utf8")) as { plugins: Record<string, unknown> }).plugins);
+const thirdParty = (lock: string[]) => new Set([...platformPlugins, ...lock]);
+const binary = process.env.TP_BIN ?? path.resolve(repo, process.env.CARGO_TARGET_DIR ?? "target", "debug/typedpress");
+if (!process.env.TP_BIN) run("cargo", ["build", "--locked", "--bin", "typedpress"], repo);
+const pluginOrigin = new URL(process.env.PLUGINS_URL ?? "https://spacepress.dev").origin;
 
 /**
  * The records the runtime seeds a synced collection from, as the host compile writes them
@@ -85,6 +86,7 @@ for (const { name, landing, seed } of siteExamples) {
 	const syncSeed = syncRecords(to);
 
 	const lock = JSON.parse(readFileSync(path.join(to, "tp/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
+	const published = thirdParty(lock.plugins.map((p) => p.slug));
 	// `plugins` lists TypedPress's own plugins in the order `typedpress build` writes them: the runtime, then
 	// the plugins that require it. WordPress refuses to activate a plugin before the ones it requires.
 	const built = JSON.parse(readFileSync(path.join(to, "tp/dist/wp-content/typedpress-manifest.json"), "utf8")) as { app: string; plugins: Record<string, string> };
@@ -131,7 +133,7 @@ for (const { name, landing, seed } of siteExamples) {
 		if (!existsSync(shared)) writeFileSync(shared, zip);
 		else if (!readFileSync(shared).equals(zip)) throw new Error(`examples/${name}: ${slug}.zip differs from another example's; it must not depend on the config`);
 	}
-	const zipBase = `${process.env.SITE_URL ?? "https://spacepress.dev"}/playground-plugins/${name}/`;
+	const zipBase = `${pluginOrigin}/playground-plugins/${name}/`;
 	const tpPlugins = generated.map((slug) => ({ slug, url: `${zipBase}${slug}.zip` }));
 	const print = blueprint({ platform: platformVersions(), tpPlugins, wordpressPlugins: lock.plugins, landingPage: landing, seed, syncSeed, prettyPermalinks: appPages });
 	writeFileSync(path.join(filesRoot, `${name}.blueprint.json`), `${JSON.stringify(print, null, "\t")}\n`);

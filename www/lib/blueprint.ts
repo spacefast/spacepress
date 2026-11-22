@@ -192,7 +192,7 @@ export const playgroundUrl = (print: Blueprint) => `https://playground.wordpress
 
 /**
  * What an example has on disk beside its sources that `typedpress build` puts in the app plugin: the
- * committed migration ledger (`tp/_generated/migrations/`, its ops and SQL files by path)
+ * migration history (`tp/_generated/migrations/`, with `ops.json` and `migration.sql` per entry)
  * and the project's `public/` files by path below it.
  */
 export interface Ledger {
@@ -200,14 +200,17 @@ export interface Ledger {
 	public: Record<string, string>;
 }
 
+/** Migration files by project-relative path, as read by the compiler. */
+export const migrationInputs = (files: Iterable<[string, string]>) =>
+	Object.fromEntries(Array.from(files, ([file, text]) => [`tp/_generated/migrations/${file}`, text]));
+
 /**
  * The compile request for running sources in WordPress: the ledger goes along, so the compiler
- * folds the committed operations before planning a change and the app plugin carries all of them, as
+ * writes new migrations after the existing ones and the app plugin carries all of them, as
  * `typedpress build` does in the example's folder. The project's `public/` goes along too, since the app
  * plugin carries it. `files` uses the names the compiler reads.
  */
 export function runRequest(name: string, files: Record<string, string>, ledger: Ledger): Request {
-	const migrations = Object.fromEntries(Object.entries(ledger.files).map(([file, text]) => [`tp/_generated/migrations/${file}`, text]));
 	const publicFiles = Object.fromEntries(Object.entries(ledger.public).map(([file, text]) => [`public/${file}`, text]));
-	return { name, files: { ...files, ...publicFiles, ...migrations } };
+	return { name, files: { ...files, ...publicFiles, ...migrationInputs(Object.entries(ledger.files)) } };
 }

@@ -5,7 +5,9 @@
   "scripts": {
     "wasm": "node scripts/build-wasm.mjs",
     "showcase": "node scripts/build-showcase.ts",
-    "build": "bun scripts/build.mjs",
+    "build": "node scripts/build-site.mjs",
+    "bundle": "bun scripts/build.mjs",
+    "test": "node scripts/test-fresh.mjs",
     "seed": "node scripts/seed.mjs"
   },
   "dependencies": {

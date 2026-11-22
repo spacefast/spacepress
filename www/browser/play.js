@@ -4,7 +4,7 @@
 import { File, FileDiff } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/edit";
 import { FileTree } from "@pierre/trees";
-import { editedBlueprint, playgroundUrl, runRequest } from "../lib/blueprint.ts";
+import { editedBlueprint, migrationInputs, playgroundUrl, runRequest } from "../lib/blueprint.ts";
 import { loadAll } from "./compiler-shared.js";
 
 const theme = { light: "pierre-light", dark: "pierre-dark" };
@@ -13,7 +13,7 @@ const fileOptions = { theme, themeType: "dark", overflow: "scroll" };
 const describe = (file, existed) => {
   if (file.endsWith("/schema.php")) return "Your collections, tables, fields, access rules, and routes as PHP arrays. WordPress registers post types, tables, and URLs from it.";
   if (file.endsWith("/functions.php")) return "Every hook, action, job, HTTP route, page, and component compiled to native PHP.";
-  if (file.includes("/migrations/")) return existed ? "A committed SQL migration already in the project." : "A migration file generated for your schema change.";
+  if (file.includes("/migrations/")) return existed ? "A file from the project's migration history." : "A migration file generated live for your schema change.";
   if (file.endsWith("db.d.ts")) return "Generated TypeScript definitions for typedpress:db and db.query so editors type-check your app.";
   if (file.endsWith("openapi.json")) return "OpenAPI 3.1 specification of the app's REST API.";
   if (file.includes("/client/")) return "Generated typed TypeScript client for browsers and external frontends.";
@@ -245,13 +245,13 @@ class Play extends HTMLElement {
   compile(sources) {
     const { check, output: out } = this.compiler.compile(runRequest(this.name, sources, this.currentExample.run.ledger));
     if (!check.ok || !out) return { check, out: null, files: {} };
-    const committed = Object.fromEntries(Object.entries(this.currentExample.run.ledger.files).map(([file, sql]) => [`tp/_generated/migrations/${file}`, sql]));
+    const committed = migrationInputs(Object.entries(this.currentExample.run.ledger.files));
     const openapi = Object.entries(out.appPlugin).find(([file]) => file.endsWith("/tp/app/openapi.json"))?.[1];
     return { check, out, files: {
       "tp/app/schema.php": out.schemaPhp,
       "tp/app/functions.php": out.functionsPhp,
       ...committed,
-      ...Object.fromEntries(out.migrations.map(([file, sql]) => [`tp/_generated/migrations/${file}`, sql])),
+      ...migrationInputs(out.migrations),
       "tp/_generated/db.d.ts": out.genTs,
       ...Object.fromEntries(Object.entries(out.client).map(([file, text]) => [`tp/_generated/client/${file}`, text])),
       ...(openapi ? { "tp/app/openapi.json": openapi } : {}),
@@ -501,8 +501,8 @@ class Play extends HTMLElement {
     for (const text of [...result.out.warnings, ...result.out.hints]) this.problems.append(el("li", { textContent: text }));
     if (!first && !same && differ.length) {
       const added = differ.find((file) => !(file in this.previous));
-      const migration = differ.find((file) => file.includes("/migrations/"));
-      if (added) this.output = added;
+      const migration = differ.find((file) => file.endsWith("/migration.sql"));
+      if (added) this.output = migration ?? added;
       else if (!differ.includes(this.output) || (migration && !this.picked)) this.output = migration ?? differ[0];
       this.showOutputDiff = true;
     }

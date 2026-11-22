@@ -4,7 +4,7 @@
 //   public/site.js             browser/site.js bundled: the code and tree drawing, and <tp-play>
 //   public/compiler.wasm       the compiler built for the browser
 //   public/play-data.json      the apps the playground can load (scripts/run-data.ts)
-//   public/files/plugins/      TypedPress's shared plugins as zips, for "Run in WordPress"
+//   public/playground-plugins/ TypedPress's shared plugins as zips, for "Run in WordPress"
 //
 // All of it is git-ignored. Run `bun scripts/build.mjs` after changing browser/ or examples/;
 // `typedpress dev` rebuilds the pages itself. Build the compiler wasm and showcase zips first
@@ -17,16 +17,16 @@ import { generateAiAssets } from "./generate-ai-assets.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const site = join(here, "..");
 const out = join(site, "public");
+const buildDir = join(site, ".build");
+const wasm = join(buildDir, "compiler.wasm");
+const zips = join(buildDir, "files", "plugins");
+if (!existsSync(wasm) || !existsSync(zips)) throw new Error("www/.build has no compiler.wasm or files/plugins; run `npm run build` in www/");
 rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, "playground-plugins"), { recursive: true });
 
 const sources = Bun.spawnSync(["node", join(here, "sources.mjs")]);
 if (sources.exitCode !== 0) throw new Error(`sources.mjs failed:\n${sources.stderr.toString()}`);
 
-const buildDir = join(site, ".build");
-const wasm = join(buildDir, "compiler.wasm");
-const zips = join(buildDir, "files", "plugins");
-if (!existsSync(wasm) || !existsSync(zips)) throw new Error("www/.build has no compiler.wasm or files/plugins; run `npm run wasm && npm run showcase` in www/");
 const runData = Bun.spawnSync(["node", join(here, "run-data.ts")], { cwd: site });
 if (runData.exitCode !== 0) throw new Error(`run-data.ts failed:\n${runData.stderr.toString()}`);
 writeFileSync(join(out, "play-data.json"), runData.stdout);
@@ -72,7 +72,7 @@ writeFileSync(join(out, "third-party-licenses.txt"), `This site renders code, fi
 
 const aiStats = generateAiAssets();
 let ghStars = { repo: "spacefast/spacepress", public: false, stars: null };
-try {
+if (process.env.WWW_FETCH_GITHUB_STARS === "1") try {
   const gh = Bun.spawnSync(["gh", "api", "repos/spacefast/spacepress", "--jq", "{public:(.visibility==\"public\"),stars:.stargazers_count}"]);
   if (gh.exitCode === 0) {
     const parsed = JSON.parse(gh.stdout.toString().trim());

@@ -4,39 +4,43 @@
 // Run after `npm run wasm && npm run showcase` in www/.
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { compileFiles, example, sources } from "../lib/examples.ts";
+import { fileURLToPath } from "node:url";
+import { runRequest } from "../lib/blueprint.ts";
+import { compileFiles, sources } from "../lib/examples.ts";
 import { platformVersions } from "../lib/platform.ts";
-import { exampleRun, isWritten, ledger, migrationFiles } from "../lib/showcase.ts";
+import { exampleRun, isWritten, ledger, showcaseRoot } from "../lib/showcase.ts";
 import { siteExamples } from "../lib/site-examples.ts";
 
-const here = path.dirname(new URL(import.meta.url).pathname);
+const here = path.dirname(fileURLToPath(import.meta.url));
 const examples: Record<string, unknown> = {};
 
-// The hero: built once by hand (`typedpress build` in a copy), so its migration ledger and plugin lock
-// are committed beside it like any example's.
+// The hero has no committed migrations. Compile its original schema to get the baseline ledger
+// so the first edit in the browser adds a migration to it.
 {
   const dir = path.join(here, "../examples/_hero");
   const files = sources(dir);
   delete files["seed.php"];
-  const { check, output } = await compileFiles("tasks", files);
-  if (!output) throw new Error(`examples/_hero does not compile:\n${check.diagnostics.map((d) => `${d.location?.file}:${d.location?.line}: ${d.message}`).join("\n")}`);
+  const history = ledger(dir);
+  const output = await compileFiles(runRequest("tasks", files, history));
+  Object.assign(history.files, Object.fromEntries(output.migrations));
   const lock = JSON.parse(readFileSync(path.join(dir, "tp/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
   examples.tasks = {
     title: "Tasks",
     summary: "A whole app: a table, two actions, a page, and a live list you can tick and add to.",
     files,
     shown: ["tp/schema.ts", "tp/app/page.tsx", "tp/components/TaskList.tsx", "typedpress.config.ts"],
-    run: { lock: lock.plugins.map(({ slug, version }) => ({ slug, version })), landing: "/", seed: readFileSync(path.join(dir, "seed.php"), "utf8"), syncSeed: {}, appPages: true, schemaPhp: output.schemaPhp, ledger: ledger(dir) },
+    run: { lock: lock.plugins.map(({ slug, version }) => ({ slug, version })), landing: "/", seed: readFileSync(path.join(dir, "seed.php"), "utf8"), syncSeed: {}, appPages: true, schemaPhp: output.schemaPhp, ledger: history },
   };
 }
 
 // This site itself: the same source that is serving the page, so a reader can change it and see
-// what it compiles to. The docs and the first post go with it as content.
+// what it compiles to. Leave out public/, which contains binary build assets.
 {
   const dir = path.join(here, "..");
-  const files = Object.fromEntries(Object.entries(sources(dir)).filter(([file]) => /^(typedpress\.config\.ts|tsconfig\.json|tp\/)/.test(file)));
-  const { check, output } = await compileFiles("typedpress-site", files);
-  if (!output) throw new Error(`the site does not compile in the browser compiler:\n${check.diagnostics.map((d) => `${d.location?.file}:${d.location?.line}: ${d.message}`).join("\n")}`);
+  const files = sources(dir, ["typedpress.config.ts", "tsconfig.json", "tp"]);
+  const history = ledger(dir, false);
+  const output = await compileFiles(runRequest("typedpress-site", files, history));
+  Object.assign(history.files, Object.fromEntries(output.migrations));
   const lock = JSON.parse(readFileSync(path.join(dir, "tp/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
   const shown = Object.keys(files).filter((file) => isWritten(file) && file !== "tp/data/sources.ts" && file !== "tsconfig.json");
   examples.website = {
@@ -44,17 +48,18 @@ const examples: Record<string, unknown> = {};
     summary: "The official SpacePress site: its schema, server actions, background jobs, Markdown-synced docs & blog, and TSX pages.",
     files,
     shown,
-    run: { lock: lock.plugins.map(({ slug, version }) => ({ slug, version })), landing: "/examples", seed: "", syncSeed: {}, appPages: true, schemaPhp: output.schemaPhp, ledger: { files: migrationFiles(dir), public: {} } },
+    run: { lock: lock.plugins.map(({ slug, version }) => ({ slug, version })), landing: "/examples", seed: "", syncSeed: {}, appPages: true, schemaPhp: output.schemaPhp, ledger: history },
   };
 }
 
-for (const { name, title, summary } of siteExamples) {
-  const { files } = await example(name);
+for (const entry of siteExamples) {
+  const { name, title, summary } = entry;
+  const files = sources(path.join(showcaseRoot, name));
   // Shown for editing: what a developer writes. Installed packages still go to the compiler.
   const shown = Object.keys(files).filter((file) => !file.startsWith("node_modules/") && isWritten(file) && !/^(package\.json|build-client\.mjs)$/.test(file));
-  examples[name] = { title, summary, files, shown, run: await exampleRun(name) };
+  examples[name] = { title, summary, files, shown, run: await exampleRun(entry, files) };
 }
 const { php, sqlite } = platformVersions();
 // Where WordPress Playground fetches SpacePress's shared plugin zips (playground-plugins/<slug>.zip).
-const plugins = process.env.PLUGINS_URL ?? "https://spacepress.dev";
+const plugins = new URL(process.env.PLUGINS_URL ?? "https://spacepress.dev").origin;
 process.stdout.write(JSON.stringify({ platform: { php, sqlite }, plugins, examples }));

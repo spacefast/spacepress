@@ -27,13 +27,13 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    - Confirm visitor-facing reads import kinds from `"typedpress:db"` (which enforces `.access()` rules) instead of bypassing them with trusted `db` from `"typedpress"`.
    - Confirm custom `route.ts` handlers export an explicit `guard` (or verify webhook signatures before mutating data).
 
-3. Audit every `action()` and `job()`:
+3. Audit every `query()`, `mutation()`, and `job()`:
    - Confirm `access` matches the least-privileged role needed and never trusts a client-supplied `userId` for ownership checks.
-   - Annotate non-mutating actions with `readonly: true` and destructive ones with `destructive: true` for WordPress Abilities safety checks, or set `agents: false` on internal-only operations.
+   - Use `query()` for read-only operations. Set `destructive: true` on mutations that delete or overwrite data. Set `agents: false` to keep internal operations off the MCP endpoint.
 
    ```ts
    // tp/security-example.ts
-   import { table, text, integer, action, db, HttpError } from "typedpress";
+   import { table, text, integer, mutation, db, HttpError } from "typedpress";
 
    export const privateNotes = table({
      ownerId: integer(),
@@ -48,17 +48,15 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
      },
    });
 
-   export const deletePrivateNote = action({
-     input: { id: integer() },
-     access: "authenticated",
-     destructive: true,
-     async handler({ id }, { user }) {
+   export const deletePrivateNote = mutation(
+     { access: "authenticated", destructive: true },
+     async ({ id }: { id: number }, { user }) => {
        if (!user) throw new HttpError(401, "unauthorized", "Sign in required");
        const [row] = await db.delete(privateNotes).where({ id, ownerId: user.id }).returning();
        if (!row) throw new HttpError(404, "not_found", "Note not found");
        return { deleted: row.id };
      },
-   });
+   );
    ```
 
 4. Check `defineConfig({ sealed: true })` and `tp/_generated/wp-plugins.lock.json` for production deployments that require locked third-party plugins.

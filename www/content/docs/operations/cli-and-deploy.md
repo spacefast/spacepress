@@ -34,3 +34,5 @@ SpacePress runs anywhere WordPress 7.1+ and PHP 8.2+ run:
 ## Sealed mode & plugin lockfile
 
 Declare third-party WordPress plugins in `defineConfig({ plugins: { ... }, sealed: true })`. Exact versions and SHA-256 checksums are locked in `tp/_generated/wp-plugins.lock.json`, and sealed mode refuses activation of undeclared plugins.
+
+[Gutenberg](https://wordpress.org/plugins/gutenberg/) is optional. Add `gutenberg: "24.4.1"` under `plugins` to install the supported version. The allowed range is 24.4.1 up to, but excluding, 24.4.2. [Enable experimental collaboration in SpacePress Admin](/docs/operations/admin#enable-experimental-collaborative-editing).

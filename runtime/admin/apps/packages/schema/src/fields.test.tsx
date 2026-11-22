@@ -21,16 +21,16 @@ test('native repeater edits retain provenance, JSON row identity and returned-fi
 			payload: { saved: true },
 			entries: [{ open: 'Returned', metadata: { owner: 'first' } }, { metadata: { owner: 'second' } }, {}],
 		}));
-		const values = fromNative(collection, record, objects);
+		const values = fromNative(collection, record);
 		const drafts = useFieldDrafts({ fields, values, objects });
 		return <>
 			{shown && <Fields fields={fields} values={values} objects={objects}
 				jsonDrafts={drafts}
-				onChange={(key, value) => setRecord(toNative(collection, { ...values, [key]: value }, objects))} />}
+				onChange={(key, value) => setRecord(toNative(collection, { ...values, [key]: value }))} />}
 			<button disabled={!drafts.valid}>Save</button>
 			<button onClick={() => setShown(!shown)}>Toggle fields</button>
-			<button onClick={() => setRecord(toNative(collection, { ...values, entries: [] }, objects))}>External remove rows</button>
-			<button onClick={() => setRecord(toNative(collection, { ...values, payload: { restored: true } }, objects))}>External restore payload</button>
+			<button onClick={() => setRecord(toNative(collection, { ...values, entries: [] }))}>External remove rows</button>
+			<button onClick={() => setRecord(toNative(collection, { ...values, payload: { restored: true } }))}>External restore payload</button>
 			<output>{JSON.stringify(values)}</output>
 		</>;
 	}

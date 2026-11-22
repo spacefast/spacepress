@@ -71,6 +71,7 @@ final class Plugin
             });
         }
         CoreAccess::register();
+        Coediting::register();
         AgentScope::register();
         $this->registerEditorSave();
         if (($this->schema->auth()['collection'] ?? null) !== null) {

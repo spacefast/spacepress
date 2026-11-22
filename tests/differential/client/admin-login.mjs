@@ -15,8 +15,36 @@ const browser = await chromium.launch({ executablePath });
 const out = {};
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const errors = [];
+  const gate = `${url}/__tp_profile_ready_gate.js`;
+  const origin = new URL(url).origin;
+  let abandoningProfile;
+  const isSiteScriptOrDocument = (request) => new URL(request.url()).origin === origin && ["script", "document"].includes(request.resourceType());
+  page.on("pageerror", (error) => errors.push({ url: page.url(), message: error.message, stack: error.stack }));
+  page.on("requestfailed", (request) => {
+    const failure = request.failure().errorText;
+    // Leaving the gated profile deliberately cancels scripts still loading in that frame.
+    if (failure === "net::ERR_ABORTED" && request.resourceType() === "script" &&
+        (request.url() === gate || (abandoningProfile && request.frame() === abandoningProfile))) return;
+    if (isSiteScriptOrDocument(request)) errors.push({ url: request.url(), failure });
+  });
+  page.on("response", (response) => {
+    if (response.status() >= 400 && isSiteScriptOrDocument(response.request())) {
+      errors.push({ url: response.url(), status: response.status() });
+    }
+  });
+  const frameElement = page.locator('iframe[title="Classic admin page"]');
+  const classicFrame = async () => (await frameElement.elementHandle()).contentFrame();
+  const waitForReady = async (frame) => {
+    await frame.waitForLoadState("load");
+    await frame.evaluate(() => new Promise((resolve) => {
+      if (window.jQuery) window.jQuery(() => resolve());
+      else resolve();
+    }));
+  };
   // Signed out, wp-admin sends the visitor to the login screen with the way back.
   await page.goto(`${url}/wp-admin/`);
+  await waitForReady(page.mainFrame());
   out.signedOut = { at: new URL(page.url()).pathname, redirectTo: new URL(page.url()).searchParams.get("redirect_to") !== null };
   out.loginForm = await page.locator("#loginform").count();
 
@@ -44,8 +72,66 @@ try {
   await page.goto(`${url}/wp-admin/edit.php?post_type=page`);
   // The slug is encoded twice in the route (lib/classic-route.php), and the frame opens it with its query.
   out.withoutDeveloperMode.pages = decodeURIComponent(decodeURIComponent(route() ?? ""));
-  await page.waitForFunction(() => document.querySelector("iframe")?.getAttribute("src")?.includes("post_type=page"));
-  out.withoutDeveloperMode.framed = new URL(await page.locator("iframe").getAttribute("src"), url).pathname + new URL(await page.locator("iframe").getAttribute("src"), url).search;
+  const framedPage = await classicFrame();
+  await framedPage.locator("table.wp-list-table").waitFor();
+  await waitForReady(framedPage);
+  const framedUrl = new URL(framedPage.url());
+  out.withoutDeveloperMode.framed = framedUrl.pathname + framedUrl.search;
+
+  await page.goto(`${url}/wp-admin/profile.php`);
+  const profile = await classicFrame();
+  await profile.locator("#your-profile").waitFor();
+  await waitForReady(profile);
+  out.withoutDeveloperMode.profileMenuHidden = await profile.locator("#adminmenu").isHidden();
+  out.withoutDeveloperMode.profileBeforeUnload = await profile.evaluate(() => {
+    let ran = false;
+    window.addEventListener("beforeunload", () => { ran = true; }, { once: true });
+    window.dispatchEvent(new Event("beforeunload"));
+    return ran;
+  });
+
+  // Hold the parser open after WordPress's profile script registers beforeunload.
+  // This creates the same window for a fast navigation every time.
+  const unloadProbe = `<script>
+    window.addEventListener("beforeunload", () => {
+      window.frameElement.dataset.beforeReadyUnload = document.readyState;
+    }, { capture: true });
+  </script>`;
+  let releaseGate;
+  const gateReleased = new Promise((resolve) => { releaseGate = resolve; });
+  const slowProfile = (requestUrl) => requestUrl.pathname === "/wp-admin/profile.php" && requestUrl.searchParams.has("fast-navigation");
+  await page.route(slowProfile, async (route) => {
+    if (!route.request().frame().parentFrame()) return route.fallback();
+    const response = await route.fetch();
+    // Register the probe before the runtime guard so it can record the outgoing document's state.
+    const body = (await response.text())
+      .replace("<head>", `<head>${unloadProbe}`)
+      .replace("</body>", `<script src="${gate}"></script></body>`);
+    await route.fulfill({ response, body });
+  });
+  await page.route(gate, async (route) => {
+    await gateReleased;
+    await route.fulfill({ contentType: "text/javascript", body: "" });
+  });
+  try {
+    const [gatedScript] = await Promise.all([
+      page.waitForRequest(gate),
+      page.goto(`${url}/wp-admin/profile.php?fast-navigation`, { waitUntil: "commit" }),
+    ]);
+    const frame = gatedScript.frame();
+    await frame.waitForFunction(() => document.readyState === "loading" && typeof window.generatePassword === "function");
+    abandoningProfile = frame;
+    await frame.goto(`${url}/wp-admin/edit.php?post_type=page`);
+    abandoningProfile = undefined;
+    await page.waitForLoadState("load");
+    await page.waitForURL((at) => (at.searchParams.get("p") ?? at.pathname).includes("edit.php"));
+    out.fastNavigation = await frameElement.getAttribute("data-before-ready-unload");
+  } finally {
+    abandoningProfile = undefined;
+    releaseGate();
+    await page.unroute(slowProfile);
+    await page.unroute(gate);
+  }
   // Developer mode on (the user's own setting, saved through core's user route): classic wp-admin opens as itself.
   out.developerMode = await page.evaluate(async () => {
     const nonce = await (await fetch("/wp-admin/admin-ajax.php?action=rest-nonce", { credentials: "same-origin" })).text();
@@ -74,8 +160,11 @@ try {
   // Signing out ends the session: wp-admin is the login screen again.
   const logout = await page.locator("#wp-admin-bar-logout a").getAttribute("href");
   await page.goto(logout);
+  await waitForReady(page.mainFrame());
   await page.goto(`${url}/wp-admin/`);
+  await waitForReady(page.mainFrame());
   out.signedOutAgain = new URL(page.url()).pathname;
+  out.errors = errors;
   process.stdout.write(JSON.stringify(out));
 } finally {
   await browser.close();

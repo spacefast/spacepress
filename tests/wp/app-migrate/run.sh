@@ -26,6 +26,8 @@ docker compose -p "$TP_WP_PROJECT" cp "$here/seed.php" cli:/tmp/typedpress-app-m
 "$wp/harness.sh" up --wp-content "$work/app/tp/dist/wp-content" > "$work/harness.json"
 TP_WP_HARNESS="$work/harness.json" TP_APP_ADOPTION_BEFORE="$work/before.json" \
   node --test "$here/adoption.test.ts"
+docker compose -p "$TP_WP_PROJECT" cp "$here/storage.php" cli:/tmp/typedpress-app-migrate-storage.php >/dev/null 2>&1
+"$wp/harness.sh" wp eval-file /tmp/typedpress-app-migrate-storage.php
 # Keep the original adoption requirements while building a later unique-index removal.
 mkdir "$work/indexes"
 cp "$here/indexes.config.ts" "$work/indexes/typedpress.config.ts"

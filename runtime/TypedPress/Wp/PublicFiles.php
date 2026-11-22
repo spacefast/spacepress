@@ -174,6 +174,12 @@ final class PublicFiles
     /** Sync root symlinks when the manifest, source, root, or literal routes changed (or removals are pending). */
     private static function maybeSyncSymlinks(Plugin $plugin): void
     {
+        // No public files and no option recorded: nothing to link or clean up. The option is always
+        // written autoloaded, so its absence is known from the autoloaded options without a query
+        // (get_option() on a missing option costs a SELECT on every request without a persistent cache).
+        if (self::manifest($plugin) === [] && !array_key_exists(self::SYMLINKS_OPTION, wp_load_alloptions())) {
+            return;
+        }
         $root = self::documentRoot();
         if ($root === null) {
             return;
@@ -191,9 +197,6 @@ final class PublicFiles
                 && empty($stored['pending'])) {
                 return;
             }
-        } elseif (self::manifest($plugin) === []) {
-            // No public files and nothing recorded to clean up: an app without `public/` records nothing.
-            return;
         }
         self::syncSymlinks($plugin);
     }

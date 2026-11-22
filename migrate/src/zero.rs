@@ -376,7 +376,7 @@ fn convert(
             refuse_pages(&*fs, &root.join(dir), &format!("/{dir}"), &mut report.errors)?;
         }
     }
-    let (converted, page_sources) = convert_pages(&*fs, &root, report, &mut sources)?;
+    let converted = convert_pages(&*fs, &root, report, &mut sources)?;
     // 0.8 served `client/` as a single-page app when the capsule had no pages.
     let client_app = if converted.is_empty() && !has_pages(&*fs, &root) {
         client_entry(&*fs, &root)?
@@ -470,7 +470,12 @@ fn convert(
         PathBuf::from("typedpress.config.ts"),
         "export { default } from \"./tp/server/index\";\n".into(),
     );
-    let page_files: BTreeMap<String, String> = converted;
+    let has_layout = converted.contains_key(Path::new(pages::APP).join("layout.tsx").as_path());
+    let mut page_origins = BTreeMap::new();
+    for (path, page) in converted {
+        page_origins.insert(path.clone(), page.origin);
+        sources.insert(path, page.source);
+    }
     // Fail closed: whatever 0.8 served that the candidate does not reproduce is an error, so a
     // candidate without errors can replace the published version. Static files v2 serves
     // unchanged travel in public/.
@@ -484,7 +489,10 @@ fn convert(
         });
     // A page or client file already refused with its own reason isn't reported twice.
     let reported: BTreeSet<String> = report.errors.iter().map(|e| e.pointer_file()).collect();
-    let mut handled: Vec<String> = page_sources.clone();
+    let mut handled: Vec<String> = page_origins
+        .values()
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .collect();
     handled.extend(reported.iter().cloned());
     // The 0.8 client entry wherever `runtime.client` puts it, pages or not.
     let resolved_client = client_entry(&*fs, &root)?;
@@ -495,7 +503,7 @@ fn convert(
         &handled,
         resolved_client.as_deref(),
         // The client is reproduced as the pages layout, or converted to public/ by `client`.
-        page_files.contains_key(&format!("{}/layout.tsx", pages::APP)) || client_app.is_some(),
+        has_layout || client_app.is_some(),
         client_app.is_some(),
         declares_posts,
         &client_files.keys().cloned().collect::<Vec<_>>(),
@@ -563,6 +571,17 @@ fn convert(
         return Ok(());
     }
     let built = crate::project::check(&sources).map_err(|mut error| {
+        if let Some((path, _, _)) = error.location.as_deref() {
+            let path = Path::new(path);
+            if let Some(origin) = page_origins.get(path).or_else(|| {
+                page_origins
+                    .iter()
+                    .find(|(page, _)| page.starts_with(path))
+                    .map(|(_, origin)| origin)
+            }) {
+                return fail(&pages::at(origin), format!("{}: {}", omitted::PAGES, error.reason));
+            }
+        }
         error.reason = format!("generated application refused by v2 compiler: {}", error.reason);
         error
     })?;
@@ -575,9 +594,6 @@ fn convert(
     report.adoption_sql = Some(sql.clone());
     for (path, text) in sources {
         files.insert(path.to_string_lossy().replace('\\', "/"), text);
-    }
-    for (path, text) in page_files {
-        files.insert(path, text);
     }
     for (path, text) in client_files {
         files.insert(path, text);
@@ -865,19 +881,22 @@ fn strip_jsonc(text: &str) -> String {
     re.replace_all(&out, "$1").into_owned()
 }
 
+struct ConvertedPage {
+    origin: PathBuf,
+    source: String,
+}
+
 /// Static 0.8 pages and the client `Layout` become v2 TSX pages. Interactive ones are refused.
 fn convert_pages(
     fs: &dyn Fs,
     root: &Path,
     report: &mut Report,
     sources: &mut BTreeMap<PathBuf, String>,
-) -> Result<(BTreeMap<String, String>, Vec<String>), Failure> {
+) -> Result<BTreeMap<PathBuf, ConvertedPage>, Failure> {
     let mut out = BTreeMap::new();
-    // The 0.8 page files that became v2 pages, capsule-relative.
-    let mut converted = vec![];
     let pages_dir = root.join("pages");
     if !fs.exists(&pages_dir) {
-        return Ok((out, converted));
+        return Ok(out);
     }
     let mut stack = vec![pages_dir];
     let mut files = vec![];
@@ -945,8 +964,16 @@ fn convert_pages(
                     ));
                     continue;
                 }
-                for import in &page.imports {
-                    collect_sources(fs, root, Path::new(import), sources, &mut BTreeSet::new())?;
+                let mut seen = BTreeSet::new();
+                if let Err(error) = page
+                    .imports
+                    .iter()
+                    .try_for_each(|import| collect_sources(fs, root, Path::new(import), sources, &mut seen))
+                {
+                    report
+                        .errors
+                        .push(fail(&at, format!("{}: {}", omitted::PAGES, error.reason)));
+                    continue;
                 }
                 report.entries.push(crate::config::entry(
                     &at,
@@ -956,8 +983,16 @@ fn convert_pages(
                         page.file
                     ),
                 ));
-                converted.push(relative.to_string_lossy().replace('\\', "/"));
-                if out.insert(page.file.clone(), page.source).is_some() {
+                if out
+                    .insert(
+                        PathBuf::from(&page.file),
+                        ConvertedPage {
+                            origin: relative,
+                            source: page.source,
+                        },
+                    )
+                    .is_some()
+                {
                     report
                         .errors
                         .push(fail(&at, format!("two 0.8 pages map to {}", page.file)));
@@ -970,19 +1005,25 @@ fn convert_pages(
     if !out.is_empty() && fs.is_file(&client) {
         let text = fs.read_to_string(&client).map_err(io)?;
         match pages::layout(&text, "/client/index.tsx") {
-            Ok(Some(layout)) => {
+            Ok(Some(source)) => {
                 report.entries.push(crate::config::entry(
                     "/client/index.tsx",
                     "mapped",
                     "Layout becomes tp/app/layout.tsx",
                 ));
-                out.insert(format!("{}/layout.tsx", pages::APP), layout);
+                out.insert(
+                    Path::new(pages::APP).join("layout.tsx"),
+                    ConvertedPage {
+                        origin: PathBuf::from("client/index.tsx"),
+                        source,
+                    },
+                );
             }
             Ok(None) => {}
             Err(e) => report.errors.push(e),
         }
     }
-    Ok((out, converted))
+    Ok(out)
 }
 
 fn refuse_pages(fs: &dyn Fs, path: &Path, at: &str, errors: &mut Vec<Failure>) -> Result<(), Failure> {

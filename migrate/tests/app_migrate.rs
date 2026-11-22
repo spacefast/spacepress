@@ -1582,6 +1582,67 @@ fn env_and_log_services_map_to_v2_builtins() {
 }
 
 #[test]
+fn unawaited_context_promises_returned_in_try_are_refused() {
+    let temp = tempfile::tempdir().unwrap();
+    for (case, call, pointer) in [
+        ("helper", "boom(ctx)", "/endpoints/e/ctx"),
+        (
+            "db",
+            "ctx.db.notes.insert({ body: \"x\" })",
+            "/endpoints/e/ctx/db/notes",
+        ),
+        (
+            "db-conditional",
+            "ctx.db.notes.insert({ body: \"x\" })",
+            "/endpoints/e/ctx/db/notes",
+        ),
+        (
+            "mail",
+            "ctx.email.send({ to: \"a@example.com\", subject: \"test\", text: \"x\" })",
+            "/endpoints/e/ctx/email",
+        ),
+        (
+            "gravatar",
+            "ctx.gravatar.profile(\"a@example.com\")",
+            "/endpoints/e/ctx/gravatar",
+        ),
+        ("crypto", "ctx.crypto.sha256(\"x\")", "/endpoints/e/ctx/crypto"),
+    ] {
+        let root = temp.path().join(case);
+        project(&root, "{}");
+        let returned = if case == "db-conditional" {
+            format!("req.method === 'POST' ? {call} : text('other')")
+        } else {
+            call.to_string()
+        };
+        let source = format!(
+            "import {{ capsule, endpoint, string, table, text }} from '@spacefast/zero/server';\n\
+                 async function boom(ctx: any) {{ ctx.log.info('boom'); throw new Error('boom'); }}\n\
+                 export default capsule({{ schema: {{ notes: table({{ body: string() }}) }}, endpoints: {{\n\
+                   e: endpoint({{ method: 'POST', path: '/e' }}, async (ctx, req) => {{\n\
+                     try {{ return {returned}; }} catch {{ return text('caught'); }}\n\
+                   }})\n\
+                 }} }});\n"
+        );
+        let entry = root.join("server/index.ts");
+        std::fs::write(&entry, &source).unwrap();
+        let out = temp.path().join(format!("{case}-out"));
+        let (ok, report) = migrate(&root, &out, &[]);
+        assert!(!ok, "{case}: {report:#}");
+        assert!(!out.exists(), "{case}");
+        let error = &report["errors"][0];
+        assert_eq!(error["code"], "Z08_PROTECTED_PROMISE_RETURN", "{case}: {error}");
+        assert_eq!(error["pointer"], pointer, "{case}: {error}");
+        assert_eq!(error["file"], "server/index.ts", "{case}: {error}");
+        assert_eq!(error["line"], 5, "{case}: {error}");
+
+        std::fs::write(entry, source.replace(call, &format!("await {call}"))).unwrap();
+        let (ok, report) = migrate(&root, &out, &[]);
+        assert!(ok, "{case} with explicit await: {report:#}");
+    }
+}
+
+#[test]
 fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     let temp = tempfile::tempdir().unwrap();
     let out = temp.path().join("site");
@@ -1606,6 +1667,7 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
         pricing.contains("import { plans } from '../../shared/plans';"),
         "a single-quoted relative import moves with the page, one folder down, into tp/: {pricing}"
     );
+    build(&out);
     // Only parsed import declarations move, side-effect imports included; a string, a comment or
     // JSX text that merely reads like one keeps its exact bytes.
     let site = temp.path().join("site-src");
@@ -1643,6 +1705,7 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     for decoy in decoys {
         assert!(about.contains(decoy), "rewrote non-import text {decoy:?}: {about}");
     }
+    build(&moved);
     // Interactive starters keep a pointer per page saying what to port.
     let (ok, refused) = migrate(
         &corpus("starter-todo"),
@@ -1663,6 +1726,29 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
         reason.contains("live queries") && reason.contains("mutations") && reason.contains("docs/pages.md"),
         "{reason}"
     );
+}
+
+#[test]
+fn static_page_the_compiler_refuses_is_located_before_writing() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("source");
+    project(&root, r#"{ name: "site" }"#);
+    std::fs::create_dir_all(root.join("pages")).unwrap();
+    std::fs::write(
+        root.join("pages/about.tsx"),
+        "function* titles() { yield 'About'; }\nexport default function About() { return <h1>{[...titles()][0]}</h1>; }\n",
+    )
+    .unwrap();
+    let out = temp.path().join("candidate");
+    let (ok, report) = migrate(&root, &out, &[]);
+    assert!(!ok, "{report:#}");
+    assert!(!out.exists());
+    let error = &report["errors"][0];
+    assert_eq!(error["code"], "Z08_OMITTED_PAGES", "{error}");
+    assert_eq!(error["pointer"], "/pages/about.tsx", "{error}");
+    assert_eq!(error["file"], "pages/about.tsx", "{error}");
+    assert_eq!(error["line"], 1, "{error}");
+    assert!(error["reason"].as_str().unwrap().contains("generators"), "{error}");
 }
 
 #[test]
@@ -1748,6 +1834,7 @@ fn query_names_map_one_to_one_and_nested_pages_keep_imports() {
             .contains("from \"../data\"")
     );
     assert!(out.join("tp/app/docs/data.ts").is_file());
+    build(&out);
 }
 
 /// 0.8 kept handlers and tables in separate namespaces; v2 has one (docs/decisions/

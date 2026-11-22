@@ -14,7 +14,7 @@ If a plugin hides a collection's taxonomy from core REST, SpacePress uses its ow
 
 ## Enable experimental collaborative editing
 
-SpacePress Admin integrates Gutenberg 24.4.1's experimental collaborative editing on WordPress 7.2-beta5. Eligible editors can work on a document's title, blocks, and typed fields in the **Fields** panel together. Gutenberg supplies Yjs, cursors, presence, and HTTP sync. SpacePress handles saves, access checks, hooks, staged versions, and revisions.
+SpacePress Admin integrates Gutenberg 24.4.1's experimental collaborative editing on WordPress 7.1. Eligible editors can work on a document's title, blocks, and typed fields in the **Fields** panel together. Gutenberg supplies Yjs, cursors, presence, and HTTP sync. SpacePress handles saves, access checks, hooks, staged versions, and revisions.
 
 1. Add `gutenberg: "24.4.1"` to `plugins` in `typedpress.config.ts`.
 2. Build and install the artifact. Activate Gutenberg alongside the other plugins in the manifest.

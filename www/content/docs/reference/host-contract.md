@@ -74,6 +74,10 @@ The app API is `/wp-json/typedpress/v1`; actions are `POST /wp-json/typedpress/v
 | `tp_identity_rest_cookie_auth` | filter | lets the identity session cookie authenticate the app's REST API (a host serving its own frontend) |
 | `tp_fetch_allow_address` | filter | allows an outgoing `fetch` to an address TypedPress denies by default |
 | `tp_runtime_loaded` | action | the runtime has booted; register commands and seams after it |
+| `sp_connectors_call` | filter | invokes a host-managed connector for `connectors.call(role, tool, args?)`; credentials remain owned by the host |
+| `sp_auth_prefix` | filter | overrides the OIDC issuer and callback route prefix (default `/identity`, or `SP_AUTH_PREFIX` constant); browser sign-in stays on `wp-login.php` |
+| `sp_api_namespace` | filter | overrides the app REST API namespace under `/wp-json/` (default `typedpress/v1`, or `SP_API_NAMESPACE` constant) |
+| `sp_identity_api_namespace` | filter | overrides the identity REST API namespace under `/wp-json/` (default `typedpress-identity/v1`, or `SP_IDENTITY_API_NAMESPACE` constant) |
 
 ### Live updates
 
@@ -130,7 +134,11 @@ the ordinary 35-character limit shown below.
     "tp_identity_providers",
     "tp_identity_rest_cookie_auth",
     "tp_fetch_allow_address",
-    "tp_runtime_loaded"
+    "tp_runtime_loaded",
+    "sp_connectors_call",
+    "sp_auth_prefix",
+    "sp_api_namespace",
+    "sp_identity_api_namespace"
   ],
   "mount": "TypedPress\\Loader\\Loader::load",
   "jobsCommand": "wp typedpress jobs tick",

@@ -36,15 +36,31 @@ use TypedPress\Js;
  */
 final class Facade
 {
-    /** The REST namespace the API is served under. */
+    /** The default REST namespace the API is served under. */
     public const NAMESPACE = 'typedpress/v1';
-    /** The API's path on a site with WordPress's default REST prefix (`rest_url()` gives the real one). */
+    /** The API's default path on a site with WordPress's default REST prefix (`rest_url()` gives the real one). */
     public const PREFIX = '/wp-json/' . self::NAMESPACE;
+
+    /** Active REST namespace (hosts may override via SP_API_NAMESPACE or `sp_api_namespace`). */
+    public static function apiNamespace(): string
+    {
+        $ns = defined('SP_API_NAMESPACE') && is_string(SP_API_NAMESPACE) && SP_API_NAMESPACE !== ''
+            ? SP_API_NAMESPACE
+            : self::NAMESPACE;
+        if (function_exists('apply_filters')) {
+            $filtered = apply_filters('sp_api_namespace', $ns);
+            if (is_string($filtered) && $filtered !== '') {
+                $ns = $filtered;
+            }
+        }
+
+        return trim($ns, '/');
+    }
 
     /** The absolute URL of a facade path (`/media/42`), as WordPress's REST URL. */
     public static function url(string $path = ''): string
     {
-        return rest_url(self::NAMESPACE . $path);
+        return rest_url(self::apiNamespace() . $path);
     }
 
     /**
@@ -105,9 +121,10 @@ final class Facade
                 // Each path is checked by what it dispatches to: core's route, the ability's own check.
                 'permission_callback' => '__return_true',
             ];
-            register_rest_route(self::NAMESPACE, '/(?P<path>.+)', $handler);
+            $namespace = self::apiNamespace();
+            register_rest_route($namespace, '/(?P<path>.+)', $handler);
             // The namespace's own path is the app's schema, in place of core's namespace index.
-            rest_get_server()->register_route(self::NAMESPACE, '/' . self::NAMESPACE, [$handler], true);
+            rest_get_server()->register_route($namespace, '/' . $namespace, [$handler], true);
         });
         add_filter('request', [self::class, 'decoded']);
         add_filter('rest_authentication_errors', [self::class, 'authenticate'], 1); // after AgentScope::booted()
@@ -787,7 +804,7 @@ final class Facade
     /** The API path of a REST route ('' for the namespace itself), or null when the route isn't the API's. */
     public static function below(string $route): ?string
     {
-        $prefix = '/' . self::NAMESPACE;
+        $prefix = '/' . self::apiNamespace();
         if (strcasecmp($route, $prefix) === 0) {
             return '';
         }

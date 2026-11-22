@@ -47,3 +47,7 @@ export const orders = order();
 ## Optimistic cart client & React hooks
 
 Whenever a project exports `store()`, `typedpress build` emits `commerce.ts`, `cart-store.ts`, and `cart-react.ts` in `tp/_generated/client/`. Call `createCartHooks(React)` to obtain `useCart()` and `useCartCount()` with optimistic item quantity updates and automatic rollback on failure.
+
+If a token cart checkout succeeds and the cart refresh fails, `checkout()` still returns the order. The store sets `stale` until WooCommerce returns the current cart.
+
+A checkout link can import a cart into an empty guest session or refresh an unedited copy of the same cart. Signed-in shoppers and guests with other items keep their existing carts.

@@ -6743,6 +6743,15 @@ fn pages_render_in_block_templates() {
     }
     assert_eq!(seen["home list"], true, "{seen}");
     assert_eq!(
+        seen["home query"],
+        serde_json::json!({
+            "fields": "all",
+            "cache_results": true,
+            "update_post_term_cache": true,
+            "update_post_meta_cache": true
+        })
+    );
+    assert_eq!(
         (&seen["notes"]["title"], &seen["notes"]["theme header"]),
         (&json("Notes · Field Notes"), &json(1)),
         "{seen}"

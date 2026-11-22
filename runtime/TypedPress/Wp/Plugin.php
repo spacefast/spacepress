@@ -592,7 +592,9 @@ final class Plugin
         delete_option($this->refusalOption());
         IdentityBridge::provision();
         $this->backfillMembers();
-        update_option($this->schemaOption(), $this->schemaHash(), false);
+        $schemaHash = $this->schemaHash();
+        NativePosts::rememberPostTypes($this->schema, $schemaHash);
+        update_option($this->schemaOption(), $schemaHash, false);
 
         return $applied;
     }

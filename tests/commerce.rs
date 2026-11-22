@@ -105,11 +105,10 @@ fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
 fn an_app_cannot_declare_an_ability_the_store_adds() {
     let project = tempfile::tempdir().unwrap();
     let config = |exports: &str| {
-        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,product,order,action}} from 'typedpress'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,product,order,mutation}} from 'typedpress'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
         cli("check", project.path())
     };
-    let hijack =
-        "export const completeOrder = action({input:{}, access:'anyone', handler: async () => ({done:true})});";
+    let hijack = "export const completeOrder = mutation({ access:'anyone' }, async () => ({done:true}));";
     for (exports, ability, owner) in [
         (
             format!("export const products = product({{inventory:true}}); export const orders = order(); {hijack}"),
@@ -117,12 +116,12 @@ fn an_app_cannot_declare_an_ability_the_store_adds() {
             "product({ inventory: true })",
         ),
         (
-            "export const products = product({inventory:true}); export const increaseProductStock = action({input:{}, handler: async () => 1});".to_string(),
+            "export const products = product({inventory:true}); export const increaseProductStock = mutation({}, async () => 1);".to_string(),
             "commerce/increase-product-stock",
             "product({ inventory: true })",
         ),
         (
-            "export const storeGet = action({input:{}, handler: async () => 1});".to_string(),
+            "export const storeGet = mutation({}, async () => 1);".to_string(),
             "commerce/store-get",
             "store()",
         ),
@@ -151,10 +150,10 @@ fn an_app_cannot_declare_an_ability_the_store_adds() {
 fn a_taxonomy_cannot_declare_an_ability_twice() {
     let project = tempfile::tempdir().unwrap();
     let config = |exports: &str| {
-        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,taxonomy,action}} from 'typedpress'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,taxonomy,mutation}} from 'typedpress'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
         cli("check", project.path())
     };
-    let action = "export const shelvesGet = action({input:{}, handler: async () => 1});";
+    let action = "export const shelvesGet = mutation({}, async () => 1);";
     success(config("export const shelves = taxonomy({});"));
     success(config(action));
     for (exports, error) in [
@@ -184,60 +183,60 @@ fn actions_that_reach_orders_are_marked_personal() {
     let project = tmp.path();
     std::fs::write(
         project.join("typedpress.config.ts"),
-        r#"import { action, db, defineConfig, integer, boolean, order, product, store } from "typedpress";
+        r#"import { mutation, db, defineConfig, order, product, store } from "typedpress";
 import { abilities } from "php/wordpress";
 export const shop = store({ currency: "EUR", country: "PL" });
 export const products = product({ inventory: true });
 export const orders = order();
 
 // Declared before the actions it reaches: the chain is followed whatever the order.
-export const chainEnd = action({ input: {}, access: "admin", async handler() {
+export const chainEnd = mutation({ access: "admin" }, async () => {
   return await abilities.call("commerce/chain-middle", {});
-} });
-export const chainMiddle = action({ input: {}, access: "admin", async handler() {
+});
+export const chainMiddle = mutation({ access: "admin" }, async () => {
   return await abilities.call("commerce/lists-orders", {});
-} });
-export const readsOrders = action({ input: {}, access: "admin", async handler() {
+});
+export const readsOrders = mutation({ access: "admin" }, async () => {
   return (await db.query.orders.findMany({ limit: 1 })).length;
-} });
-export const listsOrders = action({ input: {}, access: "admin", async handler() {
+});
+export const listsOrders = mutation({ access: "admin" }, async () => {
   return (await abilities.call("commerce/orders-list", {})).rows.length;
-} });
-export const getsOrder = action({ input: { id: integer() }, access: "admin", async handler({ id }) {
+});
+export const getsOrder = mutation({ access: "admin" }, async ({ id }: { id: number }) => {
   return (await abilities.call("commerce/orders-get", { id })).id;
-} });
-export const completesOrder = action({ input: { id: integer() }, access: "admin", async handler({ id }) {
+});
+export const completesOrder = mutation({ access: "admin" }, async ({ id }: { id: number }) => {
   return await abilities.call("commerce/complete-order", { id });
-} });
+});
 async function count() {
   return (await abilities.call("commerce/orders-list", {})).rows.length;
 }
-export const throughHelper = action({ input: {}, access: "admin", async handler() {
+export const throughHelper = mutation({ access: "admin" }, async () => {
   return await count();
-} });
+});
 // Marked from the code, not from one call: the order read is on one branch only.
-export const onOneBranch = action({ input: { orders: boolean() }, access: "admin", async handler(i) {
+export const onOneBranch = mutation({ access: "admin" }, async (i: { orders: boolean }) => {
   if (i.orders) {
     return (await db.query.orders.findMany({ limit: 1 })).length;
   }
   return 0;
-} });
+});
 // Two actions that call each other and reach no order.
-export const ping = action({ input: { n: integer() }, access: "admin", async handler({ n }): Promise<unknown> {
+export const ping = mutation({ access: "admin" }, async ({ n }: { n: number }): Promise<unknown> => {
   return n > 0 ? await abilities.call("commerce/pong", { n: n - 1 }) : 0;
-} });
-export const pong = action({ input: { n: integer() }, access: "admin", async handler({ n }): Promise<unknown> {
+});
+export const pong = mutation({ access: "admin" }, async ({ n }: { n: number }): Promise<unknown> => {
   return n > 0 ? await abilities.call("commerce/ping", { n: n - 1 }) : 0;
-} });
-export const restocks = action({ input: { id: integer() }, access: "admin", async handler({ id }) {
+});
+export const restocks = mutation({ access: "admin" }, async ({ id }: { id: number }) => {
   return await abilities.call("commerce/increase-product-stock", { id, quantity: 1 });
-} });
-export const callsRestocks = action({ input: { id: integer() }, access: "admin", async handler({ id }) {
+});
+export const callsRestocks = mutation({ access: "admin" }, async ({ id }: { id: number }) => {
   return await abilities.call("commerce/restocks", { id });
-} });
-export const listsProducts = action({ input: {}, access: "admin", async handler() {
+});
+export const listsProducts = mutation({ access: "admin" }, async () => {
   return (await abilities.call("commerce/products-list", {})).rows.length;
-} });
+});
 export default defineConfig({ name: "commerce" });
 "#,
     )

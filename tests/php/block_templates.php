@@ -13,7 +13,20 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('block-templates', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscriber']]);
+$inspectPageQuery = <<<'PHP'
+<?php
+add_action('loop_start', static function (WP_Query $query): void {
+    if ($query->is_main_query() && $query->is_page()) {
+        $vars = [];
+        foreach (['fields', 'cache_results', 'update_post_term_cache', 'update_post_meta_cache'] as $name) {
+            $vars[$name] = $query->get($name);
+        }
+        header('X-Test-Page-Query: ' . wp_json_encode($vars));
+    }
+});
+PHP;
+$site = wpSite('block-templates', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscriber'],
+    'muPlugins' => ['inspect-page-query' => $inspectPageQuery]]);
 wp_set_current_user(1);
 update_option('blogdescription', 'Tagline from WordPress');
 \TypedPress\db()->insert('notes', ['title' => 'Hello', 'status' => 'published']);
@@ -88,8 +101,10 @@ foreach (['app/bare/page.tsx', 'app/studio/layout.tsx', 'app/layout.tsx'] as $fi
 }
 
 // The theme's template wraps each page; the root layout's chrome isn't doubled.
-$out['home'] = shape(fetch("$url/"));
-$out['home list'] = str_contains(fetch("$url/")['body'], '<li>Hello</li>');
+$home = fetch("$url/");
+$out['home'] = shape($home);
+$out['home list'] = str_contains($home['body'], '<li>Hello</li>');
+$out['home query'] = json_decode($home['headers']['x-test-page-query'][0] ?? 'null', true);
 $out['notes'] = shape(fetch("$url/notes/"));
 // A layout that places <TemplatePart> itself: the blank template, its own footer.
 $studio = fetch("$url/studio/");

@@ -1442,7 +1442,16 @@ fn table_code(t: &Table) -> String {
         .map(|p| format!("existingTable: {}, ", q(p)))
         .unwrap_or_default();
     out.push_str(&format!("}}, {{ {existing}api: {{ list:false, get:false, create:false, update:false, delete:false }}, agents:false }});\n"));
-    out.push_str(&format!("function __z08_{n}_row(row: InferSelectModel<typeof __z08_{n}>) {{ return {{ id: String(row.id), createdAt: row.createdAt, updatedAt: row.updatedAt,"));
+    let projected_fields = ["id", "createdAt", "updatedAt"]
+        .into_iter()
+        .chain(t.fields.iter().map(|f| f.name.as_str()))
+        .map(q)
+        .collect::<Vec<_>>()
+        .join(" | ");
+    out.push_str(&format!(
+        "type __z08_{n}_Row = Pick<InferSelectModel<typeof __z08_{n}>, {projected_fields}>;\n"
+    ));
+    out.push_str(&format!("function __z08_{n}_row(row: __z08_{n}_Row) {{ return {{ id: String(row.id), createdAt: row.createdAt, updatedAt: row.updatedAt,"));
     for f in &t.fields {
         out.push_str(&format!(
             "{}: row.{}{},",
@@ -1456,7 +1465,7 @@ fn table_code(t: &Table) -> String {
         ));
     }
     out.push_str("}; }\n");
-    out.push_str(&format!("function __z08_{n}_nullable(row: InferSelectModel<typeof __z08_{n}> | null | undefined) {{ return row == null ? null : __z08_{n}_row(row); }}\n"));
+    out.push_str(&format!("function __z08_{n}_nullable(row: __z08_{n}_Row | null | undefined) {{ return row == null ? null : __z08_{n}_row(row); }}\n"));
     let patch = t
         .fields
         .iter()

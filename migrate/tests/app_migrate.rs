@@ -85,6 +85,27 @@ fn migration_snapshot(project: &Path) -> Value {
     typedpress::migrate::fold(&entries).unwrap().to_snapshot()
 }
 
+fn compiled_schema(project: &Path) -> Value {
+    let path = std::fs::read_dir(project.join("tp/dist/wp-content/plugins"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("typedpress-app-")
+        })
+        .expect("built application plugin")
+        .join("tp/app/schema.php");
+    let output = Command::new("php")
+        .args(["-r", "echo json_encode(require $argv[1], JSON_THROW_ON_ERROR);", "--"])
+        .arg(path)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+
 #[test]
 fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
     let temp = tempfile::tempdir().unwrap();
@@ -1112,8 +1133,8 @@ fn spacefast_content_only_root_adopts_native_posts_and_maps_realtime() {
     let out = temp.path().join("candidate");
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(ok, "{report:#}");
-    let snapshot = migration_snapshot(&out);
-    assert_eq!(snapshot["tables"]["posts"]["editor"], true);
+    build(&out);
+    assert_eq!(compiled_schema(&out)["collections"]["posts"]["editor"], true);
     assert!(
         report["entries"]
             .as_array()
@@ -1125,7 +1146,6 @@ fn spacefast_content_only_root_adopts_native_posts_and_maps_realtime() {
         serde_json::from_slice::<Value>(&std::fs::read(out.join("connector-roles.json")).unwrap()).unwrap(),
         serde_json::json!({})
     );
-    build(&out);
 }
 
 #[test]
@@ -1149,12 +1169,11 @@ fn native_post_declarations_and_space_users_compile_together() {
     let out = temp.path().join("candidate");
     let (ok, report) = migrate(&root, &out, &["--users"]);
     assert!(ok, "{report:#}");
-    let snapshot = migration_snapshot(&out);
-    let keys: Vec<_> = snapshot["tables"].as_object().unwrap().keys().cloned().collect();
-    assert!(keys.contains(&"posts".to_string()), "{keys:?}");
-    assert!(keys.contains(&"notes".to_string()), "{keys:?}");
-    assert!(keys.contains(&"members".to_string()), "{keys:?}");
     build(&out);
+    let schema = compiled_schema(&out);
+    for kind in ["posts", "notes", "members"] {
+        assert!(schema["collections"][kind].is_object(), "{kind}: {schema:#}");
+    }
 }
 
 #[test]
@@ -1270,13 +1289,10 @@ fn space_user_subjects_back_owner_scoped_handlers() {
             .iter()
             .any(|e| e["pointer"] == "/auth" && e["outcome"] == "review")
     );
-    let snapshot = migration_snapshot(&out);
-    assert_eq!(
-        snapshot["tables"]["members"]["columns"]["spacefastSubject"]["type"], "text",
-        "{:#}",
-        snapshot["tables"]["members"]
-    );
     build(&out);
+    let schema = compiled_schema(&out);
+    let members = &schema["collections"]["members"];
+    assert_eq!(members["columns"]["spacefastSubject"]["type"], "text", "{members:#}");
 }
 
 /// A Space Users session gave 0.8 handlers `provider: "space-users"` and no email, picture,

@@ -585,7 +585,13 @@ final class AppRouter
         }
         $query = new \WP_Query();
         $query->query = ['page_id' => $post->ID] + array_intersect_key($GLOBALS['wp']->query_vars ?? [], array_flip(['order-received', 'order-pay']));
-        $query->query_vars = $query->fill_query_vars($query->query + ['fields' => 'all']);
+        // The posts are already loaded, so set the defaults that get_posts() would supply.
+        $query->query_vars = $query->fill_query_vars($query->query + [
+            'fields' => 'all',
+            'cache_results' => true,
+            'update_post_term_cache' => true,
+            'update_post_meta_cache' => true,
+        ]);
         $query->queried_object = $post;
         $query->queried_object_id = $post->ID;
         $query->posts = [$post];

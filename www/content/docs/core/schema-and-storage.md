@@ -28,7 +28,7 @@ All columns are `NOT NULL` by default unless `.optional()` is chained.
 
 ## Modifiers & safe renames
 
-Chain `.min(n)`, `.max(n)`, `.pattern(/.../)`, `.unique()`, `.default(v)`, `.defaultNow()`, `.$default(fn)`, `.$onUpdate(fn)`, `.validate((v, ctx) => ...)`, `.ui({ label, help, placeholder, width })`, and `.showIf({ ... })`.
+Chain `.min(n)`, `.max(n)`, `.pattern(/.../)`, `.unique()`, `.default(v)`, `.defaultNow()`, `.$default(fn)`, `.$onUpdate(fn)`, `.validate((v, ctx) => ...)`, `.ui({ label, help, placeholder, width })`, `.showIf({ ... })`, and `.searchable()` (which fields `search` matches; see [Queries & Access Control](/docs/core/queries-and-access#search)).
 
 Rename a field in TypeScript while keeping its physical column with `.column("old_name")`. Keep an SQL table’s physical name with `storageName: "old_table"`. Add `.alias("oldName")` if callers still send the previous field name.
 

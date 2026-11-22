@@ -25,6 +25,70 @@ your layout supplies those elements.
 
 Use `<Link>` (Interactivity Router navigation), `<Content>` (block content via `the_content`), `<Html>` (sanitized HTML), `<Comments>`, `<Pagination>`, `<Search>`, `<SearchResults>`, `<LoginForm>`, `<TemplatePart>`, `<Live id="...">`, and `useFormState(action)` for progressive zero-JS `<form action={myAction}>` submissions.
 
+### Forms that post to an action
+
+A `<form action={contact}>` in a page or server component posts to the action.
+It works before any JavaScript loads. The form is sent form-encoded with the
+return path and, for a signed-in render, the REST nonce. The browser comes back
+to the page with a `303`. Once the router script runs, the same post goes
+through `fetch` and the page swaps in place.
+
+```ts
+// tp/server.ts
+import { db, HttpError, mail, mutation } from "typedpress";
+import { messages } from "./schema";
+
+export const contact = mutation({ access: "anyone", rateLimit: "5/min" }, async ({ email, message }: { email: string; message: string }) => {
+	if (!email.includes("@")) throw new HttpError(422, "invalid_input", "Enter an email address", "/email");
+	await db.insert(messages).values({ email, message });
+	await mail.send({ to: "team@example.com", replyTo: email, subject: "New message", text: message });
+	return { ok: true };
+});
+```
+
+```tsx
+// tp/app/contact/page.tsx
+import { useFormState } from "typedpress/app";
+import { contact } from "../../server";
+
+export default function Contact() {
+	const state = useFormState(contact);
+	return (
+		<form action={contact}>
+			{state.result && <p role="status">Thanks, we got it.</p>}
+			{state.error && <p role="alert">{state.error.message}</p>}
+			<label>Email <input name="email" type="email" required /></label>
+			{state.error && state.error.fields.email && <small>{state.error.fields.email}</small>}
+			<label>Message <textarea name="message" required /></label>
+			<button>Send</button>
+		</form>
+	);
+}
+```
+
+- **Typed fields.** Each literal `name` inside the form must be one of the
+  action's inputs, or the build fails at that field. Controls the browser never
+  sends (`type="button"`, `disabled`, a `formAction` elsewhere) aren't checked. `state.values` and
+  `state.error.fields` are typed by the same inputs.
+- **Field errors.** An `HttpError` with a `pointer` (`"/email"`), or an input
+  the action's types refuse, comes back in `state.error.fields`. The field it
+  names gets `aria-invalid="true"`.
+- **Refill and reset.** After an error, each field gets back what was typed and
+  each checkbox or radio what was chosen, over a `defaultValue` or
+  `defaultChecked` the page wrote. A `value` the page sets still wins. A password
+  is never refilled. After a success, the form starts over with the values the
+  page renders.
+- **Several forms for one action.** With a form per row, the state comes back
+  only on the form that posted.
+- **Inline fields only.** The name check and the automatic state apply to fields
+  written in the form's own JSX, including inside `.map()`. A field rendered by
+  another component inside the form gets neither; use `useFormState` there.
+- **Pending.** While a JavaScript submit is in flight, the form has
+  `aria-busy="true"` and its submit buttons are disabled. Style
+  `form[aria-busy="true"]`.
+- **State attribute.** After a submit, the form has
+  `data-tp-form-state="success"` or `"error"`.
+
 ### Show a WordPress comment thread
 
 Enable comments on the kind in `tp/schema.ts`. The SpacePress blog uses native WordPress posts.

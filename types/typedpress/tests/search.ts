@@ -19,3 +19,19 @@ export const noQuery = SearchResults({ kind: "events" });
 export const wrongPage = SearchResults({ q: "bread", page: "2" });
 // @ts-expect-error the kind is its name, not the kind
 export const wrongKind = SearchResults({ q: "bread", kind: { name: "events" } });
+
+// `.searchable()` on a collection's text fields: which fields `search` matches.
+import { collection, email, integer, richText, text } from "typedpress";
+
+export const recipes = collection({
+  title: text(),
+  intro: richText().searchable(),
+  author: email().searchable(),
+  internalNotes: text().optional().searchable(false),
+  servings: integer(),
+});
+export const explicitOn = text().searchable(true);
+// @ts-expect-error a number isn't searched: filter it with `where`
+export const countSearch = integer().searchable();
+// @ts-expect-error the flag is a boolean
+export const wrongFlag = text().searchable("yes");

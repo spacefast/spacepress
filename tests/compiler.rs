@@ -247,6 +247,100 @@ export default defineConfig({ name: "exported" });
     assert!(schema["actions"]["ping"].is_object(), "{}", schema["actions"]);
 }
 
+/// `.searchable()` picks the fields `search` matches (`Search\Index::fields`): the marks reach
+/// schema.php, a kind with no searchable field left gets no `search` parameter, and the modifier is
+/// refused where search can't use it.
+#[test]
+fn searchable_marks_the_fields_search_matches() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("typedpress.config.ts"),
+        r#"import { defineConfig, integer, richText, table, text } from "typedpress";
+export const recipes = table({ name: text().searchable(), intro: richText().searchable(), notes: text().optional(), secret: text().optional().searchable(false), servings: integer() }, { access: { read: "anyone" } });
+export const codes = table({ code: text().searchable(false) }, { access: { read: "anyone" } });
+export const plain = table({ label: text() }, { access: { read: "anyone" } });
+export default defineConfig({ name: "searchable" });
+"#,
+    )
+    .unwrap();
+    let out = first().arg("build").arg(tmp.path()).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let schema = Command::new("php")
+        .args(["-r", "echo json_encode(require $argv[1]);"])
+        .arg(
+            tmp.path()
+                .join("tp/dist/wp-content/plugins/typedpress-app-searchable/tp/app/schema.php"),
+        )
+        .output()
+        .unwrap();
+    let schema: serde_json::Value = serde_json::from_slice(&schema.stdout).unwrap();
+    let columns = &schema["collections"]["recipes"]["columns"];
+    assert_eq!(
+        [
+            &columns["name"]["searchable"],
+            &columns["intro"]["searchable"],
+            &columns["notes"]["searchable"],
+            &columns["secret"]["searchable"]
+        ],
+        [
+            &serde_json::json!(true),
+            &serde_json::json!(true),
+            &serde_json::Value::Null,
+            &serde_json::json!(false)
+        ],
+        "{columns}"
+    );
+    assert!(
+        schema["collections"]["plain"]["columns"]["label"]
+            .get("searchable")
+            .is_none()
+    );
+    let openapi: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(tmp.path().join("tp/_generated/openapi.json")).unwrap()).unwrap();
+    let has_search = |path: &str| {
+        openapi["paths"][path]["get"]["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["name"] == "search" || p["$ref"].as_str().is_some_and(|r| r.ends_with("/search")))
+    };
+    assert!(has_search("/recipes"), "a kind with marked fields is searched");
+    assert!(
+        has_search("/plain"),
+        "a kind with no marks keeps its text fields searched"
+    );
+    assert!(
+        !has_search("/codes"),
+        "`.searchable(false)` on its only text field: no search"
+    );
+
+    rejects(
+        "reject-searchable-kind",
+        "`.searchable()` isn't valid on an integer column",
+        "typedpress.config.ts:2:43",
+    );
+    rejects(
+        "reject-searchable-select",
+        "`.searchable()` isn't valid on a select() column",
+        "typedpress.config.ts:2:57",
+    );
+    rejects(
+        "reject-searchable-subfield",
+        "`.searchable()` isn't allowed inside a group, repeater, or blocks field (`note`)",
+        "typedpress.config.ts:2:53",
+    );
+    rejects(
+        "reject-searchable-global",
+        "`.searchable()` isn't allowed on a global field (`tagline`)",
+        "typedpress.config.ts:2:50",
+    );
+    rejects(
+        "reject-searchable-flag",
+        "`.searchable()` takes true or false, not \"yes\"",
+        "typedpress.config.ts:2:39",
+    );
+}
+
 /// The field forms the authoring surface replaced are refused where they're written, naming the
 /// replacement (docs/spec/spec.md §2.5, §8).
 #[test]

@@ -107,6 +107,8 @@ type BoundedKind = "integer" | "number" | "text" | "email" | "url" | "slug" | "r
 type PatternKind = "text" | "email" | "url" | "slug";
 /** `.unique()`. */
 type UniqueKind = "id" | "integer" | "number" | "text" | "email" | "url" | "slug" | "boolean" | "date" | "timestamp";
+/** `.searchable()`: text kinds (a `select()` is refused by the compiler). */
+type SearchableKind = "text" | "richText" | "email" | "url" | "slug";
 /** `.default()` and friends: every kind but media. */
 type DefaultKind = Exclude<ColumnKind, "media" | "refList">;
 
@@ -212,6 +214,14 @@ export interface ColumnBuilder<
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /** Unique text columns also need `.max(n)` with n ≤ 191 (MySQL index limit). Not allowed on sub-fields or globals. */
   unique(this: ColumnBuilder<UniqueKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
+  /**
+   * Whether `search` (`list({ search })`, `?search=`, `/wp/v2/search`) matches this field. Without any
+   * `.searchable()` in a collection, its title, content and every text or richText field are searched.
+   * Once one field is marked, the title, the content and the marked fields are. `.searchable(false)`
+   * leaves a field out, the title and content included. Each reader still matches only the fields
+   * and rows they may read. Collection fields only.
+   */
+  searchable(this: ColumnBuilder<SearchableKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>, on?: boolean): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /**
    * What deleting the referenced row does: `restrict` (the default when required), `setNull` (the
    * default when optional) or `cascade`. On `ref().many()`: `cascade` (the default) removes the link,

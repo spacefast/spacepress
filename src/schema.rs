@@ -217,6 +217,9 @@ pub struct Column {
     pub storage_name: Option<String>,
     /// `.alias("old_name")`: accepted API/filter aliases that map to this field.
     pub aliases: Vec<String>,
+    /// `.searchable()` / `.searchable(false)`: whether `search` matches this field. None: the
+    /// default (`Search\Index::fields`).
+    pub searchable: Option<bool>,
     /// An input field from an optional property (`limit?: number`): left out, it stays out, so the
     /// handler reads `undefined` and its destructuring default applies.
     pub omit: bool,
@@ -261,6 +264,7 @@ impl Column {
             was: None,
             storage_name: None,
             aliases: Vec::new(),
+            searchable: None,
             omit: false,
             inferred: None,
             shape: None,

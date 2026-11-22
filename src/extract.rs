@@ -2036,6 +2036,13 @@ fn taxonomy_kind(
             )
             .help("rename the field without `.was()` and move its values yourself, or keep the old name"));
         }
+        if b.searchable.is_some() {
+            return Err(Diag::new(
+                b.span_of("searchable"),
+                "`.searchable()` marks a field of a collection; a taxonomy's terms aren't searched",
+            )
+            .help("remove `.searchable()`"));
+        }
         let col = column(field, b, &owner, &[], Place::Top, ev, out)?;
         columns.insert(field.clone(), col);
     }
@@ -3261,6 +3268,8 @@ fn column(
         Some(("id() / .primaryKey()", b.span_of("primaryKey")))
     } else if b.unique && b.ty != ColType::Slug {
         Some(("`.unique()`", b.span_of("unique")))
+    } else if b.searchable.is_some() {
+        Some(("`.searchable()`", b.span_of("searchable")))
     } else if b.terms {
         Some(("`terms()`", b.span))
     } else if b.references.is_some() {
@@ -3554,6 +3563,7 @@ fn column(
         was: b.was.clone(),
         storage_name: b.storage_name.clone(),
         aliases: b.aliases.clone(),
+        searchable: b.searchable,
         omit: false,
         inferred: None,
         shape: None,

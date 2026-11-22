@@ -5006,6 +5006,17 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
             }
         },
         "unique" => c.unique = true,
+        "searchable" => match arg(0) {
+            Value::Undef => c.searchable = Some(true),
+            Value::Bool(on) => c.searchable = Some(on),
+            other => {
+                return err_help(
+                    span,
+                    format!("`.searchable()` takes true or false, not {}", other.describe()),
+                    "write `.searchable()` to search the field, or `.searchable(false)` to leave it out",
+                );
+            }
+        },
         "min" | "max" => {
             let n = match arg(0) {
                 Value::Num(n) if n.is_finite() => n,
@@ -5133,6 +5144,7 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
 const MODIFIERS: &[&str] = &[
     "optional",
     "unique",
+    "searchable",
     "default",
     "defaultNow",
     "many",
@@ -5212,6 +5224,7 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
         ),
         "pattern" => ty.is_stringy(),
         "unique" => matches!(ty, T::Integer | T::Real | T::Date | T::Timestamp) || ty.is_stringy(),
+        "searchable" => (ty.is_stringy() || ty == T::RichText) && c.enum_values.is_none(),
         "references" => matches!(ty, T::Integer | T::Real),
         "default" | "$default" => ty != T::Media,
         "defaultNow" => matches!(ty, T::Timestamp | T::Date),
@@ -5225,11 +5238,20 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
         ("min" | "max" | "pattern" | "unique", _) | ("references", _) => {
             "use `.validate((value) => ... )` for custom checks".to_string()
         }
+        ("searchable", T::Text) if c.enum_values.is_some() => {
+            "a select() field is matched by its value, not searched; filter it with `where`".into()
+        }
+        ("searchable", _) => "search matches text: mark a text(), richText(), email(), url() or slug() field".into(),
         ("default" | "$default", T::Media) => "media columns start empty; set them on write".into(),
         ("defaultNow", _) => "use `.default(value)` with a literal".into(),
         _ => "remove it".into(),
     };
-    Some((format!("`.{m}()` isn't valid on {}", kind_phrase(ty)), fix))
+    let what = if ty == T::Text && c.enum_values.is_some() {
+        "a select() column".to_string()
+    } else {
+        kind_phrase(ty)
+    };
+    Some((format!("`.{m}()` isn't valid on {what}"), fix))
 }
 
 impl ColBuilder {
@@ -5264,6 +5286,7 @@ impl ColBuilder {
             was: None,
             storage_name: None,
             aliases: Vec::new(),
+            searchable: None,
             span,
             mods: Vec::new(),
         }

@@ -255,17 +255,29 @@ fn blocks(layouts: Option<&IndexMap<String, IndexMap<String, Column>>>, output: 
     }
 }
 
-/// The fields `search` matches (`Search\Index::fields`): the title, the content, and every `text` or
-/// `richText` field without an `enum`; never a hidden or other system field.
+/// The fields `search` matches (`Search\Index::fields`). `.searchable(false)` leaves a field out,
+/// even the title or content; `.searchable()` puts one in. When no field of the kind is marked
+/// `.searchable()`, the title, the content and every `text` or `richText` field without an `enum` are
+/// matched; once one is, the title, the content and the marked fields are. Never a hidden field, nor
+/// another system field.
 pub fn searchable(c: &Collection) -> Vec<&str> {
+    let chosen = c.columns.values().any(|col| col.searchable == Some(true));
     c.columns
         .values()
         .filter(|col| {
             let designated =
                 c.title.as_deref() == Some(col.name.as_str()) || c.content.as_deref() == Some(col.name.as_str());
             !col.hidden
-                && (designated
-                    || !col.system && matches!(col.ty, ColType::Text | ColType::RichText) && col.enum_values.is_none())
+                && match col.searchable {
+                    Some(on) => on,
+                    None => {
+                        designated
+                            || !chosen
+                                && !col.system
+                                && matches!(col.ty, ColType::Text | ColType::RichText)
+                                && col.enum_values.is_none()
+                    }
+                }
         })
         .map(|col| col.name.as_str())
         .collect()

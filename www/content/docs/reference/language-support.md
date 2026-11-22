@@ -1235,7 +1235,7 @@ Evidence: `tests/app_router.rs` (`live_regions_update_in_the_browser`)
 
 Status: **supported**.
 
-`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from "typedpress/app" reads the result or the error once. `method` and `encType` on such a form, and an action form inside a "use client" component, are build errors.
+`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from "typedpress/app" reads the result or the error once; its `error.fields` and `values` are keyed by the action's input fields. A field inside the form with a literal `name` that isn't one of the action's inputs is a build error, and each named field gets `aria-invalid` and the typed value back after an error by itself. `method` and `encType` on such a form, and an action form inside a "use client" component, are build errors.
 
 Evidence: `tests/app_router.rs` (`forms_work_without_javascript`)
 

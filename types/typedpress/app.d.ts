@@ -1,7 +1,7 @@
 // "typedpress/app": pages, layouts and HTTP routes under tp/app/ (docs/spec/rendering.md §2–§4).
 // Types only: the compiler lowers these to PHP; nothing here runs in Node or the browser.
 /// <reference path="./assets.d.ts" />
-import type { AccessCtx, Action, ColumnsConfig, RouteRequest, RouteResponse } from "typedpress";
+import type { AccessCtx, Action, RouteRequest, RouteResponse } from "typedpress";
 import type { JSX } from "typedpress/jsx-runtime";
 
 export type { RouteRequest, RouteResponse };
@@ -110,16 +110,26 @@ export declare function redirect(url: string, status?: 301 | 302 | 303 | 307 | 3
 /**
  * What the last submit of a `<form action={action}>` on this page left: read once, when the page
  * the form came back to renders (with or without JavaScript). `pending` is always false: while a
- * submit is in flight the form has `aria-busy="true"` instead. `error.fields` names
- * the field an input error is about; `values` is what was typed, to fill the form again (never a
- * password field).
+ * submit is in flight the form has `aria-busy="true"` instead. `error.fields` holds the message of
+ * the input field an error is about (the problem's `pointer`), keyed by the action's input fields;
+ * `values` is what was typed, to fill the form again (never a password field).
+ *
+ * Inside the form's own JSX, a field named after an input gets this state by itself:
+ * `aria-invalid="true"` when the error is about it, and after an error the value that was typed
+ * (over the page's `defaultValue`, such as an edit form's stored value; a `value` the page sets
+ * wins) or the boxes that were checked. With several
+ * forms for one action on a page, only the one that posted gets it. The form gets
+ * `data-tp-form-state="success"` or `"error"`; after a success it starts over with the values the
+ * page renders, with or without JavaScript.
  */
-export declare function useFormState<TResult>(action: Action<ColumnsConfig, TResult> | Action<any, TResult>): FormState<Awaited<TResult>>;
-export interface FormState<TResult> {
+export declare function useFormState<TResult = unknown, TInput = any>(action: Action<TInput, TResult>): FormState<Awaited<TResult>, TInput>;
+/** Per input field of an action: the message or the typed text, when there is one. */
+export type FormFields<TInput> = { [K in keyof TInput & string]?: string };
+export interface FormState<TResult, TInput = Record<string, unknown>> {
   pending: boolean;
-  error: { code: string; message: string; fields: Record<string, string | undefined> } | null;
+  error: { code: string; message: string; fields: FormFields<TInput> } | null;
   result: TResult | null;
-  values: Record<string, string | undefined>;
+  values: FormFields<TInput>;
 }
 
 /**

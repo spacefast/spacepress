@@ -58,6 +58,7 @@ final class Builtins
         'column.many' => null,
         'column.unique' => null,
         'column.defaultNow' => null,
+        'column.searchable' => null,
         'column.access' => null,
         'column.showIf' => null,
         'column.ui' => null,

@@ -884,6 +884,7 @@ pub fn definition_of(column: &Column) -> Option<Json> {
         || column.rules.pattern.is_some()
         || column.rules.validate.is_some()
         || column.show_if.is_some()
+        || column.searchable.is_some()
         || column.bucket.is_some()
         || column.was.is_some()
         || !column.access.is_empty()

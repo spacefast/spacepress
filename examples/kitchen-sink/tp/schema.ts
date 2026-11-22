@@ -27,7 +27,7 @@ export const events = collection({
   slug: slug({ source: "title" }).optional(),
   description: richText().optional(),
   startsOn: date(),
-  venue: text().default("Teaching kitchen"),
+  venue: text().default("Teaching kitchen").searchable(false),
   poster: media({ accept: "image" }).optional(),
   gallery: media({ accept: "image" }).many().default([]),
   handout: file(handouts).optional(),

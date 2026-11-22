@@ -139,6 +139,10 @@ pub enum Value {
     Plugin(Rc<ActionVal>),
     /// `adminScreen({ ... })`: a TypedPress Admin screen, registered by its export (docs/admin-screens.md).
     Screen(Rc<ActionVal>),
+    /// `adminWidget({ ... })`: a TypedPress Admin dashboard widget, registered by its export.
+    Widget(Rc<ActionVal>),
+    /// `adminDashboard({ ... })`: a TypedPress Admin custom dashboard, registered by its export.
+    Dashboard(Rc<ActionVal>),
     FileBucket(Rc<FileBucketVal>),
     Env(Rc<str>),
     /// An imported file's URL (`import logo from "./compass.svg"`): its name below the app
@@ -278,16 +282,27 @@ pub enum Builtin {
     DefineRelations,
     DefineConfig,
     DefinePlugin,
+    /// `destructiveMigrations(options?)` from `"typedpress/danger"`.
+    DestructiveMigrations,
     /// `adminScreen({ ... })` from "typedpress".
     AdminScreen,
+    /// `adminWidget({ ... })` from "typedpress".
+    AdminWidget,
+    /// `adminDashboard({ ... })` from "typedpress".
+    AdminDashboard,
     /// `item(path)` from "typedpress": the `{item.<path>}` placeholder of a screen action's input.
     Item,
-    Action,
+    /// `job(options, handler)`.
     Job,
+    /// `query(options, handler)`.
+    Query,
+    /// `mutation(options, handler)`.
+    Mutation,
+    /// `cron(schedule, handler)`.
+    Cron,
     Files,
     Env,
     Once,
-    Jobs,
     /// `"node:crypto"`: the module namespace (`None`) or one of its supported functions.
     NodeCrypto(Option<&'static str>),
     /// `mail.send(message)` from "typedpress", compiled to `TypedPress\Mail::send`.
@@ -365,6 +380,10 @@ pub struct ColBuilder {
     pub bucket: Option<Rc<FileBucketVal>>,
     /// `.was("old")`: the stored name this field had before a rename.
     pub was: Option<String>,
+    /// `.column("physical_name")`: decouples the TypeScript field name from the physical SQL column name.
+    pub storage_name: Option<String>,
+    /// `.alias("old_name")`: accepted API/filter aliases that map to this field.
+    pub aliases: Vec<String>,
     pub span: Span,
     /// Where each modifier was applied (`unique`, `references`, ...), for precise errors.
     pub mods: Vec<(&'static str, Span)>,
@@ -508,8 +527,52 @@ pub struct FileBucketVal {
 
 #[derive(Debug)]
 pub struct ActionVal {
+    /// The options object (`query(options, handler)`), or the whole definition of a form that has
+    /// no separate handler (`adminScreen` or `definePlugin`).
     pub config: Value,
     pub span: Span,
+    /// What built it, which decides how extraction reads it.
+    pub form: FnForm,
+    /// The handler passed after the options; `Value::Undef` for the one-object forms.
+    pub handler: Value,
+}
+
+/// The builder behind an [`ActionVal`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FnForm {
+    /// `query(options, handler)`: reads only.
+    Query,
+    /// `mutation(options, handler)`: may write, in one transaction.
+    Mutation,
+    /// `job(options, handler)`.
+    Job,
+    /// `cron("0 3 * * *", handler)`: a job Action Scheduler runs on the schedule.
+    Cron,
+    /// One configuration object, for builders like `adminScreen` and `definePlugin`.
+    Object,
+    /// A built-in plugin shipped inside TypedPress itself (e.g. `destructiveMigrations()` from
+    /// `"typedpress/danger"`). Skips npm package isolation because it has no user-authored code.
+    BuiltinPlugin,
+}
+
+impl ActionVal {
+    pub fn object(config: Value, span: Span) -> Self {
+        ActionVal {
+            config,
+            span,
+            form: FnForm::Object,
+            handler: Value::Undef,
+        }
+    }
+
+    pub fn builtin_plugin(config: Value, span: Span) -> Self {
+        ActionVal {
+            config,
+            span,
+            form: FnForm::BuiltinPlugin,
+            handler: Value::Undef,
+        }
+    }
 }
 
 /// Lexical scope. Function values keep their defining scope alive, so the
@@ -609,7 +672,6 @@ impl Value {
             Value::Str(_) => "string",
             Value::Builtin(
                 Builtin::Db
-                | Builtin::Jobs
                 | Builtin::Global("Math" | "JSON" | "console" | "globalThis" | "navigator" | "process")
                 | Builtin::ObjectPrototype,
             ) => "object",
@@ -641,6 +703,8 @@ impl Value {
             Value::Job(_) => "a job".into(),
             Value::Plugin(_) => "a plugin".into(),
             Value::Screen(_) => "an admin screen".into(),
+            Value::Widget(_) => "an admin widget".into(),
+            Value::Dashboard(_) => "an admin dashboard".into(),
             Value::FileBucket(_) => "a file bucket".into(),
             Value::Env(n) => format!("env({n:?})"),
             Value::Asset(file) => format!("the URL of {file}"),

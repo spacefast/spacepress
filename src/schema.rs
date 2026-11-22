@@ -207,10 +207,25 @@ pub struct Column {
     pub hidden: bool,
     /// Computed by storage and never written: a term's `count` and `url`.
     pub read_only: bool,
+    /// An authored Woo product field, stored via Woo's product metadata API.
+    pub commerce_meta: bool,
     /// `json<T>()` annotation, module and call position.
     pub ts_type: Option<(crate::ir::TyAnn, usize, crate::diag::Span)>,
-    /// `.was("old")`: the stored name before a rename (spec §2.5).
+    /// `.was("old")`: only in frozen 0.3.0 captures.
     pub was: Option<String>,
+    /// `.column("physical_name")`: physical SQL column name when different from the logical field name.
+    pub storage_name: Option<String>,
+    /// `.alias("old_name")`: accepted API/filter aliases that map to this field.
+    pub aliases: Vec<String>,
+    /// An input field from an optional property (`limit?: number`): left out, it stays out, so the
+    /// handler reads `undefined` and its destructuring default applies.
+    pub omit: bool,
+    /// An input field typed by the handler's parameter type: the TypeScript type of a `json` field.
+    pub inferred: Option<crate::types::Ty>,
+    /// With `inferred`: that type as the JSON Schema the site validates the value against.
+    pub shape: Option<Json>,
+    /// A nullable input field that must still be sent (`name: string | null`, not `name?:`).
+    pub required: bool,
 }
 
 impl Column {
@@ -241,9 +256,21 @@ impl Column {
             derived: false,
             hidden: false,
             read_only: false,
+            commerce_meta: false,
             ts_type: None,
             was: None,
+            storage_name: None,
+            aliases: Vec::new(),
+            omit: false,
+            inferred: None,
+            shape: None,
+            required: false,
         }
+    }
+
+    /// Physical SQL column name (from `.column(...)`, defaulting to the logical field name).
+    pub fn physical_name(&self) -> &str {
+        self.storage_name.as_deref().unwrap_or(&self.name)
     }
 
     /// §7.3: translated per locale when it or any sub-field is `.localized()`; otherwise synced.
@@ -275,7 +302,8 @@ impl Column {
     /// Writers may omit it on insert.
     pub fn optional_on_insert(&self) -> bool {
         self.read_only
-            || !self.not_null
+            || (!self.not_null && !self.required)
+            || self.omit
             || self.default.is_some()
             || self.auto_increment
             || self.ty == ColType::Slug && self.source.is_some()
@@ -310,19 +338,27 @@ pub enum HookKind {
     AfterUpdate,
     BeforeDelete,
     AfterDelete,
+    BeforeRestore,
+    AfterRestore,
+    BeforePurge,
+    AfterPurge,
     /// A post kind's item became published (created published, updated into it, or a scheduled
     /// item reached its time). Spec §2.8.
     AfterPublish,
 }
 
 impl HookKind {
-    pub const ALL: [HookKind; 7] = [
+    pub const ALL: [HookKind; 11] = [
         HookKind::BeforeCreate,
         HookKind::AfterCreate,
         HookKind::BeforeUpdate,
         HookKind::AfterUpdate,
         HookKind::BeforeDelete,
         HookKind::AfterDelete,
+        HookKind::BeforeRestore,
+        HookKind::AfterRestore,
+        HookKind::BeforePurge,
+        HookKind::AfterPurge,
         HookKind::AfterPublish,
     ];
 
@@ -334,6 +370,10 @@ impl HookKind {
             HookKind::AfterUpdate => "afterUpdate",
             HookKind::BeforeDelete => "beforeDelete",
             HookKind::AfterDelete => "afterDelete",
+            HookKind::BeforeRestore => "beforeRestore",
+            HookKind::AfterRestore => "afterRestore",
+            HookKind::BeforePurge => "beforePurge",
+            HookKind::AfterPurge => "afterPurge",
             HookKind::AfterPublish => "afterPublish",
         }
     }
@@ -376,7 +416,24 @@ impl Access {
 }
 
 /// Operations a collection's access config covers, in schema.php order.
-pub const ACCESS_OPS: [&str; 4] = ["read", "create", "update", "delete"];
+pub const ACCESS_OPS: [&str; 6] = ["read", "create", "update", "delete", "restore", "purge"];
+
+/// Retention policy for revisions (`keepLast` and/or `maxAge`). `None` = `"forever"`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RevisionRetention {
+    pub keep_last: Option<u32>,
+    pub max_age_seconds: Option<u64>,
+}
+
+/// Config-driven retention policy for soft-deleted rows and revisions.
+/// When absent (or `"forever"`), TypedPress never automatically purges deleted rows or revisions.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Retention {
+    /// Seconds before soft-deleted rows / trashed posts are auto-purged. `None` = `"forever"`.
+    pub deleted_seconds: Option<u64>,
+    /// Revision retention limits. `None` = `"forever"`.
+    pub revisions: Option<RevisionRetention>,
+}
 
 /// How comments behave on a kind (spec §2.3). `comments: true` is these defaults.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -419,6 +476,10 @@ pub struct Collection {
     pub editor: bool,
     pub drafts: bool,
     pub revisions: bool,
+    /// Native soft delete: default `true` on `collection()` and `table()` (without `existingTable`).
+    pub soft_delete: bool,
+    /// Per-kind retention override; inherits `Schema::retention` (default `"forever"`).
+    pub retention: Option<Retention>,
     /// `staged: false` turns staged versions off for a collection (they need its revisions).
     pub staged: bool,
     /// `comments: true`: the post type supports WordPress comments; every other kind has them off.
@@ -460,6 +521,8 @@ pub struct Collection {
     pub commerce: Option<String>,
     /// `.index(fields, { unique? })`: compound indexes the author declared, as (fields, unique).
     pub indexes: Vec<(Vec<String>, bool)>,
+    /// Optional admin presentation metadata (`ui: { icon, singularLabel, description, group, defaultColumns, hidden }`).
+    pub ui: Option<Json>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -513,6 +576,36 @@ pub struct Action {
     pub signature: Option<Json>,
     /// The handler's result as a JSON Schema, from its TypeScript return type (filled after compile).
     pub output: Option<Json>,
+    /// The handler's code reads a WooCommerce order kind, calls an ability that needs a credential's
+    /// `personal` grant (an order kind's, `complete-order`), or calls an action that is itself
+    /// personal (filled after compile, in `pipeline.rs`). Marked from the code on every branch, not
+    /// from one call: a credential without the grant is not shown the action, and a call is refused
+    /// where it reaches that read or ability.
+    pub personal: bool,
+    /// With `typed_input`: the handler's first parameter type, which types the handler and its callers.
+    pub input_ty: Option<crate::types::Ty>,
+    /// `query()`: may not write; compiled code that writes fails the build where it writes.
+    pub query: bool,
+    /// `rateLimit`: at most this many calls per window, counted per user (per address when signed
+    /// out). None: unlimited.
+    pub rate_limit: Option<RateLimit>,
+    /// The input is the handler's first parameter type (`query`/`mutation`): resolved by the
+    /// compiler before anything reads `input` (see `compile::Compiler::infer_inputs`).
+    pub typed_input: bool,
+}
+
+/// `rateLimit: "10/min"`: `count` calls per `window` seconds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RateLimit {
+    pub count: u32,
+    pub window: u32,
+}
+
+/// When Action Scheduler runs a job by itself: `job({ every: "1h" }, fn)` or `cron("0 3 * * *", fn)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Schedule {
+    Every(u64),
+    Cron(String),
 }
 
 /// One `wp-hooks/` handler, registered with `add_filter`/`add_action`.
@@ -531,6 +624,12 @@ pub struct Job {
     pub handler: String,
     pub retries: u32,
     pub agents: bool,
+    /// Run by Action Scheduler on this schedule, scheduled once per build and unscheduled when it goes.
+    pub schedule: Option<Schedule>,
+    /// The input is the handler's first parameter type (see [`Action::typed_input`]).
+    pub typed_input: bool,
+    /// With `typed_input`: the handler's first parameter type.
+    pub input_ty: Option<crate::types::Ty>,
 }
 
 #[derive(Debug, Clone)]
@@ -548,6 +647,8 @@ pub struct Global {
     pub fields: IndexMap<String, Column>,
     /// "read" / "update" → rule.
     pub access: IndexMap<String, Access>,
+    /// Optional admin presentation metadata (`ui: { icon, description, group, hidden }`).
+    pub ui: Option<Json>,
 }
 
 /// Where a column lives, for attaching compiled functions after evaluation.
@@ -578,6 +679,10 @@ pub struct Schema {
     /// `adminScreen()` exports by screen id (the export name in kebab case): each one the
     /// declaration `tp_admin_register_screen()` takes (`crate::admin_screen`).
     pub screens: IndexMap<String, Json>,
+    /// `adminWidget()` exports by widget id (kebab case).
+    pub widgets: IndexMap<String, Json>,
+    /// `adminDashboard()` exports by dashboard id (kebab case).
+    pub dashboards: IndexMap<String, Json>,
     /// `wp-hooks/` handlers, in registration order.
     pub wp_hooks: Vec<WpHook>,
     /// Server components (`tp/components/<file>.tsx#<export>`) → their compiled PHP function.
@@ -586,9 +691,11 @@ pub struct Schema {
     pub islands: IndexMap<String, Island>,
     /// Components content may use as blocks (`export const blocks` in a component file).
     pub blocks: Vec<crate::content_blocks::Block>,
-    /// Imported stylesheets and images (`crate::assets`), by output file name below
+    /// Imported stylesheets and static assets (`crate::assets`), by output file name below
     /// `tp/app/assets/`.
     pub assets: IndexMap<String, Vec<u8>>,
+    /// Intrinsic dimensions and format for imported image assets, by output file name.
+    pub assets_meta: IndexMap<String, crate::assets::ImageMeta>,
     /// `tp/app/`: the route table and each route file's compiled exports (docs/spec/rendering.md).
     pub app: Option<App>,
     /// Hooks or WordPress functions hand `WP_Post`/`WP_User` views to compiled code.
@@ -599,6 +706,8 @@ pub struct Schema {
     pub uploads: Option<Json>,
     pub locales: Option<Json>,
     pub store: Option<Json>,
+    /// Compile synced records into the standalone plugin for its WordPress install.
+    pub seed: bool,
     /// The build ships the `typedpress-admin` plugin (the default); `defineConfig({ admin: false })` leaves it out.
     pub admin: bool,
     /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `tp/app`.
@@ -621,6 +730,20 @@ pub struct Schema {
     /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
     /// while it runs. Holds what the build read from the lock `typedpress pull` writes.
     pub runtime_schema: Option<RuntimeSchema>,
+    /// `defineConfig({ retention })`: global retention policy for soft-deleted rows and revisions.
+    /// `None` means `"forever"` (never automatically purge).
+    pub retention: Option<Retention>,
+    /// Opt-in migration providers registered by plugins (`use: [destructiveMigrations()]`).
+    pub migration_providers: Vec<MigrationProviderConfig>,
+}
+
+/// Configuration for a CLI-only opt-in migration provider declared by a plugin package.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MigrationProviderConfig {
+    pub id: String,
+    pub cli_only: bool,
+    pub require_archive: bool,
+    pub allow_raw_sql: bool,
 }
 
 /// `output` in `defineConfig`, Astro's word for it.
@@ -640,6 +763,14 @@ pub struct RuntimeSchema {
     pub hash: String,
 }
 
+impl Schema {
+    /// The app plugin carries the project's synced files as its seed: `seed: true`, or a store,
+    /// whose products are seeded from their files.
+    pub fn ships_seed(&self) -> bool {
+        self.seed || self.store.is_some()
+    }
+}
+
 impl Default for Schema {
     fn default() -> Self {
         Schema {
@@ -649,12 +780,15 @@ impl Default for Schema {
             actions: IndexMap::new(),
             jobs: IndexMap::new(),
             screens: IndexMap::new(),
+            widgets: IndexMap::new(),
+            dashboards: IndexMap::new(),
             wp_hooks: Vec::new(),
             components: IndexMap::new(),
             app: None,
             islands: IndexMap::new(),
             blocks: Vec::new(),
             assets: IndexMap::new(),
+            assets_meta: IndexMap::new(),
             wp_views: false,
             files: IndexMap::new(),
             webhooks: Vec::new(),
@@ -662,6 +796,7 @@ impl Default for Schema {
             uploads: None,
             locales: None,
             store: None,
+            seed: false,
             admin: true,
             frontend: None,
             output: Output::Server,
@@ -670,6 +805,8 @@ impl Default for Schema {
             pings: true,
             sealed: None,
             runtime_schema: None,
+            retention: None,
+            migration_providers: Vec::new(),
         }
     }
 }
@@ -797,6 +934,8 @@ pub struct AppRoute {
     pub error: Option<String>,
     /// The stylesheets the page and its layouts import, in link order (`assets::stylesheets`).
     pub styles: Vec<String>,
+    /// `@font-face` fonts referenced by this route's stylesheets, emitted as `<link rel="preload">`.
+    pub preloads: Vec<crate::assets::FontPreload>,
     /// The page is prebuilt: its file says `prerender = true`, or the config says `output: "static"`.
     pub prerender: bool,
     /// The kind whose `url` this page serves (spec §2.7), with each pattern placeholder's folder
@@ -835,6 +974,18 @@ pub struct AppSearch {
     pub fields: IndexMap<String, Column>,
 }
 
+/// An imported static asset exposed to a `"use client"` store through `getConfig(ns).assets`.
+#[derive(Debug, Clone)]
+pub enum IslandAsset {
+    Url(String),
+    Meta {
+        file: String,
+        width: u32,
+        height: u32,
+        format: String,
+    },
+}
+
 /// One compiled `"use client"` component: its store module and the server actions it calls.
 #[derive(Debug, Clone)]
 pub struct Island {
@@ -846,6 +997,8 @@ pub struct Island {
     /// What the app plugin ships: `source` minified (`crate::minify`).
     pub shipped: String,
     pub actions: Vec<String>,
+    /// Static assets imported by this client component, passed via `wp_interactivity_config`.
+    pub assets: std::collections::BTreeMap<String, IslandAsset>,
     /// The store keeps `useLive` reads current: the page also loads `@typedpress/live`.
     pub live: bool,
 }

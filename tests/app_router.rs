@@ -248,20 +248,13 @@ fn app_router_serves_pages_on_wordpress() {
         ]),
         "{social}"
     );
-    assert!(
-        social["links"].as_array().unwrap().contains(&serde_json::json!([
-            "describedby",
-            format!("{base}/llms.txt"),
-            "text/plain"
-        ])),
-        "{social}"
-    );
-    assert!(
-        social["links"].as_array().unwrap().contains(&serde_json::json!([
-            "alternate",
-            format!("{base}/notes/hello.md"),
-            "text/markdown"
-        ])),
+    // The page repeats the layout's link with its keys in another order: it is in the head once.
+    assert_eq!(
+        social["links"],
+        serde_json::json!([
+            ["describedby", format!("{base}/llms.txt"), "text/plain"],
+            ["alternate", format!("{base}/notes/hello.md"), "text/markdown"]
+        ]),
         "{social}"
     );
     // `metadata.scripts`: script modules, a path made absolute.
@@ -566,6 +559,10 @@ fn page_md_is_a_wordpress_page() {
     build(&project);
     // A later build of the same app: one file changed in each of three ways, one removed, one added.
     let second = fixture("app-router", "content-second");
+    copy(
+        &project.join("tp/_generated/migrations"),
+        &second.join("tp/_generated/migrations"),
+    );
     let app = second.join("tp/app");
     std::fs::remove_dir_all(app.join("hidden")).unwrap();
     std::fs::create_dir_all(app.join("news")).unwrap();
@@ -582,6 +579,10 @@ fn page_md_is_a_wordpress_page() {
     build(&second);
     // A third build takes two pages away from visitors: one becomes a draft, one moves under a guard.
     let third = fixture("app-router", "content-third");
+    copy(
+        &second.join("tp/_generated/migrations"),
+        &third.join("tp/_generated/migrations"),
+    );
     let app = third.join("tp/app");
     std::fs::remove_dir_all(app.join("hidden")).unwrap();
     std::fs::remove_dir_all(app.join("colophon")).unwrap();
@@ -603,6 +604,10 @@ fn page_md_is_a_wordpress_page() {
     // A fourth: the guide, still `status: draft`, moves to another route group (same URL) and
     // gets a typo fixed; /colophon is now a page.tsx route.
     let fourth = fixture("app-router", "content-fourth");
+    copy(
+        &third.join("tp/_generated/migrations"),
+        &fourth.join("tp/_generated/migrations"),
+    );
     std::fs::remove_dir_all(fourth.join("tp/app")).unwrap();
     copy(&third.join("tp/app"), &fourth.join("tp/app"));
     let app = fourth.join("tp/app");
@@ -886,20 +891,46 @@ fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
     let module = page("import s from \"./x.module.css\";");
     rejects(
         &dir,
+        &[("tp/app/page.tsx", &styled), ("tp/app/x.ts", "export {};")],
+        "can't find \"./x.css\"",
+        "tp/app/page.tsx:1:1",
+    );
+    rejects(
+        &dir,
         &[
             ("tp/app/page.tsx", &styled),
             ("tp/app/x.css", "@import \"normalize.css\";\n.a {}\n"),
         ],
-        "`@import` in an imported stylesheet isn't supported",
+        "`@import \"normalize.css\"` isn't a local relative stylesheet",
         "tp/app/x.css:1:1",
     );
     rejects(
         &dir,
         &[
             ("tp/app/page.tsx", &styled),
-            ("tp/app/x.css", ".a {\n  background: url(./bg.png);\n}\n"),
+            ("tp/app/x.css", "@import \"./y.css\";\n"),
+            ("tp/app/y.css", "@import \"./x.css\";\n"),
         ],
-        "`url(./bg.png)` is relative to the stylesheet",
+        "circular CSS `@import` involving tp/app/x.css",
+        "tp/app/y.css:1:1",
+    );
+    rejects(
+        &dir,
+        &[
+            ("tp/app/page.tsx", &styled),
+            ("tp/app/x.css", ".a {\n  background: url(./missing.png);\n}\n"),
+        ],
+        "can't find \"./missing.png\" referenced by `url(./missing.png)`",
+        "tp/app/x.css:2:15",
+    );
+    rejects(
+        &dir,
+        &[
+            ("tp/app/page.tsx", &styled),
+            ("tp/app/x.css", ".a {\n  background: url(./secret.php);\n}\n"),
+            ("tp/app/secret.php", "<?php echo 1;\n"),
+        ],
+        "can't bundle \"./secret.php\" from `url(./secret.php)`",
         "tp/app/x.css:2:15",
     );
     rejects(
@@ -929,23 +960,51 @@ fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
         "can't import \"./x.json\": expected TypeScript or JavaScript source",
         "tp/app/page.tsx:1:1",
     );
-    // A client component renders in the browser too; an image URL comes in as a prop.
     rejects(
         &dir,
         &[
-            (
-                "tp/app/page.tsx",
-                "import { C } from \"../components/C\";\nexport default function P() { return <C />; }\n",
-            ),
-            (
-                "tp/components/C.tsx",
-                "\"use client\";\nimport logo from \"./logo.svg\";\nexport function C() { return <img src={logo} />; }\n",
-            ),
-            ("tp/components/logo.svg", "<svg/>"),
+            ("tp/app/page.tsx", &page("import x from \"./a.svg?bogus\";")),
+            ("tp/app/a.svg", "<svg/>"),
         ],
-        "a \"use client\" component can't import tp/components/logo.svg",
-        "tp/components/C.tsx",
+        "unsupported import query \"?bogus\"",
+        "tp/app/page.tsx:1:1",
     );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A fresh clone of a project that builds its stylesheets with `@typedpress/frontend` has no
+/// `tp/_generated/frontend-styles.json` (it stays out of Git). `check` and `check --json` compile it
+/// without reading `@import "tailwindcss"` as a copied stylesheet; `build` needs the built file.
+#[test]
+fn checks_a_fresh_clone_before_its_first_frontend_build() {
+    let dir = std::env::temp_dir().join(format!("typedpress-app-fresh-styles-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    for (path, source) in [
+        (
+            "typedpress.config.ts",
+            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"fresh\" });\n",
+        ),
+        (
+            "package.json",
+            r#"{"devDependencies":{"@typedpress/frontend":"0.1.0"}}"#,
+        ),
+        (
+            "tp/app/page.tsx",
+            "import \"./site.css\";\nexport default function P() { return <h1 className=\"text-4xl\">Hi</h1>; }\n",
+        ),
+        ("tp/app/site.css", "@import \"tailwindcss\" source(\"../\");\n"),
+    ] {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    }
+    let check = first().arg("check").arg(&dir).output().unwrap();
+    assert!(check.status.success(), "{}", String::from_utf8_lossy(&check.stderr));
+    let json = first().arg("check").arg(&dir).arg("--json").output().unwrap();
+    assert!(json.status.success(), "{}", String::from_utf8_lossy(&json.stdout));
+    // No frontend build ran: `check` writes nothing.
+    assert!(!dir.join("tp/_generated/frontend-styles.json").exists());
+    assert!(!dir.join("public/typedpress-styles").exists());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1597,6 +1656,9 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     assert_eq!(seen["bare about"], json!([301, false]));
     // A render that began before forget() leaves no file behind.
     assert_eq!(seen["forget race"], json!([false, false]));
+    // A prebuilt address longer than the read index holds can't be recorded, so no write would
+    // rebuild its file: neither the page nor its twin is written, and it renders per request.
+    assert_eq!(seen["long address"], json!([false, false, 200, false, 200, false]));
     assert_eq!(
         seen["public script updated"],
         json!([true, true, true, 200, false, true])
@@ -1987,12 +2049,13 @@ fn client_components_compile_to_interactivity_stores() {
     assert_eq!(like["label2"], "142 likes");
     assert_eq!(
         like["calls"],
-        serde_json::json!([{ "url": "/__tp/api/v1/actions/like", "method": "POST", "nonce": "n0nce", "body": { "postId": 42 } }])
+        serde_json::json!([{ "url": "/wp-json/typedpress/v1/actions/like", "method": "POST", "nonce": "n0nce", "body": { "postId": 42 } }])
     );
     let effects = drive("clients/Effects", "effects.mjs");
     assert_eq!(
         effects,
-        serde_json::json!({ "mounted": -1, "n": 10, "items": 2, "shown": 2, "seen": 100, "width": 777, "submitted": { "n": 0, "prevented": true } })
+        serde_json::json!({ "mounted": -1, "n": 10, "items": 2, "shown": 2, "seen": 100, "width": 777, "submitted": { "n": 0, "prevented": true },
+            "ref": { "tag": "OUTPUT", "asked": ["[data-tp-ref=\"box\"]"] }, "detached": "none" })
     );
     // The server HTML carries the directives the store answers to.
     let functions = std::fs::read_to_string(plugin.join("tp/app/functions.php")).unwrap();
@@ -2016,6 +2079,7 @@ fn client_components_compile_to_interactivity_stores() {
         "'data-wp-watch---effect1' => 'callbacks.effect1'",
         "'data-wp-init---mount2' => 'callbacks.mount2'",
         "'data-wp-on--submit' => 'actions.submit'",
+        "'data-tp-ref' => 'box'",
     ] {
         assert!(directives.contains(directive), "{directive}");
     }
@@ -2036,6 +2100,46 @@ fn refuses_client_code_outside_the_subset() {
         )],
         "a client component returns one element",
         "tp/components/A.tsx:3:",
+    );
+    let refs =
+        |body: &str| format!("\"use client\";\nimport {{ useRef, useState }} from \"typedpress/client\";\n{body}\n");
+    rejects(
+        &dir,
+        &[(
+            "tp/components/A.tsx",
+            &refs("export function A() { const box = useRef(); const [n] = useState(0); return <b>{n}</b>; }"),
+        )],
+        "`box` is a `useRef()` no element has",
+        "tp/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/components/A.tsx",
+            &refs(
+                "export function A() { const box = useRef(); const [n] = useState(0); return <b ref={box}><i ref={box}>{n}</i></b>; }",
+            ),
+        )],
+        "`box` is already attached to an element",
+        "tp/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/components/A.tsx",
+            &refs("export function A() { const [n] = useState(0); return <b ref={n}>{n}</b>; }"),
+        )],
+        "`ref` takes a `useRef()` of this component",
+        "tp/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/components/A.tsx",
+            "export function A() { return <b ref={null}>x</b>; }\n",
+        )],
+        "`ref` in a server component",
+        "tp/components/A.tsx:1:",
     );
     rejects(
         &dir,
@@ -2266,9 +2370,10 @@ export const nope = state.result?.nope;
         seen["form"],
         serde_json::json!({
             "method": "post",
-            "action": "/__tp/api/v1/actions/subscribe",
+            "action": "/wp-json/typedpress/v1/actions/subscribe",
             "hidden": [["_tp_return", "hidden", "/?ref=nav"]],
             "page cache": "public, max-age=0, s-maxage=300, must-revalidate",
+            "undeclared query": "private, no-store, max-age=0",
         }),
         "an anonymous page with a form stays shared and carries no nonce: {seen}"
     );
@@ -2307,7 +2412,7 @@ export const nope = state.result?.nope;
         "{seen}"
     );
     assert_eq!(seen["handler error"], serde_json::json!("Five seats at most"));
-    assert_eq!(seen["not a number"], serde_json::json!("seats must be an integer"));
+    assert_eq!(seen["not a number"], serde_json::json!("seats must be a finite number"));
     assert_eq!(seen["open redirect"], serde_json::json!(true));
     // A form on a page's other spelling (`/join`) comes back to the page's one address, and the
     // result shows there: the router never moves a request that carries a result.
@@ -2417,7 +2522,7 @@ fn forms_submit_in_place_in_the_browser() {
     // A second submit while the first was in flight sent nothing.
     assert_eq!(
         success["posts"],
-        serde_json::json!(["/__tp/api/v1/actions/subscribe"]),
+        serde_json::json!(["/wp-json/typedpress/v1/actions/subscribe"]),
         "{seen}"
     );
     // The same document: the window marker survives and no navigation entry was added.
@@ -2484,7 +2589,7 @@ fn forms_submit_in_place_in_the_browser() {
     assert_eq!(
         seen["failed"],
         serde_json::json!({
-            "posts": ["/__tp/api/v1/actions/subscribe"],
+            "posts": ["/wp-json/typedpress/v1/actions/subscribe"],
             "message": ["alert", true],
             "afterPending": { "busy": null, "disabled": [false] },
             "marker": "same document",
@@ -2493,7 +2598,7 @@ fn forms_submit_in_place_in_the_browser() {
     );
     assert_eq!(
         seen["dropped"],
-        serde_json::json!({ "posts": ["/__tp/api/v1/actions/subscribe"], "message": true, "marker": "same document" }),
+        serde_json::json!({ "posts": ["/wp-json/typedpress/v1/actions/subscribe"], "message": true, "marker": "same document" }),
         "{seen}"
     );
     // A `<Link>` click during a submit: the linked page stays; the late answer isn't rendered.
@@ -2585,6 +2690,18 @@ fn forms_submit_in_place_in_the_browser() {
     assert_eq!(
         seen["otherTemplate"],
         serde_json::json!({ "from": "tp-blank", "to": "tp-page", "voted": "Voted bare", "header": 1, "regions": 1, "url": "/" }),
+        "{seen}"
+    );
+    // A stale answer in another block template is dropped after a `<Link>` navigation or a newer
+    // submit (#537).
+    assert_eq!(
+        seen["otherTemplateStaleLink"],
+        serde_json::json!({ "url": "/other/", "other": true, "template": "tp-page", "marker": "same document" }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["otherTemplateOvertaken"],
+        serde_json::json!({ "url": "/?ref=nav", "done": "Subscribed three@example.test for 1 (weekly: false)", "template": "tp-page", "marker": "same document", "message": 1 }),
         "{seen}"
     );
 }
@@ -2934,7 +3051,7 @@ fn refuses_forms_it_cannot_post() {
     let dir = std::env::temp_dir().join(format!("typedpress-forms-reject-{}", std::process::id()));
     let server = (
         "tp/server.ts",
-        "import { action, text } from \"typedpress\";\nexport const send = action({ input: { name: text() }, access: \"anyone\", async handler({ name }) { return name; } });\n",
+        "import { text, mutation } from \"typedpress\";\nexport const send = mutation({ access: \"anyone\" }, async ({ name }: { name: string }) => { return name; });\n",
     );
     let page = |body: &str| {
         format!("import {{ useFormState }} from \"typedpress/app\";\nimport {{ send }} from \"../server\";\n{body}\n")
@@ -3293,6 +3410,8 @@ fn client_components_hydrate_in_the_browser() {
             &serde_json::json!("40")
         )
     );
+    // `ref={box}` on the `<output>`: a handler reads that element through `box.current`.
+    assert_eq!(seen["ref"], "OUTPUT", "{seen}");
     // The CSS module's class is renamed on both sides, and the stylesheet the page links applies.
     assert_eq!(
         (&seen["toggleBefore"], &seen["toggleAfter"]),
@@ -3329,7 +3448,7 @@ fn client_components_hydrate_in_the_browser() {
     // The typed client is served from the app plugin as a module the browser imports as is.
     assert_eq!(
         seen["client"],
-        serde_json::json!([200, "text/javascript;charset=UTF-8", "function", "function"]),
+        serde_json::json!([200, "text/javascript; charset=utf-8", "function", "function"]),
         "{seen}"
     );
 }
@@ -3407,6 +3526,13 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         seen["missing"],
         serde_json::json!({ "status": 404, "cache": private, "edge": "no-cache", "batcache": "cancel" })
     );
+    // `//notes/other/` renders the note (the router reads the path as WordPress does) but no purge
+    // names that URL: private, and filed under no other page (`/other/` on the host `notes`).
+    assert_eq!(
+        seen["double slash"],
+        serde_json::json!({ "status": 200, "cache": private, "edge": "no-cache", "batcache": "cancel" })
+    );
+    assert_eq!(seen["double slash index"], serde_json::json!([]));
     // TypedPress's API and Identity's answer for whoever asks: Batcache never keeps them, signed in
     // by an application password or not, nor Identity's own API, which finds its session from its
     // cookie without WordPress setting the user.
@@ -3526,6 +3652,8 @@ fn one_write_announces_its_purges_once() {
         json!(["/", "/notes/hello.md", "/notes/hello/"]),
         "{seen}"
     );
+    // The home page lists notes: a listing, though the list held one note when it rendered.
+    assert_eq!(seen["home reads"], json!(["*", "row"]), "{seen}");
     let once = |key: &str| {
         let calls = seen[key]["calls"].as_array().unwrap_or_else(|| panic!("{key}: {seen}"));
         assert_eq!(calls.len(), 1, "{key}: one call per write: {seen}");
@@ -3575,6 +3703,140 @@ fn one_write_announces_its_purges_once() {
     );
 }
 
+/// What a page cache holds and what a write drops from it, on WordPress with a stand-in host
+/// listening on `tp_purge_urls` (tests/php/page_caching.php). Each purge is checked beside the page as
+/// the origin renders it after the write, so every expected path is one whose content changed.
+///
+/// - A list read is a list read whatever it returned: a filtered catalog with one row, and a page
+///   that shows the top-ranked row, are purged when a new row joins or outranks it.
+/// - A global is a dependency: a write to it (the API, or its options page) purges the pages that
+///   printed it.
+/// - A query string is shared and recorded only when every parameter is one the page declares, and
+///   a path keeps a bounded number of recorded variants.
+#[test]
+fn page_caches_drop_what_a_write_changed() {
+    let project = fixture("page-caching", "writes");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/page_caching.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    use serde_json::json;
+    let shared = "public, max-age=0, s-maxage=300, must-revalidate";
+    let private = "private, no-store, max-age=0";
+    // Before any write: one nvme drive, so the filtered catalog and the top page each show one row.
+    for key in ["catalog", "nvme", "none", "top", "drive", "about"] {
+        assert_eq!(seen["warm"][key]["status"], 200, "{key}: {seen}");
+        assert_eq!(seen["warm"][key]["cache"], shared, "{key}: {seen}");
+    }
+    assert_eq!(seen["warm"]["nvme"]["items"], json!(["Alpha"]), "{seen}");
+    assert_eq!(seen["warm"]["top"]["line"], "Gamma", "{seen}");
+    let index: Vec<&str> = seen["index"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    // Both one-row reads are recorded as listings (`*`), with the row they showed.
+    for row in [
+        "drives * /catalog/?media=nvme",
+        "drives # /catalog/?media=nvme",
+        "drives * /top/",
+        "drives * /catalog.md?media=nvme",
+        // A filter that matched nothing still depends on every write to the kind.
+        "drives * /catalog/?media=tape",
+        // The global the catalog and the drive page print.
+        "global:shop * /catalog/",
+        "global:shop * /drives/alpha/",
+    ] {
+        assert!(index.contains(&row), "{row} in {index:?}");
+    }
+    // The item a URL names is that row alone, and a page that reads nothing records nothing.
+    assert!(!index.contains(&"drives * /drives/alpha/"), "{index:?}");
+    assert!(!index.iter().any(|r| r.ends_with(" /about/")), "{index:?}");
+
+    // A second nvme drive, priced above every other: the filtered list grows from 1 to 2 and the
+    // top page shows the new drive. Both URLs, the empty filter and the twin are announced.
+    assert_eq!(
+        seen["grown"],
+        json!({
+            "announced": ["/catalog/", "/catalog/?media=nvme", "/catalog/?media=tape", "/catalog.md?media=nvme", "/top/"],
+            "nvme": ["Alpha", "Delta"],
+            "top": "Delta",
+            "twin": "# TypedPress test site\n\n- Alpha\n- Delta",
+        }),
+        "{seen}"
+    );
+    // A price and stock change: the item's page and every list of its kind, not another item's page.
+    assert_eq!(
+        seen["priced"],
+        json!({
+            "announced": ["/catalog/", "/catalog/?media=nvme", "/top/", "/drives/alpha/"],
+            "drive": "Alpha: 12.5 USD, 0 in stock",
+        }),
+        "{seen}"
+    );
+    // A rolled-back write announces nothing, and the pages still show what they showed.
+    assert_eq!(seen["rolled back"]["announced"], json!(null), "{seen}");
+    assert_eq!(seen["rolled back"]["drive"], "Alpha: 12.5 USD, 0 in stock", "{seen}");
+    assert_eq!(seen["rolled back"]["top"], "Delta", "{seen}");
+    // A write to the global purges the pages that printed it (and no other), from the API…
+    assert_eq!(
+        seen["global"],
+        json!({
+            "announced": ["/catalog/", "/catalog/?media=nvme", "/drives/alpha/", "/drives/beta/"],
+            "catalog": "EUR",
+            "drive": "Alpha: 12.5 EUR, 0 in stock",
+        }),
+        "{seen}"
+    );
+    // …and from its options page, which saves the option itself.
+    assert_eq!(
+        seen["global option"],
+        json!({ "announced": ["/catalog/", "/drives/alpha/"], "catalog": "GBP" }),
+        "{seen}"
+    );
+
+    // A parameter the page doesn't declare: answered, never shared, never recorded, never announced.
+    for (path, answer) in seen["junk"]["answers"].as_object().unwrap() {
+        assert_eq!(answer, &json!([200, private, "no-cache"]), "{path}: {seen}");
+    }
+    assert_eq!(seen["junk"]["recorded"], json!([]), "{seen}");
+    assert_eq!(seen["junk"]["announced"], json!([]), "{seen}");
+    // Declared parameters: 20 recorded variants of one path, the rest private; a write names those
+    // 20 (and their twins), not the whole host; a variant unconfirmed for two windows gives way.
+    assert_eq!(
+        seen["variants"],
+        json!({
+            "max": 20,
+            // `?media=nvme` and `?media=tape` were recorded already: 18 of the 22 new ones fit.
+            "shared": 18,
+            "private": 4,
+            "recorded": 20,
+            "announced": 20,
+            "whole host": false,
+            "recorded one": shared,
+            "over the limit": private,
+            "after two windows": shared,
+            // The 18 stale ones went; `nvme`, `tape` (rendered since) and the new one stay.
+            "recorded then": 3,
+        }),
+        "{seen}"
+    );
+}
+
 /// Stylesheets and SVGs that pages, layouts and components import (docs/spec/tsx-to-php.md,
 /// "Accepted"), on WordPress over HTTP: each page links its layouts' and its own stylesheets once,
 /// in import order (the root layout's first), from the app plugin, with content-hashed names; a CSS
@@ -3583,6 +3845,17 @@ fn one_write_announces_its_purges_once() {
 #[test]
 fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     let project = fixture("app-assets", "serve");
+    // An explicit asset import keeps its extension even when a TypeScript module shares its stem.
+    for (path, source) in [
+        ("tp/app/site.ts", "export {};"),
+        (
+            "tp/app/about/page.module.ts",
+            r#"export default { card: "other-card", title: "other-title" };"#,
+        ),
+        ("tp/app/about/compass.ts", r#"export default "";"#),
+    ] {
+        std::fs::write(project.join(path), source).unwrap();
+    }
     build(&project);
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
@@ -3640,16 +3913,18 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     let css = |page: &str, i: usize| seen[page]["links"][i]["css"].as_str().unwrap().to_string();
     assert_eq!(
         css("about", 0),
-        ":root { --ink: #1d2420; }\nbody { margin: 0; color: var(--ink); }\n.site { max-width: 48rem; }\n"
+        ":root{--ink:#1d2420}body{margin:0;color:var(--ink)}.site{max-width:48rem}"
     );
     assert_eq!(
         css("about", 1),
-        ".page_title { font-size: 2rem; }\n.page_card .page_title { color: #1f4d3a; }\n@media (min-width: 40rem) { .page_card { padding: 1rem; } }\n"
+        ".page_title{font-size:2rem}.page_card .page_title{color:#1f4d3a}@media (min-width:40rem){.page_card{padding:1rem}}"
     );
     assert_eq!(
         css("about", 2),
-        ".counter_button { border: 0; }\n.counter_on { background: #1f4d3a; }\n"
+        ".counter_button{border:0}.counter_on{background:#1f4d3a}"
     );
+    // Small stylesheets (<= 4 KB) are inlined into <head> automatically.
+    assert_eq!(seen["about"]["links"][0]["inline"], true);
     // The plain stylesheet's link is the same file on both pages.
     assert_eq!(seen["about"]["links"][0]["file"], seen["plain"]["links"][0]["file"]);
     assert_eq!(
@@ -3662,6 +3937,262 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     assert!(image["type"].as_str().unwrap().starts_with("image/svg+xml"), "{image}");
     assert!(image["src"].as_str().unwrap().starts_with("compass-"), "{image}");
     assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
+}
+
+/// Binary static assets (images, fonts, etc.) imported from TSX or referenced by relative `url(...)`
+/// in imported stylesheets and CSS modules are copied under content-hashed names in `tp/app/assets/`
+/// (served from `wp-content/`), deduplicated by bytes, and round-trip through hosted source bundles.
+#[cfg(feature = "host")]
+#[test]
+fn imported_binary_assets_and_css_urls_bundle_into_app_assets() {
+    let project = tempfile::tempdir().unwrap();
+    let project = project.path();
+    std::fs::create_dir_all(project.join("tp/app/about")).unwrap();
+    std::fs::create_dir_all(project.join("tp/app/fonts")).unwrap();
+    std::fs::write(
+        project.join("typedpress.config.ts"),
+        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"binassets\", admin: false });\n",
+    )
+    .unwrap();
+    // Non-UTF-8 binary bytes for PNG, WebP, and WOFF2.
+    let png_bytes: Vec<u8> = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00, 0xfe];
+    let webp_bytes: Vec<u8> = vec![b'R', b'I', b'F', b'F', 0xff, 0x80, 0x01, 0x02, b'W', b'E', b'B', b'P'];
+    let font_bytes: Vec<u8> = vec![b'w', b'O', b'F', b'2', 0x00, 0xff, 0xde, 0xad, 0xbe, 0xef];
+    std::fs::write(project.join("tp/app/about/hero.png"), &png_bytes).unwrap();
+    std::fs::write(project.join("tp/app/about/tile.webp"), &webp_bytes).unwrap();
+    std::fs::write(project.join("tp/app/fonts/inter.woff2"), &font_bytes).unwrap();
+    std::fs::write(
+        project.join("tp/app/about/theme.css"),
+        "@font-face { font-family: Inter; src: url(\"../fonts/inter.woff2?v=1#f\") format(\"woff2\"); }\n.banner { background: url(./hero.png); }\n.root { background: url(/public-root.png); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/app/about/card.module.css"),
+        ".card { background-image: url('./tile.webp'); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/app/about/page.tsx"),
+        "import \"./theme.css\";\nimport styles from \"./card.module.css\";\nimport hero from \"./hero.png\";\nimport font from \"../fonts/inter.woff2\";\nexport default function About() {\n  return <div className={styles.card} data-font={font}><img src={hero} alt=\"Hero\" /></div>;\n}\n",
+    )
+    .unwrap();
+
+    build(project);
+    let assets_dir = project.join("tp/dist/wp-content/plugins/typedpress-app-binassets/tp/app/assets");
+    let entries: std::collections::BTreeMap<String, Vec<u8>> = std::fs::read_dir(&assets_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name() != ".htaccess")
+        .map(|e| {
+            (
+                e.file_name().to_string_lossy().into_owned(),
+                std::fs::read(e.path()).unwrap(),
+            )
+        })
+        .collect();
+    let find = |prefix: &str, ext: &str| -> (String, Vec<u8>) {
+        entries
+            .iter()
+            .find(|(name, _)| name.starts_with(prefix) && name.ends_with(ext))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .unwrap_or_else(|| panic!("missing {prefix}*{ext} in {:?}", entries.keys().collect::<Vec<_>>()))
+    };
+    let (hero_file, hero_out) = find("hero-", ".png");
+    let (tile_file, tile_out) = find("tile-", ".webp");
+    let (font_file, font_out) = find("inter-", ".woff2");
+    let (_, theme_out) = find("theme-", ".css");
+    let (_, card_out) = find("card-", ".css");
+    assert_eq!(hero_out, png_bytes);
+    assert_eq!(tile_out, webp_bytes);
+    assert_eq!(font_out, font_bytes);
+    // Deduplicated: only 5 asset files total (hero, tile, inter, theme, card).
+    assert_eq!(entries.len(), 5, "{:?}", entries.keys().collect::<Vec<_>>());
+    let theme_css = String::from_utf8(theme_out).unwrap();
+    assert!(
+        theme_css.contains(&format!("url(\"./{font_file}?v=1#f\")")),
+        "{theme_css}"
+    );
+    assert!(theme_css.contains(&format!("url(./{hero_file})")), "{theme_css}");
+    assert!(theme_css.contains("url(/public-root.png)"), "{theme_css}");
+    let card_css = String::from_utf8(card_out).unwrap();
+    assert_eq!(card_css, format!(".card_card{{background-image:url('./{tile_file}')}}"));
+    let functions = std::fs::read_to_string(
+        project.join("tp/dist/wp-content/plugins/typedpress-app-binassets/tp/app/functions.php"),
+    )
+    .unwrap();
+    assert!(
+        functions.contains(&format!("\\TypedPress\\Assets::url( '{hero_file}' )")),
+        "{functions}"
+    );
+    assert!(
+        functions.contains(&format!("\\TypedPress\\Assets::url( '{font_file}' )")),
+        "{functions}"
+    );
+
+    // Hosted capture + compile round-trips binary assets byte-for-byte identically.
+    let work = tempfile::tempdir().unwrap();
+    let (sources, store) = (work.path().join("sources"), work.path().join("store"));
+    typedpress::host::sources(project, &sources).unwrap();
+    let built = typedpress::host::compile_to_store(&sources, &store, project, None).unwrap();
+    let manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(store.join(format!("build/{}.json", built.build_id))).unwrap())
+            .unwrap();
+    let hosted_assets = store.join(format!(
+        "app/{}/plugins/typedpress-app-binassets/tp/app/assets",
+        manifest["app"].as_str().unwrap()
+    ));
+    for (name, bytes) in &entries {
+        assert_eq!(
+            &std::fs::read(hosted_assets.join(name)).unwrap(),
+            bytes,
+            "hosted asset {name}"
+        );
+    }
+}
+
+/// End-to-end WordPress verification of the full modern asset pipeline:
+/// CSS `@import` bundling + minification + small-CSS inlining (<= 4 KB) + large-CSS external linking,
+/// `@font-face` + priority `<Image>` preloading, automatic intrinsic image dimensions, Vite query
+/// modifiers (`?raw`, `?inline`, `?url`, `?meta`), and `"use client"` component asset imports.
+#[test]
+fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
+    let project = tempfile::tempdir().unwrap();
+    let project = project.path();
+    std::fs::create_dir_all(project.join("tp/app/fonts")).unwrap();
+    std::fs::create_dir_all(project.join("tp/components")).unwrap();
+    std::fs::write(
+        project.join("typedpress.config.ts"),
+        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"modernassets\", admin: false });\n",
+    )
+    .unwrap();
+    // Valid 40x20 PNG (IHDR header) + WOFF2/TTF font bytes + SVG.
+    let png_bytes: Vec<u8> = vec![
+        0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, b'I', b'H', b'D', b'R', 0x00, 0x00,
+        0x00, 40, 0x00, 0x00, 0x00, 20, 0x08, 0x02, 0x00, 0x00, 0x00,
+    ];
+    let woff2_bytes: Vec<u8> = vec![b'w', b'O', b'F', b'2', 0x00, 0xff, 0x01, 0x02];
+    let ttf_bytes: Vec<u8> = vec![0x00, 0x01, 0x00, 0x00, 0xaa, 0xbb];
+    std::fs::write(project.join("tp/app/hero.png"), &png_bytes).unwrap();
+    std::fs::write(project.join("tp/app/fonts/inter.woff2"), &woff2_bytes).unwrap();
+    std::fs::write(project.join("tp/app/fonts/inter.ttf"), &ttf_bytes).unwrap();
+    std::fs::write(project.join("tp/app/note.txt"), "hello raw text").unwrap();
+    std::fs::write(
+        project.join("tp/app/tokens.css"),
+        "@font-face { font-family: Inter; src: url(\"./fonts/inter.woff2\") format(\"woff2\"), url(\"./fonts/inter.ttf\") format(\"truetype\"); }\n:root { --accent: #ffffff; }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/app/small.css"),
+        "@import \"./tokens.css\";\n.hero { background: url(./hero.png); color: var(--accent); }\n",
+    )
+    .unwrap();
+    // > 4 KB stylesheet so it links externally instead of inlining.
+    let mut big_css = String::new();
+    for i in 0..260 {
+        big_css.push_str(&format!(".big-rule-{i}{{padding:{i}px;margin:0}}\n"));
+    }
+    std::fs::write(project.join("tp/app/large.css"), &big_css).unwrap();
+    std::fs::write(project.join("tp/app/standalone.css"), ".only-url { color: #aabbcc; }\n").unwrap();
+    std::fs::write(
+        project.join("tp/components/icon.svg"),
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><rect width=\"16\" height=\"16\"/></svg>",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/components/Badge.tsx"),
+        "\"use client\";\nimport { useState } from \"typedpress/client\";\nimport icon from \"./icon.svg\";\nimport inlineIcon from \"./icon.svg?inline\";\nexport function Badge() {\n  const [alt, setAlt] = useState(false);\n  return <button type=\"button\" onClick={() => setAlt(!alt)}><img className=\"client-img\" src={alt ? inlineIcon : icon} alt=\"Badge\" /></button>;\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/app/page.tsx"),
+        "import { Image } from \"typedpress/app\";\nimport \"./small.css\";\nimport \"./large.css\";\nimport heroUrl from \"./hero.png\";\nimport heroMeta from \"./hero.png?meta\";\nimport heroInline from \"./hero.png?inline\";\nimport rawNote from \"./note.txt?raw\";\nimport standaloneCssUrl from \"./standalone.css?url\";\nimport { Badge } from \"../components/Badge\";\nexport default function Home() {\n  return (\n    <main data-raw={rawNote} data-css-url={standaloneCssUrl}>\n      <Image className=\"priority-img\" src={heroMeta} alt=\"Hero\" priority />\n      <Image className=\"lazy-img\" src={heroUrl} alt=\"Lazy\" />\n      <img className=\"plain-img\" src={heroUrl} alt=\"Plain\" />\n      <img className=\"inline-img\" src={heroInline} alt=\"Inline\" />\n      <Badge />\n    </main>\n  );\n}\n",
+    )
+    .unwrap();
+
+    build(project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_assets_modern.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["status"], 200, "{seen}");
+    // Small CSS (with bundled @import tokens.css) is minified, inlined, and its relative url(./...) resolved to wp-content/.
+    let inlines = seen["inlineStyles"].as_array().unwrap();
+    assert_eq!(inlines.len(), 1, "{seen}");
+    let inline_css = inlines[0].as_str().unwrap();
+    assert!(inline_css.contains("--accent:#fff"), "{inline_css}");
+    assert!(
+        inline_css.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/hero-"),
+        "{inline_css}"
+    );
+    assert!(
+        inline_css.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/inter-"),
+        "{inline_css}"
+    );
+    // Large CSS (> 4 KB) is linked externally.
+    let externals = seen["externalStyles"].as_array().unwrap();
+    assert_eq!(externals.len(), 1, "{seen}");
+    assert!(externals[0]["file"].as_str().unwrap().starts_with("large-"), "{seen}");
+    assert_eq!(externals[0]["status"], 200);
+    // Preloads: woff2 font (NOT ttf) + priority hero image.
+    let preloads = seen["preloads"].as_array().unwrap();
+    assert_eq!(preloads.len(), 2, "{seen}");
+    let font_preload = preloads.iter().find(|p| p["as"] == "font").unwrap();
+    assert_eq!(font_preload["type"], "font/woff2");
+    assert_eq!(font_preload["crossorigin"], "anonymous");
+    assert!(
+        font_preload["file"].as_str().unwrap().ends_with(".woff2"),
+        "{font_preload}"
+    );
+    assert_eq!(font_preload["status"], 200);
+    let img_preload = preloads.iter().find(|p| p["as"] == "image").unwrap();
+    assert_eq!(img_preload["fetchpriority"], "high");
+    assert!(
+        img_preload["file"].as_str().unwrap().starts_with("hero-"),
+        "{img_preload}"
+    );
+    assert_eq!(img_preload["status"], 200);
+    // <Image priority>, <Image lazy>, plain <img> auto-dimensions, ?inline data URI, and client component asset!
+    let imgs = &seen["imgs"];
+    assert_eq!(imgs["priority-img"]["width"], "40");
+    assert_eq!(imgs["priority-img"]["height"], "20");
+    assert_eq!(imgs["priority-img"]["loading"], "eager");
+    assert_eq!(imgs["priority-img"]["decoding"], "async");
+    assert_eq!(imgs["priority-img"]["fetchpriority"], "high");
+    assert_eq!(imgs["priority-img"]["status"], 200);
+    assert_eq!(imgs["lazy-img"]["width"], "40");
+    assert_eq!(imgs["lazy-img"]["height"], "20");
+    assert_eq!(imgs["lazy-img"]["loading"], "lazy");
+    assert_eq!(imgs["plain-img"]["width"], "40");
+    assert_eq!(imgs["plain-img"]["height"], "20");
+    assert!(
+        imgs["inline-img"]["src"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png;base64,")
+    );
+    assert_eq!(imgs["client-img"]["width"], "16");
+    assert_eq!(imgs["client-img"]["height"], "16");
+    assert_eq!(imgs["client-img"]["status"], 200);
+    // ?raw and ?url on CSS (without auto-enqueuing standalone.css).
+    assert_eq!(seen["raw"], "hello raw text");
+    assert_eq!(seen["cssUrlStatus"], 200);
+    assert!(seen["cssUrlFile"].as_str().unwrap().starts_with("standalone-"));
+    // Client component Interactivity config carries its imported asset URL.
+    let client_icon = seen["clientConfigAssets"]["icon"].as_str().unwrap();
+    assert!(
+        client_icon.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/icon-"),
+        "{client_icon}"
+    );
 }
 
 /// `typedpress doctor --site <url> --links` on a served TypedPress site: every link and `#anchor` the docs
@@ -3779,7 +4310,7 @@ fn api_reference_renders_openapi_as_pages() {
     assert_eq!(index["status"], 200);
     assert_eq!(index["h1"], serde_json::json!(["Apiref API"]));
     assert!(
-        index["server"][0].as_str().unwrap().ends_with("/__tp/api/v1"),
+        index["server"][0].as_str().unwrap().ends_with("/wp-json/typedpress/v1"),
         "{index}"
     );
     assert_eq!(index["tags"][0], "notes");
@@ -3989,6 +4520,18 @@ fn public_files_serve_at_the_site_root() {
     );
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
+        seen["packaged"],
+        serde_json::json!({
+            "env": false,
+            "php": false,
+            "htaccess": true,
+            "indexSymlinked": false,
+            "existingPreserved": "real-root-file",
+            "logoIsSymlink": true,
+            "logoTargetInWpContent": true
+        })
+    );
+    assert_eq!(
         seen["served"],
         serde_json::json!({
             "/compiler.wasm": [200, "application/wasm", 8],
@@ -4000,9 +4543,13 @@ fn public_files_serve_at_the_site_root() {
             "/.well-known/ai.json": [200, "application/json", 13],
             "/notes.md": [200, "text/markdown; charset=utf-8", 15],
             "/robots-extra.txt": [200, "text/plain; charset=utf-8", 14],
-            "/index.html": [200, "text/html; charset=utf-8", 21],
-            "/it's.txt": [200, "text/plain; charset=utf-8", 1]
+            "/it's.txt": [200, "text/plain; charset=utf-8", 1],
+            "/index.html": [200, "text/html; charset=utf-8", 21]
         })
+    );
+    assert_eq!(
+        seen["wpIndex"],
+        serde_json::json!([200, "text/html; charset=utf-8", 21])
     );
     // robots.txt, llms.txt, feeds and TypedPress Identity's discovery document stay WordPress's.
     for (path, kept) in seen["wordpress"].as_object().unwrap() {
@@ -4013,7 +4560,7 @@ fn public_files_serve_at_the_site_root() {
     assert_eq!(seen["home"], false);
     // `tp/app/about/page.tsx` wins over `public/about`.
     assert_eq!(seen["about"], serde_json::json!([200, true, false]));
-    // `<Link>` to a file in `public/` keeps its path, though the root `[slug]` route also matches it;
+    // `<Link>` to a file in `public/` keeps its root path, though the root `[slug]` route also matches it;
     // a link to a page is written at the page's one address.
     assert_eq!(
         seen["about links"],
@@ -4026,14 +4573,25 @@ fn public_files_serve_at_the_site_root() {
     }
     assert_eq!(seen["refused"].as_object().unwrap().len(), 15);
     assert_eq!(seen["head"], serde_json::json!([200, "", "11"]));
-    // A matching ETag, its weak form, or one of a list: 304; another: 200.
-    assert_eq!(seen["not modified"], serde_json::json!([304, 304, 304, 200]));
-    assert_eq!(seen["svg policy"], true);
-    assert_eq!(seen["cache"], "public, max-age=300");
-    // Any origin may read a public file, on a 200 and a 304; a page says nothing of the kind.
-    assert_eq!(seen["other origins"], serde_json::json!(["*", "*", null]));
+    // /.well-known/* stays served at the site root through PHP with ETag, 304, cache and CORS headers.
+    assert_eq!(
+        seen["wellKnown"],
+        serde_json::json!({
+            "cache": "public, max-age=300",
+            "notModified": [304, 304, 304, 304, 200, 200, 200, 200],
+            "cors": ["*", "*", null]
+        })
+    );
     // A POST isn't served a file; the `[slug]` page answers it as pages do (405).
     assert_eq!(seen["post"], 405);
+    assert_eq!(
+        seen["cleaned"],
+        serde_json::json!({
+            "logoRemoved": true,
+            "filesDirRemoved": true,
+            "existingStillThere": "real-root-file"
+        })
+    );
 }
 
 /// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
@@ -4136,7 +4694,8 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         (&serde_json::json!(200), &doc, &doc),
         "{paged}"
     );
-    assert_eq!(paged["expires"], serde_json::Value::Null, "{paged}");
+    // The page declares no `page` parameter, so this URL is the visitor's own answer, not a shared one.
+    assert_eq!(paged["cache"], "private, no-store, max-age=0", "{paged}");
     assert!(
         !paged["body"]
             .as_array()
@@ -4156,8 +4715,8 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     );
     assert_eq!(missing["cache"], "private, no-store, max-age=0");
     // One address per page (#462), the permalink structure's (`/%postname%/`, a trailing slash): the
-    // bare spelling 301s there with its query string. The address itself, a `.md` twin, the REST and
-    // `/__tp/` API routes and WordPress's own paths answer where they are. A path no doc has, and
+    // bare spelling 301s there with its query string. The address itself, a `.md` twin, the REST routes
+    // (TypedPress's API among them) and WordPress's own paths answer where they are. A path no doc has, and
     // `/docs` (the catch-all with no item), are a 404 where they were asked, as WordPress answers one.
     assert_eq!(
         seen["spellings"],
@@ -5021,7 +5580,7 @@ fn static_export_from_a_hosted_site() {
                 "-d",
             ])
             .arg(body.to_string())
-            .arg(format!("{site}/__tp/api/v1{path}"))
+            .arg(format!("{site}/wp-json/typedpress/v1{path}"))
             .output()
             .unwrap();
         String::from_utf8_lossy(&out.stdout).into_owned()
@@ -5129,7 +5688,7 @@ fn static_export_refuses_what_needs_a_server() {
     );
     write(
         "tp/actions.ts",
-        "import { action } from \"typedpress\";\nexport const ping = action({ input: {}, access: \"anyone\", async handler() { return 1; } });\n",
+        "import { mutation } from \"typedpress\";\nexport const ping = mutation({ access: \"anyone\" }, async () => { return 1; });\n",
     );
     write(
         "tp/components/Ping.tsx",
@@ -5228,254 +5787,49 @@ fn static_export_refuses_what_needs_a_server() {
     );
 }
 
-/// The drive-store example (examples/drive-store), the shop that shows most of TypedPress at once, on
-/// WordPress: built as committed, seeded from the records a hosted compile writes for its
-/// content/drives/, and used as a browser with scripts off would (tests/php/drive_store.php):
-/// search, the buy form and its stock rule, guarded pages, staff actions, reviews,
-/// the RSS feed and the settings global.
+/// WordPress renders the checked-in drive store over its native Woo products and orders.
 #[test]
 fn drive_store_example_sells_on_wordpress() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("drive-store");
-    copy(&root().join("examples/drive-store"), &project);
-    let _ = std::fs::remove_dir_all(project.join(".tp"));
-    let _ = std::fs::remove_dir_all(project.join("tp/dist"));
-    build(&project);
-    let (sources, compiled) = (work.path().join("sources"), work.path().join("compiled"));
-    for args in [
-        vec![
-            "sources".as_ref(),
-            project.as_os_str(),
-            "--out".as_ref(),
-            sources.as_os_str(),
-        ],
-        vec![
-            "compile-sources".as_ref(),
-            sources.as_os_str(),
-            compiled.as_os_str(),
-            project.as_os_str(),
-        ],
-    ] {
-        let out = first().args(&args).output().unwrap();
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let source = root().join("examples/drive-store");
+    std::fs::create_dir_all(project.join("tp")).unwrap();
+    std::fs::copy(
+        source.join("typedpress.config.ts"),
+        project.join("typedpress.config.ts"),
+    )
+    .unwrap();
+    for name in ["content", "public", "tp/app", "tp/lib", "tp/wp-hooks", "tp/_generated"] {
+        copy(&source.join(name), &project.join(name));
     }
-    let profile = std::env::var_os("TP_DRIVE_PROFILE")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| work.path().join("drive-profile.json"));
+    for name in ["schema.ts", "server.ts"] {
+        std::fs::copy(source.join("tp").join(name), project.join("tp").join(name)).unwrap();
+    }
+    build(&project);
+    let init_dir = std::fs::read_dir(project.join("tp/_generated/migrations"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.is_dir())
+        .expect("init migration folder");
+    let ops: serde_json::Value = serde_json::from_slice(&std::fs::read(init_dir.join("ops.json")).unwrap()).unwrap();
+    let tables: Vec<&str> = ops["ops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|op| op["op"] == "createTable" && op["table"] != "tp__revisions")
+        .filter_map(|op| op["table"].as_str())
+        .collect();
+    assert_eq!(tables, ["stock_movements"]);
+
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/drive_store.php"))
         .arg(project.join("tp/dist/wp-content"))
-        .arg(compiled.join("seed"))
-        .env("TP_DRIVE_PROFILE", &profile)
         .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
-    assert!(
-        out.status.success(),
-        "{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let report: serde_json::Value = serde_json::from_slice(&std::fs::read(profile).unwrap()).unwrap();
-    for (state, max_queries) in [
-        ("catalog", 1),
-        ("catalog/search", 1),
-        ("catalog/filter", 1),
-        ("catalog/no-matches", 1),
-        ("catalog/shop-notice", 1),
-        ("product/in-stock", 3),
-        ("product/missing", 1),
-        ("product/review", 5),
-        ("product/sold-out", 3),
-        ("orders/guest", 0),
-        ("orders/empty", 1),
-        ("orders/purchased", 3),
-        ("staff/guest", 0),
-        ("staff/forbidden", 0),
-        ("staff/no-orders", 4),
-        ("staff/pending", 4),
-        ("staff/after-shipping", 5),
-        ("login", 0),
-        ("login/return", 0),
-        ("source", 0),
-        ("feed", 0),
-        ("not-found", 0),
-    ] {
-        let queries = report["states"][state]["typedpress_sql"].as_u64().unwrap();
-        assert!(
-            queries <= max_queries,
-            "{state} executed {queries} TypedPress SQL statements (budget {max_queries})"
-        );
-    }
-    for (state, max_joins) in [
-        ("catalog", 8),
-        ("orders/purchased", 0),
-        ("product/in-stock", 11),
-        ("product/missing", 11),
-        ("product/review", 11),
-        ("product/sold-out", 11),
-    ] {
-        let joins = report["states"][state]["typedpress_postmeta_joins"].as_u64().unwrap();
-        assert!(
-            joins <= max_joins,
-            "{state} used {joins} postmeta joins, budget is {max_joins}"
-        );
-    }
-    let seen: serde_json::Value =
-        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
-    use serde_json::json;
-    // content/drives/ seeds four drives.
-    assert_eq!(seen["seed"]["created"], 4, "{seen}");
-    assert_eq!(
-        seen["rows"],
-        json!([
-            "crucial-p3-2tb",
-            "samsung-870-evo-1tb",
-            "seagate-exos-x16",
-            "wd-red-plus-4tb"
-        ])
-    );
-    // The catalog, cheapest first, links every drive's page and WordPress's feed of the post type.
-    assert_eq!(
-        seen["catalog"],
-        json!({
-            "status": 200,
-            "title": ["Catalog · Drive Store"],
-            "names": ["WD Red Plus 4 TB", "Samsung 870 EVO 1 TB", "Crucial P3 2 TB", "Seagate Exos X16 16 TB"],
-            "links": ["/drives/wd-red-plus-4tb/", "/drives/samsung-870-evo-1tb/", "/drives/crucial-p3-2tb/", "/drives/seagate-exos-x16/"],
-            "feed link": true,
-        }),
-        "{seen}"
-    );
-    for response in seen["catalog direct"].as_array().unwrap() {
-        assert_eq!(
-            response,
-            &json!([200, null]),
-            "a generated product link must not redirect: {seen}"
-        );
-    }
-    assert_eq!(
-        seen["catalog direct"].as_array().unwrap().len(),
-        seen["catalog"]["links"].as_array().unwrap().len()
-    );
-    assert_eq!(
-        seen["catalog navigation"],
-        json!(seen["catalog"]["links"].as_array().unwrap().len()),
-        "every product link enables region navigation and prefetch"
-    );
-    assert_eq!(
-        seen["sign-in navigation"],
-        json!({"form": ["post"], "catalog": ["/"], "router": false, "enhanced": []}),
-        "{seen}"
-    );
-    assert_eq!(seen["guest staff entry"], true, "{seen}");
-    assert_eq!(seen["member staff entry"], true, "{seen}");
-    assert_eq!(seen["search"], json!(["Samsung 870 EVO 1 TB"]));
-    assert_eq!(seen["filter"], json!(["Crucial P3 2 TB"]));
-    assert_eq!(seen["filter beyond limit"], seen["filter"]);
-    assert_eq!(seen["invalid filter"], json!(["No drives match your search."]));
-    assert_eq!(seen["sold out"], json!([200, ["Sold out"], ["Buy"]]));
-    assert_eq!(
-        seen["missing products"],
-        json!({"unpublished-nvme": [404, ["Not found"]], "unlisted-model": [404, ["Not found"]]})
-    );
-    assert_eq!(
-        seen["product"],
-        json!({
-            "status": 200, "h1": ["WD Red Plus 4 TB"], "stock": ["2 in stock"],
-            "reviews": ["Sign in to comment"],
-        }),
-        "{seen}"
-    );
-    // Buying: the confirmation comes back on the product page; stock goes down; the hook refuses
-    // more than is left, and the buyer can't name a price.
-    assert_eq!(
-        seen["guest buy"],
-        json!([
-            303,
-            "/drives/wd-red-plus-4tb/",
-            "Thanks! Your order code is CODE ($48.00)."
-        ])
-    );
-    assert_eq!(seen["stock after"], json!(["1 in stock"]));
-    assert_eq!(seen["over stock"], json!(["Only 1 left."]));
-    assert_eq!(seen["price from buyer"], 422);
-    // My orders: a customer's own orders only, and only signed in.
-    assert_eq!(seen["ann buy"], "Thanks! Your order code is CODE ($109.00).");
-    assert_eq!(
-        seen["my orders"],
-        json!({ "ann": ["Samsung 870 EVO 1 TB"], "bo": ["No orders yet. Browse the catalog."] })
-    );
-    assert_eq!(seen["my orders signed out"], json!([302, true]));
-    assert_eq!(
-        seen["orders api as ann"],
-        json!(["Ann"]),
-        "the read rule holds on the API: {seen}"
-    );
-    // Staff: editors only, on the page and on the actions.
-    assert_eq!(seen["staff as customer"], 403);
-    assert_eq!(
-        seen["staff"],
-        json!({
-            "status": 200, "to ship": 2,
-            "low": ["Crucial P3 2 TB (1 left)", "Samsung 870 EVO 1 TB (1 left)", "WD Red Plus 4 TB (1 left)"],
-        }),
-        "{seen}"
-    );
-    assert_eq!(seen["ship"], "Order CODE is shipped.");
-    assert_eq!(seen["restock"], json!(["Restocked: 5 on the shelf now."]));
-    assert_eq!(seen["movements"], json!(["restock", "sale", "sale"]));
-    assert_eq!(
-        seen["staff drive names"],
-        json!({
-            "orders": ["WD Red Plus 4 TB", "Samsung 870 EVO 1 TB"],
-            "movements": ["Crucial P3 2 TB", "Samsung 870 EVO 1 TB", "WD Red Plus 4 TB"],
-        })
-    );
-    assert_eq!(seen["restock as customer"], 403);
-    assert_eq!(
-        seen["pending orders"],
-        json!({"editor": [200, ["Ann"]], "ann": [403, []]})
-    );
-    // Reviews: a first review is held and shown to its author only.
-    assert_eq!(seen["review"], json!([303, ["Arrived well packed, SMART clean."]]));
-    assert_eq!(seen["review signed out"], json!([[], ["Sign in to comment"]]));
-    // WordPress's RSS feed of the drives, linking each drive's page; sorted here,
-    // since the seed publishes them within the same second.
-    assert_eq!(
-        seen["feed"],
-        json!([
-            200,
-            "application/rss+xml",
-            [
-                "Crucial P3 2 TB",
-                "Samsung 870 EVO 1 TB",
-                "Seagate Exos X16 16 TB",
-                "WD Red Plus 4 TB"
-            ],
-            [
-                "/drives/crucial-p3-2tb/",
-                "/drives/samsung-870-evo-1tb/",
-                "/drives/seagate-exos-x16/",
-                "/drives/wd-red-plus-4tb/"
-            ]
-        ]),
-        "{seen}"
-    );
-    // The settings global: the notice banner on every page, and the currency on every price.
-    assert_eq!(seen["settings"], json!([["Demo shop: orders are fake."], "€48.00"]));
-    assert_eq!(seen["bad price"], json!([422, "A price has two decimals at most."]));
-    // TypedPress Admin's classic table screen: the kind's label, and each field's `.ui({ label })`.
-    assert_eq!(
-        seen["orders screen"],
-        json!([200, "Orders", {
-            "id": "id", "code": "Order code", "drive": "Drive", "quantity": "Quantity", "unitPrice": "Unit price",
-            "total": "Total", "buyerName": "Buyer", "buyerEmail": "Email", "buyerId": "Buyer user ID",
-            "status": "Status", "placedAt": "Placed", "shippedAt": "Shipped",
-        }]),
-        "{seen}"
-    );
+    println!("{}", String::from_utf8_lossy(&out.stdout));
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 }
 
 /// examples/docs in Chromium as an anonymous visitor (tests/differential/client/docs.mjs).
@@ -6337,6 +6691,10 @@ fn pages_render_in_block_templates() {
     // The same app without login.tsx, installed over the first after the owner saved a sign-in
     // template that only holds the Page content block.
     let without_login = fixture("block-templates", "no-login");
+    copy(
+        &project.join("tp/_generated/migrations"),
+        &without_login.join("tp/_generated/migrations"),
+    );
     std::fs::remove_file(without_login.join("tp/app/login.tsx")).unwrap();
     build(&without_login);
     let out = Command::new("php")
@@ -6716,14 +7074,16 @@ export default function Page() { return <p>With scripts</p>; }"#,
         let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
         let base = seen["base"].as_str().unwrap();
         use sha2::Digest;
-        let version: String = sha2::Sha256::digest(body).iter().map(|b| format!("{b:02x}")).collect();
-        assert_eq!(
-            seen["scripts"],
-            serde_json::json!([
-                format!("{base}/scripts/module%20name.mjs?mode=one&mode=two&tpv={version}#ready"),
-                "https://cdn.example/remote.js?mode=one#ready",
-            ])
-        );
+        let version: String = sha2::Sha256::digest(body)[..6]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let expected = serde_json::json!([
+            format!("{base}/scripts/module%20name.mjs?mode=one&mode=two&tpv={version}#ready"),
+            "https://cdn.example/remote.js?mode=one#ready",
+        ]);
+        assert_eq!(seen["scripts"], expected);
+        assert_eq!(seen["managedScripts"], expected);
         assert_eq!(seen["plain"], serde_json::json!([]));
         assert_eq!(seen["body"], body);
         version

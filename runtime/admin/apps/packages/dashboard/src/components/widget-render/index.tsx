@@ -72,21 +72,40 @@ export default function WidgetRender( {
 	setBadge?: ( badge: string | number | DashboardWidgetBadge | null ) => void;
 	setError?: ( error: WidgetErrorConfig | true | null ) => void;
 } ) {
-	const WidgetComponent = useMemo(
-		() =>
-			lazy( async () => {
-				const module: unknown = await import(
-					widgetType.render_module
+	const InlineComponent = widgetType.render;
+	const WidgetComponent = useMemo( () => {
+		if ( InlineComponent ) {
+			return InlineComponent;
+		}
+		const renderModule = widgetType.render_module;
+		return lazy( async () => {
+			if ( ! renderModule ) {
+				throw new Error(
+					`Widget "${ widgetType.name }" has neither render nor render_module.`
 				);
-				if ( ! isValidWidgetModule( module ) ) {
-					throw new Error(
-						`Invalid widget module: ${ widgetType.render_module }`
-					);
-				}
-				return module;
-			} ),
-		[ widgetType.render_module ]
-	);
+			}
+			const module: unknown = await import( renderModule );
+			if ( ! isValidWidgetModule( module ) ) {
+				throw new Error( `Invalid widget module: ${ renderModule }` );
+			}
+			return module;
+		} );
+	}, [ InlineComponent, widgetType.name, widgetType.render_module ] );
+
+	if ( InlineComponent ) {
+		return (
+			<>
+				<InlineComponent
+					attributes={ widget.attributes }
+					onRemove={ onRemove }
+					setBadge={ setBadge }
+					setError={ setError }
+				/>
+				<WidgetRenderedAction />
+			</>
+		);
+	}
+
 	return (
 		<Suspense fallback={ <WidgetLoadingOverlay /> }>
 			<WidgetComponent

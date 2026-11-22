@@ -10,10 +10,10 @@
 //! { "name": "pantry",
 //!   "files": { "typedpress.config.ts": "…", "tp/lib/fields.ts": "…", "tp/_generated/abilities.json": "…",
 //!              "tp/_generated/plugins.lock.json": "…" },,
-//!   "previous": null, "migrationFiles": [], "frozen": false }
+//!   "frozen": false }
 //! ```
-//! `previous` is the last build's `tp/_generated/migrations/snapshot.json` (null for a first build) and
-//! `migrationFiles` the names beside it, which number the next migration like `typedpress build` does.
+//! Pass committed migration folders under `tp/_generated/migrations/` in `files` so the compiler
+//! can fold the same history as `typedpress build`.
 //! `files` carries every compiler input, including the committed `tp/_generated/abilities.json` lock that
 //! types `abilities.call` from "php/wordpress".
 //! `tp/_generated/plugins.lock.json` grants plugin packages, and `frozen` refuses grants beyond it, as
@@ -22,10 +22,10 @@
 //! cannot hold one either, so that is the one shape of project the disk can have and this cannot.
 //!
 //! Response: `{ "check": <typedpress-diagnostics envelope>, "output": null }` on a diagnostic, otherwise
-//! `output` carries `schemaPhp`, `functionsPhp`, `migrations` (`[name, sql]` pairs), `snapshot`,
+//! `output` carries `schemaPhp`, `functionsPhp`, `migrations` (`[relativePath, text]` pairs), `snapshot`,
 //! `client` (`types.ts` and `schema.ts`), `genTs`, `warnings`, `unsupportedPlugins`, `hints`,
 //! `appPlugin` (every file of the `typedpress-app-<name>` plugin `typedpress build` writes, by path below the
-//! plugins directory: the `.sql` files under `tp/_generated/migrations/` in `files` and this
+//! plugins directory: the migration folders under `tp/_generated/migrations/` in `files` and this
 //! compile's new ones; its `tp/app/openapi.json` is what `typedpress build` also writes to
 //! `tp/_generated/openapi.json`), `tpPlugins` (TypedPress's plugins in activation
 //! order) and `wordpressPlugins` (`{slug, version}`, dependencies first).
@@ -42,10 +42,9 @@ use std::rc::Rc;
 struct Request {
     name: String,
     files: BTreeMap<String, String>,
+    /// Optional binary files (e.g. imported PNG/WebP/WOFF2), base64-encoded.
     #[serde(default)]
-    previous: Option<serde_json::Value>,
-    #[serde(default)]
-    migration_files: Vec<String>,
+    binary: BTreeMap<String, String>,
     #[serde(default)]
     frozen: bool,
 }
@@ -60,10 +59,14 @@ struct Output {
     client: BTreeMap<String, String>,
     gen_ts: String,
     warnings: Vec<String>,
+    lint_warnings: Vec<crate::lint::Warning>,
     unsupported_plugins: Vec<String>,
     hints: Vec<String>,
     /// The app plugin `typedpress build` writes, file by file, by path below the plugins directory.
     app_plugin: BTreeMap<String, String>,
+    /// Non-UTF-8 binary files of the app plugin (e.g. PNG/WebP/WOFF2), base64-encoded.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    app_plugin_binary: BTreeMap<String, String>,
     /// TypedPress's plugins for this app, in activation order.
     tp_plugins: Vec<String>,
     /// The WordPress.org plugins the app needs, dependencies first.
@@ -85,6 +88,7 @@ struct Response<'a> {
 /// Sources by absolute path under one project directory.
 pub struct Memory {
     files: BTreeMap<PathBuf, String>,
+    binary: BTreeMap<PathBuf, Vec<u8>>,
 }
 
 /// Reads like Linux's ENOENT, so the envelope for a missing file is the command line's.
@@ -94,7 +98,14 @@ fn not_found() -> std::io::Error {
 
 impl Memory {
     pub fn new(files: BTreeMap<PathBuf, String>) -> Self {
-        Memory { files }
+        Memory {
+            files,
+            binary: BTreeMap::new(),
+        }
+    }
+
+    pub(crate) fn with_binary(files: BTreeMap<PathBuf, String>, binary: BTreeMap<PathBuf, Vec<u8>>) -> Self {
+        Memory { files, binary }
     }
 
     /// Plain keys: absolute, no `.` or `..`, as the request's paths are joined.
@@ -113,11 +124,14 @@ impl Memory {
     }
 
     fn file_at(&self, key: &Path) -> bool {
-        self.files.contains_key(key)
+        self.files.contains_key(key) || self.binary.contains_key(key)
     }
 
     fn dir_at(&self, key: &Path) -> bool {
-        self.files.keys().any(|file| file.starts_with(key) && file != key)
+        self.files
+            .keys()
+            .chain(self.binary.keys())
+            .any(|file| file.starts_with(key) && file != key)
     }
 
     /// Walks `path` the way the operating system does: every component but the last must be a
@@ -158,7 +172,7 @@ impl Fs for Memory {
             return Err(std::io::Error::other("not a directory"));
         }
         let mut entries = std::collections::BTreeSet::new();
-        for file in self.files.keys() {
+        for file in self.files.keys().chain(self.binary.keys()) {
             if let Ok(relative) = file.strip_prefix(&key)
                 && let Some(component) = relative.components().next()
             {
@@ -172,6 +186,27 @@ impl Fs for Memory {
         let key = self.resolve(path).ok_or_else(not_found)?;
         if let Some(source) = self.files.get(&key) {
             return Ok(source.clone());
+        }
+        if let Some(bytes) = self.binary.get(&key) {
+            return String::from_utf8(bytes.clone())
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e));
+        }
+        if self.dir_at(&key) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::IsADirectory,
+                "Is a directory (os error 21)",
+            ));
+        }
+        Err(not_found())
+    }
+
+    fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+        let key = self.resolve(path).ok_or_else(not_found)?;
+        if let Some(bytes) = self.binary.get(&key) {
+            return Ok(bytes.clone());
+        }
+        if let Some(source) = self.files.get(&key) {
+            return Ok(source.as_bytes().to_vec());
         }
         if self.dir_at(&key) {
             return Err(std::io::Error::new(
@@ -220,8 +255,28 @@ fn compile_request(request: Request) -> String {
             .filter_map(|(rel, text)| Some((rel.strip_prefix(prefix)?.to_string(), text.clone().into_bytes())))
             .collect()
     };
-    let public = under("public/");
+    let mut public = under("public/");
     let ledger = under(&format!("{}/", pipeline::LEDGER));
+    let mut prev_entries = Vec::new();
+    for (rel, bytes) in &ledger {
+        if let Some((id, file)) = rel.split_once('/')
+            && file == "ops.json"
+            && !id.is_empty()
+            && !file.contains('/')
+        {
+            prev_entries.push((id.to_string(), bytes.clone()));
+        }
+    }
+    let mut binary: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
+    for (rel, b64) in request.binary {
+        let Some(bytes) = crate::assets::base64_decode(&b64) else {
+            return serde_json::json!({ "error": format!("invalid base64 for {rel}") }).to_string();
+        };
+        if let Some(pub_rel) = rel.strip_prefix("public/") {
+            public.push((pub_rel.to_string(), bytes.clone()));
+        }
+        binary.insert(Memory::key(&project.join(rel)), bytes);
+    }
     let files = request
         .files
         .into_iter()
@@ -229,34 +284,61 @@ fn compile_request(request: Request) -> String {
         .collect();
     let frozen = request.frozen;
     let previous = || {
-        let mut previous =
-            pipeline::Previous::from_project(request.previous, request.migration_files.iter().map(String::as_str))?;
+        let mut parsed = Vec::with_capacity(prev_entries.len());
+        for (id, bytes) in prev_entries {
+            let ops: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| {
+                diag::Diag::new(
+                    diag::Span::NONE,
+                    format!("{}/{id}/ops.json is not valid JSON: {e}", pipeline::LEDGER),
+                )
+            })?;
+            parsed.push((id, ops));
+        }
+        let mut previous = pipeline::Previous::from_entries(parsed)?;
         previous.frozen = frozen;
         Ok(previous)
     };
     let entry = project.join("typedpress.config.ts");
-    let built = match loader::load_from(Rc::new(Memory::new(files)), &entry) {
+    let built = match loader::load_from(Rc::new(Memory::with_binary(files, binary)), &entry) {
         Err(diagnostics) => Err(diagnostics),
-        Ok(program) => pipeline::build(&project, &program, previous, |_| None).map_err(|d| vec![d]),
+        // This writes the app plugin: a stylesheet the frontend build has not built yet is refused.
+        Ok(program) => crate::assets::require_frontend_styles(&program, |_| true)
+            .and_then(|()| pipeline::build(&project, &program, previous, |_| None))
+            .map_err(|d| vec![d]),
     };
     let mut snapshot = None;
     let (diagnostics, output) = match built {
         Err(diagnostics) => (diagnostics, None),
         Ok(built) => {
             snapshot = Some(built.snapshot.clone());
-            let schema_php = crate::schema_php::render(&built.schema);
-            // The ledger's SQL from the request, then this compile's new files, as `typedpress build`
-            // writes the new ones into the ledger and packs all of it.
+            // The ledger's migration folders from the request, then this compile's new folders,
+            // as `typedpress build` writes the new ones into the ledger and packs all of it.
+            let mut new_migration_files: Vec<(String, String)> = Vec::new();
+            for entry in &built.migrations {
+                new_migration_files.push((
+                    format!("{}/ops.json", entry.id),
+                    serde_json::to_string_pretty(&entry.ops).expect("ops serialize") + "\n",
+                ));
+                new_migration_files.push((format!("{}/migration.sql", entry.id), entry.sql.clone()));
+            }
             let migrations = ledger.into_iter().chain(
-                built
-                    .migrations
+                new_migration_files
                     .iter()
-                    .map(|(name, sql)| (name.clone(), sql.clone().into_bytes())),
+                    .map(|(rel, text)| (rel.clone(), text.clone().into_bytes())),
             );
-            let app_plugin = crate::app_plugin::files(&built, &schema_php, migrations, public)
-                .into_iter()
-                .map(|(path, bytes)| (path, String::from_utf8_lossy(&bytes).into_owned()))
-                .collect();
+            let (schema_php, packaged) = crate::app_plugin::package(&built, migrations, public);
+            let mut app_plugin = BTreeMap::new();
+            let mut app_plugin_binary = BTreeMap::new();
+            for (path, bytes) in packaged {
+                match String::from_utf8(bytes) {
+                    Ok(text) => {
+                        app_plugin.insert(path, text);
+                    }
+                    Err(err) => {
+                        app_plugin_binary.insert(path, crate::assets::base64_encode(err.as_bytes()));
+                    }
+                }
+            }
             let empty = crate::wp_plugins::Config { plugins: Vec::new() };
             // The config's plugins resolved when it was extracted; this repeats that plan for its order.
             let wordpress_plugins = crate::wp_plugins::resolve(
@@ -279,14 +361,16 @@ fn compile_request(request: Request) -> String {
             let output = Output {
                 tp_plugins: crate::app_plugin::tp_plugins(&built.schema),
                 app_plugin,
+                app_plugin_binary,
                 wordpress_plugins,
                 schema_php,
                 functions_php: built.functions_php,
-                migrations: built.migrations,
+                migrations: new_migration_files,
                 snapshot: built.snapshot,
                 client,
                 gen_ts: built.gen_ts,
                 warnings: built.warnings,
+                lint_warnings: built.lint_warnings,
                 unsupported_plugins: built.unsupported_plugins,
                 hints: built.hints,
             };
@@ -344,7 +428,6 @@ pub fn operation(operation: &str, request: &str) -> String {
                 }
                 "check" => {
                     let root = fs.canonicalize(&project).map_err(|e| e.to_string())?;
-                    let previous = root.join(pipeline::LEDGER).join("snapshot.json");
                     let built = loader::load_from(fs.clone(), &root.join("typedpress.config.ts")).and_then(|program| {
                         pipeline::build(
                             &root,
@@ -353,30 +436,26 @@ pub fn operation(operation: &str, request: &str) -> String {
                                 if fs.exists(&root.join(pipeline::OLD_LEDGER)) {
                                     return Err(pipeline::moved_ledger());
                                 }
-                                let snapshot = if fs.exists(&previous) {
-                                    Some(
-                                        serde_json::from_str(
-                                            &fs.read_to_string(&previous)
-                                                .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?,
-                                        )
-                                        .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?,
-                                    )
-                                } else {
-                                    None
-                                };
                                 let dir = root.join(pipeline::LEDGER);
-                                let paths = if fs.is_dir(&dir) {
-                                    fs.read_dir(&dir)
+                                let mut entries = Vec::new();
+                                if fs.is_dir(&dir) {
+                                    for path in fs
+                                        .read_dir(&dir)
                                         .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?
-                                } else {
-                                    vec![]
-                                };
-                                let names: Vec<_> = paths
-                                    .iter()
-                                    .map(|p| p.file_name().unwrap_or_default().to_string_lossy())
-                                    .collect();
-                                let mut previous =
-                                    pipeline::Previous::from_project(snapshot, names.iter().map(|s| s.as_ref()))?;
+                                    {
+                                        if fs.is_dir(&path) {
+                                            let id =
+                                                path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                                            let text = fs
+                                                .read_to_string(&path.join("ops.json"))
+                                                .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?;
+                                            let ops: serde_json::Value = serde_json::from_str(&text)
+                                                .map_err(|e| diag::Diag::new(diag::Span::NONE, e.to_string()))?;
+                                            entries.push((id, ops));
+                                        }
+                                    }
+                                }
+                                let mut previous = pipeline::Previous::from_entries(entries)?;
                                 previous.frozen = request["frozen"].as_bool().unwrap_or(false);
                                 Ok(previous)
                             },
@@ -562,14 +641,18 @@ mod tests {
         let plugin = &output["appPlugin"];
         assert_eq!(plugin["typedpress-app-packaged/tp/app/functions.php"], functions);
         assert_eq!(plugin["typedpress-app-packaged/public/modules/example.mjs"], source);
-        let map = plugin["typedpress-app-packaged/tp/app/public-script-versions.json"]
+        let map = plugin["typedpress-app-packaged/tp/app/public-files.json"]
             .as_str()
             .unwrap();
         use sha2::Digest;
-        let version = crate::hex(sha2::Sha256::digest(source));
+        let version = crate::hex(&sha2::Sha256::digest(source)[..6]);
+        let svg_version = crate::hex(&sha2::Sha256::digest("<svg/>")[..6]);
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(map).unwrap(),
-            serde_json::json!({ "modules/example.mjs": version })
+            serde_json::json!({
+                "image.svg": svg_version,
+                "modules/example.mjs": version,
+            })
         );
         assert!(!functions.contains(&version));
     }
@@ -577,9 +660,9 @@ mod tests {
     /// The browser types `abilities.call` from the lock it is sent, exactly as the command line does.
     #[test]
     fn a_locked_ability_in_the_request_types_its_call() {
-        let config = r#"import { action, defineConfig } from "typedpress";
+        let config = r#"import { query, defineConfig } from "typedpress";
 import { abilities } from "php/wordpress";
-const __a = action({ input: {}, access: "anyone", handler: () => abilities.call("acme/info", { field: "title" }) }); export { __a as a }; export default defineConfig({});"#;
+const __a = query({ access: "anyone" }, () => abilities.call("acme/info", { field: "title" })); export { __a as a }; export default defineConfig({});"#;
         let lock = serde_json::json!({"version": 1, "abilities": [{"name": "acme/info",
             "input_schema": {"type": "object", "properties": {"field": {"enum": ["name"]}}, "required": ["field"]}, "output_schema": {}}]});
         let message = |files: serde_json::Value| {

@@ -8,3 +8,6 @@ node_modules/
 
 # tp/_generated/ is committed; tp/dist/ is build output.
 tp/dist/
+# @typedpress/frontend's build lock and staging, while a build runs.
+tp/_generated/.typedpress-*-lock*
+tp/_generated/.typedpress-*-build-*/

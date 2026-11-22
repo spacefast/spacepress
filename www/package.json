@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "wasm": "node scripts/build-wasm.mjs",
+    "showcase": "node scripts/build-showcase.ts",
     "build": "bun scripts/build.mjs",
-    "test": "node --test tests/site.test.mjs",
-    "test:wordpress": "node --test tests/wordpress-integration.test.mjs",
     "seed": "node scripts/seed.mjs"
   },
   "dependencies": {

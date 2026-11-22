@@ -1,0 +1,18 @@
+{
+  "notes": {
+    "typedpress.config.ts": "Exports schema, actions, and config",
+    "tp/schema.ts": "WordPress collection + SQL table",
+    "tp/actions.ts": "Server action compiled to PHP",
+    "tp/app/layout.tsx": "Shared shell for all pages",
+    "tp/app/articles/[slug]/page.tsx": "Server-rendered article page",
+    "tp/components/ClapButton.tsx": "Compiled to WordPress Interactivity API"
+  },
+  "treeNotes": {
+    "typedpress.config.ts": "entry",
+    "tp/schema.ts": "data model",
+    "tp/actions.ts": "server RPC",
+    "tp/app/layout.tsx": "layout",
+    "tp/app/articles/[slug]/page.tsx": "dynamic route",
+    "tp/components/ClapButton.tsx": "client island"
+  }
+}

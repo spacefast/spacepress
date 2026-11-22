@@ -1,5 +1,5 @@
-import { action, defineConfig, mail } from "typedpress";
+import { query, defineConfig, mail } from "typedpress";
 import Welcome from "./emails/welcome";
-export const welcome = action({ input: {}, access: "anyone", async handler() { return mail.render(Welcome, { name: 1, kind: "welcome" }).html; } });
+export const welcome = query({ access: "anyone" }, async () => mail.render(Welcome, { name: 1, kind: "welcome" }).html);
 
 export default defineConfig({});

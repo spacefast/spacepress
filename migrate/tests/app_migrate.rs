@@ -66,6 +66,25 @@ fn build(project: &Path) {
     );
 }
 
+fn migration_folders(project: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(project.join(typedpress::pipeline::LEDGER))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect()
+}
+
+fn migration_snapshot(project: &Path) -> Value {
+    let entries = migration_folders(project)
+        .into_iter()
+        .map(|folder| {
+            let id = folder.file_name().unwrap().to_str().unwrap().to_owned();
+            let ops = serde_json::from_slice(&std::fs::read(folder.join("ops.json")).unwrap()).unwrap();
+            (id, ops)
+        })
+        .collect::<Vec<_>>();
+    typedpress::migrate::fold(&entries).unwrap().to_snapshot()
+}
+
 #[test]
 fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
     let temp = tempfile::tempdir().unwrap();
@@ -93,8 +112,7 @@ fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
     );
     let config = std::fs::read_to_string(out.join("tp/server/index.ts")).unwrap();
     assert!(!config.contains("invalidate"), "{config}");
-    let snapshot: Value =
-        serde_json::from_slice(&std::fs::read(out.join("tp/_generated/migrations/snapshot.json")).unwrap()).unwrap();
+    let snapshot = migration_snapshot(&out);
     assert_eq!(snapshot["tables"]["tasks"]["columns"]["id"]["autoIncrement"], true);
     assert_eq!(
         snapshot["tables"]["tasks"]["existingTable"],
@@ -102,20 +120,24 @@ fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
     );
     build(&out);
     // The committed adoption snapshot is exactly what build accepts, without a second migration.
-    assert_eq!(
-        std::fs::read_dir(out.join("tp/_generated/migrations")).unwrap().count(),
-        2
-    );
+    assert_eq!(migration_folders(&out).len(), 1);
     let (ok, collision) = migrate(&fixture("board"), &out, &["--space", "spc_migrate_test"]);
     assert!(!ok);
     assert_eq!(collision["status"], "refused");
     assert_eq!(collision["errors"][0]["pointer"], "");
-    let mut changed = snapshot;
-    changed["tables"]["tasks"]["existingTable"] = "some_other_table".into();
-    std::fs::write(out.join("tp/_generated/migrations/snapshot.json"), changed.to_string()).unwrap();
+    let ops_file = migration_folders(&out)[0].join("ops.json");
+    let mut ledger: Value = serde_json::from_slice(&std::fs::read(&ops_file).unwrap()).unwrap();
+    let task = ledger["ops"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|op| op["op"] == "createTable" && op["table"] == "tasks")
+        .unwrap();
+    task["def"]["existingTable"] = "some_other_table".into();
+    std::fs::write(ops_file, ledger.to_string()).unwrap();
     let check = compiler().arg("check").arg(&out).output().unwrap();
     assert!(!check.status.success());
-    assert!(String::from_utf8_lossy(&check.stderr).contains("cannot change after the first snapshot"));
+    assert!(String::from_utf8_lossy(&check.stderr).contains("cannot change after the first migration"));
 }
 
 /// A new Space has no 0.8 tables to adopt: with `--fresh` the candidate declares plain v2 tables
@@ -151,14 +173,14 @@ fn fresh_tables_for_a_new_space() {
     );
     let config = std::fs::read_to_string(out.join("tp/server/index.ts")).unwrap();
     assert!(!config.contains("existingTable"), "{config}");
-    assert!(out.join("tp/_generated/migrations/0001_init.sql").is_file());
-    assert!(!out.join("tp/_generated/migrations/0001_adopt.sql").exists());
+    let folders = migration_folders(&out);
+    assert_eq!(folders.len(), 1);
+    let sql = std::fs::read_to_string(folders[0].join("migration.sql")).unwrap();
+    assert!(sql.contains("CREATE TABLE `{prefix}tp_tasks`"));
+    assert!(!sql.contains("typedpress-adopt"));
     build(&out);
     // The committed init migration is what build expects: no second migration.
-    assert_eq!(
-        std::fs::read_dir(out.join("tp/_generated/migrations")).unwrap().count(),
-        2
-    );
+    assert_eq!(migration_folders(&out).len(), 1);
     let run = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(repo().join("tests/php/wp.php"))
@@ -562,13 +584,13 @@ fn omissions_are_errors_and_static_files_carry_over() {
     // don't apply the same way: refused. A cron whose path the candidate doesn't serve is refused
     // at the entry.
     overlay["access"] = serde_json::json!({ "public": ["/docs/**"] });
-    // On TypedPress the app's data URLs are /__tp/api/v1/* and the core routes /wp-json/*: a
+    // On TypedPress the app's data URLs are /wp-json/typedpress/v1/* and the core routes /wp-json/*: a
     // rule whose source can reach them is refused (here a catch-all host move).
     overlay["redirects"] = serde_json::json!([
         { "source": "/old", "destination": "/new", "status": 301 },
         { "source": "/*", "destination": "https://new.example/:splat", "status": 301 }
     ]);
-    // Path rules don't survive the move: the app's data URLs move to /__tp/api/v1/*.
+    // Path rules don't survive the move: the app's data URLs move to /wp-json/typedpress/v1/*.
     overlay["firewall"] =
         serde_json::json!([{ "name": "no-rest", "action": "block", "match": { "path": "/wp-json/*" } }]);
     overlay["cache"] = serde_json::json!({ "bypass": ["/__zero/*"] });
@@ -1090,8 +1112,7 @@ fn spacefast_content_only_root_adopts_native_posts_and_maps_realtime() {
     let out = temp.path().join("candidate");
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(ok, "{report:#}");
-    let snapshot: Value =
-        serde_json::from_slice(&std::fs::read(out.join("tp/_generated/migrations/snapshot.json")).unwrap()).unwrap();
+    let snapshot = migration_snapshot(&out);
     assert_eq!(snapshot["tables"]["posts"]["editor"], true);
     assert!(
         report["entries"]
@@ -1128,8 +1149,7 @@ fn native_post_declarations_and_space_users_compile_together() {
     let out = temp.path().join("candidate");
     let (ok, report) = migrate(&root, &out, &["--users"]);
     assert!(ok, "{report:#}");
-    let snapshot: Value =
-        serde_json::from_slice(&std::fs::read(out.join("tp/_generated/migrations/snapshot.json")).unwrap()).unwrap();
+    let snapshot = migration_snapshot(&out);
     let keys: Vec<_> = snapshot["tables"].as_object().unwrap().keys().cloned().collect();
     assert!(keys.contains(&"posts".to_string()), "{keys:?}");
     assert!(keys.contains(&"notes".to_string()), "{keys:?}");
@@ -1250,8 +1270,7 @@ fn space_user_subjects_back_owner_scoped_handlers() {
             .iter()
             .any(|e| e["pointer"] == "/auth" && e["outcome"] == "review")
     );
-    let snapshot: Value =
-        serde_json::from_slice(&std::fs::read(out.join("tp/_generated/migrations/snapshot.json")).unwrap()).unwrap();
+    let snapshot = migration_snapshot(&out);
     assert_eq!(
         snapshot["tables"]["members"]["columns"]["spacefastSubject"]["type"], "text",
         "{:#}",
@@ -1754,8 +1773,7 @@ fn a_handler_named_like_a_table_is_exported_under_a_suffixed_name() {
         String::from_utf8_lossy(&run.stderr)
     );
     // The table keeps its name: its storage and its ledger follow it.
-    let snapshot: Value =
-        serde_json::from_slice(&std::fs::read(out.join("tp/_generated/migrations/snapshot.json")).unwrap()).unwrap();
+    let snapshot = migration_snapshot(&out);
     assert!(snapshot["tables"]["notes"].is_object(), "{snapshot}");
 
     // When the suffixed name is taken too, and for `default`, the publish stays on 0.8.
@@ -2579,7 +2597,7 @@ console.log(JSON.stringify({ sent, result }));
         .expect("node is required");
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let ran: Value = serde_json::from_slice(&node.stdout).unwrap();
-    assert_eq!(ran["sent"][0]["url"], "/__tp/api/v1/actions/banner", "{ran}");
+    assert_eq!(ran["sent"][0]["url"], "/wp-json/typedpress/v1/actions/banner", "{ran}");
     assert_eq!(ran["sent"][0]["method"], "POST");
     assert_eq!(ran["result"], "ABABAB");
     // A handler named like a table is the v2 action `<name>Query` (ruling 39): the generated
@@ -2599,7 +2617,7 @@ console.log(JSON.stringify({ sent, result }));
     assert!(renamed.status.success(), "{}", String::from_utf8_lossy(&renamed.stderr));
     let renamed: Value = serde_json::from_slice(&renamed.stdout).unwrap();
     assert_eq!(
-        renamed["sent"][0]["url"], "/__tp/api/v1/actions/bannerAction",
+        renamed["sent"][0]["url"], "/wp-json/typedpress/v1/actions/bannerAction",
         "{renamed}"
     );
     assert_eq!(renamed["sent"][0]["body"], ran["sent"][0]["body"]);

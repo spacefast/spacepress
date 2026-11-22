@@ -5,7 +5,7 @@
 // shard, on main) builds each example and compares everything under tp/_generated/.
 //
 // Run: node --test runtime/client/committed.test.ts
-// Fix: `typedpress build` in each project this names, and commit its first/_generated/client/.
+// Fix: `typedpress build` in each project this names, and commit its tp/_generated/client/.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -34,14 +34,17 @@ for (const dir of clients) {
     const name = /"name":\s*"([^"]*)"/.exec(readFileSync(join(repo, dir, "schema.ts"), "utf8"))?.[1];
     assert.ok(name, `${dir}/schema.ts names no app`);
     const commerce = existsSync(join(repo, dir, 'commerce.ts'));
-    const stale = [...COPIED, ...(commerce ? ['commerce.ts'] : [])].filter((file) => {
+    const stale = [...COPIED, ...(commerce ? ["commerce.ts", "cart-store.ts", "cart-react.ts"] : [])].filter((file) => {
       let committed: string;
       try {
         committed = readFileSync(join(repo, dir, file), "utf8");
       } catch {
         return true;
       }
-      const expected = runtime(file).replaceAll("{{name}}", name) + (file === 'index.ts' && commerce ? '\nexport * from "./commerce.ts";\n' : '');
+      let expected = runtime(file).replaceAll("{{name}}", name);
+      if (commerce && file === "index.ts") expected += '\nexport * from "./commerce.ts";\nexport * from "./cart-store.ts";\n';
+      if (commerce && file === "react.ts") expected += '\nexport * from "./cart-react.ts";\n';
+      if (commerce && file === "LICENSE") expected += "\nPortions are adapted from Spacefast's Woo Store SDK (@woo/storefront-core),\nhttps://github.com/spacefast/woo-store-sdk, under the MIT License above.\n";
       return committed !== expected;
     });
     assert.deepEqual(stale, [], `${dir} is stale: run \`typedpress build\` in ${dirname(dirname(dirname(dir)))} and commit ${dir}/`);

@@ -1,5 +1,4 @@
 import {
-  action,
   boolean,
   date,
   db,
@@ -7,7 +6,7 @@ import {
   integer,
   table,
   text,
-  type InferSelectModel, select, ref,
+  type InferSelectModel, select, ref, mutation,
 } from "typedpress";
 import { stories } from "./stories";
 
@@ -138,22 +137,8 @@ async function changeStock(itemId: number, amount: number, consuming: boolean) {
   };
 }
 
-export const consume = action({
-  access: "editor",
-  input: {
-    itemId: integer().min(1),
-    amount: integer().min(1).default(1),
-  },
-  handler: async ({ itemId, amount }) =>
-    await changeStock(itemId, amount, true),
-});
+export const consume = mutation({ access: "editor" }, async ({ itemId, amount = 1 }: { itemId: number; amount?: number }) =>
+  { if (!Number.isInteger(itemId)) throw new HttpError(422, "invalid_input", "itemId must be an integer", "/itemId"); if (!Number.isInteger(amount)) throw new HttpError(422, "invalid_input", "amount must be an integer", "/amount"); if (itemId < 1) throw new HttpError(422, "invalid_input", "itemId must be at least 1", "/itemId"); if (amount < 1) throw new HttpError(422, "invalid_input", "amount must be at least 1", "/amount"); return await changeStock(itemId, amount, true); });
 
-export const restock = action({
-  access: "editor",
-  input: {
-    itemId: integer().min(1),
-    amount: integer().min(1),
-  },
-  handler: async ({ itemId, amount }) =>
-    await changeStock(itemId, amount, false),
-});
+export const restock = mutation({ access: "editor" }, async ({ itemId, amount }: { itemId: number; amount: number }) =>
+  { if (!Number.isInteger(itemId)) throw new HttpError(422, "invalid_input", "itemId must be an integer", "/itemId"); if (!Number.isInteger(amount)) throw new HttpError(422, "invalid_input", "amount must be an integer", "/amount"); if (itemId < 1) throw new HttpError(422, "invalid_input", "itemId must be at least 1", "/itemId"); if (amount < 1) throw new HttpError(422, "invalid_input", "amount must be at least 1", "/amount"); return await changeStock(itemId, amount, false); });

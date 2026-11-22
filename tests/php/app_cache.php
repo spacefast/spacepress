@@ -115,8 +115,8 @@ $out = [
     // Batcache keeps what any request without a WordPress cookie printed, whatever its Cache-Control:
     // TypedPress's API and Identity's answer for whoever asks, signed in by a header or by the
     // Identity cookie (which never sets the WordPress user for Identity's own API).
-    'api anonymous' => fetch("$url/__tp/api/v1/me"),
-    'api app password' => fetch("$url/__tp/api/v1/me", ['Authorization: Basic ' . base64_encode("chief:$appPassword")]),
+    'api anonymous' => fetch("$url/wp-json/typedpress/v1/me"),
+    'api app password' => fetch("$url/wp-json/typedpress/v1/me", ['Authorization: Basic ' . base64_encode("chief:$appPassword")]),
     'identity api' => fetch("$url/?rest_route=/typedpress-identity/v1/account", ['Cookie: zi_session=x']),
 ];
 // Every policy Cache::policy() hands out, as Batcache reads it: a shareable page is kept for its
@@ -142,7 +142,11 @@ $out['count reads'] = $counted;
 if ($overlap !== ['notes' => ['ids' => [7, '7', '07', 8], 'listed' => true]]) {
     throw new RuntimeException('Overlapping reads lost their primary key order or type.');
 }
+// `//notes/other/` is the page `/notes/other/` to the router (AppRouter::requestPath), and a URL of
+// its own to a cache that no purge names: answered privately, recorded under no page.
+$out['double slash'] = fetch("$url//notes/other/");
 global $wpdb;
+$out['double slash index'] = $wpdb->get_col("SELECT DISTINCT url FROM {$wpdb->prefix}tp__app_reads WHERE url NOT IN ('/', '/notes/hello/', '/notes/other/', '/notes/third/') ORDER BY url");
 $out['index'] = array_map(static fn ($r) => "{$r['kind']} {$r['item']} {$r['url']}", $wpdb->get_results("SELECT kind, item, url FROM {$wpdb->prefix}tp__app_reads ORDER BY url, kind, item", ARRAY_A));
 // An edit to one note purges the URLs that read it and the ones that listed notes, nothing else.
 \TypedPress\Wp\Purges::flush(); // what setting the site up wrote outside a transaction goes out first

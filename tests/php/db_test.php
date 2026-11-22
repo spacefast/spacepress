@@ -351,7 +351,7 @@ function names(array $rows): array
 // ================================================================ boot + migrate
 
 eq('activation applied the init migration and recorded it in the per-app ledger',
-    $wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), [['id' => '0001_init']]);
+    $wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), [['id' => '20261121000000_000000_init']]);
 eq('the app plugin is active with current storage', [$wp->plugin()->unavailable(), $wp->plugin()->pendingMigrations()], [null, []]);
 eq('the runtime describes its database as SQLite through the official plugin', \TypedPress\Wp\Platform::versions()['database']['kind'], 'sqlite');
 eq('platform problems accept SQLite Database Integration', \TypedPress\Wp\Platform::problems(), []);
@@ -588,6 +588,90 @@ eq('post-commit failure never undoes committed filesystem effects', is_file($wp-
 \TypedPress\Extensions::afterCommit(function () use (&$committed) { $committed[] = 'immediate'; });
 eq('rollback and post-commit failure leave no stale callbacks', [(int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn(), $committed], [5, ['outer:6', 'inner:6', 'immediate']]);
 
+// A reading transaction tells the database nothing until something writes. `open` is whether the
+// database itself has a transaction; `sent` is what ended it.
+$sent = [];
+$spy = static function (mixed $sql) use (&$sent): mixed {
+    if (is_string($sql) && preg_match('/^\s*(START TRANSACTION|COMMIT|ROLLBACK)\b/i', $sql, $m) === 1) {
+        $sent[] = strtoupper($m[1]);
+    }
+
+    return $sql;
+};
+add_filter('query', $spy);
+$open = static fn (): bool => $wp->connection()->wpdb()->dbh->inTransaction();
+$queries = static fn (): int => (int) $wp->connection()->wpdb()->num_queries;
+$during = [];
+$after = [];
+$counted = $queries();
+$found = $db->reading(function () use ($db, $wp, $open, &$during, &$after): array {
+    $during = [$wp->connection()->inTransaction(), $open()];
+    \TypedPress\Extensions::afterCommit(static function () use (&$after): void {
+        $after[] = 'ran';
+    });
+
+    return $db->findMany('items', ['where' => ['name' => 'Hammer']]);
+});
+eq('a reading transaction that only reads sends neither START TRANSACTION nor COMMIT', [names($found), $sent, $during, $after, $open(), $queries() - $counted],
+    [['Hammer'], [], [true, false], ['ran'], false, 0]);
+$counted = $queries();
+$db->reading(function () use ($db, $open, &$during): void {
+    $db->findMany('items', ['where' => ['name' => 'Hammer']]);
+    $during = [$open()];
+    $db->update('items', ['qty' => 7], ['name' => 'Hammer']);
+    $during[] = $open();
+});
+eq('its first write starts the transaction, and the end commits it', [$sent, $during, $open(), (int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn()], [['COMMIT'], [false, true], false, 7]);
+check('… both counted as statements, as an ordinary transaction\'s are', $queries() - $counted >= 2, $queries() - $counted);
+$sent = [];
+problem('a throw after a write rolls the write back', fn () => $db->reading(function () use ($db): void {
+    $db->update('items', ['qty' => 9], ['name' => 'Hammer']);
+    throw new JsError('no');
+}), 422, 'rejected');
+eq('… with one ROLLBACK', [$sent, $open(), (int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn()], [['ROLLBACK'], false, 7]);
+$sent = [];
+$ran = [];
+problem('a throw before any write', fn () => $db->reading(function () use (&$ran): void {
+    \TypedPress\Extensions::afterCommit(static function () use (&$ran): void {
+        $ran[] = 'after';
+    });
+    throw new JsError('no');
+}), 422, 'rejected');
+eq('… sends nothing and drops its afterCommit callbacks', [$sent, $ran, $wp->connection()->inTransaction()], [[], [], false]);
+$sent = [];
+$db->reading(static function () use ($open, &$during): void {
+    get_option('tp_reading_probe'); // core's read: still no transaction
+    $during = [$open()];
+    update_option('tp_reading_probe', 'core write', false);
+    $during[] = $open();
+});
+eq('a write through $wpdb (core\'s, another plugin\'s) starts it too', [$sent, $during, get_option('tp_reading_probe')], [['COMMIT'], [false, true], 'core write']);
+$sent = [];
+problem('… and rolls back with it', fn () => $db->reading(static function (): void {
+    update_option('tp_reading_probe', 'rolled back', false);
+    throw new JsError('no');
+}), 422, 'rejected');
+wp_cache_delete('tp_reading_probe', 'options');
+eq('… leaving what was committed', [$sent, get_option('tp_reading_probe')], [['ROLLBACK'], 'core write']);
+$sent = [];
+$db->reading(static function () use ($wp, $items, $open, &$during): void {
+    $wp->connection()->run("SELECT id FROM $items WHERE name = ? FOR UPDATE", ['Hammer']);
+    $during = [$open()];
+});
+eq('a locking read starts it, like a write', [$sent, $during], [['COMMIT'], [true]]);
+$sent = [];
+$db->transaction(fn () => $db->reading(fn () => $db->findMany('items', ['limit' => 1])));
+eq('inside an open transaction it joins that one', $sent, ['START TRANSACTION', 'COMMIT']);
+$sent = [];
+$db->reading(fn () => $db->transaction(fn () => $db->findMany('items', ['limit' => 1])));
+eq('a transaction opened inside it joins it, and stays unsent while it only reads', $sent, []);
+$sent = [];
+$db->transaction(fn () => $db->findMany('items', ['limit' => 1]));
+eq('an ordinary transaction starts at once, as before', $sent, ['START TRANSACTION', 'COMMIT']);
+remove_filter('query', $spy);
+delete_option('tp_reading_probe');
+$db->update('items', ['qty' => 5], ['name' => 'Hammer']);
+
 $before = $logCount();
 $db->transaction(fn () => $db->insert('logs', ['message' => 'loop:8']));
 eq('8 levels of nested hook writes are allowed', $logCount(), $before + 9);
@@ -601,21 +685,33 @@ eq('runtime FK cascade is on', $db->findFirst('items', ['where' => ['id' => $lam
 
 // ================================================================ migrations: a later file, the ledger, a failing statement
 
-// An app update ships 0002: adding a column to a table with rows. `wp typedpress migrate` applies it in
-// order, records it per app, and the next request sees current storage.
+// An app update ships a second sortable folder migration: adding a column to a table with rows.
+$writeMig = static function (string $id, string $sql) use ($wp): void {
+    $dir = $wp->plugin()->dir . "/tp/app/migrations/$id";
+    if (!is_dir($dir)) {
+        mkdir($dir, 0777, true);
+    }
+    file_put_contents("$dir/migration.sql", $sql);
+};
+$rmMig = static function (string $id) use ($wp): void {
+    $dir = $wp->plugin()->dir . "/tp/app/migrations/$id";
+    @unlink("$dir/migration.sql");
+    @unlink("$dir/ops.json");
+    @rmdir($dir);
+};
 $childrenBefore = $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]);
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0002_note.sql', 'ALTER TABLE `{prefix}tp_locations` ADD COLUMN `note` LONGTEXT;');
-eq('`wp typedpress migrate` applies the pending file', $wp->wpCli(['migrate']), [0, ['data' => ['applied' => ['0002_note']]]]);
+$writeMig('20261121000001_000001_note', 'ALTER TABLE `{prefix}tp_locations` ADD COLUMN `note` LONGTEXT;');
+eq('`wp typedpress migrate` applies the pending folder', $wp->wpCli(['migrate']), [0, ['data' => ['applied' => ['20261121000001_000001_note']]]]);
 eq('child rows survive the parent change (no cascade fired)', $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]), $childrenBefore);
-eq('the table has the new column and the ledger the file', [
+eq('the table has the new column and the ledger the migration', [
     $wp->scalar('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$wp->connection()->prefix() . 'tp_locations', 'note']),
     array_column($wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), 'id'),
-], [1, ['0001_init', '0002_note']]);
+], [1, ['20261121000000_000000_init', '20261121000001_000001_note']]);
 problem('the unique index still holds', fn () => $db->insert('locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
 // Migration text is SQL as the compiler or an operator writes it: a leading comment, a `?` inside a
 // literal default, and a constraint over rows that break it.
-$migrate = static function (string $id, string $sql) use ($wp): ?array {
-    file_put_contents($wp->plugin()->dir . "/tp/app/migrations/$id.sql", $sql);
+$migrate = static function (string $id, string $sql) use ($wp, $writeMig): ?array {
+    $writeMig($id, $sql);
 
     return $wp->wpCli(['migrate'])[1]['data']['applied'] ?? null;
 };
@@ -638,7 +734,7 @@ eq('a comment between the keywords', $alter('ALTER /* inline */ TABLE `{prefix}t
 eq('a line comment ending in a carriage return', $alter("-- note\rALTER TABLE `{prefix}tp_rf_parent` ADD COLUMN `c3` LONGTEXT", 'c3'), [1, 1]);
 eq('an executable comment this server\'s version satisfies is the statement', $alter('/*!80000 ALTER TABLE `{prefix}tp_rf_parent` ADD COLUMN `c4` LONGTEXT */', 'c4'), [1, 1]);
 eq('an executable comment for a newer server is a comment, and the ALTER behind it still keeps the children', $alter('/*!99999 SELECT 1 */ ALTER TABLE `{prefix}tp_rf_parent` ADD COLUMN `c5` LONGTEXT', 'c5'), [1, 1]);
-eq('a migration file carrying such a statement reaches the same path', [$migrate('0002b_commented', "/* adds */ ALTER /* inline */ TABLE `{prefix}tp_locations` ADD COLUMN `prompt` VARCHAR(191) DEFAULT 'Continue?';"), $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]) === $childrenBefore, $wp->scalar('SELECT `prompt` FROM {prefix}tp_locations WHERE `name` = ?', ['Garage'])], [['0002b_commented'], true, 'Continue?']);
+eq('a migration file carrying such a statement reaches the same path', [$migrate('20261121000002_000002_commented', "/* adds */ ALTER /* inline */ TABLE `{prefix}tp_locations` ADD COLUMN `prompt` VARCHAR(191) DEFAULT 'Continue?';"), $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]) === $childrenBefore, $wp->scalar('SELECT `prompt` FROM {prefix}tp_locations WHERE `name` = ?', ['Garage'])], [['20261121000002_000002_commented'], true, 'Continue?']);
 eq('`--` without a space is subtraction', $wp->sql('SELECT 1--? AS n', [1])[0]['n'], 2);
 eq('a parameter inside an executable comment this server reads is bound', $wp->sql('SELECT /*!80000 ? */ AS n', [42])[0]['n'], 42);
 eq('a `?` inside an executable comment for a newer server is text, not a parameter', $wp->sql('SELECT 3 AS n /*!99999 , ? AS m */')[0], ['n' => 3]);
@@ -648,14 +744,14 @@ eq('an odd run of backslashes escapes the quote: the `?` inside stays text', $wp
 $wp->exec('INSERT INTO {prefix}tp_logs (`message`, `at`) VALUES (?, ?)', ['orphan', '2026-01-01T00:00:00.000Z']);
 $wp->exec('ALTER TABLE {prefix}tp_logs ADD COLUMN `itemId` BIGINT UNSIGNED');
 $wp->exec('UPDATE {prefix}tp_logs SET `itemId` = 424242 WHERE `message` = ?', ['orphan']);
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0002c_fk.sql', 'ALTER TABLE `{prefix}tp_logs` ADD CONSTRAINT `tp_logs_itemId_fk` FOREIGN KEY (`itemId`) REFERENCES `{prefix}tp_items` (`id`) ON DELETE SET NULL;');
+$writeMig('20261121000003_000003_fk', 'ALTER TABLE `{prefix}tp_logs` ADD CONSTRAINT `tp_logs_itemId_fk` FOREIGN KEY (`itemId`) REFERENCES `{prefix}tp_items` (`id`) ON DELETE SET NULL;');
 putenv('TP_DEBUG=1');
 [$code, $out] = $wp->wpCli(['migrate']);
 putenv('TP_DEBUG');
 check('a constraint added over rows that break it fails the migration and changes nothing', $code === 1 && str_contains($out['error']['detail'] ?? '', 'foreign key constraint fails')
     && $wp->scalar('SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?', [$wp->connection()->prefix() . 'tp_logs', 'tp_logs_itemId_fk']) === 0, $out);
 $wp->exec('DELETE FROM {prefix}tp_logs WHERE `message` = ?', ['orphan']);
-eq('with the orphan gone the same file applies', $wp->wpCli(['migrate'])[1]['data']['applied'] ?? null, ['0002c_fk']);
+eq('with the orphan gone the same file applies', $wp->wpCli(['migrate'])[1]['data']['applied'] ?? null, ['20261121000003_000003_fk']);
 // Migrations run under one site-wide lock across processes: while this process holds it, another
 // process can't take it (and gives up at its timeout); once released, it can.
 file_put_contents($wp->dir . '/lock.php', <<<'PHP'
@@ -674,61 +770,34 @@ eq('a second process can\'t take a held migration lock, and can once it is relea
 eq('the lock is per name', $wp->connection()->locked('first:other', 1, $other), 'held');
 
 // A statement that fails stops the file; what ran before it is recorded step by step, nothing after it runs.
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0003_broken.sql', "DELETE FROM `{prefix}tp_logs` WHERE `message` = 'hello';\n--> statement-breakpoint\nALTER TABLE `{prefix}tp_nope` ADD COLUMN `x` LONGTEXT;\n--> statement-breakpoint\nDELETE FROM `{prefix}tp_logs`;");
-putenv('TP_DEBUG=1'); // the problem's detail carries the migration's own message, as the operator sees it in the log
+$writeMig('20261121000004_000004_broken', "DELETE FROM `{prefix}tp_logs` WHERE `message` = 'hello';\n--> statement-breakpoint\nALTER TABLE `{prefix}tp_nope` ADD COLUMN `x` LONGTEXT;\n--> statement-breakpoint\nDELETE FROM `{prefix}tp_logs`;");
+putenv('TP_DEBUG=1');
 [$code, $out] = $wp->wpCli(['migrate']);
 putenv('TP_DEBUG');
-check('a failing statement fails the command and names its position', $code === 1 && str_contains($out['error']['detail'] ?? '', '0003_broken failed at statement 2'), $out);
+check('a failing statement fails the command and names its position', $code === 1 && str_contains($out['error']['detail'] ?? '', '20261121000004_000004_broken failed at statement 2'), $out);
 eq('the statements before it ran and are recorded; the ones after it did not run', [
     count($db->findMany('logs', ['where' => ['message' => 'hello']])), count($db->findMany('logs')) > 0,
-    array_column($wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ? ORDER BY `id`', ['dbtest', '0003%']), 'id'),
-], [0, true, ['0003_broken:1']]);
-unlink($wp->plugin()->dir . '/tp/app/migrations/0003_broken.sql');
-$wp->exec('DELETE FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ?', ['dbtest', '0003%']);
-eq('with the file gone, migrate is a no-op and the CLI serves again', [$wp->wpCli(['migrate'])[1], $wp->wpCli(['find', 'items', '{"where":{"name":"Hammer"},"columns":{"name":true}}'])[1]],
+    array_column($wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ? ORDER BY `id`', ['dbtest', '20261121000004%']), 'id'),
+], [0, true, ['20261121000004_000004_broken:1']]);
+$rmMig('20261121000004_000004_broken');
+$wp->exec('DELETE FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ?', ['dbtest', '20261121000004%']);
+eq('with the folder gone, migrate is a no-op and the CLI serves again', [$wp->wpCli(['migrate'])[1], $wp->wpCli(['find', 'items', '{"where":{"name":"Hammer"},"columns":{"name":true}}'])[1]],
     [['data' => ['applied' => []]], ['data' => [['name' => 'Hammer']]]]);
 
-// ================================================================ migrations: the deploy-time schema check on SQLite (spec §2.9)
+// ================================================================ forward-only runtime guard & unified audit ledger
 
-// Statements as `typedpress build` plans a `was` rename and a drop. The SQLite driver has no RENAME TABLE and
-// its RENAME COLUMN loses values, so the migrator copies the table and changes the column instead:
-// rows, the auto-increment, and a child's foreign key (dropped and added back as the plan does) survive.
-$wp->exec('CREATE TABLE {prefix}tp_sc_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `body` LONGTEXT, `state` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
-$wp->exec('CREATE TABLE {prefix}tp_sc_kids (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `noteId` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `tp_sc_kids_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES {prefix}tp_sc_notes (`id`) ON DELETE CASCADE) ENGINE=InnoDB');
-$wp->exec("INSERT INTO {prefix}tp_sc_notes (`body`, `state`) VALUES ('first', 'open'), ('second', NULL)");
-$wp->exec('INSERT INTO {prefix}tp_sc_kids (`noteId`) VALUES (1)');
-$checked = static fn (array $check, string $sql): string => '-- typedpress-check ' . json_encode($check, JSON_UNESCAPED_SLASHES) . "\n" . $sql;
-$p = '{prefix}';
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0004_rename.sql', implode("\n--> statement-breakpoint\n", [
-    "ALTER TABLE `{$p}tp_sc_kids` DROP FOREIGN KEY `tp_sc_kids_noteId_fk`;",
-    $checked(['check' => 'rename', 'table' => "{$p}tp_sc_notes", 'to' => "{$p}tp_sc_memos"], "RENAME TABLE `{$p}tp_sc_notes` TO `{$p}tp_sc_memos`;"),
-    $checked(['check' => 'rename', 'name' => 'sc_memos.body', 'table' => "{$p}tp_sc_notes", 'column' => 'body', 'to' => 'text', 'definition' => '`text` LONGTEXT', 'adopted' => false],
-        "ALTER TABLE `{$p}tp_sc_memos` RENAME COLUMN `body` TO `text`;"),
-    "ALTER TABLE `{$p}tp_sc_kids` ADD CONSTRAINT `tp_sc_kids_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES `{$p}tp_sc_memos` (`id`) ON DELETE CASCADE;",
-]));
-// A second pending file drops a column under the new name: its check counts the rows still in sc_notes.
-file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0005_drop.sql', $checked(
-    ['check' => 'drop', 'name' => 'sc_memos.state', 'table' => "{$p}tp_sc_memos", 'column' => 'state', 'adopted' => false],
-    "ALTER TABLE `{$p}tp_sc_memos` DROP COLUMN `state`;",
-));
+$writeMig('20261121000005_000005_drop', 'ALTER TABLE `{prefix}tp_locations` DROP COLUMN `note`;');
+putenv('TP_DEBUG=1');
 [$code, $out] = $wp->wpCli(['migrate']);
-eq('a drop pending behind a rename is counted under the old name, and refused with nothing run', [$code, $out['error']['code'] ?? null,
-    array_map(static fn (array $r): array => [$r['code'], $r['name'], $r['rows']], $out['error']['refusals'] ?? []), $out['error']['drop'] ?? null,
-    (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}tp_sc_notes')],
-    [1, 'schema_refused', [['drop_has_rows', 'sc_memos.state', 1]], ['sc_memos.state=1'], 2]);
-eq('a bare --drop is refused, not ignored', $wp->wpCli(['migrate'], ['drop' => true])[1]['error']['code'] ?? null, 'invalid_drop');
-eq('--drop with the live count applies both files', $wp->wpCli(['migrate'], ['drop' => 'sc_memos.state=1'])[1]['data']['applied'] ?? null, ['0004_rename', '0005_drop']);
-eq('the renamed table kept its rows, values and auto-increment, and its child kept its row and key', [
-    $wp->sql('SELECT `id`, `text` FROM {prefix}tp_sc_memos ORDER BY `id`'),
-    $wp->scalar('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$wp->connection()->prefix() . 'tp_sc_notes']),
-    $wp->sql('SELECT `noteId` FROM {prefix}tp_sc_kids'),
-], [[['id' => 1, 'text' => 'first'], ['id' => 2, 'text' => 'second']], 0, [['noteId' => 1]]]);
-$wp->exec("INSERT INTO {prefix}tp_sc_memos (`text`) VALUES ('third')");
-eq('the copy keeps counting ids where the table left off', (int) $wp->scalar('SELECT MAX(`id`) FROM {prefix}tp_sc_memos'), 3);
-$wp->exec('DELETE FROM {prefix}tp_sc_memos WHERE `id` = 1');
-eq('the child key points at the renamed table (ON DELETE CASCADE fires)', (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}tp_sc_kids'), 0);
-$wp->exec('DROP TABLE {prefix}tp_sc_kids');
-$wp->exec('DROP TABLE {prefix}tp_sc_memos');
+putenv('TP_DEBUG');
+check('core Migrator refuses destructive DROP COLUMN in forward-only schema migrations',
+    $code === 1 && str_contains($out['error']['detail'] ?? '', 'Refusing destructive DDL'), $out);
+$rmMig('20261121000005_000005_drop');
+$migrator = new \TypedPress\Wp\Migrator($wp->connection(), $wp->plugin()->dir . '/tp/app/migrations', $wp->plugin()->schema);
+$migrator->recordAudit('20261121000006_000006_purge', 'destructive', str_repeat('a', 64), 'admin', 'cleanup retired column', 0);
+$audit = $wp->sql('SELECT `kind`, `actor`, `reason`, `rows_affected` FROM {prefix}tp__migrations WHERE `app` = ? AND `id` = ?', ['dbtest', '20261121000006_000006_purge']);
+eq('unified ledger records destructive audit metadata', $audit, [['kind' => 'destructive', 'actor' => 'admin', 'reason' => 'cleanup retired column', 'rows_affected' => 0]]);
+$wp->exec('DELETE FROM {prefix}tp__migrations WHERE `app` = ? AND `id` = ?', ['dbtest', '20261121000006_000006_purge']);
 
 // ================================================================ CLI
 
@@ -748,10 +817,10 @@ eq('CLI usage error', $cli('frobnicate')[0], 1);
 
 // ================================================================ HTTP: TypedPress's API on WordPress
 
-// Through the web server (php -S on this site), as a client sees it: /__tp/api/v1 answers with
+// Through the web server (php -S on this site), as a client sees it: /wp-json/typedpress/v1 answers with
 // TypedPress's envelopes, problem documents and headers.
 $port = $wp->startServer();
-$base = "http://127.0.0.1:$port/__tp/api/v1";
+$base = "http://127.0.0.1:$port/wp-json/typedpress/v1";
 
 /** @return array{status: int, headers: array<string, string>, body: string, json: mixed} */
 function http(string $method, string $path, mixed $body = null, ?string $raw = null, array $headers = []): array
@@ -761,6 +830,7 @@ function http(string $method, string $path, mixed $body = null, ?string $raw = n
     $out = [];
     curl_setopt_array($ch, [
         CURLOPT_CUSTOMREQUEST => $method,
+        CURLOPT_NOBODY => $method === 'HEAD',
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 30,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json', ...$headers],
@@ -793,7 +863,7 @@ $isProblem = function (string $label, array $r, int $status, string $code, ?stri
 };
 
 $r = http('GET', '');
-check('GET /__tp/api/v1 (the schema)', $r['status'] === 200 && $r['json']['data']['kinds']['items']['columns']['qty']['type'] === 'integer'
+check('GET /wp-json/typedpress/v1 (the schema)', $r['status'] === 200 && $r['json']['data']['kinds']['items']['columns']['qty']['type'] === 'integer'
     && isset($r['json']['data']['actions']['restock']['input']['amount']), $r);
 check('schema exposes no function names', !str_contains($r['body'], '__') && !str_contains($r['body'], 'hooks') && !str_contains($r['body'], 'handler'), $r['body']);
 eq('the runtime reports the WordPress platform in the schema', [$r['json']['data']['runtime']['wp']['database']['kind'], $r['json']['data']['runtime']['wp']['incompatibleTables']], ['sqlite', []]);
@@ -819,6 +889,67 @@ $isProblem('unknown collection', http('GET', '/widgets'), 404, 'not_found');
 // A malformed JSON body is refused before anything runs: the API's own parser answers invalid_json.
 eq('invalid JSON body is refused', [http('POST', '/items', raw: '{"name":')['status'], http('POST', '/items', raw: '{"name":')['json']['code'] ?? null], [400, 'invalid_json']);
 eq('… and by TypedPress itself', [$wp->call('POST', '/items', '{"name":')[0], $wp->call('POST', '/items', '{"name":')[1]['code'] ?? null], [400, 'invalid_json']);
+// The API is a route on WordPress's REST server: core's transport works on it as on any route.
+$r = http('GET', '');
+eq('the namespace itself is the app schema, not core\'s namespace index', [$r['status'], isset($r['json']['data']['kinds']['items']), isset($r['json']['routes'])], [200, true, false]);
+$r = http('OPTIONS', '/items', headers: ['Origin: https://elsewhere.test', 'Access-Control-Request-Method: POST']);
+eq('a preflight is core\'s, with the API\'s own headers allowed', [$r['status'] < 300, str_contains($r['headers']['access-control-allow-headers'] ?? '', 'Idempotency-Key')], [true, true]);
+eq('HEAD answers the status and no body', [http('HEAD', '/items')['status'], http('HEAD', '/items')['body']], [200, '']);
+$r = http('POST', '/items/' . $widget['id'] . '?_method=PATCH', ['qty' => 7]);
+eq('_method turns a POST into the PATCH it names, as on every REST route', [$r['status'], $r['json']['data']['qty'] ?? null], [200, 7]);
+$r = http('GET', '/items', headers: ['Cookie: wordpress_logged_in_x=y', 'X-WP-Nonce: nope']);
+// Core's refusal (rest_cookie_invalid_nonce), mapped as every core refusal of a signed-out caller is.
+$isProblem('a bad nonce is core\'s refusal, as a problem document', $r, 401, 'unauthenticated');
+// Application passwords are core's too, under core's own rule: on a request WordPress serves from the
+// REST API, and on no other, whatever its URL starts with.
+$basic = static fn (string $user, ?string $password = null): array => ['Authorization: Basic ' . base64_encode($password === null ? $wp->appPassword($user) : "$user:$password")];
+$origin = "http://127.0.0.1:$port";
+/** One request to the site with its path sent exactly as written (dot segments kept). */
+$sent = static function (string $method, string $target, array $headers = [], ?string $body = null) use ($origin): array {
+    $ch = curl_init($origin . $target);
+    curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_PATH_AS_IS => true, CURLOPT_HTTPHEADER => $headers]);
+    if ($body !== null) {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+    }
+    $res = (string) curl_exec($ch);
+
+    return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), $res];
+};
+eq('an application password signs in on the API', [http('GET', '/me', headers: $basic('fa_ed'))['status'], http('GET', '/me', headers: $basic('fa_ed'))['json']['data']['role'] ?? null], [200, 'editor']);
+eq('… and as ?rest_route=', json_decode($sent('GET', '/?rest_route=/typedpress/v1/me', $basic('fa_ed'))[1], true)['data']['role'] ?? null, 'editor');
+$isProblem('a wrong application password is refused, not a visitor', http('GET', '/me', headers: $basic('fa_ed', 'abcd efgh ijkl mnop qrst uvwx')), 401, 'incorrect_password');
+$isProblem('… on a public list too', http('GET', '/items', headers: $basic('fa_ed', 'abcd efgh ijkl mnop qrst uvwx')), 401, 'incorrect_password');
+// `rest_route` in the query or the body replaces the route in the path: emptied, the request is a page.
+$form = ['Content-Type: application/x-www-form-urlencoded'];
+$pages = [
+    'a page' => $sent('GET', '/', $basic('fa_admin')),
+    'the API path with ?rest_route= emptied' => $sent('GET', '/wp-json/typedpress/v1/me/?rest_route=', $basic('fa_admin')),
+    'the API path with rest_route= emptied in the body' => $sent('POST', '/wp-json/typedpress/v1/me', [...$basic('fa_admin'), ...$form], 'rest_route='),
+];
+foreach ($pages as $label => [$status, $page]) {
+    check("an application password signs nobody in on $label", !str_starts_with(ltrim($page), '{') && !str_contains($page, 'wpadminbar') && preg_match('/<body[^>]*\blogged-in\b/', $page) !== 1, [$status, substr($page, 0, 200)]);
+}
+// A path decoded once, however it was sent: WordPress keeps the pretty path as sent, PHP decodes ?rest_route=.
+foreach (['/%69tems/' . $widget['id'] => 200, '/items/%3' . substr((string) $widget['id'], 0, 1) . substr((string) $widget['id'], 1) => 200,
+    '/items/slug%3Anope' => 404, '/it%20ems' => 404, '/it%C3%A9ms' => 404, '/it%2520ems' => 404, '/%2569tems' => 404, '/it%27s%22a%5Cb' => 404] as $encoded => $expect) {
+    $pretty = http('GET', $encoded);
+    [$status, $body] = $sent('GET', '/?rest_route=/typedpress/v1' . $encoded);
+    eq("$encoded answers the same under /wp-json and as ?rest_route=", [$pretty['status'], $pretty['json']], [$status, json_decode($body, true)]);
+    eq("$encoded → $expect", $pretty['status'], $expect);
+}
+eq('an encoded space, a non-ASCII letter and a literal %20 reach the API as that text', [
+    http('GET', '/it%20ems')['json']['detail'] ?? null, http('GET', '/it%C3%A9ms')['json']['detail'] ?? null, http('GET', '/it%2520ems')['json']['detail'] ?? null, http('GET', '/%2569tems')['json']['detail'] ?? null,
+    http('GET', '/it%27s%22a%5Cb')['json']['detail'] ?? null,
+], ["Unknown kind 'it ems'", "Unknown kind 'itéms'", "Unknown kind 'it%20ems'", "Unknown kind '%69tems'", "Unknown kind 'it's\"a\\b'"]);
+$r = http('GET', '/items');
+eq('every answer is private', [$r['headers']['cache-control'] ?? null, str_contains($r['headers']['vary'] ?? '', 'Authorization')], ['private, no-store', true]);
+$plain = (function () use ($base): array {
+    $ch = curl_init(str_replace('/wp-json/typedpress/v1', '/?rest_route=/typedpress/v1/items', $base));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    $body = (string) curl_exec($ch);
+    return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), is_array(json_decode($body, true)['data'] ?? null)];
+})();
+eq('?rest_route= reaches the API too', $plain, [200, true]);
 $isProblem('coercion error with pointer', http('POST', '/items', ['name' => 'x', 'qty' => 'lots']), 422, 'invalid_input', '/qty');
 $isProblem('missing required', http('POST', '/items', ['qty' => 1]), 422, 'invalid_input', '/name');
 $isProblem('unique violation', http('POST', '/locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
@@ -1013,7 +1144,7 @@ $byName = static fn (array $rows) => array_column($rows, null, 'name');
 
 // read: shorthand rules once per page, function rules per row; hidden keys are removed, not nulled.
 $anon = $byName($as(null, 'GET', '/profiles')[1]);
-eq('anonymous rows lack every column it may not read, at every level', [array_keys($anon['Alice']), $anon['Alice']['notes']], [['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId'], ['public' => 'hi', 'pinned' => true, 'tag' => null]]);
+eq('anonymous rows lack every column it may not read, at every level', [array_keys($anon['Alice']), $anon['Alice']['notes']], [['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId', '_rev'], ['public' => 'hi', 'pinned' => true, 'tag' => null]]);
 $alice = $byName($as('fa_alice', 'GET', '/profiles')[1]);
 eq('a function read rule runs per row (author sees only her own salary)', [$alice['Alice']['salary'] ?? 'hidden', $alice['Bob']['salary'] ?? 'hidden', isset($alice['Alice']['email'])], [10, 'hidden', false]);
 $editor = $as('fa_ed', 'GET', "/profiles/{$theirs['id']}")[1];
@@ -1417,6 +1548,70 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('the booted app\'s db() is back afterwards', \TypedPress\db()->schema()->hasCollection('profiles'), true);
 })();
 
+// ================================================================ self-referencing and cyclic cascades (#524)
+
+(static function () use ($wp): void {
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $open = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'anyone'], 'update' => ['role' => 'anyone'], 'delete' => ['role' => 'anyone']];
+    $before = [];
+    $after = [];
+    $schema = new \TypedPress\Schema([
+        'name' => 'cycles',
+        'collections' => [
+            'nodes' => [
+                'primaryKey' => 'id',
+                'editor' => false,
+                'access' => $open,
+                'hooks' => [
+                    'beforeDelete' => static function (array $row) use (&$before): void {
+                        $before[] = $row['id'];
+                    },
+                    'afterDelete' => static function (array $row) use (&$after): void {
+                        $after[] = $row['id'];
+                    },
+                ],
+                'columns' => [
+                    'id' => $id,
+                    'label' => ['type' => 'text', 'notNull' => true],
+                    'parentId' => ['type' => 'integer', 'references' => ['collection' => 'nodes', 'column' => 'id', 'onDelete' => 'cascade']],
+                ],
+            ],
+        ],
+    ]);
+    $wp->exec('CREATE TABLE {prefix}tp_nodes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `label` LONGTEXT NOT NULL, `parentId` BIGINT UNSIGNED NULL, PRIMARY KEY (`id`), CONSTRAINT `tp_nodes_parentId_fk` FOREIGN KEY (`parentId`) REFERENCES {prefix}tp_nodes (`id`) ON DELETE CASCADE) ENGINE=InnoDB');
+    $store = \TypedPress\Wp\CompositeStore::create($schema, $wp->connection());
+    $cycleDb = new \TypedPress\Db($store, $schema, \TypedPress\db()->media());
+    $viewer = new \TypedPress\Viewer(['id' => 1, 'name' => 'owner', 'role' => 'subscriber']);
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($cycleDb);
+    try {
+        // Self-referencing row: deleted once, hooks run once each, no hook_recursion.
+        $self = $cycleDb->insert('nodes', ['label' => 'self'], true)[0];
+        $cycleDb->update('nodes', ['parentId' => $self['id']], ['id' => $self['id']]);
+        $cycleDb->delete('nodes', ['id' => $self['id']], false, $viewer);
+        eq('self-referencing cascade deletes the row once and runs hooks once', [
+            $cycleDb->findMany('nodes'),
+            $before,
+            $after,
+        ], [[], [$self['id']], [$self['id']]]);
+
+        // Both roots of a two-row cycle are selected. The cascade must not repeat a root's hooks.
+        $before = [];
+        $after = [];
+        [$a, $b] = $cycleDb->insert('nodes', [['label' => 'a'], ['label' => 'b']], true);
+        $cycleDb->update('nodes', ['parentId' => $b['id']], ['id' => $a['id']]);
+        $cycleDb->update('nodes', ['parentId' => $a['id']], ['id' => $b['id']]);
+        $cycleDb->delete('nodes', ['id' => ['in' => [$a['id'], $b['id']]]], false, $viewer);
+        eq('two-row cascade cycle deletes both rows once and runs hooks once per row', [
+            $cycleDb->findMany('nodes'),
+            $before,
+            $after,
+        ], [[], [$a['id'], $b['id']], [$b['id'], $a['id']]]);
+    } finally {
+        \TypedPress\Db::setInstance($previous);
+    }
+})();
+
 // ================================================================ write errors don't reveal what the viewer can't read
 
 // A unique conflict or a dangling reference is an answer about stored rows. Writes may only get one
@@ -1499,12 +1694,19 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         $tag = $db->insert('tags', ['name' => 'u'], true, $sub)[0];
         problem('updates are held to it too', fn () => $db->update('tags', ['noteId' => $note['id']], ['id' => $tag['id']], true, $sub), 409, 'reference_violation', '/noteId');
         eq('a viewer who can read the target references it', $db->insert('tags', ['name' => 'v', 'noteId' => $note['id']], true, $admin)[0]['noteId'], $note['id']);
+        // Deletes look at the rows that reference this row only
+        // (docs/decisions/2026-11-16-per-row-delete-visibility.md).
         $unreferenced = $db->insert('notes', ['body' => 'no children'], true)[0];
-        foreach ([$note, $unreferenced] as $parent) {
-            problem('unreadable restrictive children refuse deletion whether present or absent', fn () => $db->delete('notes', ['id' => $parent['id']], true, $editor), 409, 'reference_violation');
-        }
-        eq('refused deletes preserve both parents', $count('notes'), 2);
+        problem('a hidden referencing row refuses the delete', fn () => $db->delete('notes', ['id' => $note['id']], true, $editor), 409, 'reference_violation');
+        eq('the refused delete keeps the parent', $count('notes'), 2);
+        $db->insert('tags', ['name' => 'second hidden', 'noteId' => $note['id']], true);
+        $one = $failure(fn () => $db->delete('notes', ['id' => $note['id']], true, $editor));
+        $db->insert('tags', ['name' => 'third hidden', 'noteId' => $note['id']], true);
+        eq('one or many hidden rows answer the same body', $failure(fn () => $db->delete('notes', ['id' => $note['id']], true, $editor)), $one);
+        eq('the generic body names no row', [$one['status'], $one['code'], $one['pointer'] ?? null, $one['detail']], [409, 'reference_violation', null, "Rows you can't read may reference this row"]);
+        eq('a row nothing references deletes', $db->delete('notes', ['id' => $unreferenced['id']], true, $editor)[0]['id'], $unreferenced['id']);
         eq('trusted writes (hooks, CLI) check existence only', $db->insert('tags', ['name' => 'w', 'noteId' => $note['id']], true)[0]['noteId'], $note['id']);
+        eq('hidden referencing rows are untouched by refused deletes', (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}tp_tags WHERE noteId = {$note['id']}"), 4);
 
         // References to a key other than `id` (0.3.0 captures only).
         [$b1, $b2] = $db->insert('badges', [['code' => 701001, 'badge' => 889001], ['code' => 701002, 'badge' => 889002]], true);
@@ -1520,8 +1722,671 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             problem('changing a referenced non-id key is refused, children or not', fn () => $db->update('badges', ['code' => $parent['code'] + 10], ['id' => $parent['id']], true, $editor), 409, 'reference_violation');
         }
         eq('refused key changes keep both keys', array_column($db->findMany('badges', ['orderBy' => ['id' => 'asc']]), 'code'), [701001, 701002]);
+        // A delete can't tell whether a referenced key the viewer can't read is null: `badge` is
+        // admin-only, so deleting a badge refuses alike whether it holds one or not, before any count.
+        [$nullBadge, $setBadge] = $db->insert('badges', [['code' => 701003, 'badge' => null], ['code' => 701004, 'badge' => 889004]], true);
+        $answers = [];
+        foreach ([$nullBadge, $setBadge] as $parent) {
+            $answers[] = $failure(fn () => $db->delete('badges', ['id' => $parent['id']], true, $anon));
+        }
+        eq('a hidden referenced key refuses the delete whether it is null or not', $answers[0], $answers[1]);
+        eq('… with the one body', [$answers[0]['status'], $answers[0]['code'], $answers[0]['detail']], [409, 'reference_violation', "Rows you can't read may reference this row"]);
+        eq('a reader of the key deletes the badge whose key is null', $db->delete('badges', ['id' => $nullBadge['id']], true, $admin)[0]['id'], $nullBadge['id']);
     } finally {
         \TypedPress\Db::setInstance($previous);
+    }
+})();
+
+// Owner-scoped apps (examples/pet-food, stuff-drawer, subscriptions, drive-locker): every table reads
+// `{ ownerId: user.id }`. A delete checks only the rows that reference this row: an owner deletes
+// their own rows and applies onDelete to their own children; another owner's row pointing here (which
+// an app hook should prevent, but the database allows) refuses with the generic 409, untouched.
+(static function (): void {
+    $wp = $GLOBALS['wp'];
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $owned = ['fn' => static fn (array $ctx) => $ctx['user'] === null ? false : ['ownerId' => $ctx['user']['id']]];
+    $access = ['read' => $owned, 'create' => ['role' => 'authenticated'], 'update' => $owned, 'delete' => $owned];
+    $owner = ['ownerId' => ['type' => 'integer', 'notNull' => true]];
+    $table = static fn (string $name, array $columns): array => ['primaryKey' => 'id', 'editor' => false, 'table' => "tp_$name", 'access' => $access, 'columns' => ['id' => $id] + $owner + $columns];
+    $ref = static fn (string $to, string $onDelete, bool $notNull = true): array => ['type' => 'integer', 'notNull' => $notNull, 'references' => ['collection' => $to, 'column' => 'id', 'onDelete' => $onDelete]];
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+        'bins' => $table('bins', []),
+        'things' => $table('things', ['binId' => $ref('bins', 'set null', false)]),
+        'loans' => $table('loans', ['thingId' => $ref('things', 'restrict')]),
+        'charges' => $table('charges', ['thingId' => $ref('things', 'cascade')]),
+        'receipts' => $table('receipts', ['chargeId' => $ref('charges', 'cascade')]),
+    ]]);
+    $fk = static fn (string $t, string $c, string $to, string $on): string => "CONSTRAINT `tp_{$t}_{$c}_fk` FOREIGN KEY (`$c`) REFERENCES {prefix}tp_$to (`id`) ON DELETE $on";
+    $wp->exec('CREATE TABLE {prefix}tp_bins (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `ownerId` BIGINT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_things (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `ownerId` BIGINT NOT NULL, `binId` BIGINT UNSIGNED, PRIMARY KEY (`id`), ' . $fk('things', 'binId', 'bins', 'SET NULL') . ') ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_loans (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `ownerId` BIGINT NOT NULL, `thingId` BIGINT UNSIGNED NOT NULL, PRIMARY KEY (`id`), ' . $fk('loans', 'thingId', 'things', 'RESTRICT') . ') ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_charges (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `ownerId` BIGINT NOT NULL, `thingId` BIGINT UNSIGNED NOT NULL, PRIMARY KEY (`id`), ' . $fk('charges', 'thingId', 'things', 'CASCADE') . ') ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_receipts (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `ownerId` BIGINT NOT NULL, `chargeId` BIGINT UNSIGNED NOT NULL, PRIMARY KEY (`id`), ' . $fk('receipts', 'chargeId', 'charges', 'CASCADE') . ') ENGINE=InnoDB');
+    $store = \TypedPress\Wp\CompositeStore::create($schema, $wp->connection());
+    $db = new \TypedPress\Db($store, $schema, \TypedPress\db()->media());
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($db);
+    $me = new \TypedPress\Viewer(['id' => 7, 'name' => 'me', 'role' => 'subscriber']);
+    $other = 8;
+    $count = static fn (string $t) => (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}tp_$t");
+    $failure = static function (callable $write): array {
+        try {
+            $write();
+
+            return ['status' => 200, 'code' => 'unexpected_success', 'pointer' => null, 'detail' => ''];
+        } catch (\Throwable $e) {
+            return \TypedPress\App::problem($e);
+        }
+    };
+    $insert = static fn (string $t, array $row) => $db->insert($t, $row, true)[0];
+    try {
+        $empty = $insert('bins', ['ownerId' => 7]);
+        eq('an owner deletes an empty parent of an owner-filtered table', $db->delete('bins', ['id' => $empty['id']], true, $me)[0]['id'], $empty['id']);
+
+        $bin = $insert('bins', ['ownerId' => 7]);
+        $thing = $insert('things', ['ownerId' => 7, 'binId' => $bin['id']]);
+        $db->delete('bins', ['id' => $bin['id']], false, $me);
+        eq('set null applies to the owner\'s own children', $db->findFirst('things', ['where' => ['id' => $thing['id']]])['binId'], null);
+
+        $charge = $insert('charges', ['ownerId' => 7, 'thingId' => $thing['id']]);
+        $insert('receipts', ['ownerId' => 7, 'chargeId' => $charge['id']]);
+        $loan = $insert('loans', ['ownerId' => 7, 'thingId' => $thing['id']]);
+        problem('restrict still refuses on visible rows', fn () => $db->delete('things', ['id' => $thing['id']], true, $me), 409, 'reference_violation');
+        $db->delete('loans', ['id' => $loan['id']], false, $me);
+        $db->delete('things', ['id' => $thing['id']], false, $me);
+        eq('cascade removes the owner\'s own children and grandchildren', [$count('things'), $count('charges'), $count('receipts')], [0, 0, 0]);
+
+        // Another owner's rows point at mine: refused alike at any depth, nothing written or read back.
+        $mine = $insert('things', ['ownerId' => 7]);
+        $theirs = $insert('loans', ['ownerId' => $other, 'thingId' => $mine['id']]);
+        $direct = $failure(fn () => $db->delete('things', ['id' => $mine['id']], true, $me));
+        eq('a hidden restrict child refuses with the generic body', [$direct['status'], $direct['code'], $direct['detail']], [409, 'reference_violation', "Rows you can't read may reference this row"]);
+        $db->delete('loans', ['id' => $theirs['id']], false);
+        $myCharge = $insert('charges', ['ownerId' => 7, 'thingId' => $mine['id']]);
+        $insert('receipts', ['ownerId' => $other, 'chargeId' => $myCharge['id']]);
+        $deep = $failure(fn () => $db->delete('things', ['id' => $mine['id']], true, $me));
+        eq('a hidden grandchild under a visible cascade refuses the whole delete, with the same body: no table or depth', $deep, $direct);
+        eq('the refused cascade rolled back nothing it should keep', [$count('things'), $count('charges'), $count('receipts')], [1, 1, 1]);
+        $theirBin = $insert('bins', ['ownerId' => $other]);
+        $insert('things', ['ownerId' => 7, 'binId' => $theirBin['id']]);
+        eq('another owner\'s parent is not selected by my delete', $db->delete('bins', ['id' => $theirBin['id']], true, $me), []);
+        eq('so it stays', $count('bins'), 1);
+    } finally {
+        \TypedPress\Db::setInstance($previous);
+    }
+})();
+
+// A referential write is the viewer's own: cascade needs their delete rule on every child, set null
+// their update rule; a branch with no rows runs no generator.
+(static function () use ($db): void {
+    $wp = $GLOBALS['wp'];
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $any = ['role' => 'anyone'];
+    $open = ['read' => $any, 'create' => $any, 'update' => $any, 'delete' => $any];
+    $owned = ['fn' => static fn (array $ctx) => $ctx['user'] === null ? false : ['ownerId' => $ctx['user']['id']]];
+    $table = static fn (string $name, array $cols, array $access): array => ['primaryKey' => 'id', 'editor' => false, 'table' => "tp_rw_$name", 'columns' => ['id' => $id] + $cols, 'access' => $access];
+    $ref = static fn (string $to, string $on, array $extra = []): array => ['type' => 'integer', 'references' => ['collection' => $to, 'column' => 'id', 'onDelete' => $on]] + $extra;
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+        'rw_parents' => $table('parents', ['ownerId' => ['type' => 'integer']], ['read' => $owned, 'delete' => $owned] + $open),
+        'rw_kids' => $table('kids', ['ownerId' => ['type' => 'integer'], 'parentId' => $ref('rw_parents', 'cascade')], ['read' => $owned, 'delete' => ['role' => 'admin']] + $open),
+        'rw_refs' => $table('refs', ['ownerId' => ['type' => 'integer'], 'parentId' => $ref('rw_parents', 'set null')], ['read' => $owned, 'update' => ['role' => 'admin']] + $open),
+        'rw_secret' => $table('secret', ['blocked' => ['type' => 'boolean']], ['read' => ['role' => 'admin']] + $open),
+        'rw_defaults' => $table('defaults', ['parentId' => $ref('rw_parents', 'set default', ['default' => ['fn' => static function () {
+            $GLOBALS['rw_generated'] = ($GLOBALS['rw_generated'] ?? 0) + 1;
+            return null;
+        }]])], $open),
+    ]]);
+    foreach (['parents' => 'ownerId BIGINT', 'kids' => 'ownerId BIGINT, parentId BIGINT', 'refs' => 'ownerId BIGINT, parentId BIGINT', 'secret' => 'blocked TINYINT', 'defaults' => 'parentId BIGINT'] as $name => $cols) {
+        $wp->exec("CREATE TABLE {prefix}tp_rw_$name (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, $cols, PRIMARY KEY(id)) ENGINE=InnoDB");
+    }
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($probe);
+    $me = new \TypedPress\Viewer(['id' => 7, 'name' => 'me', 'role' => 'subscriber']);
+    try {
+        $parent = $probe->insert('rw_parents', ['ownerId' => 7], true)[0];
+        $kid = $probe->insert('rw_kids', ['ownerId' => 7, 'parentId' => $parent['id']], true)[0];
+        problem('a child the viewer may read but not delete', fn () => $probe->delete('rw_kids', ['id' => $kid['id']], false, $me), 403, 'forbidden');
+        problem('… so its parent\'s cascade, that viewer\'s delete of it, refuses with the one body', fn () => $probe->delete('rw_parents', ['id' => $parent['id']], false, $me), 409, 'reference_violation');
+        eq('… and both rows stay', [$probe->findFirst('rw_parents', ['where' => ['id' => $parent['id']]]) !== null, $probe->findFirst('rw_kids', ['where' => ['id' => $kid['id']]]) !== null], [true, true]);
+        $probe->delete('rw_kids', ['id' => $kid['id']]);
+        $ref = $probe->insert('rw_refs', ['ownerId' => 7, 'parentId' => $parent['id']], true)[0];
+        problem('set null on a child the viewer may not update refuses', fn () => $probe->delete('rw_parents', ['id' => $parent['id']], false, $me), 409, 'reference_violation');
+        eq('… and keeps its reference', $probe->findFirst('rw_refs', ['where' => ['id' => $ref['id']]])['parentId'], $parent['id']);
+        $probe->delete('rw_refs', ['id' => $ref['id']]);
+        $GLOBALS['rw_generated'] = 0;
+        $probe->delete('rw_parents', ['id' => $parent['id']], false, $me);
+        eq('a set default branch with no rows runs no generator', $GLOBALS['rw_generated'], 0);
+    } finally {
+        \TypedPress\Db::setInstance($previous);
+        unset($GLOBALS['rw_generated']);
+    }
+})();
+
+// Fourth review of #516: after the viewer's own writes nothing trusted runs, so a row or link a hook
+// created or kept still refuses the delete; an app hook's JavaScript Error is the one refusal too.
+(static function () use ($db, $wp): void {
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true];
+    $any = ['role' => 'anyone'];
+    $open = ['read' => $any, 'create' => $any, 'update' => $any, 'delete' => $any];
+    $table = static fn ($name, $cols, $access = [], $hooks = []) => ['editor' => false, 'primaryKey' => 'id', 'table' => 'tp_q516_'.$name, 'columns' => ['id' => $id] + $cols, 'access' => $access + $open, 'hooks' => $hooks];
+    $ref = ['type' => 'integer', 'references' => ['collection' => 'q516_parent', 'column' => 'id', 'onDelete' => 'set null']];
+    $schema = new \TypedPress\Schema(['collections' => [
+        'q516_parent' => $table('parent', ['name' => ['type' => 'text']]),
+        // This branch is inspected before the trigger branch. A trusted app hook creates a new row later.
+        'q516_protected' => $table('protected', ['parentId' => ['type' => 'integer', 'references' => ['collection' => 'q516_parent', 'column' => 'id', 'onDelete' => 'cascade']]], ['read' => ['role' => 'admin'], 'delete' => ['role' => 'admin']], ['beforeDelete' => static function (): void { $GLOBALS['q516_deleted']++; }]),
+        'q516_trigger' => $table('trigger', ['parentId' => $ref], [], ['afterUpdate' => static function (array $row, array $previous): void {
+            if ($previous['parentId'] !== null) {
+                $GLOBALS['q516_new'] = \TypedPress\Db::instance()->insert('q516_protected', ['parentId' => $previous['parentId']], true)[0]['id'];
+            }
+        }]),
+        'q516_error' => $table('error', ['parentId' => $ref, 'secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]]], [], ['beforeUpdate' => static function (array $patch, array $existing): array { throw new \TypedPress\JsError('secret=' . $existing['secret']); }]),
+        'q516_tag' => $table('tag', ['name' => ['type' => 'text']]),
+        'q516_card' => $table('card', ['locked' => ['type' => 'boolean'], 'tags' => ['type' => 'refList', 'references' => ['collection' => 'q516_tag', 'column' => 'id', 'onDelete' => 'cascade', 'join' => 'q516_card_tags']]], ['update' => ['fn' => static fn () => ['locked' => false]]], ['beforeUpdate' => static function (array $patch, array $existing): array {
+            $patch['locked'] = true;
+            $patch['tags'] = $existing['tags']; // Keep mandatory assignment; direct updates can't remove it.
+            return $patch;
+        }]) + ['relations' => ['tags' => ['kind' => 'many', 'collection' => 'q516_tag', 'from' => 'id', 'to' => 'id', 'through' => ['table' => 'q516_card_tags', 'from' => 'owner_id', 'to' => 'target_id']]]],
+    ]]);
+    foreach (['parent' => 'name LONGTEXT', 'protected' => 'parentId BIGINT', 'trigger' => 'parentId BIGINT', 'error' => 'parentId BIGINT, secret LONGTEXT', 'tag' => 'name LONGTEXT', 'card' => 'locked TINYINT'] as $name => $cols) {
+        $wp->exec("CREATE TABLE {prefix}tp_q516_$name (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, $cols, PRIMARY KEY(id)) ENGINE=InnoDB");
+    }
+    $wp->exec('CREATE TABLE {prefix}tp__join_q516_card_tags (owner_id BIGINT UNSIGNED NOT NULL, target_id BIGINT UNSIGNED NOT NULL, position INT NOT NULL, PRIMARY KEY(owner_id,target_id)) ENGINE=InnoDB');
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($probe);
+    $viewer = new \TypedPress\Viewer(['id' => 7, 'role' => 'subscriber', 'name' => 'me']);
+    try {
+        $parent = $probe->insert('q516_parent', ['name' => 'root'], true)[0];
+        $probe->insert('q516_trigger', ['parentId' => $parent['id']], true);
+        $GLOBALS['q516_deleted'] = 0;
+        problem('newly created protected cascade must refuse', fn () => $probe->delete('q516_parent', ['id' => $parent['id']], false, $viewer), 409, 'reference_violation');
+        eq('no protected-row delete hook may run', $GLOBALS['q516_deleted'], 0);
+
+        $tag = $probe->insert('q516_tag', ['name' => 'mandatory'], true)[0];
+        $card = $probe->insert('q516_card', ['locked' => false, 'tags' => [$tag['id']]], true)[0];
+        $control = $probe->insert('q516_card', ['locked' => false, 'tags' => [$tag['id']]], true)[0];
+        $probe->update('q516_card', ['tags' => []], ['id' => $control['id']], false, $viewer);
+        eq('direct unlink preserves assignment', $probe->findFirst('q516_card', ['where' => ['id' => $control['id']]])['tags'], [$tag['id']]);
+        // Remove control from this scenario using a trusted write so it cannot itself block deletion.
+        $probe->delete('q516_card', ['id' => $control['id']]);
+        problem('preserved mandatory link must refuse parent deletion', fn () => $probe->delete('q516_tag', ['id' => $tag['id']], false, $viewer), 409, 'reference_violation');
+        $after = $probe->findFirst('q516_card', ['where' => ['id' => $card['id']]]);
+        eq('viewer delete must preserve mandatory link', $after['tags'], [$tag['id']]);
+        foreach (['alpha', 'beta'] as $secret) {
+            $parent = $probe->insert('q516_parent', ['name' => 'error parent'], true)[0];
+            $probe->insert('q516_error', ['parentId' => $parent['id'], 'secret' => $secret], true);
+            $e = problem('a child hook\'s JavaScript Error is the one refusal', fn () => $probe->delete('q516_parent', ['id' => $parent['id']], false, $viewer), 409, 'reference_violation');
+            eq('… and its message, which holds a hidden value, is not passed on', \TypedPress\App::problem($e)['detail'], "Rows you can't read may reference this row");
+        }
+    } finally { \TypedPress\Db::setInstance($previous); }
+})();
+
+// Third review of #516: delete side effects are the viewer's own writes, so a data-dependent update
+// rule, a field update rule, a link owner's update rule and an extension-written value all hold.
+(static function () use ($db): void {
+    $wp = $GLOBALS['wp'];
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $any = ['role' => 'anyone'];
+    $open = ['read' => $any, 'create' => $any, 'update' => $any, 'delete' => $any];
+    $table = static fn (string $name, array $cols, array $access = [], array $hooks = []): array => ['primaryKey' => 'id', 'editor' => false, 'table' => "tp_rv_$name", 'columns' => ['id' => $id] + $cols, 'access' => $access + $open, 'hooks' => $hooks];
+    $ref = ['type' => 'integer', 'references' => ['collection' => 'rv_parents', 'column' => 'id', 'onDelete' => 'set null']];
+    $owned = ['fn' => static fn (array $ctx) => ['ownerId' => 7]];
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+        'rv_parents' => $table('parents', ['ownerId' => ['type' => 'integer']], ['read' => $owned]),
+        'rv_data' => $table('data', ['parentId' => $ref], ['update' => ['fn' => static fn (array $ctx) => $ctx['data'] === null || !array_key_exists('parentId', $ctx['data'])]]),
+        'rv_field' => $table('field', ['parentId' => $ref + ['access' => ['update' => ['role' => 'admin']]]]),
+        'rv_tags' => $table('tags', ['name' => ['type' => 'text']]),
+        'rv_cards' => $table('cards', ['name' => ['type' => 'text'], 'tags' => ['type' => 'refList', 'references' => ['collection' => 'rv_tags', 'column' => 'id', 'onDelete' => 'cascade', 'join' => 'rv_cards_tags']]], ['update' => ['role' => 'admin']]) + ['relations' => ['tags' => ['kind' => 'many', 'collection' => 'rv_tags', 'from' => 'id', 'to' => 'id', 'through' => ['table' => 'rv_cards_tags', 'from' => 'owner_id', 'to' => 'target_id']]]],
+        'rv_extension' => $table('extension', ['parentId' => $ref, 'backupId' => ['type' => 'integer', 'access' => ['read' => ['role' => 'admin']]]]),
+    ]]);
+    foreach (['parents' => 'ownerId BIGINT', 'data' => 'parentId BIGINT', 'field' => 'parentId BIGINT', 'tags' => 'name LONGTEXT', 'cards' => 'name LONGTEXT', 'extension' => 'parentId BIGINT, backupId BIGINT'] as $name => $cols) {
+        $wp->exec("CREATE TABLE {prefix}tp_rv_$name (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, " . ($cols === '' ? '' : "$cols, ") . 'PRIMARY KEY(id)) ENGINE=InnoDB');
+    }
+    $wp->exec('CREATE TABLE {prefix}tp__join_rv_cards_tags (owner_id BIGINT UNSIGNED NOT NULL, target_id BIGINT UNSIGNED NOT NULL, position INT NOT NULL, PRIMARY KEY(owner_id,target_id)) ENGINE=InnoDB');
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($probe);
+    $me = new \TypedPress\Viewer(['id' => 7, 'name' => 'me', 'role' => 'subscriber']);
+    $answer = static function (callable $write): array {
+        try { $write(); return ['status' => 200]; }
+        catch (\Throwable $e) { return \TypedPress\App::problem($e); }
+    };
+    try {
+        $parent = $probe->insert('rv_parents', ['ownerId' => 7], true)[0];
+        $kid = $probe->insert('rv_data', ['parentId' => $parent['id']], true)[0];
+        problem('direct set-null is denied by the data-dependent update rule', fn () => $probe->update('rv_data', ['parentId' => null], ['id' => $kid['id']], false, $me), 403, 'forbidden');
+        $deleted = $answer(fn () => $probe->delete('rv_parents', ['id' => $parent['id']], false, $me));
+        $value = $probe->findFirst('rv_data', ['where' => ['id' => $kid['id']]])['parentId'];
+        eq('deleting parent must enforce actual patch in child update rule', [$deleted['status'], $value], [409, $parent['id']]);
+
+        $parent = $probe->insert('rv_parents', ['ownerId' => 7], true)[0];
+        $kid = $probe->insert('rv_field', ['parentId' => $parent['id']], true)[0];
+        problem('direct set-null is denied by field update rule', fn () => $probe->update('rv_field', ['parentId' => null], ['id' => $kid['id']], false, $me), 403, 'forbidden', '/parentId');
+        $deleted = $answer(fn () => $probe->delete('rv_parents', ['id' => $parent['id']], false, $me));
+        $value = $probe->findFirst('rv_field', ['where' => ['id' => $kid['id']]])['parentId'];
+        eq('deleting parent must enforce child field update rule', [$deleted['status'], $value], [409, $parent['id']]);
+
+        $tag = $probe->insert('rv_tags', ['name' => 'review'], true)[0];
+        $card = $probe->insert('rv_cards', ['name' => 'review', 'tags' => [$tag['id']]], true)[0];
+        problem('direct unlink is denied by owner row update rule', fn () => $probe->update('rv_cards', ['tags' => []], ['id' => $card['id']], false, $me), 403, 'forbidden');
+        $deleted = $answer(fn () => $probe->delete('rv_tags', ['id' => $tag['id']], false, $me));
+        $links = $probe->findFirst('rv_cards', ['where' => ['id' => $card['id']]])['tags'];
+        eq('deleting target must enforce link owner update rule', [$deleted['status'], $links], [409, [$tag['id']]]);
+
+        \TypedPress\Extensions::onWrite(static function (string $op, string $collection, array &$patch, ?array $existing): void {
+            if ($op === 'update' && $collection === 'rv_extension') {
+                $GLOBALS['rv_write_runs'] = ($GLOBALS['rv_write_runs'] ?? 0) + 1;
+                $patch['parentId'] = $existing['backupId'];
+            }
+        });
+        \TypedPress\Extensions::onWritten(static function (string $op, string $collection): void {
+            if ($op === 'update' && $collection === 'rv_extension') { $GLOBALS['rv_written_runs'] = ($GLOBALS['rv_written_runs'] ?? 0) + 1; }
+        });
+        $hiddenParent = $probe->insert('rv_parents', ['ownerId' => 8], true)[0];
+        $answers = [];
+        foreach ([null, $hiddenParent['id']] as $backup) {
+            $parent = $probe->insert('rv_parents', ['ownerId' => 7], true)[0];
+            $probe->insert('rv_extension', ['parentId' => $parent['id'], 'backupId' => $backup], true);
+            $GLOBALS['rv_write_runs'] = $GLOBALS['rv_written_runs'] = 0;
+            $answers[] = [$answer(fn () => $probe->delete('rv_parents', ['id' => $parent['id']], false, $me)), $GLOBALS['rv_write_runs'], $GLOBALS['rv_written_runs']];
+        }
+        // An extension that writes a hidden value into a reference discloses it on a direct update too;
+        // the delete's set null is that same update, with the same listeners, refused with the one body.
+        eq('an extension-written reference answers as the viewer\'s own update does, with the same listeners', [$answers[0][0]['status'], $answers[0][2], $answers[1][0]['status'], $answers[1][0]['detail'] ?? null, $answers[1][2]], [200, 1, 409, "Rows you can't read may reference this row", 0]);
+    } finally { \TypedPress\Db::setInstance($previous); }
+})();
+
+
+// A hidden nondefault-locale child refuses before any hook; a visible one cascades and runs its hook.
+(static function () use ($db): void {
+    $wp = $GLOBALS['wp'];
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true];
+    $any = ['role' => 'anyone'];
+    $open = ['read' => $any, 'create' => $any, 'update' => $any, 'delete' => $any];
+    $schema = new \TypedPress\Schema(['locales' => ['default' => 'en', 'all' => ['en', 'fr'], 'fallback' => true], 'collections' => [
+        'rv_lparent' => ['editor' => false, 'primaryKey' => 'id', 'table' => 'tp_rv_lparent', 'columns' => ['id' => $id, 'name' => ['type' => 'text']], 'access' => $open],
+        'rv_lchild' => ['editor' => false, 'localized' => true, 'primaryKey' => 'id', 'table' => 'tp_rv_lchild', 'columns' => [
+            'id' => $id, 'ownerId' => ['type' => 'integer'], 'locale' => ['type' => 'text', 'system' => true],
+            'translationGroup' => ['type' => 'text', 'system' => true, 'hidden' => true],
+            'translations' => ['type' => 'json', 'system' => true, 'derived' => true],
+            'parentId' => ['type' => 'integer', 'references' => ['collection' => 'rv_lparent', 'column' => 'id', 'onDelete' => 'cascade']]],
+            'access' => ['read' => ['fn' => static fn () => ['ownerId' => 7]]] + $open,
+            'hooks' => ['beforeDelete' => static function (): void { $GLOBALS['rv_child_before']++; }]],
+    ]]);
+    $wp->exec('CREATE TABLE {prefix}tp_rv_lparent (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, name LONGTEXT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_rv_lchild (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, ownerId BIGINT, locale LONGTEXT, translationGroup LONGTEXT, parentId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $viewer = new \TypedPress\Viewer(['id' => 7, 'name' => 'me', 'role' => 'subscriber']);
+    $parent = $probe->insert('rv_lparent', ['name' => 'localized control'], true)[0];
+    $wp->connection()->run('INSERT INTO wp_tp_rv_lchild (ownerId, locale, parentId) VALUES (8, ?, ?)', ['fr', $parent['id']]);
+    $GLOBALS['rv_child_before'] = 0;
+    problem('hidden nondefault-locale cascade child refuses', fn () => $probe->delete('rv_lparent', ['id' => $parent['id']], false, $viewer), 409, 'reference_violation');
+    eq('no hidden child beforeDelete hook ran', $GLOBALS['rv_child_before'], 0);
+    $wp->connection()->run('UPDATE wp_tp_rv_lchild SET ownerId = 7 WHERE parentId = ?', [$parent['id']]);
+    $probe->delete('rv_lparent', ['id' => $parent['id']], false, $viewer);
+    eq('visible nondefault-locale cascade runs its hook', $GLOBALS['rv_child_before'], 1);
+    eq('visible nondefault-locale cascade removes child', $probe->findMany('rv_lchild'), []);
+})();
+
+// ================================================================ Slice 2: Soft deletes, retention, strict undefined filters, system fields
+(static function (): void {
+    $wp = $GLOBALS['wp'];
+    $now = ['now' => true];
+    $purgedLog = [];
+    $restoredLog = [];
+    $sdSchema = new \TypedPress\Schema([
+        'version' => 5,
+        'runtime' => \TypedPress\Schema::SERIES,
+        'retention' => ['deletedSeconds' => 86400, 'revisions' => null],
+        'collections' => [
+            'sd_parents' => [
+                'primaryKey' => 'id', 'editor' => false, 'softDelete' => true, 'table' => 'tp_sd_parents',
+                'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']],
+                'hooks' => [
+                    'afterRestore' => static function (array $row) use (&$restoredLog): void { $restoredLog[] = $row['email']; },
+                    'afterPurge' => static function (array $row) use (&$purgedLog): void { $purgedLog[] = $row['email']; },
+                ],
+                'columns' => [
+                    'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                    'email' => ['type' => 'email', 'notNull' => true, 'unique' => true],
+                    'bio' => ['type' => 'text'],
+                    'author' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'readOnly' => true, 'system' => true],
+                    'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'onUpdate' => $now, 'readOnly' => true, 'system' => true],
+                    'deletedAt' => ['type' => 'timestamp', 'readOnly' => true, 'system' => true],
+                    'deletedBy' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'deletedGroup' => ['type' => 'text', 'rules' => ['max' => 36], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                    '_live' => ['type' => 'boolean', 'default' => ['value' => true], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                ],
+            ],
+            'sd_children' => [
+                'primaryKey' => 'id', 'editor' => false, 'softDelete' => true, 'table' => 'tp_sd_children',
+                'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']],
+                'columns' => [
+                    'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                    'parentId' => ['type' => 'integer', 'notNull' => true, 'references' => ['collection' => 'sd_parents', 'column' => 'id', 'onDelete' => 'cascade']],
+                    'note' => ['type' => 'text', 'notNull' => true],
+                    'author' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'readOnly' => true, 'system' => true],
+                    'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'onUpdate' => $now, 'readOnly' => true, 'system' => true],
+                    'deletedAt' => ['type' => 'timestamp', 'readOnly' => true, 'system' => true],
+                    'deletedBy' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'deletedGroup' => ['type' => 'text', 'rules' => ['max' => 36], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                    '_live' => ['type' => 'boolean', 'default' => ['value' => true], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                ],
+            ],
+            'sd_articles' => [
+                'primaryKey' => 'id', 'editor' => true, 'drafts' => true, 'revisions' => true, 'softDelete' => true,
+                'title' => 'title', 'slug' => 'slug', 'wp' => ['postType' => 'tp_sd_articles', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_sd_articles_'],
+                'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']],
+                'columns' => [
+                    'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                    'title' => ['type' => 'text', 'notNull' => true],
+                    'slug' => ['type' => 'slug', 'notNull' => true, 'unique' => true, 'source' => 'title'],
+                    'status' => ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true],
+                    'publishedAt' => ['type' => 'timestamp', 'system' => true],
+                    'author' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'readOnly' => true, 'system' => true],
+                    'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'onUpdate' => $now, 'readOnly' => true, 'system' => true],
+                    'deletedAt' => ['type' => 'timestamp', 'readOnly' => true, 'system' => true],
+                    'deletedBy' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'deletedGroup' => ['type' => 'text', 'rules' => ['max' => 36], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                ],
+            ],
+        ],
+    ]);
+    register_post_type('tp_sd_articles', ['public' => false, 'supports' => ['title', 'revisions']]);
+    $wp->exec('CREATE TABLE {prefix}tp_sd_parents (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `email` VARCHAR(191) NOT NULL, `bio` LONGTEXT, `author` BIGINT, `createdAt` CHAR(24) NOT NULL, `updatedAt` CHAR(24) NOT NULL, `deletedAt` CHAR(24), `deletedBy` BIGINT, `deletedGroup` VARCHAR(36), `_live` TINYINT(1) DEFAULT 1, PRIMARY KEY (`id`), UNIQUE KEY `email_unique` (`email`, `_live`), INDEX `deletedAt_idx` (`deletedAt`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_sd_children (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `parentId` BIGINT UNSIGNED NOT NULL, `note` LONGTEXT NOT NULL, `author` BIGINT, `createdAt` CHAR(24) NOT NULL, `updatedAt` CHAR(24) NOT NULL, `deletedAt` CHAR(24), `deletedBy` BIGINT, `deletedGroup` VARCHAR(36), `_live` TINYINT(1) DEFAULT 1, PRIMARY KEY (`id`), INDEX `deletedAt_idx` (`deletedAt`)) ENGINE=InnoDB');
+    $store = \TypedPress\Wp\CompositeStore::create($sdSchema, $wp->connection());
+    $db = new \TypedPress\Db($store, $sdSchema, \TypedPress\db()->media());
+    $editor = new \TypedPress\Viewer(['id' => 42, 'name' => 'Ed', 'role' => 'editor']);
+    $guest = new \TypedPress\Viewer(null);
+
+    // System fields auto-populated + read-only to callers
+    $db->setActor($editor->user);
+    problem('read-only system field rejected on create', fn () => $db->insert('sd_parents', ['email' => 'ro@x.test', 'createdAt' => '2020-01-01T00:00:00.000Z'], true), 422, 'invalid_input', '/createdAt');
+    $p1 = $db->insert('sd_parents', ['email' => 'alice@x.test', 'bio' => 'hello'], true)[0];
+    check('system fields populated on create (author, createdAt, updatedAt, deletedAt=null)', $p1['author'] === 42 && is_string($p1['createdAt']) && is_string($p1['updatedAt']) && $p1['deletedAt'] === null, $p1);
+    $c1 = $db->insert('sd_children', ['parentId' => $p1['id'], 'note' => 'child-1'], true)[0];
+
+    // Strict Drizzle 1.0 filter semantics: explicit undefined rejected, update ignores undefined and clears null
+    problem('undefined in where filter throws 422 invalid_input', fn () => $db->findMany('sd_parents', ['where' => ['email' => \TypedPress\JsUndefined::Value]]), 422, 'invalid_input', '/where/email');
+    problem('undefined in operator object throws 422 invalid_input', fn () => $db->findMany('sd_parents', ['where' => ['email' => ['eq' => \TypedPress\JsUndefined::Value]]]), 422, 'invalid_input', '/where/email/eq');
+    problem('undefined in in-list throws 422 invalid_input', fn () => $db->findMany('sd_parents', ['where' => ['id' => ['in' => [\TypedPress\JsUndefined::Value]]]]), 422, 'invalid_input', '/where/id/in/0');
+    $u1 = $db->update('sd_parents', ['email' => \TypedPress\JsUndefined::Value, 'bio' => null], ['id' => $p1['id']], true)[0];
+    eq('update ignores undefined and clears null', [$u1['email'], $u1['bio']], ['alice@x.test', null]);
+
+    // Soft delete + deletedGroup cascade
+    $del = $db->delete('sd_parents', ['id' => $p1['id']], true, $editor)[0];
+    check('soft delete sets deletedAt and deletedBy', is_string($del['deletedAt']) && $del['deletedBy'] === 42, $del);
+    eq('default list excludes soft-deleted parent and cascaded child', [count($db->findMany('sd_parents')), count($db->findMany('sd_children'))], [0, 0]);
+    problem('deleted: only refused to anonymous visitor without restore/delete access', fn () => $db->findMany('sd_parents', ['deleted' => 'only'], $guest), 401, 'unauthenticated');
+    eq('deleted: only visible to editor', [count($db->findMany('sd_parents', ['deleted' => 'only'], $editor)), count($db->findMany('sd_children', ['deleted' => 'only'], $editor))], [1, 1]);
+
+    // Active-row unique reuse while soft-deleted + restore 409 collision
+    $p2 = $db->insert('sd_parents', ['email' => 'alice@x.test', 'bio' => 'reused'], true, $editor)[0];
+    eq('unique email reused while original row is soft-deleted', $p2['email'], 'alice@x.test');
+    problem('restore collides with active row holding same unique email (409)', fn () => $db->restore('sd_parents', ['id' => $p1['id']], true, $editor), 409, 'unique_violation', '/email');
+
+    // Delete second row, then restore first -> restores parent AND cascaded child via deletedGroup!
+    $db->delete('sd_parents', ['id' => $p2['id']], true, $editor);
+    $restored = $db->restore('sd_parents', ['id' => $p1['id']], true, $editor)[0];
+    eq('restore clears deletedAt/deletedBy, restores cascaded child, fires afterRestore', [
+        $restored['deletedAt'], $restored['deletedBy'], count($db->findMany('sd_children')), $restoredLog,
+    ], [null, null, 1, ['alice@x.test']]);
+
+    // Purge: denied to untrusted editor (default "system"), succeeds when trusted, fires afterPurge
+    problem('purge denied to untrusted editor by default (system only)', fn () => $db->purge('sd_parents', ['id' => $p2['id']], true, $editor), 403, 'forbidden');
+    $db->purge('sd_parents', ['id' => $p2['id']], true);
+    eq('trusted purge permanently deletes row and fires afterPurge', [count($db->findMany('sd_parents', ['deleted' => 'include'])), $purgedLog], [1, ['alice@x.test']]);
+
+    // Soft delete on post-backed collection(): WP Trash + restore prior status + purge
+    $art = $db->insert('sd_articles', ['title' => 'Hello Trash'], true, $editor)[0];
+    eq('post collection system fields populated', [$art['author'], is_string($art['createdAt']), $art['deletedAt']], [42, true, null]);
+    $trashed = $db->delete('sd_articles', ['id' => $art['id']], true, $editor)[0];
+    eq('post soft delete moves to WP trash with deletedAt/deletedBy', [get_post_status($art['id']), is_string($trashed['deletedAt']), $trashed['deletedBy']], ['trash', true, 42]);
+    eq('post list excludes trashed by default, finds with deleted: only', [count($db->findMany('sd_articles')), count($db->findMany('sd_articles', ['deleted' => 'only'], $editor))], [0, 1]);
+    $untrashed = $db->restore('sd_articles', ['id' => $art['id']], true, $editor)[0];
+    eq('post restore calls wp_untrash_post and restores published status', [$untrashed['status'], $untrashed['deletedAt'], get_post_status($art['id'])], ['published', null, 'publish']);
+    $db->purge('sd_articles', ['id' => $art['id']], true);
+    eq('post purge permanently deletes post', get_post($art['id']), null);
+
+    // Retention helper: blocks wp_scheduled_delete for TypedPress softDelete post types + reads configured seconds
+    eq('Retention blocks wp_scheduled_delete for softDelete post types', \TypedPress\Wp\Retention::blocksWpScheduledDelete($sdSchema, 'tp_sd_articles'), true);
+    eq('Retention reads configured deletedSeconds', \TypedPress\Wp\Retention::deletedSeconds($sdSchema, 'sd_parents'), 86400);
+    $db->setActor(null);
+})();
+
+// ================================================================ Slice 3: native revisions, diff, schema-aware decode, table _rev
+(static function () use ($wp): void {
+    $revSchema = new \TypedPress\Schema([
+        'name' => 'rev_test',
+        'collections' => [
+            'docs' => [
+                'primaryKey' => 'id', 'editor' => false, 'table' => 'tp_rev_docs',
+                'revisions' => true, 'softDelete' => true,
+                'access' => [
+                    'read' => ['role' => 'anyone'],
+                    'create' => ['role' => 'anyone'],
+                    'update' => ['role' => 'anyone'],
+                    'delete' => ['role' => 'anyone'],
+                    'restore' => ['role' => 'anyone'],
+                    'purge' => ['role' => 'anyone'],
+                ],
+                'columns' => [
+                    'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                    'summary' => ['type' => 'text', 'notNull' => true, 'column' => 'legacy_title', 'aliases' => ['oldTitle']],
+                    'note' => ['type' => 'text', 'default' => ['value' => 'default-note']],
+                    'secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]],
+                    'author' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => ['now' => true], 'readOnly' => true, 'system' => true],
+                    'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => ['now' => true], 'onUpdate' => ['now' => true], 'readOnly' => true, 'system' => true],
+                    'deletedAt' => ['type' => 'timestamp', 'readOnly' => true, 'system' => true],
+                    'deletedBy' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'deletedGroup' => ['type' => 'text', 'rules' => ['max' => 36], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                    '_live' => ['type' => 'boolean', 'default' => ['value' => true], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                ],
+                'relations' => [], 'hooks' => [],
+            ],
+        ],
+    ]);
+    $wp->exec('DROP TABLE IF EXISTS {prefix}tp_rev_docs');
+    $wp->exec("CREATE TABLE {prefix}tp_rev_docs (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `legacy_title` LONGTEXT NOT NULL, `note` LONGTEXT DEFAULT ('default-note'), `secret` LONGTEXT, `author` BIGINT, `createdAt` CHAR(24) NOT NULL, `updatedAt` CHAR(24) NOT NULL, `deletedAt` CHAR(24), `deletedBy` BIGINT, `deletedGroup` VARCHAR(36), `_live` TINYINT(1) DEFAULT 1, PRIMARY KEY (`id`)) ENGINE=InnoDB");
+    $wp->exec("DELETE FROM {prefix}tp__migrations WHERE `app` = 'rev_test'");
+    $wp->exec("INSERT INTO {prefix}tp__migrations (`app`, `id`, `kind`, `applied_at`) VALUES ('rev_test', '20261121180000_aaaaaa_init', 'schema', '2026-11-21T18:00:00.000Z')");
+
+    $store = \TypedPress\Wp\CompositeStore::create($revSchema, $wp->connection());
+    $rdb = new \TypedPress\Db($store, $revSchema, \TypedPress\db()->media());
+
+    // 1. Create -> update -> soft delete -> restore -> purge all emit monotonic versioned revisions with op, changed, schemaMigration.
+    $doc = $rdb->insert('docs', ['summary' => 'V1', 'secret' => 's1'], true)[0];
+    $rdb->update('docs', ['summary' => 'V2', 'secret' => 's2'], ['id' => $doc['id']], true);
+    $rdb->delete('docs', ['id' => $doc['id']], true);
+    $rdb->restore('docs', ['id' => $doc['id']], true);
+
+    $list = $rdb->revisions('docs', $doc['id']);
+    eq('table revisions record create/update/delete/restore with monotonic versions',
+        array_map(static fn (array $r) => [$r['version'], $r['op'], $r['schemaMigration']], $list),
+        [
+            [4, 'restore', '20261121180000_aaaaaa_init'],
+            [3, 'delete', '20261121180000_aaaaaa_init'],
+            [2, 'update', '20261121180000_aaaaaa_init'],
+            [1, 'create', '20261121180000_aaaaaa_init'],
+        ]);
+    eq('update revision lists changed non-hidden fields', $list[2]['changed'], ['summary', 'secret']);
+
+    // 2. Diff between v1 and v2 masks hidden fields for non-admin viewer.
+    $guest = new \TypedPress\Viewer(null);
+    $admin = new \TypedPress\Viewer(['id' => 1, 'role' => 'admin']);
+    $diffGuest = $rdb->diffRevisions('docs', $doc['id'], 1, 2, $guest, byVersion: true);
+    $diffAdmin = $rdb->diffRevisions('docs', $doc['id'], 1, 2, $admin, byVersion: true);
+    eq('diff masks restricted fields from non-admin viewer',
+        array_column($diffGuest['changes'], 'field'), ['summary']);
+    eq('diff shows all changed fields to admin',
+        $diffAdmin['changes'], [
+            ['field' => 'summary', 'from' => 'V1', 'to' => 'V2'],
+            ['field' => 'secret', 'from' => 's1', 'to' => 's2'],
+        ]);
+
+    // 3. Restore by version restores V1 cleanly.
+    $restored = $rdb->restoreRevision('docs', $doc['id'], 1, $admin, byVersion: true);
+    eq('restoreRevision by version restores v1 values', [$restored['summary'], $restored['secret']], ['V1', 's1']);
+
+    // 4. Schema-aware revision decoding handles aliased column names, physical column names, retired columns, and newly added defaulted columns.
+    $decoded = \TypedPress\Db::decodeRevisionPayload($revSchema->collection('docs'), [
+        'id' => 99,
+        'oldTitle' => 'From Alias',
+        'retired_col' => 'should be dropped',
+        'createdAt' => '2026-01-01T00:00:00.000Z',
+        'updatedAt' => '2026-01-01T00:00:00.000Z',
+    ]);
+    eq('schema-aware decode resolves alias, fills default for newly added column, and drops retired columns',
+        [$decoded['summary'], $decoded['note'], array_key_exists('retired_col', $decoded)],
+        ['From Alias', 'default-note', false]);
+    $decodedPhys = \TypedPress\Db::decodeRevisionPayload($revSchema->collection('docs'), [
+        'id' => 100,
+        'legacy_title' => 'From Physical',
+        'createdAt' => '2026-01-01T00:00:00.000Z',
+        'updatedAt' => '2026-01-01T00:00:00.000Z',
+    ]);
+    eq('schema-aware decode resolves physical column name to logical field name', $decodedPhys['summary'], 'From Physical');
+
+    // 5. Purge records a final purge revision that survives row deletion.
+    $rdb->purge('docs', ['id' => $doc['id']], true);
+    $afterPurge = $store->revisions('docs', $doc['id']);
+    eq('purge writes a final audit revision in tp__revisions', $afterPurge[0]['op'], 'purge');
+})();
+
+// PR #516 review: a referential update on visible rows can't answer with hidden values, a many-ref
+// link from a hidden row refuses, hidden volume can't change the answer, and a read extension that may
+// hide rows makes every relationship refuse.
+(static function () use ($db): void {
+    $wp = $GLOBALS['wp'];
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $any = ['role' => 'anyone'];
+    $open = ['read' => $any, 'create' => $any, 'update' => $any, 'delete' => $any];
+    $mine = ['fn' => static fn (array $ctx) => ['ownerId' => 7]];
+    $hidden = ['type' => 'integer', 'access' => ['read' => ['role' => 'admin']]];
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+        'r_parents' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_parents', 'access' => ['read' => $mine] + $open, 'columns' => ['id' => $id, 'ownerId' => ['type' => 'integer']]],
+        // A hook copies a hidden column into the reference set null writes.
+        'r_hooked' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_hooked', 'access' => $open, 'columns' => ['id' => $id,
+            'parentId' => ['type' => 'integer', 'references' => ['collection' => 'r_parents', 'column' => 'id', 'onDelete' => 'set null']], 'backupId' => $hidden],
+            'hooks' => ['beforeUpdate' => static function (array $data, array $existing): array { $data['parentId'] = $existing['backupId']; return $data; }]],
+        // set default writes a generated value.
+        'r_defaulted' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_defaulted', 'access' => $open, 'columns' => ['id' => $id,
+            'parentId' => ['type' => 'integer', 'default' => ['fn' => static fn () => $GLOBALS['r_default'] ?? null], 'references' => ['collection' => 'r_parents', 'column' => 'id', 'onDelete' => 'set default']]]],
+        'r_tags' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_tags', 'access' => $open, 'columns' => ['id' => $id, 'name' => ['type' => 'text']]],
+        'r_cards' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_cards', 'access' => ['read' => $mine] + $open, 'columns' => ['id' => $id, 'ownerId' => ['type' => 'integer'],
+            'tags' => ['type' => 'refList', 'notNull' => true, 'references' => ['collection' => 'r_tags', 'column' => 'id', 'onDelete' => 'cascade', 'join' => 'r_cards_tags']]],
+            'relations' => ['tags' => ['kind' => 'many', 'collection' => 'r_tags', 'from' => 'id', 'to' => 'id', 'optional' => false, 'through' => ['table' => 'r_cards_tags', 'from' => 'owner_id', 'to' => 'target_id']]]],
+        'r_bulky' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_bulky', 'access' => ['read' => ['role' => 'admin']] + $open, 'columns' => ['id' => $id, 'body' => ['type' => 'text'],
+            'tagId' => ['type' => 'integer', 'references' => ['collection' => 'r_tags', 'column' => 'id', 'onDelete' => 'cascade']]]],
+    ]]);
+    $wp->exec('CREATE TABLE {prefix}tp_r_parents (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, ownerId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_r_hooked (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, parentId BIGINT, backupId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_r_defaulted (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, parentId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_r_tags (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, name LONGTEXT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_r_cards (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, ownerId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp__join_r_cards_tags (owner_id BIGINT UNSIGNED NOT NULL, target_id BIGINT UNSIGNED NOT NULL, position INT NOT NULL, PRIMARY KEY(owner_id, target_id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_r_bulky (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, body LONGTEXT, tagId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($probe);
+    $me = new \TypedPress\Viewer(['id' => 7, 'name' => 'me', 'role' => 'subscriber']);
+    $answer = static function (callable $write): array {
+        try {
+            $write();
+
+            return ['status' => 200];
+        } catch (\Throwable $e) {
+            return \TypedPress\App::problem($e);
+        }
+    };
+    try {
+        $theirs = $probe->insert('r_parents', ['ownerId' => 8], true)[0];
+        $answers = [];
+        foreach ([null, $theirs['id']] as $backup) {
+            $parent = $probe->insert('r_parents', ['ownerId' => 7], true)[0];
+            $probe->insert('r_hooked', ['parentId' => $parent['id'], 'backupId' => $backup], true);
+            $answers[] = $answer(fn () => $probe->delete('r_parents', ['id' => $parent['id']], false, $me));
+        }
+        $direct = [];
+        foreach ([null, $theirs['id']] as $backup) {
+            $p = $probe->insert('r_parents', ['ownerId' => 7], true)[0];
+            $h = $probe->insert('r_hooked', ['parentId' => $p['id'], 'backupId' => $backup], true)[0];
+            $direct[] = $answer(fn () => $probe->update('r_hooked', ['parentId' => null], ['id' => $h['id']], false, $me));
+        }
+        // The app's hook copies a value into a reference the viewer reads: a direct update discloses it
+        // through its answer, and a delete's set null, that viewer's update of the same row, answers alike.
+        eq('a referential set null answers as the viewer\'s own update of the row does', [$answers[0]['status'], $answers[1]['status']], [$direct[0]['status'], $direct[1]['status'] === 200 ? 200 : 409]);
+        eq('… and a refusal is the one body', $answers[1], ['type' => 'about:blank', 'title' => 'Reference violation', 'status' => 409, 'code' => 'reference_violation', 'detail' => "Rows you can't read may reference this row"]);
+        $probe->delete('r_hooked', ['parentId' => ['isNull' => false]]);
+        $answers = [];
+        foreach ([null, $theirs['id']] as $generated) {
+            $GLOBALS['r_default'] = $generated;
+            $parent = $probe->insert('r_parents', ['ownerId' => 7], true)[0];
+            $probe->insert('r_defaulted', ['parentId' => $parent['id']], true);
+            $answers[] = $answer(fn () => $probe->delete('r_parents', ['id' => $parent['id']], false, $me));
+        }
+        eq('set default runs the app\'s generator as the viewer\'s update: a visible target applies, a hidden one refuses with the one body', [$answers[0]['status'], $answers[1]['status'], $answers[1]['detail'] ?? null], [200, 409, "Rows you can't read may reference this row"]);
+
+        $tag = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        $probe->insert('r_cards', ['ownerId' => 7, 'tags' => [$tag['id']]], true);
+        $hiddenCard = $probe->insert('r_cards', ['ownerId' => 8, 'tags' => [$tag['id']]], true)[0];
+        problem('a many-ref link from a row the viewer can\'t read refuses the delete', fn () => $probe->delete('r_tags', ['id' => $tag['id']], false, $me), 409, 'reference_violation');
+        eq('… and keeps that row\'s link', $probe->findFirst('r_cards', ['where' => ['id' => $hiddenCard['id']]])['tags'], [$tag['id']]);
+        $own = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        $probe->insert('r_cards', ['ownerId' => 7, 'tags' => [$own['id']]], true);
+        eq('a tag only the viewer\'s rows link to deletes', $answer(fn () => $probe->delete('r_tags', ['id' => $own['id']], false, $me))['status'], 200);
+
+        // Hidden volume: many large hidden rows answer as one does, within the default memory limit.
+        $bulk = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        $one = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        $probe->insert('r_bulky', ['tagId' => $one['id'], 'body' => 'x'], true);
+        $payload = str_repeat('x', 2 * 1024 * 1024);
+        for ($i = 0; $i < 90; $i++) {
+            $wp->connection()->run('INSERT INTO wp_tp_r_bulky (body, tagId) VALUES (?, ?)', [$payload, $bulk['id']]);
+        }
+        unset($payload);
+        $limit = ini_get('memory_limit');
+        ini_set('memory_limit', '128M');
+        try {
+            eq('ninety 2 MiB hidden rows answer like one, without loading them', $answer(fn () => $probe->delete('r_tags', ['id' => $bulk['id']], false, $me)), $answer(fn () => $probe->delete('r_tags', ['id' => $one['id']], false, $me)));
+        } finally {
+            ini_set('memory_limit', $limit);
+        }
+
+        // Many-ref volume: the owners of links are counted in SQL, never listed in PHP.
+        $many = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        $wp->connection()->run('INSERT INTO wp_tp_r_cards (ownerId) SELECT 8 FROM wp_tp_r_bulky');
+        for ($i = 0; $i < 6; $i++) {
+            $wp->connection()->run('INSERT INTO wp_tp_r_cards (ownerId) SELECT ownerId FROM wp_tp_r_cards WHERE ownerId = 8');
+        }
+        $wp->connection()->run('INSERT INTO wp_tp__join_r_cards_tags (owner_id, target_id, position) SELECT id, ?, 0 FROM wp_tp_r_cards WHERE ownerId = 8', [$many['id']]);
+        $limit = ini_get('memory_limit');
+        ini_set('memory_limit', '128M');
+        try {
+            eq('thousands of hidden many-ref owners answer like one', $answer(fn () => $probe->delete('r_tags', ['id' => $many['id']], false, $me)), $answer(fn () => $probe->delete('r_tags', ['id' => $one['id']], false, $me)));
+        } finally {
+            ini_set('memory_limit', $limit);
+        }
+
+        // Last, since registrations stay for the rest of the process: a read extension that may hide rows.
+        $free = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        \TypedPress\Extensions::beforeRead(static function (string $collection, array &$opts): void {
+            if ($collection === 'r_cards') {
+                $opts['limit'] = 1;
+            }
+        });
+        $limited = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        problem('with an unproven read extension, every relationship to the row refuses', fn () => $probe->delete('r_tags', ['id' => $free['id']], false, $me), 409, 'reference_violation');
+        eq('trusted deletes are not affected', $answer(fn () => $probe->delete('r_tags', ['id' => $limited['id']]))['status'], 200);
+    } finally {
+        \TypedPress\Db::setInstance($previous);
+        unset($GLOBALS['r_default']);
     }
 })();
 
@@ -1531,7 +2396,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $anon = new \TypedPress\Viewer(null);
     $member = new \TypedPress\Viewer(['id' => 1, 'name' => 'm', 'role' => 'subscriber']);
     [$red, $green, $blue, $hidden] = $db->insert('labels', [['name' => 'red'], ['name' => 'green'], ['name' => 'blue'], ['name' => 'hidden', 'secret' => true]], true);
-    $links = static fn (string $table) => array_map(static fn (array $r) => array_map('intval', $r), $wp->sql("SELECT `owner_id`, `target_id`, `position` FROM {prefix}tp_$table ORDER BY `owner_id`, `position`"));
+    $links = static fn (string $table) => array_map(static fn (array $r) => array_map('intval', $r), $wp->sql("SELECT `owner_id`, `target_id`, `position` FROM {prefix}tp__join_$table ORDER BY `owner_id`, `position`"));
 
     $card = $db->insert('cards', ['title' => 'one', 'labels' => [$blue['id'], $red['id']]], true)[0];
     eq('a many-ref reads back as its ids in write order; an omitted optional one is []', [$card['labels'], $card['pinned']], [[$blue['id'], $red['id']], []]);
@@ -1571,10 +2436,10 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     problem('restrict refuses deleting a target that is still linked', fn () => $db->delete('labels', ['id' => $green['id']]), 409, 'reference_violation');
     eq('… and keeps it and its links', [count($db->findMany('labels', ['where' => ['id' => $green['id']]])), $db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels']], [1, [$red['id'], $green['id']]]);
     $db->delete('labels', ['id' => $red['id']]);
-    eq('deleting a target removes the links pointing at it', [$db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels'], count($wp->sql('SELECT 1 FROM {prefix}tp_cards_labels WHERE `target_id` = ?', [$red['id']]))], [[$green['id']], 0]);
+    eq('deleting a target removes the links pointing at it', [$db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels'], count($wp->sql('SELECT 1 FROM {prefix}tp__join_cards_labels WHERE `target_id` = ?', [$red['id']]))], [[$green['id']], 0]);
     $db->update('cards', ['pinned' => []], ['id' => $two['id']]);
     $db->delete('cards', ['id' => $two['id']]);
-    eq('deleting the owner removes its links', count($wp->sql('SELECT 1 FROM {prefix}tp_cards_labels WHERE `owner_id` = ?', [$two['id']])), 0);
+    eq('deleting the owner removes its links', count($wp->sql('SELECT 1 FROM {prefix}tp__join_cards_labels WHERE `owner_id` = ?', [$two['id']])), 0);
     $db->delete('labels', ['id' => $green['id']]);
     eq('with the last link gone, restrict lets the target go', $db->findFirst('cards', ['where' => ['id' => $card['id']]])['labels'], [$blue['id']]);
 

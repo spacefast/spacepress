@@ -121,8 +121,8 @@ final class CompileOnlyStore implements Store
     public function globalRead(string $name): ?array { return null; }
     public function globalWrite(string $name, array $values): void {}
     public function revisions(string $collection, int|string $pk): array { return []; }
-    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId): void {}
-    public function revision(string $collection, int|string $pk, int $revisionId): ?array { return null; }
+    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = []): void {}
+    public function revision(string $collection, int|string $pk, int $revisionId, bool $byVersion = false): ?array { return null; }
     public function promoteDue(string $collection, string $nowIso): array { return []; }
     public function mapError(\Throwable $e): \Throwable { return $e; }
 }

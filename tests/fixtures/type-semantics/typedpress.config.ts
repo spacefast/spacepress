@@ -1,4 +1,4 @@
-import { action, defineConfig, json } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 import { DraftEntryView } from "./tp/shapes";
 import type { Entry, Projection, Flags, Tags, Together, Absent, BoolChoice, LiteralCheck } from "./tp/shapes";
 
@@ -88,85 +88,79 @@ function read(item: Draft, key: keyof Projection<Draft, "title" | "state">): str
   return item[key];
 }
 
-export const wireLogicalArrayObject = action({ input: {}, handler: () => { const a:string[]=[]; const value=(a[0]&&='x'); return {value}; } });
+export const wireLogicalArrayObject = mutation({}, () => { const a:string[]=[]; const value=(a[0]&&='x'); return {value}; });
 
-export const wireNullishObject = action({ input: {}, handler: () => {
+export const wireNullishObject = mutation({}, () => {
   function read(x?: string) { if (x == null) return {value:x}; return {value:x}; }
   return read();
-} });
-
-export const wireUndefinedTuple = action({ input: {}, handler: () => [undefined] });
-
-export const wireUndefinedObject = action({ input: {}, handler: () => ({ x: undefined }) });
-
-export const wireDestructuredObject = action({ input: {}, handler: () => { const [x]: undefined[] = []; return {x}; } });
-
-export const nonemptyValues = action({
-  input: {},
-  handler: () => Array.from(["first"]).map(value => value.toUpperCase()),
 });
 
-export const typeReport = action({
-  input: { entry: json<Projection<Draft>>() },
-  handler: (input): Report => {
-    const finite = Number.isFinite;
-    const truth = Boolean;
-    const candidates: Candidate[] = [{ kind: "other" }, { kind: "named", label: "found" }];
-    const guard = isNamed;
-    const networks: ReadonlyArray<["left" | "right", string]> = [["left", "Left"], ["right", "Right"]];
-    const dictionary = { left: "L", right: "R" };
-    const tupleLabels = networks.flatMap(([key, label]) => [`${label}:${dictionary[key]}`]);
-    const guarded = candidates.filter(guard).map(item => item.label);
-    const item: Copy<Draft> = input.entry;
-    const boxed: Box<DraftEntryView> = { value: new DraftEntryView(item, "draft") };
-    boxed.value.clear();
-    const snapshot: Mandatory<Projection<Draft, "id" | "note">> = boxed.value.snapshot();
-    const flags: Readonly<Flags<"ready" | "visible">> = { ready: true, visible: item.active };
-    const patch: Partial<Omit<Draft, "id">> = {};
-    const projectedOptional: Projection<Draft, "note"> = {};
-    return {
-      finiteChecks: FINITE_VALUES.map(value => [finite(value), isFinite(Number(value))]),
-      finiteIdentity: finite === Number.isFinite,
-      finiteCaptured: NUMBER_IS_FINITE(3),
-      pureFinite: PURE_FINITE,
-      truthChecks: FINITE_VALUES.map(truth).concat(FINITE_VALUES.filter(TRUTH).map(Boolean)),
-      truthIdentity: truth === Boolean && TRUTH === truth,
-      scalarTypes: [7, "Hello", true, false, null].map(scalarLabel),
-      scalarFalseBranches: [7, "Hello", null].map(scalarRemainder),
-      guardedLabels: guarded,
-      guardedFind: candidates.find(isNamed)?.label ?? "",
-      guardedBranch: guardedLabel(candidates[1]),
-      predicateMap: candidates.map(isNamed),
-      booleanFilter: ["", "0", "value"].filter(Boolean),
-      tupleLabels,
-      arrayPresence: { tags: ["present"] },
-      classView: boxed.value,
-      labels,
-      intersected,
-      optionalConflict,
-      optionalSnapshot,
-      snapshot,
-      flags,
-      state: "draft",
-      tag: { kind: "draft" },
-      together: "mixed",
-      value: read(item, "title"),
-      missing: projectedOptional.note ?? patch.note,
-      pair: 7,
-      element: "value",
-      key: "common",
-      payload: "present",
-      awaited: "done",
-      returned: null,
-      args: [1, "one"],
-      undefinedType: "undefined",
-      nullType: "null",
-      booleans: ["yes", "no"],
-      collapsed: "broad",
-      weak: "no",
-      requiredUndefined: { label: "present" },
-    };
-  },
+export const wireUndefinedTuple = mutation({}, () => [undefined]);
+
+export const wireUndefinedObject = mutation({}, () => ({ x: undefined }));
+
+export const wireDestructuredObject = mutation({}, () => { const [x]: undefined[] = []; return {x}; });
+
+export const nonemptyValues = mutation({}, () => Array.from(["first"]).map(value => value.toUpperCase()));
+
+export const typeReport = mutation({}, (input: { entry: Projection<Draft> }): Report => {
+  const finite = Number.isFinite;
+  const truth = Boolean;
+  const candidates: Candidate[] = [{ kind: "other" }, { kind: "named", label: "found" }];
+  const guard = isNamed;
+  const networks: ReadonlyArray<["left" | "right", string]> = [["left", "Left"], ["right", "Right"]];
+  const dictionary = { left: "L", right: "R" };
+  const tupleLabels = networks.flatMap(([key, label]) => [`${label}:${dictionary[key]}`]);
+  const guarded = candidates.filter(guard).map(item => item.label);
+  const item: Copy<Draft> = input.entry;
+  const boxed: Box<DraftEntryView> = { value: new DraftEntryView(item, "draft") };
+  boxed.value.clear();
+  const snapshot: Mandatory<Projection<Draft, "id" | "note">> = boxed.value.snapshot();
+  const flags: Readonly<Flags<"ready" | "visible">> = { ready: true, visible: item.active };
+  const patch: Partial<Omit<Draft, "id">> = {};
+  const projectedOptional: Projection<Draft, "note"> = {};
+  return {
+    finiteChecks: FINITE_VALUES.map(value => [finite(value), isFinite(Number(value))]),
+    finiteIdentity: finite === Number.isFinite,
+    finiteCaptured: NUMBER_IS_FINITE(3),
+    pureFinite: PURE_FINITE,
+    truthChecks: FINITE_VALUES.map(truth).concat(FINITE_VALUES.filter(TRUTH).map(Boolean)),
+    truthIdentity: truth === Boolean && TRUTH === truth,
+    scalarTypes: [7, "Hello", true, false, null].map(scalarLabel),
+    scalarFalseBranches: [7, "Hello", null].map(scalarRemainder),
+    guardedLabels: guarded,
+    guardedFind: candidates.find(isNamed)?.label ?? "",
+    guardedBranch: guardedLabel(candidates[1]),
+    predicateMap: candidates.map(isNamed),
+    booleanFilter: ["", "0", "value"].filter(Boolean),
+    tupleLabels,
+    arrayPresence: { tags: ["present"] },
+    classView: boxed.value,
+    labels,
+    intersected,
+    optionalConflict,
+    optionalSnapshot,
+    snapshot,
+    flags,
+    state: "draft",
+    tag: { kind: "draft" },
+    together: "mixed",
+    value: read(item, "title"),
+    missing: projectedOptional.note ?? patch.note,
+    pair: 7,
+    element: "value",
+    key: "common",
+    payload: "present",
+    awaited: "done",
+    returned: null,
+    args: [1, "one"],
+    undefinedType: "undefined",
+    nullType: "null",
+    booleans: ["yes", "no"],
+    collapsed: "broad",
+    weak: "no",
+    requiredUndefined: { label: "present" },
+  };
 });
 
 export default defineConfig({});

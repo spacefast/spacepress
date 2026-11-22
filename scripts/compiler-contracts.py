@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "tests/compatibility/registry.json"
-OUTPUT = ROOT / "docs/language-support.md"
+OUTPUT = ROOT / "www/content/docs/reference/language-support.md"
 
 
 def render():
@@ -15,6 +15,13 @@ def render():
     assert registry["version"] == 1
     ids = set()
     lines = [
+        "---",
+        "title: Tested Compiler Compatibility",
+        "description: Fixture-backed inventory of supported TypeScript constructs, intentional divergences, and compiler refusals.",
+        "order: 2",
+        "status: published",
+        "publishedAt: 2026-11-21T09:22:00.000Z",
+        "---",
         "# Tested compiler compatibility", "",
         "Generated from `tests/compatibility/registry.json`; run `python3 scripts/compiler-contracts.py` to update.", "",
         "This is a growing evidence inventory, not an exhaustive language specification. Refusals are verified by running",
@@ -37,7 +44,7 @@ def render():
             test = entry["test"]
             assert re.search(r"\n\s*fn " + re.escape(test) + r"\(", (ROOT / evidence).read_text()), f"missing test: {test}"
         lines += [f"## {identity}", "", f"Status: **{status}**." + (f" Diagnostic: `{entry['code']}`." if status == "refused" else ""),
-                  "", entry["guidance"], "", f"[Evidence](../{evidence})" + (f" (`{entry['test']}`)" if status != "refused" else ""), ""]
+                  "", entry["guidance"], "", f"Evidence: `{evidence}`" + (f" (`{entry['test']}`)" if status != "refused" else ""), ""]
     return "\n".join(lines)
 
 

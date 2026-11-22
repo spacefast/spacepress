@@ -1,19 +1,11 @@
-import { action, job, integer, text, db } from "typedpress";
+import { job, db, mutation } from "typedpress";
 import { shoppingList } from "typedpress:db";
 
-export const rename = action({
-  input: { id: integer(), name: text() },
-  access: "editor",
-  async handler({ id, name }) {
-    await db.update(shoppingList).set({ name }).where({ id });
-    return { id, name };
-  },
+export const rename = mutation({ access: "editor" }, async ({ id, name }: { id: number; name: string }) => {
+  await db.update(shoppingList).set({ name }).where({ id });
+  return { id, name };
 });
 
-export const clearDone = job({
-  input: { keep: integer().default(0) },
-  retries: 2,
-  handler: async () => {
-    await db.delete(shoppingList).where({ done: true });
-  },
+export const clearDone = job({ retries: 2 }, async (_input: { keep?: number }) => {
+  await db.delete(shoppingList).where({ done: true });
 });

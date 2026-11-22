@@ -569,7 +569,7 @@ fn convert(
     let sql = built
         .migrations
         .iter()
-        .map(|(_, sql)| sql.as_str())
+        .map(|m| m.sql.as_str())
         .collect::<Vec<_>>()
         .join("\n");
     report.adoption_sql = Some(sql.clone());
@@ -594,17 +594,14 @@ fn convert(
             serde_json::to_string_pretty(&table_imports).unwrap(),
         );
     }
-    // A Space binding adopts copied tables; without one the candidate creates them.
-    let first = if matches!(tables, Tables::Adopt { .. }) {
-        "0001_adopt.sql"
-    } else {
-        "0001_init.sql"
-    };
-    files.insert(format!("{}/{first}", typedpress::pipeline::LEDGER), sql);
-    files.insert(
-        format!("{}/snapshot.json", typedpress::pipeline::LEDGER),
-        serde_json::to_string_pretty(&built.snapshot).unwrap(),
-    );
+    for entry in built.migrations {
+        let folder = format!("{}/{}", typedpress::pipeline::LEDGER, entry.id);
+        files.insert(format!("{folder}/migration.sql"), entry.sql);
+        files.insert(
+            format!("{folder}/ops.json"),
+            serde_json::to_string_pretty(&entry.ops).expect("serializable migration ops") + "\n",
+        );
+    }
     files.insert(
         "connector-roles.json".into(),
         serde_json::to_string_pretty(&report.connector_roles).unwrap(),

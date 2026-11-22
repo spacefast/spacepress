@@ -89,7 +89,7 @@ foreach (['guest' => null, 'reader' => 'reader', 'admin' => 'admin'] as $viewer 
             $a->getAttribute('href'), $a->hasAttribute('data-wp-on--click'), $a->hasAttribute('data-wp-on--mouseenter'),
         ];
     }
-    $live = fetch("$url/__tp/api/v1/_live", 'POST', [
+    $live = fetch("$url/wp-json/typedpress/v1/_live", 'POST', [
         'Content-Type: application/json', ...$headers, ...($user === null ? [] : [$session($user)['nonce']]),
     ], json_encode(['queries' => [['op' => 'page', 'args' => ['url' => '/office/', 'region' => 'records']]]]));
     $region = json_decode($live['body'], true)['data']['results'][0] ?? [];

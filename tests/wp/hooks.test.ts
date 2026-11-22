@@ -69,10 +69,10 @@ test("useQuery renders the first answer, and every hook of the page shares one r
   await until("#count", "0");
   assert.deepEqual(await items("#notes"), []);
   assert.equal(await text("#off"), "off", "a disabled query subscribes to nothing and is not loading");
-  const first = requests.find((r) => r.url === "/__tp/api/v1/_live");
+  const first = requests.find((r) => r.url === "/wp-json/typedpress/v1/_live");
   assert.ok(first, JSON.stringify(requests));
   assert.deepEqual(JSON.parse(first.body).queries.map((q: any) => [q.kind, q.op]), [["guestNotes", "list"], ["guestNotes", "count"], ["signups", "list"], ["bigCounts", "list"]]);
-  assert.ok(requests.every((r) => r.url === "/__tp/api/v1/_live"), "nothing but the subscription endpoint is called");
+  assert.ok(requests.every((r) => r.url === "/wp-json/typedpress/v1/_live"), "nothing but the subscription endpoint is called");
 });
 
 test("a kind the visitor may not read is an error state, not data", { skip: !installed }, async () => {
@@ -99,7 +99,7 @@ test("useMutation shows the optimistic row at once, then the server's row", { sk
   // Hold the write's response so the optimistic frame can be observed.
   let release: () => void = () => {};
   const held = new Promise<void>((resolve) => (release = resolve));
-  await page.route(`${harness.url}/__tp/api/v1/guest_notes`, async (route: any) => {
+  await page.route(`${harness.url}/wp-json/typedpress/v1/guest_notes`, async (route: any) => {
     if (route.request().method() !== "POST") return route.continue();
     await held;
     await route.continue();
@@ -112,7 +112,7 @@ test("useMutation shows the optimistic row at once, then the server's row", { sk
   await listed("#notes", [`Hooks ${run} theirs`, `Hooks ${run} mine`]);
   await until("#adding", "idle");
   await until("#count", "2");
-  await page.unroute(`${harness.url}/__tp/api/v1/guest_notes`);
+  await page.unroute(`${harness.url}/wp-json/typedpress/v1/guest_notes`);
 });
 
 test("a refused write rolls its optimistic row back and reports the error", { skip: !installed }, async () => {
@@ -120,7 +120,7 @@ test("a refused write rolls its optimistic row back and reports the error", { sk
   assert.deepEqual(await items("#counts"), []);
   let release: () => void = () => {};
   const held = new Promise<void>((resolve) => (release = resolve));
-  await page.route(`${harness.url}/__tp/api/v1/big_counts`, async (route: any) => {
+  await page.route(`${harness.url}/wp-json/typedpress/v1/big_counts`, async (route: any) => {
     if (route.request().method() !== "POST") return route.continue();
     await held;
     await route.continue();
@@ -130,7 +130,7 @@ test("a refused write rolls its optimistic row back and reports the error", { sk
   release();
   await until("#refused", "error 403");
   await listed("#counts", []);
-  await page.unroute(`${harness.url}/__tp/api/v1/big_counts`);
+  await page.unroute(`${harness.url}/wp-json/typedpress/v1/big_counts`);
 });
 
 test("a hidden tab stops asking, and catches up when it is shown again", { skip: !installed }, async () => {

@@ -1119,7 +1119,7 @@ pub(super) fn app(
         ));
     }
     let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, number as __z08Number, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"typedpress\";\n",
+        "import { query as __z08Query, mutation as __z08Mutation, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, number as __z08Number, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"typedpress\";\n",
     );
     if uses_crypto {
         config.push_str(CRYPTO_PRELUDE);
@@ -1232,7 +1232,7 @@ pub(super) fn app(
             entries.push(entry(
                 at,
                 "review",
-                format!("`{name}` also names a table, and v2 names are one namespace: the action is `{renamed}`, served at /__tp/api/v1/actions/{renamed}; the converted client calls it there, and other callers must change"),
+                format!("`{name}` also names a table, and v2 names are one namespace: the action is `{renamed}`, served at /wp-json/typedpress/v1/actions/{renamed}; the converted client calls it there, and other callers must change"),
             ));
             if let Some(h) = client_handlers.iter_mut().find(|h| h.name == *name) {
                 h.action = Some(renamed.clone());
@@ -1431,7 +1431,7 @@ fn type_aliases(source: &str) -> String {
 fn table_code(t: &Table) -> String {
     let n = &t.name;
     let mut out = format!(
-        "const __z08_{n} = __z08Table({{\ncreatedAt: __z08Text().$defaultFn(() => new Date().toISOString()),\nupdatedAt: __z08Text().$defaultFn(() => new Date().toISOString()).$onUpdate(() => new Date().toISOString()),\n"
+        "const __z08_{n} = __z08Table({{\ncreatedAt: __z08Text().$default(() => new Date().toISOString()),\nupdatedAt: __z08Text().$default(() => new Date().toISOString()).$onUpdate(() => new Date().toISOString()),\n"
     );
     for f in &t.fields {
         out.push_str(&format!("{}: {},\n", q(&f.name), f.builder()));
@@ -1579,12 +1579,14 @@ fn destructured_parameter(text: &str) -> Option<(String, String)> {
     Some((pattern.to_string(), ty.to_string()))
 }
 
-fn input_builder(ty: &TyAnn, source_ty: &str, optional: bool, at: &str) -> Result<String, Failure> {
+/// One input property of the handler's parameter type: `name: T`, or `name?: T | null` for one the
+/// caller may leave out or send as null (what 0.8 delivered for a missing argument).
+fn input_property(name: &str, ty: &TyAnn, source_ty: &str, optional: bool, at: &str) -> Result<String, Failure> {
     let (base, nullable) = match ty {
-        TyAnn::Str => ("__z08Text()".into(), false),
-        TyAnn::Num => ("__z08Number()".into(), false),
-        TyAnn::Bool => ("__z08Boolean()".into(), false),
-        TyAnn::Obj(_) | TyAnn::Ref(..) | TyAnn::Array(_) => (format!("__z08Json<{source_ty}>()"), false),
+        TyAnn::Str => ("string".to_string(), false),
+        TyAnn::Num => ("number".to_string(), false),
+        TyAnn::Bool => ("boolean".to_string(), false),
+        TyAnn::Obj(_) | TyAnn::Ref(..) | TyAnn::Array(_) => (format!("({source_ty})"), false),
         TyAnn::Union(xs)
             if xs
                 .iter()
@@ -1596,14 +1598,21 @@ fn input_builder(ty: &TyAnn, source_ty: &str, optional: bool, at: &str) -> Resul
                 .iter()
                 .find(|x| !matches!(x, TyAnn::Null | TyAnn::Undefined))
                 .expect("one");
-            return input_builder(inner, source_ty, true, at);
+            let inner_source = match inner {
+                TyAnn::Str => "string".to_string(),
+                TyAnn::Num => "number".to_string(),
+                TyAnn::Bool => "boolean".to_string(),
+                _ => return Err(fail(at, "handler parameters need supported concrete TypeScript types")),
+            };
+            return input_property(name, inner, &inner_source, true, at);
         }
         _ => return Err(fail(at, "handler parameters need supported concrete TypeScript types")),
     };
-    Ok(format!(
-        "{base}{}",
-        if optional || nullable { ".optional()" } else { "" }
-    ))
+    Ok(if optional || nullable {
+        format!("{}?: {base} | null", q(name))
+    } else {
+        format!("{}: {base}", q(name))
+    })
 }
 
 /// A converted handler: its generated code, the module helpers it needs, and its context calls.
@@ -1700,11 +1709,11 @@ fn handler(
                 return Err(fail(at, "destructured input parameters require a manual port"));
             }
             let optional = p.optional || p.default.is_some();
-            input.push(format!(
-                "{}: __z08Json<{ty}>(){}",
-                q(&n),
-                if optional { ".optional()" } else { "" }
-            ));
+            input.push(if optional {
+                format!("{}?: ({ty}) | null", q(&n))
+            } else {
+                format!("{}: {ty}", q(&n))
+            });
             let value = match &p.default {
                 Some(default) => format!("__z08input.{n} ?? ({})", raw(source, default.span)),
                 None if p.optional => format!("__z08input.{n} ?? undefined"),
@@ -1749,12 +1758,12 @@ fn handler(
                     "rest and default parameters need a manual input schema unless the rest type is an array",
                 ));
             }
-            input.push(format!("{}: __z08Json<{ty}>().optional()", q(&n)));
+            input.push(format!("{}?: ({ty}) | null", q(&n)));
             bindings.push_str(&format!("const {n}: {ty} = __z08input.{n} ?? [];\n"));
             continue;
         }
         let optional = p.optional || p.default.is_some();
-        input.push(format!("{}: {}", q(&n), input_builder(ann, ty, optional, at)?));
+        input.push(input_property(&n, ann, ty, optional, at)?);
         match &p.default {
             // 0.8 applied a default only to a missing argument. A v2 optional input reads a missing
             // value as null, so `??` is exact when the declared type excludes null; when it admits
@@ -1863,9 +1872,11 @@ fn handler(
     if r.logs {
         r.helpers.push(LOG.into());
     }
+    // A 0.8 query reads; mutations and actions may write. The input is the handler's parameter type.
+    let builder = if writes || sends { "__z08Mutation" } else { "__z08Query" };
     let code = format!(
-        "__z08Action({{ input: {{ {} }}, access: \"anyone\", agents: false, async handler(__z08input, __z08ctx) {{\n{gate}{subject}{bindings}{body}\n}} }})",
-        input.join(", ")
+        "{builder}({{ access: \"anyone\", agents: false, rateLimit: false }}, async (__z08input: {{ {} }}, __z08ctx) => {{\n{gate}{subject}{bindings}{body}\n}})",
+        input.join("; ")
     );
     Ok((code, r.helpers, r.calls))
 }

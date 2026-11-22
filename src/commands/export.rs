@@ -8,7 +8,7 @@
 //! - with `--site`, the hosted site, which must run this checkout's build, signed in as an editor
 //!   (`remote::sign_in`: the credential `typedpress login` stored, or `TP_APP_PASSWORD` / `TP_TOKEN`).
 //!
-//! Each URL the site lists (`GET /__tp/api/v1/prerender`) is fetched as a signed-out visitor with
+//! Each URL the site lists (`GET /wp-json/typedpress/v1/prerender`) is fetched as a signed-out visitor with
 //! its prerender token, with its Markdown twin. The export writes `<path>.html` and `<path>.md`,
 //! `404.html`, `sitemap.xml`, `llms.txt`, `robots.txt`, `_redirects` with a refresh page at each old
 //! URL, and every same-site file the pages reference (stylesheets, images, script modules including
@@ -140,7 +140,9 @@ fn run(flags: Flags) -> Result<(), String> {
         .project
         .canonicalize()
         .map_err(|e| format!("{}: {e}", flags.project.display()))?;
-    let built = super::build::build(&project, super::build::frozen(false))
+    let _frontend = crate::frontend::prepare_styles(&project)
+        .map_err(|d| crate::diag::render(&d, &project).trim_end().to_string())?;
+    let built = super::build::build_site(&project, super::build::frozen(false))
         .map_err(|d| crate::diag::render(&d, &project).trim_end().to_string())?;
     if built.schema.output != crate::schema::Output::Static {
         return Err(
@@ -165,7 +167,7 @@ fn run(flags: Flags) -> Result<(), String> {
             super::build::emit_project(&project, &built).map_err(|e| format!("couldn't write tp/_generated: {e}"))?;
             let content = super::build::emit_wp_content(&project, &project.join(crate::layout::WP_CONTENT), &built)
                 .map_err(|e| format!("couldn't write wp-content: {e}"))?;
-            let seeds = crate::bundle::seed_records(&crate::loader::Disk, &project, &built.schema)
+            let seeds = crate::bundle::seed_records(&crate::loader::Disk, &project, &built.schema, true)
                 .map_err(|d| crate::diag::render(&d, &project).trim_end().to_string())?;
             let local = Local::start(&content, &seeds)?;
             let site = local.url.clone();
@@ -185,9 +187,9 @@ fn run(flags: Flags) -> Result<(), String> {
     if flags.site.is_some() {
         // The checkout's compiled app plugin, hashed as the site hashes its own (Prebuilt::appHash):
         // every file below tp/app/, so a change to any page, component or action counts.
-        let schema_php = crate::schema_php::render(&built.schema);
         let public = crate::emit::public_files(&project).map_err(|e| format!("couldn't read public/: {e}"))?;
-        let mut files: Vec<(String, Vec<u8>)> = crate::app_plugin::files(&built, &schema_php, Vec::new(), public)
+        let (_, packaged) = crate::app_plugin::package(&built, Vec::new(), public);
+        let mut files: Vec<(String, Vec<u8>)> = packaged
             .into_iter()
             .filter_map(|(path, bytes)| {
                 let rest = path.split_once('/')?.1.strip_prefix("tp/app/")?;
@@ -1098,7 +1100,7 @@ fn public_module_query(suffix: &str) -> Option<&str> {
     query
         .strip_prefix('?')?
         .split('&')
-        .any(|part| part.starts_with("tpv="))
+        .any(|part| part.starts_with("ver=") || part.starts_with("tpv="))
         .then_some(query)
 }
 

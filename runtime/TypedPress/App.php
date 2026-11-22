@@ -6,7 +6,7 @@ namespace TypedPress;
 
 /**
  * Boots a generated app and serves its REST API (§4.8) and CLI. The WordPress plugin passes its
- * Store/Auth/Media and calls handle() with the path after the API prefix (`/__tp/api/v1`): the
+ * Store/Auth/Media and calls handle() with the path after the API prefix (`/wp-json/typedpress/v1`): the
  * WordPress facade for TypedPress's own routes with no core route (sign-in, sync, services, files), and
  * the abilities (invoke).
  */
@@ -71,6 +71,9 @@ final class App
             }
             Extensions::action($action, $name, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer);
         }
+        if (isset($action['rateLimit'])) {
+            RateLimit::check($name, $action['rateLimit'], $viewer?->user);
+        }
         $ctx = $this->db->hookCtx();
         $input = Schema::validateInput($action['input'] ?? [], $input, '', $ctx['user']);
         $slot = $action['handler'];
@@ -90,7 +93,8 @@ final class App
 
     /**
      * Run a matched route in one transaction. `$user` is the resolved caller (null: anonymous);
-     * a `signature` route verifies the raw body instead and always runs anonymously.
+     * a `signature` route verifies the raw body instead and always runs anonymously. A GET or HEAD
+     * route's transaction starts at its first write (Db::reading()): most only read.
      *
      * @return array{int, array<string, string>, string}
      */
@@ -98,7 +102,8 @@ final class App
     {
         $headers = array_change_key_case($headers, CASE_LOWER);
         try {
-            $response = $this->db->transaction(function () use ($match, $method, $path, $query, $body, $headers, $user, $url): array {
+            $run = in_array($method, ['GET', 'HEAD'], true) ? $this->db->reading(...) : $this->db->transaction(...);
+            $response = $run(function () use ($match, $method, $path, $query, $body, $headers, $user, $url): array {
                 $route = $match['route'];
                 $name = $match['name'];
                 $viewer = new Viewer($user);
@@ -276,8 +281,9 @@ final class App
             self::allow($method, ['GET', 'POST']);
             if ($method === 'GET') {
                 $this->gate($spec, 'list');
+                $rows = $this->db->findMany($name, self::listOptions($query), $viewer);
 
-                return [200, $this->db->findMany($name, self::listOptions($query), $viewer)];
+                return [200, array_map(static fn (array $r): array => Wp\Rev::attach($name, $r), $rows)];
             }
             $this->gate($spec, 'create');
             $data = self::object(self::parseBody($body));
@@ -291,7 +297,7 @@ final class App
             };
             $row = $this->db->insert($name, $data, true, $viewer, $around)[0];
 
-            return Response::json($row, $result->status, $result->headers);
+            return Response::json(Wp\Rev::attach($name, $row), $result->status, $result->headers);
         }
 
         $pk = $this->pkFromPath($spec, $segments[1]);
@@ -302,11 +308,33 @@ final class App
             self::allow($method, ['GET', 'PATCH', 'DELETE']);
             $this->gate($spec, ['GET' => 'get', 'PATCH' => 'update', 'DELETE' => 'delete'][$method]);
 
-            return match ($method) {
-                'GET' => [200, $this->db->findFirst($name, ['where' => $where] + self::itemOptions($query), $viewer) ?? throw $missing()],
-                'PATCH' => [200, $this->db->update($name, self::object(self::parseBody($body)), $where, true, $viewer)[0] ?? throw $missing()],
-                'DELETE' => [200, $this->db->delete($name, $where, true, $viewer)[0] ?? throw $missing()],
-            };
+            if ($method === 'GET') {
+                $row = $this->db->findFirst($name, ['where' => $where] + self::itemOptions($query), $viewer) ?? throw $missing();
+
+                return [200, Wp\Rev::attach($name, $row)];
+            }
+            if ($method === 'PATCH') {
+                [$patch, $rev, $takeover] = Wp\Rev::split(self::object(self::parseBody($body)));
+                $row = Wp\Rev::guarded($name, $pk, $rev, $takeover, $viewer,
+                    fn () => $this->db->update($name, $patch, $where, true, $viewer)[0] ?? throw $missing(), $patch);
+
+                return [200, Wp\Rev::attach($name, $row)];
+            }
+            $row = Wp\Rev::guarded($name, $pk, $query[Wp\Rev::FIELD] ?? null, ($query[Wp\Rev::TAKEOVER] ?? '') === '1', $viewer,
+                fn () => $this->db->delete($name, $where, true, $viewer)[0] ?? throw $missing());
+
+            return [200, $row];
+        }
+
+        if ($n === 3 && in_array($segments[2], ['restore', 'purge'], true)) {
+            $op = $segments[2];
+            self::allow($method, $op === 'restore' ? ['POST'] : ['DELETE']);
+            $this->gate($spec, 'delete');
+            $row = $op === 'restore'
+                ? ($this->db->restore($name, $where, true, $viewer)[0] ?? throw $missing())
+                : ($this->db->purge($name, $where, true, $viewer)[0] ?? throw $missing());
+
+            return [200, $row];
         }
 
         if ($segments[2] !== 'revisions') {
@@ -318,9 +346,20 @@ final class App
 
             return [200, array_map(fn (array $r) => [
                 'id' => $r['id'],
+                'version' => $r['version'],
+                'op' => $r['op'],
                 'at' => $r['at'],
                 'user' => $r['userId'] === null ? null : (($u = $this->auth->user($r['userId'])) === null ? null : ['id' => $u['id'], 'name' => $u['name']]),
+                'schemaMigration' => $r['schemaMigration'],
+                'changed' => $r['changed'],
             ], $this->db->revisions($name, $pk, $viewer))];
+        }
+        if ($n === 4 && $segments[3] === 'diff') {
+            self::allow($method, ['GET']);
+            $from = self::queryInt($query, 'from') ?? throw HttpError::invalidQuery('from must be a revision version or id', '/from');
+            $to = self::queryInt($query, 'to') ?? throw HttpError::invalidQuery('to must be a revision version or id', '/to');
+
+            return [200, $this->db->diffRevisions($name, $pk, $from, $to, $viewer, byVersion: true)];
         }
         if (!preg_match('/^\d{1,18}$/D', $segments[3])) {
             throw HttpError::notFound("No revision {$segments[3]}");

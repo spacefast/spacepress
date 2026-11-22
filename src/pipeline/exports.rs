@@ -11,7 +11,7 @@
 use crate::diag::{Code, Diag, Result, Span};
 use crate::eval::Evaluator;
 use crate::loader::Program;
-use crate::value::{StorageKind, Value};
+use crate::value::{FnForm, StorageKind, Value};
 use indexmap::IndexMap;
 use std::path::Path;
 use std::rc::Rc;
@@ -41,6 +41,8 @@ fn registry(value: &Value) -> Option<&'static str> {
         Value::Action(_) => "actions",
         Value::Job(_) => "jobs",
         Value::Screen(_) => "screens",
+        Value::Widget(_) => "widgets",
+        Value::Dashboard(_) => "dashboards",
         _ => return None,
     })
 }
@@ -54,7 +56,9 @@ fn same(a: &Value, b: &Value) -> bool {
         (Value::FileBucket(a), Value::FileBucket(b)) => Rc::ptr_eq(a, b),
         (Value::Action(a), Value::Action(b))
         | (Value::Job(a), Value::Job(b))
-        | (Value::Screen(a), Value::Screen(b)) => Rc::ptr_eq(a, b),
+        | (Value::Screen(a), Value::Screen(b))
+        | (Value::Widget(a), Value::Widget(b))
+        | (Value::Dashboard(a), Value::Dashboard(b)) => Rc::ptr_eq(a, b),
         _ => false,
     }
 }
@@ -65,7 +69,7 @@ fn span_of(value: &Value) -> Span {
         Value::Store(a) => a.span,
         Value::Global(g) => g.span,
         Value::FileBucket(b) => b.span,
-        Value::Action(a) | Value::Job(a) | Value::Screen(a) => a.span,
+        Value::Action(a) | Value::Job(a) | Value::Screen(a) | Value::Widget(a) | Value::Dashboard(a) => a.span,
         _ => Span::NONE,
     }
 }
@@ -100,7 +104,7 @@ const REMOVED: &[(&str, &str, &str)] = &[
     ("taxonomies", "a taxonomy registers by its export", "taxonomy"),
     ("globals", "a global registers by its export", "global"),
     ("files", "a file bucket registers by its export", "files"),
-    ("actions", "an action registers by its export", "action"),
+    ("actions", "an action registers by its export", "mutation"),
     ("jobs", "a job registers by its export", "job"),
     ("hooks", "hooks are declared on the kind", ""),
 ];
@@ -169,7 +173,7 @@ fn removed_key(ev: &Evaluator<'_>, program: &Program, config: &Value, key: &str)
     };
     let tail = match key {
         "files" => format!("; `file({name})` takes the export"),
-        "actions" => format!("; the client call is `first.{name}()`"),
+        "actions" => format!("; the client calls it as `{name}()`; a function that only reads is a `query(...)`"),
         _ => String::new(),
     };
     Some(d.help(format!(
@@ -206,8 +210,13 @@ fn noun(value: &Value) -> &'static str {
         Value::Store(_) => "a store",
         Value::Global(_) => "a global",
         Value::FileBucket(_) => "a file bucket",
+        Value::Action(a) if a.form == FnForm::Query => "a query",
+        Value::Action(a) if a.form == FnForm::Mutation => "a mutation",
         Value::Action(_) => "an action",
+        Value::Job(j) if j.form == FnForm::Cron => "a cron job",
         Value::Screen(_) => "an admin screen",
+        Value::Widget(_) => "an admin widget",
+        Value::Dashboard(_) => "an admin dashboard",
         _ => "a job",
     }
 }
@@ -219,8 +228,13 @@ fn builder(value: &Value) -> &'static str {
         Value::Store(_) => "store",
         Value::Global(_) => "global",
         Value::FileBucket(_) => "files",
+        Value::Action(a) if a.form == FnForm::Query => "query",
+        Value::Action(a) if a.form == FnForm::Mutation => "mutation",
         Value::Action(_) => "action",
+        Value::Job(j) if j.form == FnForm::Cron => "cron",
         Value::Screen(_) => "adminScreen",
+        Value::Widget(_) => "adminWidget",
+        Value::Dashboard(_) => "adminDashboard",
         _ => "job",
     }
 }
@@ -235,8 +249,8 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
         if let Some(d) = removed_key(ev, program, config, key) {
             return Err(d);
         }
-        // `screens` is the registry exports fill, never a config option.
-        if key == "screens" {
+        // `screens`, `widgets` and `dashboards` are registries exports fill, never config options.
+        if matches!(key.as_str(), "screens" | "widgets" | "dashboards") {
             let span = ev.key_span(config, key).map_or(
                 Span {
                     file: program.modules[program.entry].file,
@@ -245,8 +259,18 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
                 },
                 |value| crate::diag::key_of(value, key),
             );
-            return Err(Diag::new(span, "defineConfig() has no option `screens`: a screen registers by its export")
-                .help("write `export const pendingOrders = adminScreen({ ... })` in typedpress.config.ts or any file under tp/; the export name is its id"));
+            let (noun, example) = match key.as_str() {
+                "widgets" => ("a widget", "export const salesWidget = adminWidget({ ... })"),
+                "dashboards" => ("a dashboard", "export const opsDashboard = adminDashboard({ ... })"),
+                _ => ("a screen", "export const pendingOrders = adminScreen({ ... })"),
+            };
+            return Err(Diag::new(
+                span,
+                format!("defineConfig() has no option `{key}`: {noun} registers by its export"),
+            )
+            .help(format!(
+                "write `{example}` in typedpress.config.ts or any file under tp/; the export name is its id"
+            )));
         }
     }
     let mut taken: IndexMap<String, Taken> = IndexMap::new();
@@ -258,9 +282,11 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
             let span = span_of(&value);
             // The export name is the registered name; a default export has none.
             if name == "default" {
-                return Err(Diag::new(span, "a kind, action or job can't be a default export")
-                    .code(Code::DuplicateExport)
-                    .help("export it by name, e.g. `export const notes = table({ ... })`; the name is its API"));
+                return Err(
+                    Diag::new(span, "a kind, query, mutation or job can't be a default export")
+                        .code(Code::DuplicateExport)
+                        .help("export it by name, e.g. `export const notes = table({ ... })`; the name is its API"),
+                );
             }
             if let Some(other) = taken.get(&name) {
                 // Re-exported from another module: the same value under the same name.
@@ -273,7 +299,7 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
                 return Err(
                     Diag::new(span, format!("`{name}` and `{other}` export the same definition"))
                         .code(Code::DuplicateExport)
-                        .help("export each kind, action or job under one name"),
+                        .help("export each kind, query, mutation or job under one name"),
                 );
             }
             taken.insert(

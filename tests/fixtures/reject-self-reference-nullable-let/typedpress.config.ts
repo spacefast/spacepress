@@ -1,5 +1,5 @@
-import { action, defineConfig } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 // A `let` may be reassigned before the closure runs, so its self-call sees the declared type, which allows null.
-export const probe = action({ handler: () => { let f: ((n: number) => number) | null = (n: number): number => (n <= 0 ? 0 : f(n - 1)); return f(3); } });
+export const probe = mutation({}, () => { let f: ((n: number) => number) | null = (n: number): number => (n <= 0 ? 0 : f(n - 1)); return f(3); });
 
 export default defineConfig({});

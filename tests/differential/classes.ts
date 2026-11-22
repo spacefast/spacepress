@@ -1,6 +1,6 @@
-import { table, defineConfig, action, db } from "typedpress";
+import { table, defineConfig, db, mutation } from "typedpress";
 
-const run = (handler: () => unknown) => action({ input: {}, handler });
+const run = (handler: () => unknown) => mutation({}, handler);
 
 class ClassCounter {
   count = 1;

@@ -1,10 +1,10 @@
 // `delete`, used to drop optional fields and map
 // entries before storing or returning a record. Every action runs under Node and as compiled PHP;
 // the JSON results must be byte-identical. `delete-helpers.mjs` runs the same checks untyped.
-import { action, defineConfig } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 import { deleteUntyped as deleteUntypedImpl } from "./delete-helpers.mjs";
 
-const run = (handler: () => unknown) => action({ input: {}, handler });
+const run = (handler: () => unknown) => mutation({}, handler);
 
 type Draft = { title: string; secret?: string; note?: string | null; tags?: string[] };
 

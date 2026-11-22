@@ -1,8 +1,0 @@
-:root { --ink: #1d2420; --accent: #1f4d3a; --paper: #fbfaf6; }
-body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.6 Georgia, serif; }
-.site { max-width: 48rem; margin: 0 auto; padding: 1.5rem; }
-.site-header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid var(--accent); }
-.site-title a { color: var(--accent); font-weight: bold; text-decoration: none; }
-.note-card { border-bottom: 1px solid #ddd; padding: 0.5rem 0; }
-.cheer button { background: var(--accent); color: white; border: 0; padding: 0.4rem 0.9rem; border-radius: 4px; cursor: pointer; }
-.site-footer { margin-top: 3rem; font-size: 0.85rem; color: #6b746f; }

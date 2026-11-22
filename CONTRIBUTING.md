@@ -38,23 +38,21 @@ showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
    type-checked against the schema and compiled to PHP: native operators where
    the types make it safe, `TypedPress\Js` helpers where JavaScript and PHP differ,
    and a build error where neither is sound.
-5. **Emit.** The output is MySQL migrations (diffed against one committed
-   snapshot), `schema.php`, `functions.php`, `tp/_generated/db.d.ts` (types `db` in your
+5. **Emit.** The output is MySQL migrations (diffed against the state folded from committed operations), `schema.php`, `functions.php`, `tp/_generated/db.d.ts` (types `db` in your
    editor), the typed client, `tp/_generated/openapi.json`, and the PHP runtime: the database
    layer, the REST API, the hook pipeline, and the JS-semantics helpers.
 
 The crate is a library plus the `typedpress` binary. The core (`loader`, `lower`, `eval`, `extract`,
 `compile`, `migrate`, `client`, `schema_php`, tied together by `pipeline`) does no I/O of its own:
-sources come through `loader::Fs` and the previous snapshot is a value. The `cli` feature (on by
+sources come through `loader::Fs` and the previous state is folded from migration operations. The `cli` feature (on by
 default) adds `commands/`, `sync/`, plugin downloads and the embedded runtime.
-`src/wasm.rs` exports the core to the browser; `docs-site/` builds it with
+`src/wasm.rs` exports the core to the browser; `www/` builds it with
 `cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown` and
-serves it as the docs site's playground compiler (see [`docs-site/README.md`](docs-site/README.md)).
+serves it as the website's playground compiler (see [`www/README.md`](www/README.md)).
 
-`build.rs` also embeds the guides in `docs/` and the pages of `docs-site/docs/` for `typedpress mcp`'s
-`docs_search` and `docs_read`, so a documentation change needs a rebuild to show there. A new page in
-`docs/` fails the build until it is added to `GUIDES` (embedded) or `NOT_GUIDES` (left out) in
-`build.rs`. It embeds `skills/` the same way: each `skills/<name>/SKILL.md` is an agent skill in the layout of
+`build.rs` also embeds the documentation pages under `www/content/docs/` for `typedpress mcp`'s
+`docs_search` and `docs_read`, so a documentation change needs a rebuild to show there.
+It embeds `skills/` the same way: each `skills/<name>/SKILL.md` is an agent skill in the layout of
 [WordPress/agent-skills](https://github.com/WordPress/agent-skills), and `typedpress init` writes them
 into a project. Every command a skill names must exist: run it before you write it down. `tests/cli.rs`
 checks the layout, that each `typedpress <command>` is in the command table, that each linked page is
@@ -129,7 +127,7 @@ tests/php/run.sh                 # runtime: JS parity (checked against node) + t
 tsc -p types/typedpress/tests          # the "typedpress" types catch real mistakes
 tests/wp/run.sh                  # the runtime on real WordPress (Docker)
 tests/system/run.sh              # examples/site end to end on WordPress
-(cd docs-site && pnpm check)     # the docs site: generated pages current, browser compiler ≡ typedpress check --json, pages in Chromium
+(cd www && npm run wasm && npm run showcase && bun run build && ../target/release/typedpress check .) # the website & browser compiler
 ```
 
 CI runs `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D
@@ -259,8 +257,7 @@ The [installation guide](docs/installation.md#maintainer-release-steps) has the 
 | `examples/` | pantry, blog, site, wp-plugins, reusable field recipes |
 | `tests/` | Rust, PHP, WordPress and system suites, fixtures |
 | `packages/` | the npm packages (see [Releases](#releases)) |
-| `www/` | the framework website, itself a TypedPress app |
-| `docs/` | API, contracts, design documents |
+| `www/` | the SpacePress website and documentation (`www/content/docs/`), itself a SpacePress app |
 
 ## Licensing
 

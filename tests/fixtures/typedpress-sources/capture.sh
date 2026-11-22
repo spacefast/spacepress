@@ -31,8 +31,16 @@ for app in pantry blog full-site; do
   "$first" compile-sources "$out/sources" "$work/$app-again" "$out/sources" "$work/$app" >/dev/null
   python3 - "$work/$app/migrations" "$work/$app-again/migrations" > "$out/plan.json" <<'PY'
 import json,os,sys
-before=set(os.listdir(sys.argv[1])); after=sorted(os.listdir(sys.argv[2]))
-print(json.dumps([{"file":f,"sql":open(os.path.join(sys.argv[2],f)).read()} for f in after if f not in before], indent=1))
+def walk(root):
+    res = {}
+    for dirpath, _, filenames in os.walk(root):
+        for f in filenames:
+            full = os.path.join(dirpath, f)
+            rel = os.path.relpath(full, root).replace(os.sep, "/")
+            res[rel] = open(full).read()
+    return res
+before = walk(sys.argv[1]); after = walk(sys.argv[2])
+print(json.dumps([{"file":f,"sql":after[f]} for f in sorted(after) if f not in before], indent=1))
 PY
 done
 echo "captured $label at $(git rev-parse --short HEAD)"

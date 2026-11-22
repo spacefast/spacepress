@@ -5,7 +5,7 @@
 // - A project whose _meta.json has a `proposal` string is written in spellings that are decided and
 //   not built yet; the guide shows it as text and says so. It is skipped here, and it must never be
 //   offered as runnable: no playground, showcase build, download or seed reads it. Those read
-//   examples/<name> (docs-site/lib/site-examples.ts, docs-site/scripts/build-showcase.ts,
+//   examples/<name> (www/lib/site-examples.ts, www/scripts/build-showcase.ts,
 //   www/scripts/run-data.ts, www/scripts/seed.mjs) and www/examples/_hero; this script fails when any
 //   of them, or a page or script of the website, names a proposal's own directory.
 //
@@ -54,7 +54,7 @@ for (const config of files(www, (name) => name === "typedpress.config.ts").sort(
 
 // What builds or runs an example: none of it may read a proposal's directory.
 const runners = [
-  "docs-site/lib/site-examples.ts", "docs-site/lib/examples.ts", "docs-site/scripts/build-showcase.ts",
+  "www/lib/site-examples.ts", "www/lib/examples.ts", "www/scripts/build-showcase.ts",
   ...files(join(root, "www/scripts"), (name) => /\.(m?js|ts)$/.test(name)).map((file) => relative(root, file)),
   ...files(join(root, "www/tp"), (name) => /\.(tsx?|m?js)$/.test(name)).map((file) => relative(root, file)).filter((file) => !file.startsWith("www/tp/data/")),
   ...files(join(root, "www/browser"), (name) => /\.(m?js|ts)$/.test(name)).map((file) => relative(root, file)),

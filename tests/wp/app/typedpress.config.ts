@@ -2,7 +2,7 @@
 // tp/blog/ with the WP suites' extra post hooks from tests/wp/blog-test-hooks.ts), the lane
 // modules in tp/lanes/, and what this file exports. Every kind, global, action and job registers
 // by its export name; a name taken twice fails the build.
-import { boolean, collection, date, defineConfig, db, email, integer, json, select, text, timestamp, table, number, ref, action } from "typedpress";
+import { boolean, collection, date, defineConfig, db, email, integer, json, select, text, timestamp, table, number, ref, mutation } from "typedpress";
 import { posts } from "./tp/blog/typedpress.config.ts";
 // One module per phase-2 lane, so lanes add test kinds without editing this file.
 import * as fields from "./tp/lanes/fields.ts";
@@ -50,11 +50,11 @@ export const events = collection({
 const laneConfig = merge("config option", lanes.map((l) => l.config));
 
 // Trusted db.globals from compiled code, against the WP options-backed global store.
-export const bumpPostsPerPage = action({ input: {}, handler: async () => {
+export const bumpPostsPerPage = mutation({}, async () => {
   const before = await db.globals.settings.get();
   const after = await db.globals.settings.update({ postsPerPage: before.postsPerPage + 1 });
   return [before.postsPerPage, after.postsPerPage];
-} });
+});
 
 export default defineConfig({
   ...laneConfig,

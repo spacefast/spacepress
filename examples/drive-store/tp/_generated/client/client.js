@@ -3,24 +3,69 @@
 export const SCHEMA = {
 	"name": "drive-store",
 	"collections": {
+		"stockMovements": {
+			"path": "stock_movements",
+			"primaryKey": "id",
+			"drafts": false,
+			"revisions": true,
+			"softDelete": true,
+			"localized": false,
+			"relations": {},
+			"media": [],
+			"mediaList": [],
+			"files": []
+		},
 		"drives": {
 			"path": "drives",
 			"primaryKey": "id",
-			"drafts": true,
-			"revisions": true,
+			"drafts": false,
+			"revisions": false,
+			"softDelete": false,
 			"localized": false,
 			"relations": {
-				"orders": {
+				"categories": {
 					"kind": "many",
-					"collection": "orders",
+					"collection": "categories",
 					"optional": false
 				},
-				"stockMovements": {
+				"tags": {
 					"kind": "many",
-					"collection": "stockMovements",
+					"collection": "tags",
 					"optional": false
 				}
 			},
+			"media": ["images"],
+			"mediaList": ["images"],
+			"files": []
+		},
+		"categories": {
+			"path": "categories",
+			"primaryKey": "id",
+			"drafts": false,
+			"revisions": false,
+			"softDelete": false,
+			"localized": false,
+			"relations": { "drives": {
+				"kind": "many",
+				"collection": "drives",
+				"optional": false
+			} },
+			"media": [],
+			"mediaList": [],
+			"files": []
+		},
+		"tags": {
+			"path": "tags",
+			"primaryKey": "id",
+			"drafts": false,
+			"revisions": false,
+			"softDelete": false,
+			"localized": false,
+			"relations": { "drives": {
+				"kind": "many",
+				"collection": "drives",
+				"optional": false
+			} },
 			"media": [],
 			"mediaList": [],
 			"files": []
@@ -30,49 +75,16 @@ export const SCHEMA = {
 			"primaryKey": "id",
 			"drafts": false,
 			"revisions": false,
+			"softDelete": false,
 			"localized": false,
-			"relations": {
-				"drive": {
-					"kind": "one",
-					"collection": "drives",
-					"optional": false
-				},
-				"stockMovements": {
-					"kind": "many",
-					"collection": "stockMovements",
-					"optional": false
-				}
-			},
-			"media": [],
-			"mediaList": [],
-			"files": []
-		},
-		"stockMovements": {
-			"path": "stock_movements",
-			"primaryKey": "id",
-			"drafts": false,
-			"revisions": false,
-			"localized": false,
-			"relations": {
-				"drive": {
-					"kind": "one",
-					"collection": "drives",
-					"optional": false
-				},
-				"order": {
-					"kind": "one",
-					"collection": "orders",
-					"optional": true
-				}
-			},
+			"relations": {},
 			"media": [],
 			"mediaList": [],
 			"files": []
 		}
 	},
-	"globals": ["shop"],
+	"globals": ["settings"],
 	"actions": [
-		"buy",
 		"restock",
 		"markShipped",
 		"pendingOrders"
@@ -161,6 +173,7 @@ function listParams(q) {
 	if (q.where !== undefined) p.set("where", JSON.stringify(q.where));
 	if (typeof q.status === "string") p.set("status", q.status);
 	if (typeof q.locale === "string") p.set("locale", q.locale);
+	if (typeof q.deleted === "string") p.set("deleted", q.deleted);
 	if (q.orderBy !== undefined) {
 		const order = orderParam(q.orderBy);
 		if (order) p.set("orderBy", order);
@@ -183,6 +196,7 @@ function liveArgs(q) {
 	if (typeof q.offset === "number") args.offset = q.offset;
 	if (typeof q.cursor === "string") args.cursor = q.cursor;
 	if (typeof q.locale === "string") args.locale = q.locale;
+	if (typeof q.deleted === "string") args.deleted = q.deleted;
 	if (isObject(q.with) && Object.keys(withJson(q.with)).length > 0) args.with = withJson(q.with);
 	return args;
 }
@@ -212,7 +226,7 @@ function authError(status, code, detail) {
 /** In-flight refreshes of sessionStorage-backed sessions, by storage key (shared by clients in this tab). */
 const refreshes = new Map();
 export function createClient(options = {}) {
-	const base = (options.url ?? "/__tp/api/v1").replace(/\/+$/, "");
+	const base = (options.url ?? "/wp-json/typedpress/v1").replace(/\/+$/, "");
 	const authOpts = options.auth ?? {};
 	const doFetch = (input, init) => (options.fetch ?? globalThis.fetch)(input, init);
 	// Token storage: memory by default, sessionStorage on request. The record always exists once
@@ -1103,6 +1117,8 @@ export function createClient(options = {}) {
 			create: (data) => wrote(request("POST", path, { json: data }), key),
 			update: (id, patch) => wrote(request("PATCH", one(id), { json: patch }), key),
 			delete: (id, options) => wrote(request("DELETE", one(id), { query: conditions(options) }), key),
+			restore: (id) => wrote(request("POST", `${one(id)}/restore`), key),
+			purge: (id) => wrote(request("DELETE", `${one(id)}/purge`), key),
 			revisions: {
 				// Every revision, newest first: the API pages them ({ data, cursor }), this follows the cursor.
 				list: async (id) => {
@@ -1121,7 +1137,11 @@ export function createClient(options = {}) {
 					return all;
 				},
 				get: (id, rid) => request("GET", `${one(id)}/revisions/${seg(rid)}`),
-				restore: (id, rid) => request("POST", `${one(id)}/revisions/${seg(rid)}/restore`)
+				diff: (id, from, to) => request("GET", `${one(id)}/revisions/diff`, { query: new URLSearchParams({
+					from: String(from),
+					to: String(to)
+				}) }),
+				restore: (id, rid) => wrote(request("POST", `${one(id)}/revisions/${seg(rid)}/restore`), key)
 			},
 			stage: (id, patch) => request("PATCH", `${one(id)}/staged`, { json: patch }),
 			staged: (id) => request("GET", `${one(id)}/staged`),
@@ -1282,4 +1302,515 @@ function toError(res, body) {
 		code: "http_error",
 		detail: `HTTP ${res.status}`
 	});
+}
+export class WooStoreError extends Error {
+	/** The string Woo sent, unchanged. Extensions and other Woo versions send codes outside `WooStoreErrorCode`.
+	* `http_error` is this client's own: the answer was not a Woo error, such as a proxy's or a maintenance page. */
+	code;
+	status;
+	/** The current cart. Woo sends it with a 409 only. */
+	cart;
+	/** `message` is plain text: Woo's HTML entities are already decoded. */
+	constructor(code, message, status, cart) {
+		super(message);
+		this.name = "WooStoreError";
+		this.code = code;
+		this.status = status;
+		this.cart = cart;
+	}
+}
+/** Woo's messages are HTML text (`The quantity of &quot;Mug&quot; ...`). The result is plain text, never markup to insert. */
+function wooPlainText(html) {
+	const named = {
+		amp: "&",
+		lt: "<",
+		gt: ">",
+		quot: "\"",
+		apos: "'",
+		nbsp: "\xA0"
+	};
+	return html.replace(/&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|(amp|lt|gt|quot|apos|nbsp));/gi, (entity, decimal, hex, name) => {
+		if (name) return named[name.toLowerCase()];
+		const point = decimal ? Number(decimal) : parseInt(hex, 16);
+		return point > 0 && point <= 1114111 && (point < 55296 || point > 57343) ? String.fromCodePoint(point) : entity;
+	});
+}
+/** Exact conversion, including zero-decimal currencies. Never uses floating-point arithmetic. */
+export function wooDecimal(minor, precision) {
+	if (!Number.isInteger(precision) || precision < 0 || precision > 12 || !/^-?\d+$/.test(minor)) throw new Error("Invalid Store API money");
+	const negative = minor.startsWith("-");
+	const digits = (negative ? minor.slice(1) : minor).padStart(precision + 1, "0");
+	return (negative ? "-" : "") + (precision ? `${digits.slice(0, -precision)}.${digits.slice(-precision)}` : digits);
+}
+function wooCart(data) {
+	const precision = data.totals.currency_minor_unit;
+	const decimal = (value) => wooDecimal(value, precision);
+	return {
+		items: data.items.map((item) => ({
+			key: item.key,
+			id: item.id,
+			name: item.name,
+			quantity: item.quantity,
+			images: item.images,
+			variation: item.variation,
+			prices: {
+				price: wooDecimal(item.prices.price, item.prices.currency_minor_unit),
+				currencyCode: item.prices.currency_code,
+				currencyMinorUnit: item.prices.currency_minor_unit
+			},
+			totals: {
+				lineTotal: decimal(item.totals.line_total),
+				lineSubtotal: decimal(item.totals.line_subtotal)
+			}
+		})),
+		itemsCount: data.items_count,
+		needsShipping: data.needs_shipping,
+		billingAddress: wooReadAddress(data.billing_address),
+		shippingAddress: wooReadAddress(data.shipping_address),
+		totals: {
+			totalItems: decimal(data.totals.total_items),
+			totalPrice: decimal(data.totals.total_price),
+			totalShipping: data.totals.total_shipping === null ? null : decimal(data.totals.total_shipping),
+			totalDiscount: decimal(data.totals.total_discount),
+			totalFees: decimal(data.totals.total_fees ?? "0"),
+			totalTax: decimal(data.totals.total_tax),
+			currencyCode: data.totals.currency_code,
+			currencyMinorUnit: precision
+		},
+		coupons: data.coupons.map((coupon) => ({
+			code: coupon.code,
+			totals: { totalDiscount: decimal(coupon.totals.total_discount) }
+		})),
+		fees: (data.fees ?? []).map((fee) => ({
+			id: fee.key,
+			name: fee.name,
+			total: decimal(fee.totals.total),
+			totalTax: decimal(fee.totals.total_tax)
+		})),
+		shippingRates: (data.shipping_rates ?? []).map((pack) => ({
+			packageId: pack.package_id,
+			name: pack.name,
+			rates: pack.shipping_rates.map((rate) => ({
+				id: rate.rate_id,
+				name: rate.name,
+				price: wooDecimal(rate.price, rate.currency_minor_unit),
+				selected: rate.selected,
+				currencyCode: rate.currency_code,
+				currencyMinorUnit: rate.currency_minor_unit
+			}))
+		}))
+	};
+}
+function isWooRecord(value) {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function wooReadAddress(value) {
+	if (!isWooRecord(value)) return undefined;
+	const text = (key) => typeof value[key] === "string" ? value[key] : undefined;
+	return {
+		firstName: text("first_name"),
+		lastName: text("last_name"),
+		company: text("company"),
+		address1: text("address_1"),
+		address2: text("address_2"),
+		city: text("city"),
+		state: text("state"),
+		postcode: text("postcode"),
+		country: text("country"),
+		email: text("email"),
+		phone: text("phone")
+	};
+}
+/** Woo adds the current cart to a 409 answer, and to no other (`AbstractCartRoute::get_route_error_response`). */
+function wooErrorCart(payload) {
+	const cart = isWooRecord(payload.data) ? payload.data.cart : undefined;
+	if (!isWooRecord(cart)) return undefined;
+	// A broken error payload must not hide Woo's original refusal.
+	try {
+		return wooCart(cart);
+	} catch {
+		return undefined;
+	}
+}
+export function createCartClient(options = {}) {
+	const request = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const base = (options.base ?? "/wp-json/wc/store/v1").replace(/\/$/, "");
+	const page = globalThis.location?.href;
+	let resolved;
+	let crossOrigin = false;
+	try {
+		const url = new URL(base, page);
+		resolved = url.href;
+		crossOrigin = page !== undefined && url.origin !== new URL(page).origin;
+	} catch {}
+	const root = resolved ?? base;
+	// A browser sends another origin no Woo cookie, so every write there would start a new, empty cart.
+	if (options.session === "cookie" && crossOrigin) throw new Error(`A cookie cart needs WooCommerce on this page's origin. Use session: "token" for ${root}.`);
+	const tokenMode = options.session === "token" || options.session === undefined && crossOrigin;
+	const storageKey = `typedpress:woo-cart:${root}`;
+	let token = null;
+	let nonce = null;
+	let pending = Promise.resolve();
+	const listeners = new Set();
+	// Every tab shares one cart: the token is read before each request and saved after each response.
+	// Blocked or absent storage leaves it in this client, for as long as the page stays open.
+	function storedToken() {
+		try {
+			token = globalThis.localStorage.getItem(storageKey) ?? token;
+		} catch {}
+		return token;
+	}
+	function storeToken(next) {
+		token = next;
+		try {
+			next === null ? globalThis.localStorage.removeItem(storageKey) : globalThis.localStorage.setItem(storageKey, next);
+		} catch {}
+	}
+	async function send(path, body) {
+		const headers = new Headers();
+		const sent = tokenMode ? storedToken() : nonce;
+		if (tokenMode && sent) headers.set("Cart-Token", sent);
+		if (body !== undefined) {
+			headers.set("Content-Type", "application/json");
+			if (!tokenMode && sent) headers.set("Nonce", sent);
+		}
+		const response = await request(`${base}${path}`, {
+			method: body === undefined ? "GET" : "POST",
+			credentials: tokenMode ? "omit" : "same-origin",
+			cache: "no-store",
+			// The token belongs to the configured Store API, including when a server redirects.
+			...tokenMode ? { redirect: "error" } : {},
+			headers,
+			...body === undefined ? {} : { body: JSON.stringify(body) }
+		});
+		if (!tokenMode) nonce = response.headers.get("Nonce") ?? nonce;
+		// An HTML maintenance or proxy page is not JSON: report the status, not the parse failure.
+		const data = await response.json().catch(() => undefined);
+		if (!response.ok || data === undefined) {
+			const error = isWooRecord(data) ? data : {};
+			throw new WooStoreError(typeof error.code === "string" ? error.code : "http_error", typeof error.message === "string" ? wooPlainText(error.message) : "The cart request failed", response.status, wooErrorCart(error));
+		}
+		if (tokenMode) {
+			const next = response.headers.get("Cart-Token");
+			if (!next) throw new WooStoreError("cart_token_unavailable", "WooCommerce did not return a cart token. Check the Store API and its CORS settings.", response.status);
+			storeToken(next);
+		}
+		return data;
+	}
+	async function readCart(path, body) {
+		const cart = wooCart(await send(`/cart${path}`, body));
+		for (const listener of listeners) listener(cart);
+		return cart;
+	}
+	function queue(run) {
+		const next = pending.catch(() => undefined).then(run);
+		pending = next;
+		return next;
+	}
+	// Woo asks a write for a nonce when it did not accept the credential sent: a stale nonce in a
+	// cookie session, or a Cart-Token past its expiry (CartTokenUtils, 48 hours by default).
+	const refused = tokenMode ? "woocommerce_rest_missing_nonce" : "woocommerce_rest_invalid_nonce";
+	function cartRequest(path, body) {
+		return queue(async () => {
+			if (body !== undefined && !(tokenMode ? storedToken() : nonce)) await readCart("");
+			try {
+				return await readCart(path, body);
+			} catch (error) {
+				if (body === undefined || !(error instanceof WooStoreError) || error.code !== refused) throw error;
+				// An expired token's cart is gone from Woo too: the write goes to the cart the read starts.
+				nonce = null;
+				if (tokenMode) storeToken(null);
+				await readCart("");
+				return readCart(path, body);
+			}
+		});
+	}
+	const address = (input) => Object.fromEntries(Object.entries(input).map(([key, value]) => [{
+		firstName: "first_name",
+		lastName: "last_name",
+		address1: "address_1",
+		address2: "address_2"
+	}[key] ?? key, value]));
+	const cart = {
+		get: () => cartRequest(""),
+		add: (id, quantity = 1) => cartRequest("/add-item", {
+			id,
+			quantity
+		}),
+		update: (key, quantity) => quantity === 0 ? cartRequest("/remove-item", { key }) : cartRequest("/update-item", {
+			key,
+			quantity
+		}),
+		remove: (key) => cartRequest("/remove-item", { key }),
+		updateCustomer: (input) => cartRequest("/update-customer", {
+			...input.billing ? { billing_address: address(input.billing) } : {},
+			...input.shipping ? { shipping_address: address(input.shipping) } : {}
+		}),
+		selectShipping: (packageId, rateId) => cartRequest("/select-shipping-rate", {
+			package_id: packageId,
+			rate_id: rateId
+		}),
+		subscribe: (listener) => {
+			listeners.add(listener);
+			return () => {
+				listeners.delete(listener);
+			};
+		}
+	};
+	if (!tokenMode) return cart;
+	const tokenCart = {
+		...cart,
+		checkoutLink: (checkoutUrl) => {
+			const sent = storedToken();
+			if (!sent) throw new WooStoreError("cart_token_unavailable", "Load your cart before checking out.", 0);
+			// Without the Store API's own address (a relative root outside a browser) the origin cannot be checked.
+			const link = resolved === undefined ? undefined : new URL(checkoutUrl, resolved);
+			if (!link || link.origin !== new URL(resolved).origin) throw new Error(`The checkout link must be on the Store API's origin (${root}): it carries the cart token.`);
+			link.searchParams.set("session", sent);
+			return link.href;
+		},
+		checkout: (input) => queue(async () => {
+			if (!storedToken()) throw new WooStoreError("cart_token_unavailable", "Load your cart before checking out.", 0);
+			let data;
+			try {
+				data = await send("/checkout", input);
+			} catch (error) {
+				if (!(error instanceof WooStoreError) || error.code !== refused) throw error;
+				// The expired token's cart is gone from Woo: subscribers get the new, empty one.
+				storeToken(null);
+				await readCart("").catch(() => undefined);
+				throw new WooStoreError("cart_token_expired", "Your cart expired. Add the items again before checking out.", error.status);
+			}
+			if (typeof data !== "object" || data === null || !("order_id" in data) || typeof data.order_id !== "number" || !("status" in data) || typeof data.status !== "string" || !("payment_result" in data) || typeof data.payment_result !== "object" || data.payment_result === null || !("payment_status" in data.payment_result) || typeof data.payment_result.payment_status !== "string" || !("redirect_url" in data.payment_result) || typeof data.payment_result.redirect_url !== "string" || !("payment_details" in data.payment_result)) {
+				throw new WooStoreError("invalid_checkout_response", "WooCommerce returned an unexpected checkout response. Check your order before retrying.", 0);
+			}
+			const result = {
+				order_id: data.order_id,
+				status: data.status,
+				payment_result: {
+					payment_status: data.payment_result.payment_status,
+					redirect_url: data.payment_result.redirect_url,
+					payment_details: data.payment_result.payment_details
+				}
+			};
+			// Woo emptied the cart. The order stands whether or not this read answers.
+			await readCart("").catch(() => undefined);
+			return result;
+		})
+	};
+	return tokenCart;
+}
+export const cart = createCartClient();
+const wooCartStores = new WeakMap();
+/** A tab shown again reads the cart only when Woo last answered at least this long ago. */
+const SHOWN_AGAIN_MS = 5e3;
+export function createCartStore(client = cart) {
+	const shared = wooCartStores.get(client);
+	if (shared) return shared;
+	const initial = {
+		cart: undefined,
+		loading: true,
+		pending: false,
+		error: undefined
+	};
+	let state = initial;
+	let confirmed;
+	const optimistic = new Set();
+	const listeners = new Set();
+	let unsubscribe;
+	let tail = Promise.resolve();
+	let reading;
+	let writing = false;
+	let receivedDuringWrite;
+	let failedRead;
+	// When Woo last gave a cart or failed a read.
+	let answeredAt = 0;
+	function publish(changes = {}) {
+		let cart = confirmed;
+		if (cart) for (const update of optimistic) cart = update(cart);
+		state = {
+			...state,
+			...changes,
+			cart,
+			pending: optimistic.size > 0
+		};
+		for (const listener of listeners) listener();
+	}
+	function receive(cart) {
+		// The client's subscription can emit the write's own answer before its promise resolves.
+		// Wait for that promise so we can drop the corresponding optimistic update at the same time.
+		if (writing) {
+			receivedDuringWrite = cart;
+			return;
+		}
+		confirmed = cart;
+		publish(answered());
+	}
+	/** Woo gave a cart. That answers a failed read; a refused write stays until the next write starts. */
+	function answered() {
+		answeredAt = Date.now();
+		return state.error !== undefined && state.error === failedRead ? {
+			loading: false,
+			error: undefined
+		} : { loading: false };
+	}
+	function describe(error) {
+		return error instanceof Error ? error : new Error(String(error));
+	}
+	function enqueue(run) {
+		const next = tail.then(run);
+		tail = next.catch(() => undefined);
+		return next;
+	}
+	function refresh() {
+		if (reading) return reading;
+		const next = enqueue(async () => {
+			try {
+				const cart = await client.get();
+				if (cart !== confirmed) receive(cart);
+				return cart;
+			} catch (error) {
+				failedRead = describe(error);
+				answeredAt = Date.now();
+				publish({
+					loading: false,
+					error: failedRead
+				});
+				throw error;
+			} finally {
+				if (reading === next) reading = undefined;
+			}
+		});
+		reading = next;
+		return next;
+	}
+	/** `cartOf` gives the cart in Woo's answer. An answer with none (an order) uses the cart the client read after it. */
+	function write(run, update, cartOf) {
+		optimistic.add(update);
+		// A read queued or sent before this write answers with the cart from before it, so a later refresh() asks again.
+		reading = undefined;
+		const result = enqueue(async () => {
+			writing = true;
+			let changes = { loading: false };
+			try {
+				const answer = await run();
+				confirmed = cartOf(answer) ?? receivedDuringWrite ?? confirmed;
+				changes = answered();
+				return answer;
+			} catch (error) {
+				// Woo sends the current cart with a 409. Any other refusal rolls back to the confirmed cart.
+				const current = (error instanceof WooStoreError ? error.cart : undefined) ?? receivedDuringWrite;
+				if (current) {
+					confirmed = current;
+					answeredAt = Date.now();
+				}
+				changes = {
+					loading: false,
+					error: describe(error)
+				};
+				throw error;
+			} finally {
+				writing = false;
+				receivedDuringWrite = undefined;
+				optimistic.delete(update);
+				publish(changes);
+			}
+		});
+		// The shopper acted again: only now does the previous failure go away.
+		publish({ error: undefined });
+		return result;
+	}
+	// Quantity and removal predictions follow @woo/storefront-core (MIT), packages/core/src/resources/cart.ts.
+	function quantity(current, key, next) {
+		const item = current.items.find((item) => item.key === key);
+		if (!item || !Number.isSafeInteger(next) || next < 0) return current;
+		const items = next === 0 ? current.items.filter((item) => item.key !== key) : current.items.map((item) => item.key === key ? {
+			...item,
+			quantity: next
+		} : item);
+		return {
+			...current,
+			items,
+			itemsCount: current.itemsCount + next - item.quantity
+		};
+	}
+	const cartWrite = (run, update) => write(run, update, (cart) => cart);
+	const actions = {
+		refresh,
+		add: (id, count = 1) => cartWrite(() => client.add(id, count), (current) => {
+			if (!Number.isSafeInteger(count) || count <= 0) return current;
+			// A variation's line has the variation's id. Two lines with one id differ in data only Woo can compare.
+			const matches = current.items.filter((item) => item.id === id);
+			const item = matches.length === 1 ? matches[0] : undefined;
+			// Woo supplies the new line's key, product data and prices. Until then only the count changes.
+			return item ? quantity(current, item.key, item.quantity + count) : {
+				...current,
+				itemsCount: current.itemsCount + count
+			};
+		}),
+		update: (key, count) => cartWrite(() => client.update(key, count), (current) => quantity(current, key, count)),
+		remove: (key) => cartWrite(() => client.remove(key), (current) => quantity(current, key, 0)),
+		selectShipping: (packageId, rateId) => cartWrite(() => client.selectShipping(packageId, rateId), (current) => ({
+			...current,
+			shippingRates: current.shippingRates.map((pack) => pack.packageId === packageId && pack.rates.some((rate) => rate.id === rateId) ? {
+				...pack,
+				rates: pack.rates.map((rate) => ({
+					...rate,
+					selected: rate.id === rateId
+				}))
+			} : pack)
+		})),
+		updateCustomer: (input) => cartWrite(() => client.updateCustomer(input), (current) => ({
+			...current,
+			...input.billing ? { billingAddress: {
+				...current.billingAddress,
+				...input.billing
+			} } : {},
+			...input.shipping ? { shippingAddress: {
+				...current.shippingAddress,
+				...input.shipping
+			} } : {}
+		}))
+	};
+	// The order is queued behind the cart's writes and holds `pending`. The cart shown stays as it is
+	// until the read the client makes after the order answers.
+	if ("checkout" in client) {
+		actions.checkout = (input) => write(() => client.checkout(input), (current) => current, () => undefined);
+	}
+	const page = () => globalThis.document;
+	const reread = () => {
+		refresh().catch(() => undefined);
+	};
+	const shown = () => {
+		// Switching tabs back and forth asks once per SHOWN_AGAIN_MS at most; a cart Woo just confirmed is current.
+		if (page()?.visibilityState === "visible" && Date.now() - answeredAt >= SHOWN_AGAIN_MS) reread();
+	};
+	const restored = (event) => {
+		if (event?.persisted === true) reread();
+	};
+	const store = {
+		actions,
+		snapshot: () => state,
+		serverSnapshot: () => initial,
+		subscribe(changed) {
+			listeners.add(changed);
+			if (listeners.size === 1) {
+				unsubscribe = client.subscribe(receive);
+				page()?.addEventListener?.("visibilitychange", shown);
+				globalThis.addEventListener?.("pageshow", restored);
+				reread();
+			}
+			return () => {
+				listeners.delete(changed);
+				if (listeners.size === 0) {
+					unsubscribe?.();
+					unsubscribe = undefined;
+					page()?.removeEventListener?.("visibilitychange", shown);
+					globalThis.removeEventListener?.("pageshow", restored);
+				}
+			};
+		}
+	};
+	wooCartStores.set(client, store);
+	return store;
 }

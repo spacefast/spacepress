@@ -2,10 +2,10 @@
 // tag helpers and String.raw for regex and path text. Every action runs under Node and as
 // compiled PHP; the JSON results must be byte-identical. `tagged-templates-helpers.mjs` runs the
 // same shapes untyped.
-import { action, defineConfig } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 import { taggedUntyped as taggedUntypedImpl } from "./tagged-templates-helpers.mjs";
 
-const run = (handler: () => unknown) => action({ input: {}, handler });
+const run = (handler: () => unknown) => mutation({}, handler);
 
 /** Escapes each substitution, like a 0.8 app's `html` helper. */
 function html(strings: TemplateStringsArray, ...values: (string | number)[]): string {

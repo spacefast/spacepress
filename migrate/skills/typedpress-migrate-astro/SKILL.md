@@ -9,7 +9,7 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 ## When to use
 
 - An Astro site should be served by WordPress through TypedPress: editors in wp-admin, the pages in
-  PHP. To keep Astro and read a TypedPress app instead, use `@typedpress/astro` (`docs/astro.md`).
+  PHP. To keep Astro and read a TypedPress app instead, use `@typedpress/astro` (`www/content/docs/integrations/astro-and-clients.md`).
 
 The conversion is done by you, file by file, with the table in
 [references/astro-to-first.md](references/astro-to-first.md). There is no converter command.
@@ -84,5 +84,4 @@ The conversion is done by you, file by file, with the table in
   not drop them silently.
 - Copying a live site's content is publishing; do it only when the owner asks.
 
-Reference: `docs/astro.md`, `docs/pages.md` and `docs/config-api.md` (Astro's
-`src/content.config.ts`); a worked migration is `migrate/astro/example/` in the repository.
+Reference: `www/content/docs/integrations/astro-and-clients.md`, `www/content/docs/core/pages-and-islands.md` and `www/content/docs/core/schema-and-storage.md`; a worked migration is `migrate/astro/example/` in the repository.

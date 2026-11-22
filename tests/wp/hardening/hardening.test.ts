@@ -30,7 +30,7 @@ const FILE_CAPS = ["edit_files", "edit_plugins", "edit_themes"];
 const INSTALL_CAPS = ["install_plugins", "upload_plugins", "update_plugins", "delete_plugins", "install_themes", "upload_themes", "update_themes", "delete_themes", "update_core"];
 
 test("the active app lists every switch it applies", async () => {
-  const schema = (await (await fetch(`${harness.url}/__tp/api/v1`, { headers: auth("admin") })).json()) as { data: { runtime: { wp: { hardening: string[] } } } };
+  const schema = (await (await fetch(`${harness.url}/wp-json/typedpress/v1`, { headers: auth("admin") })).json()) as { data: { runtime: { wp: { hardening: string[] } } } };
   assert.deepEqual(schema.data.runtime.wp.hardening, ["xmlrpc", "pings", "emoji", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "authors", "schemaLock", "loginErrors", "permalinks", "timezone", "blockTheme"]);
 });
 
@@ -141,7 +141,7 @@ async function withWordPressDefaults(run: () => Promise<void>) {
 
 test("xmlrpc and pings left out of the config: WordPress's own, the site's Discussion settings included", async () => {
   await withWordPressDefaults(async () => {
-    const listing = (await (await fetch(`${site}/__tp/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.hardening;
+    const listing = (await (await fetch(`${site}/wp-json/typedpress/v1`, { headers: auth("admin") })).json()).data.runtime.wp.hardening;
     assert.deepEqual(listing, ["emoji", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "authors", "schemaLock", "loginErrors", "permalinks", "timezone", "blockTheme"]);
     // XML-RPC answers, signed-in methods included (an unscoped application password, as WordPress allows).
     const listed = await xmlrpc("system.listMethods");
@@ -182,7 +182,7 @@ test("xmlrpc and pings left out of the config: WordPress's own, the site's Discu
 });
 
 test("the facade's built-in settings: public fields for everyone, writes for admins, as core decides", async () => {
-  const settings = `${site}/__tp/api/v1/settings`;
+  const settings = `${site}/wp-json/typedpress/v1/settings`;
   const patch = (who: "editor" | "admin", body: unknown) =>
     fetch(settings, { method: "PATCH", headers: { "content-type": "application/json", ...auth(who) }, body: JSON.stringify(body) });
   const anon = await (await fetch(settings)).json();
@@ -236,7 +236,7 @@ test("comments: closed on core posts, pages and kinds without `comments`; open w
   assert.deepEqual(evalJson("echo wp_json_encode([get_default_comment_status('post'), get_default_comment_status('tp_memos'), get_default_comment_status('tp_notes')]);"), ["closed", "closed", "open"]);
   // The facade's built-in `comments` kind (spec §2.1, this app declares none): core's route and rules,
   // TypedPress's field names, and the same refusal on a closed item.
-  const facade = `${site}/__tp/api/v1/comments`;
+  const facade = `${site}/wp-json/typedpress/v1/comments`;
   const write = (on: number) => fetch(facade, { method: "POST", headers: { "content-type": "application/json", ...auth("editor") }, body: JSON.stringify({ on, content: `facade on ${on}` }) });
   const closed = await write(ids.memo);
   assert.equal(closed.status, 403, await closed.text());

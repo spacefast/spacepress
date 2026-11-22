@@ -1,6 +1,5 @@
-import { action, defineConfig, text } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 import { createCipheriv } from "node:crypto";
-export const a = action({ input: { d: text() }, access: "anyone",
-  handler(i) { return String(createCipheriv); } });
+export const a = mutation({ access: "anyone" }, (i: { d: string }) => { return String(createCipheriv); });
 
 export default defineConfig({});

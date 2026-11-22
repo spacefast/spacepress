@@ -18,7 +18,7 @@ pub struct Options {
     pub check: bool,
 }
 
-/// A synced collection, as the facade's schema (`GET /__tp/api/v1`) describes it.
+/// A synced collection, as the facade's schema (`GET /wp-json/typedpress/v1`) describes it.
 struct Collection {
     name: String,
     dir: PathBuf,
@@ -41,9 +41,9 @@ struct Collection {
 
 /// Collections that sync, targets of references first (a cycle keeps config order).
 fn collections(schema: &Value, project: &Path, only: &Option<Vec<String>>) -> Result<Vec<Collection>, String> {
-    let all = schema["kinds"]
-        .as_object()
-        .ok_or("the site's schema (GET /__tp/api/v1) has no kinds; deploy this TypedPress version to the site")?;
+    let all = schema["kinds"].as_object().ok_or(
+        "the site's schema (GET /wp-json/typedpress/v1) has no kinds; deploy this TypedPress version to the site",
+    )?;
     let mut synced: IndexMap<String, Collection> = IndexMap::new();
     for (name, spec) in all {
         let Some(sync) = spec["sync"].as_object() else { continue };
@@ -462,7 +462,7 @@ fn pull(client: &Client, c: &Collection) -> Result<IndexMap<String, Remote>, Pro
             return Err(invalid("a page with more to come is empty".into()));
         }
         for item in records {
-            let (uid, remote) = entry(item).map_err(&invalid)?;
+            let (uid, remote) = entry(item).map_err(invalid)?;
             if out.insert(uid.clone(), remote).is_some() {
                 return Err(invalid(format!("{uid} is listed twice")));
             }

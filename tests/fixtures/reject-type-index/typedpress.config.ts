@@ -1,5 +1,5 @@
-import { action, defineConfig } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 type Value = ({ id: number } | { other: string })["id"];
-export const example = action({ input: {}, handler: () => { const value: Value = 1; return value; } });
+export const example = mutation({}, () => { const value: Value = 1; return value; });
 
 export default defineConfig({});

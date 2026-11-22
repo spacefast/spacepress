@@ -462,36 +462,43 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
     let module_of = |file: &str| program.app_files.iter().find(|(p, _)| p == file).map(|(_, m)| *m);
     prebuilt(program, &files, &kinds, ext.schema.output)?;
     let output = ext.schema.output;
-    let route = |r: &app::Route| AppRoute {
-        prerender: r.kind == RouteKind::Page
-            && files.get(&r.file).map_or(output == Output::Static, |f| {
-                f.prerender.unwrap_or(output == Output::Static)
-            }),
-        styles: crate::assets::stylesheets(
-            program,
-            &r.layouts
-                .iter()
-                .chain((r.kind == RouteKind::Page).then_some(&r.file))
-                .filter_map(|f| module_of(f))
-                .collect::<Vec<_>>(),
-        ),
-        id: ids.get(&r.file).map(|(id, _)| id.clone()).unwrap_or_else(|| r.id()),
-        explicit_id: ids.get(&r.file).map(|(_, span)| *span),
-        pattern: r.pattern(),
-        page: (r.kind == RouteKind::Page).then(|| r.file.clone()),
-        handler: (r.kind == RouteKind::Handler).then(|| r.file.clone()),
-        layouts: r.layouts.clone(),
-        error: r.error.clone(),
-        kind: (r.kind == RouteKind::Page)
-            .then(|| {
-                kinds
-                    .iter()
-                    .find_map(|(k, u)| app::serves_kind_url(r, u).map(|b| (k.clone(), b)))
-            })
-            .flatten(),
+    let route = |r: &app::Route| {
+        let roots: Vec<usize> = r
+            .layouts
+            .iter()
+            .chain((r.kind == RouteKind::Page).then_some(&r.file))
+            .filter_map(|f| module_of(f))
+            .collect();
+        AppRoute {
+            prerender: r.kind == RouteKind::Page
+                && files.get(&r.file).map_or(output == Output::Static, |f| {
+                    f.prerender.unwrap_or(output == Output::Static)
+                }),
+            styles: crate::assets::stylesheets(program, &roots),
+            preloads: crate::assets::preloads(program, &roots),
+            id: ids.get(&r.file).map(|(id, _)| id.clone()).unwrap_or_else(|| r.id()),
+            explicit_id: ids.get(&r.file).map(|(_, span)| *span),
+            pattern: r.pattern(),
+            page: (r.kind == RouteKind::Page).then(|| r.file.clone()),
+            handler: (r.kind == RouteKind::Handler).then(|| r.file.clone()),
+            layouts: r.layouts.clone(),
+            error: r.error.clone(),
+            kind: (r.kind == RouteKind::Page)
+                .then(|| {
+                    kinds
+                        .iter()
+                        .find_map(|(k, u)| app::serves_kind_url(r, u).map(|b| (k.clone(), b)))
+                })
+                .flatten(),
+        }
     };
     for asset in program.assets.values() {
-        ext.schema.assets.insert(asset.file.clone(), asset.bytes.clone());
+        if asset.emits_file() && !asset.file.starts_with('/') {
+            ext.schema.assets.insert(asset.file.clone(), asset.bytes.clone());
+            if let Some(meta) = &asset.meta {
+                ext.schema.assets_meta.insert(asset.file.clone(), meta.clone());
+            }
+        }
     }
     ext.schema.app = Some(crate::schema::App {
         routes: program.app.routes.iter().map(route).collect(),

@@ -22,7 +22,18 @@ const inferredNumber: string = sample.inferredNumber;
 const effects: { captured: number; invoked: number; loop: number; helper: { count: number; captured: number; keep: 0 }; maybeCaptured?: boolean; maybeHelper?: boolean; shadow: 0 | 1; early: 0 | 1; byValue: 0 | 1; passed: { scalar?: boolean; member?: boolean; object: { maybe?: boolean; keep: 0 }; destructured: { maybe?: boolean; keep: 0 } }; callback: number; defaulted: number; localDefaulted: number; logical: { nullish: number; or: number; and: number; guarded: number; absent: number; nested?: number }; nullableArguments: { local?: number; module?: number; absent?: number; sibling: number; stable: "a" | "b"; unchecked: { empty?: "a" | "b"; shortened?: "a" | "b"; tail: (number | null)[]; reversed?: "a" | "b"; captured?: "a" | "b"; forwarded?: "a" | "b"; grown?: "a" | "b"; optional?: boolean; present?: boolean; defaulted: boolean; moduleDefaulted: boolean; moduleProvided: boolean; destructuredDefault: boolean; destructuredProvided: boolean; early: "a" | "b" | null; late: "a" | "b" | null }; ordered?: number; looped: "a" | "b"; earlier: number } } = sample.effects;
 
 // Field access (phase 2 §4.3): a column with a read rule other than "anyone" can be absent from a row.
-const anonymousAuthor: Author = { id: 1, name: "A", status: "published", publishedAt: null, uid: null };
+const anonymousAuthor: Author = {
+  id: 1,
+  name: "A",
+  status: "published",
+  publishedAt: null,
+  uid: null,
+  author: null,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  deletedAt: null,
+  deletedBy: null,
+};
 const email: string | null | undefined = anonymousAuthor.email;
 // @ts-expect-error a possibly hidden column is not always present
 const alwaysEmail: string | null = anonymousAuthor.email;

@@ -1,37 +1,39 @@
-# Your TypedPress app
+# __TP_APP_NAME__
 
-```sh
+A **SpacePress** (`spacepress.dev`) application compiled from TypeScript into native PHP and WordPress plugins.
+
+## Getting Started
+
+```bash
 npm run dev
 ```
 
-Open `/index.html` on the WordPress URL printed by TypedPress: the project's `public/` folder is served at the site root. “Write a note” opens the native WordPress editor; use the local credentials printed in the terminal. Notes are public, and only WordPress editors can change them. Local credentials are for development only. WordPress's existing theme still owns its homepage.
+Open the website URL printed in your terminal, and visit `/wp-admin/new/` for SpacePress Admin. Edit `tp/app/page.tsx` or `typedpress.config.ts` and save — the page reloads automatically when SpacePress finishes rebuilding.
 
-Edit `typedpress.config.ts` for your backend and `public/` for your frontend. TypedPress rebuilds on save; refresh your browser to see updates. WordPress serves the frontend, API, login and admin at one origin. No separate frontend server is needed. An external frontend framework is optional; this starter has none. Ordinary page templates can be added when supported by your compiler version.
+## Project Files
 
-## Content first, SQL tables when you need them
+- `typedpress.config.ts` — schema definitions (`notes` collection, `site` global) and app config
+- `tp/actions.ts` — server actions compiled to native PHP endpoints
+- `tp/app/` — file-based TSX pages, layouts, and `site.css`
+- `content/notes/` — Markdown notes synchronized with WordPress via `npx typedpress sync`
+- `tp/_generated/` — compiler-emitted `db.d.ts`, `routes.d.ts`, migrations, OpenAPI spec, and typed client
 
-This starter is content only. `notes` is a `collection()`: its rows are WordPress posts (the post type `tp_notes`), edited in wp-admin with drafts and revisions. When the app needs rows it filters, sorts, counts or joins (orders, bookings, votes), add tables:
+## Useful Scripts
 
-```sh
-npx typedpress add db
-```
+| Script | What it does |
+|---|---|
+| `npm run dev` | Start local WordPress + SQLite and rebuild on change |
+| `npm run stop` | Stop the local dev server while preserving data |
+| `npm run status` | Check local dev server status |
+| `npm run check` | Validate schemas, handlers, and pages without writing output |
+| `npm run typecheck` | Run `typedpress build --quiet && tsc --noEmit` |
+| `npm run build` | Emit WordPress plugins to `tp/dist/wp-content/plugins/` |
+| `npm run wp -- <args>` | Run any WP-CLI command against the local site |
 
-That writes `tp/tables.ts` with two example `table()` kinds, typed client calls and `tp/DATABASE.md`, which says when to use which. It never overwrites a file.
+## Next Steps
 
-## Commands
-
-```sh
-npm run check                 # compiler diagnostics, without writing output
-npm run typecheck             # generate and check backend + client types
-npm run build                # WordPress plugin artifact in tp/dist/wp-content
-npm run dev -- --port 9123    # choose an available port
-npm run status
-npm run wp -- core version   # WordPress's own WP-CLI
-npm run stop                 # stop the site, preserve its SQLite data
-```
-
-## Next
-
-`client.ts` demonstrates the generated typed client. The static frontend uses same-origin REST directly. Backend TypeScript compiles to PHP and supports a documented subset; it is not a Node.js server. Run `npm run check` when adding library code.
-
-Commit `tp/_generated/migrations/`, `tp/_generated/client/` and `tp/_generated/db.d.ts`. `.tp/` is local state and build output. Do not deploy local SQLite files or development credentials. See the TypedPress installation guide for release availability, compiler overrides and production deployment prerequisites.
+- Sync Markdown content: `npx typedpress sync`
+- Add a WooCommerce storefront: `npx typedpress add shop`
+- Add SQL tables: `npx typedpress add db`
+- Add OpenAPI docs at `/api`: `npx typedpress add api-reference`
+- Read the [SpacePress Interactive Guide](https://spacepress.dev/guide)

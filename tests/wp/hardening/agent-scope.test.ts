@@ -8,7 +8,7 @@ import { auth, core, harness, run, sql, wp, wpTry, type Role } from "../env.ts";
 import { loginCookie } from "../login.ts";
 
 const site = harness.url;
-const api = `${site}/__tp/api/v1`;
+const api = `${site}/wp-json/typedpress/v1`;
 const abilities = `${site}/wp-json/wp-abilities/v1/abilities`;
 const app = "hardening-lane";
 

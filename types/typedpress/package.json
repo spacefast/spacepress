@@ -20,6 +20,9 @@
     },
     "./content": {
       "types": "./content.d.ts"
+    },
+    "./danger": {
+      "types": "./danger.d.ts"
     }
   }
 }

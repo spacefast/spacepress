@@ -51,7 +51,10 @@ final class PostsController extends \WP_REST_Posts_Controller
     public function get_items($request)
     {
         $facade = Facade::dispatching();
-        $batch = !$facade && $request->get_method() === 'GET' && $request->has_param('_fields')
+        // The page's stored rows in one read (storedRow()), for the API's own lists and for a core
+        // list that asks for some fields. Where a read extension or a locale could give the batch
+        // other rows than each item's own read, every item keeps its own.
+        $batch = ($facade || $request->has_param('_fields')) && $request->get_method() === 'GET'
             && \TypedPress\Extensions::constraintReadsSafe() && !\TypedPress\Locale\Module::localized($this->collection);
         if ((!$facade && !$batch) || ($viewer = CoreAccess::viewer()) === null) {
             return $this->readRequest($request, fn () => $this->readItems($request));
@@ -60,10 +63,12 @@ final class PostsController extends \WP_REST_Posts_Controller
         $this->projectedPage = $batch ? ['request' => $request, 'ids' => [], 'rows' => [], 'generation' => -1] : null;
         $prefetch = function (mixed $posts, mixed $query) use ($viewer, $facade): mixed {
             if (is_array($posts) && $query instanceof \WP_Query && $query->get('post_type') === $this->post_type) {
+                $ids = array_map(static fn ($p) => (int) ($p instanceof \WP_Post ? $p->ID : $p), $posts);
                 if ($facade) {
-                    Facade::prefetch($this->collection, array_map(static fn ($p) => (int) ($p instanceof \WP_Post ? $p->ID : $p), $posts), $viewer);
-                } elseif ($this->projectedPage !== null && $this->projectedPage['generation'] === -1 && count($posts) > 1 && count($posts) <= 100) {
-                    $this->projectedPage['ids'] = array_map(static fn ($p) => (int) ($p instanceof \WP_Post ? $p->ID : $p), $posts);
+                    Facade::prefetch($this->collection, $ids, $viewer);
+                }
+                if ($this->projectedPage !== null && $this->projectedPage['generation'] === -1 && count($ids) > 1 && count($ids) <= 100) {
+                    $this->projectedPage['ids'] = $ids;
                 }
             }
             return $posts;
@@ -85,14 +90,20 @@ final class PostsController extends \WP_REST_Posts_Controller
         } catch (\TypedPress\HttpError $e) {
             return CoreAccess::error($e);
         }
-        $keys = CoreAccess::keys($this->collection, 'read', $viewer);
-        if ($keys === false) {
-            return CoreAccess::error(\TypedPress\Access::deny($viewer->user, "read {$this->collection}"));
-        }
-        $keys = $keys === null ? null : array_map('intval', $keys);
-        if ($query !== null) {
-            // The TypedPress query already ran as this viewer (read rule, draft visibility, field masks).
-            $keys = $keys === null ? $query : array_values(array_intersect($query, $keys));
+        if ($query !== null && \TypedPress\Extensions::constraintReadsSafe()) {
+            // The TypedPress query already applied the read rule and draft visibility. Reuse that
+            // result when core checks each post.
+            CoreAccess::readable($this->collection, $query, $viewer);
+            $keys = $query;
+        } else {
+            $keys = CoreAccess::keys($this->collection, 'read', $viewer);
+            if ($keys === false) {
+                return CoreAccess::error(\TypedPress\Access::deny($viewer->user, "read {$this->collection}"));
+            }
+            $keys = $keys === null ? null : array_map('intval', $keys);
+            if ($query !== null) {
+                $keys = $keys === null ? $query : array_values(array_intersect($query, $keys));
+            }
         }
         if ($keys === null) {
             return TypedPressQuery::attach($this->collection, $request, $viewer, parent::get_items($request));
@@ -400,6 +411,29 @@ final class PostsController extends \WP_REST_Posts_Controller
                 throw new \TypedPress\HttpError(400, 'invalid_input', $terms->get_error_message());
             }
         }
+    }
+
+    /** Native REST `DELETE ?force=true` (or deleting an already-trashed post) enforces TypedPress `purge` access. */
+    public function delete_item_permissions_check($request)
+    {
+        $post = $this->get_post($request['id']);
+        if (is_wp_error($post)) {
+            return $post;
+        }
+        $plugin = Plugin::instance();
+        $spec = $plugin?->schema->hasCollection($this->collection) ? $plugin->schema->collection($this->collection) : null;
+        $forcing = !empty($request['force']) || $post->post_status === 'trash';
+        if ($spec !== null && ($spec['softDelete'] ?? false) && $forcing && !Facade::dispatching()) {
+            $viewer = CoreAccess::viewer();
+            $store = $plugin->db()->store();
+            $check = fn (): bool => $viewer !== null && $plugin->db()->permits($this->collection, 'purge', $post->ID, $viewer);
+            $allowed = $store instanceof CompositeStore ? $store->posts->withTrash($check) : $check();
+            if (!$allowed) {
+                return CoreAccess::error(\TypedPress\Access::deny($viewer?->user, "purge {$this->collection} rows"));
+            }
+        }
+
+        return parent::delete_item_permissions_check($request);
     }
 
     /** A hook refusing the delete is the editor's 4xx with its message (§1.7), and nothing is deleted. */

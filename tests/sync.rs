@@ -204,7 +204,7 @@ fn http_call(
     let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
     let body = body.map(|b| b.to_string()).unwrap_or_default();
     let request = format!(
-        "{method} /__tp/api/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nAuthorization: Basic {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "{method} /wp-json/typedpress/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nAuthorization: Basic {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         base64(token.as_bytes()),
         body.len()
     );
@@ -918,15 +918,24 @@ fn a_pointerless_reference_refusal_is_not_reported_as_a_missing_target() {
     let path = project.join(format!("content/snippets/{uid}.json"));
     std::fs::remove_file(&path).unwrap();
 
-    // Even an empty hidden incoming relationship (`safes.snippetId`, admin-only) refuses the delete.
-    // This is not a target another push could create, so preserve the server's refusal rather than
-    // defer it.
+    // A hidden incoming relationship (`safes.snippetId`, admin-only) that holds a row refuses the
+    // delete (docs/decisions/2026-11-16-per-row-delete-visibility.md). This is not a target another
+    // push could create, so preserve the server's refusal rather than defer it.
+    let admin_site = site.as_user(&site.admin);
+    let (s, vault) = admin_site.call("POST", "/vaults", Some(serde_json::json!({"name": "Hidden keeper"})));
+    assert_eq!(s, 201, "{vault}");
+    let (s, safe) = admin_site.call(
+        "POST",
+        "/safes",
+        Some(serde_json::json!({"vaultId": vault["data"]["id"], "snippetId": created["data"]["id"]})),
+    );
+    assert_eq!(s, 201, "{safe}");
     let out = sync(&project, &site, &["--only", "snippets"]);
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(
         data_or_error(&out)["failed"],
         serde_json::json!([format!(
-            "snippets/{uid}: Rows in safes may reference this row (reference_violation)"
+            "snippets/{uid}: Rows you can't read may reference this row (reference_violation)"
         )])
     );
     assert_eq!(site.rows("snippets").len(), 1, "the refused delete did not land");
@@ -1003,7 +1012,7 @@ fn an_edit_made_between_passes_is_not_overwritten() {
     let editor = site.as_user(&site.token);
     let proxy = proxy_acting_on_first(
         &site,
-        "/__tp/api/v1/sync/players",
+        "/wp-json/typedpress/v1/sync/players",
         move || {
             let (s, _) = editor.call(
                 "PATCH",
@@ -1173,7 +1182,7 @@ fn a_file_edited_while_its_push_waits_is_planned_again() {
     let path = team_file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/__tp/api/v1/sync/players",
+        "/wp-json/typedpress/v1/sync/players",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(
@@ -1303,7 +1312,7 @@ fn an_identity_created_this_run_is_provisional_when_its_file_changes() {
         let path = team_file.clone();
         let proxy = proxy_acting_on_first(
             &site,
-            "/__tp/api/v1/sync/players",
+            "/wp-json/typedpress/v1/sync/players",
             move || {
                 if delete {
                     std::fs::remove_file(&path).unwrap();
@@ -1387,7 +1396,7 @@ fn a_file_edited_during_the_push_itself_is_not_overwritten() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/__tp/api/v1/sync/notes",
+        "/wp-json/typedpress/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("First.", "Typed during the push.")).unwrap();
@@ -1543,7 +1552,7 @@ fn an_unreadable_file_never_trashes_its_provisional_identity() {
     let path = team_file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/__tp/api/v1/sync/players",
+        "/wp-json/typedpress/v1/sync/players",
         move || std::fs::write(&path, "{ not json").unwrap(),
         edited.clone(),
     );
@@ -1585,7 +1594,7 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/__tp/api/v1/sync/notes",
+        "/wp-json/typedpress/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("First.", "Typed during a plain push.")).unwrap();
@@ -1649,7 +1658,7 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
     let path = draft.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/__tp/api/v1/sync/notes",
+        "/wp-json/typedpress/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("title: Agreed", "title: Agreed, then reconsidered")).unwrap();
@@ -1737,7 +1746,7 @@ fn a_conflict_draft_is_never_rewritten_and_a_kept_draft_resolves_again() {
     let path = draft.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/__tp/api/v1/sync/notes",
+        "/wp-json/typedpress/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("title: Agreed", "title: Agreed, then reconsidered")).unwrap();
@@ -1790,7 +1799,7 @@ fn a_file_restored_while_the_site_is_read_is_not_trashed() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "GET /__tp/api/v1/sync/notes",
+        "GET /wp-json/typedpress/v1/sync/notes",
         move || std::fs::write(&path, &kept).unwrap(),
         restored.clone(),
     );
@@ -1871,7 +1880,7 @@ fn a_file_restored_during_the_trash_request_comes_back_on_the_next_run() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/__tp/api/v1/sync/notes/trash",
+        "/wp-json/typedpress/v1/sync/notes/trash",
         move || std::fs::write(&path, &kept).unwrap(),
         restored.clone(),
     );
@@ -1912,7 +1921,7 @@ fn an_unreadable_file_restored_mid_run_blocks_the_trash() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "GET /__tp/api/v1/sync/notes",
+        "GET /wp-json/typedpress/v1/sync/notes",
         move || std::fs::write(&path, "---\ntitle: &broken\n---\n").unwrap(),
         restored.clone(),
     );
@@ -1982,10 +1991,10 @@ fn a_failure_later_in_the_run_keeps_the_bases_already_moved() {
     let path = file.clone();
     let proxy = proxy_with_outage(
         &site,
-        "/__tp/api/v1/sync/notes/trash",
+        "/wp-json/typedpress/v1/sync/notes/trash",
         move || std::fs::write(&path, &kept).unwrap(),
         restored.clone(),
-        Some("/__tp/api/v1/sync/snippets"),
+        Some("/wp-json/typedpress/v1/sync/snippets"),
     );
     let out = first()
         .arg("sync")
@@ -2114,7 +2123,7 @@ fn a_file_edited_while_resolve_deletes_it_is_kept() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/__tp/api/v1/sync/notes/trash",
+        "/wp-json/typedpress/v1/sync/notes/trash",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("First.", "Kept: typed during the delete.")).unwrap();

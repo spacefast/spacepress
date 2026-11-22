@@ -1,12 +1,12 @@
 <?php
-// Sample data for WordPress Playground (docs-site/scripts/build-showcase.ts puts it in the blueprint).
+// Sample data for WordPress Playground (www/scripts/build-showcase.ts puts it in the blueprint).
 // Written through the app's own API as the admin, so access rules, hooks and jobs run as they
 // would for a real request.
 require_once '/wordpress/wp-load.php';
 wp_set_current_user(1);
 // Every write must succeed: a seed that half-ran would show a site that looks broken.
 $call = static function (string $method, string $route, array $body): void {
-	// The app's API (/__tp/api/v1), in process: each call dispatches to the core route as the
+	// The app's API (/wp-json/typedpress/v1), in process: each call dispatches to the core route as the
 	// current user, exactly as an HTTP request to the facade would.
 	[$status] = \TypedPress\Wp\Facade::route(\TypedPress\Wp\Runtime::plugin(), $method, $route, [], (string) wp_json_encode($body));
 	if ($status >= 300) {

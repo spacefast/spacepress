@@ -16,7 +16,7 @@ const receipt: { url: string; users: Record<"admin" | "editor", { appPassword: s
 const wpContent = process.env.TP_WP_CONTENT!;
 const harness = join(repo, "tests/wp/harness.sh");
 const project = join(dirname(wpContent), "legacy-app");
-const api = `${receipt.url}/__tp/api/v1`;
+const api = `${receipt.url}/wp-json/typedpress/v1`;
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const migrate = (...flags: string[]) => {
   const r = spawnSync(harness, ["wp", ...importArgs("content", ["-"], flags.length === 0 ? ["--apply"] : flags)], { input: readFileSync(join(legacy, "content-model.php")), encoding: "utf8" });

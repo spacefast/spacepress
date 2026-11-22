@@ -70,7 +70,7 @@ export async function startStudio() {
       assert.ok(response.ok, `${method} ${path}: ${response.status} ${JSON.stringify(result)}`);
       return result.data ?? result;
     };
-    const api = (path, options) => request(`/__tp/api/v1${path}`, options);
+    const api = (path, options) => request(`/wp-json/typedpress/v1${path}`, options);
     const uploads = [];
     const uploadBytes = async ({ bytes, filename, type = 'image/png', alt = '' }) => {
       const response = await fetch(`${base}/wp-json/wp/v2/media`, { method: 'POST', headers: { authorization, 'content-type': type, 'content-disposition': `attachment; filename="${filename}"` }, body: bytes, signal: AbortSignal.timeout(60000) });

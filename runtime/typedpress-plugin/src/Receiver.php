@@ -187,9 +187,17 @@ final class Receiver
                 : 'This site has no such build.', 404);
         }
         $migrations = [];
-        foreach (scandir($app . '/migrations') ?: [] as $name) {
-            if (is_file($app . '/migrations/' . $name)) {
-                $migrations[$name] = (string) file_get_contents($app . '/migrations/' . $name);
+        foreach (scandir($app . '/migrations') ?: [] as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            $dir = $app . '/migrations/' . $entry;
+            if (is_dir($dir)) {
+                foreach (['ops.json', 'migration.sql'] as $file) {
+                    if (is_file($dir . '/' . $file)) {
+                        $migrations[$entry . '/' . $file] = (string) file_get_contents($dir . '/' . $file);
+                    }
+                }
             }
         }
 
@@ -468,7 +476,14 @@ final class Receiver
             $receipt = Site::locked(static function () use ($root, $build, $deployment, $id): array {
                 self::current($deployment['manifest']);
                 $receipt = \TypedPress\Loader\Loader::initialize($root, $build);
+                $canSyncPublic = class_exists(\TypedPress\Wp\PublicFiles::class) && \TypedPress\Wp\Runtime::plugin() !== null;
+                if ($canSyncPublic && !method_exists(\TypedPress\Wp\PublicFiles::class, 'syncSymlinks')) {
+                    throw new \RuntimeException('Active runtime cannot synchronize public files during activation.');
+                }
                 Site::makeLive($build, $deployment['manifest'], 'deploy');
+                if ($canSyncPublic) {
+                    \TypedPress\Wp\PublicFiles::syncSymlinks(\TypedPress\Wp\Runtime::plugin());
+                }
                 $pending = Site::pending();
                 unset($pending[$id]);
                 update_option(Site::PENDING, $pending, false);
@@ -506,7 +521,23 @@ final class Receiver
                 throw new \RuntimeException('Only a build that was live on this site before can be made live again.');
             }
             Site::checkCommerce($manifest);
+            $root = (string) Site::root();
+            foreach (['runtime', 'app'] as $kind) {
+                Trees::mirror($root, Site::assets(), $kind, $manifest[$kind]);
+            }
+            $canSyncPublic = class_exists(\TypedPress\Wp\PublicFiles::class) && class_exists(\TypedPress\Schema::class);
+            if ($canSyncPublic && !method_exists(\TypedPress\Wp\PublicFiles::class, 'syncSymlinksForDir')) {
+                throw new \RuntimeException('Active runtime cannot synchronize public files during rollback.');
+            }
             Site::makeLive($build, $manifest, 'rollback');
+            if ($canSyncPublic) {
+                $appDir = $root . '/app/' . $manifest['app'] . '/plugins/typedpress-app-' . $manifest['name'];
+                $schemaFile = $appDir . '/tp/app/schema.php';
+                if (is_file($schemaFile)) {
+                    $assetsPublic = Site::assets() . '/app/' . $manifest['app'] . '/plugins/typedpress-app-' . $manifest['name'] . '/public';
+                    \TypedPress\Wp\PublicFiles::syncSymlinksForDir($appDir, $assetsPublic, \TypedPress\Schema::load($schemaFile));
+                }
+            }
         });
     }
 }

@@ -33,7 +33,7 @@ test('host capture gives npm imports an actionable stable diagnostic', () => {
 
 test('wasm capture and check refuse a ledger still at tp/migrations/', () => {
   const files = {
-    'typedpress.config.ts': "import { defineConfig, table, text } from 'typedpress'; export const notes = table({ body: text().optional() }); export default defineConfig({});",
+    'typedpress.config.ts': "import { defineConfig, table, text, mutation } from 'typedpress'; export const notes = table({ body: text().optional() }); export default defineConfig({});",
     'tp/migrations/snapshot.json': '{"version":2,"tables":{}}',
   };
   const moved = 'tp/migrations/ moved to tp/_generated/migrations/';
@@ -48,7 +48,7 @@ test('wasm and native capture include the same synced Markdown files', () => {
   try {
     const project = path.join(temp, 'project');
     const files = {
-      'typedpress.config.ts': "import { defineConfig, collection, text, richText } from 'typedpress'; export const posts = collection({ title: text(), body: richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); export default defineConfig({});",
+      'typedpress.config.ts': "import { defineConfig, collection, text, mutation } from 'typedpress'; export const posts = collection({ title: text(), body: richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); export default defineConfig({});",
       'content/posts/hello.md': '---\ntitle: Hello\n---\nA **seed**.\n',
       'content/posts/ignored.txt': 'not synced',
     };
@@ -88,11 +88,11 @@ test('wasm captures the full-site pages bundle byte for byte like native sources
 });
 
 test('wasm and native resolve build-time namespace members and refuse the same whole values', () => {
-  const source = (handler) => `import { action, defineConfig } from 'typedpress';
+  const source = (handler) => `import { defineConfig, mutation } from 'typedpress';
 import * as ns from './tp/ns.mjs';
 function tagged(s: string) { return s; }
 Object.assign(tagged, { prefix: 'p' });
-export const probe = action({ input: {}, handler: () => ${handler} });
+export const probe = mutation({}, () => ${handler});
 export default defineConfig({ name: 'ns' });
 `;
   const helper = 'export const shout = (value) => value.toUpperCase();\nexport const constants = { SEP: "/" };\n';

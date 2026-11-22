@@ -282,18 +282,21 @@ pub const TP_EXPORTS: &[&str] = &[
     "global",
     "ref",
     "defineConfig",
-    "action",
+    "query",
+    "mutation",
     "db",
     "HttpError",
     "file",
     "files",
     "job",
+    "cron",
     "env",
     "once",
-    "jobs",
     "mail",
     "definePlugin",
     "adminScreen",
+    "adminWidget",
+    "adminDashboard",
     "item",
     "wp",
 ];
@@ -309,6 +312,10 @@ const TP_TYPES: &[&str] = &[
     "AccessCtx",
     "ValidateCtx",
     "FieldUi",
+    "KindUi",
+    "GlobalUi",
+    "MediaRow",
+    "FileRow",
     "AccessRule",
     "AccessConfig",
     "CollectionOptions",
@@ -324,6 +331,14 @@ const TP_TYPES: &[&str] = &[
     "AnyJob",
     "AdminScreen",
     "AdminScreenDefinition",
+    "AdminWidget",
+    "AdminWidgetDefinition",
+    "AdminDashboard",
+    "AdminDashboardDefinition",
+    "BuiltinWidgetId",
+    "WidgetMetric",
+    "WidgetField",
+    "DashboardWidgetPlacement",
     "ScreenField",
     "ScreenAction",
     "ItemRef",
@@ -839,7 +854,16 @@ impl<'p> Evaluator<'p> {
                 crate::assets::Kind::CssModule => Some(Value::object(
                     asset.classes.iter().map(|(k, v)| (k.clone(), Value::str(v))).collect(),
                 )),
-                crate::assets::Kind::Image => Some(Value::Asset(Rc::from(asset.file.as_str()))),
+                crate::assets::Kind::File => Some(Value::Asset(Rc::from(asset.file.as_str()))),
+                crate::assets::Kind::Raw | crate::assets::Kind::Inline => asset.text.as_deref().map(Value::str),
+                crate::assets::Kind::Meta => asset.meta.as_ref().map(|meta| {
+                    let mut fields = IndexMap::new();
+                    fields.insert("src".to_string(), Value::Asset(Rc::from(asset.file.as_str())));
+                    fields.insert("width".to_string(), Value::Num(f64::from(meta.width)));
+                    fields.insert("height".to_string(), Value::Num(f64::from(meta.height)));
+                    fields.insert("format".to_string(), Value::str(&meta.format));
+                    Value::object(fields)
+                }),
                 crate::assets::Kind::Css => None,
             };
             if let Some(default) = default {
@@ -1042,6 +1066,16 @@ impl<'p> Evaluator<'p> {
         }
         if source == WORDPRESS_MODULE {
             return wordpress_export(name, span);
+        }
+        if source == crate::loader::DANGER_MODULE {
+            return match name {
+                "destructiveMigrations" | "default" => Ok(Value::Builtin(Builtin::DestructiveMigrations)),
+                "DestructiveMigrationsOptions" => Ok(Value::Undef),
+                _ => Err(Ctl::Err(
+                    Diag::new(span, format!("\"typedpress/danger\" has no export named `{name}`"))
+                        .help("import `{ destructiveMigrations }` from \"typedpress/danger\""),
+                )),
+            };
         }
         if source == crate::loader::CLIENT_MODULE {
             return crate::client_component::HOOKS
@@ -2888,12 +2922,26 @@ impl<'p> Evaluator<'p> {
             Builtin::DefineConfig => Some("defineConfig"),
             Builtin::Env => Some("env"),
             Builtin::Files => Some("files"),
-            Builtin::Action => Some("action"),
             Builtin::Job => Some("job"),
+            Builtin::Query => Some("query"),
+            Builtin::Mutation => Some("mutation"),
+            Builtin::Cron => Some("cron"),
             Builtin::AdminScreen => Some("adminScreen"),
+            Builtin::AdminWidget => Some("adminWidget"),
+            Builtin::AdminDashboard => Some("adminDashboard"),
             Builtin::Item => Some("item"),
             _ => None,
         };
+        if *b == Builtin::Job
+            && args.len() == 1
+            && matches!(args.first(), Some(Value::Object(o)) if o.borrow().contains_key("handler"))
+        {
+            return err_help(
+                span,
+                "`job({ input, handler })` is gone: the options come first and the handler second",
+                "write `job({ retries: 3 }, async ({ postId }: { postId: number }) => { ... })`; the input comes from the handler's parameter type",
+            );
+        }
         if let Some(name) = name {
             crate::builtins::check("typedpress", name, args.len(), crate::builtins::Phase::Evaluator, span)
                 .map_err(Ctl::Err)?;
@@ -2905,13 +2953,18 @@ impl<'p> Evaluator<'p> {
                 if !matches!(options, Value::Object(_)) {
                     return err(span, "store() needs an options object");
                 }
-                let value = Value::Store(Rc::new(ActionVal { config: options, span }));
+                let value = Value::Store(Rc::new(ActionVal::object(options, span)));
                 self.built.push(value.clone());
                 Ok(value)
             }
             Builtin::Collection(kind) => {
                 // `taxonomy(fields?, options)`: a taxonomy may declare no fields of its own.
                 let cols_val = match arg(0) {
+                    Value::Object(options) if *kind == StorageKind::Product => options
+                        .borrow()
+                        .get("fields")
+                        .cloned()
+                        .unwrap_or_else(|| Value::object(IndexMap::new())),
                     _ if kind.commerce() => Value::object(IndexMap::new()),
                     Value::Undef if *kind == StorageKind::Taxonomy => Value::object(IndexMap::new()),
                     v => v,
@@ -3055,7 +3108,7 @@ impl<'p> Evaluator<'p> {
             Builtin::DefineConfig => Ok(arg(0)),
             Builtin::AdminScreen => match arg(0) {
                 config @ Value::Object(_) => {
-                    let value = Value::Screen(Rc::new(ActionVal { config, span }));
+                    let value = Value::Screen(Rc::new(ActionVal::object(config, span)));
                     self.built.push(value.clone());
                     Ok(value)
                 }
@@ -3063,6 +3116,30 @@ impl<'p> Evaluator<'p> {
                     span,
                     "adminScreen() needs `{ title, view | form, ... }`",
                     "pass the screen as an object literal: `export const orders = adminScreen({ title: \"Orders\", view: { ... } })`",
+                ),
+            },
+            Builtin::AdminWidget => match arg(0) {
+                config @ Value::Object(_) => {
+                    let value = Value::Widget(Rc::new(ActionVal::object(config, span)));
+                    self.built.push(value.clone());
+                    Ok(value)
+                }
+                _ => err_help(
+                    span,
+                    "adminWidget() needs `{ title, action, ... }`",
+                    "pass the widget as an object literal: `export const sales = adminWidget({ title: \"Sales\", action: salesSummary })`",
+                ),
+            },
+            Builtin::AdminDashboard => match arg(0) {
+                config @ Value::Object(_) => {
+                    let value = Value::Dashboard(Rc::new(ActionVal::object(config, span)));
+                    self.built.push(value.clone());
+                    Ok(value)
+                }
+                _ => err_help(
+                    span,
+                    "adminDashboard() needs `{ title, widgets, ... }`",
+                    "pass the dashboard as an object literal: `export const ops = adminDashboard({ title: \"Operations\", widgets: [...] })`",
                 ),
             },
             // The placeholder TypedPress Admin fills from the item (runtime/admin/apps/packages/screens).
@@ -3082,13 +3159,65 @@ impl<'p> Evaluator<'p> {
                 ),
             },
             Builtin::DefinePlugin => match arg(0) {
-                config @ Value::Object(_) => Ok(Value::Plugin(Rc::new(ActionVal { config, span }))),
+                config @ Value::Object(_) => Ok(Value::Plugin(Rc::new(ActionVal::object(config, span)))),
                 _ => err_help(
                     span,
                     "definePlugin() needs `{ name, hooks?, actions?, jobs? }`",
                     "pass the plugin definition as an object literal",
                 ),
             },
+            Builtin::DestructiveMigrations => {
+                let (require_archive, allow_raw_sql) = match arg(0) {
+                    Value::Undef => (false, false),
+                    Value::Object(ref o) => {
+                        let o = o.borrow();
+                        for k in o.keys() {
+                            if !matches!(k.as_str(), "requireArchive" | "allowRawSql") {
+                                return err_help(
+                                    span,
+                                    format!("destructiveMigrations() has no option `{k}`"),
+                                    "supported options are `requireArchive` and `allowRawSql`",
+                                );
+                            }
+                        }
+                        let bool_opt = |k: &str| -> R<bool> {
+                            match o.get(k) {
+                                None | Some(Value::Undef) => Ok(false),
+                                Some(Value::Bool(b)) => Ok(*b),
+                                Some(other) => err_help(
+                                    span,
+                                    format!(
+                                        "destructiveMigrations().{k} must be a boolean, not {}",
+                                        other.describe()
+                                    ),
+                                    format!("pass `{k}: true` or `{k}: false`"),
+                                ),
+                            }
+                        };
+                        (bool_opt("requireArchive")?, bool_opt("allowRawSql")?)
+                    }
+                    other => {
+                        return err_help(
+                            span,
+                            format!(
+                                "destructiveMigrations() takes an optional options object, not {}",
+                                other.describe()
+                            ),
+                            "call `destructiveMigrations()` or `destructiveMigrations({ requireArchive: true })`",
+                        );
+                    }
+                };
+                let mut mp = IndexMap::new();
+                mp.insert("id".to_string(), Value::Str(Rc::from("destructive-migrations")));
+                mp.insert("cliOnly".to_string(), Value::Bool(true));
+                mp.insert("requireArchive".to_string(), Value::Bool(require_archive));
+                mp.insert("allowRawSql".to_string(), Value::Bool(allow_raw_sql));
+                let mut cfg = IndexMap::new();
+                cfg.insert("name".to_string(), Value::Str(Rc::from("destructive_migrations")));
+                cfg.insert("migrationProvider".to_string(), Value::object(mp));
+                let config = Value::object(cfg);
+                Ok(Value::Plugin(Rc::new(ActionVal::builtin_plugin(config, span))))
+            }
             Builtin::Env => match arg(0) {
                 Value::Str(n) if crate::compile::reserved_env_name(&n) => {
                     crate::compile::reserved_env_error(span, &n).map_err(Ctl::Err)
@@ -3130,26 +3259,76 @@ impl<'p> Evaluator<'p> {
                 self.built.push(value.clone());
                 Ok(value)
             }
-            Builtin::Once
-            | Builtin::Jobs
-            | Builtin::Mail
-            | Builtin::Abilities
-            | Builtin::WpFunction(_)
-            | Builtin::NodeCrypto(_) => err_help(
-                span,
-                "once(), jobs, mail, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
-                "move the call into a handler",
-            ),
-            Builtin::Action | Builtin::Job => {
-                let cfg = arg(0);
-                if !matches!(cfg, Value::Object(_)) {
-                    return err(span, "action() needs `{ input, handler }`");
-                }
-                let value = Rc::new(ActionVal { config: cfg, span });
-                let value = match b {
-                    Builtin::Job => Value::Job(value),
-                    _ => Value::Action(value),
+            Builtin::Once | Builtin::Mail | Builtin::Abilities | Builtin::WpFunction(_) | Builtin::NodeCrypto(_) => {
+                err_help(
+                    span,
+                    "once(), jobs, mail, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                    "move the call into a handler",
+                )
+            }
+            Builtin::Query | Builtin::Mutation | Builtin::Cron => {
+                let (what, example) = match b {
+                    Builtin::Query => (
+                        "query()",
+                        "query({ access: \"anyone\" }, async ({ limit = 10 }: { limit?: number }) => ...)",
+                    ),
+                    Builtin::Mutation => (
+                        "mutation()",
+                        "mutation({ access: \"subscriber\" }, async ({ id }: { id: number }) => { ... })",
+                    ),
+                    _ => ("cron()", "cron(\"0 3 * * *\", async () => { ... })"),
                 };
+                let (config, handler) = (arg(0), arg(1));
+                let config_ok = if *b == Builtin::Cron {
+                    matches!(config, Value::Str(_))
+                } else {
+                    matches!(config, Value::Object(_))
+                };
+                if !config_ok || !matches!(handler, Value::Closure(_)) {
+                    let first = if *b == Builtin::Cron {
+                        "a schedule like \"0 3 * * *\""
+                    } else {
+                        "an options object"
+                    };
+                    return err_help(
+                        span,
+                        format!("{what} takes {first}, then the handler function"),
+                        format!("write `{example}`"),
+                    );
+                }
+                let value = Rc::new(ActionVal {
+                    config,
+                    span,
+                    form: match b {
+                        Builtin::Query => FnForm::Query,
+                        Builtin::Mutation => FnForm::Mutation,
+                        _ => FnForm::Cron,
+                    },
+                    handler,
+                });
+                let value = if *b == Builtin::Cron {
+                    Value::Job(value)
+                } else {
+                    Value::Action(value)
+                };
+                self.built.push(value.clone());
+                Ok(value)
+            }
+            Builtin::Job => {
+                let (config, handler) = (arg(0), arg(1));
+                if !matches!(config, Value::Object(_)) || !matches!(handler, Value::Closure(_)) {
+                    return err_help(
+                        span,
+                        "job() takes an options object, then the handler function",
+                        "write `job({ retries: 3 }, async ({ postId }: { postId: number }) => { ... })`",
+                    );
+                }
+                let value = Value::Job(Rc::new(ActionVal {
+                    config,
+                    span,
+                    form: FnForm::Job,
+                    handler,
+                }));
                 self.built.push(value.clone());
                 Ok(value)
             }
@@ -4300,7 +4479,16 @@ fn tp_export(name: &str, span: Span) -> R<Value> {
         "file" => Builtin::Field("file"),
         "files" => Builtin::Files,
         "job" => Builtin::Job,
-        "jobs" => Builtin::Jobs,
+        "cron" => Builtin::Cron,
+        "query" => Builtin::Query,
+        "mutation" => Builtin::Mutation,
+        "jobs" => {
+            return err_help(
+                span,
+                "`jobs` is gone: a job is queued through its own export",
+                "import the job and call `notifyLowStock.enqueue({ itemId }, { delay: 60, key: \"low-1\" })`",
+            );
+        }
         "once" => Builtin::Once,
         "mail" => Builtin::Mail,
         "env" => Builtin::Env,
@@ -4314,9 +4502,17 @@ fn tp_export(name: &str, span: Span) -> R<Value> {
         "defineConfig" => Builtin::DefineConfig,
         "definePlugin" => Builtin::DefinePlugin,
         "adminScreen" => Builtin::AdminScreen,
+        "adminWidget" => Builtin::AdminWidget,
+        "adminDashboard" => Builtin::AdminDashboard,
         "item" => Builtin::Item,
         "wp" => Builtin::Wp,
-        "action" => Builtin::Action,
+        "action" => {
+            return err_help(
+                span,
+                "`action()` is gone: a server function is `query()` when it only reads and `mutation()` when it writes",
+                "write `export const like = mutation({ access: \"subscriber\" }, async ({ id }: { id: number }) => { ... })`; the input comes from the handler's parameter type",
+            );
+        }
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,
         n if TP_TYPES.contains(&n) => return Ok(Value::Undef),
@@ -4781,6 +4977,29 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
                 );
             }
         },
+        "column" => match arg(0) {
+            Value::Str(col) => c.storage_name = Some(col.to_string()),
+            other => {
+                return err(
+                    span,
+                    format!("`.column()` needs the physical column name, not {}", other.describe()),
+                );
+            }
+        },
+        "alias" => match arg(0) {
+            Value::Str(alias) => {
+                let s = alias.to_string();
+                if !c.aliases.contains(&s) {
+                    c.aliases.push(s);
+                }
+            }
+            other => {
+                return err(
+                    span,
+                    format!("`.alias()` needs an alias name string, not {}", other.describe()),
+                );
+            }
+        },
         "unique" => c.unique = true,
         "min" | "max" => {
             let n = match arg(0) {
@@ -4843,8 +5062,8 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
             }
             c.default = Some(DefaultVal::Now);
         }
-        "$default" | "$defaultFn" => c.default = Some(now_or_fn(closure_arg()?, c.ty)),
-        "$onUpdate" | "$onUpdateFn" => c.on_update = Some(now_or_fn(closure_arg()?, c.ty)),
+        "$default" => c.default = Some(now_or_fn(closure_arg()?, c.ty)),
+        "$onUpdate" => c.on_update = Some(now_or_fn(closure_arg()?, c.ty)),
         "onDelete" => {
             let Some(r) = c.references.as_mut() else {
                 return err_help(
@@ -4913,9 +5132,7 @@ const MODIFIERS: &[&str] = &[
     "defaultNow",
     "many",
     "$default",
-    "$defaultFn",
     "$onUpdate",
-    "$onUpdateFn",
     "onDelete",
     "reverse",
     "min",
@@ -4927,6 +5144,8 @@ const MODIFIERS: &[&str] = &[
     "ui",
     "localized",
     "was",
+    "column",
+    "alias",
 ];
 
 /// A modifier the authoring surface deleted: (message, fix).
@@ -4935,6 +5154,14 @@ fn removed_modifier(m: &str) -> Option<(&'static str, &'static str)> {
         "references" => (
             "`.references()` is gone: a reference is a `ref()` field, which refers to the target's `id`",
             "write `locationId: ref(locations)`, with `.onDelete(\"cascade\" | \"restrict\" | \"setNull\")` for the delete action; a reference to another column isn't supported, so keep that value as a plain field",
+        ),
+        "$defaultFn" => (
+            "`.$defaultFn()` is gone: it was a second name for `.$default()`",
+            "write `.$default(() => ...)`",
+        ),
+        "$onUpdateFn" => (
+            "`.$onUpdateFn()` is gone: it was a second name for `.$onUpdate()`",
+            "write `.$onUpdate(() => ...)`",
         ),
         "notNull" => (
             "`.notNull()` is gone: fields are required by default",
@@ -4967,12 +5194,7 @@ pub fn kind_phrase(ty: ColType) -> String {
 fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
     use ColType as T;
     let ty = c.ty;
-    if ty == T::RefList
-        && matches!(
-            m,
-            "unique" | "default" | "$default" | "$defaultFn" | "defaultNow" | "$onUpdate" | "$onUpdateFn"
-        )
-    {
+    if ty == T::RefList && matches!(m, "unique" | "default" | "$default" | "defaultNow" | "$onUpdate") {
         return Some((
             format!("`.{m}()` isn't valid on a `ref().many()` field"),
             "a many-ref is a list of links TypedPress keeps in its own table; remove the modifier".into(),
@@ -4986,7 +5208,7 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
         "pattern" => ty.is_stringy(),
         "unique" => matches!(ty, T::Integer | T::Real | T::Date | T::Timestamp) || ty.is_stringy(),
         "references" => matches!(ty, T::Integer | T::Real),
-        "default" | "$default" | "$defaultFn" => ty != T::Media,
+        "default" | "$default" => ty != T::Media,
         "defaultNow" => matches!(ty, T::Timestamp | T::Date),
         _ => true,
     };
@@ -4998,7 +5220,7 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
         ("min" | "max" | "pattern" | "unique", _) | ("references", _) => {
             "use `.validate((value) => ... )` for custom checks".to_string()
         }
-        ("default" | "$default" | "$defaultFn", T::Media) => "media columns start empty; set them on write".into(),
+        ("default" | "$default", T::Media) => "media columns start empty; set them on write".into(),
         ("defaultNow", _) => "use `.default(value)` with a literal".into(),
         _ => "remove it".into(),
     };
@@ -5035,6 +5257,8 @@ impl ColBuilder {
             localized: false,
             bucket: None,
             was: None,
+            storage_name: None,
+            aliases: Vec::new(),
             span,
             mods: Vec::new(),
         }

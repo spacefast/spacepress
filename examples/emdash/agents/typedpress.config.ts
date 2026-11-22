@@ -1,4 +1,4 @@
-import { action, boolean, collection, db, defineConfig, global, HttpError, integer, job, richText, table, text } from "typedpress";
+import { boolean, collection, db, defineConfig, global, HttpError, job, richText, table, text, query, mutation } from "typedpress";
 
 export const articles = collection({
   title: text().min(1).max(120),
@@ -29,39 +29,24 @@ export const privateSettings = global({
 }, { agents: false, access: { read: "admin", update: "admin" } });
 
 // Adapted from EmDash's MIT-licensed mcp-smoke example; see UPSTREAM.md and LICENSE.emdash.
-export const echo = action({
-  input: { message: text().min(1).max(200) },
-  access: "subscriber",
-  handler: ({ message }) => ({ message, length: message.length }),
+export const echo = query({ access: "subscriber" }, ({ message }: { message: string }) => { if (message.length < 1) throw new HttpError(422, "invalid_input", "message must be at least 1 character", "/message"); if (message.length > 200) throw new HttpError(422, "invalid_input", "message must be at most 200 characters", "/message"); return ({ message, length: message.length }); });
+
+export const publishArticle = mutation({ access: "editor" }, async ({ id }: { id: number }) => {
+  if (!Number.isInteger(id)) throw new HttpError(422, "invalid_input", "id must be an integer", "/id");
+  const [article] = await db.update(articles).set({ status: "published" }).where({ id }).returning();
+  if (!article) throw new HttpError(404, "not_found", "Article not found");
+  return article;
 });
 
-export const publishArticle = action({
-  input: { id: integer() },
-  access: "editor",
-  async handler({ id }) {
-    const [article] = await db.update(articles).set({ status: "published" }).where({ id }).returning();
-    if (!article) throw new HttpError(404, "not_found", "Article not found");
-    return article;
-  },
-});
+export const operatorNote = query({ agents: false, access: "admin" }, ({ note }: { note: string }) => ({ note }));
 
-export const operatorNote = action({
-  input: { note: text() },
-  agents: false,
-  access: "admin",
-  handler: ({ note }) => ({ note }),
-});
-
-export const review = job({
-  input: { articleId: integer() },
-  agents: true,
-  async handler({ articleId }) {
-    await db.update(articles).set({ reviewed: true }).where({ id: articleId });
-  },
+export const review = job({ agents: true }, async ({ articleId }: { articleId: number }) => {
+  if (!Number.isInteger(articleId)) throw new HttpError(422, "invalid_input", "articleId must be an integer", "/articleId");
+  await db.update(articles).set({ reviewed: true }).where({ id: articleId });
 });
 
 // Jobs are unavailable to agents unless explicitly enabled.
-export const internalSweep = job({ input: {}, handler() {} });
+export const internalSweep = job({}, () => {});
 
 export default defineConfig({
   name: "agents",

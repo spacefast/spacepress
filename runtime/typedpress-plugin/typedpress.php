@@ -34,8 +34,6 @@ spl_autoload_register(static function (string $class): void {
 
 Site::register();
 Mount::run();
-// Core must recognize the deploy API even if a plugin resolves the user before REST init.
-add_filter('application_password_is_api_request', static fn (bool $api): bool => $api || Site::route() !== null);
 add_action('admin_init', [Receiver::class, 'authorizeCli'], PHP_INT_MAX);
 add_action('wp_create_application_password', [Receiver::class, 'createdPassword'], PHP_INT_MAX, 4);
 add_action('rest_api_init', [Receiver::class, 'routes']);
@@ -46,3 +44,6 @@ add_action('wp_abilities_api_categories_init', [Deployments::class, 'category'])
 add_action('wp_abilities_api_init', [Deployments::class, 'abilities']);
 add_action('tp_admin_screens', [Deployments::class, 'screen']);
 register_activation_hook(__FILE__, [Setup::class, 'activated']);
+register_deactivation_hook(__FILE__, static function (): void {
+    class_exists(\TypedPress\Wp\PublicFiles::class) && \TypedPress\Wp\PublicFiles::removeSymlinks();
+});

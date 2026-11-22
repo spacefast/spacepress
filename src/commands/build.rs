@@ -13,6 +13,17 @@ pub(super) fn compile(project: &Path) -> Result<crate::schema::Schema, Diag> {
 
 /// Runs the whole pipeline in memory.
 pub(super) fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
+    build_with(project, frozen, false)
+}
+
+/// [`build`] for a command that writes the site (`build`, `export`): every stylesheet
+/// `@typedpress/frontend` builds must be in `public/`. `check`, `init` and `add` compile without
+/// them, so a fresh clone checks before its first frontend build.
+pub(super) fn build_site(project: &Path, frozen: bool) -> Result<Built, Diag> {
+    build_with(project, frozen, true)
+}
+
+fn build_with(project: &Path, frozen: bool, site: bool) -> Result<Built, Diag> {
     let entry = project.join("typedpress.config.ts");
     if !entry.is_file() {
         return Err(Diag::new(
@@ -21,12 +32,15 @@ pub(super) fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
         ));
     }
     let program = loader::load(&entry)?;
+    if site {
+        crate::assets::require_frontend_styles(&program, |file| project.join("public").join(file).is_file())?;
+    }
     build_program(project, &program, frozen)
 }
 
 /// The in-memory pipeline over this project's last snapshot, migration numbering and plugin lock.
 fn build_program(project: &Path, program: &loader::Program, frozen: bool) -> Result<Built, Diag> {
-    pipeline::build(
+    let built = pipeline::build(
         project,
         program,
         || {
@@ -35,62 +49,106 @@ fn build_program(project: &Path, program: &loader::Program, frozen: bool) -> Res
             Ok(previous)
         },
         runtime_file,
-    )
+    )?;
+    Ok(built)
+}
+
+/// A build that ships its synced files as the seed checks them, so a file the seed would refuse
+/// on the site is a diagnostic at that file. Only `build` and `check` run it: commands that compile
+/// for another reason (`add`, `pull`, `styles`, `init`) aren't blocked by a content typo.
+fn check_seed(project: &Path, built: &Built) -> Result<(), Diag> {
+    if built.schema.ships_seed() {
+        crate::bundle::seed_records(&loader::Disk, project, &built.schema, true)?;
+    }
+    Ok(())
 }
 
 fn migrations_dir(project: &Path) -> PathBuf {
     project.join(pipeline::LEDGER)
 }
 
-/// The last build, from the ledger: the snapshot and everything beside it.
+/// Reads all committed `<id>/ops.json` migration folders in `tp/_generated/migrations/` and folds
+/// them into the baseline schema state.
 fn read_previous(project: &Path) -> Result<pipeline::Previous, Diag> {
     if project.join(pipeline::OLD_LEDGER).exists() {
         return Err(pipeline::moved_ledger());
     }
-    let dir = migrations_dir(project);
-    let ledger = pipeline::LEDGER;
-    // Only a missing file is a first build. A snapshot that is there but cannot be read (permissions,
-    // a directory in its place, not UTF-8) is an error: diffing against an empty schema would plan a
-    // migration that recreates every table.
-    let snapshot = match std::fs::read_to_string(dir.join("snapshot.json")) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => {
-            return Err(Diag::new(Span::NONE, format!("can't read {ledger}/snapshot.json: {e}")));
-        }
-        Ok(text) => Some(
-            serde_json::from_str(&text)
-                .map_err(|e| Diag::new(Span::NONE, format!("{ledger}/snapshot.json is not valid JSON: {e}")))?,
-        ),
-    };
-    let names = migration_names(&dir)?;
-    pipeline::Previous::from_project(snapshot, names.iter().map(String::as_str))
+    read_migrations_dir(&migrations_dir(project))
 }
 
-/// Every name in the ledger directory. The next migration's number comes from these, so an entry that
-/// cannot be listed or named is an error: skipping it could reuse a number that is already taken.
-fn migration_names(dir: &Path) -> Result<Vec<String>, Diag> {
-    let entries = match std::fs::read_dir(dir) {
+pub(crate) fn read_migrations_dir(dir: &Path) -> Result<pipeline::Previous, Diag> {
+    let ledger = pipeline::LEDGER;
+    let entries_iter = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => return Err(Diag::new(Span::NONE, format!("can't read {}/: {e}", pipeline::LEDGER))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(pipeline::Previous::none()),
+        Err(e) => return Err(Diag::new(Span::NONE, format!("can't read {ledger}/: {e}"))),
     };
-    let mut names = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|e| Diag::new(Span::NONE, format!("can't read {}/: {e}", pipeline::LEDGER)))?;
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else {
+    let mut ops_entries = Vec::new();
+    for entry in entries_iter {
+        let entry = entry.map_err(|e| Diag::new(Span::NONE, format!("can't read {ledger}/: {e}")))?;
+        let raw_name = entry.file_name();
+        let Some(name) = raw_name.to_str() else {
             return Err(Diag::new(
                 Span::NONE,
                 format!(
-                    "{}/{} is not a UTF-8 file name; rename or remove it",
-                    pipeline::LEDGER,
-                    name.to_string_lossy()
+                    "{ledger}/{} is not a UTF-8 file name; rename or remove it",
+                    raw_name.to_string_lossy()
                 ),
             ));
         };
-        names.push(name.to_string());
+        let path = entry.path();
+        if path.is_dir() && matches!(name, "wp" | "sqlite") {
+            return Err(Diag::new(
+                Span::NONE,
+                format!(
+                    "{ledger}/{name}/ is from an earlier layout; remove or migrate it to sortable migration folders"
+                ),
+            ));
+        }
+        if !path.is_dir() {
+            if name == "snapshot.json" || name.ends_with(".sql") {
+                return Err(Diag::new(
+                    Span::NONE,
+                    format!(
+                        "{ledger}/{name} is from a legacy numbered-migration layout; use folder-based migrations (<id>/{{ops.json,migration.sql}})"
+                    ),
+                ));
+            }
+            continue;
+        }
+        if !crate::migrate::is_migration_id(name) {
+            return Err(Diag::new(
+                Span::NONE,
+                format!(
+                    "{ledger}/{name}/ is not a valid sortable migration folder (<YYYYMMDDHHMMSS>_<6char-base32>_<slug>)"
+                ),
+            ));
+        }
+        let ops_path = path.join("ops.json");
+        let text = std::fs::read_to_string(&ops_path)
+            .map_err(|e| Diag::new(Span::NONE, format!("can't read {ledger}/{name}/ops.json: {e}")))?;
+        let ops: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| Diag::new(Span::NONE, format!("{ledger}/{name}/ops.json is not valid JSON: {e}")))?;
+        if let Some(doc_id) = ops.get("id").and_then(serde_json::Value::as_str)
+            && doc_id != name
+        {
+            return Err(Diag::new(
+                Span::NONE,
+                format!(
+                    "{ledger}/{name}/ops.json declares id \"{doc_id}\", which does not match folder name \"{name}\""
+                ),
+            ));
+        }
+        let sql_path = path.join("migration.sql");
+        if !sql_path.is_file() {
+            return Err(Diag::new(
+                Span::NONE,
+                format!("{ledger}/{name}/ is incomplete: missing migration.sql beside ops.json"),
+            ));
+        }
+        ops_entries.push((name.to_string(), ops));
     }
-    Ok(names)
+    pipeline::Previous::from_entries(ops_entries)
 }
 
 /// Writes a file that must not exist yet. A migration is numbered from the files beside it, so one
@@ -117,18 +175,34 @@ pub(super) fn refresh(project: &Path) -> Result<(), String> {
     emit_project(project, &built).map_err(|e| e.to_string())
 }
 
-/// Writes `tp/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks, the typed
-/// client and `openapi.json`.
+/// Writes `tp/_generated/` (committed): immutable `<id>/{ops.json,migration.sql}` folders,
+/// `db.d.ts`, locks, typed client, and `openapi.json`. No global `snapshot.json` is written.
 pub(super) fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let migrations = migrations_dir(project);
-    for (name, sql) in &built.migrations {
-        write_new(&migrations.join(name), sql)?;
-    }
-    if !built.migrations.is_empty() || !migrations.join("snapshot.json").is_file() {
-        write(
-            &migrations.join("snapshot.json"),
-            serde_json::to_string_pretty(&built.snapshot)? + "\n",
-        )?;
+    for entry in &built.migrations {
+        let folder = migrations.join(&entry.id);
+        if folder.exists() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("{}: migration folder already exists", folder.display()),
+            ));
+        }
+        std::fs::create_dir_all(&migrations)?;
+        // Stage both files in a sibling directory and atomically rename into place so an
+        // interrupted write never leaves an orphaned `ops.json` without `migration.sql`.
+        let tmp = migrations.join(format!(".tmp_{}_{}", entry.id, std::process::id()));
+        if tmp.exists() {
+            let _ = std::fs::remove_dir_all(&tmp);
+        }
+        let staged = (|| -> std::io::Result<()> {
+            write_new(&tmp.join("ops.json"), serde_json::to_string_pretty(&entry.ops)? + "\n")?;
+            write_new(&tmp.join("migration.sql"), &entry.sql)?;
+            std::fs::rename(&tmp, &folder)
+        })();
+        if let Err(e) = staged {
+            let _ = std::fs::remove_dir_all(&tmp);
+            return Err(e);
+        }
     }
     write(&project.join(layout::DB_TYPES), &built.gen_ts)?;
     match &built.routes_ts {
@@ -502,7 +576,9 @@ fn remove_empty_dirs(dir: &Path) -> std::io::Result<bool> {
 pub(crate) fn check(project: &Path, frozen: bool) -> (serde_json::Value, Option<Built>) {
     let built = match loader::load_all(&project.join("typedpress.config.ts")) {
         Err(diagnostics) => Err(diagnostics),
-        Ok(program) => build_program(project, &program, frozen).map_err(|d| vec![d]),
+        Ok(program) => build_program(project, &program, frozen)
+            .and_then(|built| check_seed(project, &built).map(|()| built))
+            .map_err(|d| vec![d]),
     };
     let mut envelope = diag::envelope(built.as_ref().err().map_or(&[], Vec::as_slice), project);
     if let Ok(built) = &built {
@@ -515,7 +591,21 @@ pub(crate) fn check(project: &Path, frozen: bool) -> (serde_json::Value, Option<
     {
         envelope["plugins"] = built.plugin_report.clone();
     }
+    if let Ok(built) = &built
+        && !built.lint_warnings.is_empty()
+    {
+        envelope["warnings"] = serde_json::to_value(&built.lint_warnings).expect("lint warnings serialize");
+    }
     (envelope, built.ok())
+}
+
+fn emit_lint_warnings(warnings: &[crate::lint::Warning]) {
+    for w in warnings {
+        eprintln!("warning[{}]: {}:{}:{}: {}", w.rule, w.file, w.line, w.column, w.message);
+    }
+    if !warnings.is_empty() {
+        eprintln!("  = help: run `typedpress check --fix` to auto-fix");
+    }
 }
 
 /// CI never approves a plugin grant: the committed lock is the only one.
@@ -540,18 +630,83 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         };
     }
     let started = std::time::Instant::now();
-    let built = match build(&project, frozen) {
+    // `--diagnostics-file` (typedpress dev's): the compile's envelope, written whether it compiled or
+    // not. A failure after the compile (a refused migration, a file that can't be written) is no
+    // compiler diagnostic and stays on stderr alone.
+    let report = |diagnostics: &[diag::Diag]| {
+        if let Some(path) = &args.diagnostics_file {
+            let bytes =
+                serde_json::to_vec(&diag::envelope(diagnostics, &project)).expect("diagnostic envelope serializes");
+            if let Err(error) = write(path, bytes) {
+                eprintln!("error: couldn't write diagnostics: {error}");
+            }
+        }
+    };
+    let _frontend = if args.command == "build" {
+        match crate::frontend::prepare_styles(&project) {
+            Ok(guard) => guard,
+            Err(d) => {
+                report(std::slice::from_ref(&d));
+                eprint!("{}", diag::render(&d, &project));
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        None
+    };
+    let compile = if args.command == "build" { build_site } else { build };
+    let mut built = match compile(&project, frozen).and_then(|built| check_seed(&project, &built).map(|()| built)) {
         Ok(b) => b,
         Err(d) => {
-            eprint!("{}", diag::render(&d, &project));
+            report(std::slice::from_ref(&d));
+            // `build` names the code in the heading; `check` keeps the plain `error:` others match on.
+            let render = if args.command == "build" {
+                diag::render_with_code
+            } else {
+                diag::render
+            };
+            eprint!("{}", render(&d, &project));
             return ExitCode::from(1);
         }
     };
+    if args.command == "check" && args.fix && !built.lint_warnings.is_empty() {
+        match crate::lint::apply_fixes(&built.lint_warnings) {
+            Ok((fixes, files)) if fixes > 0 => {
+                eprintln!(
+                    "fixed {fixes} lint warning{} in {files} file{}",
+                    if fixes == 1 { "" } else { "s" },
+                    if files == 1 { "" } else { "s" }
+                );
+                built = match diag::isolated(|| {
+                    build(&project, frozen).and_then(|built| check_seed(&project, &built).map(|()| built))
+                }) {
+                    Ok(b) => b,
+                    Err(d) => {
+                        report(std::slice::from_ref(&d));
+                        eprint!("{}", diag::render(&d, &project));
+                        return ExitCode::from(1);
+                    }
+                };
+            }
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("error: couldn't apply lint fixes: {e}");
+                return ExitCode::from(1);
+            }
+        }
+    }
+    report(&[]);
     for line in &built.plugin_changes {
         eprintln!("{line}");
     }
     for w in &built.unsupported_plugins {
         eprintln!("warning: {w}");
+    }
+    emit_lint_warnings(&built.lint_warnings);
+    if built.schema.seed && built.schema.collections.values().all(|c| c.sync.is_none()) {
+        eprintln!(
+            "warning: `seed: true` imports the files of synced kinds, and no kind has `sync`: nothing is seeded. Add `sync: \"content/<kind>/*.md\"` to a kind, or remove `seed`."
+        );
     }
     // A project that ran `typedpress init`: its agent files follow the config and the compiler.
     let agent_files = (!args.quiet)
@@ -619,7 +774,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     let new: Vec<String> = built
         .migrations
         .iter()
-        .map(|(n, _)| format!("{}/{n}", pipeline::LEDGER))
+        .map(|m| format!("{}/{}", pipeline::LEDGER, m.id))
         .collect();
     let suffix = if new.is_empty() {
         String::new()
@@ -639,15 +794,19 @@ mod tests {
     use super::read_previous;
 
     #[test]
-    fn a_snapshot_that_cannot_be_read_is_an_error_not_a_first_build() {
+    fn an_unreadable_ops_json_is_an_error_not_a_first_build() {
         let project = tempfile::tempdir().unwrap();
-        // A directory where the file should be: readable as a path, not as a snapshot.
-        std::fs::create_dir_all(project.path().join(crate::pipeline::LEDGER).join("snapshot.json")).unwrap();
+        let folder = project
+            .path()
+            .join(crate::pipeline::LEDGER)
+            .join("20261121180000_7k9m2x_init");
+        std::fs::create_dir_all(&folder).unwrap();
+        // Missing ops.json inside a migration folder is an error.
         let error = read_previous(project.path()).unwrap_err();
         assert!(
             error
                 .message
-                .starts_with("can't read tp/_generated/migrations/snapshot.json: "),
+                .starts_with("can't read tp/_generated/migrations/20261121180000_7k9m2x_init/ops.json: "),
             "{}",
             error.message
         );
@@ -661,8 +820,7 @@ mod tests {
         let project = tempfile::tempdir().unwrap();
         let dir = project.path().join(crate::pipeline::LEDGER);
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("0001_init.sql"), "").unwrap();
-        std::fs::write(dir.join(std::ffi::OsStr::from_bytes(b"0002_\xff.sql")), "").unwrap();
+        std::fs::create_dir_all(dir.join(std::ffi::OsStr::from_bytes(b"20261121180000_\xff_init"))).unwrap();
         let error = read_previous(project.path()).unwrap_err();
         assert!(error.message.contains("is not a UTF-8 file name"), "{}", error.message);
     }
@@ -670,7 +828,10 @@ mod tests {
     #[test]
     fn a_new_migration_never_replaces_a_file_that_is_already_there() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join(crate::pipeline::LEDGER).join("0002_update.sql");
+        let path = dir
+            .path()
+            .join(crate::pipeline::LEDGER)
+            .join("20261121180000_7k9m2x_init/migration.sql");
         super::write_new(&path, "first").unwrap();
         let error = super::write_new(&path, "second").unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
@@ -681,7 +842,6 @@ mod tests {
     fn a_ledger_still_at_the_old_path_is_refused_not_built_as_a_first_build() {
         let project = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(project.path().join("tp/migrations")).unwrap();
-        std::fs::write(project.path().join("tp/migrations/snapshot.json"), "{}").unwrap();
         let error = read_previous(project.path()).unwrap_err();
         assert_eq!(error.message, "tp/migrations/ moved to tp/_generated/migrations/");
     }
@@ -707,10 +867,10 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_snapshot_is_a_first_build() {
+    fn a_missing_migrations_dir_is_a_first_build() {
         let project = tempfile::tempdir().unwrap();
         let previous = read_previous(project.path()).unwrap();
-        assert_eq!(previous.next_migration, 1);
+        assert!(previous.ids.is_empty());
         assert_eq!(previous.snapshot["tables"], serde_json::json!({}));
     }
 }

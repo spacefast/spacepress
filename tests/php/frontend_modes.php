@@ -132,10 +132,10 @@ $out['authors'] = [
     'unlisted embed' => $embed('/hello-world/'),
     'core route' => [$got('/wp-json/wp/v2/users/' . $editorId)['status'], $got('/wp-json/wp/v2/users')['status']],
     // TypedPress's API serves the kind by its rule: a visitor lists and reads the listed user only.
-    'api list' => array_column((array) (json_decode($got('/__tp/api/v1/members')['body'], true)['data'] ?? []), 'id') === [$editorId],
-    'api listed' => $got('/__tp/api/v1/members/' . $editorId)['status'],
-    'api unlisted' => $got('/__tp/api/v1/members/1')['status'],
-    'api missing' => $got('/__tp/api/v1/members/99999999')['status'],
+    'api list' => array_column((array) (json_decode($got('/wp-json/typedpress/v1/members')['body'], true)['data'] ?? []), 'id') === [$editorId],
+    'api listed' => $got('/wp-json/typedpress/v1/members/' . $editorId)['status'],
+    'api unlisted' => $got('/wp-json/typedpress/v1/members/1')['status'],
+    'api missing' => $got('/wp-json/typedpress/v1/members/99999999')['status'],
 ];
 // A write to a user's row purges their archive: whether it answers depends on that row.
 delete_option('test_purges');

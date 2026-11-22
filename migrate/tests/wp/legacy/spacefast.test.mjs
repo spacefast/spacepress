@@ -5,7 +5,7 @@ import test from 'node:test';
 const { url } = JSON.parse(readFileSync(process.env.TP_SPACEFAST_HARNESS, 'utf8'));
 
 test('imported users sign in on the destination with a new session', async () => {
-  const api = `${url}/__tp/api/v1`;
+  const api = `${url}/wp-json/typedpress/v1`;
   const old = await fetch(`${api}/me`, { headers: { Cookie: '__Host-sfi_session=old-token' } });
   assert.equal((await old.json()).data, null);
 

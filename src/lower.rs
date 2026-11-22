@@ -674,6 +674,7 @@ impl Lowerer {
                         },
                     ),
                     ann: this_ann.clone(),
+                    declared: None,
                     default: None,
                     optional: false,
                     rest: false,
@@ -823,6 +824,7 @@ impl Lowerer {
                                     },
                                 ),
                                 ann: None,
+                                declared: None,
                                 default: None,
                                 optional: false,
                                 rest: false,
@@ -927,6 +929,7 @@ impl Lowerer {
                                     },
                                 ),
                                 ann: None,
+                                declared: None,
                                 default: None,
                                 optional: false,
                                 rest: false,
@@ -1149,6 +1152,10 @@ impl Lowerer {
             out.push(Param {
                 pat: self.pattern(&item.pattern)?,
                 ann: self.annotation(item.type_annotation.as_ref())?,
+                declared: match &item.type_annotation {
+                    Some(t) if self.erase_types => self.ty(&t.type_annotation).ok(),
+                    _ => None,
+                },
                 default: item.initializer.as_ref().map(|e| self.expr(e)).transpose()?,
                 optional: item.optional,
                 rest: false,
@@ -1159,6 +1166,7 @@ impl Lowerer {
             out.push(Param {
                 pat: self.pattern(&r.rest.argument)?,
                 ann: self.annotation(r.type_annotation.as_ref())?,
+                declared: None,
                 default: None,
                 optional: false,
                 rest: true,
@@ -1325,11 +1333,14 @@ impl Lowerer {
                     // `key` identifies list items for React's reconciler. It stays in the IR so its
                     // expression evaluates in source order, as in React; it never reaches the HTML
                     // (`\TypedPress\Html` skips it) or a component's props (below).
-                    if name == "ref" {
+                    // On an element, the compiler decides: a "use client" component attaches the
+                    // ref, a server component refuses it (compile.rs). A component has no element
+                    // to hand its caller.
+                    if name == "ref" && !matches!(kind, JsxKind::Intrinsic(_)) {
                         return self.unsupported(
                             attr.span,
-                            "`ref` in a server component",
-                            "move the element into a \"use client\" component",
+                            "`ref` on a component",
+                            "put `ref` on an element inside a \"use client\" component",
                         );
                     }
                     attrs.push(JsxAttr::Named {

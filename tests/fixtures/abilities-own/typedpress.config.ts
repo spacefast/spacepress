@@ -1,5 +1,5 @@
 import { abilities } from "php/wordpress";
-import { action, collection, defineConfig, global, integer, job, media, text, userProjection, email } from "typedpress";
+import { collection, defineConfig, global, job, media, text, userProjection, email, mutation } from "typedpress";
 
 // Imports "php/wordpress" so tp/_generated/db.d.ts carries the catalog. Every kind of ability the app registers: collection CRUD with revisions and media, an auth
 // collection's create (with its `password` input), sync, an action with optional input, a global
@@ -12,9 +12,9 @@ export const notes = collection({
 export const members = userProjection({ email: email().unique().max(191), name: text() }, {});
 export const settings = global({ tagline: text().optional() });
 
-export const greet = action({ input: { who: text(), times: integer().optional() }, access: "anyone", handler: (i) => i.who });
+export const greet = mutation({ access: "anyone" }, (i: { who: string; times?: number }) => i.who);
 
-export const reindex = job({ input: { from: integer() }, agents: true, handler: async () => {} });
+export const reindex = job({ agents: true }, async (_input: { from: number }) => {});
 
 export default defineConfig({
   name: "own",

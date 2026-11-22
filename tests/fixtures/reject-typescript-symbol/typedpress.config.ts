@@ -1,5 +1,5 @@
-import { action, defineConfig } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 const key = Symbol("key");
-export const probe = action({ input: {}, handler: () => typeof key });
+export const probe = mutation({}, () => typeof key);
 
 export default defineConfig({ name: "typescriptsymbol" });

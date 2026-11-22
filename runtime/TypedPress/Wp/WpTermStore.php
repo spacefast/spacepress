@@ -398,11 +398,11 @@ final class WpTermStore implements Store, Links
         return []; // taxonomies keep no revisions
     }
 
-    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId): void
+    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = []): void
     {
     }
 
-    public function revision(string $collection, int|string $pk, int $revisionId): ?array
+    public function revision(string $collection, int|string $pk, int $revisionId, bool $byVersion = false): ?array
     {
         return null;
     }

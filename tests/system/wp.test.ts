@@ -2,7 +2,7 @@
 // `typedpress build` and boots a fresh WordPress with users and nothing else; this file installs
 // the artifact the way a site owner would (copy wp-content/plugins in, activate with WP-CLI), checks
 // the install, runs the shared journey through the generated client against core /wp/v2 (the
-// editor) and /__tp/api/v1 (the app), then walks the plugin lifecycle: upgrade, deactivate,
+// editor) and /wp-json/typedpress/v1 (the app), then walks the plugin lifecycle: upgrade, deactivate,
 // reactivate, uninstall.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -22,7 +22,7 @@ interface Receipt {
 const frontend = { clientId: "app_site", redirectUri: "" };
 const receipt: Receipt = JSON.parse(readFileSync(join(repo, "tests/system/.harness.json"), "utf8"));
 const wpContent = join(repo, "tests/system/.wp-content");
-const api = `${receipt.url}/__tp/api/v1`;
+const api = `${receipt.url}/wp-json/typedpress/v1`;
 const core = `${receipt.url}/wp-json/wp/v2`;
 const harness = join(repo, "tests/wp/harness.sh");
 const project = join(work, "wp-site");

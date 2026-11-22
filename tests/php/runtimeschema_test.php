@@ -51,7 +51,7 @@ $wp = wpSite('rtschema', ['schema' => $base, 'server' => true, 'identity' => tru
         return new \TypedPress\JsObject(array_intersect_key($patch->p, \TypedPress\RuntimeSchema\Loader::compiled()['collections']['articles']['columns']));
     }
     PHP]);
-$api = $wp->url() . '/__tp/api/v1';
+$api = $wp->url() . '/wp-json/typedpress/v1';
 
 /** @return array{int, mixed} status and decoded body, as $as (a test user name) or anonymous */
 function http(string $method, string $url, mixed $body = null, ?string $as = null): array
@@ -301,7 +301,7 @@ $kindsVersion = $versions->apply($next, $set(
 ), $admin);
 $d = $described();
 eq('a collection added at runtime is a kind with its route', [$d['kinds']['events']['route'] ?? null, $d['kinds']['events']['label'] ?? null, array_keys($d['kinds']['events']['columns'] ?? [])],
-    ['/wp/v2/tp_events', 'Events', ['id', 'title', 'content', 'starts', 'status', 'publishedAt']]);
+    ['/wp/v2/tp_events', 'Events', ['id', 'title', 'content', 'starts', 'status', 'publishedAt', 'author', 'createdAt', 'updatedAt', 'deletedAt', 'deletedBy']]);
 eq('and a global added at runtime is a global', array_keys($d['globals']['banner']['fields'] ?? []), ['text', 'on']);
 $tables = static fn (): array => array_merge(...array_map('array_values', $GLOBALS['wp']->sql('SHOW TABLES')));
 check('no SQL table was created for either', array_filter($tables(), static fn (string $t): bool => str_contains($t, 'tp_events') || str_contains($t, 'banner')) === [], $tables());

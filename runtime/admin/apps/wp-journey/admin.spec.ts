@@ -18,14 +18,13 @@ async function login(page: Page, role: 'admin' | 'editor' | 'subscriber') {
 	await expect(page.locator('#user_login')).toBeVisible();
 	await submitSignIn(page, role, `typedpress-test-${role}`);
 	await expect(page).toHaveURL(`${site}/wp-admin/new/`);
-	// The upstream home route: the dashboard.
+	// The home route: the SpacePress composable dashboard.
 	await expect(
-		page.getByRole('heading', { name: 'Dashboard', exact: true })
+		page.getByRole('heading', { name: 'Home', exact: true })
 	).toBeVisible();
-	// Collections opens the app's collections in the sidebar.
-	await page.locator('.typedpress-admin-sidebar__content').getByRole('button', { name: 'Collections', exact: true }).click();
+	// Collections appear directly as flat top-level items in the sidebar.
 	await expect(
-		page.getByRole('link', { name: 'Posts', exact: true }).last()
+		page.locator('.typedpress-admin-sidebar__content').getByRole('link', { name: 'Posts', exact: true }).last()
 	).toBeVisible();
 }
 test('normal WordPress login reaches the shipped admin and root navigation', async ({
@@ -43,9 +42,8 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	expect(cookies.some((c) => /^wordpress_logged_in_/.test(c.name))).toBe(true);
 	expect(cookies.some((c) => /^wordpress_(?:sec_)?[a-f0-9]+$/.test(c.name))).toBe(true);
 	const sidebar = page.locator('.typedpress-admin-sidebar__content');
-	await expect(sidebar.getByRole('link', { name: 'All collections', exact: true })).toBeVisible();
 	// wp-admin's menu (which this page reads, as a wp-admin page) lists TypedPress's post types too; the
-	// sidebar shows each collection once, under Collections.
+	// sidebar shows each collection once as a flat top-level item.
 	await expect(sidebar.getByRole('link', { name: 'Events', exact: true })).toHaveCount(1);
 	await sidebar.getByRole('link', { name: 'Posts', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/new/collections/posts`);
@@ -53,7 +51,7 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 		page.getByRole('heading', { name: 'Posts', exact: true })
 	).toBeVisible();
 	await expect(
-		page.getByRole('button', { name: 'New Posts', exact: true })
+		page.getByRole('button', { name: 'New Post', exact: true })
 	).toBeEnabled();
 
 	await page.getByRole('link', { name: 'Media', exact: true }).click();
@@ -90,11 +88,10 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await page.screenshot({ path: test.info().outputPath('classic-admin.png'), animations: 'disabled' });
 	await wordpressMenu.getByRole('link', { name: 'TypedPress', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/new/`);
-	await sidebar.getByRole('button', { name: 'Collections', exact: true }).click();
 	await sidebar.getByRole('link', { name: 'Posts', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/new/collections/posts`);
 	await expect(page.getByRole('heading', { name: 'Posts', exact: true })).toBeVisible();
-	await sidebar.getByRole('link', { name: 'All collections', exact: true }).click();
+	await page.goto(`${site}/wp-admin/new/collections`);
 	await expect(page).toHaveURL(`${site}/wp-admin/new/collections`);
 	await expect(page.getByRole('heading', { name: 'Collections', exact: true })).toBeVisible();
 	await page.screenshot({ path: test.info().outputPath('collections.png'), animations: 'disabled' });
@@ -131,22 +128,23 @@ if (!subdir) {
 			Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}`,
 		};
 		const authorName = `Browser author ${Date.now()}`;
-		const author = await request.post(`${site}/__tp/api/v1/authors`, {
+		const author = await request.post(`${site}/wp-json/typedpress/v1/authors`, {
 			headers: adminHeaders,
 			data: { name: authorName, email: `browser-${Date.now()}@example.com` },
 		});
 		expect(author.status(), await author.text()).toBe(201);
 		const authorId = (await author.json()).data.id;
 		await login(page, 'editor');
-		await page.getByRole('link', { name: 'Posts', exact: true }).last().click();
-		await page.getByRole('button', { name: 'New Posts', exact: true }).click();
+		// Home's Content Overview widget also has a Posts link; open the sidebar's.
+		await page.locator('.typedpress-admin-sidebar__content').getByRole('link', { name: 'Posts', exact: true }).click();
+		await page.getByRole('button', { name: 'New Post', exact: true }).click();
 		const title = `Browser journey ${Date.now()}`;
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill(title);
 		await page
 			.getByRole('textbox', { name: 'Excerpt', exact: true })
 			.fill('Created in TypedPress Admin');
 		await page
-			.getByRole('button', { name: 'Create record', exact: true })
+			.getByRole('button', { name: 'Create Post', exact: true })
 			.click();
 		await expect(page).toHaveURL(/\/collections\/posts\/\d+$/);
 		const id = new URL(page.url()).pathname.split('/').pop();
@@ -222,7 +220,7 @@ if (!subdir) {
 		const headers = {
 			Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}`,
 		};
-		const persisted = await request.get(`${site}/__tp/api/v1/posts/${id}`, {
+		const persisted = await request.get(`${site}/wp-json/typedpress/v1/posts/${id}`, {
 			headers,
 		});
 		expect(persisted.status()).toBe(200);
@@ -238,7 +236,7 @@ if (!subdir) {
 			['POST', 'PUT'].includes(r.request().method()));
 		await page.getByRole('button', { name: 'Publish', exact: true }).click();
 		expect((await published).status()).toBe(200);
-		const publicRecord = await request.get(`${site}/__tp/api/v1/posts/${id}`);
+		const publicRecord = await request.get(`${site}/wp-json/typedpress/v1/posts/${id}`);
 		expect(publicRecord.status()).toBe(200);
 		expect((await publicRecord.json()).data).toMatchObject({
 			status: 'published', excerpt: 'Edited in native Fields',
@@ -247,7 +245,7 @@ if (!subdir) {
 		// The table uses the TypedPress endpoint and a readable cross-kind relation picker.
 		await page.goto(`${site}/wp-admin/new/collections/comments`);
 		await page
-			.getByRole('button', { name: 'New comments', exact: false })
+			.getByRole('button', { name: 'New Comment', exact: false })
 			.click();
 		await page
 			.getByRole('combobox', { name: 'Post Id', exact: true })
@@ -262,11 +260,11 @@ if (!subdir) {
 			.getByRole('textbox', { name: 'Body', exact: true })
 			.fill('A table record from the browser');
 		await page
-			.getByRole('button', { name: 'Create record', exact: true })
+			.getByRole('button', { name: 'Create Comment', exact: true })
 			.click();
 		await expect(page).toHaveURL(/\/collections\/comments\/\d+$/);
 		await expect(
-			page.getByRole('heading', { name: 'Edit Comments', exact: true })
+			page.getByRole('heading', { name: 'Edit Comment', exact: true })
 		).toBeVisible();
 		const commentId = new URL(page.url()).pathname.split('/').pop();
 		await page
@@ -289,7 +287,7 @@ if (!subdir) {
 		).toHaveValue(`${title} edited`);
 		await page.screenshot({ path: test.info().outputPath('table-edit.png') });
 		const comment = await request.get(
-			`${site}/__tp/api/v1/comments/${commentId}`,
+			`${site}/wp-json/typedpress/v1/comments/${commentId}`,
 			{ headers }
 		);
 		expect(comment.status()).toBe(200);
@@ -302,7 +300,7 @@ if (!subdir) {
 		await page.getByRole('link', { name: 'Back to Comments', exact: true }).click();
 		const leave = page.getByRole('dialog');
 		const refused = page.waitForResponse((r) =>
-			new URL(r.url()).pathname.endsWith(`/__tp/api/v1/comments/${commentId}`) &&
+			new URL(r.url()).pathname.endsWith(`/wp-json/typedpress/v1/comments/${commentId}`) &&
 			['POST', 'PATCH'].includes(r.request().method()));
 		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
 		expect((await refused).status()).toBe(422);
@@ -314,7 +312,7 @@ if (!subdir) {
 		await page.getByRole('link', { name: 'Back to Comments', exact: true }).click();
 		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
 		await expect(page).toHaveURL(`${site}/wp-admin/new/collections/comments`);
-		const corrected = await request.get(`${site}/__tp/api/v1/comments/${commentId}`, { headers });
+		const corrected = await request.get(`${site}/wp-json/typedpress/v1/comments/${commentId}`, { headers });
 		expect((await corrected.json()).data.body).toBe('Corrected table record');
 		expect(errors).toEqual([]);
 	});
@@ -329,7 +327,7 @@ if (!subdir) {
 		};
 		await login(page, 'admin');
 		// Invalid JSON is an unsaved draft even when core-data has no edits.
-		const event = await request.post(`${site}/__tp/api/v1/dossier`, {
+		const event = await request.post(`${site}/wp-json/typedpress/v1/dossier`, {
 			headers: adminHeaders, data: { title: 'JSON browser draft', payload: { committed: true }, entries: [], sections: [{ layout: 'first', configuration: { initial: true } }] },
 		});
 		expect(event.status(), await event.text()).toBe(201);
@@ -367,7 +365,7 @@ if (!subdir) {
 			['POST', 'PUT'].includes(r.request().method()));
 		await eventSave.click();
 		expect((await jsonSaved).status()).toBe(200);
-		const eventRead = await request.get(`${site}/__tp/api/v1/dossier/${eventId}`, { headers: adminHeaders });
+		const eventRead = await request.get(`${site}/wp-json/typedpress/v1/dossier/${eventId}`, { headers: adminHeaders });
 		const savedEvent = (await eventRead.json()).data;
 		expect(savedEvent.payload).toBe(false);
 		expect(savedEvent.sections).toEqual([{ layout: 'second', configuration: null }]);
@@ -384,7 +382,7 @@ if (!subdir) {
 			['POST', 'PUT'].includes(r.request().method()));
 		await eventSave.click();
 		expect((await siblingSaved).status()).toBe(200);
-		const siblingRead = await request.get(`${site}/__tp/api/v1/dossier/${eventId}`, { headers: adminHeaders });
+		const siblingRead = await request.get(`${site}/wp-json/typedpress/v1/dossier/${eventId}`, { headers: adminHeaders });
 		expect((await siblingRead.json()).data).toMatchObject({
 			payload: savedEvent.payload,
 			sections: [{ layout: 'second', configuration: null }, { layout: 'first', configuration: null }],
@@ -401,7 +399,7 @@ if (!subdir) {
 		await expect(page.getByRole('group', { name: 'Entries', exact: true }).locator('textarea')).toHaveCount(0);
 		await page.screenshot({ path: test.info().outputPath('retired-json-drafts.png'), animations: 'disabled' });
 		// Plain forms use the same document-level leave flow, including invalid-only drafts.
-		const plain = await request.post(`${site}/__tp/api/v1/events`, {
+		const plain = await request.post(`${site}/wp-json/typedpress/v1/events`, {
 			headers: adminHeaders, data: { title: 'Plain saved title', extra: { saved: true } },
 		});
 		expect(plain.status(), await plain.text()).toBe(201);
@@ -449,7 +447,7 @@ if (!subdir) {
 		await page.getByRole('dialog').getByRole('button', { name: 'Save changes', exact: true }).click();
 		expect((await plainSaved).status()).toBe(200);
 		await expect(page).toHaveURL(`${site}/wp-admin/new/collections/events`);
-		const plainRead = await request.get(`${site}/__tp/api/v1/events/${plainId}`, { headers: adminHeaders });
+		const plainRead = await request.get(`${site}/wp-json/typedpress/v1/events/${plainId}`, { headers: adminHeaders });
 		expect((await plainRead.json()).data).toMatchObject({ title: 'Plain saved on leave', extra: { saved: true } });
 		expect(errors).toEqual([]);
 	});
@@ -458,7 +456,7 @@ if (!subdir) {
 		request,
 	}) => {
 		const postTitle = `Read-only browser ${Date.now()}`;
-		const seeded = await request.post(`${site}/__tp/api/v1/posts`, {
+		const seeded = await request.post(`${site}/wp-json/typedpress/v1/posts`, {
 			headers: {
 				Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}`,
 			},
@@ -467,7 +465,7 @@ if (!subdir) {
 		expect(seeded.status(), await seeded.text()).toBe(201);
 		const { id } = (await seeded.json()).data;
 		const title = `Readable dossier ${Date.now()}`;
-		const dossier = await request.post(`${site}/__tp/api/v1/dossier`, {
+		const dossier = await request.post(`${site}/wp-json/typedpress/v1/dossier`, {
 			headers: {
 				Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}`,
 			},
@@ -476,7 +474,7 @@ if (!subdir) {
 		expect(dossier.status(), await dossier.text()).toBe(201);
 		const dossierId = (await dossier.json()).data.id;
 		const claimTitle = `Readable foreign claim ${Date.now()}`;
-		const claim = await request.post(`${site}/__tp/api/v1/claims`, {
+		const claim = await request.post(`${site}/wp-json/typedpress/v1/claims`, {
 			headers: { Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}` },
 			data: { title: claimTitle, ownerId: harness.users.admin.id, meta: {} },
 		});
@@ -514,7 +512,7 @@ if (!subdir) {
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill(`${title} edited`);
 		await page.getByRole('button', { name: 'Save changes', exact: true }).click();
 		await expect(page.locator('.components-notice__content').getByText('Saved.', { exact: true })).toBeVisible();
-		const readback = await request.get(`${site}/__tp/api/v1/dossier/${dossierId}`, {
+		const readback = await request.get(`${site}/wp-json/typedpress/v1/dossier/${dossierId}`, {
 			headers: { Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}` },
 		});
 		expect((await readback.json()).data).toMatchObject({ title: `${title} edited`, body: '<p>Private original body</p>' });
@@ -527,13 +525,13 @@ if (!subdir) {
 		await page.reload();
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(claimTitle);
 		await page.screenshot({ path: test.info().outputPath('readable-rule-record.png'), animations: 'disabled' });
-		const denied = await request.patch(`${site}/__tp/api/v1/claims/${claimId}`, {
+		const denied = await request.patch(`${site}/wp-json/typedpress/v1/claims/${claimId}`, {
 			headers: { Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}` },
 			data: { title: 'Forbidden update' },
 		});
 		// Row-filtered updates conceal rows outside the caller's update scope.
 		expect(denied.status()).toBe(404);
-		const claimReadback = await request.get(`${site}/__tp/api/v1/claims/${claimId}`, {
+		const claimReadback = await request.get(`${site}/wp-json/typedpress/v1/claims/${claimId}`, {
 			headers: { Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}` },
 		});
 		expect(claimReadback.status()).toBe(200);
@@ -547,10 +545,12 @@ if (!subdir) {
 		const headers = {
 			Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}`,
 		};
-		await page.getByRole('link', { name: 'Globals', exact: true }).click();
+		// One to three readable globals are links directly under Site; a Globals group appears only for four or more.
 		await page
+			.locator('.typedpress-admin-sidebar__content')
 			.getByRole('link', { name: 'Site settings', exact: true })
 			.click();
+		await expect(page).toHaveURL(`${site}/wp-admin/new/globals/settings`);
 		await page
 			.getByRole('textbox', { name: 'Tagline', exact: true })
 			.fill(`Saved from the browser ${Date.now()}`);
@@ -567,7 +567,7 @@ if (!subdir) {
 			page.getByRole('textbox', { name: 'Tagline', exact: true })
 		).toHaveValue(/Saved from the browser/);
 		const global = await request.get(
-			`${site}/__tp/api/v1/settings`,
+			`${site}/wp-json/typedpress/v1/settings`,
 			{ headers }
 		);
 		expect((await global.json()).data.tagline).toMatch(
@@ -575,9 +575,11 @@ if (!subdir) {
 		);
 		await page.getByRole('link', { name: 'Media', exact: true }).click();
 		const name = `browser-${Date.now()}`;
+		// Each library item links twice, by thumbnail and by title; open it by its title.
+		const mediaLink = page.locator('a.typedpress-schema-title-link', { hasText: name });
 		const uploaded = page.waitForResponse(
 				(r) =>
-					r.url().includes('/__tp/api/v1/media') && r.request().method() === 'POST' && r.status() === 201
+					r.url().includes('/wp-json/typedpress/v1/media') && r.request().method() === 'POST' && r.status() === 201
 		);
 		const chooser = page.waitForEvent('filechooser');
 		await page
@@ -601,7 +603,7 @@ if (!subdir) {
 		const mediaId = (await uploadResponse.json()).data.id;
 		await expect(page.locator('.components-notice.is-error'))
 			.toContainText(/not allowed|invalid|file type|mime|upload/i);
-		await page.getByRole('link', { name, exact: true }).click();
+		await mediaLink.click();
 		await expect(page).toHaveURL(`${site}/wp-admin/new/media/${mediaId}`);
 		await page
 			.getByRole('textbox', { name: 'Alt text', exact: true })
@@ -617,7 +619,7 @@ if (!subdir) {
 			page.getByRole('textbox', { name: 'Alt text', exact: true })
 		).toHaveValue('Browser image description');
 		const media = await request.get(
-			`${site}/__tp/api/v1/media/${mediaId}`,
+			`${site}/wp-json/typedpress/v1/media/${mediaId}`,
 			{ headers }
 		);
 		expect((await media.json()).data.alt).toBe('Browser image description');
@@ -649,7 +651,7 @@ if (!subdir) {
 		await expect(page).toHaveURL(`${site}/wp-admin/new/media/${mediaId}`);
 		await leave.getByRole('button', { name: 'Close', exact: true }).click();
 		await expect(caption).toHaveValue('Saved caption on leave');
-		const partial = await request.get(`${site}/__tp/api/v1/media/${mediaId}`, { headers });
+		const partial = await request.get(`${site}/wp-json/typedpress/v1/media/${mediaId}`, { headers });
 		expect((await partial.json()).data.alt).toBe('Saved on media leave');
 		await page.unroute(captionUrl);
 		await caption.fill(originalCaption);
@@ -669,13 +671,13 @@ if (!subdir) {
 			window.dispatchEvent(event);
 			return event.defaultPrevented;
 		})).toBe(false);
-		await page.getByRole('link', { name, exact: true }).click();
+		await mediaLink.click();
 		await expect(alt).toHaveValue('Saved on media leave');
 		await alt.fill('Discard this media draft');
 		await page.getByRole('link', { name: 'Back to Media', exact: true }).click();
 		await leave.getByRole('button', { name: 'Discard changes', exact: true }).click();
 		await expect(page).toHaveURL(`${site}/wp-admin/new/media`);
-		await page.getByRole('link', { name, exact: true }).click();
+		await mediaLink.click();
 		await expect(alt).toHaveValue('Saved on media leave');
 		await page.screenshot({ path: test.info().outputPath('media-details.png') });
         // The complete native image editor remains available beside TypedPress details.
@@ -707,8 +709,8 @@ if (!subdir) {
 		await expect(page).toHaveURL(`${site}/wp-admin/new/media`);
 		// The rotated copy retains the title; deletion targets the original ID.
 		await expect(page.locator(`a[href$="/wp-admin/new/media/${mediaId}"]`)).toHaveCount(0);
-		expect((await request.get(`${site}/__tp/api/v1/media/${mediaId}`, { headers })).status()).toBe(404);
-		expect((await request.get(`${site}/__tp/api/v1/media/${editedImage.id}`, { headers })).status()).toBe(200);
+		expect((await request.get(`${site}/wp-json/typedpress/v1/media/${mediaId}`, { headers })).status()).toBe(404);
+		expect((await request.get(`${site}/wp-json/typedpress/v1/media/${editedImage.id}`, { headers })).status()).toBe(200);
 	});
 
 test('restored native WordPress routes persist settings and published content and keep classic pages reachable in TypedPress Admin', async ({ page, request }) => {
@@ -736,11 +738,14 @@ test('restored native WordPress routes persist settings and published content an
     // The dashboard's earlier address, /dashboard, goes to the home route.
     await page.goto(`${site}/wp-admin/new/dashboard`);
     await expect(page).toHaveURL(`${site}/wp-admin/new/`);
-    await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Add widgets', exact: true }).click();
-    await expect(page.getByRole('dialog').getByText('Quick Stats (example data)', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
+    // Home starts with the built-in widgets, so widgets are added from Customize, not the empty-layout button.
+    await page.getByRole('button', { name: 'Customize', exact: true }).click();
+    await page.getByRole('button', { name: 'Add widget', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Add widget' }).getByText('Content Overview', { exact: true }).first()).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('native-dashboard-widgets.png') });
     await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.goto(`${site}/wp-admin/new/settings/general`);
     const description = `Saved through native settings ${Date.now()}`;
     await page.getByRole('textbox', { name: 'Site description', exact: true }).fill(description);

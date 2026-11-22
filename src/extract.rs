@@ -103,6 +103,10 @@ pub struct Extracted {
     /// Each registered action's value (its allocation) → its registered name, so a page's
     /// `<form action={subscribe}>` and `useFormState(subscribe)` name the action they were given.
     pub action_values: HashMap<usize, String>,
+    /// Each registered job's value → its registered name, so `notifyLowStock.enqueue(...)` names it.
+    pub job_values: HashMap<usize, String>,
+    /// Each registered `adminWidget()`'s value (its allocation) → its kebab-case widget id.
+    pub widget_values: HashMap<usize, String>,
     pub plugins: Option<crate::wp_plugins::Config>,
     /// `defineConfig({ use })`: plugin packages, in registration order.
     pub uses: Vec<crate::plugins::Plugin>,
@@ -145,10 +149,23 @@ const CONFIG_KEYS: &[&str] = &[
     "frontend",
     "output",
     "runtimeSchema",
+    "seed",
+    "retention",
 ];
 /// `wp.posts.extend(fields, options)`: what may change about WordPress's own posts.
 const POST_OPTIONS: &[&str] = &[
-    "url", "comments", "access", "label", "sync", "uid", "agents", "api", "staged",
+    "url",
+    "comments",
+    "access",
+    "label",
+    "ui",
+    "sync",
+    "uid",
+    "agents",
+    "api",
+    "staged",
+    "softDelete",
+    "retention",
 ];
 /// `wp.posts.clone(fields, options)`: the same, and its own stored name.
 const POST_CLONE_OPTIONS: &[&str] = &[
@@ -156,12 +173,15 @@ const POST_CLONE_OPTIONS: &[&str] = &[
     "comments",
     "access",
     "label",
+    "ui",
     "sync",
     "uid",
     "agents",
     "api",
     "staged",
     "storageName",
+    "softDelete",
+    "retention",
 ];
 
 fn post_call(post: PostKind) -> &'static str {
@@ -176,8 +196,11 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "existingTable",
     "was",
     "label",
+    "ui",
     "drafts",
     "revisions",
+    "softDelete",
+    "retention",
     "staged",
     "comments",
     "title",
@@ -206,6 +229,8 @@ const REGISTRIES: &[&str] = &[
     "actions",
     "jobs",
     "screens",
+    "widgets",
+    "dashboards",
 ];
 /// Collection names that would shadow a built-in route (§4.8).
 const RESERVED_COLLECTIONS: &[&str] = &[
@@ -309,6 +334,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         collections: Vec::new(),
         hints: Vec::new(),
         action_values: HashMap::new(),
+        job_values: HashMap::new(),
+        widget_values: HashMap::new(),
         refs: Vec::new(),
         plugins: None,
         uses: Vec::new(),
@@ -328,6 +355,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .help("it becomes the WordPress plugin slug `typedpress-<name>`"));
         }
     };
+    out.schema.seed = bool_option(&cfg_map, "seed", false, span_of(ev, config, "seed", config_span))?;
     out.schema.admin = bool_option(&cfg_map, "admin", true, span_of(ev, config, "admin", config_span))?;
     out.schema.public_authors = bool_option(
         &cfg_map,
@@ -337,6 +365,11 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     )?;
     out.schema.xmlrpc = bool_option(&cfg_map, "xmlrpc", true, span_of(ev, config, "xmlrpc", config_span))?;
     out.schema.pings = bool_option(&cfg_map, "pings", true, span_of(ev, config, "pings", config_span))?;
+    out.schema.retention = extract_retention(
+        cfg_map.get("retention"),
+        ev,
+        span_of(ev, config, "retention", config_span),
+    )?;
     let runtime_schema = span_of(ev, config, "runtimeSchema", config_span);
     out.schema.runtime_schema = bool_option(&cfg_map, "runtimeSchema", false, runtime_schema)?.then(Default::default);
     out.schema.frontend = match cfg_map.get("frontend") {
@@ -536,6 +569,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     editor: true,
                     drafts: true,
                     revisions: true,
+                    soft_delete: false,
+                    retention: None,
                     staged: true,
                     comments: false,
                     comment_policy: None,
@@ -559,6 +594,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     taxonomy: kind.term().then(|| Taxonomy { on: Vec::new() }),
                     commerce: kind.commerce().then(|| kind.builder().to_string()),
                     indexes: Vec::new(),
+                    ui: None,
                     api: Api {
                         list: true,
                         get: true,
@@ -576,6 +612,46 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     for c in out.collections.clone() {
         if c.kind.commerce() {
             crate::commerce::kind(&c, &mut out.schema)?;
+            if c.kind == StorageKind::Product {
+                for (name, builder) in c.columns.iter().filter(|(name, _)| name.as_str() != "id") {
+                    if out.schema.collections[c.table()].columns.contains_key(name)
+                        || name == "stockQuantity"
+                        || matches!(name.as_str(), "categories" | "tags")
+                    {
+                        return Err(Diag::new(builder.span, format!("product() already defines `{name}`")));
+                    }
+                    let mut col = lock_column(name, builder, false, c.table(), ev, &mut out)?;
+                    if !matches!(
+                        col.ty,
+                        ColType::Text
+                            | ColType::Integer
+                            | ColType::Real
+                            | ColType::Boolean
+                            | ColType::Date
+                            | ColType::Email
+                            | ColType::Url
+                    ) || col.not_null
+                        || col.unique
+                        || col.references.is_some()
+                        || col.was.is_some()
+                        || col.localized
+                        || col.on_update.is_some()
+                        || col.default.is_some()
+                    {
+                        return Err(Diag::new(
+                            builder.span,
+                            "product() fields must be optional scalar metadata without defaults, references, or storage modifiers",
+                        ));
+                    }
+                    col.commerce_meta = true;
+                    out.schema
+                        .collections
+                        .get_mut(c.table())
+                        .unwrap()
+                        .columns
+                        .insert(name.clone(), col);
+                }
+            }
             let kind = &out.schema.collections[c.table()];
             if let Some(pattern) = &kind.url {
                 let shape = crate::kind_url::check(
@@ -629,12 +705,41 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 )
                 .help("WordPress keeps one term set per item and taxonomy; keep one of the two fields"));
             }
-            if col.was.is_some() && c.kind != StorageKind::Table {
+            if col.storage_name.is_some() && c.kind != StorageKind::Table {
                 return Err(Diag::new(
-                    b.span_of("was"),
-                    "`.was()` renames a column of a table(); this kind stores its fields elsewhere",
+                    b.span_of("column"),
+                    "`.column()` maps a physical SQL column on a table()",
                 )
-                .help("rename the field without `.was()` and move its values yourself, or keep the old name"));
+                .help("remove `.column()` on non-table kinds, or use `.alias()` for API field aliasing"));
+            }
+            if let Some((other, _)) = columns
+                .iter()
+                .find(|(_, o): &(&String, &Column)| o.physical_name() == col.physical_name())
+            {
+                return Err(Diag::new(
+                    b.span_of("column"),
+                    format!(
+                        "`{name}` and `{other}` both map to physical column `{}`",
+                        col.physical_name()
+                    ),
+                )
+                .help("give each field a distinct physical `.column(...)` name"));
+            }
+            for alias in &col.aliases {
+                if columns.contains_key(alias) || columns.values().any(|o| o.aliases.iter().any(|a| a == alias)) {
+                    return Err(Diag::new(
+                        b.span_of("alias"),
+                        format!("alias `{alias}` on `{name}` collides with another field or alias"),
+                    )
+                    .help("choose a unique alias name"));
+                }
+            }
+            if columns.values().any(|o| o.aliases.iter().any(|a| a == name)) {
+                return Err(Diag::new(
+                    b.span,
+                    format!("field `{name}` collides with an `.alias(\"{name}\")` on another field"),
+                )
+                .help("rename the field or remove the conflicting alias"));
             }
             columns.insert(name.clone(), col);
         }
@@ -682,9 +787,12 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.existing_table = opts.existing_table;
         coll.was = opts.was;
         coll.label = opts.label;
+        coll.ui = opts.ui;
         coll.editor = opts.editor;
         coll.drafts = opts.drafts;
         coll.revisions = opts.revisions;
+        coll.soft_delete = opts.soft_delete;
+        coll.retention = opts.retention;
         coll.staged = opts.staged;
         coll.comments = opts.comment_policy.is_some();
         coll.comment_policy = opts.comment_policy;
@@ -772,6 +880,111 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             coll.columns.insert("status".into(), status);
             coll.columns.insert("publishedAt".into(), published_at);
         }
+        // Automatic system fields on every collection() and table() (except adopted existingTable bindings).
+        if !coll.auth && coll.existing_table.is_none() {
+            if !coll.columns.contains_key("author") {
+                let mut author = Column::new("author", ColType::Integer);
+                author.system = true;
+                author.read_only = true;
+                coll.columns.insert("author".into(), author);
+            }
+            if !coll.columns.contains_key("createdAt") {
+                let mut created_at = Column::new("createdAt", ColType::Timestamp);
+                created_at.not_null = true;
+                created_at.default = Some(DefaultKind::Now);
+                created_at.system = true;
+                created_at.read_only = true;
+                coll.columns.insert("createdAt".into(), created_at);
+            }
+            if !coll.columns.contains_key("updatedAt") {
+                let mut updated_at = Column::new("updatedAt", ColType::Timestamp);
+                updated_at.not_null = true;
+                updated_at.default = Some(DefaultKind::Now);
+                updated_at.on_update = Some(DefaultKind::Now);
+                updated_at.system = true;
+                updated_at.read_only = true;
+                coll.columns.insert("updatedAt".into(), updated_at);
+            }
+        }
+        if coll.soft_delete {
+            let mut deleted_at = Column::new("deletedAt", ColType::Timestamp);
+            deleted_at.system = true;
+            deleted_at.read_only = true;
+            let mut deleted_by = Column::new("deletedBy", ColType::Integer);
+            deleted_by.system = true;
+            deleted_by.read_only = true;
+            let mut deleted_group = Column::new("deletedGroup", ColType::Text);
+            deleted_group.rules.max = Some(36.0);
+            deleted_group.system = true;
+            deleted_group.read_only = true;
+            deleted_group.hidden = true;
+            coll.columns.insert("deletedAt".into(), deleted_at);
+            coll.columns.insert("deletedBy".into(), deleted_by);
+            coll.columns.insert("deletedGroup".into(), deleted_group);
+            if !coll.editor {
+                let mut live = Column::new("_live", ColType::Boolean);
+                live.default = Some(DefaultKind::Value(Json::Bool(true)));
+                live.system = true;
+                live.read_only = true;
+                live.hidden = true;
+                coll.columns.insert("_live".into(), live);
+            }
+        }
+        // Validate resolved physical column names (ASCII case-insensitively) after system fields
+        // are added so user `.column(...)` overrides and case-differing fields (`meta`/`META`)
+        // cannot silently overwrite system columns or emit duplicate SQL columns.
+        let mut seen_phys: std::collections::HashMap<String, (String, bool)> = std::collections::HashMap::new();
+        for (col_name, col) in &coll.columns {
+            let phys = col.physical_name();
+            let lower = phys.to_ascii_lowercase();
+            if let Some((other, other_sys)) = seen_phys.get(&lower) {
+                let msg = if *other_sys || col.system {
+                    format!(
+                        "`{}`.{col_name} maps to physical column `{phys}`, which collides with system column `{other}`",
+                        coll.table
+                    )
+                } else {
+                    format!(
+                        "`{}`.{col_name} and `{}`.{other} both map to SQL column `{phys}` (SQL column names are case-insensitive)",
+                        coll.table, coll.table
+                    )
+                };
+                return Err(Diag::new(Span::NONE, msg)
+                    .help("give the field a distinct name or `.column(...)` override")
+                    .code(crate::diag::Code::Schema));
+            }
+            seen_phys.insert(lower, (col_name.clone(), col.system));
+        }
+    }
+    // Validate resolved SQL physical table names: forbid reserved system table namespaces (`tp__*`)
+    // and case-insensitive collisions across collections.
+    let mut seen_tables: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for coll in out.schema.collections.values() {
+        if coll.editor || coll.taxonomy.is_some() || coll.auth || coll.existing_table.is_some() {
+            continue;
+        }
+        let storage = coll.table.as_str();
+        let lower_storage = storage.to_ascii_lowercase();
+        if lower_storage == "tp__revisions" || lower_storage == "tp__migrations" || lower_storage.starts_with("tp__") {
+            return Err(Diag::new(
+                Span::NONE,
+                format!("`{}` uses reserved system table name `{storage}`", coll.key),
+            )
+            .help("choose a `storageName` outside the `tp__*` system namespace")
+            .code(crate::diag::Code::Schema));
+        }
+        if let Some(other) = seen_tables.get(&lower_storage) {
+            return Err(Diag::new(
+                Span::NONE,
+                format!(
+                    "`{}` and `{other}` both map to SQL table `tp_{storage}` (table names are case-insensitive)",
+                    coll.key
+                ),
+            )
+            .help("give each table a distinct name or `storageName`")
+            .code(crate::diag::Code::Schema));
+        }
+        seen_tables.insert(lower_storage, coll.key.clone());
     }
     crate::commerce::relations(&mut out.schema);
     // Each taxonomy registers for the union of its `on` and every kind with a `terms()` field for it.
@@ -862,12 +1075,27 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     if let Some(v) = cfg_map.get("use").filter(|v| !matches!(v, Value::Undef)) {
         uses(v, span_of(ev, config, "use", config_span), ev, &mut out)?;
     }
-    // Screens name actions, the app's and its plugins', so they come after both.
-    if let Some(v) = cfg_map.get("screens").filter(|v| !matches!(v, Value::Undef)) {
-        crate::admin_screen::screens(v, span_of(ev, config, "screens", config_span), ev, &mut out)?;
-    }
     validate_phase2(&cfg_map, ev, config_span, &mut out)?;
     Ok(out)
+}
+
+/// Admin screens, widgets and dashboards. They name actions, the app's and its plugins', and read
+/// their inputs, so they are read once those inputs are known (`Compiler::infer_inputs`).
+pub fn screens(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, out: &mut Extracted) -> Result<()> {
+    let Value::Object(cfg) = config else { return Ok(()) };
+    let v = cfg.borrow().get("screens").cloned();
+    if let Some(v) = v.filter(|v| !matches!(v, Value::Undef)) {
+        crate::admin_screen::screens(&v, ev.key_span(config, "screens").unwrap_or(config_span), ev, out)?;
+    }
+    let w = cfg.borrow().get("widgets").cloned();
+    if let Some(w) = w.filter(|v| !matches!(v, Value::Undef)) {
+        crate::admin_dashboard::widgets(&w, ev.key_span(config, "widgets").unwrap_or(config_span), ev, out)?;
+    }
+    let d = cfg.borrow().get("dashboards").cloned();
+    if let Some(d) = d.filter(|v| !matches!(v, Value::Undef)) {
+        crate::admin_dashboard::dashboards(&d, ev.key_span(config, "dashboards").unwrap_or(config_span), ev, out)?;
+    }
+    Ok(())
 }
 
 /// `hooks.<collectionKey>.<hook>`, from the app or from a plugin (`plugin`: index and name).
@@ -984,7 +1212,10 @@ fn actions(
     plugin: Option<(usize, &str)>,
 ) -> Result<()> {
     let Value::Object(actions) = actions_val else {
-        return Err(Diag::new(aspan, "`actions` must be an object of action(...) values"));
+        return Err(Diag::new(
+            aspan,
+            "`actions` must be an object of query(...) and mutation(...) values",
+        ));
     };
     for (name, a) in actions.borrow().iter() {
         let nspan = ev.key_span(actions_val, name).unwrap_or(aspan);
@@ -999,9 +1230,13 @@ fn actions(
         let Value::Action(a) = a else {
             return Err(Diag::new(
                 nspan,
-                format!("action `{name}` must be wrapped in action({{ input, handler }})"),
+                format!("`{name}` must be a query(...) or a mutation(...)"),
             ));
         };
+        if a.form != FnForm::Object {
+            typed_action(name, a, ev, out, plugin)?;
+            continue;
+        }
         let Value::Object(cfg) = &a.config else { unreachable!() };
         let cfg = cfg.borrow().clone();
         for k in cfg.keys() {
@@ -1085,11 +1320,245 @@ fn actions(
                 destructive,
                 signature,
                 output: None,
+                personal: false,
+                input_ty: None,
+                query: false,
+                rate_limit: None,
+                typed_input: false,
             },
         );
     }
     Ok(())
 }
+
+/// `query(options, handler)` / `mutation(options, handler)`. The input is the handler's first
+/// parameter type, which the compiler reads before anything uses it (`Compiler::infer_inputs`).
+fn typed_action(
+    name: &str,
+    a: &Rc<ActionVal>,
+    ev: &mut Evaluator<'_>,
+    out: &mut Extracted,
+    plugin: Option<(usize, &str)>,
+) -> Result<()> {
+    let query = a.form == FnForm::Query;
+    let what = if query { "query()" } else { "mutation()" };
+    let Value::Object(cfg) = &a.config else {
+        unreachable!("checked by the evaluator")
+    };
+    let cfg = cfg.borrow().clone();
+    let at = |k: &str| ev.key_span(&a.config, k).unwrap_or(a.span);
+    let allowed: &[&str] = if query {
+        &["access", "agents", "rateLimit"]
+    } else {
+        &[
+            "access",
+            "agents",
+            "idempotent",
+            "destructive",
+            "signature",
+            "rateLimit",
+        ]
+    };
+    for k in cfg.keys() {
+        if allowed.contains(&k.as_str()) {
+            continue;
+        }
+        let d = Diag::new(at(k), format!("{what} has no option `{k}`"));
+        return Err(match k.as_str() {
+            "input" => d.help(
+                "the input is the handler's parameter type: `async ({ id }: { id: number }) => ...`; defaults go in the destructuring, `({ limit = 10 }: { limit?: number })`",
+            ),
+            "handler" => d.help(format!("pass the handler after the options: `{}({{ ... }}, async (input) => ...)`", &what[..what.len() - 2])),
+            "readonly" if !query => d.help("a function that only reads is a query(): it is marked read-only for agents and may not write"),
+            "readonly" => d.help("a query is always read-only; remove the option"),
+            "idempotent" | "destructive" | "signature" if query => {
+                d.help("a query only reads, so it is idempotent and not destructive; a signed request is a mutation()")
+            }
+            _ => d.help(format!("use {}", allowed.join(", "))),
+        });
+    }
+    let Value::Closure(handler) = &a.handler else {
+        unreachable!("checked by the evaluator")
+    };
+    let owner = Owner::Action(name.to_string());
+    let agents = bool_option(&cfg, "agents", true, at("agents"))?;
+    let idempotent = bool_option(&cfg, "idempotent", false, at("idempotent"))?;
+    let destructive = bool_option(&cfg, "destructive", false, at("destructive"))?;
+    let signature = match cfg.get("signature") {
+        None | Some(Value::Undef) => None,
+        Some(v) => {
+            if cfg.contains_key("access") {
+                return Err(Diag::new(at("signature"), "signature cannot be combined with access")
+                    .help("remove access; signature authenticates the caller"));
+            }
+            Some(signature_config(v, at("signature"))?)
+        }
+    };
+    let anyone = matches!(cfg.get("access"), Some(Value::Str(s)) if s.as_ref() == "anyone");
+    let access = match cfg.get("access") {
+        None | Some(Value::Undef) => Access::editor(),
+        Some(v) => access_rule(
+            v,
+            at("access"),
+            &owner,
+            "access",
+            format!("action__{name}__access"),
+            out,
+        )?,
+    };
+    let rate_limit = match cfg.get("rateLimit") {
+        // A mutation anyone may call is limited unless it says otherwise (a signed one is not
+        // called by visitors).
+        None | Some(Value::Undef) if !query && anyone && signature.is_none() => Some(DEFAULT_RATE_LIMIT),
+        None | Some(Value::Undef) | Some(Value::Bool(false)) => None,
+        Some(Value::Str(spec)) => Some(rate_limit(spec, at("rateLimit"))?),
+        Some(other) => {
+            return Err(Diag::new(
+                at("rateLimit"),
+                format!("rateLimit is a string like \"10/min\", not {}", other.describe()),
+            )
+            .help("write `rateLimit: \"10/min\"` (per second, min, hour or day), or `rateLimit: false` for none"));
+        }
+    };
+    out.action_values.insert(Rc::as_ptr(a) as usize, name.to_string());
+    out.roots.push(Root {
+        closure: handler.clone(),
+        slot: Slot::ActionHandler {
+            action: name.to_string(),
+        },
+        name: format!("action__{name}"),
+        plugin: plugin.map(|(i, _)| i),
+    });
+    out.schema.actions.insert(
+        name.to_string(),
+        Action {
+            name: name.to_string(),
+            input: IndexMap::new(),
+            handler: String::new(),
+            access,
+            agents,
+            idempotent,
+            readonly: query,
+            destructive,
+            signature,
+            output: None,
+            personal: false,
+            input_ty: None,
+            query,
+            rate_limit,
+            typed_input: true,
+        },
+    );
+    Ok(())
+}
+
+/// What a mutation open to `"anyone"` is limited to when it names no `rateLimit`.
+pub const DEFAULT_RATE_LIMIT: RateLimit = RateLimit { count: 30, window: 60 };
+
+/// `"10/min"`: a count per second, minute, hour or day.
+fn rate_limit(spec: &str, span: Span) -> Result<RateLimit> {
+    let bad = || {
+        Diag::new(span, format!("rateLimit \"{spec}\" isn't a count per period"))
+            .help("write `rateLimit: \"10/min\"`: a whole number, a slash, then sec, min, hour or day")
+    };
+    let (count, unit) = spec.split_once('/').ok_or_else(bad)?;
+    let count: u32 = count.trim().parse().map_err(|_| bad())?;
+    let window = match unit.trim() {
+        "s" | "sec" | "second" => 1,
+        "m" | "min" | "minute" => 60,
+        "h" | "hour" => 3600,
+        "d" | "day" => 86_400,
+        _ => return Err(bad()),
+    };
+    if count == 0 {
+        return Err(Diag::new(span, "rateLimit allows at least one call per period")
+            .help("to refuse every call, use access; to remove the limit, `rateLimit: false`"));
+    }
+    Ok(RateLimit { count, window })
+}
+
+/// `every: "1h"`: seconds, at least a minute (Action Scheduler runs once a minute at most).
+fn every(spec: &str, span: Span) -> Result<u64> {
+    let bad = || {
+        Diag::new(span, format!("every \"{spec}\" isn't a duration"))
+            .help("write a whole number and a unit: \"30m\", \"1h\", \"1d\" (s, m, h, d or w)")
+    };
+    let digits = spec.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    let n: u64 = digits.parse().map_err(|_| bad())?;
+    let seconds = match &spec[digits.len()..] {
+        "s" => n,
+        "m" => n * 60,
+        "h" => n * 3600,
+        "d" => n * 86_400,
+        "w" => n * 604_800,
+        _ => return Err(bad()),
+    };
+    if seconds < 60 {
+        return Err(Diag::new(span, format!("every \"{spec}\" is under a minute"))
+            .help("Action Scheduler runs due work about once a minute; use \"1m\" or longer"));
+    }
+    Ok(seconds)
+}
+
+/// A five-field cron expression (minute hour day-of-month month day-of-week), or `@daily` and its
+/// siblings, as Action Scheduler's `as_schedule_cron_action` reads it. Times are UTC.
+fn cron_schedule(spec: &str, span: Span) -> Result<String> {
+    let spec = spec.trim();
+    if matches!(
+        spec,
+        "@yearly" | "@annually" | "@monthly" | "@weekly" | "@daily" | "@hourly"
+    ) {
+        return Ok(spec.to_string());
+    }
+    let fields: Vec<&str> = spec.split_whitespace().collect();
+    let bad = || {
+        Diag::new(span, format!("\"{spec}\" isn't a cron schedule"))
+            .help("write five fields, minute hour day month weekday, in UTC: \"0 3 * * *\" runs at 03:00 every day; each is `*`, a number, a range `1-5`, a list `1,15` or a step `*/10`")
+    };
+    if fields.len() != 5 {
+        return Err(bad());
+    }
+    // minute, hour, day of month, month, day of week (0 and 7 are Sunday), with the names Action
+    // Scheduler's cron parser reads.
+    const RANGES: [(u32, u32); 5] = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 7)];
+    const MONTHS: [&str; 12] = [
+        "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+    ];
+    const DAYS: [&str; 7] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+    for (i, field) in fields.iter().enumerate() {
+        let (lo, hi) = RANGES[i];
+        let value = |v: &str| -> Option<u32> {
+            let lower = v.to_ascii_lowercase();
+            let named = match i {
+                3 => MONTHS.iter().position(|m| *m == lower).map(|p| p as u32 + 1),
+                4 => DAYS.iter().position(|d| *d == lower).map(|p| p as u32),
+                _ => None,
+            };
+            named.or_else(|| v.parse().ok()).filter(|n| (lo..=hi).contains(n))
+        };
+        for part in field.split(',') {
+            let (range, step) = match part.split_once('/') {
+                Some((r, s)) => (r, Some(s)),
+                None => (part, None),
+            };
+            if let Some(step) = step
+                && !step.parse::<u32>().is_ok_and(|s| (1..=hi.max(1)).contains(&s))
+            {
+                return Err(bad());
+            }
+            let ok = range == "*"
+                || match range.split_once('-') {
+                    Some((a, b)) => matches!((value(a), value(b)), (Some(a), Some(b)) if a <= b),
+                    None => value(range).is_some(),
+                };
+            if !ok {
+                return Err(bad());
+            }
+        }
+    }
+    Ok(fields.join(" "))
+}
+
 /// The registered name of a plugin's action, job or route.
 fn registered(plugin: Option<(usize, &str)>, name: &str) -> String {
     plugin.map_or_else(|| name.to_string(), |(_, p)| format!("{p}_{name}"))
@@ -1108,7 +1577,12 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
                 .help("call the package's export: use: [seo({ ... })]"));
         };
         let o = object(&p.config, p.span, "definePlugin")?;
-        keys(&o, &["name", "hooks", "actions", "jobs"], p.span, "definePlugin")?;
+        keys(
+            &o,
+            &["name", "hooks", "actions", "jobs", "migrationProvider"],
+            p.span,
+            "definePlugin",
+        )?;
         let name = string(o.get("name"), p.span, "plugin name")?;
         if !(valid_ident(&name)
             && name
@@ -1120,15 +1594,20 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
                     .help("use letters, digits and underscores, like \"seo\""),
             );
         }
-        if out.uses.iter().any(|u| u.name == name) {
-            return Err(Diag::new(p.span, format!("two plugins are both named \"{name}\""))
-                .help("each plugin is registered once"));
-        }
-        let plugin = crate::plugins::identify(ev.program(), &name, p.span)?;
-        let index = out.uses.len();
-        out.uses.push(plugin);
+        let is_builtin = p.form == FnForm::BuiltinPlugin;
         let first = out.roots.len();
-        let owner = Some((index, name.as_str()));
+        let owner = if is_builtin {
+            None
+        } else {
+            if out.uses.iter().any(|u| u.name == name) {
+                return Err(Diag::new(p.span, format!("two plugins are both named \"{name}\""))
+                    .help("each plugin is registered once"));
+            }
+            let plugin = crate::plugins::identify(ev.program(), &name, p.span)?;
+            let index = out.uses.len();
+            out.uses.push(plugin);
+            Some((index, name.as_str()))
+        };
         if let Some(h) = o.get("hooks").filter(|v| !matches!(v, Value::Undef)) {
             hooks(h, ev.key_span(&p.config, "hooks").unwrap_or(p.span), ev, out, owner)?;
         }
@@ -1138,8 +1617,71 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
         if let Some(j) = o.get("jobs").filter(|v| !matches!(v, Value::Undef)) {
             jobs(j, ev, p.span, out, owner)?;
         }
-        for root in &mut out.roots[first..] {
-            root.plugin = Some(index);
+        if let Some(mp) = o.get("migrationProvider").filter(|v| !matches!(v, Value::Undef)) {
+            let mp_span = ev.key_span(&p.config, "migrationProvider").unwrap_or(p.span);
+            let mpo = object(mp, mp_span, "migrationProvider")?;
+            keys(
+                &mpo,
+                &["id", "cliOnly", "requireArchive", "allowRawSql"],
+                mp_span,
+                "migrationProvider",
+            )?;
+            let id = string(mpo.get("id"), mp_span, "migrationProvider.id")?;
+            let cli_only = match mpo.get("cliOnly") {
+                Some(Value::Bool(b)) => *b,
+                None | Some(Value::Undef) => true,
+                Some(other) => {
+                    return Err(Diag::new(
+                        mp_span,
+                        format!("migrationProvider.cliOnly must be boolean, not {}", other.describe()),
+                    ));
+                }
+            };
+            let require_archive = match mpo.get("requireArchive") {
+                Some(Value::Bool(b)) => *b,
+                None | Some(Value::Undef) => false,
+                Some(other) => {
+                    return Err(Diag::new(
+                        mp_span,
+                        format!(
+                            "migrationProvider.requireArchive must be boolean, not {}",
+                            other.describe()
+                        ),
+                    ));
+                }
+            };
+            let allow_raw_sql = match mpo.get("allowRawSql") {
+                Some(Value::Bool(b)) => *b,
+                None | Some(Value::Undef) => false,
+                Some(other) => {
+                    return Err(Diag::new(
+                        mp_span,
+                        format!(
+                            "migrationProvider.allowRawSql must be boolean, not {}",
+                            other.describe()
+                        ),
+                    ));
+                }
+            };
+            if out.schema.migration_providers.iter().any(|existing| existing.id == id) {
+                return Err(Diag::new(
+                    mp_span,
+                    format!("migrationProvider \"{id}\" is already registered"),
+                ));
+            }
+            out.schema
+                .migration_providers
+                .push(crate::schema::MigrationProviderConfig {
+                    id,
+                    cli_only,
+                    require_archive,
+                    allow_raw_sql,
+                });
+        }
+        if let Some((index, _)) = owner {
+            for root in &mut out.roots[first..] {
+                root.plugin = Some(index);
+            }
         }
     }
     crate::plugins::isolate(ev.program(), &mut out.uses)
@@ -1231,9 +1773,12 @@ struct CollOpts {
     existing_table: Option<String>,
     was: Option<String>,
     label: String,
+    ui: Option<Json>,
     editor: bool,
     drafts: bool,
     revisions: bool,
+    soft_delete: bool,
+    retention: Option<Retention>,
     staged: bool,
     comment_policy: Option<crate::schema::CommentPolicy>,
     title: Option<String>,
@@ -1547,7 +2092,8 @@ fn taxonomy_kind(
     };
 
     // access (ruling 29): the spec's defaults, the same keys as every kind.
-    let mut access: IndexMap<String, Access> = ACCESS_OPS
+    const TAXONOMY_ACCESS_OPS: [&str; 4] = ["read", "create", "update", "delete"];
+    let mut access: IndexMap<String, Access> = TAXONOMY_ACCESS_OPS
         .iter()
         .map(|op| {
             (
@@ -1569,9 +2115,9 @@ fn taxonomy_kind(
         };
         for (op, rule) in am.borrow().iter() {
             let sp = access_spans.get(op).copied().unwrap_or(span("access"));
-            if !ACCESS_OPS.contains(&op.as_str()) {
+            if !TAXONOMY_ACCESS_OPS.contains(&op.as_str()) {
                 let mut d = Diag::new(sp, format!("`access` has no operation `{op}`"));
-                d = match suggest(op, ACCESS_OPS.iter().copied()) {
+                d = match suggest(op, TAXONOMY_ACCESS_OPS.iter().copied()) {
                     Some(s) => d.help(format!("did you mean `{s}`?")),
                     None => d.help("use read, create, update, delete"),
                 };
@@ -1713,6 +2259,7 @@ fn collection_options(
             ));
         }
     };
+    let ui = extract_kind_ui(o.get("ui"), span("ui"), columns, ev)?;
     let existing_table = match o.get("existingTable") {
         None | Some(Value::Undef) => None,
         Some(Value::Str(name)) if c.kind == StorageKind::Table && valid_ident(name) && name.len() <= 64 => {
@@ -1725,17 +2272,14 @@ fn collection_options(
             ));
         }
     };
-    let was = match o.get("was") {
-        None | Some(Value::Undef) => None,
-        Some(Value::Str(name)) if c.kind == StorageKind::Table && valid_ident(name) => Some(name.to_string()),
-        _ => {
-            return Err(Diag::new(
-                span("was"),
-                "`was` takes the table's old storage name, and only on table()",
-            )
-            .help("write `was: \"old_name\"`: the name in tp/_generated/migrations/snapshot.json"));
-        }
-    };
+    if o.get("was").is_some_and(|value| !matches!(value, Value::Undef)) {
+        return Err(Diag::new(
+            span("was"),
+            "`was` is gone: forward-only migrations never rename SQL tables in place",
+        )
+        .help("keep the existing physical table under a new TypeScript export with `storageName: \"<old_name>\"`, or opt into `typedpress/danger` for an explicit physical rename"));
+    }
+    let was = None;
     if let Some(name) = &existing_table
         && out
             .schema
@@ -1766,13 +2310,40 @@ fn collection_options(
         None => editor,
     };
     let revisions = match flag("revisions")? {
-        Some(false) if editor => {
-            return Err(Diag::new(span("revisions"), "collections always have native revisions")
-                .help("remove this option; use table() for application data"));
-        }
         Some(r) => r,
-        None => editor,
+        None => !auth,
     };
+    let soft_delete = match flag("softDelete")? {
+        Some(true) if auth => {
+            return Err(
+                Diag::new(span("softDelete"), "userProjection() cannot enable softDelete")
+                    .help("WordPress owns user records; remove `softDelete: true`"),
+            );
+        }
+        Some(true) if existing_table.is_some() => {
+            return Err(Diag::new(
+                span("softDelete"),
+                "`softDelete: true` isn't available on `existingTable` tables",
+            )
+            .help("remove `softDelete: true`; TypedPress does not alter adopted tables"));
+        }
+        Some(sd) => sd,
+        None => !auth && existing_table.is_none(),
+    };
+    if soft_delete {
+        for reserved in ["deletedAt", "deletedBy", "deletedGroup", "_live"] {
+            if let Some(b) = c.columns.get(reserved) {
+                return Err(Diag::new(
+                    b.span,
+                    format!(
+                        "`{reserved}` is reserved: softDelete adds these (deletedAt, deletedBy, deletedGroup, _live)"
+                    ),
+                )
+                .help("remove the column, or opt out with `{ softDelete: false }`"));
+            }
+        }
+    }
+    let retention = extract_retention(o.get("retention"), ev, span("retention"))?;
     // Staged versions are WordPress revisions of a post: on for collections unless turned off.
     let staged = match flag("staged")? {
         Some(true) if !editor => {
@@ -1782,8 +2353,12 @@ fn collection_options(
                 ),
             );
         }
+        Some(true) if !revisions => {
+            return Err(Diag::new(span("staged"), "staged versions require `revisions: true`")
+                .help("remove `revisions: false`, or set `staged: false`"));
+        }
         Some(on) => on,
-        None => editor,
+        None => editor && revisions,
     };
     // spec.md §2.3: `comments: true | { guests?, moderation?, threaded?, closeAfterDays?, types? }`;
     // comments are off on every kind that doesn't turn them on.
@@ -2008,7 +2583,7 @@ fn collection_options(
     // capabilities decide whose posts): the rules narrow core's capabilities, never widen them.
     let owner = Owner::Collection(c.table().to_string());
     let native = c.post == Some(PostKind::Native);
-    let mut access: IndexMap<String, Access> = ACCESS_OPS
+    let mut access: IndexMap<String, Access> = ["read", "create", "update", "delete"]
         .iter()
         .map(|op| {
             (
@@ -2037,7 +2612,7 @@ fn collection_options(
                 if let Some(s) = suggest(op, ACCESS_OPS.iter().copied()) {
                     d = d.help(format!("did you mean `{s}`?"));
                 } else {
-                    d = d.help("use read, create, update, delete");
+                    d = d.help("use read, create, update, delete, restore, purge");
                 }
                 return Err(d);
             }
@@ -2075,9 +2650,12 @@ fn collection_options(
         existing_table,
         was,
         label,
+        ui,
         editor,
         drafts,
         revisions,
+        soft_delete,
+        retention,
         staged,
         comment_policy,
         title,
@@ -2092,6 +2670,139 @@ fn collection_options(
         url,
         hierarchical,
     })
+}
+
+/// Parses a retention duration string: `"forever"` -> `None`, or `"<n><s|m|h|d|w|y>"` -> `Some(seconds)`.
+fn parse_retention_duration(spec: &str, span: Span) -> Result<Option<u64>> {
+    if spec == "forever" {
+        return Ok(None);
+    }
+    let bad = || {
+        Diag::new(span, format!("retention duration \"{spec}\" isn't valid"))
+            .help("use \"forever\" or a positive duration like \"30d\", \"90d\", \"24h\", \"1y\" (s, m, h, d, w, y)")
+    };
+    let digits = spec.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    let n: u64 = digits.parse().map_err(|_| bad())?;
+    if n == 0 {
+        return Err(bad());
+    }
+    let seconds = match &spec[digits.len()..] {
+        "s" => n,
+        "m" => n.saturating_mul(60),
+        "h" => n.saturating_mul(3600),
+        "d" => n.saturating_mul(86_400),
+        "w" => n.saturating_mul(604_800),
+        "y" => n.saturating_mul(365 * 86_400),
+        _ => return Err(bad()),
+    };
+    Ok(Some(seconds))
+}
+
+/// Parses `retention: "forever" | { deleted?: ..., revisions?: ... }`.
+fn extract_retention(v: Option<&Value>, ev: &Evaluator<'_>, span: Span) -> Result<Option<Retention>> {
+    let Some(v) = v.filter(|v| !matches!(v, Value::Undef)) else {
+        return Ok(None);
+    };
+    if let Value::Str(s) = v {
+        if s.as_ref() == "forever" {
+            return Ok(Some(Retention::default()));
+        }
+        return Err(
+            Diag::new(span, format!("`retention` must be \"forever\" or an object, not \"{s}\""))
+                .help("write `retention: \"forever\"` or `retention: { deleted: \"90d\", revisions: { keepLast: 50, maxAge: \"365d\" } }`"),
+        );
+    }
+    let Value::Object(map) = v else {
+        return Err(Diag::new(
+            span,
+            format!("`retention` must be \"forever\" or an object, not {}", v.describe()),
+        )
+        .help("write `retention: { deleted: \"90d\", revisions: \"forever\" }`"));
+    };
+    let map = map.borrow();
+    let mut ret = Retention::default();
+    for (k, val) in map.iter() {
+        let kspan = ev.key_span(v, k).unwrap_or(span);
+        match k.as_str() {
+            "deleted" => match val {
+                Value::Undef => {}
+                Value::Str(s) => ret.deleted_seconds = parse_retention_duration(s, kspan)?,
+                other => {
+                    return Err(Diag::new(
+                        kspan,
+                        format!(
+                            "`retention.deleted` must be \"forever\" or a duration string, not {}",
+                            other.describe()
+                        ),
+                    ));
+                }
+            },
+            "revisions" => match val {
+                Value::Undef => {}
+                Value::Str(s) if s.as_ref() == "forever" => ret.revisions = None,
+                Value::Object(rm) => {
+                    let rm = rm.borrow();
+                    let mut rr = RevisionRetention::default();
+                    for (rk, rv) in rm.iter() {
+                        let rspan = ev.key_span(val, rk).unwrap_or(kspan);
+                        match rk.as_str() {
+                            "keepLast" => match rv {
+                                Value::Undef => {}
+                                Value::Num(n) if n.fract() == 0.0 && *n >= 1.0 && *n <= u32::MAX as f64 => {
+                                    rr.keep_last = Some(*n as u32);
+                                }
+                                other => {
+                                    return Err(Diag::new(
+                                        rspan,
+                                        format!(
+                                            "`retention.revisions.keepLast` must be a positive integer, not {}",
+                                            other.describe()
+                                        ),
+                                    ));
+                                }
+                            },
+                            "maxAge" => match rv {
+                                Value::Undef => {}
+                                Value::Str(s) => rr.max_age_seconds = parse_retention_duration(s, rspan)?,
+                                other => {
+                                    return Err(Diag::new(
+                                        rspan,
+                                        format!(
+                                            "`retention.revisions.maxAge` must be \"forever\" or a duration string, not {}",
+                                            other.describe()
+                                        ),
+                                    ));
+                                }
+                            },
+                            other => {
+                                return Err(
+                                    Diag::new(rspan, format!("`retention.revisions` has no option `{other}`"))
+                                        .help("use `keepLast` and/or `maxAge`"),
+                                );
+                            }
+                        }
+                    }
+                    if rr.keep_last.is_some() || rr.max_age_seconds.is_some() {
+                        ret.revisions = Some(rr);
+                    }
+                }
+                other => {
+                    return Err(Diag::new(
+                        kspan,
+                        format!(
+                            "`retention.revisions` must be \"forever\" or `{{ keepLast?, maxAge? }}`, not {}",
+                            other.describe()
+                        ),
+                    ));
+                }
+            },
+            other => {
+                return Err(Diag::new(kspan, format!("`retention` has no option `{other}`"))
+                    .help("use `deleted` and/or `revisions`"));
+            }
+        }
+    }
+    Ok(Some(ret))
 }
 
 fn no_column(table: &str, name: &str, columns: &IndexMap<String, Column>, span: Span, what: &str) -> Diag {
@@ -2114,6 +2825,7 @@ fn describe_col(c: &Column) -> String {
 fn access_rule(v: &Value, span: Span, owner: &Owner, op: &str, fn_name: String, out: &mut Extracted) -> Result<Access> {
     Ok(match v {
         Value::Bool(b) => Access::Allow(*b),
+        Value::Str(s) if &**s == "system" => Access::Allow(false),
         Value::Str(s) if &**s == "anyone" || &**s == "authenticated" || ROLES.contains(&&**s) => {
             Access::Role(s.to_string())
         }
@@ -2197,6 +2909,7 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
         fields.insert(name.clone(), col);
     }
     let mut label = title_case(key);
+    let mut ui: Option<Json> = None;
     let mut agents = true;
     let mut access: IndexMap<String, Access> = [
         ("read".to_string(), Access::anyone()),
@@ -2210,6 +2923,8 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
             let sp = ev.key_span(opts, k).unwrap_or(g.span);
             match (k.as_str(), v) {
                 ("label", Value::Str(s)) => label = s.to_string(),
+                ("ui", Value::Undef) => {}
+                ("ui", _) => ui = extract_global_ui(Some(v), sp, ev)?,
                 ("agents", Value::Bool(b)) => agents = *b,
                 ("agents", Value::Undef) => {}
                 ("access", Value::Object(am)) => {
@@ -2227,7 +2942,9 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
                     return Err(Diag::new(sp, format!("`{k}` can't be {}", other.describe())));
                 }
                 _ => {
-                    return Err(Diag::new(sp, format!("global() has no option `{k}`")).help("use label, access"));
+                    return Err(
+                        Diag::new(sp, format!("global() has no option `{k}`")).help("use label, ui, access, agents")
+                    );
                 }
             }
         }
@@ -2240,9 +2957,109 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
             fields,
             access,
             agents,
+            ui,
         },
     );
     Ok(())
+}
+
+fn extract_kind_ui(
+    v: Option<&Value>,
+    span: Span,
+    columns: &IndexMap<String, Column>,
+    ev: &Evaluator<'_>,
+) -> Result<Option<Json>> {
+    let Some(v) = v.filter(|v| !matches!(v, Value::Undef)) else {
+        return Ok(None);
+    };
+    let Value::Object(o) = v else {
+        return Err(Diag::new(span, format!("`ui` must be an object, not {}", v.describe())));
+    };
+    const ALLOWED: &[&str] = &[
+        "icon",
+        "singularLabel",
+        "description",
+        "group",
+        "defaultColumns",
+        "hidden",
+    ];
+    let mut map = serde_json::Map::new();
+    for (k, val) in o.borrow().iter() {
+        if matches!(val, Value::Undef) {
+            continue;
+        }
+        let kspan = ev.key_span(v, k).unwrap_or(span);
+        if !ALLOWED.contains(&k.as_str()) {
+            return Err(
+                Diag::new(kspan, format!("`ui` has no option `{k}`")).help(format!("use {}", ALLOWED.join(", ")))
+            );
+        }
+        match (k.as_str(), val) {
+            ("icon" | "singularLabel" | "description" | "group", Value::Str(s)) => {
+                map.insert(k.clone(), serde_json::json!(s.as_ref()));
+            }
+            ("hidden", Value::Bool(b)) => {
+                map.insert(k.clone(), serde_json::json!(*b));
+            }
+            ("defaultColumns", Value::Array(items)) => {
+                let mut cols = Vec::new();
+                for item in items.borrow().iter() {
+                    let Value::Str(col) = item else {
+                        return Err(Diag::new(kspan, "`ui.defaultColumns` must be a list of column names"));
+                    };
+                    if !columns.contains_key(col.as_ref()) {
+                        return Err(no_column("collection", col, columns, kspan, "`ui.defaultColumns`"));
+                    }
+                    cols.push(serde_json::json!(col.as_ref()));
+                }
+                map.insert(k.clone(), Json::Array(cols));
+            }
+            _ => {
+                return Err(Diag::new(
+                    kspan,
+                    format!("`ui.{k}` has invalid value {}", val.describe()),
+                ));
+            }
+        }
+    }
+    Ok((!map.is_empty()).then_some(Json::Object(map)))
+}
+
+fn extract_global_ui(v: Option<&Value>, span: Span, ev: &Evaluator<'_>) -> Result<Option<Json>> {
+    let Some(v) = v.filter(|v| !matches!(v, Value::Undef)) else {
+        return Ok(None);
+    };
+    let Value::Object(o) = v else {
+        return Err(Diag::new(span, format!("`ui` must be an object, not {}", v.describe())));
+    };
+    const ALLOWED: &[&str] = &["icon", "description", "group", "hidden"];
+    let mut map = serde_json::Map::new();
+    for (k, val) in o.borrow().iter() {
+        if matches!(val, Value::Undef) {
+            continue;
+        }
+        let kspan = ev.key_span(v, k).unwrap_or(span);
+        if !ALLOWED.contains(&k.as_str()) {
+            return Err(
+                Diag::new(kspan, format!("`ui` has no option `{k}`")).help(format!("use {}", ALLOWED.join(", ")))
+            );
+        }
+        match (k.as_str(), val) {
+            ("icon" | "description" | "group", Value::Str(s)) => {
+                map.insert(k.clone(), serde_json::json!(s.as_ref()));
+            }
+            ("hidden", Value::Bool(b)) => {
+                map.insert(k.clone(), serde_json::json!(*b));
+            }
+            _ => {
+                return Err(Diag::new(
+                    kspan,
+                    format!("`ui.{k}` has invalid value {}", val.describe()),
+                ));
+            }
+        }
+    }
+    Ok((!map.is_empty()).then_some(Json::Object(map)))
 }
 
 /// §3.5.1: a hint per post-backed column that only postmeta can filter.
@@ -2290,12 +3107,50 @@ fn column(
         return Err(Diag::new(b.span, format!("\"{name}\" isn't a valid column name"))
             .help("use letters, digits, and underscores, starting with a letter"));
     }
-    if b.was.is_some() && place != Place::Top {
+    if b.was.is_some() {
         return Err(Diag::new(
             b.span_of("was"),
-            "`.was()` renames a stored column; only a kind's own fields have one",
+            "`.was()` is gone: forward-only migrations never rename columns in place",
         )
-        .help("remove `.was()` here"));
+        .help("use `.column(\"<old_name>\")` to map this field to the existing SQL column with zero DDL (and `.alias(\"<old_name>\")` to keep accepting the old API name), or opt into `typedpress/danger` for a physical rename"));
+    }
+    if let Some(col) = &b.storage_name {
+        if place != Place::Top {
+            return Err(Diag::new(
+                b.span_of("column"),
+                "`.column()` maps a stored SQL column; only a kind's own top-level fields have one",
+            )
+            .help("remove `.column()` here"));
+        }
+        if !valid_ident(col) || col.len() > 64 {
+            return Err(Diag::new(
+                b.span_of("column"),
+                format!("`{col}` isn't a valid physical SQL column name"),
+            )
+            .help("use an ASCII identifier of at most 64 characters, starting with a letter"));
+        }
+    }
+    for alias in &b.aliases {
+        if place != Place::Top {
+            return Err(Diag::new(
+                b.span_of("alias"),
+                "`.alias()` is only allowed on a kind's top-level fields",
+            )
+            .help("remove `.alias()` here"));
+        }
+        if !valid_ident(alias) {
+            return Err(
+                Diag::new(b.span_of("alias"), format!("`{alias}` isn't a valid field alias"))
+                    .help("use letters, digits, and underscores, starting with a letter"),
+            );
+        }
+        if alias == name {
+            return Err(Diag::new(
+                b.span_of("alias"),
+                format!("`.alias(\"{alias}\")` duplicates the field's own name"),
+            )
+            .help("remove the redundant alias"));
+        }
     }
     let mut path = parent.to_vec();
     path.push(name.to_string());
@@ -2687,6 +3542,7 @@ fn column(
         layouts,
         system: false,
         read_only: false,
+        commerce_meta: false,
         localized: b.localized,
         access,
         show_if,
@@ -2696,6 +3552,12 @@ fn column(
         hidden: false,
         ts_type: b.ts_type.clone(),
         was: b.was.clone(),
+        storage_name: b.storage_name.clone(),
+        aliases: b.aliases.clone(),
+        omit: false,
+        inferred: None,
+        shape: None,
+        required: false,
     })
 }
 
@@ -3867,7 +4729,7 @@ fn phase2_jobs(cfg: &IndexMap<String, Value>, ev: &mut Evaluator<'_>, span: Span
     }
 }
 
-/// `jobs.<name>`; a plugin's are registered as `<plugin>_<name>`.
+/// Each registered job; a plugin's are registered as `<plugin>_<name>`.
 fn jobs(
     v: &Value,
     ev: &mut Evaluator<'_>,
@@ -3877,7 +4739,8 @@ fn jobs(
 ) -> Result<()> {
     for (name, value) in object(v, span, "jobs")? {
         let Value::Job(j) = value else {
-            return Err(Diag::new(span, "jobs entries must use job()").help("write job({ input, handler })"));
+            return Err(Diag::new(span, "jobs entries must use job()")
+                .help("write job({ retries: 3 }, async ({ id }: { id: number }) => { ... })"));
         };
         if !valid_ident(&name) {
             return Err(Diag::new(j.span, "invalid job name").help("use an identifier"));
@@ -3886,6 +4749,11 @@ fn jobs(
         if out.schema.jobs.contains_key(&name) {
             return Err(Diag::new(j.span, format!("two jobs are both registered as `{name}`"))
                 .help("rename one; plugin jobs are registered as <plugin>_<name>"));
+        }
+        out.job_values.insert(Rc::as_ptr(&j) as usize, name.clone());
+        if j.form != FnForm::Object {
+            typed_job(name, &j, ev, out, plugin)?;
+            continue;
         }
         let o = object(&j.config, j.span, "job")?;
         keys(&o, &["input", "handler", "retries", "agents"], j.span, "job")?;
@@ -3928,9 +4796,87 @@ fn jobs(
                 handler: String::new(),
                 retries,
                 agents,
+                schedule: None,
+                typed_input: false,
+                input_ty: None,
             },
         );
     }
+    Ok(())
+}
+
+/// `job(options, handler)` and `cron(schedule, handler)`: the input is the handler's first
+/// parameter type, as for a query or mutation.
+fn typed_job(
+    name: String,
+    j: &Rc<ActionVal>,
+    ev: &mut Evaluator<'_>,
+    out: &mut Extracted,
+    plugin: Option<(usize, &str)>,
+) -> Result<()> {
+    let Value::Closure(handler) = &j.handler else {
+        unreachable!("checked by the evaluator")
+    };
+    let (retries, agents, schedule) = if j.form == FnForm::Cron {
+        let Value::Str(spec) = &j.config else {
+            unreachable!("checked by the evaluator")
+        };
+        (3, false, Some(Schedule::Cron(cron_schedule(spec, j.span)?)))
+    } else {
+        let o = object(&j.config, j.span, "job")?;
+        let at = |k: &str| ev.key_span(&j.config, k).unwrap_or(j.span);
+        for k in o.keys() {
+            if !matches!(k.as_str(), "retries" | "agents" | "every") {
+                let d = Diag::new(at(k), format!("job() has no option `{k}`"));
+                return Err(match k.as_str() {
+                    "input" => d.help("the input is the handler's parameter type: `job({ retries: 3 }, async ({ postId }: { postId: number }) => ...)`"),
+                    "handler" => d.help("pass the handler after the options: `job({ retries: 3 }, async (input) => ...)`"),
+                    "cron" => d.help("a job on a cron schedule is `cron(\"0 3 * * *\", async () => ...)`"),
+                    _ => d.help("use retries, agents, every"),
+                });
+            }
+        }
+        let retries = match o.get("retries") {
+            None | Some(Value::Undef) => 3,
+            Some(Value::Num(n)) if *n >= 0.0 && *n <= 20.0 && n.fract() == 0.0 => *n as u32,
+            _ => {
+                return Err(
+                    Diag::new(at("retries"), "job retries must be a whole number from 0 to 20").help("use retries: 3"),
+                );
+            }
+        };
+        let agents = bool_option(&o, "agents", false, at("agents"))?;
+        let schedule = match o.get("every") {
+            None | Some(Value::Undef) => None,
+            Some(Value::Str(spec)) => Some(Schedule::Every(every(spec, at("every"))?)),
+            Some(other) => {
+                return Err(Diag::new(
+                    at("every"),
+                    format!("every is a duration like \"1h\", not {}", other.describe()),
+                )
+                .help("write `every: \"1h\"` (s, m, h, d or w)"));
+            }
+        };
+        (retries, agents, schedule)
+    };
+    out.roots.push(Root {
+        closure: handler.clone(),
+        slot: Slot::JobHandler { job: name.clone() },
+        name: format!("job__{name}"),
+        plugin: plugin.map(|(i, _)| i),
+    });
+    out.schema.jobs.insert(
+        name,
+        Job {
+            input: IndexMap::new(),
+            handler: String::new(),
+            retries,
+            agents,
+            schedule,
+            typed_input: true,
+            input_ty: None,
+        },
+    );
     Ok(())
 }
 
@@ -3988,15 +4934,36 @@ fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span
                 .push(serde_json::json!({"url": url, "secret": secret, "events": normalized}));
         }
     }
+    // The store's own abilities are registered beside the app's, under the app's namespace. An app
+    // name that produced the same ability would replace the WooCommerce operation at runtime while
+    // `abilities.call` stayed typed as that operation.
+    let mut commerce: Vec<(String, &str)> = crate::wordpress::abilities::commerce_operations(&out.schema)
+        .into_iter()
+        .map(|(name, _)| (name, "product({ inventory: true })"))
+        .collect();
+    if out.schema.store.is_some() {
+        commerce.push(("store-get".into(), "store()"));
+    }
+    let app = kebab(&out.schema.name);
     let mut abilities = std::collections::HashSet::new();
     let mut add = |name: String| -> Result<()> {
+        if let Some((_, owner)) = commerce.iter().find(|(taken, _)| *taken == name) {
+            return Err(Diag::new(
+                span,
+                format!("the ability `{app}/{name}` is declared twice: {owner} adds it, and so does this app"),
+            )
+            .help(format!(
+                "rename the action, kind, global or job that becomes `{name}`; `{app}/{name}` stays the WooCommerce operation"
+            )));
+        }
         if !abilities.insert(name.clone()) {
             return Err(Diag::new(span, format!("ability kebab collision: {name}"))
                 .help("rename the colliding collection, action, global, or job"));
         }
         Ok(())
     };
-    for c in out.schema.collections.values().filter(|c| c.taxonomy.is_none()) {
+    // Taxonomies too: `Register::build` registers the same operations for every kind.
+    for c in out.schema.collections.values() {
         for op in ["list", "get", "create", "update", "delete", "revisions"] {
             add(format!("{}-{op}", kebab(&c.table)))?;
         }

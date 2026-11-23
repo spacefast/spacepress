@@ -59,6 +59,14 @@ site=$(curl -sf -u "$admin" "$url/wp-json/spacepress-deploy/v1/site") || fail "t
 ok "the new receiver finds the stored builds and history"
 
 mkdir -p "$work/new" && cp -r "$repo/examples/pantry" "$work/new/pantry"
+# The plan comes before the move: it reads the ledger under its earlier name, so no migration the
+# pre-release runtime ran is listed again.
+out=$(cd "$work/new/pantry" && SP_APP_PASSWORD="$admin" "$current" push --site "$url" --dry-run 2>&1) || fail "spacepress push --dry-run: $out"
+[[ $out == *"--dry-run: the build is uploaded and not live"* ]] || fail "the dry run plans the build: $out"
+[[ $out != *"run migration"* ]] || fail "the dry run lists no migration the pre-release runtime ran: $out"
+[[ $(q "SELECT option_value FROM wp_options WHERE option_name = 'sp_brand_upgrade'") != 1 ]] || fail "the dry run moved nothing"
+ok "spacepress push --dry-run plans no migration the pre-release runtime ran"
+
 out=$(cd "$work/new/pantry" && SP_APP_PASSWORD="$admin" "$current" push --site "$url" 2>&1) || fail "spacepress push: $out"
 new_live=$(q "SELECT option_value FROM wp_options WHERE option_name = 'sp_live_build'")
 [[ -n $new_live && $new_live != "$old_live" ]] || fail "push made the new build live: $out"

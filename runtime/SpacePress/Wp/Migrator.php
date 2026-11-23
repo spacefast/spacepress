@@ -223,6 +223,9 @@ final class Migrator
     {
         $this->guardBindings();
         ['migrations' => $migrations, 'hashes' => $hashes, 'done' => $done] = $this->read();
+        // A site a pre-release runtime installed keeps its ledger under the earlier name until the
+        // install this plans moves it: what it records there has run.
+        $done += array_flip(Legacy::applied($this->db, $this->schema->name()));
         $this->check($migrations, $done);
         try {
             $this->preflightAdoptions($migrations, $done);

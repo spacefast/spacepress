@@ -2,6 +2,7 @@
 # A Pantry site deployed before the rename, upgraded on WordPress + MariaDB (tests/wp/harness.sh).
 #
 #   tests/wp/brand-upgrade-run.sh [path/to/spacepress]
+#   SP_WP_DB=mysql:8.4 tests/wp/brand-upgrade-run.sh ...   the same on MySQL instead of MariaDB 11.4
 #
 # Builds the example with the compiler of LEGACY_COMMIT (tests/php/brand_upgrade_test.php), boots it,
 # writes data through that site's own REST API, then copies in this checkout's build and switches the
@@ -24,6 +25,12 @@ trap cleanup EXIT
 # The site as the earlier release built and ran it: its compiler, its harness.
 git -C "$repo" archive "$legacy" | (mkdir "$work/legacy" && tar -x -C "$work/legacy")
 mkdir -p "$work/legacy/tests/wp/cache"
+if [[ -n ${SP_WP_DB:-} ]]; then
+	# Another server in this throwaway copy of the earlier harness: its compose file and its SQL client.
+	sed -i -e "s#image: mariadb:11.4#image: $SP_WP_DB#" -e 's#MARIADB_#MYSQL_#' \
+		-e 's#\["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"\]#["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-ptypedpress-test-root"]#' "$work/legacy/tests/wp/compose.yml"
+	sed -i 's#exec -T db mariadb #exec -T db mysql #' "$work/legacy/tests/wp/harness.sh"
+fi
 cp -n "$repo"/tests/wp/cache/*.zip "$work/legacy/tests/wp/cache/" 2>/dev/null || true
 (cd "$work/legacy" && CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$repo/target}/legacy-$old" cargo build -q --locked --bin "typedpress")
 first="${CARGO_TARGET_DIR:-$repo/target}/legacy-$old/debug/typedpress"
@@ -54,6 +61,7 @@ old_plugins=typedpress-runtime,typedpress-identity,typedpress-app-pantry,typedpr
 h wp plugin activate spacepress-runtime spacepress-identity spacepress-app-pantry spacepress-admin --skip-plugins="$old_plugins" >/dev/null
 h wp plugin deactivate "${old_plugins//,/ }" --skip-plugins="$old_plugins" >/dev/null 2>&1 || true
 
+echo "on $(q 'SELECT VERSION()')"
 fail=0
 check() { if [[ "$2" == "$3" ]]; then echo "ok    $1"; else echo "FAIL  $1"; echo "      expected: $3"; echo "      actual:   $2"; fail=1; fi; }
 check 'the upgrade is recorded' "$(q "SELECT option_value FROM wp_options WHERE option_name = 'sp_brand_upgrade'")" 1

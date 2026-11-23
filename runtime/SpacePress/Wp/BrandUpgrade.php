@@ -192,7 +192,9 @@ final class BrandUpgrade
         }
         $apps = array_values(array_unique($apps));
         $tables = [];
+        $owned = [];
         foreach (array_unique($names) as $name) {
+            $owned[] = $prefix . 'sp_' . substr($name, 3);
             if (self::existingTables($db, $prefix . $name, exact: true) !== []) {
                 $tables[$prefix . $name] = $prefix . 'sp_' . substr($name, 3);
             }
@@ -277,7 +279,7 @@ final class BrandUpgrade
             $private = [$from, WP_CONTENT_DIR . '/uploads/' . self::PRIVATE_DIR[array_key_first(self::PRIVATE_DIR)]];
         }
 
-        return ['tables' => $tables, 'options' => $options, 'sitemeta' => $sitemeta, 'meta' => $meta, 'metaValues' => $fieldKeys,
+        return ['tables' => $tables, 'owned' => $owned, 'options' => $options, 'sitemeta' => $sitemeta, 'meta' => $meta, 'metaValues' => $fieldKeys,
             'postTypes' => $postTypes, 'taxonomies' => $taxonomies, 'hooks' => $hooks, 'groups' => $groups, 'jobs' => $jobs,
             'plugins' => $plugins, 'private' => $private, 'apps' => $apps];
     }
@@ -374,6 +376,11 @@ final class BrandUpgrade
         $wpdb = $db->wpdb();
         $moved = [];
         $moved['tables'] = self::moveTables($db, $plan['tables']);
+        if (!$db->sqlite()) {
+            // Every table the runtime and this app own, by its current name: those moved just now, and
+            // those an earlier attempt moved before it stopped.
+            self::renameForeignKeys($db, array_values(array_filter($plan['owned'], static fn (string $t): bool => self::existingTables($db, $t, exact: true) !== [])));
+        }
         // A value a boot wrote under the current name moments ago gives way to the site's stored one.
         foreach (self::REGENERATED as $name) {
             if (isset($plan['options'][$name])) {
@@ -438,7 +445,6 @@ final class BrandUpgrade
         if (!$db->sqlite()) {
             // One statement: atomic, and foreign keys follow the renamed tables.
             $db->run('RENAME TABLE ' . implode(', ', array_map(static fn (string $from, string $to): string => $q($from) . ' TO ' . $q($to), array_keys($tables), $tables)));
-            self::renameForeignKeys($db, array_values($tables));
 
             return count($tables);
         }
@@ -510,19 +516,25 @@ final class BrandUpgrade
     /**
      * Foreign keys keep the name they were created with across RENAME TABLE, and a later migration
      * drops one by the name the compiler gives it now (`sp_<table>_<column>_fk`, or `m<hash>_sp_…` on
-     * a non-default prefix). Each `tp_…` constraint of a moved table is dropped and added again under
-     * that name in one ALTER, with the same columns, target and rules.
+     * a non-default prefix). Each `tp_…` constraint on `$tables` (current names) is added again under
+     * that name, with the same columns, target (schema included) and rules, then the old one dropped.
+     * Two statements per key, not one combined ALTER: MySQL refuses some drop-and-add combinations of
+     * one key that MariaDB takes. It reads the keys from the database each time, so a run that stopped
+     * between the rename and this step finishes it on the next attempt.
      *
      * @param list<string> $tables
      */
     private static function renameForeignKeys(Connection $db, array $tables): void
     {
+        if ($tables === []) {
+            return;
+        }
         $marks = implode(', ', array_fill(0, count($tables), '?'));
         $rows = $db->run(
-            "SELECT k.TABLE_NAME AS t, k.CONSTRAINT_NAME AS n, k.COLUMN_NAME AS c, k.REFERENCED_TABLE_NAME AS rt, k.REFERENCED_COLUMN_NAME AS rc, r.DELETE_RULE AS d, r.UPDATE_RULE AS u
+            "SELECT k.TABLE_NAME AS t, k.CONSTRAINT_NAME AS n, k.COLUMN_NAME AS c, k.REFERENCED_TABLE_SCHEMA AS rs, k.REFERENCED_TABLE_NAME AS rt, k.REFERENCED_COLUMN_NAME AS rc, r.DELETE_RULE AS d, r.UPDATE_RULE AS u
              FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r
                ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.TABLE_NAME = k.TABLE_NAME AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME
-             WHERE k.CONSTRAINT_SCHEMA = DATABASE() AND k.TABLE_NAME IN ($marks) ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION",
+             WHERE k.CONSTRAINT_SCHEMA = DATABASE() AND k.TABLE_NAME IN ($marks) AND k.REFERENCED_TABLE_NAME IS NOT NULL ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION",
             $tables,
         );
         $keys = [];
@@ -531,24 +543,31 @@ final class BrandUpgrade
             if (preg_match('/\A(m[0-9a-f]{7}_)?tp_/', $name, $m) !== 1) {
                 continue;
             }
+            $head = $m[1] ?? '';
             $key = &$keys[$row['t']][$name];
-            $key ??= ['to' => substr(($m[1] ?? '') . 'sp_' . substr($name, strlen(($m[1] ?? '') . 'tp_')), 0, 64), 'cols' => [], 'refs' => [], 'table' => $row['rt'], 'delete' => $row['d'], 'update' => $row['u']];
+            $key ??= ['to' => substr($head . 'sp_' . substr($name, strlen($head . 'tp_')), 0, 64), 'cols' => [], 'refs' => [],
+                'schema' => (string) $row['rs'], 'table' => (string) $row['rt'], 'delete' => $row['d'], 'update' => $row['u']];
             $key['cols'][] = $row['c'];
             $key['refs'][] = $row['rc'];
             unset($key);
         }
         $q = static fn (string $n): string => '`' . str_replace('`', '``', $n) . '`';
         $rules = ['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION', 'SET DEFAULT'];
+        $here = (string) ($db->run('SELECT DATABASE() AS d')[0]['d'] ?? '');
         foreach ($keys as $table => $constraints) {
-            $parts = [];
             foreach ($constraints as $name => $k) {
                 $delete = in_array($k['delete'], $rules, true) ? $k['delete'] : 'RESTRICT';
                 $update = in_array($k['update'], $rules, true) ? $k['update'] : 'RESTRICT';
-                $parts[] = 'DROP FOREIGN KEY ' . $q($name);
-                $parts[] = 'ADD CONSTRAINT ' . $q($k['to']) . ' FOREIGN KEY (' . implode(', ', array_map($q, $k['cols'])) . ') REFERENCES ' . $q($k['table'])
-                    . ' (' . implode(', ', array_map($q, $k['refs'])) . ") ON DELETE $delete ON UPDATE $update";
+                // The target as stored: another database's table stays that database's.
+                $target = ($k['schema'] !== '' && $k['schema'] !== $here ? $q($k['schema']) . '.' : '') . $q($k['table']);
+                $db->run('ALTER TABLE ' . $q((string) $table) . ' ADD CONSTRAINT ' . $q($k['to']) . ' FOREIGN KEY (' . implode(', ', array_map($q, $k['cols'])) . ') REFERENCES ' . $target
+                    . ' (' . implode(', ', array_map($q, $k['refs'])) . ") ON DELETE $delete ON UPDATE $update");
+                $db->run('ALTER TABLE ' . $q((string) $table) . ' DROP FOREIGN KEY ' . $q($name));
+                // The index MySQL made for the old key outlives it; the new key made its own.
+                if ($db->run('SELECT 1 AS x FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?', [(string) $table, $name]) !== []) {
+                    $db->run('ALTER TABLE ' . $q((string) $table) . ' DROP INDEX ' . $q($name));
+                }
             }
-            $db->run('ALTER TABLE ' . $q((string) $table) . ' ' . implode(', ', $parts));
         }
     }
 

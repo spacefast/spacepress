@@ -58,7 +58,7 @@ test('a new project includes the starter sources and the README names an existin
     'content/notes/first-walk.md', 'content/notes/what-to-pack.md', 'package.json', 'sp/actions.ts',
     'sp/app/account/page.tsx', 'sp/app/layout.tsx', 'sp/app/not-found.tsx',
     'sp/app/notes/[slug]/page.tsx', 'sp/app/notes/page.tsx', 'sp/app/page.tsx', 'sp/app/site.css',
-    'tsconfig.json', 'spacepress.config.ts',
+    'spacepress.config.ts', 'tsconfig.json',
   ]);
   // The app's name reaches every file that carries it.
   for (const file of files) assert.doesNotMatch(await readFile(join(app, file), 'utf8'), /__SP_APP_NAME__/, file);

@@ -615,7 +615,7 @@ namespace {
   await writeFile(join(root, 'spacepress-dev/live.json'), JSON.stringify({ session: 'abc', revision: 7, diagnostics: [] }));
   const client = 'https://box.example.ts.net:8443/wp-content/mu-plugins/spacepress-dev/live-client.js?build=abc.7';
   const watching = run();
-  assert.deepEqual(watching.hooks, ['admin_enqueue_scripts', 'login_enqueue_scripts', 'status_header', 'sp_admin_init', 'sp_prebuilt_serve', 'wp_enqueue_scripts']);
+  assert.deepEqual(watching.hooks, ['admin_enqueue_scripts', 'login_enqueue_scripts', 'sp_admin_init', 'sp_prebuilt_serve', 'status_header', 'wp_enqueue_scripts']);
   // The client comes from the site's own address, whatever --url made it.
   assert.equal(watching.enqueued, client);
   // A 200 that is no file from public/ passes through untouched.

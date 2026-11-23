@@ -2,8 +2,8 @@
 // of a store calls `live(context, field)` from its `data-wp-init` callback: it subscribes, through
 // the app's typed client (`@typedpress/client`, the same client every other caller runs), to the read
 // the server already answered, and writes each new answer into the field. One client per page, so
-// every subscription on the page travels in one request. It runs on WordPress's api-fetch, which
-// carries a signed-in visitor's REST nonce.
+// every subscription on the page travels in one request, with the REST root and a signed-in visitor's
+// nonce the page prints for the client.
 import { createClient } from "@typedpress/client";
 
 let client;

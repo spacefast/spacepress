@@ -217,8 +217,7 @@ final class Register
                 // (Facade::running()), and skip rest_post_dispatch, which would forget it.
                 if ($request instanceof \WP_REST_Request && !\TypedPress\Wp\Facade::dispatching()) {
                     $running = self::runRoute($request);
-                    self::operations();
-                    self::$runRoute = $running !== null && isset(self::$names[$running]) ? $running : null;
+                    self::$runRoute = $running !== null && self::clientOperation($running) ? $running : null;
                 }
                 if ($request instanceof \WP_REST_Request && preg_match('#^/wp-abilities/v1/abilities/(.+)/run$#', (string) $request->get_route(), $m)) {
                     $headers = [];
@@ -321,6 +320,10 @@ final class Register
      */
     public static function answered(mixed $response, mixed $handler = null, mixed $request = null): mixed
     {
+        // An internal run (rest_do_request) skips rest_post_dispatch: the elevation ends with its callback.
+        if ($request instanceof \WP_REST_Request && self::runRoute($request) === self::$runRoute) {
+            self::$runRoute = null;
+        }
         // An ability that answers null (signed-out `me`, an action that returns nothing) is a 204:
         // core would send 200 with an empty body, which is not JSON to a client that parses it.
         if ($response instanceof \WP_REST_Response && $response->get_data() === null && $response->get_status() === 200
@@ -379,10 +382,26 @@ final class Register
     /** This run's query carries an ability's JSON input as sent ({@see jsonInput()}). */
     private static bool $typedQuery = false;
 
-    /** One of the app's abilities core's run route is serving in this request, as {@see sanitizing()} recorded it. */
+    /**
+     * One of the app's abilities core's run route is serving in this request, as {@see sanitizing()}
+     * recorded it: an operation of the app's own schema, which its typed client calls even when it is
+     * `agents: false`. A feature's own operation (WooCommerce's stock and order steps) is not one:
+     * hidden from agents, it has no HTTP route either.
+     */
     public static function running(): ?string
     {
         return self::$runRoute;
+    }
+
+    private static function clientOperation(string $name): bool
+    {
+        foreach (self::operations() as $op) {
+            if ($op['name'] === $name) {
+                return !(($op['typedpress']['store'] ?? false) === true);
+            }
+        }
+
+        return false;
     }
 
     private static ?string $runRoute = null;

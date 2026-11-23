@@ -4064,10 +4064,16 @@ export interface ClientOptions {
 	*/
 	url?: string;
 	/**
+	* The app API's route below the REST root, when the site serves it somewhere other than
+	* `/typedpress/v1` (`sp_api_namespace`). With it, `url` is taken as the REST root as given, so a
+	* site with another REST prefix (`https://x.test/api`) works too. A TypedPress page names both.
+	*/
+	api?: string;
+	/**
 	* Use what a WordPress page prints for the client (`wp-script-module-data-@typedpress/client`): its
-	* REST root, the app API's namespace, a signed-in visitor's REST nonce, and `@wordpress/abilities`
-	* for that visitor's calls. Default: true when the page has it and none of `url`, `fetch`, `headers`,
-	* `nonce` or `auth` names another site or credential.
+	* REST root and the app API's namespace (unless `url` is given), and a signed-in visitor's REST
+	* nonce (unless `fetch`, `headers`, `nonce` or `auth` brings another credential; `true` uses it
+	* anyway). Default: on; `false` ignores the page.
 	*/
 	wordpress?: boolean;
 	/** WordPress cookie auth: the REST nonce; sent as `X-WP-Nonce` with `credentials: "same-origin"`. */

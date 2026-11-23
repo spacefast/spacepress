@@ -5,9 +5,8 @@
 // bundlers run it as-is. Every kind, action, global, media and `me` call is one of the app's WordPress
 // Abilities, run through core's run route (`/wp-json/wp-abilities/v1/abilities/<app>/<name>/run`);
 // uploads, file streams, the subscription batch and sign-in use the app's own REST routes
-// (`/wp-json/typedpress/v1/…`). On a WordPress page `createClient()` reads the site's REST root and,
-// for a signed-in visitor, the REST nonce the page prints for it, and runs each ability through
-// WordPress's own `@wordpress/abilities` (its input schema, permission check and errors).
+// (`/wp-json/typedpress/v1/…`). On a WordPress page `createClient()` reads the site's REST root, the
+// app API's namespace and, for a signed-in visitor, the REST nonce the page prints for it.
 
 import { SCHEMA } from "./schema.ts";
 import type { Actions, Collections, Globals, Locale, Media, PrivateFile, RevisionDiff, RevisionSummary, Status, User } from "./types.ts";
@@ -352,10 +351,16 @@ export interface ClientOptions {
    */
   url?: string;
   /**
+   * The app API's route below the REST root, when the site serves it somewhere other than
+   * `/typedpress/v1` (`sp_api_namespace`). With it, `url` is taken as the REST root as given, so a
+   * site with another REST prefix (`https://x.test/api`) works too. A TypedPress page names both.
+   */
+  api?: string;
+  /**
    * Use what a WordPress page prints for the client (`wp-script-module-data-@typedpress/client`): its
-   * REST root, the app API's namespace, a signed-in visitor's REST nonce, and `@wordpress/abilities`
-   * for that visitor's calls. Default: true when the page has it and none of `url`, `fetch`, `headers`,
-   * `nonce` or `auth` names another site or credential.
+   * REST root and the app API's namespace (unless `url` is given), and a signed-in visitor's REST
+   * nonce (unless `fetch`, `headers`, `nonce` or `auth` brings another credential; `true` uses it
+   * anyway). Default: on; `false` ignores the page.
    */
   wordpress?: boolean;
   /** WordPress cookie auth: the REST nonce; sent as `X-WP-Nonce` with `credentials: "same-origin"`. */
@@ -595,27 +600,6 @@ function pageData(): PageData | null {
   }
 }
 
-/** `@wordpress/abilities` as the client calls it, once `@wordpress/core-abilities` has registered the server's abilities. */
-interface AbilitiesModule {
-  executeAbility(name: string, input?: unknown): Promise<unknown>;
-  getAbility(name: string): unknown;
-}
-let abilitiesModule: Promise<AbilitiesModule> | null = null;
-function wordpressAbilities(): Promise<AbilitiesModule> {
-  // Specifiers in variables: bundlers and Node leave them alone, and only a WordPress page, whose
-  // import map names them, ever loads them.
-  const abilities = "@wordpress/abilities";
-  const core = "@wordpress/core-abilities";
-  return (abilitiesModule ??= (async () => {
-    const [m, c] = await Promise.all([import(abilities) as Promise<AbilitiesModule>, import(core) as Promise<{ ready?: Promise<unknown> }>]);
-    await c.ready;
-    return m;
-  })().catch((e: unknown) => {
-    abilitiesModule = null; // a failed load (offline) is tried again by the next call
-    throw e;
-  }));
-}
-
 /** How core's run route takes an ability: GET when readonly, DELETE when destructive and idempotent, else POST. */
 interface Annotations {
   readonly?: boolean;
@@ -700,11 +684,12 @@ export function createClient(options: ClientOptions = {}): Client {
   // namespace the page prints for it (whatever credential the client brings: `auth`, `headers`).
   const site = options.wordpress === false || options.url !== undefined ? null : pageData();
   const pageRoot = typeof site?.root === "string" && site.root !== "" ? site.root.replace(/\/+$/, "") : null;
-  const resolved = endpoints(options.url ?? "/wp-json");
+  const given = options.api !== undefined && options.url !== undefined ? { root: options.url.replace(/\/+$/, ""), api: "/" + options.api.replace(/^\/+|\/+$/g, "") } : null;
+  const resolved = given ?? endpoints(options.url ?? "/wp-json");
   const root = pageRoot ?? resolved.root;
-  const API = typeof site?.api === "string" && site.api.startsWith("/") ? site.api : resolved.api;
-  // The page's own REST nonce and `@wordpress/abilities` only for a client that brings no
-  // credential of its own; `wordpress: true` asks for them explicitly.
+  const API = options.api !== undefined ? "/" + options.api.replace(/^\/+|\/+$/g, "") : typeof site?.api === "string" && site.api.startsWith("/") ? site.api : resolved.api;
+  // The page's own REST nonce only for a client that brings no credential of its own;
+  // `wordpress: true` asks for it explicitly.
   const cookie = site !== null && (options.wordpress === true || (options.fetch === undefined && options.headers === undefined && options.nonce === undefined && options.auth === undefined));
   let nonce = options.nonce ?? (cookie ? site?.nonce : undefined);
   // Session storage is keyed as before the client ran abilities: by `url`, else the default API URL.
@@ -853,48 +838,18 @@ export function createClient(options: ClientOptions = {}): Client {
   }
 
   /**
-   * Runs the app's ability `<app>/<name>` with `input`. A signed-in visitor of a TypedPress page (the
-   * page printed a nonce, and the client holds no session of its own) runs it through
-   * `@wordpress/abilities`: its input schema, permission check and errors are WordPress's. Otherwise
-   * it runs at core's run route, with the method its annotations ask for.
+   * Runs the app's ability `<app>/<name>` with `input` at core's run route, with the method its
+   * annotations ask for. The server checks its input schema, its permission and its output, and
+   * answers TypedPress's own errors (with their pointer). `@wordpress/abilities` is not used: its
+   * browser-side schema check refuses values the server accepts (a URL with `[]` or `|`), and its
+   * GET encoding drops `null`, `[]` and `{}`.
    */
-  async function ability<T>(name: string, input: Json, annotations: Annotations = {}, query = false): Promise<T> {
+  async function ability<T>(name: string, input: Json, annotations: Annotations = {}): Promise<T> {
     const full = `${app}/${name}`;
-    // Core lists abilities (what `@wordpress/core-abilities` loads) only to a signed-in user. Its
-    // callback sends a GET or DELETE run's input as a bracketed query string, which turns `false`
-    // and numbers into strings and drops `{}`: only a POST run, or a kind read whose input the
-    // server types itself, goes through it.
-    const bracketed = annotations.readonly || (annotations.destructive && annotations.idempotent);
-    if (cookie && site?.nonce !== undefined && held() === null && (query || !bracketed)) {
-      let abilities: AbilitiesModule | null = null;
-      try {
-        abilities = await wordpressAbilities();
-      } catch {
-        // The modules are not on this page (no import map entry): the run route serves the same.
-      }
-      // An `agents: false` operation isn't listed to core-abilities: its run route still serves the
-      // app's own client, so it runs there.
-      if (abilities?.getAbility(full)) {
-        try {
-          // A read's `where` and `with` as the JSON strings their schemas take: core's callback sends
-          // a GET's input as a bracketed query string, which can't carry them typed.
-          return (await abilities.executeAbility(full, query ? queryStrings(input) : input)) as T;
-        } catch (e) {
-          throw fromWordPress(e, full);
-        }
-      }
-    }
     const route = `/wp-abilities/v1/abilities/${full}/run`;
     const method = annotations.readonly ? "GET" : annotations.destructive && annotations.idempotent ? "DELETE" : "POST";
     if (method === "POST") return request<T>("POST", route, { json: { input }, raw: true });
     return request<T>(method, route, { query: inputQuery(input), raw: true });
-  }
-
-  /** A kind read's input with `where` and `with` as JSON strings, which their schemas accept. */
-  function queryStrings(input: Json): Json {
-    const out: Json = { ...input };
-    for (const key of ["where", "with"]) if (isObject(out[key])) out[key] = JSON.stringify(out[key]);
-    return out;
   }
 
   // One refresh at a time across every client on the same storage: refresh tokens rotate, and
@@ -1597,9 +1552,11 @@ export function createClient(options: ClientOptions = {}): Client {
     const op = (suffix: string) => `${kind}-${suffix}`;
     const reads = (q: Json | undefined) => dependencies(key, q?.with, q?.where);
     // A read's input is the subscription's: `status` folded into `where`, `orderBy` as an object (liveArgs).
-    const rows = async (q: Json | undefined) => (await ability<{ rows: unknown[] }>(op("list"), liveArgs(q), readonly, true)).rows;
+    const rows = async (q: Json | undefined) => (await ability<{ rows: unknown[] }>(op("list"), liveArgs(q), readonly)).rows;
+    // At most 100 rows, as a subscribed list and the app API's lists answer (the ability allows 200).
+    const capped = (q: Json | undefined) => (typeof q?.limit === "number" && q.limit > 100 ? { ...q, limit: 100 } : q);
     const list = (q?: Json) =>
-      query({ kind: key, op: "list", args: liveArgs(q) }, reads(q), () => (kind === undefined ? request("GET", path, { query: listParams(q) }) : rows(q)));
+      query({ kind: key, op: "list", args: liveArgs(q) }, reads(q), () => (kind === undefined ? request("GET", path, { query: listParams(q) }) : rows(capped(q))));
     const paginate = (q?: Json) => {
       const run = async () => {
         if (kind === undefined) {
@@ -1623,7 +1580,7 @@ export function createClient(options: ClientOptions = {}): Client {
     const getOne = (id: string | number, q?: Json) =>
       kind === undefined
         ? request("GET", one(id), { query: listParams(q ? { with: q.with, locale: q.locale } : undefined) })
-        : ability(op("get"), { id, ...liveArgs(q ? { with: q.with, locale: q.locale } : undefined) }, readonly, true);
+        : ability(op("get"), { id, ...liveArgs(q ? { with: q.with, locale: q.locale } : undefined) }, readonly);
     return {
       list,
       paginate,
@@ -1669,7 +1626,7 @@ export function createClient(options: ClientOptions = {}): Client {
 
   const client: Json = {
     media: {
-      list: async (q?: Json) => (await ability<{ rows: unknown[] }>("media-list", liveArgs(q), readonly, true)).rows,
+      list: async (q?: Json) => (await ability<{ rows: unknown[] }>("media-list", liveArgs(q), readonly)).rows,
       get: (id: number) => ability("media-get", { id }, readonly),
       upload: (file: Blob, opts: { alt?: string; filename?: string } = {}) => upload(`${API}/media`, file, opts.alt !== undefined ? { alt: opts.alt } : {}, opts.filename),
       update: (id: number, patch: unknown) => ability("media-update", { id, patch: isObject(patch) ? patch : {} }),
@@ -1800,22 +1757,6 @@ function dependencies(key: string, w: unknown, where?: unknown, seen = new Set<s
   return [...seen];
 }
 
-/**
- * An error from WordPress's own clients as the client's typed error: `executeAbility`'s
- * (`ability_permission_denied`, `ability_invalid_input` with the schema's reason) and `apiFetch`'s
- * (core's `{ code, message, data: { status } }`, `fetch_error`, `offline_error`).
- */
-function fromWordPress(e: unknown, label: string): TypedPressError {
-  if (e instanceof TypedPressError) return e;
-  const body: Json = isObject(e) ? e : e instanceof Error ? { code: (e as Error & { code?: unknown }).code, message: e.message } : {};
-  const data = isObject(body.data) ? body.data : {};
-  const code = typeof body.code === "string" ? body.code : "";
-  if (code === "fetch_error" || code === "offline_error") return networkError(`${label}: ${String(body.message ?? code)}`);
-  const status = typeof data.status === "number" ? data.status : typeof body.status === "number" ? body.status : 0;
-  const message = typeof body.detail === "string" ? body.detail : typeof body.message === "string" ? body.message : `${label} failed`;
-  return wordPressError(code, message, status, body, data);
-}
-
 /** WordPress's error codes as the client's: the status and code callers already handle. */
 function wordPressError(wpCode: string, message: string, givenStatus: number, body: Json, data: Json): TypedPressError {
   // TypedPress's own errors travel through core as `tp_<code>`, with their status and pointer.
@@ -1831,7 +1772,6 @@ function wordPressError(wpCode: string, message: string, givenStatus: number, bo
     case "rest_cannot_edit":
     case "rest_cannot_delete":
     case "rest_cannot_read":
-      // `executeAbility` refuses before anything is sent, with no status: it runs only signed in.
       code = status === 401 ? "unauthenticated" : "forbidden";
       status = code === "unauthenticated" ? 401 : 403;
       break;

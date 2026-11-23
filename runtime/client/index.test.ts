@@ -2099,29 +2099,46 @@ async function onWordPressPage(run: (calls: { abilities: unknown[][] }) => Promi
   }
 }
 
-test("a signed-in page runs abilities through @wordpress/abilities, with reads' where and with as JSON strings", async () => {
+test("a signed-in page runs every ability at its run route with the page's nonce, never through @wordpress/abilities", async () => {
   await onWordPressPage(async (calls) => {
     seen = [];
-    reply = ok({ name: "blog" });
+    reply = ok({ rows: [{ id: 1 }] });
     const first = mod.createClient();
     assert.deepEqual(await first.posts.list({ limit: 2, where: { title: "x" } }), [{ id: 1 }]);
-    assert.deepEqual(await first.actions.approveComment({ id: 3 }), { ok: "blog/approve-comment" });
-    assert.deepEqual(calls.abilities, [["blog/posts-list", { limit: 2, where: JSON.stringify({ title: "x" }) }], ["blog/approve-comment", { id: 3 }]]);
-    // An `agents: false` operation, not listed to core-abilities, runs at its run route with the nonce;
-    // the app's own REST routes go to the page's root and API namespace.
-    reply = ok(5);
-    await first.actions.publishedCount();
-    assert.deepEqual([last().method, last().path, last().headers["x-wp-nonce"]], ["GET", "/sub/wp-json/wp-abilities/v1/abilities/blog/published-count/run", "n0nce"]);
+    assert.deepEqual([last().method, last().path, last().headers["x-wp-nonce"], queryInput(last())],
+      ["GET", "/sub/wp-json/wp-abilities/v1/abilities/blog/posts-list/run", "n0nce", { limit: 2, where: { title: "x" } }]);
+    reply = ok({ ok: true });
+    await first.actions.approveComment({ id: 3, note: null, tags: [], extra: {} });
+    assert.deepEqual([last().method, last().path, last().headers["x-wp-nonce"], bodyInput(last())],
+      ["POST", "/sub/wp-json/wp-abilities/v1/abilities/blog/approve-comment/run", "n0nce", { id: 3, note: null, tags: [], extra: {} }]);
+    // The app's own REST routes go to the page's root and API namespace.
     reply = ok({ name: "blog" });
     await first.schema();
     assert.deepEqual([last().path, last().headers["x-wp-nonce"]], ["/sub/wp-json/acme/v2", "n0nce"]);
-
-    // WordPress's errors reach the caller as the client's typed error.
+    // The server's refusal reaches the caller with its pointer.
+    reply = () => ({ status: 422, body: JSON.stringify({ code: "tp_invalid_input", message: "Too long", data: { status: 422, pointer: "/note" } }) });
     const invalid = await first.actions.approveComment({ id: 0 }).catch((e: unknown) => e);
-    assert.ok(invalid instanceof mod.TypedPressError);
-    assert.deepEqual([invalid.status, invalid.code], [422, "invalid_input"]);
-    assert.match(invalid.detail, /must be greater than 0/);
+    assert.deepEqual([invalid.status, invalid.code, invalid.pointer], [422, "invalid_input", "/note"]);
+    assert.equal(calls.abilities.length, 0);
   }, ["blog/posts-list", "blog/approve-comment"], { root: `${origin}/sub/wp-json/`, api: "/acme/v2", nonce: "n0nce" });
+});
+
+test("list() asks for at most 100 rows, as a subscribed list and the app API's lists answer", async () => {
+  seen = [];
+  reply = ok({ rows: [] });
+  await mod.createClient({ url }).posts.list({ limit: 150 });
+  assert.equal(queryInput(last()).limit, 100);
+});
+
+test("`api` with `url` takes `url` as the REST root as given: a site with another REST prefix", async () => {
+  seen = [];
+  reply = ok({ rows: [] });
+  const first = mod.createClient({ url: `${origin}/api`, api: "acme/v2" });
+  await first.posts.list();
+  assert.equal(last().path, "/api/wp-abilities/v1/abilities/blog/posts-list/run");
+  reply = ok({ name: "blog" });
+  await first.schema();
+  assert.equal(last().path, "/api/acme/v2");
 });
 
 test("a visitor's page (no nonce in its data) runs every ability at its run route, sending no nonce", async () => {

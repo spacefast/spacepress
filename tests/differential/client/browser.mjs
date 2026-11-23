@@ -167,7 +167,7 @@ try {
   await page.waitForFunction(() => [...document.querySelectorAll("[data-wp-interactive='clients/Guestbook'] li.guest")].some((li) => li.textContent === "Grace"), null, { timeout: 45000 })
     .catch((e) => { throw new Error(`${e.message}\nwarnings: ${JSON.stringify(warnings)}`); });
   const liveAfter = await guests();
-  // Signed in, the same page runs the action through `@wordpress/abilities` (core lists abilities
+  // Signed in, the same page runs the action at its run route with the REST nonce the page prints (core lists abilities
   // to a signed-in user): its run route carries the REST nonce the page printed for the client.
   const signedIn = await browser.newPage();
   const signedRuns = [];
@@ -190,7 +190,7 @@ try {
   const signed = {
     before: signedBefore,
     after: await signedIn.textContent("[data-wp-interactive='clients/LikeButton']"),
-    // The list core-abilities loaded, then the run: both with the nonce.
+    // The action's run and `me`, both with the nonce.
     runs: signedRuns,
     me: await signedIn.evaluate(async () => (await (await import("@typedpress/client")).createClient().auth.me())?.name ?? null),
   };

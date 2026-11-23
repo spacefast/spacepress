@@ -3648,14 +3648,13 @@ fn client_components_hydrate_in_the_browser() {
         serde_json::json!({ "typed": true, "status": 422, "code": "invalid_input" }),
         "{seen}"
     );
-    // Signed in, the page runs it through `@wordpress/abilities`: core-abilities lists the
-    // abilities, then executeAbility's server callback runs it, both with the REST nonce.
+    // Signed in, the page runs it at the same run route with the REST nonce the page prints for
+    // the client; nothing lists the site's abilities first.
     assert_eq!(
         seen["signed"],
         serde_json::json!({
             "before": "♥ 1 like", "after": "♥ 141 likes", "me": "admin",
             "runs": [
-                "GET /wp-abilities/v1/abilities nonce",
                 "POST /wp-abilities/v1/abilities/clients/like/run nonce",
                 "GET /wp-abilities/v1/abilities/clients/me/run nonce",
             ],

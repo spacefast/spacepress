@@ -81,30 +81,28 @@ React. See `docs/realtime.md`.
 
 On a page TypedPress renders, `createClient()` with no options reads what the page prints for it
 (`<script id="wp-script-module-data-@typedpress/client">`): the site's REST root, the app API's
-namespace and, for a signed-in visitor, the REST nonce. Every call is a plain `fetch` to those routes.
-For a signed-in visitor, each ability that core lists goes through `@wordpress/abilities`
-(`executeAbility`, once `@wordpress/core-abilities` has loaded the server's abilities), so its input
-schema, permission check and errors are WordPress's. A visitor's page carries no nonce and stays
-cacheable; core lists abilities only to a signed-in user, so the client runs each one at its run
-route, where the same checks run on the server. `wordpress: false` ignores the page's data, and
-`wordpress: true` uses its nonce even with other options set. Neither path goes through
-`wp.apiFetch`, so api-fetch middleware a plugin adds doesn't see these requests.
+namespace and, for a signed-in visitor, the REST nonce. Every call is a `fetch` to those routes; the
+server checks each ability's input schema, permission and output and answers TypedPress's own errors.
+A visitor's page carries no nonce and stays cacheable. `wordpress: false` ignores the page's data,
+and `wordpress: true` uses its nonce even with other options set. These requests don't go through
+`wp.apiFetch`, so api-fetch middleware a plugin adds doesn't see them.
 
-A WordPress error (`ability_invalid_input`, `ability_permission_denied`, `rest_forbidden`,
+A WordPress error (`ability_invalid_input`, `rest_ability_cannot_execute`, `rest_forbidden`,
 `rest_cookie_invalid_nonce`, …) reaches you as the same `TypedPressError` as anywhere else:
-`invalid_input` 422 with the schema's reason, `unauthenticated` 401, `forbidden` 403. A nonce that
-expired while the page was open is renewed once and the request retried.
+`invalid_input` 422, `unauthenticated` 401, `forbidden` 403. A nonce that expired while the page was
+open is renewed once and the request retried.
 
 ## Other origins, Node, mobile
 
 `url` is the site's REST root: `https://example.test/wp-json`, or `https://example.test/?rest_route=`
 when the site has no pretty permalinks (WordPress names its REST root in the
 `Link: <…>; rel="https://api.w.org/"` header of every page). The app's API URL
-(`https://example.test/wp-json/typedpress/v1`) and the bare site URL work too.
+(`https://example.test/wp-json/typedpress/v1`) and the bare site URL work too. A site with another REST
+prefix or API namespace: `createClient({ url: "https://example.test/api", api: "acme/v2" })`.
 
 Sign in with an application password (`headers: { Authorization: "Basic " + btoa("user:application
-password") }`), a Bearer token from TypedPress Identity, or the sign-in above. From a logged-in page
-that doesn't load `wp.apiFetch`, `nonce` (from `wpApiSettings.nonce`) uses the WordPress cookie.
+password") }`), a Bearer token from TypedPress Identity, or the sign-in above. `nonce` (a WordPress
+REST nonce, `wp_create_nonce('wp_rest')`) uses the visitor's WordPress cookie on the same site.
 `auth.session()` hands out the held tokens to forward elsewhere.
 
 This folder is MIT (see its LICENSE). Imports end in `.ts`. Bundlers and Node accept that; `tsc` needs

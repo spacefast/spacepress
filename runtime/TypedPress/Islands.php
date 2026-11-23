@@ -99,14 +99,9 @@ final class Islands
         }
         // The file has a fixed name: its version is a digest of its bytes, written by `typedpress build`.
         $version = is_file($plugin->dir . '/tp/app/client-version.php') ? (string) require $plugin->dir . '/tp/app/client-version.php' : null;
-        // On a WordPress page the client runs each operation as an Ability. For a signed-in visitor it
-        // goes through WordPress's own `@wordpress/abilities` (executeAbility, once
-        // `@wordpress/core-abilities` has loaded the server's abilities): both are dynamic imports of
-        // the client, so a page loads them only when it calls something.
-        wp_register_script_module(self::CLIENT, $plugin->url('tp/app/client/typedpress-client.js'), [
-            ['id' => '@wordpress/abilities', 'import' => 'dynamic'],
-            ['id' => '@wordpress/core-abilities', 'import' => 'dynamic'],
-        ], $version);
+        // The client runs each operation as an Ability at core's run route, with what the page prints
+        // for it ({@see clientData()}): it needs no other module or script.
+        wp_register_script_module(self::CLIENT, $plugin->url('tp/app/client/typedpress-client.js'), [], $version);
         // WordPress prints a module's data only on a page that imports the module. The Interactivity
         // router swaps a later page in without its head, so a page with a router region prints it
         // itself when nothing on it imports the client ({@see printClientData()}).
@@ -161,38 +156,13 @@ final class Islands
         return $data;
     }
 
-    /** Whether a module this page enqueues imports the client. */
+    /** Whether a module this page enqueues imports the client (WordPress then prints its data itself). */
     private static bool $clientUsed = false;
 
-    /**
-     * A module this page enqueues imports the client. A signed-in visitor's page also loads the
-     * classic scripts `@wordpress/abilities` and `@wordpress/core-abilities` read from `window.wp`
-     * (wp-api-fetch, wp-url, wp-data, wp-i18n), which a script module can't declare: core's own pages
-     * enqueue them beside the module, and so does this. A visitor's page needs none of them (core
-     * lists abilities only to a signed-in user, so the client runs each one at its run route itself).
-     */
+    /** A module this page enqueues imports the client. */
     public static function useClient(): void
     {
-        if (self::$clientUsed) {
-            return;
-        }
         self::$clientUsed = true;
-        if (!is_user_logged_in()) {
-            return;
-        }
-        if (did_action('wp_enqueue_scripts')) {
-            self::clientScripts();
-        } else {
-            add_action('wp_enqueue_scripts', [self::class, 'clientScripts'], 20);
-        }
-    }
-
-    /** The classic scripts {@see useClient()} names, printed in the head so `wp.apiFetch` exists before any module runs. */
-    public static function clientScripts(): void
-    {
-        foreach (['wp-api-fetch', 'wp-url', 'wp-data', 'wp-i18n'] as $handle) {
-            wp_enqueue_script($handle);
-        }
     }
 
     /**

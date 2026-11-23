@@ -7,7 +7,7 @@
 // rebuild. An unchanged answer touches nothing.
 import { createClient, pageRead } from "@typedpress/client";
 
-// On WordPress's api-fetch, which carries a signed-in visitor's REST nonce.
+// With the REST root and a signed-in visitor's nonce the page prints for the client.
 const client = createClient();
 
 const html = new Map(); // region id → the HTML now on the page

@@ -221,7 +221,7 @@ final class AgentScope
      */
     public static function authenticating(mixed $error, mixed $user, mixed $item): void
     {
-        if ($error instanceof \WP_Error && is_array($item) && array_key_exists(self::KEY, $item)
+        if ($error instanceof \WP_Error && is_array($item) && self::stored($item) !== null
             && (Runtime::plugin() === null || (defined('XMLRPC_REQUEST') && XMLRPC_REQUEST))) {
             self::$unenforced = new \WP_Error('sp_scope', 'This application password is scoped by SpacePress and can be used only on the REST API of a site with an active SpacePress app.', ['status' => 403]);
             $error->merge_from(self::$unenforced);
@@ -638,7 +638,7 @@ final class AgentScope
                     $user = (int) ($request['user_id'] === 'me' || $request['user_id'] === null ? get_current_user_id() : $request['user_id']);
                     $stored = \WP_Application_Passwords::get_user_application_password($user, (string) ($item['uuid'] ?? '')) ?? $item;
 
-                    return array_key_exists(self::KEY, $stored) ? self::normalize($stored[self::KEY]) : null;
+                    return self::stored($stored);
                 },
                 'update_callback' => static function (mixed $value, mixed $item, string $field, \WP_REST_Request $request): bool|\WP_Error {
                     if (!isset($request['uuid'])) {
@@ -665,7 +665,7 @@ final class AgentScope
         add_filter('manage_application-passwords-user_columns', static fn (array $columns): array => array_slice($columns, 0, 1, true) + [self::KEY => 'Scope'] + $columns);
         add_action('manage_application-passwords-user_custom_column', static function (string $column, array $item): void {
             if ($column === self::KEY) {
-                echo esc_html(self::describe(array_key_exists(self::KEY, $item) ? self::normalize($item[self::KEY]) : null));
+                echo esc_html(self::describe(self::stored($item)));
             }
         }, 10, 2);
         add_action('manage_application-passwords-user_custom_column_js_template', static function (string $column): void {
@@ -682,6 +682,8 @@ final class AgentScope
         $passwords = \WP_Application_Passwords::get_user_application_passwords($userId);
         foreach ($passwords as $i => $item) {
             if (($item['uuid'] ?? null) === $uuid) {
+                // A new scope (or none) replaces the one a pre-release build stored there too.
+                $passwords[$i] = BrandUpgrade::withoutEarlierScope($passwords[$i]);
                 unset($passwords[$i][self::KEY]);
                 if ($scope !== null) {
                     $passwords[$i][self::KEY] = $scope;
@@ -720,7 +722,7 @@ final class AgentScope
         ]);
         $public = static fn (array $item): array => [
             'id' => $item['uuid'], 'name' => $item['name'], 'user' => $user->user_login,
-            'scope' => array_key_exists(self::KEY, $item) ? self::normalize($item[self::KEY]) : null,
+            'scope' => self::stored($item),
             'lastUsed' => isset($item['last_used']) ? gmdate('c', (int) $item['last_used']) : null,
         ];
         $find = static fn (): array => \WP_Application_Passwords::get_user_application_password($user->ID, (string) ($args[2] ?? ''))

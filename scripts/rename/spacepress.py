@@ -89,6 +89,9 @@ OPAQUE = re.compile(
     rb"\bsha(?:1|256|384|512)-[A-Za-z0-9+/]+={0,2}"
     rb"|(?<![A-Za-z0-9+/=_.-])[A-Za-z0-9+/]{4,}={1,2}(?![A-Za-z0-9+/=])"
     rb"|(?<![A-Za-z0-9+/=_.-])(?=[A-Za-z0-9+/]*[0-9+])(?![A-Za-z0-9]*(?:/[A-Za-z0-9]+)+(?![A-Za-z0-9+/]))[A-Za-z0-9+/]{24,}(?![A-Za-z0-9+/=_.-])"
+    # Unpadded base64 with a `+` in it, 8+ characters long and a whole number of 4-character blocks:
+    # a path or identifier never has a `+`.
+    rb"|(?<![A-Za-z0-9+/=_.-])(?=[A-Za-z0-9+/]*\+)(?:[A-Za-z0-9+/]{4}){2,}(?![A-Za-z0-9+/=_.-])"
     rb"|[0-9a-fA-F]{32,}"
 )
 

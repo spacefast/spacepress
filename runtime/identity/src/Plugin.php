@@ -73,12 +73,6 @@ final class Plugin
      */
     public static function storageCurrent(): bool
     {
-        global $wpdb;
-        // Without the runtime, nothing else will move identity's storage: it moves its own.
-        if (!class_exists(\SpacePress\Wp\BrandUpgrade::class)) {
-            Legacy::move($wpdb);
-        }
-
         // The runtime's marker answers on a settled site (autoloaded: no query).
         $upgrade = get_option('sp_brand_upgrade', 0);
 
@@ -114,6 +108,21 @@ final class Plugin
         );
         if (!self::managed()) {
             self::installStorage();
+            // Identity's storage under the pre-release name, on a site without the runtime to move it:
+            // decided once every plugin has loaded (WordPress loads identity before the runtime), and
+            // a conflict is reported, not fatal.
+            if (Legacy::stored()) {
+                add_action('plugins_loaded', static function (): void {
+                    global $wpdb;
+                    try {
+                        Legacy::move($wpdb);
+                        self::installStorage();
+                    } catch (Failure $failure) {
+                        error_log('[spacepress] ' . $failure->getMessage());
+                        add_action('admin_notices', static fn () => current_user_can('manage_options') && printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('SpacePress Identity: ' . $failure->getMessage())));
+                    }
+                }, 2);
+            }
         }
         add_action("rest_api_init", [self::$api, "register"]);
         add_filter(

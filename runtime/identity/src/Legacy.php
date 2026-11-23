@@ -46,7 +46,14 @@ final class Legacy
             return;
         }
         $lock = 'spacepress:' . substr(hash('sha256', DB_NAME . ':' . $wp->prefix . ':sp_brand_upgrade'), 0, 40);
-        if ((int) $wp->get_var($wp->prepare('SELECT GET_LOCK(%s, 10)', $lock)) !== 1 && !($wp->dbh instanceof \PDO)) {
+        // MySQL: a named lock. SQLite: a file lock beside the database, as the runtime takes one.
+        $file = null;
+        if ($wp->dbh instanceof \PDO) {
+            $file = fopen((defined('DB_PATH') ? (string) DB_PATH : (string) (DB_DIR . '/' . DB_FILE)) . '.' . substr(hash('sha256', $lock), 0, 16) . '.lock', 'c');
+            if ($file === false || !flock($file, LOCK_EX)) {
+                return;
+            }
+        } elseif ((int) $wp->get_var($wp->prepare('SELECT GET_LOCK(%s, 10)', $lock)) !== 1) {
             return;
         }
         try {
@@ -102,13 +109,39 @@ final class Legacy
                         $pdo->rollBack();
                         throw $e;
                     }
-                } else {
-                    $wp->query('RENAME TABLE ' . implode(', ', array_map(static fn ($from, $to) => "`$from` TO `$to`", array_keys($tables), $tables)));
+                } elseif ($wp->query('RENAME TABLE ' . implode(', ', array_map(static fn ($from, $to) => "`$from` TO `$to`", array_keys($tables), $tables))) === false) {
+                    throw new Failure('storage_unavailable', 'Cannot move identity\'s tables: ' . $wp->last_error, 503);
                 }
             }
-            foreach (self::OPTIONS as $name) {
-                $wp->update($wp->options, ['option_name' => 'sp_identity_' . $name], ['option_name' => self::SHORT . $name]);
+            // Every option but the schema version first: the schema version under the earlier name is
+            // what says identity still has storage to move, so it moves last, once the rest has.
+            foreach ([...array_diff(self::OPTIONS, ['schema_version']), 'schema_version'] as $name) {
+                if ($name === 'schema_version') {
+                    foreach (self::TABLES as $table) {
+                        if (self::table($wp, $wp->prefix . self::SHORT . $table)) {
+                            throw new Failure('storage_unavailable', "Identity's table {$wp->prefix}" . self::SHORT . "$table did not move; reload to try again.", 503);
+                        }
+                    }
+                    self::moveEvents();
+                }
+                if ($wp->update($wp->options, ['option_name' => 'sp_identity_' . $name], ['option_name' => self::SHORT . $name]) === false) {
+                    throw new Failure('storage_unavailable', 'Cannot move identity\'s option ' . self::SHORT . $name . ': ' . $wp->last_error, 503);
+                }
             }
+            wp_cache_flush();
+        } finally {
+            if ($file !== null) {
+                flock($file, LOCK_UN);
+                fclose($file);
+            } else {
+                $wp->query($wp->prepare('SELECT RELEASE_LOCK(%s)', $lock));
+            }
+        }
+    }
+
+    /** Identity's wp-cron events under their current hooks, with the same times, arguments and schedule. */
+    private static function moveEvents(): void
+    {
             $cron = _get_cron_array();
             if (is_array($cron)) {
                 foreach ($cron as $time => $hooks) {
@@ -122,10 +155,6 @@ final class Legacy
                 }
                 _set_cron_array($cron);
             }
-            wp_cache_flush();
-        } finally {
-            $wp->dbh instanceof \PDO || $wp->query($wp->prepare('SELECT RELEASE_LOCK(%s)', $lock));
-        }
     }
 
     private static function table(\wpdb $wp, string $name): bool

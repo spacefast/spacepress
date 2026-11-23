@@ -218,6 +218,14 @@ final class BrandUpgrade
         return $scope ?? AgentScope::DEFAULT;
     }
 
+    /** An application password entry without the scope a pre-release build stored on it. */
+    public static function withoutEarlierScope(array $entry): array
+    {
+        unset($entry[self::SCOPE_KEY]);
+
+        return $entry;
+    }
+
     /** A built-in ability's current name: `typedpress-identity/account` is `spacepress-identity/account`, `tp/…` is `sp/…`. */
     private static function abilityName(string $name): string
     {

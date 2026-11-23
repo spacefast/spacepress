@@ -17,6 +17,12 @@ require "$checkout/tests/php/wp.php";
 
 $schema = require "$checkout/tests/fixtures/blog/schema.php";
 $schema['collections']['comments']['revisions'] = true;
+// A custom-table child of a custom table, so the site has a foreign key between two of its tables.
+$schema['collections']['replies'] = ['key' => 'replies', 'editor' => false, 'table' => 'tp_replies', 'primaryKey' => 'id', 'revisions' => false, 'softDelete' => false,
+    'uid' => false, 'columns' => ['id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+        'commentId' => ['type' => 'integer', 'notNull' => true, 'references' => ['collection' => 'comments', 'column' => 'id', 'onDelete' => 'cascade']],
+        'body' => ['type' => 'text', 'notNull' => true]],
+    'access' => array_fill_keys(['read', 'create', 'update', 'delete'], ['role' => 'editor'])];
 $wp = wpSite('brand-upgrade', ['schema' => $schema, 'identity' => true, 'functions' => file_get_contents("$checkout/tests/fixtures/blog/functions.php")]);
 $app = $wp->app();
 
@@ -30,6 +36,8 @@ $status === 201 || throw new RuntimeException("post: $status");
 $status < 300 || throw new RuntimeException("delete: $status");
 [$status, $comment] = $wp->call('POST', '/comments', ['postId' => $post['id'], 'name' => 'Ada', 'body' => 'First', 'approved' => true], as: 'editor');
 $status === 201 || throw new RuntimeException("comment: $status " . json_encode($comment));
+[$status, $reply] = $wp->call('POST', '/replies', ['commentId' => $comment['id'], 'body' => 'A reply'], as: 'editor');
+$status === 201 || throw new RuntimeException("reply: $status " . json_encode($reply));
 [$status] = $wp->call('PATCH', '/comments/' . $comment['id'], ['body' => 'First, edited'], as: 'editor');
 $status < 300 || throw new RuntimeException("comment update: $status");
 \TypedPress\Jobs\Jobs::enqueue('typedpress.mail', ['message' => \TypedPress\Mail::payload(['to' => 'a@example.test', 'subject' => 'Queued before the rename', 'text' => 'Hello'])], ['delay' => 3600]);

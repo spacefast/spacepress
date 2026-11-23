@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# A Pantry site deployed before the rename, upgraded on WordPress + MariaDB (tests/wp/harness.sh).
+#
+#   tests/wp/brand-upgrade-run.sh [path/to/spacepress]
+#
+# Builds the example with the compiler of LEGACY_COMMIT (tests/php/brand_upgrade_test.php), boots it,
+# writes data through that site's own REST API, then copies in this checkout's build and switches the
+# plugins with WP-CLI as a site owner would. Checks that every row, hash, revision, scheduled action
+# and foreign key is there under the current names, that the app reads it back, that another
+# plugin's look-alike option is untouched, and that loading the site again changes nothing.
+set -euo pipefail
+repo="$(cd "$(dirname "$0")/../.." && pwd)"
+current=$(realpath -- "${1:-$repo/target/debug/spacepress}")
+legacy=$(sed -n "s/^const LEGACY_COMMIT = '\([0-9a-f]*\)';/\1/p" "$repo/tests/php/brand_upgrade_test.php")
+work=$(mktemp -d)
+export SP_WP_PROJECT="${SP_WP_PROJECT:-spacepress-wp-brand-upgrade}" SP_WP_PORT="${SP_WP_PORT:-8911}"
+old="${legacy:0:10}"
+cleanup() {
+	(cd "$work/legacy" 2>/dev/null && TP_WP_PROJECT=$SP_WP_PROJECT TP_WP_PORT=$SP_WP_PORT tests/wp/harness.sh down >/dev/null 2>&1) || true
+	rm -rf -- "$work"
+}
+trap cleanup EXIT
+
+# The site as the earlier release built and ran it: its compiler, its harness.
+git -C "$repo" archive "$legacy" | (mkdir "$work/legacy" && tar -x -C "$work/legacy")
+mkdir -p "$work/legacy/tests/wp/cache"
+cp -n "$repo"/tests/wp/cache/*.zip "$work/legacy/tests/wp/cache/" 2>/dev/null || true
+(cd "$work/legacy" && CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$repo/target}/legacy-$old" cargo build -q --locked --bin "typedpress")
+first="${CARGO_TARGET_DIR:-$repo/target}/legacy-$old/debug/typedpress"
+"$first" build "$work/legacy/examples/pantry" --out "$work/site" --quiet
+cd "$work/legacy"
+export TP_WP_PROJECT=$SP_WP_PROJECT TP_WP_PORT=$SP_WP_PORT
+receipt=$(tests/wp/harness.sh up --wp-content "$work/site" | tail -1)
+admin="admin:$(jq -r .users.admin.appPassword <<<"$receipt")"
+url=$(jq -r .url <<<"$receipt")
+h() { tests/wp/harness.sh "$@"; }
+api() { local method=$1 path=$2; shift 2; curl -sf -u "$admin" -X "$method" -H 'content-type: application/json' "$url/wp-json/$path" "$@"; }
+
+api POST typedpress/v1/locations -d '{"name":"Fridge","kind":"fridge"}' >/dev/null
+api POST typedpress/v1/items -d '{"name":"Milk","slug":"milk","quantity":2,"locationId":1,"tags":[]}' >/dev/null
+api PATCH typedpress/v1/items/1 -d '{"quantity":3}' >/dev/null
+h wp option add tp_unrelated_plugin_setting 'not ours' >/dev/null
+q() { h sql "$1" | tail -n +2; }
+ledger_before=$(q 'SELECT app, id, kind, `sql` FROM wp_tp__migrations ORDER BY id')
+revisions_before=$(q 'SELECT collection, pk, version, op FROM wp_tp__revisions ORDER BY id')
+actions_before=$(q 'SELECT a.action_id, a.status FROM wp_actionscheduler_actions a ORDER BY a.action_id')
+
+# This checkout's build beside the earlier one, then the plugins switched without loading the old code.
+"$current" build "$repo/examples/pantry" --out "$work/new" --quiet
+for slug in spacepress-runtime spacepress-identity spacepress-admin spacepress-app-pantry; do
+	cp -r "$work/new/plugins/$slug" "$work/site/plugins/"
+done
+old_plugins=typedpress-runtime,typedpress-identity,typedpress-app-pantry,typedpress-admin
+h wp plugin activate spacepress-runtime spacepress-identity spacepress-app-pantry spacepress-admin --skip-plugins="$old_plugins" >/dev/null
+h wp plugin deactivate "${old_plugins//,/ }" --skip-plugins="$old_plugins" >/dev/null 2>&1 || true
+
+fail=0
+check() { if [[ "$2" == "$3" ]]; then echo "ok    $1"; else echo "FAIL  $1"; echo "      expected: $3"; echo "      actual:   $2"; fail=1; fi; }
+check 'the upgrade is recorded' "$(q "SELECT option_value FROM wp_options WHERE option_name = 'sp_brand_upgrade'")" 1
+check 'no table keeps the earlier name' "$(q "SHOW TABLES LIKE 'wp\\_tp\\_%'")" ''
+check 'the ledger keeps each file and its SHA-256' "$(q "SELECT app, id, kind, \`sql\` FROM wp_sp__migrations WHERE kind = 'schema' ORDER BY id")" "$ledger_before"
+check '… and records the move once' "$(q "SELECT id, actor FROM wp_sp__migrations WHERE kind = 'data'")" "$(printf 'brand-upgrade-v1\tspacepress')"
+check 'the revisions keep their chain' "$(q 'SELECT collection, pk, version, op FROM wp_sp__revisions ORDER BY id')" "$revisions_before"
+check 'every scheduled action is kept' "$(q 'SELECT a.action_id, a.status FROM wp_actionscheduler_actions a WHERE a.action_id IN (SELECT action_id FROM wp_actionscheduler_actions) ORDER BY a.action_id' | head -n "$(wc -l <<<"$actions_before")")" "$actions_before"
+check '… under the current hooks and groups' "$(q "SELECT COUNT(*) FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE a.hook LIKE 'tp\\_%' OR a.hook LIKE 'typedpress.%' OR g.slug LIKE 'typedpress%'")" 0
+check 'foreign keys keep their targets under the current names' "$(q "SELECT CONSTRAINT_NAME, TABLE_NAME, REFERENCED_TABLE_NAME, DELETE_RULE FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() ORDER BY CONSTRAINT_NAME")" \
+	"$(printf 'sp_items_locationId_fk\twp_sp_items\twp_sp_locations\tSET NULL\nsp_shopping_list_itemId_fk\twp_sp_shopping_list\twp_sp_items\tCASCADE')"
+check 'the active plugins are each listed once' "$(h wp option get active_plugins --format=json --skip-plugins | jq -c 'length == (unique | length)')" true
+check 'another plugin'"'"'s option is untouched' "$(q "SELECT option_value FROM wp_options WHERE option_name = 'tp_unrelated_plugin_setting'")" 'not ours'
+check 'the app reads its row back' "$(api GET spacepress/v1/items/1 | jq -c '[.data.name, .data.quantity, .data.locationId]')" '["Milk",3,1]'
+check 'a foreign key still acts: deleting the location empties the reference' "$(api DELETE spacepress/v1/locations/1 >/dev/null; q 'SELECT IFNULL(locationId, "null") FROM wp_sp_items WHERE id = 1')" null
+check 'nothing is pending to migrate' "$(h wp eval 'echo json_encode(\SpacePress\Wp\Runtime::plugin()->pendingMigrations());')" '[]'
+# Loaded once more (a page and the CLI) before the snapshot: what any request writes (the install
+# marker, a theme's first mods) is written, so what follows compares the upgrade alone.
+curl -sf "$url/" >/dev/null || true
+snapshot() { q 'SELECT option_name, option_value FROM wp_options WHERE option_name NOT IN ("cron", "sp_installed") AND option_name NOT LIKE "\_transient%" AND option_name NOT LIKE "\_site\_transient%" ORDER BY option_name'; q 'SHOW TABLES'; q 'SELECT * FROM wp_sp__migrations ORDER BY id'; }
+before_again=$(snapshot)
+curl -sf "$url/" >/dev/null || true
+h wp eval 'var_export(\SpacePress\Wp\BrandUpgrade::ensure(\SpacePress\Wp\Runtime::plugin()->schema));' >/dev/null
+check 'a second load and ensure change nothing' "$(snapshot)" "$before_again"
+exit $fail

@@ -438,6 +438,7 @@ final class BrandUpgrade
         if (!$db->sqlite()) {
             // One statement: atomic, and foreign keys follow the renamed tables.
             $db->run('RENAME TABLE ' . implode(', ', array_map(static fn (string $from, string $to): string => $q($from) . ' TO ' . $q($to), array_keys($tables), $tables)));
+            self::renameForeignKeys($db, array_values($tables));
 
             return count($tables);
         }
@@ -477,6 +478,17 @@ final class BrandUpgrade
                     }
                 }
             }
+            // Constraint names, as on MySQL ({@see renameForeignKeys()}): the driver rebuilds a table's
+            // SQLite definition from these rows on its next ALTER, so this is where the name lives.
+            foreach ($info as $meta) {
+                $columns = array_column($pdo->query('PRAGMA table_info(' . $quote((string) $meta) . ')')->fetchAll(\PDO::FETCH_ASSOC), 'name');
+                if (!in_array('CONSTRAINT_NAME', $columns, true) || !in_array('TABLE_NAME', $columns, true)) {
+                    continue;
+                }
+                $marks = implode(', ', array_fill(0, count($tables), '?'));
+                $rename = $pdo->prepare('UPDATE ' . $quote((string) $meta) . " SET CONSTRAINT_NAME = 'sp_' || SUBSTR(CONSTRAINT_NAME, 4) WHERE CONSTRAINT_NAME LIKE 'tp\\_%' ESCAPE '\\' AND TABLE_NAME IN ($marks)");
+                $rename->execute(array_values($tables));
+            }
             foreach ($tables as $from => $to) {
                 $count = (int) $pdo->query('SELECT COUNT(*) FROM ' . $quote($to))->fetchColumn();
                 if ($count !== $counts[$from]) {
@@ -493,6 +505,51 @@ final class BrandUpgrade
         }
 
         return count($tables);
+    }
+
+    /**
+     * Foreign keys keep the name they were created with across RENAME TABLE, and a later migration
+     * drops one by the name the compiler gives it now (`sp_<table>_<column>_fk`, or `m<hash>_sp_…` on
+     * a non-default prefix). Each `tp_…` constraint of a moved table is dropped and added again under
+     * that name in one ALTER, with the same columns, target and rules.
+     *
+     * @param list<string> $tables
+     */
+    private static function renameForeignKeys(Connection $db, array $tables): void
+    {
+        $marks = implode(', ', array_fill(0, count($tables), '?'));
+        $rows = $db->run(
+            "SELECT k.TABLE_NAME AS t, k.CONSTRAINT_NAME AS n, k.COLUMN_NAME AS c, k.REFERENCED_TABLE_NAME AS rt, k.REFERENCED_COLUMN_NAME AS rc, r.DELETE_RULE AS d, r.UPDATE_RULE AS u
+             FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r
+               ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.TABLE_NAME = k.TABLE_NAME AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+             WHERE k.CONSTRAINT_SCHEMA = DATABASE() AND k.TABLE_NAME IN ($marks) ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION",
+            $tables,
+        );
+        $keys = [];
+        foreach ($rows as $row) {
+            $name = (string) $row['n'];
+            if (preg_match('/\A(m[0-9a-f]{7}_)?tp_/', $name, $m) !== 1) {
+                continue;
+            }
+            $key = &$keys[$row['t']][$name];
+            $key ??= ['to' => substr(($m[1] ?? '') . 'sp_' . substr($name, strlen(($m[1] ?? '') . 'tp_')), 0, 64), 'cols' => [], 'refs' => [], 'table' => $row['rt'], 'delete' => $row['d'], 'update' => $row['u']];
+            $key['cols'][] = $row['c'];
+            $key['refs'][] = $row['rc'];
+            unset($key);
+        }
+        $q = static fn (string $n): string => '`' . str_replace('`', '``', $n) . '`';
+        $rules = ['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION', 'SET DEFAULT'];
+        foreach ($keys as $table => $constraints) {
+            $parts = [];
+            foreach ($constraints as $name => $k) {
+                $delete = in_array($k['delete'], $rules, true) ? $k['delete'] : 'RESTRICT';
+                $update = in_array($k['update'], $rules, true) ? $k['update'] : 'RESTRICT';
+                $parts[] = 'DROP FOREIGN KEY ' . $q($name);
+                $parts[] = 'ADD CONSTRAINT ' . $q($k['to']) . ' FOREIGN KEY (' . implode(', ', array_map($q, $k['cols'])) . ') REFERENCES ' . $q($k['table'])
+                    . ' (' . implode(', ', array_map($q, $k['refs'])) . ") ON DELETE $delete ON UPDATE $update";
+            }
+            $db->run('ALTER TABLE ' . $q((string) $table) . ' ' . implode(', ', $parts));
+        }
     }
 
     /** Capability names on roles and users: the schema capability, the guest role, post-type and taxonomy caps. */
@@ -658,12 +715,17 @@ final class BrandUpgrade
         return $count;
     }
 
-    /** Replaces renamed plugins in the active lists, in place, so the same set stays active. */
+    /**
+     * Replaces renamed plugins in the active lists, in place, so the same set stays active. When this
+     * runs inside a plugin's activation (`activate_plugin()` appends that plugin to the list after its
+     * hook), the plugin may already be listed by now: the rest of this request keeps the list unique.
+     */
     private static function activePlugins(array $plugins): int
     {
         if ($plugins === []) {
             return 0;
         }
+        add_filter('pre_update_option_active_plugins', static fn ($list) => is_array($list) ? array_values(array_unique($list)) : $list);
         $active = get_option('active_plugins', []);
         if (is_array($active)) {
             update_option('active_plugins', array_values(array_unique(array_map(static fn ($p) => $plugins[$p] ?? $p, $active))));

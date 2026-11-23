@@ -35,6 +35,12 @@ register_shutdown_function(static fn () => getenv('SP_WP_KEEP') === '1' || exec(
 
 $schema = require dirname(__DIR__) . '/fixtures/blog/schema.php';
 $schema['collections']['comments']['revisions'] = true;
+// A custom-table child of a custom table, so the site has a foreign key between two of its tables.
+$schema['collections']['replies'] = ['key' => 'replies', 'editor' => false, 'table' => 'sp_replies', 'primaryKey' => 'id', 'revisions' => false, 'softDelete' => false,
+    'uid' => false, 'columns' => ['id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+        'commentId' => ['type' => 'integer', 'notNull' => true, 'references' => ['collection' => 'comments', 'column' => 'id', 'onDelete' => 'cascade']],
+        'body' => ['type' => 'text', 'notNull' => true]],
+    'access' => array_fill_keys(['read', 'create', 'update', 'delete'], ['role' => 'editor'])];
 $wp = WpSite::adopt($before['dir'], ['schema' => $schema, 'identity' => true, 'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php')],
     ['typedpress-app-blog', 'typedpress-identity', 'typedpress-runtime']);
 
@@ -104,6 +110,12 @@ eq('the custom-table row reads back', [$status, $comment['body'] ?? null], [200,
 [$status, $list] = $wp->call('GET', '/posts', as: 'editor');
 eq('the soft-deleted post stays deleted', in_array($before['gone'], array_column($list ?? [], 'id'), true), false);
 eq('the next migration plan creates nothing anew', $wp->plugin()->pendingMigrations(), []);
+eq('the foreign key keeps its target and rule, under the name the compiler gives it now', $wp->sql("SELECT k.CONSTRAINT_NAME AS n, k.REFERENCED_TABLE_NAME AS t, r.DELETE_RULE AS d FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_NAME = k.CONSTRAINT_NAME AND r.TABLE_NAME = k.TABLE_NAME WHERE k.TABLE_NAME = ?", ["{$p}sp_replies"]),
+    [['n' => 'sp_replies_commentId_fk', 't' => "{$p}sp_comments", 'd' => 'CASCADE']]);
+// A schema change after the upgrade alters the moved table: the driver rebuilds it from its metadata.
+$wp->exec("ALTER TABLE `{$p}sp_replies` ADD COLUMN `probe` BIGINT NULL");
+eq('… and the table still takes an ALTER, keeping its row and its key', [(int) $wp->scalar("SELECT COUNT(*) FROM `{$p}sp_replies`"), $wp->scalar("SELECT REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_NAME = ? AND CONSTRAINT_NAME = 'sp_replies_commentId_fk'", ["{$p}sp_replies"])], [1, "{$p}sp_comments"]);
+$wp->exec("ALTER TABLE `{$p}sp_replies` DROP COLUMN `probe`");
 
 // A second run: the marker is recorded, so nothing moves; and a forced replan finds nothing to do.
 eq('a second ensure changes nothing', \SpacePress\Wp\BrandUpgrade::ensure($wp->plugin()->schema), []);

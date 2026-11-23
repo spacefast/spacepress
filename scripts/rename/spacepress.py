@@ -81,11 +81,14 @@ def rewrite(data: bytes, kind: str, counts: Counter | None = None) -> bytes:
     return protect(out, lambda part: pattern.sub(short, part))
 
 
-# Base64 and hex long enough to be encoded data (integrity hashes, keys, inline payloads): no short
-# rule applies inside one. Base64 here is 8+ characters holding a digit or `+` (paths and words don't),
-# or padded with `=`; hex is 32+.
+# Encoded data, where the short rule must not apply: integrity values (`sha512-…`, `sha256-…`), padded
+# base64, and runs of 24+ base64 characters with no path or identifier shape (no `_`, `-` or `.`, and at
+# least one digit or `+`, and not only `/`-separated words). A path like `wp/v2/tp_posts` or
+# `tp/v1/actions/capacityReport` has none of these shapes.
 OPAQUE = re.compile(
-    rb"(?<![A-Za-z0-9+/=])(?:(?=[A-Za-z0-9+/]*[0-9+])[A-Za-z0-9+/]{8,}={0,2}|[A-Za-z0-9+/]{4,}={1,2})(?![A-Za-z0-9+/=])"
+    rb"\bsha(?:1|256|384|512)-[A-Za-z0-9+/]+={0,2}"
+    rb"|(?<![A-Za-z0-9+/=_.-])[A-Za-z0-9+/]{4,}={1,2}(?![A-Za-z0-9+/=])"
+    rb"|(?<![A-Za-z0-9+/=_.-])(?=[A-Za-z0-9+/]*[0-9+])(?![A-Za-z0-9]*(?:/[A-Za-z0-9]+)+(?![A-Za-z0-9+/]))[A-Za-z0-9+/]{24,}(?![A-Za-z0-9+/=_.-])"
     rb"|[0-9a-fA-F]{32,}"
 )
 

@@ -84,21 +84,21 @@ def rewrite(data: bytes, kind: str, counts: Counter | None = None) -> bytes:
     return protect(data, ENCODED, rename)
 
 
-# Where encoded data sits, whatever its shape, so no rule applies: integrity values (`sha512-…`), a
-# data URI's payload and a source map's mappings. (Unpadded base64 like `AAAA/tp/Z999` has a path's
-# shape; only its place tells it apart.) An external `sourceMappingURL` is a path: it follows the file.
+# Encoded data no rule applies to: integrity values (`sha512-…`), a data URI's payload, a source map's
+# mappings (by place: unpadded base64 like `AAAA/tp/Z999` has a path's shape), and padded base64 (by
+# shape: `AAtypedpressAA==` decodes). An external `sourceMappingURL` is a path: it follows the file.
 ENCODED = re.compile(
     rb"\bsha(?:1|256|384|512)-[A-Za-z0-9+/]+={0,2}"
     rb"|;base64,[A-Za-z0-9+/]+={0,2}"
     rb'|"mappings"\s*:\s*"[^"]*"'
+    rb"|(?<![A-Za-z0-9+/=_.-])[A-Za-z0-9+/]{4,}={1,2}(?![A-Za-z0-9+/=])"
 )
 # Shapes of encoded data, where only the short rule must not apply (a long identifier that holds a
-# digit still takes the brand): padded base64, and runs of 24+ base64 characters with no path or
-# identifier shape (no `_`, `-` or `.`, and at least one digit or `+`, and not only `/`-separated
-# words). A path like `wp/v2/tp_posts` or `tp/v1/actions/capacityReport` has none of these shapes.
+# digit still takes the brand): runs of 24+ base64 characters with no path or identifier shape (no
+# `_`, `-` or `.`, and at least one digit or `+`, and not only `/`-separated words). A path like
+# `wp/v2/tp_posts` or `tp/v1/actions/capacityReport` has none of these shapes.
 OPAQUE = re.compile(
     rb"(" + rb"|".join(re.escape(k) for k in KEEP) + rb")"
-    rb"|(?<![A-Za-z0-9+/=_.-])[A-Za-z0-9+/]{4,}={1,2}(?![A-Za-z0-9+/=])"
     rb"|(?<![A-Za-z0-9+/=_.-])(?=[A-Za-z0-9+/]*[0-9+])(?![A-Za-z0-9]*(?:/[A-Za-z0-9]+)+(?![A-Za-z0-9+/]))[A-Za-z0-9+/]{24,}(?![A-Za-z0-9+/=_.-])"
     # Unpadded base64 with a `+` in it, 8+ characters long and a whole number of 4-character blocks:
     # a path or identifier never has a `+`.

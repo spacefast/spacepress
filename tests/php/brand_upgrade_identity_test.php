@@ -13,6 +13,21 @@ require __DIR__ . '/harness.php';
 
 const LEGACY_COMMIT = '45d81e72857beb2d2f6b6c15bc3d749ead96baf2';
 
+// The child: one boot of the moved site, printing every query it sent.
+if (($argv[1] ?? '') === 'settled') {
+    $site = json_decode((string) file_get_contents("{$argv[2]}/site.json"), true, 512, JSON_THROW_ON_ERROR);
+    wpDefine($argv[2], $site['url']);
+    $sent = [];
+    $GLOBALS['wp_filter']['query'][10]['probe'] = ['accepted_args' => 1, 'function' => static function (string $query) use (&$sent): string {
+        $sent[] = $query;
+
+        return $query;
+    }];
+    require_once ABSPATH . 'wp-settings.php';
+    echo json_encode($sent), "\n";
+    exit(0);
+}
+
 $before = require __DIR__ . '/brand_upgrade/legacy.php';
 $dir = $before['dir'];
 $repo = dirname(__DIR__, 2);
@@ -42,5 +57,10 @@ $snapshot = static fn (): array => [$tables("{$p}%"), $wpdb->get_results("SELECT
 $once = $snapshot();
 \SpacePress\Identity\Legacy::move($wpdb);
 eq('a second move changes nothing', $snapshot(), $once);
+// A settled site pays nothing for the move: no boot asks for the earlier name again.
+exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=512M ' . escapeshellarg(__FILE__) . ' settled ' . escapeshellarg($dir) . ' 2>&1', $out, $code);
+$sent = json_decode((string) end($out), true);
+check('a settled boot sends queries', $code === 0 && is_array($sent) && $sent !== []);
+eq('… none naming the earlier schema version', array_values(array_filter((array) $sent, static fn (string $q): bool => str_contains($q, 'tp_identity_'))), []);
 
 finish('brand_upgrade_identity');

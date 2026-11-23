@@ -59,4 +59,32 @@ file_put_contents("$root/app/$app/manifest.json", json_encode(['format' => 'spac
 \SpacePressPlugin\Site::checkCommerce($manifest);
 \SpacePressPlugin\Receiver::rollback($build);
 eq('ordinary ready builds can still be selected', \SpacePressPlugin\Site::live(), $build);
+
+// The running app's name, checked against a pushed build's: a pre-release build named a renamed app
+// for the earlier brand, a current build names an app as it is, whatever its name.
+$create = static function (array $running, string $name): string {
+    $root = \SpacePressPlugin\Site::store();
+    $bytes = json_encode($running);
+    file_put_contents("$root/build/" . hash('sha256', $bytes) . '.json', $bytes);
+    update_option(\SpacePressPlugin\Site::LIVE, hash('sha256', $bytes));
+    update_option(\SpacePressPlugin\Site::HISTORY, [['build' => hash('sha256', $bytes), 'kind' => 'deploy']]);
+    $request = new WP_REST_Request('POST');
+    $request->set_header('content-type', 'application/json');
+    $request->set_body(json_encode(['manifest' => json_encode(['format' => 'spacepress.build.v1', 'name' => $name, 'runtime' => str_repeat('b', 64), 'app' => str_repeat('a', 64), 'baseline' => hash('sha256', $bytes)])]));
+    // A deployed site runs no separately installed runtime (Site::conflict()); this one does.
+    $deployed = static fn (array $active): array => array_values(array_filter($active, static fn (string $f): bool => !str_starts_with($f, 'spacepress-')));
+    add_filter('option_active_plugins', $deployed);
+    try {
+        \SpacePressPlugin\Receiver::create($request);
+
+        return 'taken';
+    } catch (\SpacePressPlugin\Refusal $refusal) {
+        return $refusal->problem;
+    } finally {
+        remove_filter('option_active_plugins', $deployed);
+    }
+};
+eq('a current app named for the earlier brand takes its own next build', $create(['format' => 'spacepress.build.v1', 'name' => 'typedpress-client', 'runtime' => $runtime, 'app' => $app], 'typedpress-client'), 'taken');
+eq('… and no other app\'s', $create(['format' => 'spacepress.build.v1', 'name' => 'typedpress-client', 'runtime' => $runtime, 'app' => $app], 'spacepress-client'), 'sp_other_app');
+eq('a pre-release build\'s renamed app takes the build under its current name', $create(['format' => 'typedpress.build.v1', 'name' => 'typedpress-client', 'runtime' => $runtime, 'app' => $app], 'spacepress-client'), 'taken');
 finish('deployments');

@@ -278,7 +278,8 @@ final class Receiver
         }
         $live = Site::live();
         $running = $live === null ? null : Site::manifest($live);
-        if ($running !== null && Legacy::appName($running['name']) !== $manifest['name']) {
+        // A pre-release build named a renamed app for the earlier brand; a current one names it as it is.
+        if ($running !== null && (Legacy::build($running) ? Legacy::appName($running['name']) : $running['name']) !== $manifest['name']) {
             throw new Refusal('sp_other_app', "This site runs the app \"{$running['name']}\". A site runs one SpacePress app; this build is \"{$manifest['name']}\".", 409);
         }
         self::current($manifest);

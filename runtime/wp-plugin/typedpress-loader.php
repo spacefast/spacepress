@@ -236,7 +236,11 @@ final class Loader
         require_once $runtime . '/typedpress-runtime/tp/Env.php';
         \TypedPress\Env::isolate($variables);
         require_once $runtime . '/typedpress-runtime/tp/bootstrap.php';
-        \TypedPress\Preview::bind($preview);
+        // A build compiled before the switch has no Preview class; it seeds as
+        // production does, as it always has.
+        if (class_exists(\TypedPress\Preview::class)) {
+            \TypedPress\Preview::bind($preview);
+        }
         self::$schema = \TypedPress\Schema::load($app . '/tp/app/schema.php');
         if (self::$schema->commerce() !== null) {
             require_once $runtime . '/typedpress-commerce.php';

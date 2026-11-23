@@ -110,9 +110,11 @@ final class Plugin
             self::installStorage();
             // Identity's storage under the pre-release name, on a site without the runtime to move it:
             // decided once every plugin has loaded (WordPress loads identity before the runtime), and
-            // a conflict is reported, not fatal. A site whose schema is current (primed above) has
-            // nothing left under that name, and reads nothing for it.
-            if (!Schema::ready() && Legacy::stored()) {
+            // a conflict is reported, not fatal. A settled site (an autoloaded marker) reads nothing for
+            // it; a current schema version alone doesn't say so: the earlier storage may sit beside it.
+            if (!Legacy::settled() && !Legacy::stored()) {
+                Legacy::settle();
+            } elseif (!Legacy::settled()) {
                 add_action('plugins_loaded', static function (): void {
                     global $wpdb;
                     try {

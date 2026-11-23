@@ -34,6 +34,26 @@ final class Legacy
         return hash("sha256", "typedpress-identity-session-v1\0" . $secret);
     }
 
+    /** Recorded (autoloaded) once identity found no storage under the earlier name, or moved it. */
+    private const SETTLED = 'sp_identity_upgrade';
+
+    /**
+     * Whether identity has nothing left under the earlier name: its own marker, or the runtime's once
+     * it moved the whole site. Read from the autoloaded options, so a settled site sends no query.
+     */
+    public static function settled(): bool
+    {
+        $options = wp_load_alloptions();
+
+        return isset($options[self::SETTLED]) || (int) ($options['sp_brand_upgrade'] ?? 0) >= 1;
+    }
+
+    /** Records that identity has nothing left to move. */
+    public static function settle(): void
+    {
+        add_option(self::SETTLED, 1, '', true);
+    }
+
     /** Whether identity's schema version is stored under the earlier name: one indexed read. */
     public static function stored(): bool
     {
@@ -138,6 +158,7 @@ final class Legacy
                 }
             }
             wp_cache_flush();
+            self::settle();
         } finally {
             if ($file !== null) {
                 flock($file, LOCK_UN);

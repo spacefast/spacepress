@@ -76,5 +76,17 @@ exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=512M ' . escapeshellarg(__FI
 $sent = json_decode((string) end($out), true);
 check('a settled boot sends queries', $code === 0 && is_array($sent) && $sent !== []);
 eq('… none naming the earlier schema version', array_values(array_filter((array) $sent, static fn (string $q): bool => str_contains($q, 'tp_identity_'))), []);
+check('… since identity recorded that it has nothing left to move', $wpdb->get_var("SELECT autoload FROM {$wpdb->options} WHERE option_name = 'sp_identity_upgrade'") === 'on');
+
+// A site with identity's storage under both names (and so a current schema version): reported, not
+// passed over, and recorded as settled only once someone has chosen which one stays.
+$wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'sp_identity_upgrade'");
+$wpdb->query("INSERT INTO {$wpdb->options} (option_name, option_value, autoload) VALUES ('tp_identity_schema_version', '4', 'off')");
+$wpdb->query("CREATE TABLE `{$p}tp_identity_sessions` (id char(32) NOT NULL, PRIMARY KEY (id))");
+$out = [];
+exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=512M ' . escapeshellarg(__FILE__) . ' settled ' . escapeshellarg($dir) . ' 2>&1', $out, $code);
+check('a boot of a site with identity\'s storage under both names looks for the earlier one', $code === 0 && array_filter((array) json_decode((string) end($out), true), static fn (string $q): bool => str_contains($q, 'tp_identity_schema_version')) !== []);
+check('… and reports the collision', str_contains((string) @file_get_contents("$dir/content/debug.log"), "Identity storage exists under both {$p}tp_identity_sessions and {$p}sp_identity_sessions"));
+eq('… without recording identity as settled', $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name = 'sp_identity_upgrade'"), '0');
 
 finish('brand_upgrade_identity');

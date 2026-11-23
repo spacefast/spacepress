@@ -184,6 +184,35 @@ final class BrandUpgrade
         return $moved;
     }
 
+    /**
+     * An application password's scope as a pre-release build stored it, while it may still be there:
+     * before the move, or on a network where another site's move hasn't run yet (the passwords are
+     * user meta, which the sites share). Ability names in its allowlist are read as they are now.
+     * Null when the entry has none; normalize() narrows whatever else it holds.
+     */
+    public static function earlierScope(array $entry): mixed
+    {
+        if (!array_key_exists(self::SCOPE_KEY, $entry)) {
+            return null;
+        }
+        $scope = $entry[self::SCOPE_KEY];
+        if (is_array($scope) && is_array($scope['abilities'] ?? null)) {
+            $scope['abilities'] = array_map(static fn ($name) => is_string($name) ? self::abilityName($name) : $name, $scope['abilities']);
+        }
+
+        return $scope ?? AgentScope::DEFAULT;
+    }
+
+    /** A built-in ability's current name: `typedpress-identity/account` is `spacepress-identity/account`, `tp/…` is `sp/…`. */
+    private static function abilityName(string $name): string
+    {
+        return match (true) {
+            str_starts_with($name, self::LEGACY . '-') || str_starts_with($name, self::LEGACY . '/') => 'spacepress' . substr($name, strlen(self::LEGACY)),
+            str_starts_with($name, 'tp/') => 'sp/' . substr($name, 3),
+            default => $name,
+        };
+    }
+
     /** The S3 key prefix uploads use when the app's config sets none. */
     public static function uploadPrefix(): string
     {
@@ -770,8 +799,12 @@ final class BrandUpgrade
             }
             foreach ($passwords as $i => $entry) {
                 if (is_array($entry) && array_key_exists($from, $entry)) {
-                    $passwords[$i][$to] ??= $entry[$from];
-                    unset($passwords[$i][$from]);
+                    $passwords[$i][$to] ??= self::earlierScope($entry);
+                    // User meta is shared by a network's sites: another site may not have moved yet and
+                    // still reads the earlier key. It stays there on a network, unused once all moved.
+                    if (!is_multisite()) {
+                        unset($passwords[$i][$from]);
+                    }
                 }
             }
             $db->run("UPDATE `{$wpdb->usermeta}` SET `meta_value` = ? WHERE `umeta_id` = ?", [serialize($passwords), (int) $row['id']]);

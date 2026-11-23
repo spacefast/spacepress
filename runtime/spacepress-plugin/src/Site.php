@@ -361,8 +361,15 @@ final class Site
     {
         global $wpdb;
         $table = $wpdb->prefix . 'sp_identity_accounts';
-        if ($user <= 0 || $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table))) !== $table) {
+        if ($user <= 0) {
             return false;
+        }
+        if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table))) !== $table) {
+            // Before the site has moved identity's tables, the account is in the earlier one.
+            $table = Legacy::accounts();
+            if ($table === null) {
+                return false;
+            }
         }
         $status = $wpdb->get_var($wpdb->prepare("SELECT status FROM `$table` WHERE wp_user_id = %d", $user));
 

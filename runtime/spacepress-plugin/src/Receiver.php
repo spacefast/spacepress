@@ -122,7 +122,7 @@ final class Receiver
         $uuid = function_exists('rest_get_authenticated_app_password') ? rest_get_authenticated_app_password() : null;
         if (is_string($uuid)) {
             $password = \WP_Application_Passwords::get_user_application_password(get_current_user_id(), $uuid);
-            if (is_array($password) && array_key_exists('sp_scope', $password)) {
+            if (is_array($password) && (array_key_exists('sp_scope', $password) || Legacy::scoped($password))) {
                 return new \WP_Error('sp_forbidden', 'This application password is scoped for an agent and cannot deploy. Sign in with spacepress login.', ['status' => 403]);
             }
         }

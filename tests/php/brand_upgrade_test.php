@@ -122,6 +122,11 @@ $wp->exec("ALTER TABLE `{$p}sp_replies` ADD COLUMN `probe` BIGINT NULL");
 eq('… and the table still takes an ALTER, keeping its row and its key', [(int) $wp->scalar("SELECT COUNT(*) FROM `{$p}sp_replies`"), $wp->scalar("SELECT REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_NAME = ? AND CONSTRAINT_NAME = 'sp_replies_commentId_fk'", ["{$p}sp_replies"])], [1, "{$p}sp_comments"]);
 $wp->exec("ALTER TABLE `{$p}sp_replies` DROP COLUMN `probe`");
 
+// A password a pre-release build scoped, met before the site has moved (another site of a network,
+// or a request that comes first): the earlier key is read, so it stays as narrow as it was.
+eq('a scope under the earlier key still narrows its password', \SpacePress\Wp\AgentScope::normalize(\SpacePress\Wp\BrandUpgrade::earlierScope(['tp_scope' => ['write' => false, 'personal' => false, 'abilities' => ['typedpress-identity/account', 'tp/deployments']]])),
+    ['write' => false, 'personal' => false, 'abilities' => ['spacepress-identity/account', 'sp/deployments']]);
+
 // A second run: the marker is recorded, so nothing moves; and a forced replan finds nothing to do.
 eq('a second ensure changes nothing', \SpacePress\Wp\BrandUpgrade::ensure($wp->plugin()->schema), []);
 $plan = \SpacePress\Wp\BrandUpgrade::plan($wp->connection(), $wp->plugin()->schema);

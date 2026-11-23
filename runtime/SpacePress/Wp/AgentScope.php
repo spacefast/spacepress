@@ -141,10 +141,23 @@ final class AgentScope
         return self::$scopes[$key] ?? self::$request;
     }
 
-    /** The scope on one stored application password entry, or null when it has none. */
+    /**
+     * The scope on one stored application password entry, or null when it has none. Until the site has
+     * moved its stored names ({@see BrandUpgrade}), a password scoped by a pre-release build still
+     * carries its scope under the earlier key: it is read from there, so the move never widens it.
+     */
     private static function stored(mixed $item): ?array
     {
-        return is_array($item) && array_key_exists(self::KEY, $item) ? self::normalize($item[self::KEY]) : null;
+        if (!is_array($item)) {
+            return null;
+        }
+        if (array_key_exists(self::KEY, $item)) {
+            return self::normalize($item[self::KEY]);
+        }
+
+        $earlier = BrandUpgrade::earlierScope($item);
+
+        return $earlier === null ? null : self::normalize($earlier);
     }
 
     /** Whether this request's credential grants `write` or `personal`. An unscoped request has both. */

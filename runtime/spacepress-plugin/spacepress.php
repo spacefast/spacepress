@@ -24,7 +24,7 @@ spl_autoload_register(static function (string $class): void {
     static $files = [
         'spacepressplugin\\site' => 'Site', 'spacepressplugin\\mount' => 'Mount', 'spacepressplugin\\setup' => 'Setup',
         'spacepressplugin\\receiver' => 'Receiver', 'spacepressplugin\\refusal' => 'Receiver', 'spacepressplugin\\trees' => 'Trees',
-        'spacepressplugin\\requirements' => 'Requirements', 'spacepressplugin\\deployments' => 'Deployments',
+        'spacepressplugin\\requirements' => 'Requirements', 'spacepressplugin\\deployments' => 'Deployments', 'spacepressplugin\\legacy' => 'Legacy',
     ];
     $class = strtolower($class);
     if (isset($files[$class])) {
@@ -32,6 +32,7 @@ spl_autoload_register(static function (string $class): void {
     }
 });
 
+Legacy::register();
 Site::register();
 Mount::run();
 add_action('admin_init', [Receiver::class, 'authorizeCli'], PHP_INT_MAX);

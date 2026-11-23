@@ -911,11 +911,36 @@ pub fn default_literal(ty: &str, v: &Json) -> String {
     }
 }
 
+/// The revisions table's key as pre-release compilers wrote it in `ops.json`.
+const LEGACY_REVISIONS: &str = "tp__revisions";
+
+/// `ops.json` with the pre-release key of the revisions table read as [`REVISIONS`]: the table is
+/// the same one (the runtime renames it on the site), so a baseline from a site deployed before the
+/// rename plans nothing new for it. Every other key is the app's own and never carried the prefix.
+fn legacy_revisions(doc: &Json) -> Json {
+    let mut doc = doc.clone();
+    for op in doc["ops"].as_array_mut().into_iter().flatten() {
+        if op["table"] == LEGACY_REVISIONS {
+            op["table"] = REVISIONS.into();
+        }
+        if let Some(physical) = op["physicalTable"].as_str()
+            && let Some(rest) = physical.strip_suffix(LEGACY_REVISIONS)
+        {
+            op["physicalTable"] = format!("{rest}{REVISIONS}").into();
+        }
+    }
+    doc
+}
+
 /// Folds a set of `(migration_id, ops_json)` entries in sorted ID order into the baseline
 /// [`FoldedState`], detecting incompatible parallel-branch edits at build time.
 pub fn fold(entries: &[(String, Json)]) -> Result<FoldedState, Diag> {
     let mut sorted: Vec<&(String, Json)> = entries.iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // A site deployed by a pre-release compiler keys its revisions table as that compiler named it.
+    let current: Vec<(String, Json)> = sorted.iter().map(|(id, doc)| (id.clone(), legacy_revisions(doc))).collect();
+    let sorted: Vec<&(String, Json)> = current.iter().collect();
 
     let mut state = FoldedState::empty();
     let mut table_origin: BTreeMap<String, String> = BTreeMap::new();

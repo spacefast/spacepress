@@ -30,6 +30,7 @@ final class Runtime
         self::$booted = true;
         self::$runtimeFile = $runtimeFile;
         RouteRequest::register();
+        BrandUpgrade::register();
         AgentScope::trackCookie();
         // Application passwords sign in where core accepts them and nowhere else: on a request WordPress
         // itself has made a REST request (`REST_REQUEST`), never one a URL only appears to name.

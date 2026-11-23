@@ -19,6 +19,8 @@ final class Legacy
     private const SHORT = 'tp_identity_';
     private const OPTIONS = ['schema_version', 'signing_keys', 'webhooks', 'dummy_password_hash', 'password_profiles', 'password_inventory'];
     private const EVENTS = ['maintenance', 'password_inventory'];
+    /** Options identity writes on boot when it finds none: a random dummy hash and the cursor of its inventory. */
+    private const REGENERATED = ['dummy_password_hash', 'password_profiles', 'password_inventory'];
     private const SCHEDULE = 'tp_identity_minute';
     /** Schema::migrateLocked()'s tables. */
     private const TABLES = ['accounts', 'emails', 'providers', 'sessions', 'challenges', 'applications', 'codes', 'tokens', 'events', 'limits', 'organizations', 'members', 'passkeys', 'mfa', 'recovery_codes', 'deliveries'];
@@ -64,10 +66,18 @@ final class Legacy
                 }
             }
             foreach (self::OPTIONS as $name) {
-                if ($wp->get_var($wp->prepare("SELECT 1 FROM {$wp->options} WHERE option_name = %s", 'sp_identity_' . $name)) !== null
-                    && $wp->get_var($wp->prepare("SELECT 1 FROM {$wp->options} WHERE option_name = %s", self::SHORT . $name)) !== null) {
-                    // A fresh boot's provisioning wrote it moments ago; the site's stored value wins.
-                    $wp->delete($wp->options, ['option_name' => 'sp_identity_' . $name]);
+                if ($wp->get_var($wp->prepare("SELECT 1 FROM {$wp->options} WHERE option_name = %s", 'sp_identity_' . $name)) === null
+                    || $wp->get_var($wp->prepare("SELECT 1 FROM {$wp->options} WHERE option_name = %s", self::SHORT . $name)) === null) {
+                    continue;
+                }
+                if (!in_array($name, self::REGENERATED, true)) {
+                    throw new Failure('storage_unavailable', "Identity's option exists under both " . self::SHORT . "$name and sp_identity_$name; keep the one this site uses and move the other aside, then reload. Nothing was changed.", 503);
+                }
+            }
+            foreach (self::REGENERATED as $name) {
+                // Made by a boot that found nothing: the site's own value takes the name, that one is set aside.
+                if ($wp->get_var($wp->prepare("SELECT 1 FROM {$wp->options} WHERE option_name = %s", self::SHORT . $name)) !== null) {
+                    $wp->update($wp->options, ['option_name' => 'sp_identity_' . $name . '__superseded_' . time(), 'autoload' => 'off'], ['option_name' => 'sp_identity_' . $name]);
                 }
             }
             if ($tables !== []) {

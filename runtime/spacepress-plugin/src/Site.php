@@ -211,14 +211,19 @@ final class Site
             throw new \RuntimeException("SpacePress build $build does not match its ID");
         }
 
-        return self::parseManifest($bytes);
+        return self::parseManifest($bytes, stored: true);
     }
 
-    /** The fields the plugin reads from a build manifest, checked; anything else in it is the loader's. */
-    public static function parseManifest(string $bytes): array
+    /**
+     * The fields the plugin reads from a build manifest, checked; anything else in it is the loader's.
+     * A build a pre-release receiver stored (its format is in {@see Legacy::BUILD_FORMAT}) is read too,
+     * as the record it is: its baseline, name and history stay readable, and it is never mounted.
+     */
+    public static function parseManifest(string $bytes, bool $stored = false): array
     {
         $manifest = json_decode($bytes, true, 16);
-        if (!is_array($manifest) || ($manifest['format'] ?? null) !== 'spacepress.build.v1'
+        $format = $manifest['format'] ?? null;
+        if (!is_array($manifest) || !($format === 'spacepress.build.v1' || ($stored && $format === Legacy::BUILD_FORMAT))
             || !is_string($manifest['name'] ?? null) || preg_match('/\A[a-z0-9-]+\z/D', $manifest['name']) !== 1
             || !self::validId($manifest['runtime'] ?? null) || !self::validId($manifest['app'] ?? null)) {
             throw new \RuntimeException('This is not a SpacePress build manifest');
@@ -227,10 +232,13 @@ final class Site
         return $manifest;
     }
 
-    /** Whether the build's runtime and app trees are in the store. */
+    /** Whether the build's runtime and app trees are in the store, in the layout this plugin mounts. */
     public static function complete(array $manifest): bool
     {
         $root = self::root();
+        if (Legacy::build($manifest)) {
+            return false;
+        }
 
         return $root !== null && is_file($root . '/runtime/' . $manifest['runtime'] . '/spacepress-loader.php')
             && is_dir($root . '/app/' . $manifest['app'] . '/plugins/spacepress-app-' . $manifest['name']);

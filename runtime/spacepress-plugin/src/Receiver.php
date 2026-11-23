@@ -278,7 +278,7 @@ final class Receiver
         }
         $live = Site::live();
         $running = $live === null ? null : Site::manifest($live);
-        if ($running !== null && $running['name'] !== $manifest['name']) {
+        if ($running !== null && Legacy::appName($running['name']) !== $manifest['name']) {
             throw new Refusal('sp_other_app', "This site runs the app \"{$running['name']}\". A site runs one SpacePress app; this build is \"{$manifest['name']}\".", 409);
         }
         self::current($manifest);
@@ -517,6 +517,9 @@ final class Receiver
         // Behind the same lock as a deployment, so neither loses the other's entry in the history.
         Site::locked(static function () use ($build): void {
             $manifest = Site::manifest($build);
+            if ($manifest !== null && Legacy::build($manifest)) {
+                throw new \RuntimeException('This build was made by a pre-release SpacePress, which this plugin cannot run. Push the project again.');
+            }
             if ($manifest === null || !Site::complete($manifest) || !Site::ready($build)) {
                 throw new \RuntimeException('Only a build that was live on this site before can be made live again.');
             }

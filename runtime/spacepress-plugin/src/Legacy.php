@@ -24,6 +24,20 @@ final class Legacy
     /** Where identity kept accounts before the move. */
     private const ACCOUNTS = 'tp_identity_accounts';
     private const DONE = 'sp_deploy_upgrade';
+    /** The manifest format of builds a pre-release receiver stored. */
+    public const BUILD_FORMAT = 'typedpress.build.v1';
+
+    /** Whether a stored build is one a pre-release receiver took: kept as a record, never mounted. */
+    public static function build(array $manifest): bool
+    {
+        return ($manifest['format'] ?? null) === self::BUILD_FORMAT;
+    }
+
+    /** An app's name as this plugin's builds name it: one named for the pre-release brand has the current one. */
+    public static function appName(string $name): string
+    {
+        return str_starts_with($name, self::LEGACY . '-') ? 'spacepress' . substr($name, strlen(self::LEGACY)) : $name;
+    }
 
     public static function register(): void
     {
@@ -67,10 +81,14 @@ final class Legacy
                 if ($value === null) {
                     continue;
                 }
-                // The earlier value is the site's; one written under the new name since can only be a
-                // fresh key or empty state from a request that ran before this move.
-                $wpdb->delete($wpdb->options, ['option_name' => $new]);
-                $wpdb->update($wpdb->options, ['option_name' => $new], ['option_name' => $old]);
+                // The earlier value is the site's. One under the new name since this plugin was installed
+                // is kept beside it, set aside, never deleted.
+                if ($wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->options} WHERE option_name = %s", $new)) !== null) {
+                    $wpdb->update($wpdb->options, ['option_name' => $new . '__superseded_' . time(), 'autoload' => 'off'], ['option_name' => $new]);
+                }
+                if ($wpdb->update($wpdb->options, ['option_name' => $new], ['option_name' => $old]) === false) {
+                    throw new \RuntimeException("Cannot move the option $old: " . $wpdb->last_error);
+                }
                 wp_cache_delete($old, 'options');
                 wp_cache_delete($new, 'options');
             }

@@ -48,13 +48,15 @@ final class BrandUpgrade
     private const LEGACY_UPLOAD_PREFIX = 'typedpress';
 
     /**
-     * Options a plugin writes on boot when they are missing (a secret, a probe verdict, identity's
-     * password material and inventory cursor, the private-files directory): on a request that ran
-     * before the move, a fresh value may already sit under the current name. The site's stored value
-     * is the one that counts, so it replaces that seconds-old one instead of counting as a conflict.
+     * Options a request before the move may write under the current name from its own state, with no
+     * input of the site's: a derived cache (rewrite fingerprint, probe verdict, jobs prepared) or a
+     * random value made because none was found (the runtime secret, identity's dummy hash). The
+     * site's stored value takes the name; the row the request wrote is kept beside it, as
+     * `<name>__superseded_<time>`, never deleted. Any other option under both names stops the move.
      */
     private const REGENERATED = [
-        'tp_runtime_secret', 'tp_runtime_private_ok', 'tp_runtime_private_checked',
+        'tp_runtime_secret', 'tp_runtime_private_ok', 'tp_runtime_private_checked', 'tp_rewrite_rules',
+        'tp_jobs_prepared', 'tp_jobs_scheduled', 'tp_search_shape', 'tp_kind_urls', 'tp_installed',
         'tp_identity_dummy_password_hash', 'tp_identity_password_profiles', 'tp_identity_password_inventory',
     ];
     /** Options with fixed names (runtime, deploy plugin, identity, admin). */
@@ -169,8 +171,6 @@ final class BrandUpgrade
     public static function ensure(\SpacePress\Schema $schema): array
     {
         if (self::done()) {
-            self::retryPrivateFiles();
-
             return [];
         }
         global $wpdb;
@@ -438,7 +438,10 @@ final class BrandUpgrade
         $private = null;
         $from = WP_CONTENT_DIR . '/uploads/' . array_key_first(self::PRIVATE_DIR);
         if (is_dir($from) && !is_link($from)) {
-            $private = [$from, WP_CONTENT_DIR . '/uploads/' . self::PRIVATE_DIR[array_key_first(self::PRIVATE_DIR)]];
+            // Whether the web server was proven to refuse the earlier directory, read now, from either
+            // name: the verdict moves with the options, and a probe of the new directory rewrites it.
+            $refused = in_array('1', array_map('strval', array_column($db->run("SELECT `option_value` AS v FROM `{$wpdb->options}` WHERE `option_name` IN ('tp_runtime_private_ok', ?)", [WpFiles::OK]), 'v')), true);
+            $private = [$from, WP_CONTENT_DIR . '/uploads/' . self::PRIVATE_DIR[array_key_first(self::PRIVATE_DIR)], $refused];
         }
 
         return ['kinds' => $kinds, 'renamedApp' => $renamedApp ?? [], 'globalRefs' => $globalRefs, 'tables' => $tables, 'owned' => $owned, 'options' => $options, 'sitemeta' => $sitemeta, 'meta' => $meta, 'metaValues' => $fieldKeys,
@@ -594,19 +597,21 @@ final class BrandUpgrade
      * proven refused is no safer where it is, so it moves. On a network the directory is shared, so
      * it moves once, under a network-wide lock.
      */
-    private static function movePrivateFiles(string $from, string $to): int
+    private static function movePrivateFiles(string $from, string $to, bool $wasRefused): int
     {
         global $wpdb;
+        // The directory is the network's, so the lock is too: the database and the network's base prefix.
         $lock = 'spacepress-private:' . substr(hash('sha256', DB_NAME . ':' . $wpdb->base_prefix), 0, 40);
 
-        return (int) Migrator::locked(new Connection($wpdb), $lock, static function () use ($from, $to): int {
+        return (int) (new Connection($wpdb))->locked($lock, 30, static function () use ($from, $to, $wasRefused): int {
             if (!is_dir($from) || is_link($from)) {
                 return 0;
             }
             if (file_exists($to) && !self::freshPrivateRoot($to)) {
                 throw new \RuntimeException("Both $from and $to hold files; keep the one this site uses and move the other aside, then reload.");
             }
-            $wasRefused = get_option(WpFiles::OK) === '1';
+            // The deny rules go into the new directory, and the probe asks the server for a file there
+            // (WpFiles::root() is the new directory): only a refusal of that URL lets the files move.
             WpFiles::protect();
             if ($wasRefused && !WpFiles::probe()) {
                 $problem = "the web server serves $to, which it must refuse as it refused $from: deny it (as you did the earlier directory), then reload. The private files stay in $from until then";
@@ -625,19 +630,35 @@ final class BrandUpgrade
         });
     }
 
-    /** Private files held back by an earlier attempt: tried again on a later request, once an hour. */
-    private static function retryPrivateFiles(): void
+    /**
+     * Private files held back by an earlier attempt, tried again at most once an hour from the
+     * runtime's own scheduled maintenance and from wp-admin (so a plugin-installed site retries
+     * without anyone reloading a particular page). The verdict that gated the first attempt is the
+     * one stored with them: a failed probe since never lets them move unchecked.
+     */
+    public static function retryPrivateFiles(): void
     {
         $held = get_option(self::FILES_HELD);
-        if (!is_array($held) || count($held) !== 2 || get_transient('sp_brand_upgrade_files_retry') !== false) {
+        if (!is_array($held) || count($held) !== 3 || get_transient('sp_brand_upgrade_files_retry') !== false) {
             return;
         }
         set_transient('sp_brand_upgrade_files_retry', 1, HOUR_IN_SECONDS);
         try {
-            self::movePrivateFiles((string) $held[0], (string) $held[1]);
+            self::movePrivateFiles((string) $held[0], (string) $held[1], (bool) $held[2]);
             delete_option(self::FILES_HELD);
         } catch (PrivateFilesHeld) {
         }
+    }
+
+    /** Where the held files are retried: hooks the runtime already runs (no schedule of its own). */
+    public static function register(): void
+    {
+        // Read from the autoloaded options already in memory: a site with nothing held asks the database nothing.
+        if (!isset(wp_load_alloptions()[self::FILES_HELD])) {
+            return;
+        }
+        add_action('admin_init', [self::class, 'retryPrivateFiles']);
+        add_action(Jobs\ActionSchedulerQueue::MAINTAIN, [self::class, 'retryPrivateFiles']);
     }
 
     /** A private-files directory holding only what the runtime writes into a new one. */
@@ -683,9 +704,12 @@ final class BrandUpgrade
         // The plan lists only old names still present, so on a resumed run an option already moved
         // is not in it and keeps its value.
         foreach (self::REGENERATED as $name) {
-            if (isset($plan['options'][$name])) {
-                $db->run("DELETE FROM `{$wpdb->options}` WHERE `option_name` = ?", [$plan['options'][$name]]);
+            if (!isset($plan['options'][$name])) {
+                continue;
             }
+            // The site's row moves into the name; the one a request wrote there is kept, set aside.
+            $to = $plan['options'][$name];
+            $db->run("UPDATE `{$wpdb->options}` SET `option_name` = ?, `autoload` = 'off' WHERE `option_name` = ?", [$to . '__superseded_' . time(), $to]);
         }
         $moved['options'] = self::rename($db, $wpdb->options, 'option_name', $plan['options']);
         $moved['sitemeta'] = is_multisite() ? self::rename($db, $wpdb->sitemeta, 'meta_key', $plan['sitemeta']) : 0;
@@ -720,7 +744,8 @@ final class BrandUpgrade
                 $moved['files'] = self::movePrivateFiles(...$plan['private']);
             } catch (PrivateFilesHeld) {
                 // Everything else is moved; the files wait for the server (see movePrivateFiles()).
-                update_option(self::FILES_HELD, $plan['private'], false);
+                // Autoloaded, so a site with nothing held answers `register()` from the options it loaded.
+                update_option(self::FILES_HELD, $plan['private'], true);
             }
         }
 

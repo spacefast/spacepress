@@ -130,6 +130,40 @@ $wp->exec("ALTER TABLE `{$p}sp_replies` DROP COLUMN `probe`");
 eq('a scope under the earlier key still narrows its password', \SpacePress\Wp\AgentScope::normalize(\SpacePress\Wp\BrandUpgrade::earlierScope(['tp_scope' => ['write' => false, 'personal' => false, 'abilities' => ['typedpress-identity/account', 'tp/deployments']]])),
     ['write' => false, 'personal' => false, 'abilities' => ['spacepress-identity/account', 'sp/deployments']]);
 
+eq('nothing written under a current name before the move was deleted: what was set aside is kept', array_values(array_filter(array_column($wp->sql("SELECT option_name AS n FROM `{$p}options` WHERE option_name LIKE '%\\_\\_superseded\\_%'"), 'n'), static fn (string $n): bool => !preg_match('/\\Asp_(runtime_secret|runtime_private_ok|runtime_private_checked|rewrite_rules|jobs_prepared|jobs_scheduled|search_shape|kind_urls|installed|identity_dummy_password_hash|identity_password_profiles|identity_password_inventory)__superseded_\\d+\\z/', $n))), []);
+
+// Private files held back: a server that serves the new directory keeps them where they were, and
+// so does every retry, whatever verdict the failed probe left behind.
+$move = (new ReflectionClass(\SpacePress\Wp\BrandUpgrade::class))->getMethod('movePrivateFiles');
+$held = WP_CONTENT_DIR . '/uploads/held-private-probe';
+$to = WP_CONTENT_DIR . '/uploads/spacepress-private';
+$kept = WP_CONTENT_DIR . '/uploads/spacepress-private-kept';
+rename($to, $kept);
+mkdir($held);
+file_put_contents("$held/a.txt", 'secret');
+// The web server answers the probe of the new directory with the file: it serves it.
+$served = static fn ($pre, array $args, string $url) => str_contains($url, '/spacepress-private/probe-') ? ['headers' => [], 'body' => 'first', 'response' => ['code' => 200, 'message' => 'OK'], 'cookies' => []] : $pre;
+add_filter('pre_http_request', $served, PHP_INT_MAX, 3);
+$outcome = static function () use ($move, $held, $to): string {
+    try {
+        $move->invoke(null, $held, $to, true);
+
+        return 'moved';
+    } catch (\SpacePress\Wp\PrivateFilesHeld) {
+        return 'held';
+    }
+};
+eq('a served destination holds the files back', [$outcome(), is_file("$held/a.txt"), get_option(\SpacePress\Wp\WpFiles::OK)], ['held', true, '0']);
+eq('… and a retry after that failed probe still probes, and still holds them', [$outcome(), is_file("$held/a.txt")], ['held', true]);
+remove_filter('pre_http_request', $served, PHP_INT_MAX);
+array_map('unlink', array_filter(glob("$to/{,.}*", GLOB_BRACE) ?: [], 'is_file'));
+@rmdir($to);
+foreach (glob("$held/*") ?: [] as $f) {
+    unlink($f);
+}
+rmdir($held);
+rename($kept, $to);
+
 // A second run: the marker is recorded, so nothing moves; and a forced replan finds nothing to do.
 eq('a second ensure changes nothing', \SpacePress\Wp\BrandUpgrade::ensure($wp->plugin()->schema), []);
 $plan = \SpacePress\Wp\BrandUpgrade::plan($wp->connection(), $wp->plugin()->schema);

@@ -27,7 +27,7 @@ BRAND = re.compile(rb"typedpress", re.I)
 BRAND_CASE = {b"TYPEDPRESS": b"SPACEPRESS", b"TypedPress": b"SpacePress", b"typedpress": b"spacepress"}
 REPO = re.compile(rb"(?<![@\w.-])spacefast/zero(?![\w-])")
 # tp / TP / Tp at a word start. Lowercase `tp` takes a following non-alphanumeric (tp_, tp/, tp-, tp.,
-# tp", end) or a capitalized word (camelCase: tpLoader). Base64 and hashes are masked first (OPAQUE).
+# tp", end) or a capitalized word (camelCase: tpLoader). Base64 and hashes are masked first (ENCODED, OPAQUE).
 SHORT = re.compile(
     # A regex anchor (`\Atp_`) counts as a word start too.
     rb"(?:(?<![A-Za-z0-9])|(?<=\\A))(?:"
@@ -70,28 +70,34 @@ def short(m: re.Match) -> bytes:
 def rewrite(data: bytes, kind: str, counts: Counter | None = None) -> bytes:
     if kind in ("skip", "upstream"):
         return data
-    out = brand(data)
-    out = REPO.sub(b"spacefast/spacepress", out)
     pattern = SHORT if kind == "own" else VENDOR_SHORT
-    if counts is not None:
-        for m in pattern.finditer(out):
-            end = m.end()
-            tail = re.match(rb"[A-Za-z0-9_./:-]{0,24}", out[end:])[0]
-            counts[(m[0] + tail).decode("latin1")] += 1
-    return protect(out, lambda part: pattern.sub(short, part))
+
+    def rename(part: bytes) -> bytes:
+        out = REPO.sub(b"spacefast/spacepress", brand(part))
+        if counts is not None:
+            for m in pattern.finditer(out):
+                end = m.end()
+                tail = re.match(rb"[A-Za-z0-9_./:-]{0,24}", out[end:])[0]
+                counts[(m[0] + tail).decode("latin1")] += 1
+        return protect(out, OPAQUE, lambda rest: pattern.sub(short, rest))
+
+    return protect(data, ENCODED, rename)
 
 
-# Encoded data, where the short rule must not apply: integrity values (`sha512-…`, `sha256-…`), padded
-# base64, and runs of 24+ base64 characters with no path or identifier shape (no `_`, `-` or `.`, and at
-# least one digit or `+`, and not only `/`-separated words). A path like `wp/v2/tp_posts` or
-# `tp/v1/actions/capacityReport` has none of these shapes.
-OPAQUE = re.compile(
+# Where encoded data sits, whatever its shape, so no rule applies: integrity values (`sha512-…`), a
+# data URI's payload and a source map's mappings. (Unpadded base64 like `AAAA/tp/Z999` has a path's
+# shape; only its place tells it apart.) An external `sourceMappingURL` is a path: it follows the file.
+ENCODED = re.compile(
     rb"\bsha(?:1|256|384|512)-[A-Za-z0-9+/]+={0,2}"
-    # Where encoded data sits, whatever its shape: a data URI's payload and a source map's mappings.
-    # (Unpadded base64 like `AAAA/tp/Z999` has a path's shape; only its place tells it apart.)
     rb"|;base64,[A-Za-z0-9+/]+={0,2}"
     rb'|"mappings"\s*:\s*"[^"]*"'
-    rb"|sourceMappingURL=\S+"
+)
+# Shapes of encoded data, where only the short rule must not apply (a long identifier that holds a
+# digit still takes the brand): padded base64, and runs of 24+ base64 characters with no path or
+# identifier shape (no `_`, `-` or `.`, and at least one digit or `+`, and not only `/`-separated
+# words). A path like `wp/v2/tp_posts` or `tp/v1/actions/capacityReport` has none of these shapes.
+OPAQUE = re.compile(
+    rb"(" + rb"|".join(re.escape(k) for k in KEEP) + rb")"
     rb"|(?<![A-Za-z0-9+/=_.-])[A-Za-z0-9+/]{4,}={1,2}(?![A-Za-z0-9+/=])"
     rb"|(?<![A-Za-z0-9+/=_.-])(?=[A-Za-z0-9+/]*[0-9+])(?![A-Za-z0-9]*(?:/[A-Za-z0-9]+)+(?![A-Za-z0-9+/]))[A-Za-z0-9+/]{24,}(?![A-Za-z0-9+/=_.-])"
     # Unpadded base64 with a `+` in it, 8+ characters long and a whole number of 4-character blocks:
@@ -101,12 +107,9 @@ OPAQUE = re.compile(
 )
 
 
-def protect(data: bytes, fn) -> bytes:
-    keep = re.compile(b"(" + b"|".join(re.escape(k) for k in KEEP) + b")")
+def protect(data: bytes, mask: re.Pattern, fn) -> bytes:
     out, last = [], 0
-    for m in sorted([*keep.finditer(data), *OPAQUE.finditer(data)], key=lambda m: m.start()):
-        if m.start() < last:
-            continue
+    for m in mask.finditer(data):
         out += [fn(data[last:m.start()]), m[0]]
         last = m.end()
     return b"".join(out) + fn(data[last:])

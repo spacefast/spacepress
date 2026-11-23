@@ -9420,7 +9420,7 @@
       "command": "SP_BIN=\"$PWD/target/debug/spacepress\" SP_PLUGINS_REPRO_SCF_FALSE=1 node --test examples/emdash/plugins/acceptance.test.mjs",
       "expected": "Native REST/SCF save of nullable group boolean false reads back as false.",
       "reportedObserved": "Group profile.featured reads null on baseline.",
-      "recommendation": "Trace native REST/SCF boolean decoding; distinguish explicit false/sp from missing nullable input. Strengthen the existing behavioral owner; do not patch common runtime from a docs owner.",
+      "recommendation": "Trace native REST/SCF boolean decoding; distinguish explicit false/first from missing nullable input. Strengthen the existing behavioral owner; do not patch common runtime from a docs owner.",
       "evidence": [
         "platform"
       ],

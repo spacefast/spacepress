@@ -9,8 +9,9 @@ namespace SpacePress\Wp;
  *
  * Until the rename the runtime stored its state as `typedpress…` and `tp_…`: tables, options, meta
  * keys, post types, taxonomies, roles and capabilities, Action Scheduler hooks and groups, wp-cron
- * events, the private-files directory and plugin basenames. This class is the only place in the
- * runtime with those spellings, and it names each one exactly: the runtime's own names
+ * events, the private-files directory and plugin basenames. This class holds the runtime's list of
+ * those spellings (identity and the deploy plugin keep the few they read before the runtime is
+ * there, in their own Legacy classes), and it names each one exactly: the runtime's own names
  * ({@see RUNTIME_OPTIONS} and friends) and the names it derives from each app's schema
  * ({@see plan()}). A `tp_` name the runtime never wrote (another plugin's option) is left alone.
  *
@@ -95,6 +96,9 @@ final class BrandUpgrade
     private const CAPABILITIES = ['tp_apply_schema' => 'sp_apply_schema'];
     private const POST_STATUSES = ['typedpress-staged' => 'spacepress-staged'];
     private const PAGE_SLUGS = ['typedpress-home' => 'spacepress-home'];
+    /** The runtime's block templates by slug, and its blocks, as an owner's saved copy of one names them. */
+    private const TEMPLATE_SLUGS = ['tp-page' => 'sp-page', 'tp-blank' => 'sp-blank', 'tp-login' => 'sp-login'];
+    private const BLOCKS = ['<!-- wp:tp/page ' => '<!-- wp:sp/page ', '<!-- wp:tp/login-form ' => '<!-- wp:sp/login-form '];
     private const GUEST_CLIENT = ['app_typedpress_guest' => 'app_spacepress_guest'];
     private const TWO_FACTOR = ['TypedPress_Identity_TwoFactorProvider' => 'SpacePress_Identity_TwoFactorProvider'];
     private const PRIVATE_DIR = ['typedpress-private' => 'spacepress-private'];
@@ -668,6 +672,7 @@ final class BrandUpgrade
             + self::rename($db, $wpdb->posts, 'post_status', self::POST_STATUSES)
             + self::renameWhere($db, $wpdb->posts, 'post_name', self::PAGE_SLUGS, "`post_type` = 'page' AND `ID` IN (SELECT `post_id` FROM `{$wpdb->postmeta}` WHERE `meta_key` IN ('_sp_route', '_tp_route'))");
         $moved['taxonomies'] = self::rename($db, $wpdb->term_taxonomy, 'taxonomy', $plan['taxonomies']);
+        $moved['templates'] = self::templates($db);
         $moved['roles'] = self::roles($db, $plan['postTypes'] + $plan['taxonomies']);
         $moved['twoFactor'] = self::rename($db, $wpdb->usermeta, 'meta_value', self::TWO_FACTOR) + self::twoFactorLists($db);
         $moved['scopes'] = self::scopes($db);
@@ -853,13 +858,35 @@ final class BrandUpgrade
                     $db->run('ALTER TABLE ' . $q((string) $table) . ' ADD CONSTRAINT ' . $q($k['to']) . ' FOREIGN KEY (' . implode(', ', array_map($q, $k['cols'])) . ') REFERENCES ' . $target
                         . ' (' . implode(', ', array_map($q, $k['refs'])) . ") ON DELETE $delete ON UPDATE $update");
                 }
+                // The index behind the old key is taken over by the new one (MySQL and MariaDB rename it).
                 $db->run('ALTER TABLE ' . $q((string) $table) . ' DROP FOREIGN KEY ' . $q($name));
-                // The index MySQL made for the old key outlives it; the new key made its own.
-                if ($db->run('SELECT 1 AS x FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?', [(string) $table, $name]) !== []) {
-                    $db->run('ALTER TABLE ' . $q((string) $table) . ' DROP INDEX ' . $q($name));
-                }
             }
         }
+    }
+
+    /**
+     * Templates an owner saved in the Site Editor from the runtime's own: a `wp_template` post named by
+     * the template's slug, its revisions, and the runtime's blocks inside them. Only those exact slugs,
+     * and only the block comments of the runtime's two blocks, are rewritten; the owner's markup stays.
+     */
+    private static function templates(Connection $db): int
+    {
+        $posts = $db->wpdb()->posts;
+        $count = self::renameWhere($db, $posts, 'post_name', self::TEMPLATE_SLUGS, "`post_type` = 'wp_template'");
+        $where = "(`post_type` IN ('wp_template', 'wp_template_part') OR (`post_type` = 'revision' AND `post_parent` IN (SELECT `ID` FROM (SELECT `ID` FROM `$posts` WHERE `post_type` IN ('wp_template', 'wp_template_part')) AS t)))";
+        foreach (self::BLOCKS as $from => $to) {
+            $rows = $db->run("SELECT `ID` AS id FROM `$posts` WHERE $where AND `post_content` LIKE ?", ['%' . addcslashes($from, '\\_%') . '%']);
+            foreach ($rows as $row) {
+                $db->run("UPDATE `$posts` SET `post_content` = REPLACE(`post_content`, ?, ?) WHERE `ID` = ?", [$from, $to, (int) $row['id']]);
+            }
+            // The self-closing and closing forms of the same comment.
+            foreach ([rtrim($from) . '/-->' => rtrim($to) . '/-->', '<!-- /' . substr($from, 5) => '<!-- /' . substr($to, 5)] as $a => $b) {
+                $db->run("UPDATE `$posts` SET `post_content` = REPLACE(`post_content`, ?, ?) WHERE $where AND `post_content` LIKE ?", [$a, $b, '%' . addcslashes($a, '\\_%') . '%']);
+            }
+            $count += count($rows);
+        }
+
+        return $count;
     }
 
     /** Capability names on roles and users: the schema capability, the guest role, post-type and taxonomy caps. */

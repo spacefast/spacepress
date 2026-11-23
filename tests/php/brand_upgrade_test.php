@@ -109,6 +109,9 @@ eq('nothing else is left under the earlier names', [
 eq('the post reads back through the API, a group\'s field included', [$status, $post['title'] ?? null, $post['excerpt'] ?? null, $post['seo']['metaTitle'] ?? null], [200, 'Kept through the rename', 'Short', 'Legacy SEO']);
 [$status, $global] = $wp->call('GET', '/globals/settings', as: 'editor');
 eq('the global\'s value reads back', [$status, $global['tagline'] ?? null], [200, 'Kept tagline']);
+$template = get_page_by_path('sp-login', OBJECT, 'wp_template');
+eq('the owner\'s saved template keeps its markup, under the current slug and block', $template?->post_content,
+    '<!-- wp:paragraph --><p>Owner text</p><!-- /wp:paragraph --><!-- wp:sp/login-form /-->');
 eq('look-alike options of other plugins are untouched', [get_option('tp_prebuilt_other_plugin_setting'), get_option('tp_global_other_plugin')], ['not ours', 'not ours']);
 [$status, $comment] = $wp->call('GET', '/comments/' . $before['comment'], as: 'editor');
 eq('the custom-table row reads back', [$status, $comment['body'] ?? null], [200, 'First, edited']);

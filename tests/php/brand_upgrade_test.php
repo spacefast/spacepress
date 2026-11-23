@@ -227,6 +227,15 @@ eq('an S3 key option this move did not write stops it before any change', [updat
 eq('… and so is a runtime schema version recorded under both', \SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), $empty), ["runtime schema version 1 recorded for both $legacy-site and spacepress-site"]);
 $wp->sql("DELETE FROM `{$p}sp__schema_versions` WHERE `app` IN (?, ?)", ["$legacy-site", 'spacepress-site']);
 
+// A move stopped after the tables were renamed and before the ledger rows took the app's new name:
+// a plan reads them under the earlier name, in the ledger's current table.
+$wp->sql("INSERT INTO `{$p}sp__migrations` (`app`, `id`, `kind`, `applied_at`) VALUES (?, '20260101000000_aaaaaa_init', 'schema', '2026-01-01T00:00:00.000Z')", ["$legacy-site"]);
+update_option(\SpacePress\Wp\BrandUpgrade::DONE, 'started', true);
+eq('a plan during an interrupted move finds what ran under the earlier app name', \SpacePress\Wp\Legacy::applied($wp->connection(), 'spacepress-site'), ['20260101000000_aaaaaa_init']);
+update_option(\SpacePress\Wp\BrandUpgrade::DONE, 1, true);
+eq('… and once the move is done, reads nothing', \SpacePress\Wp\Legacy::applied($wp->connection(), 'spacepress-site'), []);
+$wp->sql("DELETE FROM `{$p}sp__migrations` WHERE `app` = ?", ["$legacy-site"]);
+
 function BrandUpgrade_done(): bool
 {
     return \SpacePress\Wp\BrandUpgrade::done();

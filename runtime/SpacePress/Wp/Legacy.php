@@ -11,12 +11,13 @@ namespace SpacePress\Wp;
  */
 final class Legacy
 {
-    /** The migration ledger as a pre-release runtime named it. */
-    private const LEDGER = 'tp__migrations';
+    /** The migration ledger as a pre-release runtime named it, and as the move names it. */
+    private const LEDGERS = ['tp__migrations', 'sp__migrations'];
 
     /**
      * The ids a pre-release runtime recorded for `$app` (or for its earlier name, for an app renamed
-     * with the brand), while the move hasn't carried them to the current ledger; empty once it has.
+     * with the brand), while the move hasn't finished; empty once it has. A move that stopped after
+     * renaming the tables leaves the rows in the current ledger, still under the app's earlier name.
      *
      * @return list<string>
      */
@@ -25,14 +26,15 @@ final class Legacy
         if (BrandUpgrade::done()) {
             return [];
         }
-        $ledger = $db->prefix() . self::LEDGER;
+        $names = array_map(static fn (string $t): string => $db->prefix() . $t, self::LEDGERS);
         $found = $db->sqlite()
-            ? $db->run("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = ?", [$ledger])
-            : $db->run('SELECT 1 AS x FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$ledger]);
-        if ($found === []) {
-            return [];
+            ? $db->run("SELECT name AS n FROM sqlite_master WHERE type = 'table' AND name IN (?, ?)", $names)
+            : $db->run('SELECT TABLE_NAME AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?, ?)', $names);
+        $ids = [];
+        foreach (array_intersect($names, array_column($found, 'n')) as $ledger) {
+            $ids = [...$ids, ...array_column($db->run("SELECT `id` FROM `$ledger` WHERE `app` IN (?, ?)", [$app, BrandUpgrade::historyApp($app)]), 'id')];
         }
 
-        return array_map('strval', array_column($db->run("SELECT `id` FROM `$ledger` WHERE `app` IN (?, ?)", [$app, BrandUpgrade::historyApp($app)]), 'id'));
+        return array_map('strval', $ids);
     }
 }

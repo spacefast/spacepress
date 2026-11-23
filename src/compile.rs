@@ -445,6 +445,9 @@ pub struct Compiler<'a, 'p> {
     pub output: String,
     /// The `"use client"` component being compiled (generator B), if any.
     client: Option<client::ClientCtx>,
+    /// Inside `<form action={name}>`: the action's name and its input fields, which the form's
+    /// named fields are checked against and get their state from (`Forms::control`).
+    form_scope: Option<(String, Vec<(String, bool)>)>,
     /// Compiled `"use client"` components: namespace → (analysis, server actions).
     pub islands: Vec<crate::client_component::Analysis>,
     fx: Option<FnCtx>,
@@ -650,6 +653,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             wordpress_uses: Vec::new(),
             queried: std::collections::BTreeSet::new(),
             client: None,
+            form_scope: None,
             islands: Vec::new(),
         }
     }
@@ -1557,6 +1561,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         let saved = self.fx.replace(fx);
+        // A function compiled while another is (a helper its caller needs first) is not inside
+        // the caller's `<form>`.
+        let saved_form = self.form_scope.take();
         // A function compiled while compiling a class (a method, the constructor, an initializer)
         // runs when the class is used: the class reaches it in the call graph.
         if self.current.starts_with("%class") {
@@ -1580,6 +1587,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.route_columns.insert(call, fields);
         }
         let result = self.compile_function_body(&f, name, &param_tys, slot);
+        self.form_scope = saved_form;
         self.current = caller;
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
         let (params_php, body, mut parameter_docs) = result?;
@@ -7525,6 +7533,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let mut entries = Vec::new();
         let mut spread = false;
+        // A named field of `<form action={name}>`: checked against the action's input, and given
+        // the last submit's state for it (`Forms::control`) before the author's own attributes.
+        if let Some(entry) = self.form_field(&folded_tag, jsx)? {
+            entries.push(entry);
+            spread = true;
+        }
         let mut form_action: Option<String> = None;
         for attr in &jsx.attrs {
             match attr {
@@ -7747,7 +7761,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 _,
             ) => args.push(php_str(text)),
             (_, Some(children)) => args.extend(children),
-            (children, None) => args.extend(self.jsx_children(children)?),
+            (children, None) => {
+                // The fields of `<form action={name}>` are the ones its children name.
+                let outer = form_action.as_ref().map(|action| {
+                    // Each input field, and whether it holds a list (several values of one name).
+                    let fields = self.schema.actions[action]
+                        .input
+                        .values()
+                        .map(|c| {
+                            let list = matches!(c.ty, ColType::Select | ColType::RefList | ColType::MediaList)
+                                || c.shape.as_ref().is_some_and(|s| s["type"] == "array");
+                            (c.name.clone(), list)
+                        })
+                        .collect();
+                    self.form_scope.replace((action.clone(), fields))
+                });
+                let children = self.jsx_children(children);
+                if let Some(outer) = outer {
+                    self.form_scope = outer;
+                }
+                args.extend(children?);
+            }
         }
         args.extend(form_fields);
         if let Some(folded) = self.fold_element(&output_tag, jsx, spread || form_action.is_some(), &args[2..]) {
@@ -7764,6 +7798,106 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// literal attribute values only, no spread, form action or client directive. `children` are the
     /// compiled children; static ones are already escaped markup. A fully static element is one
     /// `Html::raw`; one with dynamic children places them between its static open and close tags.
+    /// A field inside `<form action={name}>` (`<input>`, `<textarea>`, `<select>`, `<button>`) with a
+    /// literal `name`, written in the form's own JSX: the name must be one of the action's input
+    /// fields, as the action refuses any other, and the field gets `Forms::control`'s attributes:
+    /// `aria-invalid` when the last submit's error names it, and after that error the value typed or
+    /// the boxes checked. A control the browser never sends (`type="button"`, `disabled`, a submitter
+    /// posting elsewhere) and a field of another form (`form="id"`) are left alone.
+    fn form_field(&self, tag: &str, jsx: &Jsx) -> Result<Option<String>> {
+        let Some((action, fields)) = &self.form_scope else {
+            return Ok(None);
+        };
+        if !matches!(tag, "input" | "textarea" | "select" | "button") {
+            return Ok(None);
+        }
+        let attr = |key: &str| {
+            jsx.attrs.iter().find_map(|a| match a {
+                JsxAttr::Named { name, value, .. } if name == key => Some(value),
+                _ => None,
+            })
+        };
+        let literal = |key: &str| {
+            attr(key).map(|v| match &v.kind {
+                ExprKind::Str(text) => Some(text.as_str()),
+                _ => None,
+            })
+        };
+        let set = |keys: &[&str]| keys.iter().any(|k| attr(k).is_some());
+        let kind = match literal("type") {
+            Some(Some(kind)) => Some(kind.to_ascii_lowercase()),
+            Some(None) => None,
+            None if tag == "button" => Some("submit".to_string()),
+            None if tag == "input" => Some("text".to_string()),
+            None => Some(tag.to_string()),
+        };
+        // Sent with another form, never sent, or sent to another address.
+        let disabled = attr("disabled").is_some_and(|v| matches!(v.kind, ExprKind::Bool(true)));
+        if set(&["form", "formAction"]) || disabled || matches!(kind.as_deref(), Some("button" | "reset")) {
+            return Ok(None);
+        }
+        let Some(name_expr) = attr("name") else { return Ok(None) };
+        let ExprKind::Str(name) = &name_expr.kind else {
+            return Ok(None);
+        };
+        if kind.as_deref() == Some("image") {
+            return err_help(
+                name_expr.span,
+                format!(
+                    "an image button named `{name}` sends `{name}.x` and `{name}.y`, which `{action}` would refuse"
+                ),
+                "remove `name`, or use a `<button>` with an image inside",
+            );
+        }
+        let field = name.strip_suffix("[]").unwrap_or(name);
+        // What `Forms::decode` drops before the action reads the body.
+        if matches!(field, "_tp_return" | "_tp_form" | "_wpnonce" | "_locale" | "_method") {
+            return Ok(None);
+        }
+        let Some((_, list)) = fields.iter().find(|(f, _)| f == field) else {
+            let help = match suggest(field, fields.iter().map(|(f, _)| f.as_str())) {
+                Some(s) => format!("did you mean `{s}`?"),
+                None if fields.is_empty() => format!("`{action}` takes no input; remove the name"),
+                None => format!(
+                    "`{action}` takes {}",
+                    fields
+                        .iter()
+                        .map(|(f, _)| format!("`{f}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            };
+            return err_help(
+                name_expr.span,
+                format!("`{field}` isn't an input of `{action}`, so the action would refuse this form"),
+                help,
+            );
+        };
+        // `value` refills what was typed (over a `defaultValue` the page wrote, such as the stored
+        // value of an edit form; a `value` the page sets wins); `checked` checks the box or option
+        // again when its value was sent (over a `defaultChecked`); `none` only marks the field. One text box can't hold a list's values, so a list field's
+        // boxes are refilled only when they are checkboxes.
+        let (mode, option) = match kind.as_deref() {
+            Some("submit") => return Ok(None),
+            Some("checkbox" | "radio") if set(&["checked"]) => ("none", None),
+            Some("checkbox" | "radio") => match literal("value") {
+                None => ("checked", None),
+                Some(Some(v)) => ("checked", Some(v)),
+                Some(None) => ("none", None),
+            },
+            Some("password" | "hidden" | "file") | Some("select") | None => ("none", None),
+            _ if *list || name.ends_with("[]") || set(&["value"]) => ("none", None),
+            _ => ("value", None),
+        };
+        let option = option.map_or_else(|| "null".to_string(), php_str);
+        Ok(Some(format!(
+            "...\\TypedPress\\Render\\Forms::control({}, {}, {}, {option})",
+            php_str(action),
+            php_str(name),
+            php_str(mode)
+        )))
+    }
+
     fn fold_element(&mut self, tag: &str, jsx: &Jsx, spread: bool, children: &[String]) -> Option<String> {
         if spread || self.client.is_some() || !html::foldable_tag(tag) {
             return None;

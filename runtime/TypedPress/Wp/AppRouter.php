@@ -1248,6 +1248,7 @@ final class AppRouter
     private function render(?array $page, array $layouts, JsObject $props, bool $wrap = true): array
     {
         Navigation::reset();
+        \TypedPress\Render\Forms::reset();
         $metadata = [];
         // A twin is the page alone: its heading is the page's own title, not a layout's template.
         foreach ($wrap ? [...$layouts, $page] : [$page] as $file) {

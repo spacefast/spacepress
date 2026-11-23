@@ -106,15 +106,24 @@ impl Compiler<'_, '_> {
             );
         };
         let result = self.action_results.get(&action).cloned().unwrap_or(Ty::Unknown);
+        // `error.fields` and `values` are keyed by the action's input fields: a name it doesn't
+        // take is a build error where it is read, not a value that is never there.
+        let by_field = Ty::Obj(
+            self.schema.actions[&action]
+                .input
+                .keys()
+                .map(|name| (name.clone(), (Ty::Str, true)))
+                .collect(),
+        );
         let mut error = IndexMap::new();
         error.insert("code".to_string(), (Ty::Str, false));
         error.insert("message".to_string(), (Ty::Str, false));
-        error.insert("fields".to_string(), (Ty::Map(Box::new(Ty::Str)), false));
+        error.insert("fields".to_string(), (by_field.clone(), false));
         let mut state = IndexMap::new();
         state.insert("pending".to_string(), (Ty::Bool, false));
         state.insert("error".to_string(), (Ty::union([Ty::Obj(error), Ty::Null]), false));
         state.insert("result".to_string(), (Ty::union([result, Ty::Null]), false));
-        state.insert("values".to_string(), (Ty::Map(Box::new(Ty::Str)), false));
+        state.insert("values".to_string(), (by_field, false));
         Ok(Out::atom(
             format!("\\TypedPress\\Render\\Forms::state({})", php_str(&action)),
             Ty::Obj(state),

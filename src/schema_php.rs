@@ -173,6 +173,11 @@ fn column(c: &Column, ctx: Ctx, indent: usize) -> String {
             c.aliases.iter().map(|a| php_str(a)).collect::<Vec<_>>().join(", ")
         ));
     }
+    if let Some(on) = c.searchable
+        && top
+    {
+        parts.push(format!("'searchable' => {on}"));
+    }
     if c.derived {
         parts.push("'derived' => true".into());
     }

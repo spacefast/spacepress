@@ -59,6 +59,7 @@ try {
   await page.fill("form.subscribe [name=email]", "ada@example.test");
   await page.fill("form.subscribe [name=seats]", "3");
   await page.check("form.subscribe [name=weekly]");
+  await page.fill("form.subscribe [name=note]", "Typed note");
   pages.length = 0;
   posts.length = 0;
   await page.click("form.subscribe button");
@@ -81,11 +82,14 @@ try {
     // Where it was, give or take the paragraph the result added above the form.
     scrollKept: scrolled >= 1900 && Math.abs((await page.evaluate(() => window.scrollY)) - scrolled) < 100,
     focus: await page.evaluate(() => document.activeElement?.tagName),
+    // The form starts over after a success, as a page load leaves it.
+    reset: await page.$eval("form.subscribe", (f) => ({ state: f.getAttribute("data-tp-form-state"), email: f.elements.email.value, note: f.elements.note.value, weekly: f.elements.weekly.checked })),
   };
 
   // A submit the action refuses (422): the error and the typed values, in place.
   await page.fill("form.subscribe [name=email]", "grace@example.test");
   await page.fill("form.subscribe [name=seats]", "9");
+  await page.fill("form.subscribe [name=note]", "Kept note");
   pages.length = 0;
   await page.click("form.subscribe button");
   await page.waitForSelector(".error", { timeout: 15000 });
@@ -94,6 +98,8 @@ try {
     code: await page.getAttribute(".error", "data-code"),
     done: await page.$(".done").then((el) => el !== null),
     email: await page.inputValue("form.subscribe [name=email]"),
+    // A refused form keeps what was typed, and says so.
+    kept: await page.$eval("form.subscribe", (f) => [f.getAttribute("data-tp-form-state"), f.elements.note.value]),
     marker: await page.evaluate(() => window.tpMarker ?? null),
     url: path(page.url()),
     requests: [...pages],
@@ -442,6 +448,36 @@ try {
       template: await page.evaluate(() => document.body.dataset.tpTemplate),
       marker: await page.evaluate(() => window.tpMarker ?? null),
       message: await page.$eval("form.vote", (f) => f.querySelectorAll("[data-tp-form-error]").length),
+    };
+    await page.close();
+  }
+
+  // A form per row filled from what is stored (/rows). A refused submit refills that row, and a
+  // `<Live>` update meanwhile keeps the refill and what is typed elsewhere. A success then shows the
+  // stored name in the row, not the value it was first rendered with.
+  {
+    const { page } = await open(`${url}/rows/`);
+    const second = "form.row:nth-of-type(2)";
+    const firstName = await page.inputValue(`${second} [name=name]`);
+    await page.fill(`${second} [name=name]`, "x");
+    await page.check(`${second} [name=tags][value=red]`);
+    await page.click(`${second} button:not([type])`);
+    await page.waitForSelector(".rename-error", { timeout: 15000 });
+    await page.fill("form.row:nth-of-type(1) [name=name]", "Typing here");
+    const before = await page.textContent(".count");
+    await fetch(`${url}/wp-json/typedpress/v1/entries`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Another" }) });
+    await page.waitForFunction((b) => document.querySelector(".count")?.textContent !== b, before, { timeout: 15000 });
+    const afterLive = await page.$eval(second, (f) => ({ name: f.elements.name.value, red: f.querySelector("[name=tags][value=red]").checked, invalid: f.elements.name.getAttribute("aria-invalid") }));
+    const typing = await page.inputValue("form.row:nth-of-type(1) [name=name]");
+    await page.fill(`${second} [name=name]`, "Renamed row");
+    await page.click(`${second} button:not([type])`);
+    await page.waitForSelector(".renamed", { timeout: 15000 });
+    out.rows = {
+      firstName,
+      afterLive,
+      typing,
+      renamed: await page.textContent(".renamed"),
+      after: await page.$eval(second, (f) => ({ state: f.getAttribute("data-tp-form-state"), name: f.elements.name.value, red: f.querySelector("[name=tags][value=red]").checked, size: f.querySelector("[name=size]:checked")?.value })),
     };
     await page.close();
   }

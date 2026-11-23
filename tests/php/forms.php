@@ -146,9 +146,30 @@ $out['invalid'] = [
     'refilled' => form($bad['back']['body'], 'subscribe')['fields'][0][2] ?? null,
     'seats refilled' => array_values(array_filter(form($bad['back']['body'], 'subscribe')['fields'], static fn ($f) => $f[0] === 'seats'))[0][2] ?? null,
 ];
-// A password the visitor typed is never sent back to fill the form (here, a field the action
-// doesn't take, refused as unknown).
-$secret = submit($subscribe, ['email' => 'p@example.test', 'seats' => '1', 'password' => 'hunter2']);
+// Each named field of the form gets the last submit's state by itself: the error marks the field it
+// names, a field the page doesn't fill is refilled, a checked box stays checked, and the form says
+// how its last submit went. After a success the form starts over.
+$state = static function (array $back): array {
+    $doc = new DOMDocument();
+    @$doc->loadHTML($back['body']);
+    $xpath = new DOMXPath($doc);
+    $form = $xpath->query("//form[@class='subscribe']")->item(0);
+    $attr = static fn (string $name, string $attribute): ?string => ($n = $xpath->query(".//*[@name='$name']", $form)->item(0)) !== null && $n->hasAttribute($attribute) ? $n->getAttribute($attribute) : null;
+
+    return [
+        'form' => $form->getAttribute('data-tp-form-state') ?: null,
+        'invalid' => array_values(array_map(static fn (DOMElement $n) => $n->getAttribute('name'), iterator_to_array($xpath->query(".//*[@aria-invalid='true']", $form)))),
+        'note' => $attr('note', 'value'),
+        'weekly' => $attr('weekly', 'checked') !== null,
+        'password' => $attr('password', 'value'),
+    ];
+};
+$typed = submit($subscribe, ['email' => 'nope', 'seats' => '2', 'weekly' => 'on', 'note' => 'Keep me', 'password' => 'hunter2']);
+$fresh = submit($subscribe, ['email' => 'kay@example.test', 'seats' => '2', 'weekly' => 'on', 'note' => 'Gone']);
+$out['field state'] = ['initial' => $state($page), 'error' => $state($typed['back']), 'success' => $state($fresh['back'])];
+
+// A password the visitor typed is never sent back to fill the form.
+$secret = submit($subscribe, ['email' => 'p-at-example', 'seats' => '1', 'password' => 'hunter2']);
 $out['password'] = [
     text($secret['back']['body'], 'error'),
     array_values(array_filter(form($secret['back']['body'], 'subscribe')['fields'], static fn ($f) => $f[0] === 'password'))[0][2] ?? null,
@@ -207,6 +228,62 @@ $members['fields'] = array_values(array_filter($members['fields'], static fn ($f
 $nn = submit($members, ['name' => 'Ann'], $session);
 $nnBack = fetch((string) $nn['location'], headers: ['Cookie: ' . LOGGED_IN_COOKIE . '=' . rawurlencode($logged) . '; ' . $nn['cookie']]);
 $out['no nonce'] = [$nn['post']['status'], text($nnBack['body'], 'member-error'), text($nnBack['body'], 'member')];
+
+// One form per row for one action (/rows): a refused submit's state comes back on the row that
+// posted only, its checked boxes and radio choice included; the other rows show what is stored.
+$sign = str_replace('/actions/subscribe', '/actions/sign', $subscribe['action']);
+foreach (['Ann', 'Bo', 'Cy'] as $n) {
+    fetch($sign, 'POST', ['Content-Type: application/json'], json_encode(['name' => $n]));
+}
+$rows = fetch("$url/rows/");
+$rowState = static function (string $html): array {
+    $doc = new DOMDocument();
+    @$doc->loadHTML($html);
+    $xpath = new DOMXPath($doc);
+    $out = [];
+    foreach ($xpath->query("//form[starts-with(@class, 'row ')]") as $form) {
+        $one = static fn (string $q): ?DOMElement => $xpath->query($q, $form)->item(0);
+        $out[] = [
+            'state' => $form->getAttribute('data-tp-form-state') ?: null,
+            'form' => $one(".//input[@name='_tp_form']")?->getAttribute('value'),
+            'name' => $one(".//input[@name='name']")?->getAttribute('value'),
+            'invalid' => $one(".//input[@name='name']")?->getAttribute('aria-invalid') ?: null,
+            'tags' => array_values(array_map(static fn (DOMElement $n) => $n->getAttribute('value'), iterator_to_array($xpath->query(".//input[@name='tags'][@checked]", $form)))),
+            'size' => array_values(array_map(static fn (DOMElement $n) => $n->getAttribute('value'), iterator_to_array($xpath->query(".//input[@name='size'][@checked]", $form)))),
+        ];
+    }
+
+    return $out;
+};
+$second = (static function (string $html): array {
+    $doc = new DOMDocument();
+    @$doc->loadHTML($html);
+    $xpath = new DOMXPath($doc);
+    $form = $xpath->query("//form[starts-with(@class, 'row ')]")->item(1);
+    $fields = [];
+    foreach ($xpath->query('.//input', $form) as $input) {
+        $fields[] = [$input->getAttribute('name'), $input->getAttribute('type'), $input->getAttribute('value')];
+    }
+
+    return ['action' => $form->getAttribute('action'), 'method' => 'post', 'fields' => $fields];
+})($rows['body']);
+// Two boxes of one name: the body sends both, as a browser does.
+$second['fields'] = array_values(array_filter($second['fields'], static fn ($f) => $f[1] === 'hidden'));
+$refused = submit($second, ['name' => 'x', 'tags' => 'red', 'size' => 's']);
+$pairs = [];
+foreach ($second['fields'] as [$n, , $v]) {
+    $pairs[] = rawurlencode($n) . '=' . rawurlencode($v);
+}
+$both = fetch($second['action'], 'POST', ['Content-Type: application/x-www-form-urlencoded'], implode('&', [...$pairs, 'name=x', 'tags=red', 'tags=blue', 'size=s']));
+$bothBack = fetch((string) ($both['headers']['location'][0] ?? ''), headers: ['Cookie: ' . explode(';', $both['headers']['set-cookie'][0] ?? '')[0]]);
+$renamed = submit($second, ['name' => 'Bea', 'tags' => 'blue']);
+$out['rows'] = [
+    'initial' => $rowState($rows['body']),
+    'refused' => $rowState($refused['back']['body']),
+    'two boxes' => $rowState($bothBack['body'])[1]['tags'] ?? null,
+    'messages' => [text($refused['back']['body'], 'rename-error'), text($renamed['back']['body'], 'rename-error')],
+    'renamed' => [text($renamed['back']['body'], 'renamed'), $rowState($renamed['back']['body'])],
+];
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

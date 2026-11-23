@@ -115,20 +115,37 @@ final class Index
 
     // ================================================================ which fields
 
-    /** @return list<string> the kind's searchable fields: title, content, text and richText, never system ones */
+    /**
+     * The kind's searchable fields. A field marked `.searchable(false)` (`'searchable' => false`) is
+     * never one, even the title or content; one marked `.searchable()` always is. With no field
+     * marked `.searchable()`, they are the title, the content and every text or richText field
+     * without an `enum`; once one is marked, the title, the content and the marked fields. Never a
+     * hidden field, nor another system field.
+     *
+     * @return list<string>
+     */
     public static function fields(array $spec): array
     {
         if (($spec['taxonomy'] ?? false) || ($spec['commerce'] ?? '') === 'order') {
             return []; // `search` on a taxonomy isn't built yet
         }
+        $chosen = false;
+        foreach ($spec['columns'] as $col) {
+            if (($col['searchable'] ?? null) === true) {
+                $chosen = true;
+                break;
+            }
+        }
         $out = [];
         foreach ($spec['columns'] as $name => $col) {
             $name = (string) $name;
-            if (($col['hidden'] ?? false) || ($col['system'] ?? false) && $name !== ($spec['title'] ?? null) && $name !== ($spec['content'] ?? null)) {
+            $designated = $name === ($spec['title'] ?? null) || $name === ($spec['content'] ?? null);
+            if (($col['hidden'] ?? false) || ($col['system'] ?? false) && !$designated) {
                 continue;
             }
-            if ($name === ($spec['title'] ?? null) || $name === ($spec['content'] ?? null)
-                || in_array($col['type'], ['text', 'richText'], true) && !isset($col['enum'])) {
+            $searchable = $col['searchable']
+                ?? ($designated || !$chosen && in_array($col['type'], ['text', 'richText'], true) && !isset($col['enum']));
+            if ($searchable) {
                 $out[] = $name;
             }
         }

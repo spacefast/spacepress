@@ -33,6 +33,30 @@ const row = await db.query.posts.findFirst({ where: { slug: "hello" } });
 const [created] = await db.insert(tasks).values({ title: "Ship v1" }).returning();
 ```
 
+## Search
+
+`list({ search })` and `count({ search })` on a kind, `?search=` on its API and core list routes, `GET /search` and core's `/wp/v2/search` match words at the start of a word in the kind's searchable fields. Results keep the list's own order.
+
+By default the searchable fields are the title, the content and every `text()` or `richText()` field. Mark fields with `.searchable()` to choose them yourself. Once any field of a kind is marked, only the title, the content and the marked fields are searched. `.searchable(false)` removes a field, including the title or content:
+
+```ts
+import { collection, email, richText, text } from "typedpress";
+
+export const recipes = collection({
+  title: text(),
+  method: richText().searchable(),
+  chef: email().searchable(),
+  // Not searched: other fields are marked, and this one isn't.
+  supplierCode: text().optional(),
+  // Never searched, whatever else is marked.
+  internalName: text().optional().searchable(false),
+}, { url: "/recipes/:slug" });
+```
+
+`.searchable()` takes `text()`, `richText()`, `email()`, `url()` and `slug()` fields of a collection or table. It isn't valid on `select()`, numbers or other kinds, nor inside a group, repeater or blocks field, a global or a taxonomy.
+
+Access still applies to every search. A reader matches only the rows their read rule returns and only the fields they may read. A word found only in a field hidden from the reader never matches. When a build changes a kind's searchable fields, a queued job rebuilds that kind's index.
+
 ## Declarative access rules
 
 The role ladder is ordered: `guest < subscriber < author < editor < admin`. Naming a role admits that role and every higher role.

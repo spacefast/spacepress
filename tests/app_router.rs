@@ -2320,6 +2320,9 @@ const state = useFormState(subscribe);
 export const seats: number | undefined = state.result?.seats;
 // @ts-expect-error: the result has no `nope`
 export const nope = state.result?.nope;
+export const typed: string | undefined = state.values.email ?? state.error?.fields.seats;
+// @ts-expect-error: `emial` isn't an input of `subscribe`
+export const typo = state.values.emial;
 "#,
     )
     .unwrap();
@@ -2373,7 +2376,7 @@ export const nope = state.result?.nope;
         serde_json::json!({
             "method": "post",
             "action": "/wp-json/typedpress/v1/actions/subscribe",
-            "hidden": [["_tp_return", "hidden", "/?ref=nav"]],
+            "hidden": [["_tp_return", "hidden", "/?ref=nav"], ["_tp_form", "hidden", "1"]],
             "page cache": "public, max-age=0, s-maxage=300, must-revalidate",
             "undeclared query": "private, no-store, max-age=0",
         }),
@@ -2408,9 +2411,44 @@ export const nope = state.result?.nope;
         }),
         "{seen}"
     );
+    // The fields of `<form action>` carry the state themselves: `aria-invalid` on the field the
+    // error names, the typed value back where the page doesn't set one (never a password), a checked
+    // box checked again, and the form's `data-tp-form-state`. A success leaves the form empty.
+    assert_eq!(
+        seen["field state"],
+        serde_json::json!({
+            "initial": { "form": null, "invalid": [], "note": null, "weekly": false, "password": "" },
+            "error": { "form": "error", "invalid": ["email"], "note": "Keep me", "weekly": true, "password": "" },
+            "success": { "form": "success", "invalid": [], "note": null, "weekly": false, "password": "" },
+        }),
+        "{seen}"
+    );
+    // A form per row for one action: the state comes back on the row that posted (`_tp_form`), with
+    // the boxes and the radio choice it sent over the page's default; the other rows keep what is
+    // stored. After a success every row shows the stored names.
+    let row = |form: &str, name: &str, state: Option<&str>, invalid: Option<&str>, tags: &[&str], size: &[&str]| serde_json::json!({ "state": state, "form": form, "name": name, "invalid": invalid, "tags": tags, "size": size });
+    assert_eq!(
+        seen["rows"],
+        serde_json::json!({
+            "initial": [row("1", "Ann", None, None, &[], &["m"]), row("2", "Bo", None, None, &[], &["m"]), row("3", "Cy", None, None, &[], &["m"])],
+            "refused": [
+                row("1", "Ann", None, None, &[], &["m"]),
+                row("2", "x", Some("error"), Some("true"), &["red"], &["s"]),
+                row("3", "Cy", None, None, &[], &["m"]),
+            ],
+            "two boxes": ["red", "blue"],
+            "messages": ["name must be two characters or more", null],
+            "renamed": [
+                "Renamed Bea (blue; m)",
+                [row("1", "Ann", None, None, &[], &["m"]), row("2", "Bea", Some("success"), None, &[], &["m"]), row("3", "Cy", None, None, &[], &["m"])],
+            ],
+        }),
+        "{seen}"
+    );
+    // What was typed into a password field is never sent back to fill the form.
     assert_eq!(
         seen["password"],
-        serde_json::json!(["Unknown field 'password'", "", "p@example.test"]),
+        serde_json::json!(["email must be an email address", "", "p-at-example"]),
         "{seen}"
     );
     assert_eq!(seen["handler error"], serde_json::json!("Five seats at most"));
@@ -2558,6 +2596,12 @@ fn forms_submit_in_place_in_the_browser() {
         (&serde_json::json!(true), &serde_json::json!("BUTTON")),
         "{seen}"
     );
+    // After a success the form is empty again, typed text and the checked box included.
+    assert_eq!(
+        success["reset"],
+        serde_json::json!({ "state": "success", "email": "", "note": "", "weekly": false }),
+        "{seen}"
+    );
     // A refusal: the error and what was typed, in place, the same way.
     let refused = &seen["refused"];
     assert_eq!(
@@ -2580,6 +2624,20 @@ fn forms_submit_in_place_in_the_browser() {
         "{seen}"
     );
     assert_eq!(refused["requests"].as_array().map(Vec::len), Some(1), "{seen}");
+    assert_eq!(refused["kept"], serde_json::json!(["error", "Kept note"]), "{seen}");
+    // A form per row filled from what is stored: a `<Live>` update keeps a refused row's refill and
+    // text typed in another row, and after a success the row shows the stored name.
+    assert_eq!(
+        seen["rows"],
+        serde_json::json!({
+            "firstName": "Mine",
+            "afterLive": { "name": "x", "red": true, "invalid": "true" },
+            "typing": "Typing here",
+            "renamed": "Renamed Renamed row (red; m)",
+            "after": { "state": "success", "name": "Renamed row", "red": false, "size": "m" },
+        }),
+        "{seen}"
+    );
     // The pressed button's value is the input, from inside the form and from a `form="vote"` button
     // outside it, which is disabled and marked while pending; a button the page disabled stays so.
     assert_eq!(
@@ -3095,6 +3153,82 @@ fn refuses_forms_it_cannot_post() {
         ],
         "a \"use client\" component's form calls its action from a handler",
         "tp/components/Box.tsx:3:",
+    );
+    // A field the action doesn't take: the action would refuse every submit, so the build does.
+    rejects(
+        &dir,
+        &[
+            server,
+            (
+                "tp/app/page.tsx",
+                &page(
+                    "export default function Page() { return <form action={send}><input name=\"nmae\" /><button/></form>; }",
+                ),
+            ),
+        ],
+        "`nmae` isn't an input of `send`, so the action would refuse this form",
+        "tp/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[
+            server,
+            (
+                "tp/app/page.tsx",
+                &page(
+                    "export default function Page() { return <form action={send}><p><select name=\"other\"><option>x</option></select></p></form>; }",
+                ),
+            ),
+        ],
+        "`other` isn't an input of `send`",
+        "tp/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[
+            server,
+            (
+                "tp/app/page.tsx",
+                &page(
+                    "export default function Page() { return <form action={send}><input type=\"image\" name=\"go\" src=\"/go.png\" alt=\"Go\" /></form>; }",
+                ),
+            ),
+        ],
+        "an image button named `go` sends `go.x` and `go.y`, which `send` would refuse",
+        "tp/app/page.tsx:3:",
+    );
+    // Controls the browser never sends with the form aren't checked: this page builds.
+    let ok = std::env::temp_dir().join(format!("typedpress-forms-ok-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&ok);
+    std::fs::create_dir_all(ok.join("tp/app")).unwrap();
+    std::fs::write(
+        ok.join("typedpress.config.ts"),
+        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({});\n",
+    )
+    .unwrap();
+    std::fs::write(ok.join(server.0), server.1).unwrap();
+    std::fs::write(
+        ok.join("tp/app/page.tsx"),
+        page("export default function Page() { return <form action={send}><input name=\"name\" /><button type=\"button\" name=\"preview\">Preview</button><input name=\"draft\" disabled /><button name=\"elsewhere\" formAction=\"/other\">Other</button><input name=\"_tp_form\" type=\"hidden\" value=\"1\" /><button>Send</button></form>; }"),
+    )
+    .unwrap();
+    let out = first().arg("check").arg(&ok).output().unwrap();
+    let _ = std::fs::remove_dir_all(&ok);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    // `useFormState` knows the action's input fields.
+    rejects(
+        &dir,
+        &[
+            server,
+            (
+                "tp/app/page.tsx",
+                &page(
+                    "export default function Page() { const s = useFormState(send); return <b>{s.values.nmae}</b>; }",
+                ),
+            ),
+        ],
+        "has no field `nmae`",
+        "tp/app/page.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }

@@ -386,6 +386,8 @@ pub struct ColBuilder {
     pub storage_name: Option<String>,
     /// `.alias("old_name")`: accepted API/filter aliases that map to this field.
     pub aliases: Vec<String>,
+    /// `.searchable()` / `.searchable(false)`: whether `search` matches this field.
+    pub searchable: Option<bool>,
     pub span: Span,
     /// Where each modifier was applied (`unique`, `references`, ...), for precise errors.
     pub mods: Vec<(&'static str, Span)>,

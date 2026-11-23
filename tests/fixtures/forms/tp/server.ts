@@ -1,7 +1,7 @@
 import { boolean, db, email, HttpError, mutation } from "typedpress";
 import { entries } from "./schema";
 
-export const subscribe = mutation({ access: "anyone" }, async ({ email, seats, weekly, note }: { email: string; seats: number; weekly: boolean; note?: string }) => {
+export const subscribe = mutation({ access: "anyone" }, async ({ email, seats, weekly, note }: { email: string; seats: number; weekly: boolean; note?: string; password?: string }) => {
   if (!Number.isInteger(seats)) throw new HttpError(422, "invalid_input", "seats must be an integer", "/seats");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(422, "invalid_input", "email must be an email address", "/email");
   if (seats > 5) throw new HttpError(422, "too_many", "Five seats at most");
@@ -36,4 +36,12 @@ export const remove = mutation({ access: "anyone" }, async ({ id }: { id: number
 export const close = mutation({ access: "anyone" }, async () => {
   await db.insert(entries).values({ name: "closed" });
   return true;
+});
+
+// Renames an entry: one form per row on /rows, each filled from the stored name, with a choice of
+// tags (a list) and a size (a radio group with a default). An empty name is refused.
+export const rename = mutation({ access: "anyone" }, async ({ id, name, tags, size }: { id: number; name: string; tags?: ("red" | "blue" | "green")[]; size?: string }) => {
+  if (name.trim().length < 2) throw new HttpError(422, "invalid_input", "name must be two characters or more", "/name");
+  await db.update(entries).set({ name }).where({ id });
+  return { name, tags: (tags ?? []).join(","), size: size ?? "m" };
 });

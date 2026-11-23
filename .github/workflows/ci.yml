@@ -299,6 +299,8 @@ jobs:
         with:
           path: tests/wp/cache/*.zip
           key: wp-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json', 'tests/php/wp.php') }}
+      # brand_upgrade builds a site with the last pre-rename runtime: that one commit, not the history.
+      - run: git fetch --no-tags --depth=1 origin "$(sed -n "s/^const LEGACY_COMMIT = '\([0-9a-f]*\)';/\1/p" tests/php/brand_upgrade_test.php)"
       - run: tests/php/run.sh
 
   vendor:

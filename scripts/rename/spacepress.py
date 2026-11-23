@@ -29,7 +29,8 @@ REPO = re.compile(rb"(?<![@\w.-])spacefast/zero(?![\w-])")
 # tp / TP / Tp at a word start. Lowercase `tp` takes a following non-alphanumeric (tp_, tp/, tp-, tp.,
 # tp", end) or a capitalized word (camelCase: tpLoader) unless it sits in base64 (+ or / before it).
 SHORT = re.compile(
-    rb"(?<![A-Za-z0-9])(?:"
+    # A regex anchor (`\Atp_`) counts as a word start too.
+    rb"(?:(?<![A-Za-z0-9])|(?<=\\A))(?:"
     rb"tp(?![A-Za-z0-9])"
     rb"|(?<![+/])tp(?=[A-Z][a-z])"
     rb"|TP(?![A-Za-z0-9])"

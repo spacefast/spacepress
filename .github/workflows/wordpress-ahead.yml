@@ -73,6 +73,7 @@ jobs:
         with:
           url: ${{ matrix.build.url }}
           name: ${{ matrix.build.name }}
+      - run: git fetch --no-tags --depth=1 origin "$(sed -n "s/^const LEGACY_COMMIT = '\([0-9a-f]*\)';/\1/p" tests/php/brand_upgrade_test.php)"
       - name: In-process suites (tests/php)
         run: tests/php/run.sh 2>&1 | tee "$RUNNER_TEMP/php.log"
         env:

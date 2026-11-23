@@ -113,7 +113,7 @@ final class InstallMarker
 
     private static function watches(string $option): bool
     {
-        return in_array($option, self::WATCHED, true) || preg_match('/\Atp_[a-z0-9_-]+_(schema|refused|route_pages|content)\z/', $option) === 1;
+        return in_array($option, self::WATCHED, true) || preg_match('/\Asp_[a-z0-9_-]+_(schema|refused|route_pages|content)\z/', $option) === 1;
     }
 
     private static function key(Plugin $plugin): string

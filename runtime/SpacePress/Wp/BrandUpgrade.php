@@ -58,15 +58,15 @@ final class BrandUpgrade
         'tp_identity_dummy_password_hash', 'tp_identity_password_profiles', 'tp_identity_password_inventory',
         'tp_admin_rewrite',
     ];
-    /** Options named `<prefix><something>`: per build, per upload prefix, per global field. */
-    private const RUNTIME_OPTION_PREFIXES = ['tp_prebuilt_', 'tp_upload_cursor_', 'tp_global_'];
+    /** Options named `<prefix><hash>`, by the exact shape of the hash: per build, per upload prefix. */
+    private const RUNTIME_OPTION_SHAPES = ['tp_prebuilt_' => '/\A[0-9a-f]{16}\z/', 'tp_upload_cursor_' => '/\A[0-9a-f]{64}\z/'];
     /** Options named `tp_<app><suffix>`. */
     private const APP_OPTION_SUFFIXES = [
         '_schema', '_refused', '_post_types', '_adopted_posts', '_seed', '_seed_refused', '_shipping', '_content',
         '_route_pages', '_runtime_schema', '_declared_fields', '_schema_apply_denied',
     ];
-    /** Transients by prefix (their `_transient_` and `_transient_timeout_` rows), and site transients. */
-    private const TRANSIENT_PREFIXES = ['tp_setup_notice_', 'tp_api_reference_'];
+    /** Transients by prefix and the exact shape of the rest (`_transient_` and `_transient_timeout_` rows), and site transients. */
+    private const TRANSIENT_SHAPES = ['tp_setup_notice_' => '/\A[0-9]+\z/', 'tp_api_reference_' => '/\A[0-9a-f]{32}\z/'];
     private const SITE_TRANSIENTS = ['tp_admin_prev_update_plugins'];
     /** System tables (below `{prefix}`); identity's are `tp_identity_<name>`. */
     private const SYSTEM_TABLES = ['tp__migrations', 'tp__revisions', 'tp__jobs', 'tp__receipts', 'tp__versions', 'tp__files', 'tp__rates', 'tp__app_reads', 'tp__search', 'tp__schema_versions'];
@@ -117,15 +117,30 @@ final class BrandUpgrade
         if ((int) $marker >= self::VERSION) {
             return false;
         }
-        global $wpdb;
-        if ($wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->options} WHERE option_name = %s", 'tp_runtime_tables')) !== null) {
+        if (self::legacyState()) {
             return true;
         }
-        // No state under the earlier name (a site installed after the rename): record that once, so
-        // later requests skip the probe. add_option keeps a concurrent move's marker if one won.
-        add_option(self::DONE, self::VERSION, '', true);
+        // No state under the earlier name (a site installed after the rename): record that once,
+        // under the lock and from a fresh read, so a move another request just started is never
+        // marked finished. Later requests answer from the autoloaded marker.
+        global $wpdb;
+        Migrator::locked(new Connection($wpdb), 'sp_brand_upgrade', static function (): void {
+            $stored = $GLOBALS['wpdb']->get_var($GLOBALS['wpdb']->prepare("SELECT option_value FROM {$GLOBALS['wpdb']->options} WHERE option_name = %s", self::DONE));
+            if ($stored === null && !self::legacyState()) {
+                add_option(self::DONE, self::VERSION, '', true);
+            }
+        });
+        wp_cache_delete(self::DONE, 'options');
 
-        return false;
+        return get_option(self::DONE) === self::STARTED;
+    }
+
+    /** Whether the database holds what a pre-release runtime or identity wrote: one indexed read. */
+    private static function legacyState(): bool
+    {
+        global $wpdb;
+
+        return $wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->options} WHERE option_name IN (%s, %s) LIMIT 1", 'tp_runtime_tables', 'tp_identity_schema_version')) !== null;
     }
 
     /**
@@ -199,6 +214,7 @@ final class BrandUpgrade
         $taxonomies = [];
         $fields = [];
         $fieldKeys = [];
+        $fieldKeyPrefixes = [];
         $apps[] = $schema->name();
         foreach (self::appStorage($schema) as [$kind, $current]) {
             match ($kind) {
@@ -207,6 +223,7 @@ final class BrandUpgrade
                 'taxonomy' => $taxonomies[$old($current)] = $current,
                 'field' => $fields[$old($current)] = $current,
                 'fieldKey' => $fieldKeys['field_tp_' . substr($current, 9)] = $current,
+                'fieldKeyPrefix' => $fieldKeyPrefixes[] = 'field_tp_' . substr($current, 9),
             };
         }
         $ledger = $prefix . 'tp__migrations';
@@ -234,15 +251,35 @@ final class BrandUpgrade
                 $options['tp_' . $app . $suffix] = 'sp_' . $app . $suffix;
             }
         }
-        foreach (self::RUNTIME_OPTION_PREFIXES as $head) {
+        foreach (self::RUNTIME_OPTION_SHAPES as $head => $shape) {
             foreach (self::keys($db, $wpdb->options, 'option_name', $head) as $name) {
-                $options[$name] = 'sp_' . substr($name, 3);
+                if (preg_match($shape, substr($name, strlen($head))) === 1) {
+                    $options[$name] = 'sp_' . substr($name, 3);
+                }
             }
         }
-        foreach (self::TRANSIENT_PREFIXES as $head) {
+        // A global's field values (and SCF's `_` reference beside each): `tp_global_<global>_<field>`.
+        $globalRefs = [];
+        foreach ($schema->globals() as $global => $spec) {
+            foreach (array_keys((array) ($spec['fields'] ?? $spec['columns'] ?? [])) as $field) {
+                $options["tp_global_{$global}_{$field}"] = "sp_global_{$global}_{$field}";
+                $options["_tp_global_{$global}_{$field}"] = "_sp_global_{$global}_{$field}";
+            }
+            // SCF's reference options under the global, nested sub-fields included (`_tp_global_<g>_<f>_0_<sub>`).
+            foreach ($db->run("SELECT `option_name` AS n, `option_value` AS v FROM `{$wpdb->options}` WHERE `option_name` LIKE ? AND `option_value` LIKE ?",
+                [addcslashes("_tp_global_{$global}_", '\\_%') . '%', addcslashes("field_tp_global_{$global}_", '\\_%') . '%']) as $row) {
+                $ref = (string) $row['n'];
+                $options[$ref] = '_sp_' . substr($ref, 4);
+                $options[substr($ref, 1)] = 'sp_' . substr($ref, 4);
+                $globalRefs[(string) $row['v']] = 'field_sp_' . substr((string) $row['v'], 9);
+            }
+        }
+        foreach (self::TRANSIENT_SHAPES as $head => $shape) {
             foreach (['_transient_', '_transient_timeout_'] as $kind) {
                 foreach (self::keys($db, $wpdb->options, 'option_name', $kind . $head) as $name) {
-                    $options[$name] = $kind . 'sp_' . substr($name, strlen($kind) + 3);
+                    if (preg_match($shape, substr($name, strlen($kind . $head))) === 1) {
+                        $options[$name] = $kind . 'sp_' . substr($name, strlen($kind) + 3);
+                    }
                 }
             }
         }
@@ -268,8 +305,16 @@ final class BrandUpgrade
             $metaKeys['_' . $from] = '_' . $to;
         }
         $meta = [];
+        // Every SCF field key a reference row holds under the app's prefixes, nested ones included.
         foreach (['postmeta', 'termmeta', 'usermeta'] as $table) {
-            $found = $metaKeys;
+            foreach ([...$fieldKeyPrefixes, 'field_tp_member_'] as $head) {
+                foreach ($db->run("SELECT DISTINCT `meta_value` AS v FROM `{$wpdb->$table}` WHERE `meta_key` LIKE '\\_tp\\_%' AND `meta_value` LIKE ?", [addcslashes($head, '\\_%') . '%']) as $row) {
+                    $fieldKeys[(string) $row['v']] = 'field_sp_' . substr((string) $row['v'], 9);
+                }
+            }
+        }
+        foreach (['postmeta', 'termmeta', 'usermeta'] as $table) {
+            $found = $metaKeys + self::scfRows($db, $wpdb->$table, [...$fieldKeyPrefixes, 'field_tp_member_']);
             foreach (self::META_PREFIXES as $head) {
                 foreach (self::keys($db, $wpdb->$table, 'meta_key', $head) as $key) {
                     $found[$key] = '_sp_' . substr($key, 4);
@@ -304,7 +349,7 @@ final class BrandUpgrade
             $private = [$from, WP_CONTENT_DIR . '/uploads/' . self::PRIVATE_DIR[array_key_first(self::PRIVATE_DIR)]];
         }
 
-        return ['tables' => $tables, 'owned' => $owned, 'options' => $options, 'sitemeta' => $sitemeta, 'meta' => $meta, 'metaValues' => $fieldKeys,
+        return ['globalRefs' => $globalRefs, 'tables' => $tables, 'owned' => $owned, 'options' => $options, 'sitemeta' => $sitemeta, 'meta' => $meta, 'metaValues' => $fieldKeys,
             'postTypes' => $postTypes, 'taxonomies' => $taxonomies, 'hooks' => $hooks, 'groups' => $groups, 'jobs' => $jobs,
             'plugins' => $plugins, 'private' => $private, 'apps' => $apps];
     }
@@ -331,17 +376,53 @@ final class BrandUpgrade
                     $out[] = [$kind, $wp[$kind]];
                 }
             }
-            foreach ((array) ($spec['columns'] ?? []) as $column => $def) {
-                if (($wp['metaPrefix'] ?? null) === 'sp_') {
+            if (is_string($wp['fieldKeyPrefix'] ?? null) && str_starts_with($wp['fieldKeyPrefix'], 'field_sp_')) {
+                $out[] = ['fieldKeyPrefix', $wp['fieldKeyPrefix']];
+            }
+            $member = ($schema->auth()['collection'] ?? null) !== null && ($spec['key'] ?? null) === $schema->auth()['collection'];
+            foreach ((array) ($spec['columns'] ?? $spec['fields'] ?? []) as $column => $def) {
+                // Post, term and user meta: `sp_<field>` (an auth collection's members keep theirs on the user).
+                if (($wp['metaPrefix'] ?? null) === 'sp_' || $member) {
                     $out[] = ['field', 'sp_' . $column];
                 }
                 if (is_string($wp['fieldKeyPrefix'] ?? null) && str_starts_with($wp['fieldKeyPrefix'], 'field_sp_')) {
                     $out[] = ['fieldKey', $wp['fieldKeyPrefix'] . $column];
                 }
+                if ($member) {
+                    $out[] = ['fieldKey', 'field_sp_member_' . $column];
+                }
                 $join = is_array($def) ? ($def['references']['join'] ?? null) : null;
                 if (is_string($join) && !str_starts_with($join, 'term:')) {
                     $out[] = ['table', 'sp__join_' . $join];
                 }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * SCF's own rows of a field tree: every meta row whose reference row (`_<key>`) names one of the
+     * app's field keys (`field_tp_<kind>_…`), with that reference. Covers what a schema can't list by
+     * name: a group's and a repeater's sub-field rows (`tp_<field>_<n>_<sub>`) and flexible layouts.
+     * Rows another plugin wrote have no such reference and stay as they are.
+     *
+     * @param list<string> $fieldKeyPrefixes `field_tp_<kind>_`, one per kind
+     * @return array<string, string> meta key => new meta key
+     */
+    private static function scfRows(Connection $db, string $table, array $fieldKeyPrefixes): array
+    {
+        $out = [];
+        foreach ($fieldKeyPrefixes as $head) {
+            $like = addcslashes($head, '\\_%') . '%';
+            foreach ($db->run("SELECT DISTINCT `meta_key` AS k FROM `$table` WHERE `meta_key` LIKE '\\_tp\\_%' AND `meta_value` LIKE ?", [$like]) as $row) {
+                $ref = (string) $row['k'];
+                if (!str_starts_with($ref, '_tp_')) {
+                    continue;
+                }
+                $value = substr($ref, 1);
+                $out[$ref] = '_sp_' . substr($ref, 4);
+                $out[$value] = 'sp_' . substr($value, 3);
             }
         }
 
@@ -420,12 +501,15 @@ final class BrandUpgrade
         foreach ($plan['meta'] as $table => $keys) {
             $moved['meta'] += self::rename($db, $wpdb->$table, 'meta_key', $keys);
         }
+        // SCF's reference rows only (`_sp_<field>` once their keys moved above): a value elsewhere
+        // that happens to read `field_tp_…` is someone else's.
         foreach (['postmeta', 'termmeta', 'usermeta'] as $table) {
-            $moved['meta'] += self::rename($db, $wpdb->$table, 'meta_value', $plan['metaValues']);
+            $moved['meta'] += self::renameWhere($db, $wpdb->$table, 'meta_value', $plan['metaValues'], "`meta_key` LIKE '\\_sp\\_%'");
         }
+        $moved['options'] += self::renameWhere($db, $wpdb->options, 'option_value', $plan['globalRefs'], "`option_name` LIKE '\\_sp\\_global\\_%'");
         $moved['posts'] = self::rename($db, $wpdb->posts, 'post_type', $plan['postTypes'])
             + self::rename($db, $wpdb->posts, 'post_status', self::POST_STATUSES)
-            + self::renameWhere($db, $wpdb->posts, 'post_name', self::PAGE_SLUGS, "`post_type` = 'page'");
+            + self::renameWhere($db, $wpdb->posts, 'post_name', self::PAGE_SLUGS, "`post_type` = 'page' AND `ID` IN (SELECT `post_id` FROM `{$wpdb->postmeta}` WHERE `meta_key` IN ('_sp_route', '_tp_route'))");
         $moved['taxonomies'] = self::rename($db, $wpdb->term_taxonomy, 'taxonomy', $plan['taxonomies']);
         $moved['roles'] = self::roles($db, $plan['postTypes'] + $plan['taxonomies']);
         $moved['twoFactor'] = self::rename($db, $wpdb->usermeta, 'meta_value', self::TWO_FACTOR) + self::twoFactorLists($db);
@@ -817,15 +901,19 @@ final class BrandUpgrade
         return array_values(array_unique($list));
     }
 
-    /** `typedpress/typedpress.php`, `typedpress-app-x/typedpress-app-x.php`: the same plugin's current basename. */
+    /** The plugins the runtime shipped under the earlier name, by directory; an app's is `typedpress-app-<name>`. */
+    private const PLUGINS = ['typedpress' => 'spacepress', 'typedpress-runtime' => 'spacepress-runtime', 'typedpress-identity' => 'spacepress-identity', 'typedpress-admin' => 'spacepress-admin'];
+
+    /** The current basename of one of the runtime's own plugins, or the basename unchanged for any other plugin. */
     private static function pluginBasename(string $basename): string
     {
         $parts = explode('/', $basename);
-        if (count($parts) !== 2 || !($parts[0] === self::LEGACY || str_starts_with($parts[0], self::LEGACY . '-'))) {
+        if (count($parts) !== 2 || $parts[1] !== $parts[0] . '.php') {
             return $basename;
         }
+        $to = self::PLUGINS[$parts[0]] ?? (preg_match('/\A' . self::LEGACY . '-app-([a-z0-9][a-z0-9-]*)\z/D', $parts[0], $m) === 1 ? 'spacepress-app-' . $m[1] : null);
 
-        return implode('/', array_map(static fn (string $part): string => 'spacepress' . substr($part, strlen(self::LEGACY)), $parts));
+        return $to === null ? $basename : "$to/$to.php";
     }
 
     /** One `data` row per app in the ledger: what moved. The rows already there are left as they are. */

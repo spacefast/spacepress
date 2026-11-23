@@ -28,7 +28,7 @@ $app = $wp->app();
 
 // App data: a post (post type, its field meta, uid and timestamps), a custom-table row with a
 // revision, a soft-deleted post, and one waiting job.
-[$status, $post] = $wp->call('POST', '/posts', ['title' => 'Kept through the rename', 'slug' => 'kept', 'body' => 'Body', 'excerpt' => 'Short'], as: 'editor');
+[$status, $post] = $wp->call('POST', '/posts', ['title' => 'Kept through the rename', 'slug' => 'kept', 'body' => 'Body', 'excerpt' => 'Short', 'seo' => ['metaTitle' => 'Legacy SEO']], as: 'editor');
 $status === 201 || throw new RuntimeException("post: $status " . json_encode($post));
 [$status, $gone] = $wp->call('POST', '/posts', ['title' => 'Deleted before the rename', 'slug' => 'gone', 'body' => 'x'], as: 'editor');
 $status === 201 || throw new RuntimeException("post: $status");
@@ -42,6 +42,13 @@ $status === 201 || throw new RuntimeException("reply: $status " . json_encode($r
 $status < 300 || throw new RuntimeException("comment update: $status");
 \TypedPress\Jobs\Jobs::enqueue('typedpress.mail', ['message' => \TypedPress\Mail::payload(['to' => 'a@example.test', 'subject' => 'Queued before the rename', 'text' => 'Hello'])], ['delay' => 3600]);
 
+[$status, $global] = $wp->call('PATCH', '/globals/settings', ['tagline' => 'Kept tagline'], as: 'editor');
+$status === 200 || throw new RuntimeException("global: $status " . json_encode($global));
+// Options of other plugins that only look like the runtime's, and a page of the owner's that has the
+// home page's slug but is not a route page.
+add_option('tp_prebuilt_other_plugin_setting', 'not ours', '', false);
+add_option('tp_global_other_plugin', 'not ours', '', false);
+wp_insert_post(['post_type' => 'page', 'post_status' => 'draft', 'post_title' => 'Owner page', 'post_name' => 'typedpress-home-owner']);
 // Site state the runtime keeps: the S3 namespace, the guest role, a scoped application password,
 // a cron event of identity, and one option of another plugin that only shares the prefix.
 add_option('tp_upload_namespace', str_repeat('ab', 16), '', false);

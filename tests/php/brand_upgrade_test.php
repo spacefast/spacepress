@@ -64,9 +64,11 @@ $state = static function () use ($wp, $p, $tables): array {
 
 $legacy = 'typedpress';
 $after = $state();
-// The one stored value that keeps the earlier name on purpose: the S3 key prefix of objects already stored.
+// The one stored value that keeps the earlier name on purpose (the S3 key prefix of objects already
+// stored), and the look-alikes this test planted for other plugins and the site's owner.
 $hasLegacy = static fn (array $rows): array => array_values(array_filter(array_map('json_encode', $rows), static fn (string $r): bool => !str_contains($r, '"sp_upload_prefix"')
-    && (str_contains($r, $legacy) || preg_match('/(?<![a-z0-9])_?tp_(?!unrelated)/', $r) === 1)));
+    && !preg_match('/tp_(unrelated|prebuilt_other|global_other)|typedpress-home-owner/', $r)
+    && (str_contains($r, $legacy) || preg_match('/(?<![a-z0-9])_?tp_/', $r) === 1)));
 
 check('the upgrade is recorded', BrandUpgrade_done());
 eq('no table keeps the earlier name', $tables("{$p}tp%"), []);
@@ -104,7 +106,10 @@ eq('nothing else is left under the earlier names', [
 
 // The app reads what it wrote before.
 [$status, $post] = $wp->call('GET', '/posts/' . $before['post'], as: 'editor');
-eq('the post reads back through the API', [$status, $post['title'] ?? null, $post['excerpt'] ?? null], [200, 'Kept through the rename', 'Short']);
+eq('the post reads back through the API, a group\'s field included', [$status, $post['title'] ?? null, $post['excerpt'] ?? null, $post['seo']['metaTitle'] ?? null], [200, 'Kept through the rename', 'Short', 'Legacy SEO']);
+[$status, $global] = $wp->call('GET', '/globals/settings', as: 'editor');
+eq('the global\'s value reads back', [$status, $global['tagline'] ?? null], [200, 'Kept tagline']);
+eq('look-alike options of other plugins are untouched', [get_option('tp_prebuilt_other_plugin_setting'), get_option('tp_global_other_plugin')], ['not ours', 'not ours']);
 [$status, $comment] = $wp->call('GET', '/comments/' . $before['comment'], as: 'editor');
 eq('the custom-table row reads back', [$status, $comment['body'] ?? null], [200, 'First, edited']);
 [$status, $list] = $wp->call('GET', '/posts', as: 'editor');

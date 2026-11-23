@@ -4,7 +4,7 @@
     "ping": {
       "package": "spacepress-plugin-ping",
       "version": "2.0.0",
-      "integrity": "sha256-3b61320e06a0cf19e88531580a2b7aad0a1b6546935abeaefa2e254e00348b5b",
+      "integrity": "sha256-4bb463929f3affff6ebd8e22c905c0a812a7708bc031e1d7ca9d93a0e8bec5d1",
       "grant": {
         "read": [],
         "write": [],

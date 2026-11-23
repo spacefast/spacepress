@@ -174,11 +174,11 @@ fn a_sealed_build_lists_the_plugins_a_host_lets_load() {
             "action-scheduler",
             "mcp-adapter",
             "secure-custom-fields",
-            "two-factor",
             "spacepress",
             "spacepress-admin",
             "spacepress-app-pantry",
-            "spacepress-runtime"
+            "spacepress-runtime",
+            "two-factor"
         ]
     );
     let manifest: serde_json::Value =

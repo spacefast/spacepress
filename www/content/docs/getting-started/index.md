@@ -12,5 +12,3 @@ SpacePress compiles TypeScript schemas, server actions, background jobs, and TSX
 
 - **[Installation & Quick Start](/docs/getting-started/installation)** — requirements, scaffolding, and launching `spacepress dev`.
 - **[Project Structure](/docs/getting-started/project-structure)** — how `spacepress.config.ts`, `sp/`, `content/`, `emails/`, and `public/` fit together.
-
-> **Pre-release naming note:** SpacePress is the product and website brand (`spacepress.dev`). During pre-release, the CLI binary, npm packages, config filename (`spacepress.config.ts`), and module imports (`"spacepress"`, `"spacepress:db"`) use the identifier `spacepress`.

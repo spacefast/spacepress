@@ -2,8 +2,6 @@
 
 The official npm launcher for the **SpacePress** (`spacepress.dev`) compiler and local WordPress development environment — no Rust toolchain or Docker required.
 
-> **Pre-release naming note:** SpacePress's CLI package and binary currently ship under the pre-release name `spacepress`.
-
 ## Requirements
 
 - **Node.js 22+** (`engines.node >= 22`)

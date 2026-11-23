@@ -6,8 +6,6 @@ Write collections, relational SQL tables, declarative access rules, transactiona
 
 Website: [spacepress.dev](https://spacepress.dev) · Repository: [github.com/spacefast/spacepress](https://github.com/spacefast/spacepress)
 
-> **Pre-release naming note:** SpacePress is the product, brand, and website (`spacepress.dev`). While preparing for 1.0, the CLI binary, npm packages (`spacepress`, `create-spacepress`, `@spacepress/astro`, `@spacepress/blocks`), config file (`spacepress.config.ts`), app folder (`sp/`), and module imports (`"spacepress"`, `"spacepress:db"`) use the pre-release identifier `spacepress`.
-
 ---
 
 ## Quick Start

@@ -4,7 +4,7 @@
     "seo": {
       "package": "spacepress-plugin-x",
       "version": "0.1.0",
-      "integrity": "sha256-326e5d92d0be8e31a6947f168a2c279e96241ef3f6d7dcada9b732dea7ce8274",
+      "integrity": "sha256-0ff989a2780a247f1233a404c5166a4410782f16bb93450477e5db8c7cb5be43",
       "grant": {
         "read": [
           "posts"

@@ -122,9 +122,9 @@ final class Islands
 
     /**
      * {@see clientData()} on a page with a router region where no module imports the client: the
-     * first page's data is what a client created after a client-side navigation reads. A page that
-     * does import it gets WordPress's own copy. A site whose REST root and API are the client's
-     * defaults (`/wp-json`, `/typedpress/v1`) needs it only for a signed-in visitor's nonce.
+     * first page's data is what a client created after a client-side navigation reads (and what
+     * `typedpress export --site` points at the hosted site). A page that does import it gets
+     * WordPress's own copy.
      */
     public static function printClientData(): void
     {
@@ -132,9 +132,6 @@ final class Islands
             return;
         }
         $data = self::clientData([]);
-        if ($data === ['root' => '/wp-json/', 'api' => '/typedpress/v1']) {
-            return;
-        }
         wp_print_inline_script_tag(
             (string) wp_json_encode($data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES),
             ['type' => 'application/json', 'id' => 'wp-script-module-data-' . self::CLIENT],

@@ -850,6 +850,11 @@ impl<'a> Export<'a> {
     /// is refused.
     fn config(&self, html: &str, page: &str, refusals: &mut Vec<String>) -> String {
         MODULE_DATA.replace_all(html, |c: &regex::Captures| {
+            // The typed client's data (`Islands::clientData`) names the site's REST API. Without
+            // --site a static site has none (an action call is refused below), so it goes.
+            if &c[2] == "@typedpress/client" && self.flags.site.is_none() {
+                return String::new();
+            }
             let Ok(mut data) = serde_json::from_str::<Value>(&c[3]) else { return c[0].to_string() };
             let mut changed = false;
             // core/router's server URL: the page's address where the export is served.
@@ -861,9 +866,7 @@ impl<'a> Export<'a> {
                 data["state"]["core/router"]["url"] = Value::String(format!("{served}{path}{suffix}"));
                 changed = true;
             }
-            // The typed client's data (`Islands::clientData`): its REST root is the hosted site with
-            // --site, where the page's actions run. Without --site an action is refused below, and
-            // the root stays a path the static host doesn't serve.
+            // With --site, the typed client's REST root is the hosted site, where the page's actions run.
             if &c[2] == "@typedpress/client"
                 && let (Some(site), Some(root)) = (&self.flags.site, data.get("root").and_then(Value::as_str))
                 && let Some(local) = self.local_path(root)

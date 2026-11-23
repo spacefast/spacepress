@@ -27,12 +27,12 @@ BRAND = re.compile(rb"typedpress", re.I)
 BRAND_CASE = {b"TYPEDPRESS": b"SPACEPRESS", b"TypedPress": b"SpacePress", b"typedpress": b"spacepress"}
 REPO = re.compile(rb"(?<![@\w.-])spacefast/zero(?![\w-])")
 # tp / TP / Tp at a word start. Lowercase `tp` takes a following non-alphanumeric (tp_, tp/, tp-, tp.,
-# tp", end) or a capitalized word (camelCase: tpLoader) unless it sits in base64 (+ or / before it).
+# tp", end) or a capitalized word (camelCase: tpLoader). Base64 and hashes are masked first (OPAQUE).
 SHORT = re.compile(
     # A regex anchor (`\Atp_`) counts as a word start too.
     rb"(?:(?<![A-Za-z0-9])|(?<=\\A))(?:"
     rb"tp(?![A-Za-z0-9])"
-    rb"|(?<![+/])tp(?=[A-Z][a-z])"
+    rb"|tp(?=[A-Z][a-z])"
     rb"|TP(?![A-Za-z0-9])"
     rb"|Tp(?=[A-Z_])"
     rb"|(?:tpv|tpapp|tpswap)(?![A-Za-z0-9])"
@@ -81,9 +81,33 @@ def rewrite(data: bytes, kind: str, counts: Counter | None = None) -> bytes:
     return protect(out, lambda part: pattern.sub(short, part))
 
 
+# Base64 and hex long enough to be encoded data (integrity hashes, keys, inline payloads): no short
+# rule applies inside one. Base64 here is 8+ characters holding a digit or `+` (paths and words don't),
+# or padded with `=`; hex is 32+.
+OPAQUE = re.compile(
+    rb"(?<![A-Za-z0-9+/=])(?:(?=[A-Za-z0-9+/]*[0-9+])[A-Za-z0-9+/]{8,}={0,2}|[A-Za-z0-9+/]{4,}={1,2})(?![A-Za-z0-9+/=])"
+    rb"|[0-9a-fA-F]{32,}"
+)
+
+
 def protect(data: bytes, fn) -> bytes:
-    pieces = re.split(b"(" + b"|".join(re.escape(k) for k in KEEP) + b")", data)
-    return b"".join(p if p in KEEP else fn(p) for p in pieces)
+    keep = re.compile(b"(" + b"|".join(re.escape(k) for k in KEEP) + b")")
+    out, last = [], 0
+    for m in sorted([*keep.finditer(data), *OPAQUE.finditer(data)], key=lambda m: m.start()):
+        if m.start() < last:
+            continue
+        out += [fn(data[last:m.start()]), m[0]]
+        last = m.end()
+    return b"".join(out) + fn(data[last:])
+
+
+# A migration's directory name is its ID: the site's ledger records it. It and the `"id"` in its
+# ops.json stay as written, so an applied migration is still applied after the rename.
+MIGRATION_ID = re.compile(r"^\d{14}_[0-9a-z]{6}_[A-Za-z0-9_-]+$")
+
+
+def migration_id(parts: list[str], i: int) -> bool:
+    return i > 0 and parts[i - 1] == "migrations" and MIGRATION_ID.match(parts[i]) is not None
 
 
 def rename_path(path: str) -> str:
@@ -92,7 +116,17 @@ def rename_path(path: str) -> str:
         return path
     if kind == "skip":
         kind = "own"
-    return "/".join(rewrite(part.encode(), kind).decode() for part in path.split("/"))
+    parts = path.split("/")
+    return "/".join(part if migration_id(parts, i) else rewrite(part.encode(), kind).decode() for i, part in enumerate(parts))
+
+
+def rewrite_file(path: str, data: bytes, kind: str, counts: Counter | None = None) -> bytes:
+    parts = path.split("/")
+    if len(parts) >= 2 and parts[-1] == "ops.json" and migration_id(parts, len(parts) - 2):
+        ident = parts[-2].encode()
+        marker = b"\0MIGRATION-ID\0"
+        return rewrite(data.replace(ident, marker), kind, counts).replace(marker, ident)
+    return rewrite(data, kind, counts)
 
 
 def main() -> None:
@@ -123,7 +157,7 @@ def main() -> None:
         if b"\0" in data:
             continue
         local: Counter = Counter()
-        revised = rewrite(data, scope(path), local)
+        revised = rewrite_file(path, data, scope(path), local)
         for token in local:
             files_per_token[token].add(path)
         counts.update(local)

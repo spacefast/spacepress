@@ -30,7 +30,7 @@ final class Uploads
     public static function prefix(): string
     {
         $config = Runtime::plugin()?->schema->uploads() ?? [];
-        $prefix = Env::resolve($config['prefix'] ?? 'spacepress');
+        $prefix = Env::resolve($config['prefix'] ?? BrandUpgrade::uploadPrefix());
         if ($prefix === null || preg_match('/[\x00-\x20\x7f]/', $prefix)) {
             throw S3::unavailable();
         }

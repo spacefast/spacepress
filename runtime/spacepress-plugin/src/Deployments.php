@@ -85,8 +85,14 @@ final class Deployments
                 'app' => (string) ($entry['name'] ?? ''),
                 'by' => $user instanceof \WP_User ? $user->user_login : 'user ' . (int) ($entry['user'] ?? 0),
                 'how' => ($entry['kind'] ?? '') === 'rollback' ? 'Made live again' : 'Deployed',
-                // What the build is now, which decides whether it can be made live from here.
-                'state' => $build === $live ? 'Live' : (Site::ready($build) && ($manifest = Site::manifest($build)) !== null && Site::complete($manifest) ? 'Stored' : 'Files gone'),
+                // What the build is now, which decides whether it can be made live from here. A
+                // pre-release build is kept as a record, whole, and never made live.
+                'state' => match (true) {
+                    $build === $live => 'Live',
+                    ($manifest = Site::manifest($build)) !== null && Legacy::build($manifest) => 'Pre-release (record)',
+                    $manifest !== null && Site::ready($build) && Site::complete($manifest) => 'Stored',
+                    default => 'Files gone',
+                },
             ];
         }
 

@@ -35,6 +35,9 @@ final class Mount
                 return;
             }
             $manifest = Site::manifest($build);
+            if ($manifest !== null && Legacy::build($manifest)) {
+                throw new \RuntimeException("SpacePress build $build was made by a pre-release SpacePress, which this plugin cannot run. Push the project again.");
+            }
             if ($manifest === null || !Site::complete($manifest)) {
                 throw new \RuntimeException("SpacePress build $build is not in the build store");
             }

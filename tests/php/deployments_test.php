@@ -5,7 +5,12 @@ declare(strict_types=1);
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
-$plugin = dirname(__DIR__, 2) . '/runtime/spacepress-plugin/spacepress.php';
+// The plugin as `spacepress plugin` packages it: with the requirements.json its compiler writes.
+$copy = sys_get_temp_dir() . '/spacepress-deployments-' . bin2hex(random_bytes(4));
+wpCopy(dirname(__DIR__, 2) . '/runtime/spacepress-plugin', $copy);
+copy(dirname(__DIR__) . '/fixtures/platform.json', "$copy/requirements.json");
+register_shutdown_function(static fn () => exec('rm -rf ' . escapeshellarg($copy)));
+$plugin = "$copy/spacepress.php";
 $mu = "<?php\nrequire " . var_export($plugin, true) . ";\n";
 $schema = require dirname(__DIR__) . '/runtime-schema/base.schema.php';
 $wp = wpSite('deployments', ['schema' => $schema, 'identity' => true, 'server' => true, 'muPlugins' => ['deployment-permissions' => $mu]]);
@@ -103,4 +108,16 @@ $create = static function (array $running, string $name): string {
 eq('a current app named for the earlier brand takes its own next build', $create(['format' => 'spacepress.build.v1', 'name' => 'typedpress-client', 'runtime' => $runtime, 'app' => $app], 'typedpress-client'), 'taken');
 eq('… and no other app\'s', $create(['format' => 'spacepress.build.v1', 'name' => 'typedpress-client', 'runtime' => $runtime, 'app' => $app], 'spacepress-client'), 'sp_other_app');
 eq('a pre-release build\'s renamed app takes the build under its current name', $create(['format' => 'typedpress.build.v1', 'name' => 'typedpress-client', 'runtime' => $runtime, 'app' => $app], 'spacepress-client'), 'taken');
+// A build a pre-release receiver stored is a record: the history calls it that, and a site whose live
+// build is one says why it serves without the app, not that the build is missing.
+$earlier = json_encode(['format' => 'typedpress.build.v1', 'name' => 'example', 'runtime' => $runtime, 'app' => $app]);
+$earlierBuild = hash('sha256', $earlier);
+file_put_contents("$root/build/$earlierBuild.json", $earlier);
+file_put_contents("$root/ready/$earlierBuild.json", '{}');
+update_option(\SpacePressPlugin\Site::HISTORY, [['build' => $earlierBuild, 'kind' => 'deploy'], ['build' => str_repeat('c', 64), 'kind' => 'deploy'], ['build' => $build, 'kind' => 'deploy']]);
+update_option(\SpacePressPlugin\Site::LIVE, $build);
+eq('the history labels a pre-release build as a record, a missing one as gone', array_column(\SpacePressPlugin\Deployments::rows(), 'state'), ['Live', 'Files gone', 'Pre-release (record)']);
+update_option(\SpacePressPlugin\Site::LIVE, $earlierBuild);
+\SpacePressPlugin\Mount::mount();
+check('a live pre-release build is reported as one, with what to do', str_contains((string) \SpacePressPlugin\Mount::error(), 'made by a pre-release SpacePress') && str_contains((string) \SpacePressPlugin\Mount::error(), 'Push the project again'), \SpacePressPlugin\Mount::error());
 finish('deployments');

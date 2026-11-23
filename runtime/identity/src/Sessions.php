@@ -131,39 +131,33 @@ final class Sessions
         if (preg_match("/\\A[A-Za-z0-9_]{1,56}\\z/", $this->db->prefix) !== 1) {
             throw new \InvalidArgumentException("Invalid identity table prefix");
         }
-        $session = $this->db->row(
-            "SELECT s.* FROM {$this->db->prefix}sessions s JOIN {$this->db->prefix}accounts a ON a.wp_user_id=s.wp_user_id WHERE s.secret_hash=%s AND s.revoked_at IS NULL AND s.expires_at>%d AND a.status='active'",
-            self::digest($secret),
-            time(),
-        );
-        if ($session && !hash_equals((string) $session['secret_hash'], self::digest($secret))) {
-            $session = null;
-        }
         // A session a pre-release build opened stored its secret's digest under that build's domain:
         // found by it, it is kept signed in, and its row takes the current digest from then on.
+        $digest = self::digest($secret);
+        $earlier = Legacy::sessionDigest($secret);
+        $session = $this->db->row(
+            "SELECT s.* FROM {$this->db->prefix}sessions s JOIN {$this->db->prefix}accounts a ON a.wp_user_id=s.wp_user_id WHERE s.secret_hash IN (%s, %s) AND s.revoked_at IS NULL AND s.expires_at>%d AND a.status='active'",
+            $digest,
+            $earlier,
+            time(),
+        );
+        if ($session && hash_equals((string) $session['secret_hash'], $earlier)) {
+            $this->db->run("UPDATE {$this->db->prefix}sessions SET secret_hash=%s WHERE id=%s AND secret_hash=%s", $digest, $session['id'], $earlier);
+            $session['secret_hash'] = $digest;
+        } elseif ($session && !hash_equals((string) $session['secret_hash'], $digest)) {
+            $session = null;
+        }
+        // A secret {@see reopen()} replaced a moment ago (parallel first requests of one browser),
+        // under either digest: a pre-release build's reopen, or one of a session it opened.
         if (!$session) {
-            $earlier = Legacy::sessionDigest($secret);
             $session = $this->db->row(
-                "SELECT s.* FROM {$this->db->prefix}sessions s JOIN {$this->db->prefix}accounts a ON a.wp_user_id=s.wp_user_id WHERE s.secret_hash=%s AND s.revoked_at IS NULL AND s.expires_at>%d AND a.status='active'",
+                "SELECT s.* FROM {$this->db->prefix}sessions s JOIN {$this->db->prefix}accounts a ON a.wp_user_id=s.wp_user_id WHERE s.previous_secret_hash IN (%s, %s) AND s.previous_until>%d AND s.revoked_at IS NULL AND s.expires_at>%d AND a.status='active'",
+                $digest,
                 $earlier,
                 time(),
-            );
-            if ($session && hash_equals((string) $session['secret_hash'], $earlier)) {
-                $this->db->run("UPDATE {$this->db->prefix}sessions SET secret_hash=%s WHERE id=%s AND secret_hash=%s", self::digest($secret), $session['id'], $earlier);
-                $session['secret_hash'] = self::digest($secret);
-            } else {
-                $session = null;
-            }
-        }
-        // A secret {@see reopen()} replaced a moment ago (parallel first requests of one browser).
-        if (!$session) {
-            $session = $this->db->row(
-                "SELECT s.* FROM {$this->db->prefix}sessions s JOIN {$this->db->prefix}accounts a ON a.wp_user_id=s.wp_user_id WHERE s.previous_secret_hash=%s AND s.previous_until>%d AND s.revoked_at IS NULL AND s.expires_at>%d AND a.status='active'",
-                self::digest($secret),
-                time(),
                 time(),
             );
-            if ($session && !hash_equals((string) $session['previous_secret_hash'], self::digest($secret))) {
+            if ($session && !hash_equals((string) $session['previous_secret_hash'], $digest) && !hash_equals((string) $session['previous_secret_hash'], $earlier)) {
                 $session = null;
             }
         }

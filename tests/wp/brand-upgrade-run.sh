@@ -67,7 +67,9 @@ h sql "RENAME TABLE $(q "SHOW TABLES LIKE 'wp\_tp\_%'" | sed 's/.*/`&` TO `&`/; 
 rules=$(q "SELECT CONCAT('ON DELETE ', DELETE_RULE, ' ON UPDATE ', UPDATE_RULE) FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'tp_items_locationId_fk'")
 h sql "ALTER TABLE wp_sp_items ADD CONSTRAINT sp_items_locationId_fk FOREIGN KEY (locationId) REFERENCES wp_sp_locations (id) $rules" >/dev/null
 h wp plugin activate spacepress-runtime spacepress-identity spacepress-app-pantry spacepress-admin --skip-plugins="$old_plugins" >/dev/null
-h wp plugin deactivate "${old_plugins//,/ }" --skip-plugins="$old_plugins" >/dev/null 2>&1 || true
+# The earlier plugins go inactive; WP-CLI reports any it can't deactivate.
+read -r -a old_list <<<"${old_plugins//,/ }"
+h wp plugin deactivate "${old_list[@]}" --skip-plugins="$old_plugins" >/dev/null
 
 echo "on $(q 'SELECT VERSION()')"
 fail=0
@@ -81,7 +83,8 @@ check 'every scheduled action is kept' "$(q 'SELECT a.action_id, a.status FROM w
 check '… under the current hooks and groups' "$(q "SELECT COUNT(*) FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE a.hook LIKE 'tp\\_%' OR a.hook LIKE 'typedpress.%' OR g.slug LIKE 'typedpress%'")" 0
 check 'foreign keys keep their targets under the current names' "$(q "SELECT CONSTRAINT_NAME, TABLE_NAME, REFERENCED_TABLE_NAME, DELETE_RULE FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() ORDER BY CONSTRAINT_NAME")" \
 	"$(printf 'sp_items_locationId_fk\twp_sp_items\twp_sp_locations\tSET NULL\nsp_shopping_list_itemId_fk\twp_sp_shopping_list\twp_sp_items\tCASCADE')"
-check 'the active plugins are each listed once' "$(h wp option get active_plugins --format=json --skip-plugins | jq -c 'length == (unique | length)')" true
+check 'exactly the current plugins are active, each once' "$(h wp option get active_plugins --format=json --skip-plugins | jq -c 'sort')" \
+	'["action-scheduler/action-scheduler.php","mcp-adapter/mcp-adapter.php","secure-custom-fields/secure-custom-fields.php","spacepress-admin/spacepress-admin.php","spacepress-app-pantry/spacepress-app-pantry.php","spacepress-identity/spacepress-identity.php","spacepress-runtime/spacepress-runtime.php","two-factor/two-factor.php"]'
 check 'another plugin'"'"'s option is untouched' "$(q "SELECT option_value FROM wp_options WHERE option_name = 'tp_unrelated_plugin_setting'")" 'not ours'
 check 'the app reads its row back' "$(api GET spacepress/v1/items/1 | jq -c '[.data.name, .data.quantity, .data.locationId]')" '["Milk",3,1]'
 check 'a foreign key still acts: deleting the location empties the reference' "$(api DELETE spacepress/v1/locations/1 >/dev/null; q 'SELECT IFNULL(locationId, "null") FROM wp_sp_items WHERE id = 1')" null

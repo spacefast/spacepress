@@ -380,6 +380,9 @@ final class BrandUpgrade
             }
         }
         $options = self::present($db, $wpdb->options, 'option_name', $options);
+        // Every kind the schema names, for capability names on roles: a kind with no posts yet (or
+        // whose posts a stopped attempt already moved) still has its caps granted.
+        $kinds = $postTypes + $taxonomies;
         $postTypes = self::present($db, $wpdb->posts, 'post_type', $postTypes);
         $taxonomies = self::present($db, $wpdb->term_taxonomy, 'taxonomy', $taxonomies);
         $sitemeta = is_multisite() ? self::present($db, $wpdb->sitemeta, 'meta_key', $sitemeta) : [];
@@ -438,7 +441,7 @@ final class BrandUpgrade
             $private = [$from, WP_CONTENT_DIR . '/uploads/' . self::PRIVATE_DIR[array_key_first(self::PRIVATE_DIR)]];
         }
 
-        return ['renamedApp' => $renamedApp ?? [], 'globalRefs' => $globalRefs, 'tables' => $tables, 'owned' => $owned, 'options' => $options, 'sitemeta' => $sitemeta, 'meta' => $meta, 'metaValues' => $fieldKeys,
+        return ['kinds' => $kinds, 'renamedApp' => $renamedApp ?? [], 'globalRefs' => $globalRefs, 'tables' => $tables, 'owned' => $owned, 'options' => $options, 'sitemeta' => $sitemeta, 'meta' => $meta, 'metaValues' => $fieldKeys,
             'postTypes' => $postTypes, 'taxonomies' => $taxonomies, 'hooks' => $hooks, 'groups' => $groups, 'jobs' => $jobs,
             'plugins' => $plugins, 'private' => $private, 'apps' => $apps];
     }
@@ -540,11 +543,39 @@ final class BrandUpgrade
                 $found[] = "$table key $key";
             }
         }
+        if (is_multisite()) {
+            foreach (self::taken($db, $wpdb->sitemeta, 'meta_key', $plan['sitemeta']) as $key) {
+                $found[] = "network option $key";
+            }
+        }
         foreach (self::taken($db, $wpdb->posts, 'post_type', $plan['postTypes']) as $type) {
             $found[] = "post type $type";
         }
         foreach (self::taken($db, $wpdb->term_taxonomy, 'taxonomy', $plan['taxonomies']) as $taxonomy) {
             $found[] = "taxonomy $taxonomy";
+        }
+        // The guest OAuth client, once identity's tables have moved: its new id may be taken already.
+        $apps = $db->prefix() . (isset($plan['tables'][$db->prefix() . 'tp_identity_applications']) ? 'tp_identity_applications' : 'sp_identity_applications');
+        if (self::existingTables($db, $apps, exact: true) !== []) {
+            foreach (self::GUEST_CLIENT as $from => $to) {
+                if ($db->run("SELECT 1 AS x FROM `$apps` WHERE `id` = ?", [$from]) !== [] && $db->run("SELECT 1 AS x FROM `$apps` WHERE `id` = ?", [$to]) !== []) {
+                    $found[] = "identity application $to";
+                }
+            }
+        }
+        // A table about to move that already has a foreign key under the name one of its keys moves to.
+        if (!$db->sqlite() && $plan['tables'] !== []) {
+            $marks = implode(', ', array_fill(0, count($plan['tables']), '?'));
+            foreach ($db->run("SELECT TABLE_NAME AS t, CONSTRAINT_NAME AS n FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME IN ($marks)", array_keys($plan['tables'])) as $row) {
+                $names[$row['t']][] = (string) $row['n'];
+            }
+            foreach ($names ?? [] as $table => $keys) {
+                foreach ($keys as $key) {
+                    if (preg_match('/\A(m[0-9a-f]{7}_)?tp_/', $key, $m) === 1 && in_array(($m[1] ?? '') . 'sp_' . substr($key, strlen(($m[1] ?? '') . 'tp_')), $keys, true)) {
+                        $found[] = "foreign key on $table";
+                    }
+                }
+            }
         }
         if ($plan['private'] !== null && file_exists($plan['private'][1]) && !self::freshPrivateRoot($plan['private'][1])) {
             $found[] = "directory {$plan['private'][1]}";
@@ -673,7 +704,7 @@ final class BrandUpgrade
             + self::renameWhere($db, $wpdb->posts, 'post_name', self::PAGE_SLUGS, "`post_type` = 'page' AND `ID` IN (SELECT `post_id` FROM `{$wpdb->postmeta}` WHERE `meta_key` IN ('_sp_route', '_tp_route'))");
         $moved['taxonomies'] = self::rename($db, $wpdb->term_taxonomy, 'taxonomy', $plan['taxonomies']);
         $moved['templates'] = self::templates($db);
-        $moved['roles'] = self::roles($db, $plan['postTypes'] + $plan['taxonomies']);
+        $moved['roles'] = self::roles($db, $plan['kinds']);
         $moved['twoFactor'] = self::rename($db, $wpdb->usermeta, 'meta_value', self::TWO_FACTOR) + self::twoFactorLists($db);
         $moved['scopes'] = self::scopes($db);
         $moved['scheduler'] = self::scheduler($db, $plan['hooks'], $plan['groups']);
@@ -772,7 +803,10 @@ final class BrandUpgrade
                     continue;
                 }
                 $marks = implode(', ', array_fill(0, count($tables), '?'));
+                // `tp_<t>_<c>_fk`, or `m<hash7>_tp_…` on a non-default prefix (Migrator::scopeForeignKeys()).
                 $rename = $pdo->prepare('UPDATE ' . $quote((string) $meta) . " SET CONSTRAINT_NAME = 'sp_' || SUBSTR(CONSTRAINT_NAME, 4) WHERE CONSTRAINT_NAME LIKE 'tp\\_%' ESCAPE '\\' AND TABLE_NAME IN ($marks)");
+                $rename->execute(array_values($tables));
+                $rename = $pdo->prepare('UPDATE ' . $quote((string) $meta) . " SET CONSTRAINT_NAME = SUBSTR(CONSTRAINT_NAME, 1, 9) || 'sp_' || SUBSTR(CONSTRAINT_NAME, 13) WHERE CONSTRAINT_NAME GLOB 'm[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]_tp_*' AND TABLE_NAME IN ($marks)");
                 $rename->execute(array_values($tables));
             }
             foreach ($tables as $from => $to) {

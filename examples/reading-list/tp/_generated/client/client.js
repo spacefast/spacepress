@@ -221,8 +221,10 @@ function restUrl(root, route, query) {
 	return root + route + (query ? `?${query}` : "");
 }
 function pageData() {
+	// The script element WordPress prints, by tag and type as well as id: post content may carry an
+	// element with the same id (kses allows `id`), which getElementById would find first.
 	const doc = globalThis.document;
-	const text = doc?.getElementById("wp-script-module-data-@typedpress/client")?.textContent;
+	const text = doc?.querySelector?.("script[type=\"application/json\"][id=\"wp-script-module-data-@typedpress/client\"]")?.textContent;
 	if (!text) return null;
 	try {
 		const v = JSON.parse(text);

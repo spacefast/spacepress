@@ -589,8 +589,10 @@ interface PageData {
   nonceEndpoint?: string;
 }
 function pageData(): PageData | null {
-  const doc = (globalThis as { document?: { getElementById(id: string): { textContent: string | null } | null } }).document;
-  const text = doc?.getElementById("wp-script-module-data-@typedpress/client")?.textContent;
+  // The script element WordPress prints, by tag and type as well as id: post content may carry an
+  // element with the same id (kses allows `id`), which getElementById would find first.
+  const doc = (globalThis as { document?: { querySelector(selector: string): { textContent: string | null } | null } }).document;
+  const text = doc?.querySelector?.('script[type="application/json"][id="wp-script-module-data-@typedpress/client"]')?.textContent;
   if (!text) return null;
   try {
     const v: unknown = JSON.parse(text);

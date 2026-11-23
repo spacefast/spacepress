@@ -8,10 +8,18 @@ import { join } from "node:path";
 
 const [url, password, clientDir] = process.argv.slice(2);
 const paths = [];
-const recording = (input, init) => {
+const caching = new Set();
+const recording = async (input, init) => {
   const u = new URL(String(input));
   paths.push(`${init?.method ?? "GET"} ${u.pathname}`);
-  return fetch(input, init);
+  const res = await fetch(input, init);
+  // Every run of the app's abilities is private: no shared cache keeps one visitor's answer.
+  if (u.pathname.includes("/wp-abilities/") && res.ok) {
+    const control = (res.headers.get("cache-control") ?? "").split(",").map((d) => d.trim());
+    const vary = (res.headers.get("vary") ?? "").split(",").map((d) => d.trim().toLowerCase());
+    caching.add(control.includes("private") && control.includes("no-store") && ["origin", "cookie", "authorization"].every((h) => vary.includes(h)) ? "private" : `shared: ${res.headers.get("cache-control")} | ${res.headers.get("vary")}`);
+  }
+  return res;
 };
 const { createClient, TypedPressError } = await import(pathToFileURL(join(clientDir, "index.ts")).href);
 const authorization = `Basic ${Buffer.from(password).toString("base64")}`;
@@ -47,5 +55,6 @@ process.stdout.write(JSON.stringify({
   refused,
   visitor: { read: visitorRead.map((r) => r.name), liked: visitorLiked, me: visitorMe, update: visitorUpdate },
   wrong,
+  caching: [...caching],
   paths,
 }));

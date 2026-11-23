@@ -11,7 +11,7 @@ import { createClient, pageRead } from "@typedpress/client";
 // before reading that data itself sends it too.
 const client = createClient((() => {
   try {
-    const nonce = JSON.parse(document.getElementById("wp-script-module-data-@typedpress/client")?.textContent || "{}").nonce;
+    const nonce = JSON.parse(document.querySelector('script[type="application/json"][id="wp-script-module-data-@typedpress/client"]')?.textContent || "{}").nonce;
     return typeof nonce === "string" ? { nonce, wordpress: true } : {};
   } catch {
     return {};

@@ -693,8 +693,8 @@ impl Analysis {
         if !self.live.is_empty() {
             out.push_str("import { live } from \"@typedpress/live\";\n");
         }
-        // A server action runs through the app's typed client as its WordPress Ability: through
-        // `@wordpress/abilities` or `wp.apiFetch` on the page (WordPress's nonce, validation, errors).
+        // A server action runs through the app's typed client as its WordPress Ability, at core's run
+        // route with the REST root and nonce the page prints for the client.
         if !self.server_actions.is_empty() {
             out.push_str("import { createClient } from \"@typedpress/client\";\n");
         }

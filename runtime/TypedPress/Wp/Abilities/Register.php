@@ -18,7 +18,9 @@ use TypedPress\Wp\Runtime;
  *   rule [rule, op, what], data? (input → rule data), defer? (rule needs the pipeline),
  *   call (input → [method, path, query, body]) and result? (data → output), or run (input → output).
  * A post kind with revisions also gets one ability per staged-version step ({@see staged()}).
- * `agents: false` keeps the ability registered (PHP, `wp typedpress run`) but out of core REST and MCP.
+ * `agents: false` keeps the ability registered (PHP, `wp typedpress run`) but out of core REST
+ * discovery and MCP; core's run route still serves an operation of the app's own schema to its typed
+ * client ({@see running()}).
  */
 final class Register
 {
@@ -304,6 +306,15 @@ final class Register
         if ($response instanceof \WP_REST_Response) {
             foreach (self::$responded as $name => $value) {
                 $response->header($name, $value);
+            }
+            // A run of the app's own ability answers for whoever asks, as the app API does: never a
+            // shared copy (Batcache keeps what a request without a WordPress cookie prints otherwise).
+            if ($request instanceof \WP_REST_Request && ($name = self::runRoute($request)) !== null && self::clientOperation($name)) {
+                $response->header('Cache-Control', 'private, no-store');
+                $response->header('Vary', 'Origin, Cookie, Authorization');
+                if (function_exists('batcache_cancel')) {
+                    batcache_cancel();
+                }
             }
         }
         self::restore($request);

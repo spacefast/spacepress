@@ -3748,6 +3748,7 @@ fn the_client_outside_wordpress_runs_the_apps_abilities() {
         }),
         "{seen}"
     );
+    assert_eq!(seen["caching"], serde_json::json!(["private"]), "{seen}");
     assert_eq!(
         seen["wrong"],
         serde_json::json!({ "typed": true, "status": 401, "code": "incorrect_password" }),

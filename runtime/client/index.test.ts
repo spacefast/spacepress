@@ -2096,7 +2096,13 @@ async function onWordPressPage(run: (calls: { abilities: unknown[][] }) => Promi
   }
   const saved = Object.getOwnPropertyDescriptor(globalThis, "document");
   const text = JSON.stringify(data);
-  Object.defineProperty(globalThis, "document", { configurable: true, value: { getElementById: (id: string) => (id === "wp-script-module-data-@typedpress/client" ? { textContent: text } : null) } });
+  // Only the script tag WordPress prints is the client's data: an element of post content with the
+  // same id (getElementById's first match) is not.
+  const selector = 'script[type="application/json"][id="wp-script-module-data-@typedpress/client"]';
+  Object.defineProperty(globalThis, "document", { configurable: true, value: {
+    querySelector: (s: string) => (s === selector ? { textContent: text } : null),
+    getElementById: (id: string) => (id === "wp-script-module-data-@typedpress/client" ? { textContent: JSON.stringify({ root: "https://evil.test/wp-json/", api: "/x" }) } : null),
+  } });
   try {
     await run(calls);
   } finally {

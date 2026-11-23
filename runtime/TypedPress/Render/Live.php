@@ -111,8 +111,8 @@ final class Live
     /**
      * On a page with a `<Live>` region: the browser module, which imports the app's typed client
      * (`@typedpress/client`) and loads the Interactivity router when an answer changed. The client
-     * runs on WordPress's api-fetch: a signed-in visitor's reads carry its REST nonce, and a signed-out
-     * page carries none and stays cacheable ({@see \TypedPress\Islands::useClient()}).
+     * reads the REST root and a signed-in visitor's nonce the page prints for it; a signed-out page
+     * carries none and stays cacheable ({@see \TypedPress\Islands::clientData()}).
      */
     public static function enqueue(): void
     {

@@ -48,10 +48,16 @@ $status === 200 || throw new RuntimeException("global: $status " . json_encode($
 // home page's slug but is not a route page.
 add_option('tp_prebuilt_other_plugin_setting', 'not ours', '', false);
 add_option('tp_global_other_plugin', 'not ours', '', false);
-wp_insert_post(['post_type' => 'page', 'post_status' => 'draft', 'post_title' => 'Owner page', 'post_name' => 'typedpress-home-owner']);
+$ownerPage = wp_insert_post(['post_type' => 'page', 'post_status' => 'draft', 'post_title' => 'Owner page', 'post_name' => 'typedpress-home-owner']);
+// Meta on the owner's own page that shares the spelling of an app field's nested row, with no SCF reference.
+add_post_meta($ownerPage, 'tp_seo_metaTitle', 'not the app\'s');
 // The owner's saved copy of the sign-in template, as the Site Editor stores one.
 wp_insert_post(['post_type' => 'wp_template', 'post_status' => 'publish', 'post_name' => 'tp-login', 'post_title' => 'Sign in',
-    'post_content' => '<!-- wp:paragraph --><p>Owner text</p><!-- /wp:paragraph --><!-- wp:tp/login-form /-->', 'tax_input' => ['wp_theme' => [get_stylesheet()]]]);
+    'post_content' => '<!-- wp:paragraph --><p>Owner text</p><!-- /wp:paragraph --><!-- wp:tp/login-form /-->', 'tax_input' => ['wp_theme' => ['typedpress-default']]]);
+// It was saved for the runtime's fallback theme (an owner with no block theme of their own edits that one).
+$saved = get_page_by_path('tp-login', OBJECT, 'wp_template');
+wp_set_object_terms($saved->ID, 'typedpress-default', 'wp_theme');
+update_option('theme_mods_typedpress-default', ['custom_css_post_id' => -1, 'owner' => 'kept']);
 // Site state the runtime keeps: the S3 namespace, the guest role, a scoped application password,
 // a cron event of identity, and one option of another plugin that only shares the prefix.
 add_option('tp_upload_namespace', str_repeat('ab', 16), '', false);

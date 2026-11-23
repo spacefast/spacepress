@@ -54,7 +54,7 @@ $after = $state();
 // The one stored value that keeps the earlier name on purpose (the S3 key prefix of objects already
 // stored), and the look-alikes this test planted for other plugins and the site's owner.
 $hasLegacy = static fn (array $rows): array => array_values(array_filter(array_map('json_encode', $rows), static fn (string $r): bool => !str_contains($r, '"sp_upload_prefix"')
-    && !preg_match('/tp_(unrelated|prebuilt_other|global_other)|typedpress-home-owner/', $r)
+    && !preg_match('/tp_(unrelated|prebuilt_other|global_other)|typedpress-home-owner|not the app/', $r)
     && (str_contains($r, $legacy) || preg_match('/(?<![a-z0-9])_?tp_/', $r) === 1)));
 
 check('the upgrade is recorded', BrandUpgrade_done());
@@ -99,6 +99,10 @@ eq('the global\'s value reads back', [$status, $global['tagline'] ?? null], [200
 $template = get_page_by_path('sp-login', OBJECT, 'wp_template');
 eq('the owner\'s saved template keeps its markup, under the current slug and block', $template?->post_content,
     '<!-- wp:paragraph --><p>Owner text</p><!-- /wp:paragraph --><!-- wp:sp/login-form /-->');
+eq('… filed under the fallback theme by its current name, where the Site Editor looks', wp_get_object_terms($template->ID, 'wp_theme', ['fields' => 'slugs']), [\SpacePress\Wp\Hardening::THEME]);
+eq('the fallback theme\'s mods moved', [get_option('theme_mods_' . \SpacePress\Wp\Hardening::THEME)['owner'] ?? null, get_option('theme_mods_typedpress-default')], ['kept', false]);
+$ownerPage = (int) $wpdb->get_var("SELECT ID FROM {$wpdb->posts} WHERE post_name = 'typedpress-home-owner'");
+eq('another post\'s meta of the same spelling, with no SCF reference, is untouched', [get_post_meta($ownerPage, 'tp_seo_metaTitle', true), get_post_meta($ownerPage, 'sp_seo_metaTitle', true)], ['not the app\'s', '']);
 eq('look-alike options of other plugins are untouched', [get_option('tp_prebuilt_other_plugin_setting'), get_option('tp_global_other_plugin')], ['not ours', 'not ours']);
 [$status, $comment] = $wp->call('GET', '/comments/' . $before['comment'], as: 'editor');
 eq('the custom-table row reads back', [$status, $comment['body'] ?? null], [200, 'First, edited']);
@@ -142,6 +146,7 @@ $outcome = static function () use ($move, $held, $to): string {
 };
 eq('a served destination holds the files back', [$outcome(), is_file("$held/a.txt"), get_option(\SpacePress\Wp\WpFiles::OK)], ['held', true, '0']);
 eq('… and a retry after that failed probe still probes, and still holds them', [$outcome(), is_file("$held/a.txt")], ['held', true]);
+check('… leaving no directory there for a later recheck to open uploads in', !file_exists($to));
 remove_filter('pre_http_request', $served, PHP_INT_MAX);
 array_map('unlink', array_filter(glob("$to/{,.}*", GLOB_BRACE) ?: [], 'is_file'));
 @rmdir($to);

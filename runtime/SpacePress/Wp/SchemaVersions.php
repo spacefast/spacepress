@@ -109,7 +109,7 @@ final class SchemaVersions
                     ]);
                 } catch (DbError $e) {
                     // The primary key refused it: a writer that didn't hold the lock got there first.
-                    $taken = $db->run('SELECT 1 FROM `' . $db->prefix() . self::TABLE . '` WHERE `app` = ? AND `version` = ?', [$row['app'], $row['version']]) !== [];
+                    $taken = $db->run('SELECT 1 FROM `' . $db->prefix() . self::TABLE . '` WHERE `app` IN (?, ?) AND `version` = ?', [$row['app'], BrandUpgrade::historyApp($row['app']), $row['version']]) !== [];
                     throw $taken ? new Refused('schema_conflict', "Version {$row['version']} already exists: another change was applied first. Read the schema and propose the change again", null, '/parent', 409) : $e;
                 }
                 $db->touchOption(Loader::option($app));
@@ -257,7 +257,10 @@ final class SchemaVersions
     {
         $db = $this->plugin->connection();
         $out = [];
-        foreach ($db->run('SELECT `app`, `version`, `parent`, `format`, `build`, `actor`, `changes`, `hash`, `createdAt` FROM `' . $db->prefix() . self::TABLE . '` WHERE `app` = ? ORDER BY `version`', [$this->plugin->schema->name()]) as $row) {
+        // An app renamed with the brand keeps the versions it wrote under its earlier name as written:
+        // each row's hash covers its `app`, so the chain reads across both names unchanged.
+        $names = array_values(array_unique([$this->plugin->schema->name(), BrandUpgrade::historyApp($this->plugin->schema->name())]));
+        foreach ($db->run('SELECT `app`, `version`, `parent`, `format`, `build`, `actor`, `changes`, `hash`, `createdAt` FROM `' . $db->prefix() . self::TABLE . '` WHERE `app` IN (' . implode(', ', array_fill(0, count($names), '?')) . ') ORDER BY `version`', $names) as $row) {
             $out[] = ['app' => (string) $row['app'], 'version' => (int) $row['version'], 'parent' => (int) $row['parent'], 'format' => (int) $row['format'], 'build' => (string) $row['build'],
                 'actor' => json_decode((string) $row['actor'], true, 16, JSON_THROW_ON_ERROR), 'changes' => json_decode((string) $row['changes'], true, 64, JSON_THROW_ON_ERROR),
                 'createdAt' => (string) $row['createdAt'], 'hash' => (string) $row['hash']];

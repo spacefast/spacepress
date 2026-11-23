@@ -39,9 +39,14 @@ final class Legacy
         return str_starts_with($name, self::LEGACY . '-') ? 'spacepress' . substr($name, strlen(self::LEGACY)) : $name;
     }
 
+    /** Why the deploy plugin's earlier state didn't move this request, while it hasn't. */
+    private static ?string $problem = null;
+
     public static function register(): void
     {
         add_action('plugins_loaded', [self::class, 'move'], 0);
+        // Until the earlier state has moved, a deployment would start a store and history beside it.
+        add_filter('sp_deploy_closed', static fn (?string $reason): ?string => $reason ?? self::$problem);
     }
 
     /** Moves the deploy plugin's state once; a site with none records that and changes nothing. */
@@ -52,8 +57,17 @@ final class Legacy
         }
         global $wpdb;
         $lock = 'spacepress-deploy:' . substr(hash('sha256', DB_NAME . ':' . $wpdb->prefix), 0, 40);
-        if ((int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 10)', $lock)) !== 1 && !($wpdb->dbh instanceof \PDO)) {
-            return; // another request is moving it; this one serves without the app, as before an upload
+        $file = null;
+        if ($wpdb->dbh instanceof \PDO) {
+            $file = fopen((defined('DB_PATH') ? (string) DB_PATH : (string) (DB_DIR . '/' . DB_FILE)) . '.' . substr(hash('sha256', $lock), 0, 16) . '.lock', 'c');
+            $held = $file !== false && flock($file, LOCK_EX);
+        } else {
+            $held = (int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 10)', $lock)) === 1;
+        }
+        if (!$held) {
+            self::$problem = 'SpacePress is moving this site\'s deployments to their current names. Try again in a moment.';
+
+            return;
         }
         try {
             wp_cache_delete(self::DONE, 'options');
@@ -96,8 +110,14 @@ final class Legacy
             update_option(self::DONE, 1, true);
         } catch (\Throwable $error) {
             error_log('[spacepress] ' . $error->getMessage());
+            self::$problem = 'SpacePress could not move this site\'s deployments to their current names, so it takes no deployment until it has: ' . $error->getMessage();
         } finally {
-            $wpdb->dbh instanceof \PDO || $wpdb->query($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock));
+            if ($file) {
+                flock($file, LOCK_UN);
+                fclose($file);
+            } elseif (!($wpdb->dbh instanceof \PDO)) {
+                $wpdb->query($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock));
+            }
         }
     }
 

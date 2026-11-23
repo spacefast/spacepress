@@ -42,7 +42,7 @@ final class Runtime
         // As with app migrations: a runtime updated by copying files in sets up its tables on the
         // first request of any kind, once, under a lock.
         add_action('init', static function (): void {
-            if (!self::installs() || get_option('sp_runtime_tables') === self::tablesVersion() || Platform::problems() !== []) {
+            if (!self::installs() || get_option('sp_runtime_tables') === self::tablesVersion() || Platform::problems() !== [] || BrandUpgrade::pending()) {
                 return;
             }
             global $wpdb;
@@ -349,6 +349,10 @@ final class Runtime
         if ($problems !== []) {
             wp_die(esc_html('SpacePress: ' . implode('; ', $problems)), 'SpacePress', ['back_link' => true]);
         }
+        // A site still under the pre-release name installs once its app registers and moves it.
+        if (BrandUpgrade::pending()) {
+            return;
+        }
         global $wpdb;
         InstallMarker::forget();
         Migrator::locked(new Connection($wpdb), 'sp_runtime_tables', [self::class, 'applySystemTables']);
@@ -385,6 +389,13 @@ final class Runtime
             $problems = Platform::problems($schema->locales() !== null);
             if ($problems !== []) {
                 throw new \RuntimeException(implode('; ', $problems));
+            }
+            // A plugin-installed site moves storage it kept under the pre-release name before the app
+            // reads any of it; a managed build does it when the host initializes it.
+            if (!self::$managed && BrandUpgrade::pending()) {
+                BrandUpgrade::ensure($schema);
+                // Identity waited for the move to install its storage.
+                class_exists(\SpacePress\Identity\Plugin::class, false) && \SpacePress\Identity\Plugin::install();
             }
             self::$plugin = new Plugin($dir, $mainFile, $schema);
             self::$appFile = $mainFile;

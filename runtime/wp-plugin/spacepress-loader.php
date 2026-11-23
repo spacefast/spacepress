@@ -377,6 +377,8 @@ final class Loader
         if (!class_exists(\SpacePress\Wp\Runtime::class, false) || !\SpacePress\Wp\Runtime::managed() || \SpacePress\Wp\Runtime::plugin() === null) {
             throw new \RuntimeException('The SpacePress build did not mount; WordPress must reach plugins_loaded first');
         }
+        // Storage under the pre-release name moves before identity or the app read it.
+        \SpacePress\Wp\BrandUpgrade::ensure(\SpacePress\Wp\Runtime::plugin()->schema);
         // Identity's tables first: the app's migration provisions its guest role and client in them.
         if (self::$loaded['identity']) {
             \SpacePress\Identity\Plugin::install();

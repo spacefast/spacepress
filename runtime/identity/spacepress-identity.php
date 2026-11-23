@@ -12,6 +12,10 @@ declare(strict_types=1);
 defined("ABSPATH") || exit();
 require __DIR__ . '/src/autoload.php';
 register_activation_hook(__FILE__, static function (): void {
+    // On a site still under the pre-release name the runtime moves identity's tables first, then installs.
+    if (!\SpacePress\Identity\Plugin::storageCurrent()) {
+        return;
+    }
     global $wpdb;
     \SpacePress\Identity\Schema::migrate(new \SpacePress\Identity\DB($wpdb));
     \SpacePress\Identity\Keys::current();

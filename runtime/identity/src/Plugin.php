@@ -60,9 +60,23 @@ final class Plugin
 
     private static function installStorage(): void
     {
-        if (!Schema::ready()) {
+        if (!Schema::ready() && self::storageCurrent()) {
             Schema::migrate(self::$db);
         }
+    }
+
+    /**
+     * False while the runtime has yet to move this site's identity storage from the pre-release name
+     * (`SpacePress\Wp\BrandUpgrade`, which records `sp_brand_upgrade`): installing now would create
+     * empty tables beside the site's own. The runtime runs that move when it registers the app, then
+     * calls {@see install()}. The earlier name is the schema version option the old identity wrote.
+     */
+    public static function storageCurrent(): bool
+    {
+        global $wpdb;
+
+        return (int) get_option('sp_brand_upgrade', 0) > 0
+            || $wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->options} WHERE option_name = %s", 'tp_identity_schema_version')) === null;
     }
 
     public static function boot(string $file): void

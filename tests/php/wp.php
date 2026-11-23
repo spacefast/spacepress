@@ -189,6 +189,52 @@ final class WpSite
         return $site;
     }
 
+    /**
+     * An existing site (a directory {@see create()} left, perhaps by an earlier release), updated as a
+     * site owner installs a renamed release: this checkout's runtime, identity and app plugins are
+     * written beside the site's own and activated in a child process, as from the Plugins screen,
+     * with `$replaced` (the earlier plugins' slugs) deactivated first and left on disk. The site then
+     * loads. `$fixture` is the same as for create().
+     *
+     * @param list<string> $replaced
+     */
+    public static function adopt(string $dir, array $fixture, array $replaced = []): self
+    {
+        $repo = dirname(__DIR__, 2);
+        $site = new self($dir);
+        $saved = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
+        $site->port = (int) parse_url($saved['url'], PHP_URL_PORT);
+        $site->base = (string) ($saved['base'] ?? '');
+        $site->runtimePlugin($repo, $fixture);
+        $activate = ['spacepress-runtime'];
+        if ($fixture['identity'] ?? false) {
+            wpCopy("$repo/runtime/identity", "$dir/content/plugins/spacepress-identity", ['apps', 'composer.json', 'composer.lock']);
+            $activate[] = 'spacepress-identity';
+        }
+        $name = (string) ($fixture['schema']['name'] ?? 'app');
+        $site->appPlugin($repo, $name, $fixture);
+        $activate[] = "spacepress-app-$name";
+        // Two requests, as from the Plugins screen: the earlier plugins are deactivated (their code
+        // still runs in that request), then the new ones activated in a request that loads only them.
+        foreach ([['activate' => [], 'deactivate' => $replaced], ['activate' => $activate, 'deactivate' => []]] as $step) {
+            file_put_contents("$dir/site.json", json_encode($step + $saved, JSON_THROW_ON_ERROR));
+            $out = [];
+            exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=512M ' . escapeshellarg(__FILE__) . ' activate ' . escapeshellarg($dir) . ' 2>&1', $out, $code);
+            if ($code !== 0) {
+                throw new RuntimeException("updating the plugins failed:\n" . implode("\n", $out));
+            }
+        }
+        file_put_contents("$dir/site.json", json_encode($saved, JSON_THROW_ON_ERROR));
+        $site->users = (array) ($saved['installedUsers'] ?? []);
+        $site->load($saved['core'], $fixture);
+        $site->loaded = true;
+        foreach (get_users(['fields' => ['ID', 'user_login']]) as $user) {
+            $site->users[$user->user_login] = (int) $user->ID;
+        }
+
+        return $site;
+    }
+
     /** spacepress-runtime as `spacepress build` lays it out: runtime/SpacePress under sp/, the plugin templates rendered. */
     private function runtimePlugin(string $repo, array $fixture): void
     {
@@ -974,6 +1020,25 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
         }
     }
     echo json_encode(['users' => $users, 'passwords' => $passwords]), "\n";
+    exit(0);
+}
+
+// ================================================================ the activate child (WpSite::adopt)
+
+if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__ && ($argv[1] ?? '') === 'activate') {
+    $dir = $argv[2];
+    $site = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
+    wpDefine($dir, $site['url']);
+    require_once ABSPATH . 'wp-settings.php';
+    require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    deactivate_plugins(array_map(static fn (string $slug): string => "$slug/$slug.php", $site['deactivate']), true);
+    foreach ($site['activate'] as $slug) {
+        $error = activate_plugin("$slug/$slug.php");
+        if ($error instanceof WP_Error) {
+            fwrite(STDERR, "activating $slug: " . $error->get_error_message() . "\n");
+            exit(1);
+        }
+    }
     exit(0);
 }
 

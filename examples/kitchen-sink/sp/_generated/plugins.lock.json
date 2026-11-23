@@ -4,7 +4,7 @@
     "policy": {
       "package": "spacepress-plugin-kitchen-policy",
       "version": "1.0.0",
-      "integrity": "sha256-5e63dc3c5b263434e0ca8b70bf315e508356412c5f0a136fe79b28e1a735daf6",
+      "integrity": "sha256-41c44ca45e26530a20228ae22f8677dd5def4e7552cff80ffc7084c71a240ad4",
       "grant": {
         "read": [
           "recipes"

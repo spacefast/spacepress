@@ -241,7 +241,7 @@ final class Receiver
             $archive = new \ZipArchive();
             $slug = dirname(plugin_basename(SP_PLUGIN_FILE));
             if ($archive->open($package, \ZipArchive::RDONLY) !== true || $archive->locateName('spacepress/spacepress.php') === false || $slug !== 'spacepress') {
-                throw new Refusal('sp_invalid', 'This is not the SpacePress plugin, or the plugin is not installed as wp-content/plugins/sp.', 422);
+                throw new Refusal('sp_invalid', 'This is not the SpacePress plugin, or the plugin is not installed as wp-content/plugins/spacepress.', 422);
             }
             for ($i = 0; $i < $archive->numFiles; $i++) {
                 if (!str_starts_with((string) $archive->getNameIndex($i), 'spacepress/') || str_contains((string) $archive->getNameIndex($i), '..')) {

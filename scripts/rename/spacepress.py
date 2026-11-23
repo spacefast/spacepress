@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic brand rename for a git checkout: TypedPress/tp -> SpacePress/sp.
 
-Usage: rename.py <repo> [--apply] [--report <dir>]
+Usage: spacepress.py <repo> [--apply] [--report <dir>]
 
 Dry run by default: prints a summary, writes per-token reports, and fails on path collisions.
 --apply rewrites tracked files in place, moves renamed paths, and stages exactly the touched
@@ -16,12 +16,12 @@ Scopes:
   vendored code (vendor-prefixed, the legacy Zero client) and lockfiles get the brand rule only.
   upstream metadata other than our adapter-originals is left alone; its inventory is rehashed after.
 """
+from argparse import ArgumentParser
 from collections import Counter, defaultdict
 from pathlib import Path
 import os
 import re
 import subprocess
-import sys
 
 BRAND = re.compile(rb"typedpress", re.I)
 BRAND_CASE = {b"TYPEDPRESS": b"SPACEPRESS", b"TypedPress": b"SpacePress", b"typedpress": b"spacepress"}
@@ -95,9 +95,13 @@ def rename_path(path: str) -> str:
 
 
 def main() -> None:
-    repo = Path(sys.argv[1]).resolve()
-    apply = "--apply" in sys.argv
-    report = Path(sys.argv[sys.argv.index("--report") + 1]) if "--report" in sys.argv else None
+    parser = ArgumentParser(description="Rename the tracked source of a SpacePress project.")
+    parser.add_argument("repo", type=Path)
+    parser.add_argument("--apply", action="store_true", help="write and stage the rename")
+    parser.add_argument("--report", type=Path, help="write detailed scope reports to this directory")
+    arguments = parser.parse_args()
+    repo = arguments.repo.resolve()
+    report = arguments.report
     tracked = [p for p in subprocess.check_output(["git", "-C", str(repo), "ls-files", "-z"]).decode().split("\0") if p]
     modes = {}
     for line in subprocess.check_output(["git", "-C", str(repo), "ls-files", "-s", "-z"]).decode().split("\0"):
@@ -128,9 +132,20 @@ def main() -> None:
     for path in tracked:
         destinations[moves.get(path, path).casefold()].append(path)
     collisions = [paths for paths in destinations.values() if len(paths) > 1]
-    print(f"tracked={len(tracked)} content_edits={len(edits)} path_moves={len(moves)} collisions={len(collisions)}")
+    blocked = []
+    for target in sorted(moves.values()):
+        destination = repo / target
+        if os.path.lexists(destination) or any(
+            parent.is_symlink() or (parent.exists() and not parent.is_dir())
+            for parent in destination.parents
+            if parent.is_relative_to(repo) and parent != repo
+        ):
+            blocked.append(target)
+    print(f"tracked={len(tracked)} content_edits={len(edits)} path_moves={len(moves)} collisions={len(collisions) + len(blocked)}")
     for paths in collisions:
         print("COLLISION", paths)
+    for target in blocked:
+        print("DESTINATION EXISTS OR IS BLOCKED", target)
     if report:
         report.mkdir(parents=True, exist_ok=True)
         with open(report / "short-tokens.tsv", "w") as out:
@@ -142,10 +157,13 @@ def main() -> None:
                 out.write(f"{a}\t{b}\n")
         with open(report / "edits.txt", "w") as out:
             out.write("\n".join(sorted(edits)) + "\n")
-    if collisions:
+    if collisions or blocked:
         raise SystemExit(1)
-    if not apply:
+    if not arguments.apply or (not moves and not edits):
         return
+    git = ["git", "-C", str(repo)]
+    if subprocess.run([*git, "diff", "--cached", "--quiet"]).returncode:
+        raise SystemExit("Commit your staged changes before applying the rename.")
     for path, data in edits.items():
         (repo / path).write_bytes(data)
     for path, target in moves.items():
@@ -158,10 +176,11 @@ def main() -> None:
             parent.rmdir()
             parent = parent.parent
     env = {**os.environ, "GIT_LITERAL_PATHSPECS": "1"}
-    old = "\0".join(moves) + "\0"
     new = "\0".join(sorted(set(moves.values()) | (set(edits) - set(moves)))) + "\0"
-    subprocess.run(["git", "-C", str(repo), "rm", "-q", "--cached", "--pathspec-from-file=-", "--pathspec-file-nul"], input=old.encode(), check=True, env=env)
-    subprocess.run(["git", "-C", str(repo), "add", "-f", "--pathspec-from-file=-", "--pathspec-file-nul"], input=new.encode(), check=True, env=env)
+    if moves:
+        old = "\0".join(moves) + "\0"
+        subprocess.run([*git, "rm", "-q", "--cached", "--pathspec-from-file=-", "--pathspec-file-nul"], input=old.encode(), check=True, env=env)
+    subprocess.run([*git, "add", "-f", "--pathspec-from-file=-", "--pathspec-file-nul"], input=new.encode(), check=True, env=env)
 
 
 if __name__ == "__main__":

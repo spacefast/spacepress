@@ -1,4 +1,4 @@
-import { useImageCropper } from '@typedpress-admin/image-cropper';
+import { useImageCropper } from '@spacepress-admin/image-cropper';
 import { useEffect, useState } from '@wordpress/element';
 
 export default function ImagePreview( {
@@ -36,7 +36,7 @@ export default function ImagePreview( {
 
 	return (
 		<img
-			className="typedpress-admin-media-editor-content__image"
+			className="spacepress-admin-media-editor-content__image"
 			src={ displayUrl || sourceUrl }
 			alt={ altText }
 		/>

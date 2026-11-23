@@ -6,7 +6,7 @@ import { __experimentalTruncate as Truncate } from '@wordpress/components';
 import type { Attachment } from '@wordpress/core-data';
 import { getFilename } from '@wordpress/url';
 import { Icon, Stack } from '@wordpress/ui';
-import type { DataViewRenderFieldProps } from '@typedpress-admin/dataviews';
+import type { DataViewRenderFieldProps } from '@spacepress-admin/dataviews';
 import { getMediaTypeFromMimeType } from '../utils/get-media-type-from-mime-type';
 import type { MediaItem } from '../types';
 

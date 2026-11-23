@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components -- Tooltip not yet migrated
-import { Tooltip } from '@typedpress-admin/design-system';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components -- Tooltip not yet migrated
+import { Tooltip } from '@spacepress-admin/design-system';
 import { Badge } from '@wordpress/ui';
 import type { DashboardWidgetBadge } from '../../../types';
 

@@ -1,18 +1,18 @@
 {
   "notes": {
-    "typedpress.config.ts": "Exports schema, actions, and config",
-    "tp/schema.ts": "WordPress collection + SQL table",
-    "tp/actions.ts": "Server action compiled to PHP",
-    "tp/app/layout.tsx": "Shared shell for all pages",
-    "tp/app/articles/[slug]/page.tsx": "Server-rendered article page",
-    "tp/components/ClapButton.tsx": "Compiled to WordPress Interactivity API"
+    "spacepress.config.ts": "Exports schema, actions, and config",
+    "sp/schema.ts": "WordPress collection + SQL table",
+    "sp/actions.ts": "Server action compiled to PHP",
+    "sp/app/layout.tsx": "Shared shell for all pages",
+    "sp/app/articles/[slug]/page.tsx": "Server-rendered article page",
+    "sp/components/ClapButton.tsx": "Compiled to WordPress Interactivity API"
   },
   "treeNotes": {
-    "typedpress.config.ts": "entry",
-    "tp/schema.ts": "data model",
-    "tp/actions.ts": "server RPC",
-    "tp/app/layout.tsx": "layout",
-    "tp/app/articles/[slug]/page.tsx": "dynamic route",
-    "tp/components/ClapButton.tsx": "client island"
+    "spacepress.config.ts": "entry",
+    "sp/schema.ts": "data model",
+    "sp/actions.ts": "server RPC",
+    "sp/app/layout.tsx": "layout",
+    "sp/app/articles/[slug]/page.tsx": "dynamic route",
+    "sp/components/ClapButton.tsx": "client island"
   }
 }

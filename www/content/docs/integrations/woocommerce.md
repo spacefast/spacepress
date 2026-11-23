@@ -11,15 +11,15 @@ publishedAt: 2026-11-21T09:10:00.000Z
 Add a complete WooCommerce storefront to any project with:
 
 ```bash
-npx typedpress add shop
+npx spacepress add shop
 ```
 
 ## Declarative store & catalog builders
 
-Export `store()`, `product()`, `productCategory()`, `productTag()`, and `order()` from `tp/shop.ts` (re-exported in `typedpress.config.ts`):
+Export `store()`, `product()`, `productCategory()`, `productTag()`, and `order()` from `sp/shop.ts` (re-exported in `spacepress.config.ts`):
 
 ```ts
-import { store, product, productCategory, productTag, order } from "typedpress";
+import { store, product, productCategory, productTag, order } from "spacepress";
 
 export const shop = store({
   currency: "EUR",
@@ -46,7 +46,7 @@ export const orders = order();
 
 ## Optimistic cart client & React hooks
 
-Whenever a project exports `store()`, `typedpress build` emits `commerce.ts`, `cart-store.ts`, and `cart-react.ts` in `tp/_generated/client/`. Call `createCartHooks(React)` to obtain `useCart()` and `useCartCount()` with optimistic item quantity updates and automatic rollback on failure.
+Whenever a project exports `store()`, `spacepress build` emits `commerce.ts`, `cart-store.ts`, and `cart-react.ts` in `sp/_generated/client/`. Call `createCartHooks(React)` to obtain `useCart()` and `useCartCount()` with optimistic item quantity updates and automatic rollback on failure.
 
 If a token cart checkout succeeds and the cart refresh fails, `checkout()` still returns the order. The store sets `stale` until WooCommerce returns the current cart.
 

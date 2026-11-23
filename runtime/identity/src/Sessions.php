@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 final class Sessions
 {
@@ -20,17 +20,17 @@ final class Sessions
     }
     public function __construct(private DB $db, private Security $security) {
         // Session cookies on the scoped REST surface are opt-in: a host serving its own frontend
-        // (`tp_identity_rest_cookie_auth`).
+        // (`sp_identity_rest_cookie_auth`).
         add_filter('rest_authentication_errors', function ($result) {
             if (is_wp_error($result) || is_user_logged_in() || ($result !== null && $result !== true)
                 || !self::restCookieAuth()) { return $result; }
-            // TypedPress's API, the REST namespace typedpress/v1 (identity loads without TypedPress, so
+            // SpacePress's API, the REST namespace spacepress/v1 (identity loads without SpacePress, so
             // the namespace is literal), and any route the app names as its own
-            // (`tp_identity_rest_cookie_route`: the runtime adds its abilities' run routes).
+            // (`sp_identity_rest_cookie_route`: the runtime adds its abilities' run routes).
             $route = untrailingslashit((string) ($GLOBALS["wp"]->query_vars["rest_route"] ?? ""));
             $path = strtolower($route);
-            $api = $path === "/typedpress/v1" || str_starts_with($path, "/typedpress/v1/");
-            if (!(bool) apply_filters('tp_identity_rest_cookie_route', $api, $route)) { return $result; }
+            $api = $path === "/spacepress/v1" || str_starts_with($path, "/spacepress/v1/");
+            if (!(bool) apply_filters('sp_identity_rest_cookie_route', $api, $route)) { return $result; }
             // The cookie is ambient: it lends no identity to another origin's request (a sibling
             // host under the same site), a cross-site fetch, or a JSONP script include.
             $origin = (string) ($_SERVER['HTTP_ORIGIN'] ?? '');
@@ -64,7 +64,7 @@ final class Sessions
     }
     private static function restCookieAuth(): bool
     {
-        return (bool) apply_filters('tp_identity_rest_cookie_auth', false);
+        return (bool) apply_filters('sp_identity_rest_cookie_auth', false);
     }
     /**
      * Whether this request comes from the site's own pages: an `Origin` that is the site's, or
@@ -121,7 +121,7 @@ final class Sessions
     }
     public static function digest(string $secret): string
     {
-        return hash("sha256", "typedpress-identity-session-v1\0" . $secret);
+        return hash("sha256", "spacepress-identity-session-v1\0" . $secret);
     }
     public function find(string $secret): ?array
     {

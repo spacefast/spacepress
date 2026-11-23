@@ -1,5 +1,5 @@
-import { Page } from '@typedpress-admin/admin-toolkit';
-import { withEditor, withStylesId } from '@typedpress-admin/lazy-editor';
+import { Page } from '@spacepress-admin/admin-toolkit';
+import { withEditor, withStylesId } from '@spacepress-admin/lazy-editor';
 import { Spinner } from '@wordpress/components';
 import type { Post } from '@wordpress/core-data';
 import { store as coreStore } from '@wordpress/core-data';
@@ -49,7 +49,7 @@ function NavigationEditStage() {
 				<Page.Breadcrumbs
 					items={ [
 						{
-							label: __( 'Navigation', 'typedpress-admin' ),
+							label: __( 'Navigation', 'spacepress-admin' ),
 							to: '/design/navigation/list',
 						},
 						{

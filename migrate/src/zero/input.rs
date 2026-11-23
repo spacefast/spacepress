@@ -6,9 +6,9 @@ use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::path::Path;
-use typedpress::diag;
-use typedpress::ir::{ArrEl, DeclKind, Expr, ExprKind, FnBody, ImportName, Pat, Prop, PropKey, Stmt, UnOp};
-use typedpress::lower::Lowerer;
+use spacepress::diag;
+use spacepress::ir::{ArrEl, DeclKind, Expr, ExprKind, FnBody, ImportName, Pat, Prop, PropKey, Stmt, UnOp};
+use spacepress::lower::Lowerer;
 
 use super::{Failure, Source, fail, pointer};
 

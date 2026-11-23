@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\String\Inflector;
+namespace SpacePress\Identity\Vendor\Symfony\Component\String\Inflector;
 
 final class SpanishInflector implements InflectorInterface
 {

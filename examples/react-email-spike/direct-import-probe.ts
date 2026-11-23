@@ -1,4 +1,4 @@
-import { defineConfig, mail, mutation } from "typedpress";
+import { defineConfig, mail, mutation } from "spacepress";
 import { createElement } from "react";
 import { render, toPlainText } from "react-email";
 import Invitation from "./emails/invitation";

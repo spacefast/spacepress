@@ -1,6 +1,6 @@
 // The migrated journal (after/) on WordPress-on-SQLite, read in Chromium: the pages the Astro site
 // had (home, blog, a post, about), the collection seeded from its Markdown files, and the island,
-// which hydrates and counts clicks. Needs the `typedpress` binary (TP_BIN, default target/debug/typedpress),
+// which hydrates and counts clicks. Needs the `spacepress` binary (SP_BIN, default target/debug/spacepress),
 // PHP 8.2+ with pdo_sqlite, and `npm ci` plus Chromium's headless shell in tests/differential/client.
 //
 //   node --test migrate/astro/example/migrated.test.mjs
@@ -16,9 +16,9 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../../..");
-const bin = process.env.TP_BIN ?? join(repo, "target/debug/typedpress");
+const bin = process.env.SP_BIN ?? join(repo, "target/debug/spacepress");
 const { chromium } = createRequire(join(repo, "tests/differential/client/package.json"))("playwright-core");
-const work = mkdtempSync(join(tmpdir(), "typedpress-journal-"));
+const work = mkdtempSync(join(tmpdir(), "spacepress-journal-"));
 let server;
 let url;
 let browser;
@@ -29,14 +29,14 @@ const first = (...args) => {
 };
 
 before(async () => {
-  assert.ok(existsSync(bin), `build the compiler first (cargo build --bin typedpress), or set TP_BIN; ${bin} is missing`);
+  assert.ok(existsSync(bin), `build the compiler first (cargo build --bin spacepress), or set SP_BIN; ${bin} is missing`);
   const project = join(work, "journal");
   cpSync(join(here, "after"), project, { recursive: true });
   first("build", project, "--quiet");
   first("sources", project, "--out", join(work, "sources"));
   first("compile-sources", join(work, "sources"), join(work, "compiled"), project);
-  server = spawn("php", ["-d", "memory_limit=512M", join(repo, "tests/php/serve_built.php"), join(project, "tp/dist/wp-content"), join(work, "compiled/seed")], {
-    env: { ...process.env, TP_WP_THEMES: "1" },
+  server = spawn("php", ["-d", "memory_limit=512M", join(repo, "tests/php/serve_built.php"), join(project, "sp/dist/wp-content"), join(work, "compiled/seed")], {
+    env: { ...process.env, SP_WP_THEMES: "1" },
     stdio: ["ignore", "pipe", "inherit"],
   });
   url = JSON.parse(await new Promise((ok, fail) => {

@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn;
+namespace SpacePress\Identity\Vendor\Webauthn;
 
 use function in_array;
 use InvalidArgumentException;
 use function is_string;
 use function sprintf;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtension;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtension;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
 
 abstract class PublicKeyCredentialOptions
 {

@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 // reaches a browser wherever the site is opened (`--url` behind a proxy, `--host`, https) and no
 // PHP worker is held open for it.
 //
-// `session` names this `typedpress dev` process and `revision` counts its builds that changed the
+// `session` names this `spacepress dev` process and `revision` counts its builds that changed the
 // site: a page rendered at another pair reloads. `diagnostics` is the failed build's errors, shown
 // over the page until a build succeeds.
 export async function liveUpdates({ publish }) {

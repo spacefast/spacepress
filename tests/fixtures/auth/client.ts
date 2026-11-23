@@ -1,8 +1,8 @@
-// Compiled against the generated client of ./typedpress.config.ts (tests/compiler.rs): what the types
+// Compiled against the generated client of ./spacepress.config.ts (tests/compiler.rs): what the types
 // allow and refuse for an auth collection (§6.2).
-import { createClient, type Member, type Role, type User } from "./tp/_generated/client/index.ts";
+import { createClient, type Member, type Role, type User } from "./sp/_generated/client/index.ts";
 
-const first = createClient({ url: "http://localhost/wp-json/typedpress/v1" });
+const first = createClient({ url: "http://localhost/wp-json/spacepress/v1" });
 const roles: Role[] = ["guest", "subscriber", "author", "editor", "admin"];
 const me: User | null = await first.auth.me();
 const member: Member | null | undefined = me?.member;

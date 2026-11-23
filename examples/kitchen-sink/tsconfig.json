@@ -8,14 +8,14 @@
     "noEmit": true,
     "types": [],
     "jsx": "react-jsx",
-    "jsxImportSource": "typedpress",
+    "jsxImportSource": "spacepress",
     "allowImportingTsExtensions": true,
     "paths": {
-      "typedpress": ["../../types/typedpress/index.d.ts"],
-      "typedpress/*": ["../../types/typedpress/*.d.ts"],
-      "typedpress:db": ["../../types/typedpress/db.d.cts"],
-      "php/wordpress": ["../../types/typedpress/wordpress.d.ts"]
+      "spacepress": ["../../types/spacepress/index.d.ts"],
+      "spacepress/*": ["../../types/spacepress/*.d.ts"],
+      "spacepress:db": ["../../types/spacepress/db.d.cts"],
+      "php/wordpress": ["../../types/spacepress/wordpress.d.ts"]
     }
   },
-  "include": ["typedpress.config.ts", "tp", "emails"]
+  "include": ["spacepress.config.ts", "sp", "emails"]
 }

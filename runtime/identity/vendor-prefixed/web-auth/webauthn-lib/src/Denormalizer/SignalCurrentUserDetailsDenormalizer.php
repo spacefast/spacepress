@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Denormalizer;
+namespace SpacePress\Identity\Vendor\Webauthn\Denormalizer;
 
 use function assert;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use TypedPress\Identity\Vendor\Webauthn\Signal\CurrentUserDetails;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use SpacePress\Identity\Vendor\Webauthn\Signal\CurrentUserDetails;
 
 class SignalCurrentUserDetailsDenormalizer implements NormalizerInterface, NormalizerAwareInterface
 {

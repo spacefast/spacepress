@@ -56,7 +56,7 @@ const DashboardActions = ( {
 						onOpenWidgetsModal();
 					} }
 				>
-					{ __( 'Add widgets', 'typedpress-admin' ) }
+					{ __( 'Add widgets', 'spacepress-admin' ) }
 				</Button>
 			</Stack>
 		);
@@ -79,7 +79,7 @@ const DashboardActions = ( {
 							onOpenWidgetsModal();
 						} }
 					>
-						{ __( 'Add widget', 'typedpress-admin' ) }
+						{ __( 'Add widget', 'spacepress-admin' ) }
 					</Button>
 					<Button
 						variant="minimal"
@@ -89,7 +89,7 @@ const DashboardActions = ( {
 							onCancel();
 						} }
 					>
-						{ __( 'Cancel', 'typedpress-admin' ) }
+						{ __( 'Cancel', 'spacepress-admin' ) }
 					</Button>
 				</>
 			) }
@@ -104,8 +104,8 @@ const DashboardActions = ( {
 				} }
 			>
 				{ editMode
-					? __( 'Done', 'typedpress-admin' )
-					: __( 'Customize', 'typedpress-admin' ) }
+					? __( 'Done', 'spacepress-admin' )
+					: __( 'Customize', 'spacepress-admin' ) }
 			</Button>
 		</Stack>
 	);

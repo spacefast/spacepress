@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
 
 /**
  * Base interface for ASN.1 type elements.

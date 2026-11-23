@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR;
+namespace SpacePress\Identity\Vendor\CBOR;
 
-use TypedPress\Identity\Vendor\Brick\Math\BigInteger;
+use SpacePress\Identity\Vendor\Brick\Math\BigInteger;
 use InvalidArgumentException;
 
 final class NegativeIntegerObject extends AbstractCBORObject implements Normalizable

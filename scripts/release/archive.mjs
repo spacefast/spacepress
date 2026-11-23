@@ -29,10 +29,10 @@ export async function archive({ binary, target, output, revision, workingTree = 
   const destination = join(output, name);
   const reserve = await open(destination, 'wx');
   await reserve.close();
-  const stage = await mkdtemp(join(tmpdir(), 'typedpress-release-'));
+  const stage = await mkdtemp(join(tmpdir(), 'spacepress-release-'));
   try {
-    await copyFile(binary, join(stage, 'typedpress'));
-    await cp(new URL('types/typedpress/', root), join(stage, 'types'), { recursive: true });
+    await copyFile(binary, join(stage, 'spacepress'));
+    await cp(new URL('types/spacepress/', root), join(stage, 'types'), { recursive: true });
     await mkdir(join(stage, 'licenses'));
     for (const name of ['LICENSE', 'LICENSING.md', 'licenses/GPL-2.0-or-later.txt', 'Cargo.lock']) await copyFile(new URL(name, root), join(stage, name));
     async function notices(directory, prefix = '') {
@@ -107,11 +107,11 @@ export async function archive({ binary, target, output, revision, workingTree = 
     }
     await writeFile(join(stage, 'licenses/DEPENDENCIES.json'), JSON.stringify(dependencies.sort((a, b) => `${a.name}@${a.version}`.localeCompare(`${b.name}@${b.version}`)), null, 2) + '\n');
     await writeFile(join(stage, 'SOURCE.json'), JSON.stringify({
-      version, target, revision, sourceKind: workingTree ? 'local-working-tree-test' : 'git-commit', source: `https://github.com/spacefast/zero/tree/${revision}`,
+      version, target, revision, sourceKind: workingTree ? 'local-working-tree-test' : 'git-commit', source: `https://github.com/spacefast/spacepress/tree/${revision}`,
       signed: false, licenses: 'LICENSE is MIT, licenses/GPL-2.0-or-later.txt is the GPL, and LICENSING.md maps every component to one of them; runtime notices retain their original paths under licenses/runtime/. Rust notices and metadata are under licenses/rust/ and licenses/DEPENDENCIES.json; exact versions and registry checksums are recorded in Cargo.lock.',
     }, null, 2) + '\n');
     // GNU tar treats a drive letter in the archive argument as a remote host.
-    await exec('tar', ['-czf', name, '-C', stage, 'typedpress', 'LICENSE', 'LICENSING.md', 'Cargo.lock', 'SOURCE.json', 'licenses', 'types'], { cwd: output });
+    await exec('tar', ['-czf', name, '-C', stage, 'spacepress', 'LICENSE', 'LICENSING.md', 'Cargo.lock', 'SOURCE.json', 'licenses', 'types'], { cwd: output });
     const hash = createHash('sha256');
     for await (const chunk of createReadStream(destination)) hash.update(chunk);
     const sha256 = hash.digest('hex');

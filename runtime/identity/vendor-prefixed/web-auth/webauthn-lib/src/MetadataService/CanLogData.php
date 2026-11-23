@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\MetadataService;
+namespace SpacePress\Identity\Vendor\Webauthn\MetadataService;
 
-use TypedPress\Identity\Vendor\Psr\Log\LoggerInterface;
+use SpacePress\Identity\Vendor\Psr\Log\LoggerInterface;
 
 interface CanLogData
 {

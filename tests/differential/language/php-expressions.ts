@@ -1,5 +1,5 @@
 // Readability changes must retain single evaluation and lazy keys/fallbacks.
-import { mutation, defineConfig } from "typedpress";
+import { mutation, defineConfig } from "spacepress";
 
 const run = (handler: () => unknown) => mutation({}, handler);
 

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR\OtherObject;
+namespace SpacePress\Identity\Vendor\CBOR\OtherObject;
 
-use TypedPress\Identity\Vendor\CBOR\OtherObject as Base;
+use SpacePress\Identity\Vendor\CBOR\OtherObject as Base;
 use InvalidArgumentException;
 use function ord;
 

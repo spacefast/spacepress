@@ -1,8 +1,8 @@
-# `typedpress` (SpacePress CLI)
+# `spacepress` (SpacePress CLI)
 
 The official npm launcher for the **SpacePress** (`spacepress.dev`) compiler and local WordPress development environment — no Rust toolchain or Docker required.
 
-> **Pre-release naming note:** SpacePress's CLI package and binary currently ship under the pre-release name `typedpress`.
+> **Pre-release naming note:** SpacePress's CLI package and binary currently ship under the pre-release name `spacepress`.
 
 ## Requirements
 
@@ -10,51 +10,51 @@ The official npm launcher for the **SpacePress** (`spacepress.dev`) compiler and
 
 ## Installation
 
-Install as a dev dependency in your SpacePress project (or scaffold a new project with `npm create typedpress@0.3.0 my-app`):
+Install as a dev dependency in your SpacePress project (or scaffold a new project with `npm create spacepress@0.3.0 my-app`):
 
 ```bash
-npm install -D typedpress
+npm install -D spacepress
 ```
 
-During `postinstall`, the package downloads the prebuilt native Rust binary for your OS and CPU architecture. To point the launcher at a locally compiled binary instead, set `TP_BIN=/absolute/path/to/typedpress`.
+During `postinstall`, the package downloads the prebuilt native Rust binary for your OS and CPU architecture. To point the launcher at a locally compiled binary instead, set `SP_BIN=/absolute/path/to/spacepress`.
 
 ## Common Commands
 
 ```bash
 # Start local WordPress + SQLite dev server with watch rebuilds
-npx typedpress dev
+npx spacepress dev
 
 # Validate TypeScript schemas, hooks, actions, pages, and locks
-npx typedpress check
+npx spacepress check
 
-# Compile WordPress plugins to tp/dist/wp-content/plugins/
-npx typedpress build
+# Compile WordPress plugins to sp/dist/wp-content/plugins/
+npx spacepress build
 
 # Export a static site when output: "static" is configured
-npx typedpress export
+npx spacepress export
 
 # Two-way sync between content/ Markdown/JSON and WordPress
-npx typedpress sync
+npx spacepress sync
 
 # Add optional starter modules (shop, db, api-reference)
-npx typedpress add shop
+npx spacepress add shop
 
 # Generate AGENTS.md, .mcp.json, and agent skills
-npx typedpress init
+npx spacepress init
 
 # Serve the project MCP server on stdio
-npx typedpress mcp
+npx spacepress mcp
 
-# Package typedpress.zip or push directly to a remote WordPress site
-npx typedpress plugin
-npx typedpress login https://example.com
-npx typedpress push
+# Package spacepress.zip or push directly to a remote WordPress site
+npx spacepress plugin
+npx spacepress login https://example.com
+npx spacepress push
 
 # Run any WP-CLI command against local dev or a remote --site target
-npx typedpress wp plugin list
+npx spacepress wp plugin list
 ```
 
-Run `npx typedpress --help` or `npx typedpress help <command>` for complete options.
+Run `npx spacepress --help` or `npx spacepress help <command>` for complete options.
 
 ## Documentation & License
 

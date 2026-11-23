@@ -9,15 +9,15 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\String\Slugger;
+namespace SpacePress\Identity\Vendor\Symfony\Component\String\Slugger;
 
 use Symfony\Component\Emoji\EmojiTransliterator;
-use TypedPress\Identity\Vendor\Symfony\Component\String\AbstractUnicodeString;
-use TypedPress\Identity\Vendor\Symfony\Component\String\UnicodeString;
+use SpacePress\Identity\Vendor\Symfony\Component\String\AbstractUnicodeString;
+use SpacePress\Identity\Vendor\Symfony\Component\String\UnicodeString;
 use Symfony\Contracts\Translation\LocaleAwareInterface;
 
 if (!interface_exists(LocaleAwareInterface::class)) {
-    throw new \LogicException('You cannot use the "TypedPress\Identity\Vendor\Symfony\Component\String\Slugger\AsciiSlugger" as the "symfony/translation-contracts" package is not installed. Try running "composer require symfony/translation-contracts".');
+    throw new \LogicException('You cannot use the "SpacePress\Identity\Vendor\Symfony\Component\String\Slugger\AsciiSlugger" as the "symfony/translation-contracts" package is not installed. Try running "composer require symfony/translation-contracts".');
 }
 
 /**

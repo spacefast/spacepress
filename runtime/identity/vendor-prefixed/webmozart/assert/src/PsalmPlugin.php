@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webmozart\Assert;
+namespace SpacePress\Identity\Vendor\Webmozart\Assert;
 
 use Psalm\Internal\Analyzer\Statements\Expression\ExpressionIdentifier;
 use Psalm\Plugin\EventHandler\AfterMethodCallAnalysisInterface;

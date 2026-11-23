@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::process::{Command, ExitCode};
 
-const USAGE: &str = "usage: typedpress-migrate --from zero wordpress <content|users|spacefast|tables> [options] [--path=<WordPress dir>] [--url=<site>]
+const USAGE: &str = "usage: spacepress-migrate --from zero wordpress <content|users|spacefast|tables> [options] [--path=<WordPress dir>] [--url=<site>]
   content <content-model.php | -> [--space=<id>] [--apply]
   users --space=<id> [--apply]
   spacefast --space=<id> --source-prefix=<prefix> --target-prefix=<prefix> [--apply | --verify]

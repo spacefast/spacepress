@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\TagWithType;
-use TypedPress\Identity\Vendor\Webmozart\Assert\Assert;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\TagWithType;
+use SpacePress\Identity\Vendor\Webmozart\Assert\Assert;
 
 final class DocBlock
 {

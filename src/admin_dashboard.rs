@@ -1,9 +1,9 @@
-//! `adminWidget({ ... })` and `adminDashboard({ ... })`: composable TypedPress Admin widgets
+//! `adminWidget({ ... })` and `adminDashboard({ ... })`: composable SpacePress Admin widgets
 //! and custom dashboards declared in TypeScript.
 //!
 //! Both register by export name in kebab case, mirroring `adminScreen()`. Widgets read data
 //! through readonly `action()` Abilities and compile to declarations stored in `schema.php`
-//! (`widgets` and `dashboards`), registered on `tp_admin_dashboards` when TypedPress Admin loads.
+//! (`widgets` and `dashboards`), registered on `sp_admin_dashboards` when SpacePress Admin loads.
 
 use crate::diag::{Diag, Result, Span, suggest};
 use crate::eval::{Evaluator, to_json};
@@ -49,13 +49,13 @@ const DASHBOARD_KEYS: &[&str] = &[
 ];
 const DASHBOARD_WIDGET_ITEM_KEYS: &[&str] = &["widget", "width", "height", "fullWidth"];
 
-/// Built-in SpacePress / TypedPress dashboard widget types an `adminDashboard()` may reference by id.
+/// Built-in SpacePress / SpacePress dashboard widget types an `adminDashboard()` may reference by id.
 pub const BUILTIN_WIDGETS: &[&str] = &[
-    "tp/content-overview",
-    "tp/recent-activity",
-    "tp/drafts-queue",
-    "tp/app-status",
-    "tp/store-pulse",
+    "sp/content-overview",
+    "sp/recent-activity",
+    "sp/drafts-queue",
+    "sp/app-status",
+    "sp/store-pulse",
 ];
 
 const ROLES: &[(&str, &str)] = &[
@@ -182,7 +182,7 @@ fn capability(ev: &Evaluator<'_>, cfg: &Value, o: &IndexMap<String, Value>, span
             at("capability"),
             format!("{what} has `access` or `capability`, not both"),
         )
-        .help("keep `access: \"editor\"` (a TypedPress role) or `capability: \"edit_others_posts\"`")),
+        .help("keep `access: \"editor\"` (a SpacePress role) or `capability: \"edit_others_posts\"`")),
         (Some(Value::Str(role)), None) => ROLES
             .iter()
             .find(|(r, _)| *r == role.as_ref())
@@ -263,7 +263,7 @@ impl WidgetExtractor<'_, '_, '_> {
         let o = options(cfg, span, "adminWidget()", WIDGET_KEYS, self.ev)?;
         let mut decl = Map::new();
         decl.insert("id".into(), json!(id));
-        decl.insert("type".into(), json!(format!("tp-widget/{id}")));
+        decl.insert("type".into(), json!(format!("sp-widget/{id}")));
         let Some(title) = text(&o, "title", self.at(cfg, "title", span), "the widget's")? else {
             return Err(Diag::new(span, "adminWidget() needs a `title`").help("add `title: \"Sales this week\"`"));
         };
@@ -464,7 +464,7 @@ impl DashboardExtractor<'_, '_> {
                 .out
                 .widget_values
                 .get(&(Rc::as_ptr(w) as usize))
-                .map(|id| format!("tp-widget/{id}"))
+                .map(|id| format!("sp-widget/{id}"))
                 .ok_or_else(|| {
                     Diag::new(span, "dashboard widget isn't an exported adminWidget()")
                         .help("export the widget: `export const salesWidget = adminWidget({ ... })`")
@@ -548,7 +548,7 @@ impl DashboardExtractor<'_, '_> {
         let wspan = self.at(cfg, "widgets", span);
         let Some(Value::Array(items)) = o.get("widgets") else {
             return Err(Diag::new(wspan, "adminDashboard() needs a `widgets` list")
-                .help("write `widgets: [\"tp/content-overview\", myWidget]`"));
+                .help("write `widgets: [\"sp/content-overview\", myWidget]`"));
         };
         let mut placements = Vec::new();
         for (idx, item) in items.borrow().iter().enumerate() {

@@ -1,7 +1,7 @@
 // Named function expressions and recursive local functions, which esbuild bundles of live 0.8 apps
 // contain. Every action runs under Node and as compiled PHP; the JSON results must be
 // byte-identical.
-import { defineConfig, mutation } from "typedpress";
+import { defineConfig, mutation } from "spacepress";
 import { fastpath, hoistedVar, named, recursiveLocal, selfBound, selfBoundReassigned, selfBoundSuspending } from "./function-expressions-helpers.mjs";
 
 const run = (handler: () => unknown) => mutation({}, handler);

@@ -1,7 +1,7 @@
 import { useNavigate, useSearch } from '@wordpress/route';
-import { Page } from '@typedpress-admin/admin-toolkit';
+import { Page } from '@spacepress-admin/admin-toolkit';
 import { IconButton } from '@wordpress/ui';
-import type { GlobalStylesConfig } from '@typedpress-admin/global-styles-engine';
+import type { GlobalStylesConfig } from '@spacepress-admin/global-styles-engine';
 import { __ } from '@wordpress/i18n';
 import { seen } from '@wordpress/icons';
 import { useCallback } from '@wordpress/element';
@@ -88,13 +88,13 @@ export default function DesignStylesInspector() {
 
 	return (
 		<Page
-			title={ __( 'Styles', 'typedpress-admin' ) }
+			title={ __( 'Styles', 'spacepress-admin' ) }
 			actions={
 				<IconButton
 					aria-pressed={ isStyleBookOpened }
 					variant="minimal"
 					icon={ seen }
-					label={ __( 'Style Book', 'typedpress-admin' ) }
+					label={ __( 'Style Book', 'spacepress-admin' ) }
 					onClick={ togglePreview }
 					size="compact"
 				/>

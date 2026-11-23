@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue;
 
 use BadMethodCallException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\DN\DNParser;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\BinaryMatch;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\TranscodeStep;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\DN\DNParser;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\BinaryMatch;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\TranscodeStep;
 
 /**
  * Class to hold ASN.1 structure of an unimplemented attribute value.

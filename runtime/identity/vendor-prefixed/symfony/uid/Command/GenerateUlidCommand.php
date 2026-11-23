@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Uid\Command;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Uid\Command;
 
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -20,7 +20,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\Factory\UlidFactory;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\Factory\UlidFactory;
 
 #[AsCommand(name: 'ulid:generate', description: 'Generate a ULID')]
 class GenerateUlidCommand extends Command

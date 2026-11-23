@@ -4,20 +4,20 @@ import { PACKAGES, check } from './pack-check.mjs';
 
 const manifest = (name, extra = {}) => JSON.stringify({
   name, license: PACKAGES[name].license, homepage: 'https://example.test',
-  repository: { type: 'git', url: 'https://github.com/spacefast/zero.git', directory: PACKAGES[name].directory },
+  repository: { type: 'git', url: 'https://github.com/spacefast/spacepress.git', directory: PACKAGES[name].directory },
   publishConfig: { access: 'public' }, ...extra,
 });
 const pack = (name, files) => ({ name, files: files.map((path) => ({ path })) });
 
 test('a package with its required files and nothing else passes', async () => {
-  const name = '@typedpress/astro';
+  const name = '@spacepress/astro';
   const contents = { 'package.json': manifest(name) };
   const problems = await check(name, pack(name, PACKAGES[name].required), async (path) => contents[path] ?? 'export {};\n');
   assert.deepEqual(problems, []);
 });
 
 test('missing licenses, tests, fixtures, environment files, secrets and wrong metadata fail', async () => {
-  const name = '@typedpress/blocks';
+  const name = '@spacepress/blocks';
   const files = [...PACKAGES[name].required.filter((path) => path !== 'LICENSE-GPL' && !path.endsWith('/')), 'vendor/licenses/@wordpress/blocks/15.24.0/LICENSE.md',
     'tests/unit/a.test.ts', 'fixtures/site.sql', '.env', 'vendor/wp-entry.mjs', 'dist/key.js', 'dist/host.js'];
   const contents = {

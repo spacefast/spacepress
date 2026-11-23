@@ -1,5 +1,5 @@
 //! Canonical JSON (design §5.3): the bytes a sync record is digested as, identical to
-//! `TypedPress\Sync\Canon` in the runtime. Object keys sorted by byte order at every depth, no whitespace,
+//! `SpacePress\Sync\Canon` in the runtime. Object keys sorted by byte order at every depth, no whitespace,
 //! strings escaped only where JSON requires it, numbers spelled as JavaScript prints them.
 
 use serde_json::Value;

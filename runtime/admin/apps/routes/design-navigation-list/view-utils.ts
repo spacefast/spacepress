@@ -1,5 +1,5 @@
-import { loadView } from '@typedpress-admin/views';
-import type { View } from '@typedpress-admin/dataviews';
+import { loadView } from '@spacepress-admin/views';
+import type { View } from '@spacepress-admin/dataviews';
 
 const NAVIGATION_POST_TYPE = 'wp_navigation';
 

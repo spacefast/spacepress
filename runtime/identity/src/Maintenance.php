@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 final class Maintenance
 {
@@ -16,7 +16,7 @@ final class Maintenance
             );
         }
         $endpoints = [];
-        foreach (get_option("tp_identity_webhooks", []) as $endpoint) {
+        foreach (get_option("sp_identity_webhooks", []) as $endpoint) {
             $endpoints[$endpoint["id"]] = $endpoint;
         }
         $pending = $this->db->rows(
@@ -56,9 +56,9 @@ final class Maintenance
                 "redirection" => 0,
                 "headers" => [
                     "Content-Type" => "application/json",
-                    "TypedPress-Signature" =>
+                    "SpacePress-Signature" =>
                         "t=" . $timestamp . ",v1=" . $signature,
-                    "TypedPress-Event-Id" => (string) $delivery["event_id"],
+                    "SpacePress-Event-Id" => (string) $delivery["event_id"],
                 ],
                 "body" => $body,
             ]);

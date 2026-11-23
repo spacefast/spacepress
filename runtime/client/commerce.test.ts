@@ -127,8 +127,8 @@ test("a token cart sends no cookie and no nonce, and checks out on the same Stor
       sent("https://other.example.test/wp-json/wc/store/v1/cart", "GET", null),
     ]);
     assert.deepEqual([...stored.keys()].sort(), [
-      "typedpress:woo-cart:https://other.example.test/wp-json/wc/store/v1",
-      "typedpress:woo-cart:https://shop.example.test/wp-json/wc/store/v1",
+      "spacepress:woo-cart:https://other.example.test/wp-json/wc/store/v1",
+      "spacepress:woo-cart:https://shop.example.test/wp-json/wc/store/v1",
     ]);
   });
 });
@@ -167,7 +167,7 @@ test("a token cart refuses a write when Woo's first response carries no token", 
 });
 
 test("an expired token starts a new cart for a write, and refuses checkout", async () => {
-  const stored = new Map([["typedpress:woo-cart:/wp-json/wc/store/v1", "expired"]]);
+  const stored = new Map([["spacepress:woo-cart:/wp-json/wc/store/v1", "expired"]]);
   await browser({ localStorage: memoryStorage(stored) }, async () => {
     const calls: Call[] = [];
     // Woo treats a token past its expiry as no token: a write is then asked for a nonce.
@@ -183,7 +183,7 @@ test("an expired token starts a new cart for a write, and refuses checkout", asy
     assert.deepEqual(calls.map(c => [c.method, c.url.replace("/wp-json/wc/store/v1", ""), c.token]), [
       ["POST", "/cart/add-item", "expired"], ["GET", "/cart", null], ["POST", "/cart/add-item", "fresh"],
     ]);
-    stored.set("typedpress:woo-cart:/wp-json/wc/store/v1", "expired");
+    stored.set("spacepress:woo-cart:/wp-json/wc/store/v1", "expired");
     const seen: number[] = [];
     client.subscribe(cart => seen.push(cart.itemsCount));
     await assert.rejects(client.checkout(checkoutInput), { code: "cart_token_expired", status: 401 });

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-use TypedPress\Identity\Vendor\Symfony\Polyfill\Php84 as p;
+use SpacePress\Identity\Vendor\Symfony\Polyfill\Php84 as p;
 
 if (extension_loaded('mbstring')) {
     if (!function_exists('mb_ucfirst')) {

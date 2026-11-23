@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
 
 use ArrayIterator;
 use function count;
 use Countable;
 use IteratorAggregate;
 use LogicException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEMBundle;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEMBundle;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
 
 /**
  * Ordered list of certificates from the end-entity to the trust anchor.

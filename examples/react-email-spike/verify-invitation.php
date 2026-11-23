@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use TypedPress\Identity\Organizations;
-use TypedPress\Identity\Plugin;
-use TypedPress\Identity\Security;
+use SpacePress\Identity\Organizations;
+use SpacePress\Identity\Plugin;
+use SpacePress\Identity\Security;
 
 require __DIR__ . '/../../tests/php/wp.php';
 
@@ -15,8 +15,8 @@ wpSite('organization-invite', [
 ]);
 
 $value = (object) ['name' => 'Before'];
-$child = \TypedPress\Html::component(static fn ($props): string => $props->name, $value);
-$paragraph = \TypedPress\Render\Email::component('EmailText', null, $child);
+$child = \SpacePress\Html::component(static fn ($props): string => $props->name, $value);
+$paragraph = \SpacePress\Render\Email::component('EmailText', null, $child);
 $value->name = 'After';
 assert(str_contains($paragraph->html(), '>After</p>'), 'email components render children when placed');
 

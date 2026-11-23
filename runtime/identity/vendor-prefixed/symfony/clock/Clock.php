@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Clock;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Clock;
 
-use TypedPress\Identity\Vendor\Psr\Clock\ClockInterface as PsrClockInterface;
+use SpacePress\Identity\Vendor\Psr\Clock\ClockInterface as PsrClockInterface;
 
 /**
  * A global clock.

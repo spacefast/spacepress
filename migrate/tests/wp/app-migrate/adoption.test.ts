@@ -34,7 +34,7 @@ function row(value: unknown): Row {
 
 test("adopts original rows and keeps legacy action results and mutation atomicity", async () => {
   const table = "wp_import_3c47092ff06f3fc1052a";
-  const before: unknown = JSON.parse(readFileSync(process.env.TP_APP_ADOPTION_BEFORE ?? "", "utf8"));
+  const before: unknown = JSON.parse(readFileSync(process.env.SP_APP_ADOPTION_BEFORE ?? "", "utf8"));
   assert.ok(typeof before === "object" && before !== null && "rows" in before && "ddl" in before);
   const actual: unknown = JSON.parse(wp("eval", `global $wpdb; echo wp_json_encode($wpdb->get_results('SELECT * FROM ${table} ORDER BY id', ARRAY_A));`));
   assert.deepEqual(actual, before.rows);
@@ -97,12 +97,12 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
   assert.equal(await action("count"), 3);
   // Every read, update, and delete above still targeted the original table.
   assert.deepEqual(sql(`SELECT id FROM ${table} ORDER BY id`), [{ id: "41" }, { id: "42" }, { id: "9007199254740900" }]);
-  const schemaOption = `tp_${harness.plugin.slice("typedpress-app-".length)}_schema`;
+  const schemaOption = `sp_${harness.plugin.slice("spacepress-app-".length)}_schema`;
   const schemaBefore = sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`);
-  const installMarker = () => sql("SELECT option_value FROM wp_options WHERE option_name = 'tp_installed'");
+  const installMarker = () => sql("SELECT option_value FROM wp_options WHERE option_name = 'sp_installed'");
   const markerBefore = installMarker();
   assert.equal(markerBefore.length, 1);
-  const ledgerBefore = sql("SELECT app, id FROM wp_tp__migrations ORDER BY app, id");
+  const ledgerBefore = sql("SELECT app, id FROM wp_sp__migrations ORDER BY app, id");
   // Legacy prefix indexes exceed MyISAM's key limit; restore them after the engine probe.
   sql(`ALTER TABLE ${table} DROP INDEX by_owner, DROP INDEX by_done, ENGINE=MyISAM`);
   try {
@@ -118,7 +118,7 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
     assert.deepEqual(await read.json(), { data: cleared });
     assert.deepEqual(sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`), schemaBefore);
     assert.deepEqual(installMarker(), markerBefore);
-    assert.deepEqual(sql("SELECT app, id FROM wp_tp__migrations ORDER BY app, id"), ledgerBefore);
+    assert.deepEqual(sql("SELECT app, id FROM wp_sp__migrations ORDER BY app, id"), ledgerBefore);
   } finally {
     sql(`ALTER TABLE ${table} ENGINE=InnoDB, ADD KEY by_owner (owner(191), createdAt(191), id), ADD KEY by_done (done(191), createdAt(191), id)`);
   }
@@ -135,19 +135,19 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
     assert.equal(refused.status, 503);
     assert.ok(typeof problem === "object" && problem !== null && "code" in problem);
     assert.equal(problem.code, "unavailable");
-    const cli: unknown = JSON.parse(wpTry("typedpress", "migrate"));
+    const cli: unknown = JSON.parse(wpTry("spacepress", "migrate"));
     assert.ok(typeof cli === "object" && cli !== null && "error" in cli);
     assert.ok(typeof cli.error === "object" && cli.error !== null && "status" in cli.error && "code" in cli.error);
     assert.equal(cli.error.status, 500);
     assert.equal(cli.error.code, "internal");
     assert.deepEqual(sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`), [{ option_value: "pending-storage-upgrade" }]);
-    assert.deepEqual(sql("SELECT app, id FROM wp_tp__migrations ORDER BY app, id"), ledgerBefore);
+    assert.deepEqual(sql("SELECT app, id FROM wp_sp__migrations ORDER BY app, id"), ledgerBefore);
   } finally {
     sql(`ALTER TABLE ${table} ENGINE=InnoDB, ADD KEY by_owner (owner(191), createdAt(191), id), ADD KEY by_done (done(191), createdAt(191), id)`);
   }
   assert.equal(await action("count"), 3);
   assert.deepEqual(sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`), schemaBefore);
-  // The stack runs TypedPress's WordPress floor (tests/fixtures/platform.json).
+  // The stack runs SpacePress's WordPress floor (tests/fixtures/platform.json).
   const floor: string = JSON.parse(readFileSync(new URL("../../../../tests/fixtures/platform.json", import.meta.url), "utf8")).wordpress;
   assert.equal(harness.wp.startsWith(floor), true, `${harness.wp} is the floor, ${floor}`);
 });

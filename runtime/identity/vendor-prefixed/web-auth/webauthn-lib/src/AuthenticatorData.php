@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn;
+namespace SpacePress\Identity\Vendor\Webauthn;
 
 use function ord;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
 
 /**
  * @see https://www.w3.org/TR/webauthn/#sec-authenticator-data

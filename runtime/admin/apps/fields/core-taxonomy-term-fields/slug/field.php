@@ -2,12 +2,12 @@
 /**
  * Slug field definition for core taxonomy term fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Slug', 'typedpress-admin' ),
+	'label'              => __( 'Slug', 'spacepress-admin' ),
 	'enableGlobalSearch' => true,
 	'filterBy'           => false,
 );

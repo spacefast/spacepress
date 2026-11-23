@@ -2,29 +2,29 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Denormalizer;
+namespace SpacePress\Identity\Vendor\Webauthn\Denormalizer;
 
 use function assert;
-use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
-use TypedPress\Identity\Vendor\CBOR\Decoder;
-use TypedPress\Identity\Vendor\CBOR\ListObject;
-use TypedPress\Identity\Vendor\CBOR\MapObject;
-use TypedPress\Identity\Vendor\CBOR\NegativeIntegerObject;
-use TypedPress\Identity\Vendor\CBOR\TextStringObject;
-use TypedPress\Identity\Vendor\CBOR\UnsignedIntegerObject;
+use SpacePress\Identity\Vendor\CBOR\ByteStringObject;
+use SpacePress\Identity\Vendor\CBOR\Decoder;
+use SpacePress\Identity\Vendor\CBOR\ListObject;
+use SpacePress\Identity\Vendor\CBOR\MapObject;
+use SpacePress\Identity\Vendor\CBOR\NegativeIntegerObject;
+use SpacePress\Identity\Vendor\CBOR\TextStringObject;
+use SpacePress\Identity\Vendor\CBOR\UnsignedIntegerObject;
 use function chr;
 use function is_string;
 use function ord;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\Uuid;
-use TypedPress\Identity\Vendor\Webauthn\AttestedCredentialData;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensionLoader;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticatorData;
-use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
-use TypedPress\Identity\Vendor\Webauthn\StringStream;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use SpacePress\Identity\Vendor\Webauthn\AttestedCredentialData;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensionLoader;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticatorData;
+use SpacePress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use SpacePress\Identity\Vendor\Webauthn\StringStream;
 
 final class AuthenticatorDataDenormalizer implements DenormalizerInterface, DenormalizerAwareInterface
 {

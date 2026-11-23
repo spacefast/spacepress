@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn;
+namespace SpacePress\Identity\Vendor\Webauthn;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\Uuid;
-use TypedPress\Identity\Vendor\Webauthn\TrustPath\TrustPath;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use SpacePress\Identity\Vendor\Webauthn\TrustPath\TrustPath;
 
 /**
  * Credential Record represents a stored credential on the server side.

@@ -1,5 +1,5 @@
 {
-	"name": "@typedpress-admin/route-dashboard",
+	"name": "@spacepress-admin/route-dashboard",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -13,12 +13,12 @@
 		}
 	},
 	"dependencies": {
-		"@typedpress-admin/admin-toolkit": "workspace:*",
-		"@typedpress-admin/boot": "workspace:*",
-		"@typedpress-admin/dashboard": "workspace:*",
-		"@typedpress-admin/design-system": "workspace:*",
-		"@typedpress-admin/telemetry": "workspace:*",
-		"@typedpress-admin/widgets": "workspace:*",
+		"@spacepress-admin/admin-toolkit": "workspace:*",
+		"@spacepress-admin/boot": "workspace:*",
+		"@spacepress-admin/dashboard": "workspace:*",
+		"@spacepress-admin/design-system": "workspace:*",
+		"@spacepress-admin/telemetry": "workspace:*",
+		"@spacepress-admin/widgets": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",

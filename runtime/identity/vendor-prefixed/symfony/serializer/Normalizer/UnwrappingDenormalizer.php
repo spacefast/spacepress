@@ -9,13 +9,13 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccessorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccessorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
 
 /**
  * @author Eduard Bulava <bulavaeduard@gmail.com>

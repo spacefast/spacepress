@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ConstraintViolationListNormalizer;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ConstraintViolationListNormalizer;
 
 /**
  * A helper providing autocompletion for available ConstraintViolationList options.

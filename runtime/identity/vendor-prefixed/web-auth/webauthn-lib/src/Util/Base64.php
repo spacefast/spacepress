@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Util;
+namespace SpacePress\Identity\Vendor\Webauthn\Util;
 
-use TypedPress\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
+use SpacePress\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
 use Throwable;
-use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use SpacePress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 abstract class Base64
 {
@@ -18,7 +18,7 @@ abstract class Base64
         }
 
         try {
-            return \TypedPress\Identity\Vendor\ParagonIE\ConstantTime\Base64::decode($data);
+            return \SpacePress\Identity\Vendor\ParagonIE\ConstantTime\Base64::decode($data);
         } catch (Throwable $e) {
             throw InvalidDataException::create($data, 'Invalid data submitted', $e);
         }

@@ -1,5 +1,5 @@
-// <tp-sandbox>: compact, editable inline live compiler widget powered by compiler.wasm.
-// Supports multiple <tp-preset> tabs, optional <tp-base> for real incremental SQL migration diffs,
+// <sp-sandbox>: compact, editable inline live compiler widget powered by compiler.wasm.
+// Supports multiple <sp-preset> tabs, optional <sp-base> for real incremental SQL migration diffs,
 // instant TS -> PHP / SQL / db.d.ts / OpenAPI / Client output tabs, unified diff toggle, and live diagnostics.
 import { File, FileDiff } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/edit";
@@ -16,11 +16,11 @@ const el = (tag, props = {}, ...children) => {
 };
 
 const TAB_LABELS = {
-  "tp/app/schema.php": "schema.php",
-  "tp/app/functions.php": "functions.php",
-  "tp/_generated/db.d.ts": "db.d.ts",
-  "tp/app/openapi.json": "openapi.json",
-  "tp/_generated/client/types.ts": "client/types.ts",
+  "sp/app/schema.php": "schema.php",
+  "sp/app/functions.php": "functions.php",
+  "sp/_generated/db.d.ts": "db.d.ts",
+  "sp/app/openapi.json": "openapi.json",
+  "sp/_generated/client/types.ts": "client/types.ts",
 };
 
 function labelForOutput(path) {
@@ -88,16 +88,16 @@ class Sandbox extends HTMLElement {
     this.mountedKey = this.getAttribute("data-key") ?? "";
 
     const defs = this.querySelector(":scope > .sp-sb-defs") ?? this;
-    const baseNode = defs.querySelector(":scope > tp-base");
+    const baseNode = defs.querySelector(":scope > sp-base");
     this.baseSource = baseNode ? normalizeText(baseNode.textContent) : null;
-    this.baseFile = baseNode?.getAttribute("file") ?? "typedpress.config.ts";
+    this.baseFile = baseNode?.getAttribute("file") ?? "spacepress.config.ts";
 
-    const presetNodes = [...defs.querySelectorAll(":scope > tp-preset")];
+    const presetNodes = [...defs.querySelectorAll(":scope > sp-preset")];
     if (presetNodes.length === 0) {
       const text = normalizeText(defs.textContent);
       this.presets = [{
-        label: this.getAttribute("label") ?? "typedpress.config.ts",
-        file: this.getAttribute("file") ?? "typedpress.config.ts",
+        label: this.getAttribute("label") ?? "spacepress.config.ts",
+        file: this.getAttribute("file") ?? "spacepress.config.ts",
         description: this.getAttribute("description") ?? "",
         defaultOutput: this.getAttribute("output") ?? "",
         code: text,
@@ -105,7 +105,7 @@ class Sandbox extends HTMLElement {
     } else {
       this.presets = presetNodes.map((n, i) => ({
         label: n.getAttribute("label") ?? `Example ${i + 1}`,
-        file: n.getAttribute("file") ?? "typedpress.config.ts",
+        file: n.getAttribute("file") ?? "spacepress.config.ts",
         description: n.getAttribute("description") ?? "",
         defaultOutput: n.getAttribute("output") ?? "",
         code: normalizeText(n.textContent),
@@ -517,23 +517,23 @@ class Sandbox extends HTMLElement {
   }
 
   buildFileMap(file, code) {
-    if (file === "typedpress.config.ts") {
-      return { "typedpress.config.ts": code };
+    if (file === "spacepress.config.ts") {
+      return { "spacepress.config.ts": code };
     }
     return {
-      "typedpress.config.ts": `import { defineConfig } from "typedpress";\nexport * from "./${file.replace(/\.tsx?$/, "")}";\nexport default defineConfig({ name: "sandbox" });\n`,
+      "spacepress.config.ts": `import { defineConfig } from "spacepress";\nexport * from "./${file.replace(/\.tsx?$/, "")}";\nexport default defineConfig({ name: "sandbox" });\n`,
       [file]: code,
     };
   }
 
   extractOutputs(out) {
     const map = migrationInputs(out.migrations);
-    if (out.schemaPhp) map["tp/app/schema.php"] = out.schemaPhp;
-    if (out.functionsPhp && out.functionsPhp.trim().length > 0) map["tp/app/functions.php"] = out.functionsPhp;
-    if (out.genTs) map["tp/_generated/db.d.ts"] = out.genTs;
-    const openapi = Object.entries(out.appPlugin ?? {}).find(([f]) => f.endsWith("/tp/app/openapi.json"))?.[1];
-    if (openapi) map["tp/app/openapi.json"] = openapi;
-    if (out.client?.["types.ts"]) map["tp/_generated/client/types.ts"] = out.client["types.ts"];
+    if (out.schemaPhp) map["sp/app/schema.php"] = out.schemaPhp;
+    if (out.functionsPhp && out.functionsPhp.trim().length > 0) map["sp/app/functions.php"] = out.functionsPhp;
+    if (out.genTs) map["sp/_generated/db.d.ts"] = out.genTs;
+    const openapi = Object.entries(out.appPlugin ?? {}).find(([f]) => f.endsWith("/sp/app/openapi.json"))?.[1];
+    if (openapi) map["sp/app/openapi.json"] = openapi;
+    if (out.client?.["types.ts"]) map["sp/_generated/client/types.ts"] = out.client["types.ts"];
     return map;
   }
 
@@ -678,4 +678,4 @@ class Sandbox extends HTMLElement {
   }
 }
 
-if (!customElements.get("tp-sandbox")) customElements.define("tp-sandbox", Sandbox);
+if (!customElements.get("sp-sandbox")) customElements.define("sp-sandbox", Sandbox);

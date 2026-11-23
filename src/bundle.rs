@@ -20,8 +20,8 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SPACEPRESS_FORMAT: &str = "spacepress.source-bundle.v1";
 pub const SPACEPRESS_APP_FILE: &str = "app.spacepress.json";
 pub const SPACEPRESS_VENDOR_FILE: &str = "vendor.spacepress.json";
-pub const APP_FILE: &str = "app.typedpress.json";
-pub const VENDOR_FILE: &str = "vendor.typedpress.json";
+pub const APP_FILE: &str = "app.spacepress.json";
+pub const VENDOR_FILE: &str = "vendor.spacepress.json";
 pub const MANIFEST_FILE: &str = "manifest.json";
 
 /// Original compiler inputs, not JavaScript bundler output. Paths retain module identity.
@@ -263,7 +263,7 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
     let format = if is_spacepress_config {
         SPACEPRESS_FORMAT
     } else {
-        "typedpress.source-bundle.v1"
+        "spacepress.source-bundle.v1"
     };
     let manifest = manifest_for(format, &built.schema.name, &app, &vendor);
     let mut public_files = Vec::new();
@@ -607,10 +607,10 @@ pub(crate) fn check_bundles(files: [(&str, Vec<u8>, &String); 2]) -> Result<Sour
 pub(crate) struct Compiled {
     pub manifest: serde_json::Value,
     pub name: String,
-    /// The app has an auth collection, so it mounts `typedpress-identity`.
+    /// The app has an auth collection, so it mounts `spacepress-identity`.
     pub identity: bool,
     pub admin: bool,
-    /// `sealed: true`: the plugin slugs a host lets load, TypedPress's own and the platform's.
+    /// `sealed: true`: the plugin slugs a host lets load, SpacePress's own and the platform's.
     pub sealed: Option<Vec<String>>,
     /// The names of the jobs the app declares, sorted.
     pub jobs: Vec<String>,
@@ -812,7 +812,7 @@ fn markdown_html_block(body: &str, components: bool) -> Option<(usize, String)> 
     None
 }
 
-/// Each synced kind's files as seed records (`wp typedpress seed --records`), as a publish seeds a Space:
+/// Each synced kind's files as seed records (`wp spacepress seed --records`), as a publish seeds a Space:
 /// one `{collection, format, records}` document per kind, by kind name, parents before children.
 ///
 /// With `check`, a file the seed would refuse on the site is an error here, at the file and the
@@ -957,7 +957,7 @@ pub(crate) fn seed_records(
                     first + line,
                     format!("`{html}` is an HTML block, which a Markdown file can't hold: WordPress stores it as a Custom HTML block that can't be written back as Markdown"),
                 )
-                .help("write it in Markdown, or put the markup in a component the content may use (`export const blocks` in tp/components/) and write its tag"));
+                .help("write it in Markdown, or put the markup in a component the content may use (`export const blocks` in sp/components/) and write its tag"));
             }
             if let Some(parent) = place {
                 parents.push((records.len(), parent));
@@ -1010,7 +1010,7 @@ pub(crate) fn compile_tree(
     let bytes = std::fs::read(source.join(MANIFEST_FILE)).map_err(io)?;
     let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
     let is_spacepress_bundle = manifest.format == SPACEPRESS_FORMAT;
-    if !(is_spacepress_bundle || manifest.format == "typedpress.source-bundle.v1")
+    if !(is_spacepress_bundle || manifest.format == "spacepress.source-bundle.v1")
         || manifest.name.is_empty()
         || !manifest
             .name
@@ -1034,19 +1034,19 @@ pub(crate) fn compile_tree(
     }) {
         return Err(crate::pipeline::moved_ledger());
     }
-    // A capture from before `tp/app/` may hold TSX pages for the old renderer (`pages/`, with
-    // their `tp/pages.json` artifact). There is no renderer for them any more, and compiling the
+    // A capture from before `sp/app/` may hold TSX pages for the old renderer (`pages/`, with
+    // their `sp/pages.json` artifact). There is no renderer for them any more, and compiling the
     // rest would publish the site without its pages.
     if let Some(path) = sources
         .files
         .keys()
-        .find(|p| *p == "tp/pages.json" || p.starts_with("pages/"))
+        .find(|p| *p == "sp/pages.json" || p.starts_with("pages/"))
     {
         return Err(failure(format!(
-            "this bundle has TSX pages from the old pages renderer ({path}), which TypedPress no longer has"
+            "this bundle has TSX pages from the old pages renderer ({path}), which SpacePress no longer has"
         ))
         .help(
-            "move the pages to tp/app/ (/docs/core/pages-and-islands), then publish again with `typedpress sources`",
+            "move the pages to sp/app/ (/docs/core/pages-and-islands), then publish again with `spacepress sources`",
         ));
     }
     let name = manifest.name;
@@ -1164,19 +1164,19 @@ pub(crate) fn compile_tree(
             .into_iter()
             .map(|p| (p.slug, p.version))
             .collect();
-    // The app's `tp/app/` routes and pages, so the host can tell which of its URLs outside
+    // The app's `sp/app/` routes and pages, so the host can tell which of its URLs outside
     // /wp-json to hand to WordPress without booting it to ask. Identity's /identity and the app
     // plugin's own files are not listed. Both lists use the route path grammar: a
     // leading `/`, no trailing slash except `/`, literal segments, `:name` for one segment and a
     // final `*name` for one or more. A host matching against them should:
     // - trim one trailing `/` from the request path first (pages canonicalize `/about/` to `/about`);
-    // - treat HEAD as GET, as TypedPress\App::routeFor does;
+    // - treat HEAD as GET, as SpacePress\App::routeFor does;
     // - hand over any request whose path matches an entry, whatever its method, so a known path with
     //   the wrong method gets the runtime's 405 rather than the host's 404.
     // `pagePaths` are GET and HEAD only. The runtime still picks the most specific route.
     let mut app_routes: Vec<(String, String)> = Vec::new();
     let mut page_paths: Vec<String> = Vec::new();
-    // `tp/app/` pages are GET paths; `route.ts` handlers and pages with handlers take any
+    // `sp/app/` pages are GET paths; `route.ts` handlers and pages with handlers take any
     // method. A zero-or-more catch-all (`**rest`) is its folder plus `*rest`, in the host grammar.
     if let Some(app) = &built.schema.app {
         for route in &app.routes {
@@ -1218,9 +1218,9 @@ pub(crate) fn compile_tree(
         .collect();
     page_paths.sort();
     page_paths.dedup();
-    // What a host shows and routes without reading TypedPress's generated files (docs/host-contract.md).
+    // What a host shows and routes without reading SpacePress's generated files (docs/host-contract.md).
     let schema = &built.schema;
-    // Names as the REST API spells them (`/wp-json/tp/v1/<name>`).
+    // Names as the REST API spells them (`/wp-json/sp/v1/<name>`).
     let mut tables: Vec<&str> = schema
         .collections
         .values()
@@ -1234,7 +1234,7 @@ pub(crate) fn compile_tree(
     actions.sort();
     let summary = serde_json::json!({"name": schema.name, "collections": collections, "tables": tables, "actions": actions,
         "identity": schema.collections.values().any(|c| c.auth), "admin": schema.admin});
-    let mut manifest = serde_json::json!({"format":"typedpress.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
+    let mut manifest = serde_json::json!({"format":"spacepress.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
         "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "routes":routes, "pagePaths":page_paths,
         "summary":summary, "host":crate::host_contract::manifest_host(), "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
     if built.schema.store.is_some() {
@@ -1265,12 +1265,12 @@ pub(crate) fn compile_tree(
     })
 }
 
-/// The TypedPress plugins a host mounts for this build (the build store loader's order).
+/// The SpacePress plugins a host mounts for this build (the build store loader's order).
 #[cfg(feature = "host")]
 fn hosted_first(schema: &crate::schema::Schema) -> Vec<String> {
     [
-        "typedpress-runtime".to_string(),
-        format!("typedpress-app-{}", schema.name),
+        "spacepress-runtime".to_string(),
+        format!("spacepress-app-{}", schema.name),
     ]
     .into_iter()
     .chain(
@@ -1278,20 +1278,20 @@ fn hosted_first(schema: &crate::schema::Schema) -> Vec<String> {
             .collections
             .values()
             .any(|c| c.auth)
-            .then(|| "typedpress-identity".to_string()),
+            .then(|| "spacepress-identity".to_string()),
     )
-    .chain(schema.admin.then(|| "typedpress-admin".to_string()))
+    .chain(schema.admin.then(|| "spacepress-admin".to_string()))
     .collect()
 }
 
-/// Plugins a sealed site never runs, declared or not: each serves stored content around TypedPress's
+/// Plugins a sealed site never runs, declared or not: each serves stored content around SpacePress's
 /// read rules. The Block Data API answers a post's raw `post_content` after an item-level check
 /// only, which shows a rich text field that a field rule hides; the decoupled bundle ships that
 /// API and WPGraphQL. Kept in step with `Sealed::DENIED` in the runtime.
 pub(crate) const SEALED_DENIED: [&str; 2] = ["vip-block-data-api", "vip-decoupled-bundle"];
 
-/// A sealed app's plugin allow-list (docs/sealed.md), by directory slug: `typedpress` (the TypedPress plugins
-/// of this target, which its caller names), TypedPress's admin, the platform pins this app needs, and
+/// A sealed app's plugin allow-list (docs/sealed.md), by directory slug: `spacepress` (the SpacePress plugins
+/// of this target, which its caller names), SpacePress's admin, the platform pins this app needs, and
 /// the WordPress plugins the config declares. `None` when the app isn't sealed. Plugin packages (`use`) are compiled into the app
 /// plugin, so they need no entry.
 pub(crate) fn sealed_plugins(
@@ -1301,11 +1301,11 @@ pub(crate) fn sealed_plugins(
     let declared = schema.sealed.as_ref()?;
     let mut slugs: Vec<String> = first
         .into_iter()
-        // TypedPress's admin is TypedPress's own plugin: listed whether or not this build ships it
+        // SpacePress's admin is SpacePress's own plugin: listed whether or not this build ships it
         // (`admin: true`), so a sealed site never refuses it however it is installed. So is the
-        // TypedPress plugin (`typedpress`, runtime/typedpress-plugin), which a site deployed to with `typedpress push`
+        // SpacePress plugin (`spacepress`, runtime/spacepress-plugin), which a site deployed to with `spacepress push`
         // runs its builds through.
-        .chain(["typedpress".to_string(), "typedpress-admin".to_string()])
+        .chain(["spacepress".to_string(), "spacepress-admin".to_string()])
         .chain(
             crate::platform::app_plugins(schema.locales.is_some(), schema.store.is_some())
                 .into_iter()
@@ -1322,7 +1322,7 @@ pub(crate) fn sealed_plugins(
 pub(crate) fn sources_cli(args: &[String]) -> std::process::ExitCode {
     let result = match args {
         [project, flag, output] if flag == "--out" => sources(Path::new(project), Path::new(output)).map(|_| ()),
-        _ => Err(failure("usage: typedpress sources <project> --out <new-directory>")),
+        _ => Err(failure("usage: spacepress sources <project> --out <new-directory>")),
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -1333,7 +1333,7 @@ pub(crate) fn sources_cli(args: &[String]) -> std::process::ExitCode {
     }
 }
 
-/// `typedpress compile-to-store <sources> <store> <assets> [previous-build]`: prints the build receipt.
+/// `spacepress compile-to-store <sources> <store> <assets> [previous-build]`: prints the build receipt.
 #[cfg(feature = "cli")]
 pub(crate) fn compile_to_store_cli(args: &[String]) -> std::process::ExitCode {
     let result = match args {
@@ -1344,7 +1344,7 @@ pub(crate) fn compile_to_store_cli(args: &[String]) -> std::process::ExitCode {
             crate::store::compile_to_store(Path::new(source), Path::new(root), Path::new(assets), Some(previous))
         }
         _ => Err(failure(
-            "usage: typedpress compile-to-store <sources> <store> <assets> [previous-build]",
+            "usage: spacepress compile-to-store <sources> <store> <assets> [previous-build]",
         )),
     };
     match result {
@@ -1374,7 +1374,7 @@ pub(crate) fn compile_cli(args: &[String]) -> std::process::ExitCode {
             Some(Path::new(previous)),
         ),
         _ => Err(failure(
-            "usage: typedpress compile-sources <sources> <new-output> <assets> [previous-output]",
+            "usage: spacepress compile-sources <sources> <new-output> <assets> [previous-output]",
         )),
     };
     match result {

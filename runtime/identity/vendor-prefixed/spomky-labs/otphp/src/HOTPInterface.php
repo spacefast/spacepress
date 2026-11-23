@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\OTPHP;
+namespace SpacePress\Identity\Vendor\OTPHP;
 
 interface HOTPInterface extends OTPInterface
 {

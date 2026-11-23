@@ -1,9 +1,9 @@
 <?php declare(strict_types = 1);
 
-namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type;
+namespace SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type;
 
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TemplateTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TemplateTagValueNode;
 use function implode;
 
 class CallableTypeNode implements TypeNode

@@ -1,4 +1,4 @@
-import type { View } from '@typedpress-admin/dataviews';
+import type { View } from '@spacepress-admin/dataviews';
 
 const DEFAULT_VIEW: View = {
 	type: 'grid',

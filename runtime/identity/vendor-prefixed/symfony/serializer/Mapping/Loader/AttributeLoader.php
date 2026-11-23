@@ -9,20 +9,20 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Context;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\DiscriminatorMap;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Groups;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\MaxDepth;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedPath;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Context;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\DiscriminatorMap;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Groups;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\MaxDepth;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedPath;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 
 /**
  * Loader for PHP attributes.

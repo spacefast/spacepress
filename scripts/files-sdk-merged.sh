@@ -12,7 +12,7 @@
 # branches land after their base.
 set -euo pipefail
 repo=$(git rev-parse --show-toplevel)
-scratch=${1:-${TMPDIR:-/tmp}/typedpress-files-sdk-merged}
+scratch=${1:-${TMPDIR:-/tmp}/spacepress-files-sdk-merged}
 pattern=${FILES_SDK_BRANCHES:-'^(feat/(files-sdk-|commonjs-|ts-language-gaps|lang-|syntax-|[a-z0-9_-]+-global$|binary-data|async-streams|library-types|stdlib-|class-|host-globals|plugin-capabilities|static-namespace-members|ts-this-type|php-8\.3)|fix/(effects-|fence-))'}
 
 git -C "$repo" fetch origin --quiet --prune
@@ -48,7 +48,7 @@ already=()
 # squash-merged branch would be measured as unmerged, so a failed lookup stops the run.
 listed=false
 for attempt in 1 2 3; do
-  if merged_heads=$(gh pr list -R spacefast/zero --state merged --base main --limit 2000 --json headRefName,headRefOid \
+  if merged_heads=$(gh pr list -R spacefast/spacepress --state merged --base main --limit 2000 --json headRefName,headRefOid \
     --jq '.[] | "\(.headRefName) \(.headRefOid)"'); then
     listed=true
     break
@@ -71,7 +71,7 @@ for branch in $branches; do
     already+=("$branch@$sha")
     continue
   fi
-  pr=$(gh pr list -R spacefast/zero --head "$branch" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)
+  pr=$(gh pr list -R spacefast/spacepress --head "$branch" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)
   label="$branch@$sha${pr:+ (#$pr)}"
   before=$(git -C "$scratch" rev-parse HEAD)
   docs_note=""
@@ -109,7 +109,7 @@ for archive in "$repo"/examples/files-sdk/.work/files-sdk-*.tar.gz; do
 done
 
 label="merged state: origin/main $(git -C "$repo" rev-parse --short origin/main) + ${#merged[@]} branches, $(date -u +%Y-%m-%dT%H:%MZ)"
-TP_BIN="$scratch/target/release/typedpress" node "$harness/table.mjs" --probes --label "$label" --json "$scratch/files-sdk-table.json"
+SP_BIN="$scratch/target/release/spacepress" node "$harness/table.mjs" --probes --label "$label" --json "$scratch/files-sdk-table.json"
 echo
 list() {
   local title=$1; shift

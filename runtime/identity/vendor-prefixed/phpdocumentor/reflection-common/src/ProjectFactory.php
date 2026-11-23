@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection;
 
 /**
  * Interface for project factories. A project factory shall convert a set of files

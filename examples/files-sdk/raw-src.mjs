@@ -2,7 +2,7 @@
 // npm 3.1.2 was published from, installed with every export pointing at
 // ./src/<entry>/index.ts. Dependencies are the locked copies in ./node_modules.
 //
-//   node raw-src.mjs            writes .work/raw (network on typedpress run, then cached)
+//   node raw-src.mjs            writes .work/raw (network on spacepress run, then cached)
 //   FILES_SDK_SRC_TARBALL=path  use an already downloaded GitHub tarball
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";

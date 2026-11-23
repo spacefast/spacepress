@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\AlgorithmIdentifierType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\AlgorithmIdentifierType;
 
 /**
  * Generic signature value container.

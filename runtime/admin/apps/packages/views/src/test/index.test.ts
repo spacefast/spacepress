@@ -15,7 +15,7 @@ const roleTab = {
 	},
 };
 
-describe( 'TypedPress Admin views on @wordpress/views', () => {
+describe( 'SpacePress Admin views on @wordpress/views', () => {
 	afterEach( () => {
 		void dispatch( preferencesStore ).set( 'core/views', 'dataviews-root-user-editor', undefined );
 	} );

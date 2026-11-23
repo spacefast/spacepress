@@ -6,7 +6,7 @@ declare(strict_types=1);
  * A store whose config names an external `frontend` (tests/commerce.rs): that origin may read the
  * Store API, without credentials, and nothing else on the site is opened to it.
  *
- *   TP_WP_THEMES=1 php tests/php/commerce_frontend_test.php <wp-content dir> <frontend origin>
+ *   SP_WP_THEMES=1 php tests/php/commerce_frontend_test.php <wp-content dir> <frontend origin>
  */
 
 require __DIR__ . '/wp.php';

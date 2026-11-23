@@ -1,5 +1,5 @@
 {
-	"name": "@typedpress-admin/user",
+	"name": "@spacepress-admin/user",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -7,10 +7,10 @@
 		"beforeLoad": true
 	},
 	"dependencies": {
-		"@typedpress-admin/core-data-next": "workspace:*",
-		"@typedpress-admin/design-system": "workspace:*",
-		"@typedpress-admin/user-data": "workspace:*",
-		"@typedpress-admin/telemetry": "workspace:*",
+		"@spacepress-admin/core-data-next": "workspace:*",
+		"@spacepress-admin/design-system": "workspace:*",
+		"@spacepress-admin/user-data": "workspace:*",
+		"@spacepress-admin/telemetry": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",

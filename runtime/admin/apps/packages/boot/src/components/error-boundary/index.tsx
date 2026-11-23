@@ -1,7 +1,7 @@
 import { Component, type ReactNode } from 'react';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
-import { Stack } from '@typedpress-admin/design-system';
-import { Page } from '@typedpress-admin/admin-toolkit';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components
+import { Stack } from '@spacepress-admin/design-system';
+import { Page } from '@spacepress-admin/admin-toolkit';
 import { __ } from '@wordpress/i18n';
 import { Button, Notice } from '@wordpress/components';
 
@@ -33,13 +33,13 @@ export class ErrorBoundary extends Component< Props, State > {
 	render() {
 		if ( this.state.hasError ) {
 			return (
-				<Page title={ __( 'Something went wrong', 'typedpress-admin' ) }>
+				<Page title={ __( 'Something went wrong', 'spacepress-admin' ) }>
 					<Stack direction="column" gap={ 4 } align="flex-start">
 						<div style={ { width: '100%' } }>
 							<Notice status="error" isDismissible={ false }>
 								{ __(
 									`An error occurred while loading the content.`,
-									'typedpress-admin'
+									'spacepress-admin'
 								) }
 							</Notice>
 						</div>
@@ -53,7 +53,7 @@ export class ErrorBoundary extends Component< Props, State > {
 									} }
 								>
 									<summary>
-										{ __( 'Error Details', 'typedpress-admin' ) }
+										{ __( 'Error Details', 'spacepress-admin' ) }
 									</summary>
 									<pre
 										style={ {
@@ -78,7 +78,7 @@ export class ErrorBoundary extends Component< Props, State > {
 								} );
 							} }
 						>
-							{ __( 'Try Again', 'typedpress-admin' ) }
+							{ __( 'Try Again', 'spacepress-admin' ) }
 						</Button>
 					</Stack>
 				</Page>

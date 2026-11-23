@@ -1,4 +1,4 @@
-import { allowed, bootstrap, collectionSpec, native, nativeEditor, read } from '@typedpress-admin/schema';
+import { allowed, bootstrap, collectionSpec, native, nativeEditor, read } from '@spacepress-admin/schema';
 export const route = {
 	canvas: async ({
 		params,

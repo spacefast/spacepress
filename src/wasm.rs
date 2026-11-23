@@ -1,33 +1,33 @@
 //! The compiler core for a browser: sources in memory, every generated text out, as JSON.
 //!
-//! The site's config builder calls [`compile`] through the exported C ABI (`tp_alloc`,
-//! `tp_compile`, `tp_free`) from a `wasm32-unknown-unknown` build of this library with the
+//! The site's config builder calls [`compile`] through the exported C ABI (`sp_alloc`,
+//! `sp_compile`, `sp_free`) from a `wasm32-unknown-unknown` build of this library with the
 //! `cli` feature off: no file system, no network, no embedded runtime. The envelope is the one
-//! `typedpress check --json` prints, so a config that checks here checks on the command line.
+//! `spacepress check --json` prints, so a config that checks here checks on the command line.
 //!
 //! Request:
 //! ```json
 //! { "name": "pantry",
-//!   "files": { "typedpress.config.ts": "…", "tp/lib/fields.ts": "…", "tp/_generated/abilities.json": "…",
-//!              "tp/_generated/plugins.lock.json": "…" },,
+//!   "files": { "spacepress.config.ts": "…", "sp/lib/fields.ts": "…", "sp/_generated/abilities.json": "…",
+//!              "sp/_generated/plugins.lock.json": "…" },,
 //!   "frozen": false }
 //! ```
-//! Pass committed migration folders under `tp/_generated/migrations/` in `files` so the compiler
-//! can fold the same history as `typedpress build`.
-//! `files` carries every compiler input, including the committed `tp/_generated/abilities.json` lock that
+//! Pass committed migration folders under `sp/_generated/migrations/` in `files` so the compiler
+//! can fold the same history as `spacepress build`.
+//! `files` carries every compiler input, including the committed `sp/_generated/abilities.json` lock that
 //! types `abilities.call` from "php/wordpress".
-//! `tp/_generated/plugins.lock.json` grants plugin packages, and `frozen` refuses grants beyond it, as
-//! `typedpress check --frozen` (or `CI`) does.
+//! `sp/_generated/plugins.lock.json` grants plugin packages, and `frozen` refuses grants beyond it, as
+//! `spacepress check --frozen` (or `CI`) does.
 //! Directories exist as the parents of files: a project in memory has no empty directory, and git
 //! cannot hold one either, so that is the one shape of project the disk can have and this cannot.
 //!
-//! Response: `{ "check": <typedpress-diagnostics envelope>, "output": null }` on a diagnostic, otherwise
+//! Response: `{ "check": <spacepress-diagnostics envelope>, "output": null }` on a diagnostic, otherwise
 //! `output` carries `schemaPhp`, `functionsPhp`, `migrations` (`[relativePath, text]` pairs), `snapshot`,
 //! `client` (`types.ts` and `schema.ts`), `genTs`, `warnings`, `unsupportedPlugins`, `hints`,
-//! `appPlugin` (every file of the `typedpress-app-<name>` plugin `typedpress build` writes, by path below the
-//! plugins directory: the migration folders under `tp/_generated/migrations/` in `files` and this
-//! compile's new ones; its `tp/app/openapi.json` is what `typedpress build` also writes to
-//! `tp/_generated/openapi.json`), `tpPlugins` (TypedPress's plugins in activation
+//! `appPlugin` (every file of the `spacepress-app-<name>` plugin `spacepress build` writes, by path below the
+//! plugins directory: the migration folders under `sp/_generated/migrations/` in `files` and this
+//! compile's new ones; its `sp/app/openapi.json` is what `spacepress build` also writes to
+//! `sp/_generated/openapi.json`), `spPlugins` (SpacePress's plugins in activation
 //! order) and `wordpressPlugins` (`{slug, version}`, dependencies first).
 
 use crate::loader::{self, Fs};
@@ -62,13 +62,13 @@ struct Output {
     lint_warnings: Vec<crate::lint::Warning>,
     unsupported_plugins: Vec<String>,
     hints: Vec<String>,
-    /// The app plugin `typedpress build` writes, file by file, by path below the plugins directory.
+    /// The app plugin `spacepress build` writes, file by file, by path below the plugins directory.
     app_plugin: BTreeMap<String, String>,
     /// Non-UTF-8 binary files of the app plugin (e.g. PNG/WebP/WOFF2), base64-encoded.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     app_plugin_binary: BTreeMap<String, String>,
-    /// TypedPress's plugins for this app, in activation order.
-    tp_plugins: Vec<String>,
+    /// SpacePress's plugins for this app, in activation order.
+    sp_plugins: Vec<String>,
     /// The WordPress.org plugins the app needs, dependencies first.
     wordpress_plugins: Vec<WordPressPlugin>,
 }
@@ -247,7 +247,7 @@ pub fn compile(request: &str) -> String {
 
 fn compile_request(request: Request) -> String {
     let project = PathBuf::from("/").join(&request.name);
-    // The project's `public/` and the ledger's SQL go into the app plugin, as `typedpress build` copies them.
+    // The project's `public/` and the ledger's SQL go into the app plugin, as `spacepress build` copies them.
     let under = |prefix: &str| -> Vec<(String, Vec<u8>)> {
         request
             .files
@@ -298,7 +298,7 @@ fn compile_request(request: Request) -> String {
         previous.frozen = frozen;
         Ok(previous)
     };
-    let entry = project.join("typedpress.config.ts");
+    let entry = project.join("spacepress.config.ts");
     let built = match loader::load_from(Rc::new(Memory::with_binary(files, binary)), &entry) {
         Err(diagnostics) => Err(diagnostics),
         // This writes the app plugin: a stylesheet the frontend build has not built yet is refused.
@@ -312,7 +312,7 @@ fn compile_request(request: Request) -> String {
         Ok(built) => {
             snapshot = Some(built.snapshot.clone());
             // The ledger's migration folders from the request, then this compile's new folders,
-            // as `typedpress build` writes the new ones into the ledger and packs all of it.
+            // as `spacepress build` writes the new ones into the ledger and packs all of it.
             let mut new_migration_files: Vec<(String, String)> = Vec::new();
             for entry in &built.migrations {
                 new_migration_files.push((
@@ -359,7 +359,7 @@ fn compile_request(request: Request) -> String {
                 .map(|(name, bytes)| (name, String::from_utf8_lossy(&bytes).into_owned()))
                 .collect();
             let output = Output {
-                tp_plugins: crate::app_plugin::tp_plugins(&built.schema),
+                sp_plugins: crate::app_plugin::sp_plugins(&built.schema),
                 app_plugin,
                 app_plugin_binary,
                 wordpress_plugins,
@@ -428,7 +428,7 @@ pub fn operation(operation: &str, request: &str) -> String {
                 }
                 "check" => {
                     let root = fs.canonicalize(&project).map_err(|e| e.to_string())?;
-                    let built = loader::load_from(fs.clone(), &root.join("typedpress.config.ts")).and_then(|program| {
+                    let built = loader::load_from(fs.clone(), &root.join("spacepress.config.ts")).and_then(|program| {
                         pipeline::build(
                             &root,
                             &program,
@@ -486,30 +486,30 @@ pub fn operation(operation: &str, request: &str) -> String {
 mod abi {
     /// A buffer of `len` bytes for the caller to write the request into.
     #[unsafe(no_mangle)]
-    pub extern "C" fn tp_alloc(len: usize) -> *mut u8 {
+    pub extern "C" fn sp_alloc(len: usize) -> *mut u8 {
         let mut buffer = Vec::<u8>::with_capacity(len);
         let ptr = buffer.as_mut_ptr();
         std::mem::forget(buffer);
         ptr
     }
 
-    /// Frees a buffer from `tp_alloc` or `tp_compile` (`len` is the length it was handed out with).
+    /// Frees a buffer from `sp_alloc` or `sp_compile` (`len` is the length it was handed out with).
     ///
     /// # Safety
     /// `ptr` and `len` must come from one of those two functions and not have been freed already.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn tp_free(ptr: *mut u8, len: usize) {
+    pub unsafe extern "C" fn sp_free(ptr: *mut u8, len: usize) {
         drop(unsafe { Vec::from_raw_parts(ptr, 0, len) });
     }
 
     /// Compiles the UTF-8 request at `ptr..ptr+len`, taking ownership of that buffer. Returns a buffer
     /// whose first four bytes are the little-endian length of the JSON response that follows; free it
-    /// with `tp_free(ptr, 4 + len)`.
+    /// with `sp_free(ptr, 4 + len)`.
     ///
     /// # Safety
-    /// `ptr..ptr+len` must be a `tp_alloc(len)` buffer the caller has filled.
+    /// `ptr..ptr+len` must be a `sp_alloc(len)` buffer the caller has filled.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn tp_compile(ptr: *mut u8, len: usize) -> *mut u8 {
+    pub unsafe extern "C" fn sp_compile(ptr: *mut u8, len: usize) -> *mut u8 {
         unsafe { respond(ptr, len, super::compile) }
     }
 
@@ -529,15 +529,15 @@ mod abi {
     macro_rules! operation {
         ($name:ident, $operation:literal) => {
             /// # Safety
-            /// The input must be an owned `tp_alloc(len)` buffer.
+            /// The input must be an owned `sp_alloc(len)` buffer.
             #[unsafe(no_mangle)]
             pub unsafe extern "C" fn $name(ptr: *mut u8, len: usize) -> *mut u8 {
                 unsafe { respond(ptr, len, |request| super::operation($operation, request)) }
             }
         };
     }
-    operation!(tp_sources, "sources");
-    operation!(tp_check, "check");
+    operation!(sp_sources, "sources");
+    operation!(sp_check, "check");
 }
 
 #[cfg(test)]
@@ -547,7 +547,7 @@ mod tests {
     fn memory() -> Memory {
         Memory::new(
             [
-                ("/p/typedpress.config.ts", ""),
+                ("/p/spacepress.config.ts", ""),
                 ("/p/lib.ts", ""),
                 ("/p/dir/util.ts", ""),
             ]
@@ -620,7 +620,7 @@ mod tests {
             )
         };
         let expected = rendered();
-        compile(r#"{"name":"p","files":{"typedpress.config.ts":"export default 1;"}}"#);
+        compile(r#"{"name":"p","files":{"spacepress.config.ts":"export default 1;"}}"#);
         assert_eq!(rendered(), expected);
     }
 
@@ -630,7 +630,7 @@ mod tests {
         let request = serde_json::json!({
             "name": "packaged",
             "files": {
-                "typedpress.config.ts": "import { defineConfig } from 'typedpress'; export default defineConfig({ name: 'packaged' });",
+                "spacepress.config.ts": "import { defineConfig } from 'spacepress'; export default defineConfig({ name: 'packaged' });",
                 "public/modules/example.mjs": source,
                 "public/image.svg": "<svg/>",
             },
@@ -639,9 +639,9 @@ mod tests {
         let output = &response["output"];
         let functions = output["functionsPhp"].as_str().unwrap_or_else(|| panic!("{response}"));
         let plugin = &output["appPlugin"];
-        assert_eq!(plugin["typedpress-app-packaged/tp/app/functions.php"], functions);
-        assert_eq!(plugin["typedpress-app-packaged/public/modules/example.mjs"], source);
-        let map = plugin["typedpress-app-packaged/tp/app/public-files.json"]
+        assert_eq!(plugin["spacepress-app-packaged/sp/app/functions.php"], functions);
+        assert_eq!(plugin["spacepress-app-packaged/public/modules/example.mjs"], source);
+        let map = plugin["spacepress-app-packaged/sp/app/public-files.json"]
             .as_str()
             .unwrap();
         use sha2::Digest;
@@ -660,7 +660,7 @@ mod tests {
     /// The browser types `abilities.call` from the lock it is sent, exactly as the command line does.
     #[test]
     fn a_locked_ability_in_the_request_types_its_call() {
-        let config = r#"import { query, defineConfig } from "typedpress";
+        let config = r#"import { query, defineConfig } from "spacepress";
 import { abilities } from "php/wordpress";
 const __a = query({ access: "anyone" }, () => abilities.call("acme/info", { field: "title" })); export { __a as a }; export default defineConfig({});"#;
         let lock = serde_json::json!({"version": 1, "abilities": [{"name": "acme/info",
@@ -675,13 +675,13 @@ const __a = query({ access: "anyone" }, () => abilities.call("acme/info", { fiel
         };
         assert_eq!(
             message(serde_json::Value::Object(serde_json::Map::from_iter([
-                ("typedpress.config.ts".to_string(), config.into()),
+                ("spacepress.config.ts".to_string(), config.into()),
                 (crate::wordpress::abilities::LOCK.to_string(), lock.to_string().into()),
             ]))),
             "`acme/info` takes { field: \"name\" }, not { field: \"title\" }"
         );
         assert_eq!(
-            message(serde_json::json!({"typedpress.config.ts": config})),
+            message(serde_json::json!({"spacepress.config.ts": config})),
             "unknown ability `acme/info`"
         );
     }

@@ -1,5 +1,5 @@
-tp/_generated/
-tp/dist/
-tp/blog/
-.tp/*
-!.tp/sync-base.json
+sp/_generated/
+sp/dist/
+sp/blog/
+.sp/*
+!.sp/sync-base.json

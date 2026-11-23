@@ -1,4 +1,4 @@
-// Untyped JavaScript for tests/differential/language/bitwise.ts: these run through TypedPress's checked
+// Untyped JavaScript for tests/differential/language/bitwise.ts: these run through SpacePress's checked
 // JavaScript dispatch rather than typed TypeScript compilation.
 
 function show(values) {

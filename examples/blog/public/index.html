@@ -22,13 +22,13 @@
   <main id="posts"><p>Loading…</p></main>
   <script type="module">
     // The generated browser client, copied by `node build-client.mjs` (no bundler).
-    import { createClient, TypedPressError } from "./client/index.js";
+    import { createClient, SpacePressError } from "./client/index.js";
 
     // Sessions survive reloads (sessionStorage). Readers sign in on the site's /identity screens:
     // register this page once with
-    // `typedpress identity app add --name=Blog --id=app_blog --redirect=<this page's URL> --origin=<its origin>`.
+    // `spacepress identity app add --name=Blog --id=app_blog --redirect=<this page's URL> --origin=<its origin>`.
     const first = createClient({
-      url: "/wp-json/typedpress/v1",
+      url: "/wp-json/spacepress/v1",
       auth: { storage: "session", clientId: "app_blog", redirectUri: location.origin + location.pathname },
     });
     const $ = (id) => document.getElementById(id);
@@ -91,7 +91,7 @@
         form.reset();
         out.textContent = "Thanks! Your comment shows up once it's approved.";
       } catch (err) {
-        out.textContent = err instanceof TypedPressError ? err.detail : "Couldn't reach the server.";
+        out.textContent = err instanceof SpacePressError ? err.detail : "Couldn't reach the server.";
       }
     });
 

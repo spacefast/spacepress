@@ -1,8 +1,8 @@
-// Written by `typedpress add api-reference`; yours to change. One list of an operation's parameters,
+// Written by `spacepress add api-reference`; yours to change. One list of an operation's parameters,
 // body or response fields: each field's name, type, where it goes, its constraints and description,
 // indented by how deeply it is nested.
-import { Html } from "typedpress/app";
-import type { ApiField } from "typedpress/content";
+import { Html } from "spacepress/app";
+import type { ApiField } from "spacepress/content";
 
 export function ApiFields({ fields }: { fields: ApiField[] }) {
   return (

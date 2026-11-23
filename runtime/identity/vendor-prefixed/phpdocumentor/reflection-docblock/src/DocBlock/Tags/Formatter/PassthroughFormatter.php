@@ -11,10 +11,10 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
 
 use function trim;
 

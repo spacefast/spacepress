@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component;
 
-use TypedPress\Identity\Vendor\Brick\Math\BigInteger;
-use TypedPress\Identity\Vendor\Brick\Math\Exception\MathException;
+use SpacePress\Identity\Vendor\Brick\Math\BigInteger;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\MathException;
 use function count;
 use DomainException;
 use function func_num_args;
 use LogicException;
 use function mb_strlen;
 use function ord;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\Encodable;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util\BigInt;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\Encodable;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util\BigInt;
 use function sprintf;
 
 /**

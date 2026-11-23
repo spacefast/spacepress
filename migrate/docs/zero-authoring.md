@@ -1,4 +1,4 @@
-# Zero authoring constructs in TypedPress
+# Zero authoring constructs in SpacePress
 
 | 0.8 | Now |
 |---|---|

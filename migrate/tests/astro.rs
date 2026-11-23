@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::Command;
 
 fn migrate(source: &Path, output: &Path, switches: &[&str]) -> (bool, Value) {
-    let run = Command::new(env!("CARGO_BIN_EXE_typedpress-migrate"))
+    let run = Command::new(env!("CARGO_BIN_EXE_spacepress-migrate"))
         .args(["--from", "astro", "app"])
         .arg(source)
         .arg("--out")
@@ -46,7 +46,7 @@ fn imports_markdown_and_assets_and_reports_templates_for_review() {
             .any(|entry| { entry["pointer"] == "/src/pages/index.astro" && entry["outcome"] == "review" })
     );
     assert_eq!(fs::read(output.join("public/icon.bin")).unwrap(), [0, 255]);
-    let converted = fs::read_to_string(output.join("tp/app/about/page.md")).unwrap();
+    let converted = fs::read_to_string(output.join("sp/app/about/page.md")).unwrap();
     assert!(converted.contains("This is the journal."));
     assert!(!converted.contains("layout:"));
     assert_eq!(fs::read_to_string(source.join("src/pages/about.md")).unwrap(), page);
@@ -54,7 +54,7 @@ fn imports_markdown_and_assets_and_reports_templates_for_review() {
     let (ok, refusal) = migrate(&source, &output, &[]);
     assert!(!ok, "{refusal}");
     assert_eq!(
-        fs::read_to_string(output.join("tp/app/about/page.md")).unwrap(),
+        fs::read_to_string(output.join("sp/app/about/page.md")).unwrap(),
         converted
     );
 }

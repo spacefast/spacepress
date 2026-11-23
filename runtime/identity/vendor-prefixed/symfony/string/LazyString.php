@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\String;
+namespace SpacePress\Identity\Vendor\Symfony\Component\String;
 
 /**
  * A string whose value is computed lazily by a callback.
@@ -109,7 +109,7 @@ class LazyString implements \Stringable, \JsonSerializable
             return ['value' => $this->value];
         }
 
-        typedpress_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Implementing "%s::__sleep()" is deprecated, use "__serialize()" instead.', get_debug_type($this));
+        spacepress_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Implementing "%s::__sleep()" is deprecated, use "__serialize()" instead.', get_debug_type($this));
 
         $data = [];
         foreach ($this->__sleep() as $key) {
@@ -130,7 +130,7 @@ class LazyString implements \Stringable, \JsonSerializable
      */
     public function __sleep(): array
     {
-        typedpress_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Calling "%s::__sleep()" is deprecated, use "__serialize()" instead.', get_debug_type($this));
+        spacepress_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Calling "%s::__sleep()" is deprecated, use "__serialize()" instead.', get_debug_type($this));
 
         $this->__toString();
 

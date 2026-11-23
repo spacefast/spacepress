@@ -11,10 +11,10 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection;
 
 use InvalidArgumentException;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
 
 use function explode;
 use function implode;
@@ -53,7 +53,7 @@ class FqsenResolver
 
     /**
      * Resolves a partial Structural Element Name (i.e. `Reflection\DocBlock`) to its FQSEN representation
-     * (i.e. `\TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock`) based on the Namespace and aliases mentioned in the Context.
+     * (i.e. `\SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock`) based on the Namespace and aliases mentioned in the Context.
      *
      * @throws InvalidArgumentException When type is not a valid FQSEN.
      */

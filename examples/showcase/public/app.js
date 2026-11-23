@@ -1,6 +1,6 @@
 import { createClient } from "./client/index.js";
 
-const first = createClient({ url: "/wp-json/typedpress/v1" });
+const first = createClient({ url: "/wp-json/spacepress/v1" });
 const element = (id) => document.getElementById(id);
 const node = (tag, className = "", text) => {
   const result = document.createElement(tag);
@@ -161,7 +161,7 @@ function storyCard(story, openStories) {
   details.append(node("summary", "", "Read story & fields"));
 
   const actions = node("div", "story-edit");
-  const refreshButton = node("button", "", "Refresh from TypedPress ↻");
+  const refreshButton = node("button", "", "Refresh from SpacePress ↻");
   refreshButton.type = "button";
   refreshButton.id = `story-refresh-${story.id}`;
   refreshButton.dataset.refresh = "";
@@ -314,7 +314,7 @@ async function refresh() {
       ? " Previously loaded content is still shown."
       : "";
     element("load-status").textContent =
-      `Could not refresh.${previous} ${error.message} Try Refresh from TypedPress again.`;
+      `Could not refresh.${previous} ${error.message} Try Refresh from SpacePress again.`;
     element("load-status").className = "error";
   } finally {
     element("stories").setAttribute("aria-busy", "false");

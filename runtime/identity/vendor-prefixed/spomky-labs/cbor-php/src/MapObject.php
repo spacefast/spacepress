@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR;
+namespace SpacePress\Identity\Vendor\CBOR;
 
 use function array_key_exists;
 use ArrayAccess;

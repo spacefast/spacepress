@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 /** Registered OIDC applications: public clients with one exact callback and its origin. */
 final class Applications
@@ -28,8 +28,8 @@ final class Applications
             ? ($parts["scheme"] ?? "") . "://" . ($parts["host"] ?? "") . (isset($parts["port"]) ? ":" . $parts["port"] : "")
             : "";
         $local =
-            defined("TP_IDENTITY_DEV_HTTP") &&
-            TP_IDENTITY_DEV_HTTP &&
+            defined("SP_IDENTITY_DEV_HTTP") &&
+            SP_IDENTITY_DEV_HTTP &&
             in_array($parts["host"] ?? "", ["localhost", "127.0.0.1", "app.identity.localhost"], true);
         if (
             !is_array($parts) ||

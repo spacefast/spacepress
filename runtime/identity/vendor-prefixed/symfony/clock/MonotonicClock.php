@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Clock;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Clock;
 
 /**
  * A monotonic clock suitable for performance profiling.

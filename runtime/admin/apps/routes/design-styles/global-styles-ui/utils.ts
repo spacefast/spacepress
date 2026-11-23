@@ -1,5 +1,5 @@
 import fastDeepEqual from 'fast-deep-equal/es6';
-import type { GlobalStylesConfig } from '@typedpress-admin/global-styles-engine';
+import type { GlobalStylesConfig } from '@spacepress-admin/global-styles-engine';
 
 /**
  * Removes all instances of properties from an object.

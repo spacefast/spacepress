@@ -9,17 +9,17 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Uid\Factory;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Uid\Factory;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\Exception\LogicException;
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\TimeBasedUidInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\Uuid;
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\UuidV1;
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\UuidV3;
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\UuidV4;
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\UuidV5;
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\UuidV6;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\Exception\LogicException;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\TimeBasedUidInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\UuidV1;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\UuidV3;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\UuidV4;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\UuidV5;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\UuidV6;
 
 class MockUuidFactory extends UuidFactory
 {

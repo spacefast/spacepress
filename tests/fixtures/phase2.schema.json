@@ -14,7 +14,7 @@
         "wp-sitemap.xml",
         "xmlrpc.php",
         "feed",
-        "__tp",
+        "__sp",
         "__spacefast",
         "llms.txt",
         "robots.txt",
@@ -347,10 +347,10 @@
                 "delete": true
             },
             "wp": {
-                "postType": "tp_authors",
-                "groupKey": "group_tp_authors",
-                "metaPrefix": "tp_",
-                "fieldKeyPrefix": "field_tp_authors_"
+                "postType": "sp_authors",
+                "groupKey": "group_sp_authors",
+                "metaPrefix": "sp_",
+                "fieldKeyPrefix": "field_sp_authors_"
             },
             "table": null
         },
@@ -624,10 +624,10 @@
                 "delete": true
             },
             "wp": {
-                "postType": "tp_posts",
-                "groupKey": "group_tp_posts",
-                "metaPrefix": "tp_",
-                "fieldKeyPrefix": "field_tp_posts_"
+                "postType": "sp_posts",
+                "groupKey": "group_sp_posts",
+                "metaPrefix": "sp_",
+                "fieldKeyPrefix": "field_sp_posts_"
             },
             "table": null
         },
@@ -739,7 +739,7 @@
                 "delete": true
             },
             "wp": null,
-            "table": "tp_audit"
+            "table": "sp_audit"
         },
         "members": {
             "key": "members",
@@ -836,7 +836,7 @@
                 "delete": true
             },
             "wp": null,
-            "table": "tp_members"
+            "table": "sp_members"
         }
     },
     "globals": {
@@ -860,11 +860,11 @@
                 }
             },
             "wp": {
-                "postId": "tp_global_settings",
-                "menuSlug": "typedpress-global-settings",
-                "groupKey": "group_tp_global_settings",
-                "fieldKeyPrefix": "field_tp_global_settings_",
-                "optionPrefix": "tp_global_settings_"
+                "postId": "sp_global_settings",
+                "menuSlug": "spacepress-global-settings",
+                "groupKey": "group_sp_global_settings",
+                "fieldKeyPrefix": "field_sp_global_settings_",
+                "optionPrefix": "sp_global_settings_"
             }
         }
     },

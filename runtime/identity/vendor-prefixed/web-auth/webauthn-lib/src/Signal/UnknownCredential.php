@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Signal;
+namespace SpacePress\Identity\Vendor\Webauthn\Signal;
 
-use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialDescriptor;
-use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialRpEntity;
+use SpacePress\Identity\Vendor\Webauthn\PublicKeyCredentialDescriptor;
+use SpacePress\Identity\Vendor\Webauthn\PublicKeyCredentialRpEntity;
 
 readonly class UnknownCredential implements Signal
 {

@@ -1,10 +1,10 @@
 ---
 title: Introduction
 order: 1
-summary: What TypedPress is.
+summary: What SpacePress is.
 ---
 
-TypedPress turns TypeScript into WordPress.
+SpacePress turns TypeScript into WordPress.
 
 ## Why
 
@@ -14,7 +14,7 @@ Because.
 
 None.
 
-### What's `tp/app/`?
+### What's `sp/app/`?
 
 Its punctuation goes; its words stay.
 

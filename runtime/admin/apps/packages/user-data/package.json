@@ -1,7 +1,7 @@
 {
-	"name": "@typedpress-admin/user-data",
+	"name": "@spacepress-admin/user-data",
 	"version": "1.0.0",
-	"description": "User invite data store for TypedPress Admin",
+	"description": "User invite data store for SpacePress Admin",
 	"type": "module",
 	"wpModule": true,
 	"exports": {
@@ -11,7 +11,7 @@
 		"build"
 	],
 	"dependencies": {
-		"@typedpress-admin/admin-toolkit": "workspace:*",
+		"@spacepress-admin/admin-toolkit": "workspace:*",
 		"@wordpress/api-fetch": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",

@@ -67,8 +67,8 @@ test('a field labels and explains itself from `.ui()` when the schema gives no l
 	expect(c.items.fields.sku.label).toBe('SKU');
 });
 test('native mapping retains returned typed meta fields without duplicating core fields', () => {
-	window.tpAdmin = {
-		native: { posts: { path: '/wp/v2/tp_posts', postType: 'tp_posts' } },
+	window.spAdmin = {
+		native: { posts: { path: '/wp/v2/sp_posts', postType: 'sp_posts' } },
 		readable: ['posts'],
 		role: 'editor',
 	};
@@ -90,7 +90,7 @@ test('native mapping retains returned typed meta fields without duplicating core
 			unrelated: 'Not a schema field', _crdt_document: 'opaque',
 			headline: 'Never duplicate core title', excerpt: 'Visible', sections,
 		},
-		acf: { tp_secret: 'Ignore the separate SCF representation' },
+		acf: { sp_secret: 'Ignore the separate SCF representation' },
 	});
 	expect(nativeEditor(c, row, true)).toBe(true);
 	expect(nativeEditor(c, row, false)).toBe(false);
@@ -114,20 +114,20 @@ test.each([null, '', false, 0, 'false', 'null', {}, [], { nested: [false, ''] }]
 	}
 );
 test('native taxonomy assignments retain their root property and returned-field masking', () => {
-	window.tpAdmin = {
-		native: { posts: { path: '/wp/v2/tp_posts', postType: 'tp_posts', terms: { labels: 'tp_tags' } } },
+	window.spAdmin = {
+		native: { posts: { path: '/wp/v2/sp_posts', postType: 'sp_posts', terms: { labels: 'sp_tags' } } },
 		readable: ['posts'], role: 'editor',
 	};
 	const c = { name: 'posts', label: 'Posts', primaryKey: 'id', access: {}, columns: columns({
 		labels: { type: 'refList', references: { collection: 'tags', column: 'id' } },
 		summary: { type: 'text' },
 	}) };
-	expect(fromNative(c, { tp_tags: [2, 7], meta: { labels: [99], summary: 'Visible' } }))
+	expect(fromNative(c, { sp_tags: [2, 7], meta: { labels: [99], summary: 'Visible' } }))
 		.toEqual({ labels: [2, 7], summary: 'Visible' });
 	expect(fromNative(c, { meta: { labels: [99] } })).toEqual({});
 	expect(toNative(c, { labels: [7], summary: 'Changed' }))
-		.toEqual({ tp_tags: [7], meta: { summary: 'Changed' } });
-	expect(toNative(c, { labels: [] })).toEqual({ tp_tags: [] });
+		.toEqual({ sp_tags: [7], meta: { summary: 'Changed' } });
+	expect(toNative(c, { labels: [] })).toEqual({ sp_tags: [] });
 });
 test('conditional fields evaluate sibling values and grouped conditions', () => {
 	const condition = {
@@ -185,8 +185,8 @@ test('collection table helpers singularize labels, avoid duplicating titleField,
 	expect(defaultListColumns(s.collections.entries, 'title')).toEqual(['status', 'category']);
 	expect(stripHtml('<h2 class="wp-block-heading">Hello</h2> <p>World</p>')).toBe('Hello World');
 
-	window.tpAdmin = {
-		native: { docs: { path: '/wp/v2/tp_docs', postType: 'tp_docs', metaPrefix: 'tp_' } },
+	window.spAdmin = {
+		native: { docs: { path: '/wp/v2/sp_docs', postType: 'sp_docs', metaPrefix: 'sp_' } },
 		readable: ['docs'],
 		role: 'admin',
 	};

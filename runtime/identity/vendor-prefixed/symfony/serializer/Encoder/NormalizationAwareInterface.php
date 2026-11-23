@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Encoder;
 
 /**
  * Defines the interface of encoders that will normalize data themselves.

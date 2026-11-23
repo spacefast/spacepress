@@ -1,5 +1,5 @@
 // Untyped JavaScript for tests/differential/language/tagged-templates.ts: these run through
-// TypedPress's checked JavaScript dispatch rather than typed TypeScript compilation.
+// SpacePress's checked JavaScript dispatch rather than typed TypeScript compilation.
 
 function sql(strings, ...values) {
   return { text: strings.reduce((out, part, i) => out + "$" + i + part), values };

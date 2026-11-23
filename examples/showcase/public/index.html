@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <title>TypedPress / A working example</title>
+    <title>SpacePress / A working example</title>
     <link rel="stylesheet" href="./style.css" />
     <link rel="stylesheet" href="./source-lab.css" />
   </head>
@@ -13,13 +13,13 @@
       <a class="brand" href="./">zero<span> / field notes</span></a>
       <nav aria-label="Main">
         <a href="#pantry">Pantry</a><a href="#source-lab">Config lab</a
-        ><a href="/wp-admin/new/">TypedPress admin ↗</a
+        ><a href="/wp-admin/new/">SpacePress admin ↗</a
         ><a href="/wp-admin/">WordPress admin ↗</a>
       </nav>
     </header>
     <main>
       <section class="intro">
-        <p class="eyebrow">A working example · WordPress + TypedPress</p>
+        <p class="eyebrow">A working example · WordPress + SpacePress</p>
         <h1 id="site-title">The small things,<br />shipped.</h1>
         <p id="description">
           A real publication. Edit a story, complete a task, or try a little
@@ -30,7 +30,7 @@
           ><a href="#try-it">Run some code ↓</a>
         </div>
         <p class="hint">
-          Full demo login: <code>admin</code> / <code>typedpress-test-admin</code>
+          Full demo login: <code>admin</code> / <code>spacepress-test-admin</code>
         </p>
         <section
           id="wordpress"
@@ -44,7 +44,7 @@
             this disposable demo.
           </p>
           <p>
-            TypedPress’s generated SCF fields appear on the native story editor. The
+            SpacePress’s generated SCF fields appear on the native story editor. The
             SCF field-group manager lets you create your own groups.
           </p>
           <div class="actions">
@@ -58,8 +58,8 @@
             ><a href="/wp-admin/users.php">Users ↗</a
             ><a href="/wp-admin/tools.php">Tools ↗</a
             ><a href="/wp-admin/edit.php?post_type=page">Pages ↗</a
-            ><a href="/wp-admin/new/">TypedPress admin ↗</a
-            ><a href="/wp-admin/edit.php?post_type=tp_stories"
+            ><a href="/wp-admin/new/">SpacePress admin ↗</a
+            ><a href="/wp-admin/edit.php?post_type=sp_stories"
               >Stories &amp; SCF fields ↗</a
             ><a href="/wp-admin/edit.php?post_type=acf-field-group"
               >SCF field groups ↗</a
@@ -67,7 +67,7 @@
           </div>
           <p class="hint">
             To try content-only permissions, use <code>editor</code> /
-            <code>typedpress-test-editor</code> instead.
+            <code>spacepress-test-editor</code> instead.
           </p>
         </section>
       </section>
@@ -75,7 +75,7 @@
         <div class="section-title">
           <h2 id="stories-title">From the notebook</h2>
           <button id="refresh" type="button" data-refresh>
-            Refresh from TypedPress ↻
+            Refresh from SpacePress ↻
           </button>
         </div>
         <p class="hint">
@@ -97,7 +97,7 @@
         </div>
         <p>
           Use what you have. Low stock lands on your shopping list; restocking
-          checks it off. Edit the same records in TypedPress Admin or the classic
+          checks it off. Edit the same records in SpacePress Admin or the classic
           WordPress admin.
         </p>
         <div class="pantry-tools">
@@ -108,7 +108,7 @@
             </select></label
           ><a href="/wp-admin/new/collections/items/-/new">Add an item ↗</a
           ><a href="/wp-admin/new/collections/locations">Edit locations ↗</a
-          ><a href="/wp-admin/admin.php?page=typedpress-showcase-pantry"
+          ><a href="/wp-admin/admin.php?page=spacepress-showcase-pantry"
             >Classic pantry admin ↗</a
           >
         </div>
@@ -137,7 +137,7 @@
           <h2 id="workbench-title">A story has a to-do list.</h2>
           <p>
             Stories use WordPress posts and the native block editor. Tasks live
-            in a SQL table. The relation joins them through TypedPress.
+            in a SQL table. The relation joins them through SpacePress.
           </p>
           <a href="/wp-admin/new/">Edit both in the admin ↗</a>
         </div>
@@ -166,7 +166,7 @@
           <pre id="result" role="status">Ready when you are.</pre>
         </div>
         <div class="code-card">
-          <span>typedpress.config.ts · compiled at build time</span>
+          <span>spacepress.config.ts · compiled at build time</span>
           <pre><code>class Headline {
   constructor(public text: string) {}
   preview() {
@@ -219,7 +219,7 @@
       </section>
     </main>
     <footer>
-      Built with TypedPress. Local disk media · disposable WordPress + MariaDB.<br />S3
+      Built with SpacePress. Local disk media · disposable WordPress + MariaDB.<br />S3
       has its own Garage acceptance lane; this demo uses local storage.
     </footer>
     <script type="module" src="./app.js"></script>

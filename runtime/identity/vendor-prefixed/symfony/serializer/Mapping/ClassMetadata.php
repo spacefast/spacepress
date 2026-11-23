@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping;
 
 /**
  * @author Kévin Dunglas <dunglas@gmail.com>

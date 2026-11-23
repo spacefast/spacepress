@@ -78,9 +78,9 @@ pub fn requirements() -> serde_json::Value {
 }
 
 pub fn cache(project: &std::path::Path) -> std::path::PathBuf {
-    std::env::var_os("TP_WP_PLUGIN_CACHE")
+    std::env::var_os("SP_WP_PLUGIN_CACHE")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| project.join(".tp/cache/plugins"))
+        .unwrap_or_else(|| project.join(".sp/cache/plugins"))
 }
 
 #[cfg(test)]

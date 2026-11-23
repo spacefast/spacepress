@@ -9,7 +9,7 @@ declare(strict_types=1);
  *
  * 1. a job queued in a write that rolls back leaves no job row and no action;
  * 2. one queued in a write that commits leaves the job and exactly one pending action;
- * 3. a rollback that would have created TypedPress's Action Scheduler group leaves no cached group id that
+ * 3. a rollback that would have created SpacePress's Action Scheduler group leaves no cached group id that
  *    the database lacks, under a persistent-style object cache (one whose entries outlive the request
  *    and the transaction, as Memcached or Redis do);
  * 4. a crash after the commit, before any commit callback runs, loses no job: its action committed with it.
@@ -21,20 +21,20 @@ declare(strict_types=1);
 function firstJobsTransactionCases(string $job, array $input): array
 {
     global $wpdb;
-    $plugin = \TypedPress\Wp\Runtime::plugin() ?? throw new \LogicException('no TypedPress app is active');
+    $plugin = \SpacePress\Wp\Runtime::plugin() ?? throw new \LogicException('no SpacePress app is active');
     $connection = $plugin->connection();
     $db = $plugin->app()->db;
     $p = $wpdb->prefix;
-    $group = 'typedpress-' . $plugin->schema->name();
+    $group = 'spacepress-' . $plugin->schema->name();
     $queued = [];
     $enqueue = static function () use ($job, $input, &$queued): string {
-        return $queued[] = \TypedPress\Jobs\Jobs::enqueue($job, $input)['id'];
+        return $queued[] = \SpacePress\Jobs\Jobs::enqueue($job, $input)['id'];
     };
-    $state = static fn (?string $id) => $id === null ? null : ($connection->run("SELECT `state` FROM `{$p}tp__jobs` WHERE `id` = ?", [$id])[0]['state'] ?? null);
+    $state = static fn (?string $id) => $id === null ? null : ($connection->run("SELECT `state` FROM `{$p}sp__jobs` WHERE `id` = ?", [$id])[0]['state'] ?? null);
     // Each action as "status group": a group id with no row reads as "status (no group)".
     $actions = static fn (?string $id): array => $id === null ? [] : array_map(
         static fn (array $r): string => $r['status'] . ' ' . ($r['slug'] ?? '(no group)'),
-        $connection->run("SELECT a.`status`, g.`slug` FROM `{$p}actionscheduler_actions` a LEFT JOIN `{$p}actionscheduler_groups` g ON g.`group_id` = a.`group_id` WHERE a.`hook` = ? AND a.`args` = ? ORDER BY a.`action_id`", ['tp_job', json_encode(['id' => $id])]),
+        $connection->run("SELECT a.`status`, g.`slug` FROM `{$p}actionscheduler_actions` a LEFT JOIN `{$p}actionscheduler_groups` g ON g.`group_id` = a.`group_id` WHERE a.`hook` = ? AND a.`args` = ? ORDER BY a.`action_id`", ['sp_job', json_encode(['id' => $id])]),
     );
     $rolledBack = static function (callable $fn) use ($db): ?string {
         $id = null;
@@ -117,14 +117,14 @@ function firstJobsTransactionCases(string $job, array $input): array
     try {
         // Move this site's group out of the way (its actions keep their group id), as on a site no job ran on yet.
         $connection->run("UPDATE `{$p}actionscheduler_groups` SET `slug` = ? WHERE `slug` = ?", [$moved, $group]);
-        delete_option('tp_jobs_prepared');
+        delete_option('sp_jobs_prepared');
         do_action('action_scheduler_init');
         $id = $rolledBack($enqueue);
         $cached = $cache::$shared[$group] ?? null;
         $real = $cached === null || $connection->run("SELECT 1 FROM `{$p}actionscheduler_groups` WHERE `group_id` = ? AND `slug` = ?", [(int) $cached, $group]) !== [];
-        $out[] = ['after a rolled-back write, the cached id of TypedPress\'s group is a committed row of that group (or absent)', [$state($id), $actions($id), $real], [null, [], true]];
+        $out[] = ['after a rolled-back write, the cached id of SpacePress\'s group is a committed row of that group (or absent)', [$state($id), $actions($id), $real], [null, [], true]];
         $id = $db->transaction($enqueue);
-        $out[] = ['the next committed job\'s action is in TypedPress\'s group', $actions($id), ["pending $group"]];
+        $out[] = ['the next committed job\'s action is in SpacePress\'s group', $actions($id), ["pending $group"]];
     } finally {
         $GLOBALS['wp_object_cache'] = $previous;
         wp_using_ext_object_cache($external);
@@ -144,7 +144,7 @@ function firstJobsTransactionCases(string $job, array $input): array
     $id = null;
     try {
         $db->transaction(static function () use ($enqueue, &$id): void {
-            \TypedPress\Extensions::afterCommit(static fn () => throw new \RuntimeException('first test crash after commit'));
+            \SpacePress\Extensions::afterCommit(static fn () => throw new \RuntimeException('first test crash after commit'));
             $id = $enqueue();
         });
     } catch (\RuntimeException $e) {
@@ -156,8 +156,8 @@ function firstJobsTransactionCases(string $job, array $input): array
 
     // Leave nothing queued: these jobs are the cases' own.
     foreach ($queued as $id) {
-        as_unschedule_all_actions('tp_job', ['id' => $id]);
-        $connection->run("UPDATE `{$p}tp__jobs` SET `state` = 'dead', `dedupe` = NULL, `lastError` = 'cancelled' WHERE `id` = ?", [$id]);
+        as_unschedule_all_actions('sp_job', ['id' => $id]);
+        $connection->run("UPDATE `{$p}sp__jobs` SET `state` = 'dead', `dedupe` = NULL, `lastError` = 'cancelled' WHERE `id` = ?", [$id]);
     }
 
     return $out;

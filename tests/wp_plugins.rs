@@ -1,6 +1,6 @@
 //! Module-owned artifact tests: real HTTP ZIP acquisition through the real CLI.
 
-// Runs the `typedpress` binary: only with the cli feature (the browser build of the core has none).
+// Runs the `spacepress` binary: only with the cli feature (the browser build of the core has none).
 #![cfg(feature = "cli")]
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -126,7 +126,7 @@ impl Project {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("app");
         std::fs::create_dir(&root).unwrap();
-        let out = root.join("tp/dist/wp-content");
+        let out = root.join("sp/dist/wp-content");
         Self { _temp: temp, root, out }
     }
     fn config(&self, plugins: &[Value]) {
@@ -143,14 +143,14 @@ impl Project {
             })
             .collect();
         let body = format!(
-            "import {{ defineConfig }} from 'typedpress';\n export default defineConfig({{ name: 'fixtures', plugins: {}{extra} }});\n",
+            "import {{ defineConfig }} from 'spacepress';\n export default defineConfig({{ name: 'fixtures', plugins: {}{extra} }});\n",
             serde_json::to_string(&plugins).unwrap()
         );
-        std::fs::write(self.root.join("typedpress.config.ts"), body).unwrap();
+        std::fs::write(self.root.join("spacepress.config.ts"), body).unwrap();
     }
     fn run(&self, command: &str, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_typedpress"))
-            .env_remove("TP_WP_PLUGIN_CACHE")
+        Command::new(env!("CARGO_BIN_EXE_spacepress"))
+            .env_remove("SP_WP_PLUGIN_CACHE")
             .arg(command)
             .arg(&self.root)
             .args(args)
@@ -247,11 +247,11 @@ fn acquired_plugins_are_built_locked_and_repeatable_without_running_php() {
     );
     assert!(
         p.out
-            .join("plugins/typedpress-app-fixtures/typedpress-app-fixtures.php")
+            .join("plugins/spacepress-app-fixtures/spacepress-app-fixtures.php")
             .is_file()
     );
-    assert!(p.out.join("plugins/typedpress-app-fixtures.zip").is_file());
-    let lock_path = p.root.join("tp/_generated/wp-plugins.lock.json");
+    assert!(p.out.join("plugins/spacepress-app-fixtures.zip").is_file());
+    let lock_path = p.root.join("sp/_generated/wp-plugins.lock.json");
     let locked = std::fs::read(&lock_path).unwrap();
     let lock: Value = serde_json::from_slice(&locked).unwrap();
     let entries = lock["plugins"].as_array().unwrap();
@@ -271,16 +271,16 @@ fn acquired_plugins_are_built_locked_and_repeatable_without_running_php() {
     // The canonical assembler emits deterministic ZIPs as well as stable trees.
     assert_eq!(before, tree(&p.out));
     assert_eq!(locked, std::fs::read(lock_path).unwrap());
-    let custom = Command::new(env!("CARGO_BIN_EXE_typedpress"))
-        .args(["build", ".", "--out", ".tp/wp/custom-content"])
+    let custom = Command::new(env!("CARGO_BIN_EXE_spacepress"))
+        .args(["build", ".", "--out", ".sp/wp/custom-content"])
         .current_dir(&p.root)
-        .env_remove("TP_WP_PLUGIN_CACHE")
+        .env_remove("SP_WP_PLUGIN_CACHE")
         .output()
         .unwrap();
     assert!(custom.status.success(), "{}", String::from_utf8_lossy(&custom.stderr));
     assert!(
         p.root
-            .join(".tp/wp/custom-content/plugins/feature/feature.php")
+            .join(".sp/wp/custom-content/plugins/feature/feature.php")
             .is_file()
     );
 }
@@ -344,7 +344,7 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
     plugins.push(declared(&server, "good", "1.0", &routes["/good.zip"], &[]));
     p.config(&plugins);
     p.build();
-    let lock = std::fs::read(p.root.join("tp/_generated/wp-plugins.lock.json")).unwrap();
+    let lock = std::fs::read(p.root.join("sp/_generated/wp-plugins.lock.json")).unwrap();
     for (name, error) in [
         ("duplicate", "duplicate archive paths"),
         ("header-mismatch", "header inconsistency"),
@@ -365,7 +365,7 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
         assert_eq!(before, tree(&p.out));
         assert_eq!(
             lock,
-            std::fs::read(p.root.join("tp/_generated/wp-plugins.lock.json")).unwrap()
+            std::fs::read(p.root.join("sp/_generated/wp-plugins.lock.json")).unwrap()
         );
     }
     let before = tree(&p.out);
@@ -381,7 +381,7 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
     p.rejects("build", "sha256 mismatch");
     assert_eq!(before, tree(&p.out));
     // An ergonomic repeat of the same platform source/version must retain the required checksum.
-    let lock_path = p.root.join("tp/_generated/wp-plugins.lock.json");
+    let lock_path = p.root.join("sp/_generated/wp-plugins.lock.json");
     let mut substituted: Value = serde_json::from_slice(&lock).unwrap();
     let scf = substituted["plugins"]
         .as_array_mut()
@@ -417,16 +417,16 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
     assert_eq!(before, tree(&p.out));
     assert!(!p.root.join("escape.php").exists());
     // The project's build lock never lives inside a replaceable output root: with `--out
-    // tp/dist`, publication renames that directory, which would drop a lock held inside it.
+    // sp/dist`, publication renames that directory, which would drop a lock held inside it.
     std::fs::remove_file(p.out.join("plugins/good/local.txt")).unwrap();
-    let dist = p.root.join("tp/dist");
-    let held = p.root.join("tp/.wp-plugins.build.lock");
+    let dist = p.root.join("sp/dist");
+    let held = p.root.join("sp/.wp-plugins.build.lock");
     std::fs::write(&held, "").unwrap();
     let out = p.run("build", &["--out", dist.to_str().unwrap()]);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("cannot acquire build lock") && stderr.contains("tp/.wp-plugins.build.lock"),
+        stderr.contains("cannot acquire build lock") && stderr.contains("sp/.wp-plugins.build.lock"),
         "{stderr}"
     );
     std::fs::remove_file(&held).unwrap();
@@ -448,8 +448,8 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
     p.config(&[a, b]);
     p.rejects("check", "dependency cycle");
     std::fs::write(
-        p.root.join("typedpress.config.ts"),
-        "import {defineConfig} from 'typedpress';  export default defineConfig({ plugins:[] });",
+        p.root.join("spacepress.config.ts"),
+        "import {defineConfig} from 'spacepress';  export default defineConfig({ plugins:[] });",
     )
     .unwrap();
     p.rejects("check", "plugins must be a package map");
@@ -463,29 +463,29 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
         "const plugins = Object.fromEntries([['alpha','1.0'],['alpha','2.0']]);",
     ] {
         std::fs::write(
-            p.root.join("typedpress.config.ts"),
+            p.root.join("spacepress.config.ts"),
             format!(
-                "import {{defineConfig}} from 'typedpress'; {declarations}  export default defineConfig({{ plugins }});"
+                "import {{defineConfig}} from 'spacepress'; {declarations}  export default defineConfig({{ plugins }});"
             ),
         )
         .unwrap();
         p.rejects("check", "duplicate plugin declaration/property");
     }
-    std::fs::write(p.root.join("typedpress.config.ts"),
-        "import {defineConfig} from 'typedpress';  export default defineConfig({ plugins:{alpha:'1.0'},plugins:{alpha:'2.0'} });"
+    std::fs::write(p.root.join("spacepress.config.ts"),
+        "import {defineConfig} from 'spacepress';  export default defineConfig({ plugins:{alpha:'1.0'},plugins:{alpha:'2.0'} });"
     ).unwrap();
     p.rejects("check", "duplicate plugins declaration");
-    std::fs::write(p.root.join("typedpress.config.ts"),
-        "import {defineConfig} from 'typedpress'; const plugins = {}; plugins.alpha = plugins;  export default defineConfig({ plugins });"
+    std::fs::write(p.root.join("spacepress.config.ts"),
+        "import {defineConfig} from 'spacepress'; const plugins = {}; plugins.alpha = plugins;  export default defineConfig({ plugins });"
     ).unwrap();
     p.rejects("check", "acyclic declarative data");
     // Overwrites in other build-time data retain ordinary JavaScript semantics.
-    std::fs::write(p.root.join("typedpress.config.ts"),
-        "import {defineConfig} from 'typedpress'; const other = {value:'old',value:'new'};  export default defineConfig({ plugins:{alpha:'1.0'} });"
+    std::fs::write(p.root.join("spacepress.config.ts"),
+        "import {defineConfig} from 'spacepress'; const other = {value:'old',value:'new'};  export default defineConfig({ plugins:{alpha:'1.0'} });"
     ).unwrap();
     assert!(p.run("check", &[]).status.success());
 
-    p.config(&[org("typedpress-runtime")]);
+    p.config(&[org("spacepress-runtime")]);
     p.rejects("check", "reserved plugin slug");
     p.config(&[org("../escape")]);
     p.rejects("check", "invalid or reserved");
@@ -513,11 +513,11 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(out.status.success(), "{stderr}");
     assert!(
-        stderr.contains("warning: plugin alpha 1.0 is not supported by the TypedPress team.")
-            && stderr.contains("https://github.com/spacefast/zero/issues"),
+        stderr.contains("warning: plugin alpha 1.0 is not supported by the SpacePress team.")
+            && stderr.contains("https://github.com/spacefast/spacepress/issues"),
         "{stderr}"
     );
-    assert!(!p.root.join(".tp").exists());
+    assert!(!p.root.join(".sp").exists());
     let mut supported = org("classic-editor");
     supported["version"] = json!("1.6.7");
     p.config(&[supported]);
@@ -525,7 +525,7 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
     assert!(out.status.success() && !String::from_utf8_lossy(&out.stderr).contains("warning:"));
 }
 
-/// Every build ships TypedPress Admin as a fourth plugin, complete and versioned like the generated ones;
+/// Every build ships SpacePress Admin as a fourth plugin, complete and versioned like the generated ones;
 /// `admin: false` leaves it out, and a build that adds that opt-out removes it.
 #[test]
 fn the_admin_plugin_ships_by_default_and_admin_false_removes_it() {
@@ -534,13 +534,13 @@ fn the_admin_plugin_ships_by_default_and_admin_false_removes_it() {
     let p = Project::new();
     let plugins = platform(&server, &routes);
     let manifest = || -> Value {
-        serde_json::from_slice(&std::fs::read(p.out.join("typedpress-manifest.json")).unwrap()).unwrap()
+        serde_json::from_slice(&std::fs::read(p.out.join("spacepress-manifest.json")).unwrap()).unwrap()
     };
-    let admin = p.out.join("plugins/typedpress-admin");
+    let admin = p.out.join("plugins/spacepress-admin");
     let schema_admin = || -> Value {
         let schema = Command::new("php")
             .args(["-r", "echo json_encode(require $argv[1]);"])
-            .arg(p.out.join("plugins/typedpress-app-fixtures/tp/app/schema.php"))
+            .arg(p.out.join("plugins/spacepress-app-fixtures/sp/app/schema.php"))
             .output()
             .unwrap();
         assert!(schema.status.success(), "{}", String::from_utf8_lossy(&schema.stderr));
@@ -550,9 +550,9 @@ fn the_admin_plugin_ships_by_default_and_admin_false_removes_it() {
     p.config(&plugins);
     p.build();
     let version = env!("CARGO_PKG_VERSION");
-    let header = std::fs::read_to_string(admin.join("typedpress-admin.php")).unwrap();
+    let header = std::fs::read_to_string(admin.join("spacepress-admin.php")).unwrap();
     assert!(header.contains(&format!("Version: {version}")), "{header}");
-    assert!(header.contains("Requires Plugins: typedpress-runtime"), "{header}");
+    assert!(header.contains("Requires Plugins: spacepress-runtime"), "{header}");
     assert!(!header.contains("{{"), "every placeholder is substituted:\n{header}");
     for rel in [
         "lib/load-libs.php",
@@ -563,18 +563,18 @@ fn the_admin_plugin_ships_by_default_and_admin_false_removes_it() {
         "NOTICE",
         "build/THIRD-PARTY-LICENSES.txt",
     ] {
-        assert!(admin.join(rel).is_file(), "typedpress-admin is missing {rel}");
+        assert!(admin.join(rel).is_file(), "spacepress-admin is missing {rel}");
     }
     assert!(!admin.join("apps").exists(), "the JS workspace never ships");
     assert!(
         !admin.join("upstream-metadata").exists(),
         "the retained upstream inputs stay in the repository"
     );
-    let archive = std::fs::File::open(p.out.join("plugins/typedpress-admin.zip")).unwrap();
+    let archive = std::fs::File::open(p.out.join("plugins/spacepress-admin.zip")).unwrap();
     let mut archive = zip::ZipArchive::new(archive).unwrap();
-    assert!(archive.by_name("typedpress-admin/typedpress-admin.php").is_ok());
-    assert!(archive.by_name("typedpress-admin/build/index.php").is_ok());
-    assert_eq!(manifest()["plugins"]["typedpress-admin"], version);
+    assert!(archive.by_name("spacepress-admin/spacepress-admin.php").is_ok());
+    assert!(archive.by_name("spacepress-admin/build/index.php").is_ok());
+    assert_eq!(manifest()["plugins"]["spacepress-admin"], version);
     // schema.php records the setting as a value, read back by PHP like the runtime reads it.
     assert_eq!(schema_admin(), Value::Bool(true));
     let before = tree(&p.out);
@@ -584,14 +584,14 @@ fn the_admin_plugin_ships_by_default_and_admin_false_removes_it() {
     p.config_with(&plugins, ", admin: false");
     p.build();
     assert!(!admin.exists(), "admin: false removes the admin plugin");
-    assert!(!p.out.join("plugins/typedpress-admin.zip").exists());
-    assert!(manifest()["plugins"].get("typedpress-admin").is_none());
+    assert!(!p.out.join("plugins/spacepress-admin.zip").exists());
+    assert!(manifest()["plugins"].get("spacepress-admin").is_none());
     assert_eq!(schema_admin(), Value::Bool(false));
 
     p.config_with(&plugins, ", admin: true");
     p.build();
     assert_eq!(
-        manifest()["plugins"]["typedpress-admin"],
+        manifest()["plugins"]["spacepress-admin"],
         version,
         "admin: true is the default, spelled out"
     );
@@ -603,7 +603,7 @@ fn admin_must_be_a_boolean() {
     let p = Project::new();
     p.config_with(&[], ", admin: 'yes'");
     p.rejects("check", "admin must be true or false");
-    assert!(!p.root.join(".tp").exists());
+    assert!(!p.root.join(".sp").exists());
 }
 
 /// A build over existing output keeps the runtime plugins and their ZIPs when the manifest's
@@ -621,15 +621,15 @@ fn a_build_over_existing_output_keeps_what_did_not_change() {
     p.config(&plugins);
     p.build();
     let manifest: Value =
-        serde_json::from_slice(&std::fs::read(p.out.join("typedpress-manifest.json")).unwrap()).unwrap();
-    assert_eq!(manifest["runtimeRevision"], typedpress::store::runtime_revision());
+        serde_json::from_slice(&std::fs::read(p.out.join("spacepress-manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["runtimeRevision"], spacepress::store::runtime_revision());
     let kept = [
-        "plugins/typedpress-runtime/tp/bootstrap.php",
-        "plugins/typedpress-runtime.zip",
-        "plugins/typedpress-identity.zip",
-        "plugins/typedpress-admin.zip",
-        "plugins/typedpress-app-fixtures.zip",
-        "plugins/typedpress-app-fixtures/tp/app/schema.php",
+        "plugins/spacepress-runtime/sp/bootstrap.php",
+        "plugins/spacepress-runtime.zip",
+        "plugins/spacepress-identity.zip",
+        "plugins/spacepress-admin.zip",
+        "plugins/spacepress-app-fixtures.zip",
+        "plugins/spacepress-app-fixtures/sp/app/schema.php",
         "plugins/secure-custom-fields/secure-custom-fields.php",
     ];
     let before: Vec<u64> = kept.iter().map(|rel| inode(rel)).collect();
@@ -644,70 +644,70 @@ fn a_build_over_existing_output_keeps_what_did_not_change() {
     std::fs::create_dir_all(p.root.join("public/a")).unwrap();
     std::fs::write(p.root.join("public/a/robots.txt"), "User-agent: *\n").unwrap();
     p.build();
-    assert_ne!(inode("plugins/typedpress-app-fixtures.zip"), before[4]);
-    assert_eq!(inode("plugins/typedpress-runtime.zip"), before[1]);
+    assert_ne!(inode("plugins/spacepress-app-fixtures.zip"), before[4]);
+    assert_eq!(inode("plugins/spacepress-runtime.zip"), before[1]);
     assert!(
         p.out
-            .join("plugins/typedpress-app-fixtures/public/a/robots.txt")
+            .join("plugins/spacepress-app-fixtures/public/a/robots.txt")
             .is_file()
     );
     // A public file that goes away goes from the plugin and its ZIP, as on a fresh build.
     std::fs::remove_dir_all(p.root.join("public")).unwrap();
     p.build();
-    assert!(!p.out.join("plugins/typedpress-app-fixtures/public").exists());
+    assert!(!p.out.join("plugins/spacepress-app-fixtures/public").exists());
     let fresh = Project::new();
     std::fs::copy(
-        p.root.join("typedpress.config.ts"),
-        fresh.root.join("typedpress.config.ts"),
+        p.root.join("spacepress.config.ts"),
+        fresh.root.join("spacepress.config.ts"),
     )
     .unwrap();
-    std::fs::create_dir_all(fresh.root.join("tp/_generated")).unwrap();
+    std::fs::create_dir_all(fresh.root.join("sp/_generated")).unwrap();
     std::fs::copy(
-        p.root.join("tp/_generated/wp-plugins.lock.json"),
-        fresh.root.join("tp/_generated/wp-plugins.lock.json"),
+        p.root.join("sp/_generated/wp-plugins.lock.json"),
+        fresh.root.join("sp/_generated/wp-plugins.lock.json"),
     )
     .unwrap();
     fresh.build();
-    let app = |out: &Path| tree(&out.join("plugins/typedpress-app-fixtures"));
+    let app = |out: &Path| tree(&out.join("plugins/spacepress-app-fixtures"));
     assert_eq!(
         app(&p.out),
         app(&fresh.out),
         "the kept app plugin is the one a fresh build writes"
     );
     assert_eq!(
-        std::fs::read(p.out.join("plugins/typedpress-app-fixtures.zip")).unwrap(),
-        std::fs::read(fresh.out.join("plugins/typedpress-app-fixtures.zip")).unwrap()
+        std::fs::read(p.out.join("plugins/spacepress-app-fixtures.zip")).unwrap(),
+        std::fs::read(fresh.out.join("plugins/spacepress-app-fixtures.zip")).unwrap()
     );
 
     // A runtime folder someone edited, or a missing file or ZIP, is written again.
     std::fs::write(
-        p.out.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+        p.out.join("plugins/spacepress-runtime/sp/bootstrap.php"),
         "<?php // edited\n",
     )
     .unwrap();
-    std::fs::remove_file(p.out.join("plugins/typedpress-identity/typedpress-identity.php")).unwrap();
-    std::fs::remove_file(p.out.join("plugins/typedpress-admin.zip")).unwrap();
+    std::fs::remove_file(p.out.join("plugins/spacepress-identity/spacepress-identity.php")).unwrap();
+    std::fs::remove_file(p.out.join("plugins/spacepress-admin.zip")).unwrap();
     p.build();
     assert_eq!(
-        std::fs::read(p.out.join("plugins/typedpress-runtime/tp/bootstrap.php")).unwrap(),
-        std::fs::read(fresh.out.join("plugins/typedpress-runtime/tp/bootstrap.php")).unwrap()
+        std::fs::read(p.out.join("plugins/spacepress-runtime/sp/bootstrap.php")).unwrap(),
+        std::fs::read(fresh.out.join("plugins/spacepress-runtime/sp/bootstrap.php")).unwrap()
     );
     assert!(
         p.out
-            .join("plugins/typedpress-identity/typedpress-identity.php")
+            .join("plugins/spacepress-identity/spacepress-identity.php")
             .is_file()
     );
     assert_eq!(
-        std::fs::read(p.out.join("plugins/typedpress-admin.zip")).unwrap(),
-        std::fs::read(fresh.out.join("plugins/typedpress-admin.zip")).unwrap()
+        std::fs::read(p.out.join("plugins/spacepress-admin.zip")).unwrap(),
+        std::fs::read(fresh.out.join("plugins/spacepress-admin.zip")).unwrap()
     );
     // An output from another compiler (no or another revision) is written again.
     let mut manifest: Value =
-        serde_json::from_slice(&std::fs::read(p.out.join("typedpress-manifest.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(p.out.join("spacepress-manifest.json")).unwrap()).unwrap();
     manifest["runtimeRevision"] = "0".repeat(64).into();
-    std::fs::write(p.out.join("typedpress-manifest.json"), manifest.to_string()).unwrap();
-    let zip = inode("plugins/typedpress-runtime.zip");
+    std::fs::write(p.out.join("spacepress-manifest.json"), manifest.to_string()).unwrap();
+    let zip = inode("plugins/spacepress-runtime.zip");
     p.build();
-    assert_ne!(inode("plugins/typedpress-runtime.zip"), zip);
+    assert_ne!(inode("plugins/spacepress-runtime.zip"), zip);
     assert_eq!(tree(&p.out.join("plugins")), tree(&fresh.out.join("plugins")));
 }

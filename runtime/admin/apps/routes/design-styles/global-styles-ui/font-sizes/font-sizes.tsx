@@ -1,5 +1,5 @@
-import { unlock } from '@typedpress-admin/admin-toolkit';
-import type { FontSize } from '@typedpress-admin/global-styles-engine';
+import { unlock } from '@spacepress-admin/admin-toolkit';
+import type { FontSize } from '@spacepress-admin/global-styles-engine';
 import { __, sprintf, isRTL } from '@wordpress/i18n';
 import {
 	privateApis as componentsPrivateApis,
@@ -51,11 +51,11 @@ function FontSizeGroup( {
 		origin === 'custom'
 			? __(
 					'Are you sure you want to remove all custom font size presets?',
-					'typedpress-admin'
+					'spacepress-admin'
 			  )
 			: __(
 					'Are you sure you want to reset all font size presets to their default values?',
-					'typedpress-admin'
+					'spacepress-admin'
 			  );
 
 	return (
@@ -65,8 +65,8 @@ function FontSizeGroup( {
 					text={ resetDialogText }
 					confirmButtonText={
 						origin === 'custom'
-							? __( 'Remove', 'typedpress-admin' )
-							: __( 'Reset', 'typedpress-admin' )
+							? __( 'Remove', 'spacepress-admin' )
+							: __( 'Reset', 'spacepress-admin' )
 					}
 					isOpen={ isResetDialogOpen }
 					toggleOpen={ toggleResetDialog }
@@ -76,10 +76,10 @@ function FontSizeGroup( {
 			<VStack spacing={ 4 }>
 				<HStack>
 					<Subtitle level={ 3 }>{ label }</Subtitle>
-					<FlexItem className="typedpress-admin-global-styles__typography-panel__options-container">
+					<FlexItem className="spacepress-admin-global-styles__typography-panel__options-container">
 						{ origin === 'custom' && (
 							<Button
-								label={ __( 'Add font size', 'typedpress-admin' ) }
+								label={ __( 'Add font size', 'spacepress-admin' ) }
 								icon={ plus }
 								size="small"
 								onClick={ handleAddFontSize }
@@ -94,7 +94,7 @@ function FontSizeGroup( {
 											icon={ moreVertical }
 											label={ __(
 												'Font size presets options',
-												'typedpress-admin'
+												'spacepress-admin'
 											) }
 										/>
 									}
@@ -105,11 +105,11 @@ function FontSizeGroup( {
 											{ origin === 'custom'
 												? __(
 														'Remove font size presets',
-														'typedpress-admin'
+														'spacepress-admin'
 												  )
 												: __(
 														'Reset font size presets',
-														'typedpress-admin'
+														'spacepress-admin'
 												  ) }
 										</Menu.ItemLabel>
 									</Menu.Item>
@@ -127,7 +127,7 @@ function FontSizeGroup( {
 								path={ `/typography/font-sizes/${ origin }/${ size.slug }` }
 							>
 								<HStack>
-									<FlexItem className="typedpress-admin-font-size__item">
+									<FlexItem className="spacepress-admin-font-size__item">
 										{ size.name }
 									</FlexItem>
 									<FlexItem display="flex">
@@ -179,7 +179,7 @@ function FontSizes() {
 		const index = getNewIndexFromPresets( customFontSizes, 'custom-' );
 		const newFontSize = {
 			/* translators: %d: font size index */
-			name: sprintf( __( 'New Font Size %d', 'typedpress-admin' ), index ),
+			name: sprintf( __( 'New Font Size %d', 'spacepress-admin' ), index ),
 			size: '16px',
 			slug: `custom-${ index }`,
 		};
@@ -194,10 +194,10 @@ function FontSizes() {
 	return (
 		<VStack spacing={ 2 }>
 			<ScreenHeader
-				title={ __( 'Font size presets', 'typedpress-admin' ) }
+				title={ __( 'Font size presets', 'spacepress-admin' ) }
 				description={ __(
 					'Create and edit the presets used for font sizes across the site.',
-					'typedpress-admin'
+					'spacepress-admin'
 				) }
 			/>
 
@@ -206,7 +206,7 @@ function FontSizes() {
 					<VStack spacing={ 8 }>
 						{ !! themeFontSizes?.length && (
 							<FontSizeGroup
-								label={ __( 'Theme', 'typedpress-admin' ) }
+								label={ __( 'Theme', 'spacepress-admin' ) }
 								origin="theme"
 								sizes={ themeFontSizes }
 								handleAddFontSize={ handleAddFontSize }
@@ -227,7 +227,7 @@ function FontSizes() {
 						{ defaultFontSizesEnabled &&
 							!! defaultFontSizes?.length && (
 								<FontSizeGroup
-									label={ __( 'Default', 'typedpress-admin' ) }
+									label={ __( 'Default', 'spacepress-admin' ) }
 									origin="default"
 									sizes={ defaultFontSizes }
 									handleAddFontSize={ handleAddFontSize }
@@ -246,7 +246,7 @@ function FontSizes() {
 							) }
 
 						<FontSizeGroup
-							label={ __( 'Custom', 'typedpress-admin' ) }
+							label={ __( 'Custom', 'spacepress-admin' ) }
 							origin="custom"
 							sizes={ customFontSizes }
 							handleAddFontSize={ handleAddFontSize }

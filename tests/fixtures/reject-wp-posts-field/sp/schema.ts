@@ -1,0 +1,2 @@
+import { wp, text } from "spacepress";
+export const posts = wp.posts.extend({ excerpt: text() }, { url: "/blog/:slug" });

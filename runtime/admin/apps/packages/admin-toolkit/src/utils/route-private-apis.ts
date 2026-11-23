@@ -1,4 +1,4 @@
-import { unlock } from '@typedpress-admin/private-apis';
+import { unlock } from '@spacepress-admin/private-apis';
 import {
 	privateApis as routePrivateApis,
 	type AnyRouter,

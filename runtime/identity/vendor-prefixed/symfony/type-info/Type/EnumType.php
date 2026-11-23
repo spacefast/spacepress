@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+namespace SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
 /**
  * @author Mathias Arlaud <mathias.arlaud@gmail.com>

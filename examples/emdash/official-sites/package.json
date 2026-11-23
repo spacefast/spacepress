@@ -1,5 +1,5 @@
 {
-  "name": "typedpress-official-emdash-sites",
+  "name": "spacepress-official-emdash-sites",
   "private": true,
   "type": "module",
   "engines": {
@@ -14,7 +14,7 @@
     "@astrojs/node": "11.1.5",
     "@fontsource/inter": "5.3.0",
     "@fontsource/jetbrains-mono": "5.3.0",
-    "@typedpress/astro": "file:../../../packages/astro",
+    "@spacepress/astro": "file:../../../packages/astro",
     "astro": "7.4.5",
     "linkedom": "0.18.12"
   },

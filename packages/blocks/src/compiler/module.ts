@@ -28,14 +28,14 @@ import type { ContentNode, SourceLocation } from "../nodes.ts";
 
 const requireFromHere = createRequire(import.meta.url);
 
-const RUNTIME_SPECIFIER = /^@typedpress\/blocks(?:\/(?:jsx-runtime|jsx-dev-runtime))?$/;
+const RUNTIME_SPECIFIER = /^@spacepress\/blocks(?:\/(?:jsx-runtime|jsx-dev-runtime))?$/;
 
 function runtimePlugin(): Plugin {
   return {
-    name: "typedpress-blocks-runtime",
+    name: "spacepress-blocks-runtime",
     setup(b) {
       b.onResolve({ filter: RUNTIME_SPECIFIER }, (args) => {
-        const sub = args.path === "@typedpress/blocks" ? "index" : args.path.slice("@typedpress/blocks/".length);
+        const sub = args.path === "@spacepress/blocks" ? "index" : args.path.slice("@spacepress/blocks/".length);
         // During development the sources are .ts beside this file; a built package has .js.
         for (const ext of [".ts", ".js"]) {
           try {
@@ -103,7 +103,7 @@ export async function renderModule(file: string): Promise<ModuleResult> {
   const entry = path.resolve(file);
   const root = path.dirname(entry);
   // Node canonicalizes imported file URLs, including macOS's /var -> /private/var alias.
-  const scratch = await realpath(await mkdtemp(path.join(tmpdir(), "typedpress-blocks-")));
+  const scratch = await realpath(await mkdtemp(path.join(tmpdir(), "spacepress-blocks-")));
   const bundlePath = path.join(scratch, "module.mjs");
   let code: string;
   let map: SourceMap;
@@ -121,11 +121,11 @@ export async function renderModule(file: string): Promise<ModuleResult> {
       target: "es2023",
       jsx: "automatic",
       jsxDev: true,
-      jsxImportSource: "@typedpress/blocks",
+      jsxImportSource: "@spacepress/blocks",
       tsconfigRaw: {},
       // esbuild writes jsxDEV's fileName relative to absWorkingDir; the runtime resolves it
       // against this, so every location is absolute whatever the caller's cwd is.
-      define: { "globalThis.__tpBlocksSourceRoot": JSON.stringify(root) },
+      define: { "globalThis.__spBlocksSourceRoot": JSON.stringify(root) },
       outfile: bundlePath,
       sourcemap: "external",
       sourcesContent: false,

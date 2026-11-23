@@ -1,5 +1,5 @@
 {
-  "$comment": "WordPress plugins the TypedPress team supports, by WordPress.org slug. `min` is inclusive, `below` is exclusive, both compared with PHP version_compare. Builds warn for any other plugin or version. To request one, open an issue: https://github.com/spacefast/zero/issues",
+  "$comment": "WordPress plugins the SpacePress team supports, by WordPress.org slug. `min` is inclusive, `below` is exclusive, both compared with PHP version_compare. Builds warn for any other plugin or version. To request one, open an issue: https://github.com/spacefast/spacepress/issues",
   "plugins": {
     "action-scheduler": { "min": "4.2.0", "below": "5" },
     "classic-editor": { "min": "1.6.7", "below": "2" },

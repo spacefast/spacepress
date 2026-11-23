@@ -1,4 +1,4 @@
-import type { PresetOrigin } from '@typedpress-admin/global-styles-engine';
+import type { PresetOrigin } from '@spacepress-admin/global-styles-engine';
 
 /**
  * StyleBook color group configuration

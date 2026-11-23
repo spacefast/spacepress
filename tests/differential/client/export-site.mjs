@@ -1,5 +1,5 @@
 // Usage: node export-site.mjs <static site url>
-// Reads a `typedpress export --site` output (tests/fixtures/app-export-site) in Chromium: the home page
+// Reads a `spacepress export --site` output (tests/fixtures/app-export-site) in Chromium: the home page
 // lists the hosted site's published notes, a note page's client component runs the hosted site's
 // public action (its Ability) across origins and shows the stored count, and the sign-in link goes to the hosted
 // site. Prints JSON.

@@ -1,13 +1,13 @@
-// The TypedPress compiler core in the browser: `compiler.wasm` is `src/wasm.rs` built for
+// The SpacePress compiler core in the browser: `compiler.wasm` is `src/wasm.rs` built for
 // wasm32-unknown-unknown. One call compiles a whole config from memory; the diagnostics envelope is
-// the one `typedpress check --json` prints.
+// the one `spacepress check --json` prints.
 
 export interface Request {
-  /** The project's name: the app plugin is `typedpress-app-<name>`. */
+  /** The project's name: the app plugin is `spacepress-app-<name>`. */
   name: string;
-  /** Sources by project-relative path; `typedpress.config.ts` is the entry. */
+  /** Sources by project-relative path; `spacepress.config.ts` is the entry. */
   files: Record<string, string>;
-  /** Refuse plugin grants beyond `tp/_generated/plugins.lock.json` in `files`, like `typedpress check --frozen` and CI. */
+  /** Refuse plugin grants beyond `sp/_generated/plugins.lock.json` in `files`, like `spacepress check --frozen` and CI. */
   frozen?: boolean;
 }
 
@@ -31,9 +31,9 @@ export interface Diagnostic {
   group: string;
 }
 
-/** `typedpress check --json`'s envelope (docs/compiler-diagnostics.md). */
+/** `spacepress check --json`'s envelope (docs/compiler-diagnostics.md). */
 export interface Envelope {
-  schema: "typedpress-diagnostics";
+  schema: "spacepress-diagnostics";
   version: number;
   compilerVersion: string;
   ok: boolean;
@@ -56,14 +56,14 @@ export interface Output {
   unsupportedPlugins: string[];
   hints: string[];
   /**
-   * Every file of the `typedpress-app-<name>` plugin `typedpress build` writes, by path below the plugins
-   * directory: the migration folders under `tp/_generated/migrations/` in the request and this
-   * compile's new migrations. Its `tp/app/openapi.json` is the app's API as an OpenAPI 3.1
-   * document, the file `typedpress build` also writes to `tp/_generated/openapi.json`.
+   * Every file of the `spacepress-app-<name>` plugin `spacepress build` writes, by path below the plugins
+   * directory: the migration folders under `sp/_generated/migrations/` in the request and this
+   * compile's new migrations. Its `sp/app/openapi.json` is the app's API as an OpenAPI 3.1
+   * document, the file `spacepress build` also writes to `sp/_generated/openapi.json`.
    */
   appPlugin: Record<string, string>;
-  /** TypedPress's plugins for this app, in activation order. */
-  tpPlugins: string[];
+  /** SpacePress's plugins for this app, in activation order. */
+  spPlugins: string[];
   /** The WordPress.org plugins the app needs, dependencies first. */
   wordpressPlugins: { slug: string; version: string }[];
 }
@@ -76,9 +76,9 @@ export interface Compiled {
 
 interface Exports {
   memory: WebAssembly.Memory;
-  tp_alloc(len: number): number;
-  tp_compile(ptr: number, len: number): number;
-  tp_free(ptr: number, len: number): void;
+  sp_alloc(len: number): number;
+  sp_compile(ptr: number, len: number): number;
+  sp_free(ptr: number, len: number): void;
 }
 
 /**
@@ -115,18 +115,18 @@ export class Compiler {
     return parsed;
   }
 
-  /** The response as the compiler serialized it, for byte-for-byte comparison with `typedpress check --json`. */
+  /** The response as the compiler serialized it, for byte-for-byte comparison with `spacepress check --json`. */
   compileToJson(request: Request): string {
-    const { memory, tp_alloc, tp_compile, tp_free } = this.#exports;
+    const { memory, sp_alloc, sp_compile, sp_free } = this.#exports;
     const bytes = new TextEncoder().encode(JSON.stringify(request));
     // Pointers cross the boundary as i32; addresses past 2 GiB come back negative.
-    const input = tp_alloc(bytes.length) >>> 0;
+    const input = sp_alloc(bytes.length) >>> 0;
     new Uint8Array(memory.buffer, input, bytes.length).set(bytes);
-    // tp_compile takes ownership of the request buffer.
-    const output = tp_compile(input, bytes.length) >>> 0;
+    // sp_compile takes ownership of the request buffer.
+    const output = sp_compile(input, bytes.length) >>> 0;
     const length = new DataView(memory.buffer, output, 4).getUint32(0, true);
     const text = new TextDecoder().decode(new Uint8Array(memory.buffer, output + 4, length));
-    tp_free(output, 4 + length);
+    sp_free(output, 4 + length);
     return text;
   }
 }

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
- * WordPress's trash for a TypedPress kind (docs/decisions/2026-11-14-trash-is-unpublish.md), in-process on
+ * WordPress's trash for a SpacePress kind (docs/decisions/2026-11-14-trash-is-unpublish.md), in-process on
  * WordPress (tests/php/wp.php): moving a published item to the trash is the item leaving the
  * published set, as an unpublish is, never a delete. One `update` notice with its id, its pages
  * purged, gone from reads, no delete hooks, and rows that reference it with `onDelete: cascade` kept.
@@ -11,22 +11,22 @@ declare(strict_types=1);
  * to visitors. A permanent delete from the trash runs the delete pair once.
  */
 
-use TypedPress\Realtime\Module as Realtime;
-use TypedPress\Realtime\Publisher;
+use SpacePress\Realtime\Module as Realtime;
+use SpacePress\Realtime\Publisher;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 $schema = require dirname(__DIR__) . '/fixtures/blog/schema.php';
 $schema['collections']['posts']['url'] = '/blog/:slug';
-// This suite exercises WordPress's native wp_scheduled_delete cron; opt posts out of TypedPress's
+// This suite exercises WordPress's native wp_scheduled_delete cron; opt posts out of SpacePress's
 // default retention: "forever" soft-delete guard so core's trash cron runs here.
 $schema['collections']['posts']['softDelete'] = false;
 // A table that refuses its post's delete while a row points at it.
 $pins = $schema['collections']['comments'];
 $pins['key'] = 'pins';
 $pins['label'] = 'Pins';
-$pins['table'] = 'tp_pins';
+$pins['table'] = 'sp_pins';
 $pins['hooks'] = [];
 $pins['access'] = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'anyone'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']];
 $pins['columns'] = ['id' => $pins['columns']['id'], 'postId' => ['type' => 'integer', 'notNull' => true, 'references' => ['collection' => 'posts', 'column' => 'id', 'onDelete' => 'restrict']]];
@@ -40,12 +40,12 @@ $wp = wpSite('trash', [
     'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
 
         function afterPublish($row, $ctx) { $GLOBALS['test_hooks'][] = 'afterPublish'; }
-        function beforeDelete($row, $ctx) { $GLOBALS['test_hooks'][] = 'beforeDelete'; $GLOBALS['test_actor'] = \TypedPress\Js::prop($ctx, 'user') === null ? 'anonymous' : 'signed in'; }
+        function beforeDelete($row, $ctx) { $GLOBALS['test_hooks'][] = 'beforeDelete'; $GLOBALS['test_actor'] = \SpacePress\Js::prop($ctx, 'user') === null ? 'anonymous' : 'signed in'; }
         function afterDelete($row, $ctx) { $GLOBALS['test_hooks'][] = 'afterDelete'; }
         function afterUpdate($row, $previous, $ctx) { $GLOBALS['test_hooks'][] = 'afterUpdate'; }
         function afterCreate($row, $ctx) { $GLOBALS['test_hooks'][] = 'afterCreate'; }
         PHP,
-    'muPlugins' => ['host' => "<?php add_action('tp_purge_urls', static function (array \$p): void { \$GLOBALS['test_purges'][] = \$p; });"],
+    'muPlugins' => ['host' => "<?php add_action('sp_purge_urls', static function (array \$p): void { \$GLOBALS['test_purges'][] = \$p; });"],
 ]);
 $db = $wp->app()->db;
 wp_set_current_user(1);
@@ -63,13 +63,13 @@ Realtime::publish(new class ($sent) implements Publisher {
 });
 /** What one wp-admin action announced: realtime changes, purge calls and the hooks it ran. */
 $seen = static function (callable $event) use (&$sent): array {
-    \TypedPress\Wp\Purges::flush();
+    \SpacePress\Wp\Purges::flush();
     Realtime::flush();
     $sent = [];
     $GLOBALS['test_purges'] = [];
     $GLOBALS['test_hooks'] = [];
     $event();
-    \TypedPress\Wp\Purges::flush(); // the end of the wp-admin request
+    \SpacePress\Wp\Purges::flush(); // the end of the wp-admin request
     Realtime::flush();
     return [
         'notices' => array_map(static fn (array $n) => array_map(static fn ($c) => [$c['collection'], $c['ops'], $c['ids']], $n['changes']), $sent),
@@ -105,7 +105,7 @@ eq('trash of a draft: nothing', $draftTrash, ['notices' => [], 'purges' => 0, 'h
 // Untrash to published (the previous status, as WordPress's own filter offers): a publish.
 wp_update_post(['ID' => $post, 'post_status' => 'trash']);
 update_post_meta($post, '_wp_trash_meta_status', 'publish');
-\TypedPress\Wp\Purges::flush();
+\SpacePress\Wp\Purges::flush();
 Realtime::flush();
 $previous = static fn ($status, $id, $before) => $before;
 add_filter('wp_untrash_post_status', $previous, 10, 3);
@@ -144,9 +144,9 @@ $pinned = (int) $db->insert('posts', ['title' => 'Pinned', 'status' => 'publishe
 $db->insert('pins', ['postId' => $pinned]);
 $refusal = static function (callable $delete): ?string {
     try {
-        $db = \TypedPress\db();
+        $db = \SpacePress\db();
         $db->transaction($delete);
-    } catch (\TypedPress\HttpError $e) {
+    } catch (\SpacePress\HttpError $e) {
         return "{$e->status} {$e->getMessage()}";
     }
     return null;
@@ -202,7 +202,7 @@ foreach ([$keep, $goes, $pinned] as $id) {
     update_post_meta($id, '_wp_trash_meta_time', $due);
 }
 $log = ini_get('error_log');
-$logFile = tempnam(sys_get_temp_dir(), 'typedpress-trash-log');
+$logFile = tempnam(sys_get_temp_dir(), 'spacepress-trash-log');
 ini_set('error_log', $logFile);
 $cronError = null;
 $mixed = $seen(static function () use (&$cronError): void {
@@ -214,16 +214,16 @@ $mixed = $seen(static function () use (&$cronError): void {
     }
 });
 ini_set('error_log', (string) $log);
-$logged = array_values(array_filter(explode("\n", (string) file_get_contents($logFile)), static fn ($l) => str_contains($l, '[typedpress]')));
+$logged = array_values(array_filter(explode("\n", (string) file_get_contents($logFile)), static fn ($l) => str_contains($l, '[spacepress]')));
 eq('cron with a refused item: the run did not die', $cronError, null);
 check('cron with a refused item: the refused items stay in the trash', get_post_status($keep) === 'trash' && get_post_status($pinned) === 'trash');
 check('cron with a refused item: the deletable one is gone with its cascade child', get_post($goes) === null && $db->findFirst('comments', ['where' => ['id' => $goesComment]]) === null);
 eq('cron with a refused item: one delete notice, for the deletable one', $mixed['notices'], [[['comments', ['delete'], [$goesComment]], ['posts', ['delete'], [$goes]]]]);
 eq('cron with a refused item: beforeDelete once per item, afterDelete once', array_count_values($mixed['hooks']), ['beforeDelete' => 3, 'afterDelete' => 1]);
 eq('cron with a refused item: each refusal logged with kind, id, code and detail', count(array_filter($logged, static fn ($l) => str_contains($l, 'posts') && str_contains($l, 'reference_violation') && str_contains($l, 'Rows in pins still reference this row'))), 2);
-check('cron with a refused item: no transaction left open', !\TypedPress\Wp\Plugin::instance()->connection()->inTransaction());
+check('cron with a refused item: no transaction left open', !\SpacePress\Wp\Plugin::instance()->connection()->inTransaction());
 
-// A pre_delete_post filter after TypedPress's declines the delete: the prepared delete is rolled back,
+// A pre_delete_post filter after SpacePress's declines the delete: the prepared delete is rolled back,
 // never left open, and the next item still goes.
 $declined = (int) $db->insert('posts', ['title' => 'Declined', 'status' => 'published'], true)[0]['id'];
 $declinedComment = (int) $db->insert('comments', ['postId' => $declined, 'name' => 'x', 'body' => 'declined'], true)[0]['id'];
@@ -241,7 +241,7 @@ $declinedRun = $seen(static function (): void {
 remove_filter('pre_delete_post', $decline, PHP_INT_MAX);
 check('declined later: the item and its cascade child are still there', get_post_status($declined) === 'trash' && $db->findFirst('comments', ['where' => ['id' => $declinedComment]]) !== null);
 check('declined later: the next item went', get_post($after) === null);
-check('declined later: no transaction left open', !\TypedPress\Wp\Plugin::instance()->connection()->inTransaction());
+check('declined later: no transaction left open', !\SpacePress\Wp\Plugin::instance()->connection()->inTransaction());
 eq('declined later: only the deleted item was announced', array_map(static fn ($n) => array_column($n, 0), $declinedRun['notices']), [['posts']]);
 remove_filter('wp_doing_cron', '__return_true');
 

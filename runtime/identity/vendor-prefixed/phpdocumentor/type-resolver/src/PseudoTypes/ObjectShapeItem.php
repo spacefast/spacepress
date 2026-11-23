@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
 
 final class ObjectShapeItem extends ShapeItem
 {

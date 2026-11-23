@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection;
 
 use ArrayIterator;
 use function count;
 use Countable;
 use IteratorAggregate;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Structure;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Structure;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
 use UnexpectedValueException;
 
 /**

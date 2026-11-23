@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadata;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader\LoaderInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadata;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader\LoaderInterface;
 
 /**
  * Returns a {@link ClassMetadata}.

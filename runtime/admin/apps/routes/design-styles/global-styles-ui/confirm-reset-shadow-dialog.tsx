@@ -28,7 +28,7 @@ function ConfirmResetShadowDialog( {
 	return (
 		<ConfirmDialog
 			isOpen={ isOpen }
-			cancelButtonText={ __( 'Cancel', 'typedpress-admin' ) }
+			cancelButtonText={ __( 'Cancel', 'spacepress-admin' ) }
 			confirmButtonText={ confirmButtonText }
 			onCancel={ handleCancel }
 			onConfirm={ handleConfirm }

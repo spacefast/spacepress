@@ -5,8 +5,8 @@ order: 1
 
 Edit the config.
 
-```ts title="typedpress.config.ts" {2}
-import { defineConfig } from "typedpress";
+```ts title="spacepress.config.ts" {2}
+import { defineConfig } from "spacepress";
 export default defineConfig({ name: "docs" });
 ```
 

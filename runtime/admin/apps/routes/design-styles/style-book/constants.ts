@@ -4,43 +4,43 @@ import type { Category, ColorGroup } from './types';
 export const STYLE_BOOK_COLOR_GROUPS: ColorGroup[] = [
 	{
 		slug: 'theme-colors',
-		title: __( 'Theme Colors', 'typedpress-admin' ),
+		title: __( 'Theme Colors', 'spacepress-admin' ),
 		origin: 'theme',
 		type: 'colors',
 	},
 	{
 		slug: 'theme-gradients',
-		title: __( 'Theme Gradients', 'typedpress-admin' ),
+		title: __( 'Theme Gradients', 'spacepress-admin' ),
 		origin: 'theme',
 		type: 'gradients',
 	},
 	{
 		slug: 'custom-colors',
-		title: __( 'Custom Colors', 'typedpress-admin' ),
+		title: __( 'Custom Colors', 'spacepress-admin' ),
 		origin: 'custom',
 		type: 'colors',
 	},
 	{
 		slug: 'custom-gradients',
-		title: __( 'Custom Gradients', 'typedpress-admin' ),
+		title: __( 'Custom Gradients', 'spacepress-admin' ),
 		origin: 'custom', // User.
 		type: 'gradients',
 	},
 	{
 		slug: 'duotones',
-		title: __( 'Duotones', 'typedpress-admin' ),
+		title: __( 'Duotones', 'spacepress-admin' ),
 		origin: 'theme',
 		type: 'duotones',
 	},
 	{
 		slug: 'default-colors',
-		title: __( 'Default Colors', 'typedpress-admin' ),
+		title: __( 'Default Colors', 'spacepress-admin' ),
 		origin: 'default',
 		type: 'colors',
 	},
 	{
 		slug: 'default-gradients',
-		title: __( 'Default Gradients', 'typedpress-admin' ),
+		title: __( 'Default Gradients', 'spacepress-admin' ),
 		origin: 'default',
 		type: 'gradients',
 	},
@@ -52,18 +52,18 @@ export const STYLE_BOOK_THEME_SUBCATEGORIES: Omit<
 >[] = [
 	{
 		slug: 'site-identity',
-		title: __( 'Site Identity', 'typedpress-admin' ),
+		title: __( 'Site Identity', 'spacepress-admin' ),
 		blocks: [ 'core/site-logo', 'core/site-title', 'core/site-tagline' ],
 	},
 	{
 		slug: 'design',
-		title: __( 'Design', 'typedpress-admin' ),
+		title: __( 'Design', 'spacepress-admin' ),
 		blocks: [ 'core/navigation', 'core/avatar', 'core/post-time-to-read' ],
 		exclude: [ 'core/home-link', 'core/navigation-link' ],
 	},
 	{
 		slug: 'posts',
-		title: __( 'Posts', 'typedpress-admin' ),
+		title: __( 'Posts', 'spacepress-admin' ),
 		blocks: [
 			'core/post-title',
 			'core/post-excerpt',
@@ -81,7 +81,7 @@ export const STYLE_BOOK_THEME_SUBCATEGORIES: Omit<
 	},
 	{
 		slug: 'comments',
-		title: __( 'Comments', 'typedpress-admin' ),
+		title: __( 'Comments', 'spacepress-admin' ),
 		blocks: [
 			'core/comments-title',
 			'core/comments-pagination',
@@ -102,12 +102,12 @@ export const STYLE_BOOK_THEME_SUBCATEGORIES: Omit<
 export const STYLE_BOOK_CATEGORIES: Category[] = [
 	{
 		slug: 'overview',
-		title: __( 'Overview', 'typedpress-admin' ),
+		title: __( 'Overview', 'spacepress-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'text',
-		title: __( 'Text', 'typedpress-admin' ),
+		title: __( 'Text', 'spacepress-admin' ),
 		blocks: [
 			'core/post-content',
 			'core/home-link',
@@ -116,27 +116,27 @@ export const STYLE_BOOK_CATEGORIES: Category[] = [
 	},
 	{
 		slug: 'colors',
-		title: __( 'Colors', 'typedpress-admin' ),
+		title: __( 'Colors', 'spacepress-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'theme',
-		title: __( 'Theme', 'typedpress-admin' ),
+		title: __( 'Theme', 'spacepress-admin' ),
 		subcategories: STYLE_BOOK_THEME_SUBCATEGORIES,
 	},
 	{
 		slug: 'media',
-		title: __( 'Media', 'typedpress-admin' ),
+		title: __( 'Media', 'spacepress-admin' ),
 		blocks: [ 'core/post-featured-image' ],
 	},
 	{
 		slug: 'widgets',
-		title: __( 'Widgets', 'typedpress-admin' ),
+		title: __( 'Widgets', 'spacepress-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'embed',
-		title: __( 'Embeds', 'typedpress-admin' ),
+		title: __( 'Embeds', 'spacepress-admin' ),
 		include: [],
 	},
 ];
@@ -146,17 +146,17 @@ export const STYLE_BOOK_ALL_BLOCKS_SUBCATEGORIES: Category[] = [
 	...STYLE_BOOK_THEME_SUBCATEGORIES,
 	{
 		slug: 'media',
-		title: __( 'Media', 'typedpress-admin' ),
+		title: __( 'Media', 'spacepress-admin' ),
 		blocks: [ 'core/post-featured-image' ],
 	},
 	{
 		slug: 'widgets',
-		title: __( 'Widgets', 'typedpress-admin' ),
+		title: __( 'Widgets', 'spacepress-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'embed',
-		title: __( 'Embeds', 'typedpress-admin' ),
+		title: __( 'Embeds', 'spacepress-admin' ),
 		include: [],
 	},
 ];
@@ -165,12 +165,12 @@ export const STYLE_BOOK_ALL_BLOCKS_SUBCATEGORIES: Category[] = [
 export const STYLE_BOOK_PREVIEW_CATEGORIES: Category[] = [
 	{
 		slug: 'overview',
-		title: __( 'Overview', 'typedpress-admin' ),
+		title: __( 'Overview', 'spacepress-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'text',
-		title: __( 'Text', 'typedpress-admin' ),
+		title: __( 'Text', 'spacepress-admin' ),
 		blocks: [
 			'core/post-content',
 			'core/home-link',
@@ -179,12 +179,12 @@ export const STYLE_BOOK_PREVIEW_CATEGORIES: Category[] = [
 	},
 	{
 		slug: 'colors',
-		title: __( 'Colors', 'typedpress-admin' ),
+		title: __( 'Colors', 'spacepress-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'blocks',
-		title: __( 'All Blocks', 'typedpress-admin' ),
+		title: __( 'All Blocks', 'spacepress-admin' ),
 		blocks: [],
 		subcategories: STYLE_BOOK_ALL_BLOCKS_SUBCATEGORIES,
 	},
@@ -212,12 +212,12 @@ export const STYLE_BOOK_IFRAME_STYLES = `
 
 	${ ROOT_CONTAINER }
 
-	.typedpress-admin-style-book__examples {
+	.spacepress-admin-style-book__examples {
 		max-width: 1200px;
 		margin: 0 auto;
 	}
 
-	.typedpress-admin-style-book__example {
+	.spacepress-admin-style-book__example {
 	    max-width: 900px;
 		border-radius: 2px;
 		cursor: pointer;
@@ -232,41 +232,41 @@ export const STYLE_BOOK_IFRAME_STYLES = `
 		margin: 0 auto 40px auto;
 	}
 
-	.typedpress-admin-style-book__example.is-selected {
+	.spacepress-admin-style-book__example.is-selected {
 		box-shadow: 0 0 0 1px var(--wpds-color-stroke-focus);
 	}
 
-	.typedpress-admin-style-book__example.is-disabled-example {
+	.spacepress-admin-style-book__example.is-disabled-example {
 		pointer-events: none;
 	}
 
-	.typedpress-admin-style-book__example:focus:not(:disabled) {
+	.spacepress-admin-style-book__example:focus:not(:disabled) {
 		box-shadow: 0 0 0 var(--wpds-border-width-focus) var(--wpds-color-stroke-focus);
 		outline: 3px solid transparent;
 	}
 
-	.typedpress-admin-style-book__duotone-example > div:first-child {
+	.spacepress-admin-style-book__duotone-example > div:first-child {
 		display: flex;
 		aspect-ratio: 16 / 9;
 		grid-row: span 1;
 		grid-column: span 2;
 	}
-	.typedpress-admin-style-book__duotone-example img {
+	.spacepress-admin-style-book__duotone-example img {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
 	}
-	.typedpress-admin-style-book__duotone-example > div:not(:first-child) {
+	.spacepress-admin-style-book__duotone-example > div:not(:first-child) {
 		height: 20px;
 		border: 1px solid color-mix( in srgb, currentColor 10%, transparent );
 	}
 
-	.typedpress-admin-style-book__color-example {
+	.spacepress-admin-style-book__color-example {
 		border: 1px solid color-mix( in srgb, currentColor 10%, transparent );
 	}
 
-	.typedpress-admin-style-book__subcategory-title,
-	.typedpress-admin-style-book__example-title {
+	.spacepress-admin-style-book__subcategory-title,
+	.spacepress-admin-style-book__example-title {
 		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
 		font-size: 13px;
 		font-weight: normal;
@@ -278,18 +278,18 @@ export const STYLE_BOOK_IFRAME_STYLES = `
 		color: color-mix( in srgb, currentColor 60%, transparent );
 	}
 
-	.typedpress-admin-style-book__subcategory-title {
+	.spacepress-admin-style-book__subcategory-title {
 		font-size: 16px;
 		margin-bottom: 40px;
     	padding-bottom: 8px;
 	}
 
-	.typedpress-admin-style-book__example-preview {
+	.spacepress-admin-style-book__example-preview {
 		width: 100%;
 	}
 
-	.typedpress-admin-style-book__example-preview .block-editor-block-list__insertion-point,
-	.typedpress-admin-style-book__example-preview .block-list-appender {
+	.spacepress-admin-style-book__example-preview .block-editor-block-list__insertion-point,
+	.spacepress-admin-style-book__example-preview .block-list-appender {
 		display: none;
 	}
 	:where(.is-root-container > .wp-block:first-child) {

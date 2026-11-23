@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
 use Closure;
 use Exception;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionFunction;

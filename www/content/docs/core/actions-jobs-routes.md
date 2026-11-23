@@ -11,8 +11,8 @@ publishedAt: 2026-11-21T09:06:00.000Z
 Export `query(options, handler)` for reads and `mutation(options, handler)` for writes. Both accept validated input and are available to client code and WordPress Abilities.
 
 ```ts
-import { HttpError, mutation } from "typedpress";
-import { tasks } from "typedpress:db";
+import { HttpError, mutation } from "spacepress";
+import { tasks } from "spacepress:db";
 
 export const archiveTask = mutation({ access: "editor", idempotent: true }, async ({ id }: { id: number }) => {
   const row = await tasks.update(id, { done: true });
@@ -21,7 +21,7 @@ export const archiveTask = mutation({ access: "editor", idempotent: true }, asyn
 });
 ```
 
-Call the mutation at `POST /wp-json/typedpress/v1/actions/archiveTask`. Queries are marked read-only. Set `destructive: true` on destructive mutations or configure `signature` to verify a webhook.
+Call the mutation at `POST /wp-json/spacepress/v1/actions/archiveTask`. Queries are marked read-only. Set `destructive: true` on destructive mutations or configure `signature` to verify a webhook.
 
 ## Background jobs
 
@@ -30,9 +30,9 @@ Call the mutation at `POST /wp-json/typedpress/v1/actions/archiveTask`. Queries 
 ## Transactional hooks & WordPress hooks
 
 - Chain `.on({ beforeCreate, afterCreate, beforeUpdate, afterUpdate, beforeDelete, afterDelete, afterPublish })` onto any collection or table. Throwing aborts the request and rolls back the transaction.
-- Place typed WordPress core filters/actions in `tp/wp-hooks/<hook>.ts` using `Handler<"...">` from `"php/wordpress"`.
+- Place typed WordPress core filters/actions in `sp/wp-hooks/<hook>.ts` using `Handler<"...">` from `"php/wordpress"`.
 
 ## Custom HTTP routes & private files
 
-- Create `tp/app/<path>/route.ts` exporting `GET`, `POST`, `PUT`, `PATCH`, or `DELETE` plus `export const guard`.
+- Create `sp/app/<path>/route.ts` exporting `GET`, `POST`, `PUT`, `PATCH`, or `DELETE` plus `export const guard`.
 - Define private upload buckets with `files({ accept, maxBytes, access })` backed by local disk or S3-compatible storage (`uploads: { backend: "s3", ... }`). Loading a `file(bucket)` column via `with` yields a 5-minute signed URL. Server hooks, actions, routes, and background jobs can read files directly via `await bucket.get(id)`, `await bucket.readText(id)`, and `await bucket.readBase64(id)` (up to 16 MiB).

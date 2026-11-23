@@ -11,7 +11,7 @@ import {
 import { useDispatch } from '@wordpress/data';
 import { store as noticesStore } from '@wordpress/notices';
 import { decodeEntities } from '@wordpress/html-entities';
-import type { Action, RenderModalProps } from '@typedpress-admin/dataviews';
+import type { Action, RenderModalProps } from '@spacepress-admin/dataviews';
 import type { WordPressError } from '../types';
 
 const DeleteThemeModal = ( {
@@ -41,7 +41,7 @@ const DeleteThemeModal = ( {
 			await createSuccessNotice(
 				sprintf(
 					/* translators: %(name)s is the theme name */
-					__( 'Theme %(name)s deleted.', 'typedpress-admin' ),
+					__( 'Theme %(name)s deleted.', 'spacepress-admin' ),
 					{ name }
 				),
 				{
@@ -52,14 +52,14 @@ const DeleteThemeModal = ( {
 		} catch ( error: unknown ) {
 			const wpError = error as WordPressError;
 			const errorMessage =
-				wpError.message || __( 'Unknown error occurred', 'typedpress-admin' );
+				wpError.message || __( 'Unknown error occurred', 'spacepress-admin' );
 
 			await createErrorNotice(
 				sprintf(
 					/* translators: name: The theme name. errorMessage: The error message. */
 					__(
 						'Theme %(name)s deletion failed: %(errorMessage)s',
-						'typedpress-admin'
+						'spacepress-admin'
 					),
 					{
 						name,
@@ -83,7 +83,7 @@ const DeleteThemeModal = ( {
 					/* translators: %(name)s is the theme name */
 					__(
 						'Are you sure you want to delete the %(name)s theme?',
-						'typedpress-admin'
+						'spacepress-admin'
 					),
 					{ name }
 				) }
@@ -96,7 +96,7 @@ const DeleteThemeModal = ( {
 					disabled={ isBusy }
 					accessibleWhenDisabled
 				>
-					{ __( 'Cancel', 'typedpress-admin' ) }
+					{ __( 'Cancel', 'spacepress-admin' ) }
 				</Button>
 				<Button
 					__next40pxDefaultSize
@@ -106,7 +106,7 @@ const DeleteThemeModal = ( {
 					disabled={ isBusy }
 					accessibleWhenDisabled
 				>
-					{ __( 'Delete', 'typedpress-admin' ) }
+					{ __( 'Delete', 'spacepress-admin' ) }
 				</Button>
 			</HStack>
 		</VStack>
@@ -115,7 +115,7 @@ const DeleteThemeModal = ( {
 
 const deleteTheme: Action< Theme > = {
 	id: 'delete-theme',
-	label: __( 'Delete', 'typedpress-admin' ),
+	label: __( 'Delete', 'spacepress-admin' ),
 	isPrimary: false,
 	RenderModal: DeleteThemeModal,
 	isEligible: ( item: Theme ) => {

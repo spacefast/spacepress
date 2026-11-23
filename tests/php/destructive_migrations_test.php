@@ -3,13 +3,13 @@
 declare(strict_types=1);
 
 /*
- * Slice 4 end-to-end verification of `typedpress/danger` (`DestructiveMigrations` +
+ * Slice 4 end-to-end verification of `spacepress/danger` (`DestructiveMigrations` +
  * `MigrationProvider` registry + CLI-only guard + two-phase retirement prerequisite + exact row-count
- * confirmation + JSONL archival + `tp__migrations` audit rows + `raw-sql` opt-in guard).
+ * confirmation + JSONL archival + `sp__migrations` audit rows + `raw-sql` opt-in guard).
  */
 
-use TypedPress\Wp\DestructiveMigrations;
-use TypedPress\Wp\Migrator;
+use SpacePress\Wp\DestructiveMigrations;
+use SpacePress\Wp\Migrator;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -27,7 +27,7 @@ $schema = [
     'collections' => [
         'items' => [
             'key' => 'items', 'label' => 'Items', 'editor' => false, 'drafts' => false,
-            'revisions' => true, 'softDelete' => true, 'table' => 'tp_items', 'primaryKey' => 'id',
+            'revisions' => true, 'softDelete' => true, 'table' => 'sp_items', 'primaryKey' => 'id',
             'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'anyone'], 'update' => ['role' => 'anyone'], 'delete' => ['role' => 'anyone'], 'restore' => ['role' => 'anyone'], 'purge' => ['role' => 'anyone']],
             'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
             'columns' => [
@@ -59,29 +59,29 @@ problem('refused outside CLI context (HTTP / activation guard)',
     static fn () => DestructiveMigrations::status($plugin, null, cliContext: false), 403, 'cli_only');
 
 // 3. Opt-in guard: a plugin without migrationProviders refuses every danger command
-$disabledPlugin = (new ReflectionClass(\TypedPress\Wp\Plugin::class))->newInstanceWithoutConstructor();
+$disabledPlugin = (new ReflectionClass(\SpacePress\Wp\Plugin::class))->newInstanceWithoutConstructor();
 $disabledSchema = $schema;
 unset($disabledSchema['migrationProviders']);
 (function () use ($disabledSchema, $plugin) {
-    $this->schema = new \TypedPress\Schema($disabledSchema);
+    $this->schema = new \SpacePress\Schema($disabledSchema);
     $this->dir = $plugin->dir;
 })->call($disabledPlugin);
-problem('refused when typedpress/danger is not opted into',
+problem('refused when spacepress/danger is not opted into',
     static fn () => DestructiveMigrations::status($disabledPlugin, null, cliContext: true), 403, 'destructive_migrations_disabled');
 
 // 4. Prepare physical retired column & retired table + folder migrations (`ops.json`)
-$conn->run('ALTER TABLE `wp_tp_items` ADD COLUMN `legacy_note` LONGTEXT NULL');
-$conn->run('CREATE TABLE `wp_tp_old_archive` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `payload` LONGTEXT NOT NULL) ENGINE=InnoDB');
-$conn->run("INSERT INTO `wp_tp_old_archive` (`payload`) VALUES ('row-a'), ('row-b')");
+$conn->run('ALTER TABLE `wp_sp_items` ADD COLUMN `legacy_note` LONGTEXT NULL');
+$conn->run('CREATE TABLE `wp_sp_old_archive` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `payload` LONGTEXT NOT NULL) ENGINE=InnoDB');
+$conn->run("INSERT INTO `wp_sp_old_archive` (`payload`) VALUES ('row-a'), ('row-b')");
 
 $db = $plugin->db();
 $i1 = $db->insert('items', ['title' => 'Keep me'], true)[0];
 $i2 = $db->insert('items', ['title' => 'Soft delete me'], true)[0];
-$conn->run("UPDATE `wp_tp_items` SET `legacy_note` = 'old-1' WHERE `id` = ?", [$i1['id']]);
-$conn->run("UPDATE `wp_tp_items` SET `legacy_note` = 'old-2' WHERE `id` = ?", [$i2['id']]);
+$conn->run("UPDATE `wp_sp_items` SET `legacy_note` = 'old-1' WHERE `id` = ?", [$i1['id']]);
+$conn->run("UPDATE `wp_sp_items` SET `legacy_note` = 'old-2' WHERE `id` = ?", [$i2['id']]);
 $db->delete('items', ['id' => $i2['id']], true);
 
-$migDir = sys_get_temp_dir() . '/typedpress-danger-migs-' . getmypid();
+$migDir = sys_get_temp_dir() . '/spacepress-danger-migs-' . getmypid();
 $mkdir = static function (string $id, array $ops) use ($migDir): void {
     @mkdir("$migDir/$id", 0777, true);
     file_put_contents("$migDir/$id/ops.json", json_encode(['version' => 1, 'id' => $id, 'ops' => $ops]));
@@ -96,12 +96,12 @@ $mkdir('20261121180001_bbbbbb_retire', [
     ['op' => 'retireTable', 'table' => 'old_archive'],
 ]);
 
-// 4b. Unapplied retirement migration is refused until `wp typedpress migrate` applies it
+// 4b. Unapplied retirement migration is refused until `wp spacepress migrate` applies it
 problem('unapplied retirement migration is refused before migrate applies it',
     static fn () => DestructiveMigrations::dropColumn($plugin, 'items', 'legacy_note', ['confirmRows' => 2, 'reason' => 'too early', 'archiveTo' => sys_get_temp_dir() . '/nope-' . getmypid() . '.jsonl'], $migDir, cliContext: true),
     409, 'retirement_not_applied');
 
-// Record the retirement migration as applied in tp__migrations
+// Record the retirement migration as applied in sp__migrations
 $ledger = Migrator::ensureLedger($conn, $plugin->schema);
 $conn->run("INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`) VALUES (?, ?, 'schema', ?)", ['danger_site', '20261121180001_bbbbbb_retire', '2026-11-21T18:00:01.000Z']);
 
@@ -134,7 +134,7 @@ $dry = DestructiveMigrations::dropColumn($plugin, 'items', 'legacy_note', ['dryR
 eq('dry-run reports live count and exact confirm flag without executing', [$dry['dryRun'], $dry['nonNullRows'], $dry['confirmFlag']], [true, 2, '--confirm-rows=2']);
 
 // 9. drop-column with exact confirmation + --archive-to exports JSONL, drops column, and writes destructive audit row
-$colArchive = sys_get_temp_dir() . '/typedpress-danger-col-' . getmypid() . '.jsonl';
+$colArchive = sys_get_temp_dir() . '/spacepress-danger-col-' . getmypid() . '.jsonl';
 $resCol = DestructiveMigrations::dropColumn($plugin, 'items', 'legacy_note', [
     'confirmRows' => 2,
     'reason' => 'Retired 90 days ago',
@@ -144,11 +144,11 @@ $resCol = DestructiveMigrations::dropColumn($plugin, 'items', 'legacy_note', [
 eq('drop-column archives 2 rows and executes DROP COLUMN', [$resCol['rowsAffected'], $resCol['archived']['rows']], [2, 2]);
 $colLines = file($colArchive, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 eq('archived JSONL contains both non-null rows', count($colLines), 2);
-$colsAfter = array_column($conn->run('SHOW COLUMNS FROM `wp_tp_items`'), 'Field');
+$colsAfter = array_column($conn->run('SHOW COLUMNS FROM `wp_sp_items`'), 'Field');
 check('legacy_note column is physically gone after drop-column', !in_array('legacy_note', $colsAfter, true), $colsAfter);
 
 // 10. drop-table with exact confirmation + --archive-to exports JSONL, drops table, and audits
-$tblArchive = sys_get_temp_dir() . '/typedpress-danger-tbl-' . getmypid() . '.jsonl';
+$tblArchive = sys_get_temp_dir() . '/spacepress-danger-tbl-' . getmypid() . '.jsonl';
 $resTbl = DestructiveMigrations::dropTable($plugin, 'old_archive', [
     'confirmRows' => 2,
     'reason' => 'Legacy archive sunset',
@@ -157,10 +157,10 @@ $resTbl = DestructiveMigrations::dropTable($plugin, 'old_archive', [
 ], $migDir, cliContext: true);
 eq('drop-table archives 2 rows and drops table', [$resTbl['rowsAffected'], $resTbl['archived']['rows']], [2, 2]);
 eq('archived table JSONL has 2 rows', count(file($tblArchive, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES)), 2);
-eq('old_archive table is physically gone', $conn->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', ['wp_tp_old_archive']), []);
+eq('old_archive table is physically gone', $conn->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', ['wp_sp_old_archive']), []);
 
 // 11. purge-deleted permanently purges soft-deleted rows with archive & audit
-$purgeArchive = sys_get_temp_dir() . '/typedpress-danger-purge-' . getmypid() . '.jsonl';
+$purgeArchive = sys_get_temp_dir() . '/spacepress-danger-purge-' . getmypid() . '.jsonl';
 $resPurge = DestructiveMigrations::purgeDeleted($plugin, 'items', [
     'confirmRows' => 1,
     'reason' => 'GDPR erasure',
@@ -172,12 +172,12 @@ eq('soft-deleted row is gone while active row remains', [count($db->findMany('it
 
 // 12. raw-sql is refused while allowRawSql = false
 problem('raw-sql is refused when allowRawSql is false',
-    static fn () => DestructiveMigrations::rawSql($plugin, 'DELETE FROM `{prefix}tp_items` WHERE 1 = 0', ['reason' => 'nope'], cliContext: true),
+    static fn () => DestructiveMigrations::rawSql($plugin, 'DELETE FROM `{prefix}sp_items` WHERE 1 = 0', ['reason' => 'nope'], cliContext: true),
     403, 'raw_sql_disabled');
 
-// 13. Audit rows recorded in tp__migrations with kind = 'destructive', actor, reason, rows_affected
-$audit = $conn->run("SELECT `kind`, `actor`, `reason`, `rows_affected`, `sql` FROM `wp_tp__migrations` WHERE `app` = 'danger_site' AND `kind` = 'destructive' ORDER BY `reason` ASC");
-eq('all 3 destructive operations wrote audit rows to tp__migrations', count($audit), 3);
+// 13. Audit rows recorded in sp__migrations with kind = 'destructive', actor, reason, rows_affected
+$audit = $conn->run("SELECT `kind`, `actor`, `reason`, `rows_affected`, `sql` FROM `wp_sp__migrations` WHERE `app` = 'danger_site' AND `kind` = 'destructive' ORDER BY `reason` ASC");
+eq('all 3 destructive operations wrote audit rows to sp__migrations', count($audit), 3);
 eq('audit rows capture actor, reason, rows_affected, and sql hash',
     array_map(static fn (array $r) => [$r['kind'], $r['actor'], $r['reason'], (int) $r['rows_affected'], strlen((string) $r['sql'])], $audit),
     [
@@ -189,15 +189,15 @@ eq('audit rows capture actor, reason, rows_affected, and sql hash',
 // 14. When allowRawSql is true, raw-sql executes and writes a destructive audit row
 $rawSchema = $schema;
 $rawSchema['migrationProviders']['destructive-migrations']['allowRawSql'] = true;
-$rawPlugin = (new ReflectionClass(\TypedPress\Wp\Plugin::class))->newInstanceWithoutConstructor();
+$rawPlugin = (new ReflectionClass(\SpacePress\Wp\Plugin::class))->newInstanceWithoutConstructor();
 (function () use ($rawSchema, $plugin) {
-    $this->schema = new \TypedPress\Schema($rawSchema);
+    $this->schema = new \SpacePress\Schema($rawSchema);
     $this->dir = $plugin->dir;
 })->call($rawPlugin);
-$rawRes = DestructiveMigrations::rawSql($rawPlugin, 'DELETE FROM `{prefix}tp_items` WHERE 1 = 0', ['reason' => 'No-op raw SQL test', 'actor' => 'dba@example.test', 'confirmRows' => 0], cliContext: true);
+$rawRes = DestructiveMigrations::rawSql($rawPlugin, 'DELETE FROM `{prefix}sp_items` WHERE 1 = 0', ['reason' => 'No-op raw SQL test', 'actor' => 'dba@example.test', 'confirmRows' => 0], cliContext: true);
 eq('raw-sql executes and audits when allowRawSql is enabled', [$rawRes['kind'], $rawRes['operation']], ['destructive', 'raw-sql']);
 
-// 15. WP-CLI dispatcher (`wp typedpress danger status`) works cleanly
+// 15. WP-CLI dispatcher (`wp spacepress danger status`) works cleanly
 [$code, $json] = DestructiveMigrations::wpCli($plugin, ['status'], ['migrations-dir' => $migDir], cliContext: true);
 $decoded = json_decode($json, true);
 eq('wpCli danger status returns exit 0 and lists all 4 audit rows', [$code, count($decoded['data']['audit'] ?? [])], [0, 4]);

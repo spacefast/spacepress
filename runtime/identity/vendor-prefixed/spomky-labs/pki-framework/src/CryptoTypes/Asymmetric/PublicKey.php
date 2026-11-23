@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\AlgorithmIdentifierType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RSA\RSAPublicKey;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\AlgorithmIdentifierType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RSA\RSAPublicKey;
 use UnexpectedValueException;
 
 /**

@@ -11,10 +11,10 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter\PassthroughFormatter;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter\PassthroughFormatter;
 
 use function vsprintf;
 
@@ -33,7 +33,7 @@ use function vsprintf;
  * The description factory will interpret the given body and create a body template and list of tags from them, and pass
  * that onto the constructor if this class.
  *
- * > The $context variable is a class of type {@see \TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Context} and contains the namespace
+ * > The $context variable is a class of type {@see \SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Context} and contains the namespace
  * > and the namespace aliases that apply to this DocBlock. These are used by the Factory to resolve and expand partial
  * > type names and FQSENs.
  *
@@ -41,7 +41,7 @@ use function vsprintf;
  *
  *     $description = new Description(
  *         'This is a %1$s',
- *         [ new See(new Fqsen('\TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description')) ]
+ *         [ new See(new Fqsen('\SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description')) ]
  *     );
  *
  * It is generally recommended to use the Factory as that will also apply escaping rules, while the Description object

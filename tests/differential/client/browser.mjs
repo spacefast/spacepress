@@ -94,9 +94,9 @@ try {
   // 422 and the error is the client's own type.
   expectRefusal = true;
   const refused = await page.evaluate(async () => {
-    const { createClient, TypedPressError } = await import("@typedpress/client");
+    const { createClient, SpacePressError } = await import("@spacepress/client");
     const error = await createClient().actions.like({ postId: "not a number" }).catch((e) => e);
-    return { typed: error instanceof TypedPressError, status: error.status, code: error.code };
+    return { typed: error instanceof SpacePressError, status: error.status, code: error.code };
   });
   expectRefusal = false;
   await page.click("text=add");
@@ -150,10 +150,10 @@ try {
   await settle("1");
   await page.waitForFunction((s) => document.querySelector(`${s} p.shelf-open`) && document.querySelector(`${s} strong.shelf-count`), shelf, { timeout: 15000 });
   shelfSteps.push(await read());
-  // The app's typed client is served as a browser module (`@typedpress/client`): it loads with no
+  // The app's typed client is served as a browser module (`@spacepress/client`): it loads with no
   // bundler and exports the client every live read uses.
   const client = await page.evaluate(async () => {
-    const url = new URL("wp-content/plugins/typedpress-app-clients/tp/app/client/typedpress-client.js", document.baseURI.replace(/[^/]*$/, ""));
+    const url = new URL("wp-content/plugins/spacepress-app-clients/sp/app/client/spacepress-client.js", document.baseURI.replace(/[^/]*$/, ""));
     const response = await fetch(url);
     const m = await import(url.href);
     return [response.status, response.headers.get("content-type"), typeof m.createClient, typeof m.createClient({ url: location.origin + "/wp-json" }).actions.like];
@@ -180,7 +180,7 @@ try {
   // wp-login.php focuses and selects its username field 200 ms after it loads; fill after that.
   await signedIn.waitForTimeout(300);
   await signedIn.fill("#user_login", "admin");
-  await signedIn.fill("#user_pass", "typedpress-test-admin");
+  await signedIn.fill("#user_pass", "spacepress-test-admin");
   await Promise.all([signedIn.waitForNavigation(), signedIn.click("#wp-submit")]);
   if (new URL(signedIn.url()).pathname !== new URL(url).pathname) await signedIn.goto(url, { waitUntil: "networkidle" });
   const signedBefore = await signedIn.textContent("[data-wp-interactive='clients/LikeButton']");
@@ -192,10 +192,10 @@ try {
     after: await signedIn.textContent("[data-wp-interactive='clients/LikeButton']"),
     // The action's run, with the nonce (`me` reads the app API's `/me`).
     runs: signedRuns,
-    me: await signedIn.evaluate(async () => (await (await import("@typedpress/client")).createClient().auth.me())?.name ?? null),
+    me: await signedIn.evaluate(async () => (await (await import("@spacepress/client")).createClient().auth.me())?.name ?? null),
   };
   await signedIn.close();
-  const liveRequests = requests.filter((r) => decodeURIComponent(r).replace(/[?&].*$/, "").endsWith("/_live") || decodeURIComponent(r).includes("rest_route=/typedpress/v1/_live")).length;
+  const liveRequests = requests.filter((r) => decodeURIComponent(r).replace(/[?&].*$/, "").endsWith("/_live") || decodeURIComponent(r).includes("rest_route=/spacepress/v1/_live")).length;
   process.stdout.write(JSON.stringify({ abilityRuns, refused, signed, live: { before: liveBefore, loading: loadingAttr, write: write.status, after: liveAfter, polled: liveRequests > 0 }, client, before, after, hydration, output, items, seen, ref, toggleBefore, toggleAfter, shelfSteps, kept, warnings, responses }));
 } finally {
   await browser.close();

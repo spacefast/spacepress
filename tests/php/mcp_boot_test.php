@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
- * TypedPress's API (`/wp-json/typedpress/v1`) never dispatches to `/mcp`, so it builds no MCP server and no
+ * SpacePress's API (`/wp-json/spacepress/v1`) never dispatches to `/mcp`, so it builds no MCP server and no
  * abilities; `/wp-json` requests, MCP's own route and REST discovery are unchanged. On WordPress on
  * SQLite over HTTP, with the pinned MCP Adapter active.
  */
@@ -12,7 +12,7 @@ require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 $schema = require dirname(__DIR__) . '/fixtures/blog/schema.php';
-$log = sys_get_temp_dir() . '/typedpress-mcp-boot-' . bin2hex(random_bytes(4)) . '.json';
+$log = sys_get_temp_dir() . '/spacepress-mcp-boot-' . bin2hex(random_bytes(4)) . '.json';
 $logFile = var_export($log, true);
 $wp = wpSite('mcp-boot', [
     'schema' => $schema,
@@ -22,7 +22,7 @@ $wp = wpSite('mcp-boot', [
         register_shutdown_function(static function (): void {
             \$adapter = class_exists(\\WP\\MCP\\Core\\McpAdapter::class) ? \\WP\\MCP\\Core\\McpAdapter::instance() : null;
             file_put_contents($logFile, json_encode([
-                'app server' => \$adapter !== null && \$adapter->get_server('typedpress-blog') !== null,
+                'app server' => \$adapter !== null && \$adapter->get_server('spacepress-blog') !== null,
                 'default server' => \$adapter !== null && \$adapter->get_server('mcp-adapter-default-server') !== null,
                 'abilities' => did_action('wp_abilities_api_init'),
             ]));
@@ -50,11 +50,11 @@ function get(string $url, array $headers = [], ?string $body = null): array
 }
 
 $none = ['app server' => false, 'default server' => false, 'abilities' => 0];
-eq('an API list builds no MCP server and no abilities', get("$url/wp-json/typedpress/v1/posts"), [200, $none]);
-eq('signed in, the same', get("$url/wp-json/typedpress/v1/posts", [$basic])[1], $none);
+eq('an API list builds no MCP server and no abilities', get("$url/wp-json/spacepress/v1/posts"), [200, $none]);
+eq('signed in, the same', get("$url/wp-json/spacepress/v1/posts", [$basic])[1], $none);
 // An action is dispatched through the abilities API, so the abilities are registered; still no MCP server.
-eq('an action through the API runs: abilities are registered, no MCP server is built', get("$url/wp-json/typedpress/v1/actions/publishedCount", [$basic, 'Content-Type: application/json'], '{}'), [200, ['app server' => false, 'default server' => false, 'abilities' => 1]]);
-[$status, $built] = get("$url/wp-json/mcp/typedpress-blog", [$basic, 'Content-Type: application/json', 'Accept: application/json, text/event-stream'], json_encode(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize',
+eq('an action through the API runs: abilities are registered, no MCP server is built', get("$url/wp-json/spacepress/v1/actions/publishedCount", [$basic, 'Content-Type: application/json'], '{}'), [200, ['app server' => false, 'default server' => false, 'abilities' => 1]]);
+[$status, $built] = get("$url/wp-json/mcp/spacepress-blog", [$basic, 'Content-Type: application/json', 'Accept: application/json, text/event-stream'], json_encode(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize',
     'params' => ['protocolVersion' => '2025-11-25', 'capabilities' => new stdClass(), 'clientInfo' => ['name' => 'test', 'version' => '1']]]));
 eq('the app\'s MCP route answers on /wp-json, with both servers', [$status, $built['app server'] ?? null, $built['default server'] ?? null], [200, true, true]);
 eq('core REST requests build them as before', get("$url/wp-json/wp/v2/types")[1], ['app server' => true, 'default server' => true, 'abilities' => 1]);

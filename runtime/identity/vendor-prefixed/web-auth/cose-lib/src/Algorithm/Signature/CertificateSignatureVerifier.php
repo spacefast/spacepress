@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature;
+namespace SpacePress\Identity\Vendor\Cose\Algorithm\Signature;
 
-use TypedPress\Identity\Vendor\Cose\Algorithm\Manager;
-use TypedPress\Identity\Vendor\Cose\Key\Key;
-use TypedPress\Identity\Vendor\Cose\Key\PublicKeyLoader;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Manager;
+use SpacePress\Identity\Vendor\Cose\Key\Key;
+use SpacePress\Identity\Vendor\Cose\Key\PublicKeyLoader;
 use InvalidArgumentException;
 use function sprintf;
 
@@ -19,7 +19,7 @@ use function sprintf;
  * describe - ECDSA and RSASSA-PKCS1-v1_5 - because that digest implies PKCS #1 v1.5 padding; ES256K is missing from
  * the map altogether, and RSASSA-PSS, EdDSA, Ed25519 and Ed448 cannot be expressed by it at all.
  *
- * This class takes the other route: the certificate's key becomes a TypedPress\Identity\Vendor\Cose\Key\Key and the Signature class registered
+ * This class takes the other route: the certificate's key becomes a SpacePress\Identity\Vendor\Cose\Key\Key and the Signature class registered
  * for the identifier verifies with it. Three consequences are worth stating.
  *
  * First, the set of acceptable algorithms is the Manager the operator built, not a constant of this library: an

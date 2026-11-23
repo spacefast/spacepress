@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Signal;
+namespace SpacePress\Identity\Vendor\Webauthn\Signal;
 
-use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialDescriptor;
-use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialRpEntity;
-use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialUserEntity;
+use SpacePress\Identity\Vendor\Webauthn\PublicKeyCredentialDescriptor;
+use SpacePress\Identity\Vendor\Webauthn\PublicKeyCredentialRpEntity;
+use SpacePress\Identity\Vendor\Webauthn\PublicKeyCredentialUserEntity;
 
 readonly class AllAcceptedCredentials implements Signal
 {

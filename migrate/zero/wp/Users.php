@@ -2,25 +2,25 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Wp\Legacy;
+namespace SpacePress\Wp\Legacy;
 
-use TypedPress\HttpError;
-use TypedPress\Schema;
-use TypedPress\Wp\Connection;
-use TypedPress\Wp\WpUserStore;
+use SpacePress\HttpError;
+use SpacePress\Schema;
+use SpacePress\Wp\Connection;
+use SpacePress\Wp\WpUserStore;
 
 /**
- * `wp typedpress migrate-legacy-users --space=<id> [--dry-run]`: carry an original Zero (0.8) Space's app
+ * `wp spacepress migrate-legacy-users --space=<id> [--dry-run]`: carry an original Zero (0.8) Space's app
  * users into the new app's `auth: true` collection (design §6.2).
  *
  * Original Zero kept app users as WordPress users already: the identity plugin's account
  * (`{prefix}sfi_accounts`, with the verified primary email in `sfi_emails`) plus usermeta
  * `_spacefast_app_user` = the Space id. The new app's members are WordPress users too
  * (WpUserStore: `id` = wp_users.ID, `email` = user_email, `name` = display_name, other columns
- * `tp_<col>`), so the move is in place and ids, passwords and sessions are kept:
+ * `sp_<col>`), so the move is in place and ids, passwords and sessions are kept:
  *
  * - the verified primary email becomes `user_email`;
- * - the account's status becomes typedpress-identity's (`{prefix}tp_identity_accounts`), which is
+ * - the account's status becomes spacepress-identity's (`{prefix}sp_identity_accounts`), which is
  *   what WpAuth and the user store enforce: a suspended original account stays suspended;
  * - the member collection's own columns start at their defaults, in WpUserStore's storage forms.
  *
@@ -38,9 +38,9 @@ final class Users
     private const APP_USER_META = '_spacefast_app_user';
     /** Stamped on a moved user so a second run skips it. */
     public const MIGRATED_META = '_zero_legacy_member';
-    /** typedpress-identity statuses an original account may carry over (Accounts, Privacy), least to most restrictive. */
+    /** spacepress-identity statuses an original account may carry over (Accounts, Privacy), least to most restrictive. */
     private const STATUSES = ['active', 'suspended', 'deletion_requested'];
-    /** Restriction order, so a carried-over status never weakens one typedpress-identity already holds. */
+    /** Restriction order, so a carried-over status never weakens one spacepress-identity already holds. */
     private const RESTRICTION = ['active' => 0, 'suspended' => 1, 'deletion_requested' => 2, 'deleted' => 3];
 
     public function __construct(private readonly Connection $db, private readonly Schema $schema)
@@ -60,16 +60,16 @@ final class Users
         $spec = $this->schema->collection($collection);
         $w = $this->db->wpdb();
         $original = $w->prefix . 'sfi_';
-        $identity = $w->prefix . 'tp_identity_';
-        if (!\TypedPress\Wp\IdentityBridge::available()) {
-            // Its tables may outlive it, but only an active typedpress-identity enforces account status.
-            throw Model::refuse('', 'typedpress-identity is not active; activate it first, so carried-over account status is enforced');
+        $identity = $w->prefix . 'sp_identity_';
+        if (!\SpacePress\Wp\IdentityBridge::available()) {
+            // Its tables may outlive it, but only an active spacepress-identity enforces account status.
+            throw Model::refuse('', 'spacepress-identity is not active; activate it first, so carried-over account status is enforced');
         }
         foreach ([$original . 'accounts', $identity . 'accounts'] as $table) {
             if ($this->db->run('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$table]) === []) {
                 throw Model::refuse('', $table === $original . 'accounts'
                     ? "no original identity tables ($table); the Space had no app users"
-                    : "no typedpress-identity tables ($table); activate typedpress-identity first, so account status can be enforced");
+                    : "no spacepress-identity tables ($table); activate spacepress-identity first, so account status can be enforced");
             }
         }
         $rows = $this->db->run(
@@ -88,7 +88,7 @@ final class Users
             $id = (int) $row['ID'];
             $at = "/users/$id";
             if ($row['status'] === 'deleted' || $row['current'] === 'deleted') {
-                // Erased (by the original platform or by typedpress-identity since): nothing to restore.
+                // Erased (by the original platform or by spacepress-identity since): nothing to restore.
                 $skipped[] = ['id' => $id, 'reason' => 'deleted account'];
                 continue;
             }
@@ -127,7 +127,7 @@ final class Users
     public static function member(array $spec, int $id, string $email, string $name, string $role, string $at): array
     {
         // One instant per row, as for any write: every `now` default is the same millisecond.
-        return \TypedPress\Js::atInstant(static fn () => self::memberAt($spec, $id, $email, $name, $role, $at));
+        return \SpacePress\Js::atInstant(static fn () => self::memberAt($spec, $id, $email, $name, $role, $at));
     }
 
     private static function memberAt(array $spec, int $id, string $email, string $name, string $role, string $at): array
@@ -165,7 +165,7 @@ final class Users
             // References and media carry integrity rules of their own (Db::checkValues); a default
             // of one can't be checked here, so it waits until after the move, as in site migration.
             $def = $spec['columns'][$col];
-            if ($value !== null && (isset($def['references']) || Schema::mediaRefs($def, $value, '') !== [] || \TypedPress\Media\Files::refs($def, $value, '') !== [])) {
+            if ($value !== null && (isset($def['references']) || Schema::mediaRefs($def, $value, '') !== [] || \SpacePress\Media\Files::refs($def, $value, '') !== [])) {
                 throw Model::refuse($at . HttpError::seg((string) $col), "$col names another record, media or a private file; give it no default, migrate, then set it");
             }
         }
@@ -173,7 +173,7 @@ final class Users
         return $out;
     }
 
-    /** The ladder role WpUserStore reads for this user (`tp_role`, kept by lane E; subscriber until set). */
+    /** The ladder role WpUserStore reads for this user (`sp_role`, kept by lane E; subscriber until set). */
     private function role(int $id): string
     {
         $w = $this->db->wpdb();
@@ -208,10 +208,10 @@ final class Users
                 throw new HttpError(409, 'unique_violation', "$col '$key' already belongs to WordPress user " . reset($hit[0]), $ptr);
             }
             if ($col === 'email') {
-                // typedpress-identity keeps one verified owner per address, site-wide.
-                $owner = $this->db->run("SELECT wp_user_id FROM `{$w->prefix}tp_identity_emails` WHERE normalized = ? AND wp_user_id <> ? FOR UPDATE", [$key, $id]);
+                // spacepress-identity keeps one verified owner per address, site-wide.
+                $owner = $this->db->run("SELECT wp_user_id FROM `{$w->prefix}sp_identity_emails` WHERE normalized = ? AND wp_user_id <> ? FOR UPDATE", [$key, $id]);
                 if ($owner !== []) {
-                    throw new HttpError(409, 'unique_violation', "$key is verified for typedpress-identity account {$owner[0]['wp_user_id']}", $ptr);
+                    throw new HttpError(409, 'unique_violation', "$key is verified for spacepress-identity account {$owner[0]['wp_user_id']}", $ptr);
                 }
             }
         }
@@ -220,12 +220,12 @@ final class Users
     private function write(array $spec, int $id, array $user, string $identity): void
     {
         $w = $this->db->wpdb();
-        // typedpress-identity's status is what WpAuth enforces. It is locked and reread here, at write
-        // time, and merged toward the stricter one, so a suspension (or erasure) typedpress-identity
+        // spacepress-identity's status is what WpAuth enforces. It is locked and reread here, at write
+        // time, and merged toward the stricter one, so a suspension (or erasure) spacepress-identity
         // holds, including one committed since planning, is never lifted.
         $current = $this->db->run("SELECT status FROM `{$identity}accounts` WHERE wp_user_id = ? FOR UPDATE", [$id])[0]['status'] ?? null;
         if ($current === 'deleted') {
-            throw new HttpError(409, 'conflict', "app user $id was erased by typedpress-identity during the migration; run it again", "/users/$id");
+            throw new HttpError(409, 'conflict', "app user $id was erased by spacepress-identity during the migration; run it again", "/users/$id");
         }
         $status = $current !== null && (self::RESTRICTION[$current] ?? 0) > self::RESTRICTION[$user['status']] ? $current : $user['status'];
         // WordPress keeps users and their meta in the object cache; a rollback must drop them.
@@ -249,7 +249,7 @@ final class Users
             $value = maybe_serialize(WpUserStore::metaForm($spec['columns'][$col], $stored));
             $this->db->run("INSERT INTO `{$w->usermeta}` (user_id, meta_key, meta_value) VALUES (?, ?, ?)", [$id, WpUserStore::META . $col, $value]);
         }
-        // typedpress-identity's account and verified email.
+        // spacepress-identity's account and verified email.
         $this->db->run(
             "INSERT INTO `{$identity}accounts` (wp_user_id, primary_email_id, status, created_at) VALUES (?, NULL, ?, ?)"
             . ' ON DUPLICATE KEY UPDATE status = VALUES(status)',

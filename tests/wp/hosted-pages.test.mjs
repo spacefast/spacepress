@@ -1,5 +1,5 @@
 // Run by tests/wp/hosted-pages-run.sh against a WordPress/MariaDB site that holds only the output of
-// `typedpress compile-sources` for examples/full-site: its first/app pages, client components, action and HTTP routes.
+// `spacepress compile-sources` for examples/full-site: its first/app pages, client components, action and HTTP routes.
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHmac } from 'node:crypto';
@@ -10,8 +10,8 @@ import { test } from 'node:test';
 import { createRequire } from 'node:module';
 import { promisify } from 'node:util';
 
-const app = process.env.TP_HOSTED_APP;
-const harness = process.env.TP_HOSTED_HARNESS;
+const app = process.env.SP_HOSTED_APP;
+const harness = process.env.SP_HOSTED_HARNESS;
 const exec = promisify(execFile);
 const site = JSON.parse(readFileSync(join(app, 'harness.json'), 'utf8'));
 const base = site.url.replace(/\/$/, '');
@@ -20,10 +20,10 @@ const editor = `Basic ${Buffer.from(`editor:${site.users.editor.appPassword}`).t
 const { chromium } = createRequire(new URL('../differential/client/package.json', import.meta.url))('playwright-core');
 
 function chromiumPath() {
-  if (process.env.TP_CHROMIUM) return process.env.TP_CHROMIUM;
+  if (process.env.SP_CHROMIUM) return process.env.SP_CHROMIUM;
   const cache = join(homedir(), '.cache/ms-playwright');
   const shell = readdirSync(cache).filter((name) => name.startsWith('chromium_headless_shell-')).sort().reverse()[0];
-  if (shell === undefined) throw new Error('Set TP_CHROMIUM to a chrome-headless-shell executable.');
+  if (shell === undefined) throw new Error('Set SP_CHROMIUM to a chrome-headless-shell executable.');
   return join(cache, shell, 'chrome-headless-shell-linux64/chrome-headless-shell');
 }
 
@@ -39,14 +39,14 @@ const wp = async (...args) => (await exec(harness, ['wp', ...args], { maxBuffer:
 
 test('the host-compiled full site serves its first/app pages, hydrates its client components, runs its action and answers its routes', { timeout: 300000 }, async () => {
   const compiled = JSON.parse(readFileSync(join(app, 'compiled/manifest.json'), 'utf8'));
-  assert.equal(compiled.pages ?? null, null, 'no separate pages plugin: the app plugin renders tp/app/');
+  assert.equal(compiled.pages ?? null, null, 'no separate pages plugin: the app plugin renders sp/app/');
 
-  const note = await api('/wp-json/typedpress/v1/notes', { method: 'POST', body: JSON.stringify({
+  const note = await api('/wp-json/spacepress/v1/notes', { method: 'POST', body: JSON.stringify({
     title: 'Hosted light', slug: 'hosted-light', dek: 'Served from compile-sources', status: 'published',
     body: '<!-- wp:paragraph --><p>Rendered by <em>WordPress</em>.</p><!-- /wp:paragraph -->', deskNotes: 'Staff only',
   }) });
   assert.equal(note.status, 201, JSON.stringify(note.body));
-  const draft = await api('/wp-json/typedpress/v1/notes', { method: 'POST', body: JSON.stringify({ title: 'Hidden draft', slug: 'hidden-draft', status: 'draft' }) });
+  const draft = await api('/wp-json/spacepress/v1/notes', { method: 'POST', body: JSON.stringify({ title: 'Hidden draft', slug: 'hidden-draft', status: 'draft' }) });
   assert.equal(draft.status, 201, JSON.stringify(draft.body));
 
   // 1. HTML pages: home, a static page with an image, the listing, a note's own URL and the 404.
@@ -57,20 +57,20 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
   assert.match(home.text, new RegExp(`<a href="${base}/notes/hosted-light/"[^>]*>Hosted light</a>`), 'a <Link> to the note, at its one address');
   assert.doesNotMatch(home.text, /Hidden draft/);
   assert.equal(home.headers.get('cache-control'), 'public, max-age=0, s-maxage=300, must-revalidate', "an anonymous visitor's page is shared");
-  // The layout's stylesheet is under 4 KB, so it is inlined in <head> (TypedPress\Assets::INLINE_LIMIT);
+  // The layout's stylesheet is under 4 KB, so it is inlined in <head> (SpacePress\Assets::INLINE_LIMIT);
   // the file stays in the app plugin under its content-hashed name, cached for a year.
-  const inline = /<style id=["']typedpress-app-(global-[0-9a-f]{16})-css-inline-css["'][^>]*>([^<]*)<\/style>/.exec(home.text);
+  const inline = /<style id=["']spacepress-app-(global-[0-9a-f]{16})-css-inline-css["'][^>]*>([^<]*)<\/style>/.exec(home.text);
   assert.ok(inline, 'the layout inlines its stylesheet');
-  assert.match(inline[2], /body\.typedpress-app/);
+  assert.match(inline[2], /body\.spacepress-app/);
   const about = await http('/about/');
   assert.equal(about.status, 200);
-  const svg = /src="([^"]+\/tp\/app\/assets\/compass-[0-9a-f]{16}\.svg)"/.exec(about.text)?.[1];
+  const svg = /src="([^"]+\/sp\/app\/assets\/compass-[0-9a-f]{16}\.svg)"/.exec(about.text)?.[1];
   assert.ok(svg, 'the imported SVG is its URL in the app plugin');
   assert.equal((await fetch(svg)).status, 200);
   const sheet = await fetch(svg.replace(/[^/]+$/, `${inline[1]}.css`));
   assert.equal(sheet.status, 200);
   assert.match(sheet.headers.get('cache-control') ?? sheet.headers.get('expires') ?? '', /max-age=31536000|GMT/);
-  assert.match(await sheet.text(), /body\.typedpress-app/);
+  assert.match(await sheet.text(), /body\.spacepress-app/);
   assert.match((await http('/notes/')).text, /Hosted light/);
   // One address per page (#462): the bare spelling 301s to the permalink structure's.
   const bare = await http('/notes/hosted-light?ref=x');
@@ -81,7 +81,7 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
   assert.match(detail.text, /<title>Hosted light · Field Notes<\/title>/);
   assert.match(detail.text, /Rendered by <em>WordPress<\/em>\./);
   assert.match(detail.text, /<article class="note_note">/, "the CSS module's class, renamed as packages/pages named it");
-  assert.match(detail.text, /<style id=["']typedpress-app-note-[0-9a-f]{16}-css-inline-css["'][^>]*>[^<]*\.note_note\b/, 'the page inlines its module stylesheet');
+  assert.match(detail.text, /<style id=["']spacepress-app-note-[0-9a-f]{16}-css-inline-css["'][^>]*>[^<]*\.note_note\b/, 'the page inlines its module stylesheet');
   assert.doesNotMatch(detail.text, /Staff only/, 'field access applies to anonymous rendering');
   const missing = await http('/notes/hidden-draft/');
   assert.equal(missing.status, 404);
@@ -138,11 +138,11 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
     await clientBrowser.close();
   }
 
-  const cheers = await api('/wp-json/typedpress/v1/cheers');
+  const cheers = await api('/wp-json/spacepress/v1/cheers');
   assert.deepEqual(cheers.body.data.map((row) => [row.noteId, row.count]), [[note.body.data.id, 3]]);
 
   // 3. The action over plain HTTP, as any client calls it.
-  const action = await http('/wp-json/typedpress/v1/actions/cheer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ noteId: note.body.data.id }) });
+  const action = await http('/wp-json/spacepress/v1/actions/cheer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ noteId: note.body.data.id }) });
   assert.equal(action.status, 200, action.text);
   assert.deepEqual(JSON.parse(action.text), { data: { count: 4 } });
 
@@ -168,11 +168,11 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
   assert.equal(hook.status, 202, hook.text);
   assert.equal(hook.text, `accepted ${signature.slice(0, 8)}`);
   assert.equal(hook.headers.get('content-type'), 'text/plain; charset=utf-8');
-  assert.equal((await api('/wp-json/typedpress/v1/cheers')).body.data[0].count, 5, 'the signed route wrote');
+  assert.equal((await api('/wp-json/spacepress/v1/cheers')).body.data[0].count, 5, 'the signed route wrote');
   const forged = await http('/webhooks/stripe', { method: 'POST', headers: { 'x-fullsite-signature': 'f'.repeat(64) }, body: event });
   assert.equal(forged.status, 401);
   assert.equal(JSON.parse(forged.text).code, 'invalid_signature');
-  assert.equal((await api('/wp-json/typedpress/v1/cheers')).body.data[0].count, 5, 'a forged delivery wrote nothing');
+  assert.equal((await api('/wp-json/spacepress/v1/cheers')).body.data[0].count, 5, 'a forged delivery wrote nothing');
 
   // Percent-encoded unreserved characters name the same path.
   assert.equal((await http('/%61pi/feed%2Ejson')).status, 200);
@@ -201,7 +201,7 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
     entries: [['a.b', '1'], ['x[]', '1'], ['x[]', '2'], ['k', '1'], ['k', '2']],
   });
   // A server that sends no QUERY_STRING: the query still comes from the request URI.
-  const fallback = await http('/api/probe-query?k=from-uri', { headers: { 'x-typedpress-no-query-string': '1' } });
+  const fallback = await http('/api/probe-query?k=from-uri', { headers: { 'x-spacepress-no-query-string': '1' } });
   assert.equal(fallback.status, 200, fallback.text);
   assert.equal(JSON.parse(fallback.text).first, 'from-uri');
   const encoded = JSON.parse(await body('/api/probe-query?a%2Eb=%31&k=one+two&k=3'));
@@ -220,7 +220,7 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
   // Unclaimed paths still belong to WordPress.
   assert.equal((await http('/unclaimed/other.json')).status, 404);
   assert.equal((await http('/api/a/b/c')).status, 404, 'no route has three segments under /api');
-  assert.equal((await http('/wp-json/typedpress/v1/notes')).status, 200);
+  assert.equal((await http('/wp-json/spacepress/v1/notes')).status, 200);
 });
 
 test('a route sees the caller WordPress REST would: Bearer always, cookie on GET or with a nonce, never an application password', { timeout: 120000 }, async () => {
@@ -241,9 +241,9 @@ test('a route sees the caller WordPress REST would: Bearer always, cookie on GET
   assert.equal(await who('GET', { cookie }), `user ${id}`);
   assert.equal(await who('POST', { cookie }), 'anonymous', 'no nonce: a cross-site form runs anonymously');
   assert.equal(await who('POST', { cookie, 'x-wp-nonce': nonce }), `user ${id}`);
-  // A typedpress-identity Bearer token is the caller's chosen credential on every method, with no nonce.
+  // A spacepress-identity Bearer token is the caller's chosen credential on every method, with no nonce.
   if (site.identity !== null) {
-    const token = await wp('eval', `echo (new \\TypedPress\\Identity\\OAuth(\\TypedPress\\Identity\\Plugin::$db, \\TypedPress\\Identity\\Plugin::$accounts))->issueForUser(${id}, ${JSON.stringify(site.identity.clientId)})['access_token'];`);
+    const token = await wp('eval', `echo (new \\SpacePress\\Identity\\OAuth(\\SpacePress\\Identity\\Plugin::$db, \\SpacePress\\Identity\\Plugin::$accounts))->issueForUser(${id}, ${JSON.stringify(site.identity.clientId)})['access_token'];`);
     assert.equal(await who('GET', { authorization: `Bearer ${token}` }), `user ${id}`);
     assert.equal(await who('POST', { authorization: `Bearer ${token}` }), `user ${id}`);
     assert.equal((await http('/api/probe-who', { method: 'POST', headers: { authorization: 'Bearer a.b.c' } })).status, 401, 'a bad token is refused, not anonymous');
@@ -251,7 +251,7 @@ test('a route sees the caller WordPress REST would: Bearer always, cookie on GET
 });
 
 test('while storage is behind, a claimed route path answers 503 instead of falling through to WordPress', { timeout: 120000 }, async () => {
-  const appDir = join(app, 'content/plugins/typedpress-app-fullsite/tp/app');
+  const appDir = join(app, 'content/plugins/spacepress-app-fullsite/sp/app');
   const schemaFile = join(appDir, 'schema.php');
   const schema = readFileSync(schemaFile);
   const migrationDir = join(appDir, 'migrations/99991231235959_000000_route_probe');

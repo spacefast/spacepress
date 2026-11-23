@@ -1,9 +1,9 @@
-//! `typedpress pull [dir] [--site <url>] [--check]`: write a site's runtime schema versions into the
+//! `spacepress pull [dir] [--site <url>] [--check]`: write a site's runtime schema versions into the
 //! project (docs/spec/spec.md §2.10).
 //!
 //! A site whose app set `runtimeSchema: true` can change its content schema while it runs. Those
 //! changes live in the site's database until this command writes them to the committed lock
-//! `tp/_generated/runtime-schema.json`, which `typedpress build` reads. After a pull, the project is
+//! `sp/_generated/runtime-schema.json`, which `spacepress build` reads. After a pull, the project is
 //! compiled once here with the new lock, so a lock the compiler would refuse is reported before
 //! anything is written, and the generated types and typed client are refreshed to match.
 //!
@@ -16,7 +16,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: typedpress pull [project-dir] [--site <url>] [--check]   (as an administrator)";
+const USAGE: &str = "usage: spacepress pull [project-dir] [--site <url>] [--check]   (as an administrator)";
 
 pub fn cli(args: &[String]) -> ExitCode {
     match run(args) {
@@ -68,7 +68,7 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
     };
     if format != crate::runtime_schema::FORMAT {
         return Err(format!(
-            "{site}: the site's runtime schema is in format {format}; this `typedpress` reads format {}. Use the TypedPress version the site runs",
+            "{site}: the site's runtime schema is in format {format}; this `spacepress` reads format {}. Use the SpacePress version the site runs",
             crate::runtime_schema::FORMAT
         ));
     }
@@ -85,7 +85,7 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
         .and_then(|lock| lock["version"].as_u64());
     let was = before.map_or("no lock".to_string(), |v| format!("version {v}"));
     if check {
-        eprintln!("{LOCK} holds {was}; the site is at version {version}. Run `typedpress pull` to update it");
+        eprintln!("{LOCK} holds {was}; the site is at version {version}. Run `spacepress pull` to update it");
         return Ok(ExitCode::from(1));
     }
     // Compile with the new lock before it replaces the old one: a lock the compiler refuses (the
@@ -106,6 +106,6 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
             println!("  {name}: on the site, now also in the project");
         }
     }
-    println!("commit {LOCK} and tp/_generated/, then build and deploy");
+    println!("commit {LOCK} and sp/_generated/, then build and deploy");
     Ok(ExitCode::SUCCESS)
 }

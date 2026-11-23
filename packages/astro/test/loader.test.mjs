@@ -1,6 +1,6 @@
-// @typedpress/astro against a real TypedPress site: test/fixture built with `typedpress build` and served on
-// WordPress-on-SQLite (tests/php/wp.php serve). Needs PHP 8.2+ with pdo_sqlite, the `typedpress` binary
-// (TP_BIN, default target/debug/typedpress) and `npm ci` here. The Astro build at the end needs the
+// @spacepress/astro against a real SpacePress site: test/fixture built with `spacepress build` and served on
+// WordPress-on-SQLite (tests/php/wp.php serve). Needs PHP 8.2+ with pdo_sqlite, the `spacepress` binary
+// (SP_BIN, default target/debug/spacepress) and `npm ci` here. The Astro build at the end needs the
 // Node version Astro requires (22.23.4+).
 //
 //   node --test packages/astro/test/loader.test.mjs
@@ -14,14 +14,14 @@ import { after, before, test } from "node:test";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-import { tpLiveLoader, tpLoader, tpWebhook, verifySignature } from "../src/index.js";
+import { spLiveLoader, spLoader, spWebhook, verifySignature } from "../src/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../../..");
-const bin = process.env.TP_BIN ?? join(repo, "target/debug/typedpress");
+const bin = process.env.SP_BIN ?? join(repo, "target/debug/spacepress");
 const SECRET = "whsec_astro_test";
 
-const work = mkdtempSync(join(tmpdir(), "typedpress-astro-"));
+const work = mkdtempSync(join(tmpdir(), "spacepress-astro-"));
 let site; // { url, users, wpCli }
 let server; // the php serve process
 const deliveries = []; // { headers, body } POSTed to the receiver
@@ -31,7 +31,7 @@ let hooks; // the receiver's server
 async function api(method, path, body, as = "admin") {
   const headers = { accept: "application/json", authorization: `Basic ${btoa(site.users[as].appPassword)}` };
   if (body !== undefined) headers["content-type"] = "application/json";
-  const response = await fetch(`${site.url}/wp-json/typedpress/v1${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const response = await fetch(`${site.url}/wp-json/spacepress/v1${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const json = await response.json();
   assert.ok(response.ok, `${method} ${path}: ${JSON.stringify(json)}`);
   return json.data;
@@ -49,9 +49,9 @@ function run(command, args, env = process.env) {
   });
 }
 
-/** The site's background work, as a host runs it (`wp typedpress jobs tick`) until none is left: delivers queued webhooks. */
+/** The site's background work, as a host runs it (`wp spacepress jobs tick`) until none is left: delivers queued webhooks. */
 async function tick() {
-  const wp = (...args) => run("php", ["-d", "memory_limit=512M", site.wpCli.phar, `--path=${site.wpCli.path}`, `--url=${site.url}`, "typedpress", ...args],
+  const wp = (...args) => run("php", ["-d", "memory_limit=512M", site.wpCli.phar, `--path=${site.wpCli.path}`, `--url=${site.url}`, "spacepress", ...args],
     { ...process.env, ASTRO_HOOK_URL: receiver, ASTRO_HOOK_SECRET: SECRET });
   for (let pass = 0; pass < 20; pass++) {
     const out = await wp("jobs", "tick", "--limit=100");
@@ -64,7 +64,7 @@ async function tick() {
 }
 
 before(async () => {
-  assert.ok(existsSync(bin), `build the compiler first (cargo build --bin typedpress), or set TP_BIN; ${bin} is missing`);
+  assert.ok(existsSync(bin), `build the compiler first (cargo build --bin spacepress), or set SP_BIN; ${bin} is missing`);
   const project = join(work, "app");
   cpSync(join(here, "fixture"), project, { recursive: true });
   const built = spawnSync(bin, ["build", project, "--quiet"], { encoding: "utf8" });
@@ -79,10 +79,10 @@ before(async () => {
     });
   });
   await new Promise((r) => hooks.listen(0, "127.0.0.1", r));
-  receiver = `http://127.0.0.1:${hooks.address().port}/api/tp`;
+  receiver = `http://127.0.0.1:${hooks.address().port}/api/sp`;
 
-  server = spawn("php", ["-d", "memory_limit=512M", join(repo, "tests/php/wp.php"), "serve", join(project, "tp/dist/wp-content"), "ed=editor"], {
-    env: { ...process.env, TP_WP_CLI: "1", ASTRO_HOOK_URL: receiver, ASTRO_HOOK_SECRET: SECRET },
+  server = spawn("php", ["-d", "memory_limit=512M", join(repo, "tests/php/wp.php"), "serve", join(project, "sp/dist/wp-content"), "ed=editor"], {
+    env: { ...process.env, SP_WP_CLI: "1", ASTRO_HOOK_URL: receiver, ASTRO_HOOK_SECRET: SECRET },
     stdio: ["ignore", "pipe", "inherit"],
   });
   const line = await new Promise((resolveLine, reject) => {
@@ -98,7 +98,7 @@ before(async () => {
   const form = new FormData();
   form.append("file", new Blob([png], { type: "image/png" }), "cover.png");
   form.append("alt", "A cover");
-  const upload = await fetch(`${site.url}/wp-json/typedpress/v1/media`, { method: "POST", headers: { authorization: `Basic ${btoa(site.users.admin.appPassword)}` }, body: form });
+  const upload = await fetch(`${site.url}/wp-json/spacepress/v1/media`, { method: "POST", headers: { authorization: `Basic ${btoa(site.users.admin.appPassword)}` }, body: form });
   const cover = (await upload.json()).data;
   assert.equal(upload.status, 201);
   for (let i = 1; i <= 7; i++) {
@@ -174,7 +174,7 @@ function recording() {
 
 test("a build-time collection holds the published rows, with media rows, rendered HTML and only what the reader may see", async () => {
   const rec = recording();
-  const loader = tpLoader("notes", { site: site.url, fetch: rec.fetch, pageSize: 3 });
+  const loader = spLoader("notes", { site: site.url, fetch: rec.fetch, pageSize: 3 });
   const ctx = context("notes");
   await loader.load(ctx);
   const ids = [...ctx.state.entries.keys()].sort();
@@ -187,7 +187,7 @@ test("a build-time collection holds the published rows, with media rows, rendere
   assert.equal("memo" in one.data, false, "an anonymous build never sees an editor-only field");
   assert.match(one.rendered.html, /<p[^>]*>Body of note <strong>1<\/strong><\/p>/);
   // Key ranges of at most three rows that cover every key once.
-  const pages = JSON.parse(ctx.state.meta.get("typedpress:pages")).pages;
+  const pages = JSON.parse(ctx.state.meta.get("spacepress:pages")).pages;
   assert.equal(pages[0].lo, null);
   assert.equal(pages.at(-1).hi, null);
   assert.ok(pages.every((p, i) => i === 0 || p.lo === pages[i - 1].hi), JSON.stringify(pages));
@@ -196,7 +196,7 @@ test("a build-time collection holds the published rows, with media rows, rendere
 
 test("the next build pulls only the pages that changed, and only their changed entries are written", async () => {
   const rec = recording();
-  const loader = tpLoader("notes", { site: site.url, fetch: rec.fetch, pageSize: 3 });
+  const loader = spLoader("notes", { site: site.url, fetch: rec.fetch, pageSize: 3 });
   const ctx = context("notes");
   await loader.load(ctx);
   const state = ctx.state;
@@ -206,7 +206,7 @@ test("the next build pulls only the pages that changed, and only their changed e
   const same = context("notes", state);
   await loader.load(same);
   assert.deepEqual(same.writes, []);
-  const reads = () => rec.calls.filter((c) => c.path !== "/wp-json/typedpress/v1").map((c) => c.changed ?? c.path.split("?")[0]);
+  const reads = () => rec.calls.filter((c) => c.path !== "/wp-json/spacepress/v1").map((c) => c.changed ?? c.path.split("?")[0]);
   assert.deepEqual(reads(), [[false, false, false]], "one request, no rows, no HTML");
   assert.match(same.logs.at(-1), /0 changed, 0 removed, 7 entries, 3 of 3 pages not modified/);
 
@@ -235,7 +235,7 @@ test("the next build pulls only the pages that changed, and only their changed e
   const grown = context("notes", state);
   await loader.load(grown);
   assert.equal(state.entries.size, 18);
-  const pages = JSON.parse(state.meta.get("typedpress:pages")).pages;
+  const pages = JSON.parse(state.meta.get("spacepress:pages")).pages;
   assert.ok(pages.every((p, i) => i === 0 || p.lo === pages[i - 1].hi), JSON.stringify(pages));
   assert.ok(pages.every((p) => p.ids.length <= 3), JSON.stringify(pages));
   rec.calls.length = 0;
@@ -246,7 +246,7 @@ test("the next build pulls only the pages that changed, and only their changed e
 
   // Another query is another collection: its saved pages are not reused.
   const featured = context("notes", state);
-  await tpLoader("notes", { site: site.url, where: { featured: true } }).load(featured);
+  await spLoader("notes", { site: site.url, where: { featured: true } }).load(featured);
   assert.deepEqual([...state.entries.keys()], ["note-1"]);
 
   // Restore what later tests expect.
@@ -255,14 +255,14 @@ test("the next build pulls only the pages that changed, and only their changed e
 
 test("an editor's credentials read drafts and editor-only fields when asked", async () => {
   const ctx = context("notes");
-  await tpLoader("notes", { site: site.url, appPassword: site.users.ed.appPassword, drafts: true }).load(ctx);
+  await spLoader("notes", { site: site.url, appPassword: site.users.ed.appPassword, drafts: true }).load(ctx);
   const draft = [...ctx.state.entries.values()].find((e) => e.data.title === "Unfinished");
   assert.equal(draft?.data.status, "draft");
   assert.equal(ctx.state.entries.get("note-1").data.memo, "secret 1");
 });
 
 test("the schema comes from the site's description", async () => {
-  const { schema, types } = await tpLoader("notes", { site: site.url }).createSchema();
+  const { schema, types } = await spLoader("notes", { site: site.url }).createSchema();
   const row = {
     id: 1, title: "T", slug: "t", summary: null, body: null, cover: { id: 3, url: "u" },
     rank: 2, featured: false, status: "published", publishedAt: null, author: null,
@@ -276,15 +276,15 @@ test("the schema comes from the site's description", async () => {
   assert.match(types, /status: "draft" \| "published" \| "scheduled";/);
   assert.match(types, /memo\?: string \| null;/);
   assert.match(types, /cover: \{ id: number; url: string;/);
-  await assert.rejects(tpLoader("nope", { site: site.url }).createSchema(), /has no kind 'nope' \(it has notes, fieldNotes, /);
+  await assert.rejects(spLoader("nope", { site: site.url }).createSchema(), /has no kind 'nope' \(it has notes, fieldNotes, /);
 });
 
 test("WordPress's own kinds load through the list API, filtered with core's parameters", async () => {
   const ctx = context("posts");
-  await tpLoader("posts", { site: site.url }).load(ctx);
+  await spLoader("posts", { site: site.url }).load(ctx);
   assert.equal(ctx.state.entries.get("hello-world")?.data.title, "Hello world!");
-  await assert.rejects(tpLoader("posts", { site: site.url, where: { slug: "x" } }).load(context("posts")), /WordPress's own kind; its reads take core's filters/);
-  const live = tpLiveLoader("posts", { site: site.url });
+  await assert.rejects(spLoader("posts", { site: site.url, where: { slug: "x" } }).load(context("posts")), /WordPress's own kind; its reads take core's filters/);
+  const live = spLiveLoader("posts", { site: site.url });
   assert.equal((await live.loadEntry({ filter: { id: "hello-world" } })).data.title, "Hello world!");
   assert.equal(await live.loadEntry({ filter: { id: "no-such-post" } }), undefined, "a missing slug is no entry, not the newest post");
   assert.match((await live.loadEntry({ filter: { where: { slug: "hello-world" } } })).error.message, /core's filters/);
@@ -296,20 +296,20 @@ test("a kind is named by its client key or its storage name; tags and events use
   for (const site_ of ["a", "a", "b"]) await api("POST", "/field_notes", { title: `From ${site_} ${Math.random()}`, site: site_ });
   for (const name of ["fieldNotes", "field_notes"]) {
     const ctx = context(name);
-    await tpLoader(name, { site: site.url }).load(ctx);
+    await spLoader(name, { site: site.url }).load(ctx);
     assert.equal(ctx.state.entries.size, 3, name);
   }
-  const live = tpLiveLoader("fieldNotes", { site: site.url, where: { site: "a" } });
+  const live = spLiveLoader("fieldNotes", { site: site.url, where: { site: "a" } });
   const list = await live.loadCollection({ filter: {} });
   assert.equal(list.entries.length, 2);
   assert.equal(list.cacheHint.tags[0], "field_notes");
-  const other = (await tpLiveLoader("fieldNotes", { site: site.url }).loadCollection({ filter: { where: { site: "b" } } })).entries[0];
+  const other = (await spLiveLoader("fieldNotes", { site: site.url }).loadCollection({ filter: { where: { site: "b" } } })).entries[0];
   assert.equal(await live.loadEntry({ filter: { id: other.id } }), undefined, "the loader's where holds for an entry too");
   assert.equal((await live.loadEntry({ filter: { id: list.entries[0].id, site: "a" } })).id, list.entries[0].id, "id and fields together");
 });
 
 test("a live collection reads at request time and tags entries for the cache", async () => {
-  const live = tpLiveLoader("notes", { site: site.url });
+  const live = spLiveLoader("notes", { site: site.url });
   const list = await live.loadCollection({ filter: { orderBy: { rank: "asc" }, limit: 2 } });
   assert.equal(list.error, undefined, list.error?.message);
   assert.deepEqual(list.entries.map((e) => e.id), ["note-1", "note-2"]);
@@ -327,11 +327,11 @@ test("a live collection reads at request time and tags entries for the cache", a
   assert.equal(byField.id, "note-4");
 
   // One loader for every kind: the filter names it.
-  const any = tpLiveLoader({ site: site.url });
+  const any = spLiveLoader({ site: site.url });
   assert.equal((await any.loadEntry({ filter: { kind: "notes", id: "note-6" } })).data.title, "Note 6");
   assert.match((await any.loadCollection({ filter: {} })).error.message, /name one/);
   assert.match((await any.loadCollection({ filter: { kind: "nope" } })).error.message, /has no kind 'nope'/);
-  assert.equal((await tpLiveLoader("notes", { site: "http://127.0.0.1:1" }).loadCollection({ filter: {} })).error.code, "network");
+  assert.equal((await spLiveLoader("notes", { site: "http://127.0.0.1:1" }).loadCollection({ filter: {} })).error.code, "network");
 });
 
 test("a write is delivered as a signed webhook the Astro endpoint verifies and turns into cache tags", async () => {
@@ -342,26 +342,26 @@ test("a write is delivered as a signed webhook the Astro endpoint verifies and t
   await tick();
   assert.equal(deliveries.length, 1, JSON.stringify(deliveries));
   const [hit] = deliveries;
-  assert.equal(hit.headers["typedpress-event"], "notes.updated");
+  assert.equal(hit.headers["spacepress-event"], "notes.updated");
 
   const invalidated = [];
   const events = [];
-  const endpoint = tpWebhook({ secret: SECRET, onEvent: ({ tags }) => events.push(tags) });
+  const endpoint = spWebhook({ secret: SECRET, onEvent: ({ tags }) => events.push(tags) });
   const call = (body, signature) => endpoint({
-    request: new Request("http://astro.test/api/tp", { method: "POST", body, headers: { "typedpress-signature": signature } }),
+    request: new Request("http://astro.test/api/sp", { method: "POST", body, headers: { "spacepress-signature": signature } }),
     cache: { enabled: true, invalidate: async (o) => invalidated.push(o.tags) },
   });
-  const ok = await call(hit.body, hit.headers["typedpress-signature"]);
+  const ok = await call(hit.body, hit.headers["spacepress-signature"]);
   assert.equal(ok.status, 200);
   assert.deepEqual(await ok.json(), { tags: ["notes", `notes:${note.id}`] });
   assert.deepEqual(invalidated, [["notes", `notes:${note.id}`]]);
   assert.deepEqual(events, [["notes", `notes:${note.id}`]]);
 
-  assert.equal((await call(hit.body.replace("edited", "forged"), hit.headers["typedpress-signature"])).status, 401);
+  assert.equal((await call(hit.body.replace("edited", "forged"), hit.headers["spacepress-signature"])).status, 401);
   assert.equal((await call(hit.body, "t=1,v1=00")).status, 401);
-  const t = Number(/t=(\d+)/.exec(hit.headers["typedpress-signature"])[1]);
-  assert.equal(await verifySignature(SECRET, hit.headers["typedpress-signature"], hit.body, (t + 301) * 1000), false, "five minutes' tolerance");
-  assert.equal(await verifySignature("other", hit.headers["typedpress-signature"], hit.body, t * 1000), false);
+  const t = Number(/t=(\d+)/.exec(hit.headers["spacepress-signature"])[1]);
+  assert.equal(await verifySignature(SECRET, hit.headers["spacepress-signature"], hit.body, (t + 301) * 1000), false, "five minutes' tolerance");
+  assert.equal(await verifySignature("other", hit.headers["spacepress-signature"], hit.body, t * 1000), false);
   assert.equal(invalidated.length, 1);
 });
 
@@ -375,7 +375,7 @@ test("astro build renders the collection, and a rebuild after an edit pulls only
     const run = spawnSync(process.execPath, [join(here, "../node_modules/astro/bin/astro.mjs"), "build", "--root", join(here, "site")], {
       // Astro writes its prerender chunks below the working directory; they import its packages.
       cwd: join(here, "site"),
-      env: { ...process.env, TP_URL: site.url, ASTRO_TELEMETRY_DISABLED: "1", ASTRO_TEST_OUT: out },
+      env: { ...process.env, SP_URL: site.url, ASTRO_TELEMETRY_DISABLED: "1", ASTRO_TEST_OUT: out },
       encoding: "utf8",
     });
     assert.equal(run.status, 0, run.stdout + run.stderr);

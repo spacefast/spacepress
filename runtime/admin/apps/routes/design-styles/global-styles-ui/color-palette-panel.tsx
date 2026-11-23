@@ -1,4 +1,4 @@
-import type { Color } from '@typedpress-admin/global-styles-engine';
+import type { Color } from '@spacepress-admin/global-styles-engine';
 import { useViewportMatch } from '@wordpress/compose';
 import {
 	__experimentalPaletteEdit as PaletteEdit,
@@ -52,7 +52,7 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 
 	return (
 		<VStack
-			className="typedpress-admin-global-styles-color-palette-panel"
+			className="spacepress-admin-global-styles-color-palette-panel"
 			spacing={ 8 }
 		>
 			<VStack spacing={ 4 }>
@@ -62,7 +62,7 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 						canOnlyChangeValues
 						colors={ themeColors }
 						onChange={ setThemeColors }
-						paletteLabel={ __( 'Theme', 'typedpress-admin' ) }
+						paletteLabel={ __( 'Theme', 'spacepress-admin' ) }
 						paletteLabelHeadingLevel={ 3 }
 						popoverProps={ popoverProps }
 					/>
@@ -76,7 +76,7 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 							icon={ shuffle }
 							onClick={ randomizeThemeColors }
 						>
-							{ __( 'Randomize colors', 'typedpress-admin' ) }
+							{ __( 'Randomize colors', 'spacepress-admin' ) }
 						</Button>
 					) }
 			</VStack>
@@ -88,7 +88,7 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 						canOnlyChangeValues
 						colors={ defaultColors }
 						onChange={ setDefaultColors }
-						paletteLabel={ __( 'Default', 'typedpress-admin' ) }
+						paletteLabel={ __( 'Default', 'spacepress-admin' ) }
 						paletteLabelHeadingLevel={ 3 }
 						popoverProps={ popoverProps }
 					/>
@@ -96,12 +96,12 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 			<PaletteEdit
 				colors={ customColors }
 				onChange={ setCustomColors }
-				paletteLabel={ __( 'Custom', 'typedpress-admin' ) }
+				paletteLabel={ __( 'Custom', 'spacepress-admin' ) }
 				paletteLabelHeadingLevel={ 3 }
 				slugPrefix="custom-"
 				popoverProps={ popoverProps }
 			/>
-			<ColorVariations title={ __( 'Palettes', 'typedpress-admin' ) } />
+			<ColorVariations title={ __( 'Palettes', 'spacepress-admin' ) } />
 		</VStack>
 	);
 }

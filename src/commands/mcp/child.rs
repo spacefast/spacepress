@@ -1,4 +1,4 @@
-//! The commands the server runs for a tool: `typedpress find` and the other site commands, Studio's
+//! The commands the server runs for a tool: `spacepress find` and the other site commands, Studio's
 //! status for `dev_status` (a site with no state file), and the compiler in a process of its own.
 //! Each is bounded by the server's timeout and stops when the client cancels the request it belongs
 //! to.

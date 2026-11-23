@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace SpacePress\Identity\Vendor\CBOR\Tag\TypedArray;
 
-use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
-use TypedPress\Identity\Vendor\CBOR\CBORObject;
-use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use TypedPress\Identity\Vendor\CBOR\Tag;
+use SpacePress\Identity\Vendor\CBOR\ByteStringObject;
+use SpacePress\Identity\Vendor\CBOR\CBORObject;
+use SpacePress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use SpacePress\Identity\Vendor\CBOR\Tag;
 use function count;
 use Countable;
 use InvalidArgumentException;

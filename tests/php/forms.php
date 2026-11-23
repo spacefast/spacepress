@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 /*
  * Forms without JavaScript (docs/spec/rendering.md §4.2): tests/fixtures/forms, built by
- * `typedpress build`, on WordPress with php -S. Each step is what a browser with scripts off does: GET
+ * `spacepress build`, on WordPress with php -S. Each step is what a browser with scripts off does: GET
  * the page, POST the form as `application/x-www-form-urlencoded` to its `action`, follow the 303
  * with the cookie it set. Prints one JSON object of what each step saw.
  *
- *   TP_WP_THEMES=1 php tests/php/forms.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/forms.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -100,7 +100,7 @@ if ($base !== '') {
     $join = form(fetch("$url/join/")['body'], 'subscribe');
     $ok = submit($join, ['email' => 'sub@example.test', 'seats' => '1']);
     $sub = [
-        'return' => array_values(array_filter($join['fields'], static fn ($f) => $f[0] === '_tp_return'))[0][2] ?? null,
+        'return' => array_values(array_filter($join['fields'], static fn ($f) => $f[0] === '_sp_return'))[0][2] ?? null,
         'location' => preg_replace('/_flash=[0-9a-f]{12}/', '_flash=ID', (string) parse_url((string) $ok['location'], PHP_URL_PATH) . '?' . parse_url((string) $ok['location'], PHP_URL_QUERY)),
         'back' => [$ok['back']['status'] ?? null, text($ok['back']['body'] ?? '', 'done')],
     ];
@@ -157,7 +157,7 @@ $state = static function (array $back): array {
     $attr = static fn (string $name, string $attribute): ?string => ($n = $xpath->query(".//*[@name='$name']", $form)->item(0)) !== null && $n->hasAttribute($attribute) ? $n->getAttribute($attribute) : null;
 
     return [
-        'form' => $form->getAttribute('data-tp-form-state') ?: null,
+        'form' => $form->getAttribute('data-sp-form-state') ?: null,
         'invalid' => array_values(array_map(static fn (DOMElement $n) => $n->getAttribute('name'), iterator_to_array($xpath->query(".//*[@aria-invalid='true']", $form)))),
         'note' => $attr('note', 'value'),
         'weekly' => $attr('weekly', 'checked') !== null,
@@ -181,12 +181,12 @@ $out['not a number'] = text(submit($subscribe, ['email' => 'c@example.test', 'se
 
 // The return path is a path on this site, never another host.
 $evil = $subscribe;
-$evil['fields'] = array_map(static fn ($f) => $f[0] === '_tp_return' ? [$f[0], $f[1], '//evil.example/x'] : $f, $evil['fields']);
+$evil['fields'] = array_map(static fn ($f) => $f[0] === '_sp_return' ? [$f[0], $f[1], '//evil.example/x'] : $f, $evil['fields']);
 $out['open redirect'] = parse_url((string) submit($evil, ['email' => 'd@example.test', 'seats' => '1'])['location'], PHP_URL_HOST) === parse_url($url, PHP_URL_HOST);
 
 // A form rendered at a page's other spelling (`/join`, before its redirect) comes back to `/join/`.
 $bare = $subscribe;
-$bare['fields'] = array_map(static fn ($f) => $f[0] === '_tp_return' ? [$f[0], $f[1], '/join'] : $f, $bare['fields']);
+$bare['fields'] = array_map(static fn ($f) => $f[0] === '_sp_return' ? [$f[0], $f[1], '/join'] : $f, $bare['fields']);
 $joined = submit($bare, ['email' => 'b@example.test', 'seats' => '2']);
 $out['other spelling'] = [parse_url((string) $joined['location'], PHP_URL_PATH), text($joined['back']['body'], 'done')];
 // A request that carries a result is answered where it is, even at the other spelling.
@@ -244,8 +244,8 @@ $rowState = static function (string $html): array {
     foreach ($xpath->query("//form[starts-with(@class, 'row ')]") as $form) {
         $one = static fn (string $q): ?DOMElement => $xpath->query($q, $form)->item(0);
         $out[] = [
-            'state' => $form->getAttribute('data-tp-form-state') ?: null,
-            'form' => $one(".//input[@name='_tp_form']")?->getAttribute('value'),
+            'state' => $form->getAttribute('data-sp-form-state') ?: null,
+            'form' => $one(".//input[@name='_sp_form']")?->getAttribute('value'),
             'name' => $one(".//input[@name='name']")?->getAttribute('value'),
             'invalid' => $one(".//input[@name='name']")?->getAttribute('aria-invalid') ?: null,
             'tags' => array_values(array_map(static fn (DOMElement $n) => $n->getAttribute('value'), iterator_to_array($xpath->query(".//input[@name='tags'][@checked]", $form)))),

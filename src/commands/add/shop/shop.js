@@ -1,4 +1,4 @@
-import { createCartStore } from '@typedpress/client';
+import { createCartStore } from '@spacepress/client';
 
 const cartStore = createCartStore();
 const cart = cartStore.actions;
@@ -11,7 +11,7 @@ class MiniCart extends HTMLElement {
       const count = cartStore.snapshot().cart?.itemsCount;
       link.textContent = count === undefined ? 'Cart' : `Cart (${count})`;
       // The page names Woo's checkout script once, the same for everyone; only a visitor with a cart fetches it early.
-      const asset = document.querySelector('meta[name="tp-woo-checkout-script"]')?.content;
+      const asset = document.querySelector('meta[name="sp-woo-checkout-script"]')?.content;
       if (count && asset && !document.head.querySelector('[data-shop-checkout-prefetch]')) {
         const hint = element('link'); hint.rel = 'prefetch'; hint.as = 'script'; hint.href = asset;
         hint.setAttribute('data-shop-checkout-prefetch', ''); document.head.appendChild(hint);

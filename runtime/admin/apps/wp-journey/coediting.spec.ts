@@ -4,11 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { submitSignIn } from './sign-in';
 import { map, object } from '../packages/schema/src/model';
 
-const harness = object(JSON.parse(readFileSync(process.env.TP_WP_HARNESS ??
+const harness = object(JSON.parse(readFileSync(process.env.SP_WP_HARNESS ??
 	fileURLToPath(new URL('../../../../tests/wp/.harness.json', import.meta.url)), 'utf8')));
 if (typeof harness.url !== 'string') throw new Error('Missing fixture URL.');
 const site = harness.url;
-const apiUrl = `${site}/wp-json/typedpress/v1`;
+const apiUrl = `${site}/wp-json/spacepress/v1`;
 const users = object(harness.users);
 const adminId = object(users.admin).id;
 const editorId = object(users.editor).id;
@@ -25,7 +25,7 @@ const paragraph = (page: Page) => page.frameLocator('iframe[name="editor-canvas"
 
 async function open(page: Page, role: 'admin' | 'editor', id: number) {
 	await page.goto(`${site}/wp-login.php`);
-	await submitSignIn(page, role, `typedpress-test-${role}`);
+	await submitSignIn(page, role, `spacepress-test-${role}`);
 	await page.goto(`${site}/wp-admin/new/collections/documents/${id}`);
 	await expect(title(page)).toBeVisible();
 	const fields = page.getByRole('button', { name: 'Fields', exact: true });
@@ -33,7 +33,7 @@ async function open(page: Page, role: 'admin' | 'editor', id: number) {
 	await expect(page.getByRole('textbox', { name: 'Summary', exact: true })).toBeVisible();
 }
 
-test('upstream collaboration merges simultaneous text edits, shares fields, and saves through TypedPress', async ({ browser, request }) => {
+test('upstream collaboration merges simultaneous text edits, shares fields, and saves through SpacePress', async ({ browser, request }) => {
 	const run = Date.now();
 	const created = await request.post(`${apiUrl}/documents`, {
 		headers: auth('admin'),
@@ -54,7 +54,7 @@ test('upstream collaboration merges simultaneous text edits, shares fields, and 
 		page.on('response', (response) => {
 			if (!new URL(response.url()).pathname.includes('/wp-sync/v1/')) return;
 			if (!response.ok()) failedSync.push(response.status());
-			const schema = response.request().headers()['x-typedpress-coediting-schemas'];
+			const schema = response.request().headers()['x-spacepress-coediting-schemas'];
 			if (response.ok() && schema) successfulSyncHeaders.push(schema);
 		});
 	}
@@ -115,18 +115,18 @@ test('upstream collaboration merges simultaneous text edits, shares fields, and 
 		// A navigation can invalidate response bodies. Finish reading peer updates before saving or reloading.
 		await stopReadingPeers();
 		// The normal REST record is still unchanged: these checks prove sharing before the user saves.
-		const before = await request.get(`${site}/wp-json/wp/v2/tp_documents/${id}?context=edit`, { headers: auth('admin') });
+		const before = await request.get(`${site}/wp-json/wp/v2/sp_documents/${id}?context=edit`, { headers: auth('admin') });
 		expect(before.ok()).toBe(true);
 		const unsaved = object(await before.json());
 		expect(object(unsaved.title).raw).toBe(`Coediting ${run}`);
 		expect(object(unsaved.meta).summary).toBe('Initial summary');
 
 		const saving = pages[0].waitForResponse((response) =>
-			new URL(response.url()).pathname.endsWith(`/wp/v2/tp_documents/${id}`) && response.request().method() === 'POST');
+			new URL(response.url()).pathname.endsWith(`/wp/v2/sp_documents/${id}`) && response.request().method() === 'POST');
 		await pages[0].getByRole('button', { name: 'Save draft', exact: true }).click();
 		const saved = await saving;
 		expect(saved.status(), await saved.text()).toBe(200);
-		expect(saved.request().headers()['x-typedpress-coediting-schemas']).toBeTruthy();
+		expect(saved.request().headers()['x-spacepress-coediting-schemas']).toBeTruthy();
 		const read = await request.get(`${apiUrl}/documents/${id}`, { headers: auth('admin') });
 		expect(read.ok()).toBe(true);
 		const persisted = object(object(await read.json()).data);
@@ -150,7 +150,7 @@ test('upstream collaboration merges simultaneous text edits, shares fields, and 
 		await expect(paragraph(pages[1])).toContainText(`admin-${run}`);
 		await title(pages[1]).fill(`Rejoined title ${run}`);
 		await expect(title(pages[0])).toHaveText(`Rejoined title ${run}`);
-		const afterRejoin = await request.get(`${site}/wp-json/wp/v2/tp_documents/${id}?context=edit`, { headers: auth('admin') });
+		const afterRejoin = await request.get(`${site}/wp-json/wp/v2/sp_documents/${id}?context=edit`, { headers: auth('admin') });
 		expect(object(object(await afterRejoin.json()).title).raw).toBe(`Shared title ${run}`);
 		expect(successfulSyncHeaders.length).toBeGreaterThan(0);
 		expect(failedSync).toEqual([]);
@@ -166,7 +166,7 @@ test('upstream collaboration merges simultaneous text edits, shares fields, and 
 	}
 });
 
-test('a taxonomy without core REST keeps its assignments through the TypedPress form transport', async ({ page, request }) => {
+test('a taxonomy without core REST keeps its assignments through the SpacePress form transport', async ({ page, request }) => {
 	const run = Date.now();
 	const tags = object(harness.coeditingTags);
 	if (typeof tags.initial !== 'number' || typeof tags.replacement !== 'number')
@@ -179,11 +179,11 @@ test('a taxonomy without core REST keeps its assignments through the TypedPress 
 	const article = object(object(await created.json()).data);
 	if (typeof article.id !== 'number') throw new Error('Expected a fixture article id.');
 	await page.goto(`${site}/wp-login.php`);
-	await submitSignIn(page, 'admin', 'typedpress-test-admin');
+	await submitSignIn(page, 'admin', 'spacepress-test-admin');
 	await page.goto(`${site}/wp-admin/new/collections/articles/${article.id}`);
 	await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(`Taxonomy ${run}`);
 	const result = await page.evaluate(async ({ id, replacement }) => {
-		const moduleName = '@typedpress-admin/schema';
+		const moduleName = '@spacepress-admin/schema';
 		const api: typeof import('../packages/schema/src/api') = await import(moduleName);
 		const spec = await api.collectionSpec('articles');
 		const before = await api.read(spec, String(id));

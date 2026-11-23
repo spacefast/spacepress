@@ -18,7 +18,7 @@ function Profile() {
 	return (
 		<UserEditContent
 			userId={ currentUser.id }
-			breadcrumbs={ [ { label: __( 'Profile', 'typedpress-admin' ) } ] }
+			breadcrumbs={ [ { label: __( 'Profile', 'spacepress-admin' ) } ] }
 			showBadges={ false }
 		/>
 	);

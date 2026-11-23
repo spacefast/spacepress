@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint;
 
 use LogicException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitlyTaggedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitlyTaggedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
 
 /**
  * Implements *DistributionPoint* ASN.1 type used by 'CRL Distribution Points' certificate extension.

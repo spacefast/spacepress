@@ -47,7 +47,7 @@ pub enum Slot {
     WpHook {
         index: usize,
     },
-    /// A server component exported from `tp/components/`; `name` keys `Schema::components`.
+    /// A server component exported from `sp/components/`; `name` keys `Schema::components`.
     Component {
         name: String,
     },
@@ -55,28 +55,28 @@ pub enum Slot {
     Email {
         file: String,
     },
-    /// The default export of a `tp/app/` route file (page, layout, not-found, error): a component
+    /// The default export of a `sp/app/` route file (page, layout, not-found, error): a component
     /// whose props the router supplies, typed from the route.
     AppPage {
         file: String,
     },
-    /// `export const metadata = (props) => ({ … })` in a `tp/app/` page or layout.
+    /// `export const metadata = (props) => ({ … })` in a `sp/app/` page or layout.
     AppMetadata {
         file: String,
     },
-    /// `export const guard = (ctx) => boolean` for a `tp/app/` file's HTTP handlers.
+    /// `export const guard = (ctx) => boolean` for a `sp/app/` file's HTTP handlers.
     AppAccess {
         file: String,
     },
-    /// `export const guard = (ctx) => boolean` in a `tp/app/` layout.
+    /// `export const guard = (ctx) => boolean` in a `sp/app/` layout.
     AppGuard {
         file: String,
     },
-    /// `export async function staticParams()` in a dynamic `tp/app/` page: the params to prebuild.
+    /// `export async function staticParams()` in a dynamic `sp/app/` page: the params to prebuild.
     AppStaticParams {
         file: String,
     },
-    /// `export async function POST(req, ctx)` in a `tp/app/` page or `route.ts`.
+    /// `export async function POST(req, ctx)` in a `sp/app/` page or `route.ts`.
     AppHandler {
         file: String,
         method: String,
@@ -98,7 +98,7 @@ pub struct Extracted {
     pub roots: Vec<Root>,
     /// Schema-key → collection value, for resolving captured collections.
     pub collections: Vec<Rc<CollectionVal>>,
-    /// Non-fatal advice printed by `typedpress build` (§3.5.1 postmeta hint).
+    /// Non-fatal advice printed by `spacepress build` (§3.5.1 postmeta hint).
     pub hints: Vec<String>,
     /// Each registered action's value (its allocation) → its registered name, so a page's
     /// `<form action={subscribe}>` and `useFormState(subscribe)` name the action they were given.
@@ -235,10 +235,10 @@ const REGISTRIES: &[&str] = &[
 const RESERVED_COLLECTIONS: &[&str] = &[
     "media", "files", "globals", "actions", "me", "_schema", "auth", "services", "search",
 ];
-/// WordPress limits post types to 20 characters; TypedPress prefixes `tp_`.
-const MAX_POST_TYPE_TABLE: usize = 20 - "tp_".len();
-/// WordPress limits taxonomy names to 32 characters; TypedPress prefixes `tp_`.
-const MAX_TAXONOMY_TABLE: usize = 32 - "tp_".len();
+/// WordPress limits post types to 20 characters; SpacePress prefixes `sp_`.
+const MAX_POST_TYPE_TABLE: usize = 20 - "sp_".len();
+/// WordPress limits taxonomy names to 32 characters; SpacePress prefixes `sp_`.
+const MAX_TAXONOMY_TABLE: usize = 32 - "sp_".len();
 /// `taxonomy()` options (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34).
 const TAXONOMY_OPTIONS: &[&str] = &[
     "storageName",
@@ -318,7 +318,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             );
             if key == "routes" {
                 d = d.help(
-                    "an HTTP route is a file now: tp/app/<path>/route.ts exporting `guard` (or `signature`) and GET, POST, … handlers",
+                    "an HTTP route is a file now: sp/app/<path>/route.ts exporting `guard` (or `signature`) and GET, POST, … handlers",
                 );
             } else if let Some(s) = suggest(key, CONFIG_KEYS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
@@ -351,7 +351,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     other.describe()
                 ),
             )
-            .help("it becomes the WordPress plugin slug `typedpress-<name>`"));
+            .help("it becomes the WordPress plugin slug `spacepress-<name>`"));
         }
     };
     out.schema.seed = bool_option(&cfg_map, "seed", false, span_of(ev, config, "seed", config_span))?;
@@ -386,7 +386,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     other.describe()
                 ),
             )
-            .help("leave it out for the default: the theme, or tp/app when it exists"));
+            .help("leave it out for the default: the theme, or sp/app when it exists"));
         }
     };
     out.schema.output = match cfg_map.get("output") {
@@ -398,15 +398,15 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 span_of(ev, config, "output", config_span),
                 format!("`output` is \"server\" or \"static\", not {}", other.describe()),
             )
-            .help("leave it out for \"server\": pages render on WordPress, and `export const prerender = true` prebuilds one; \"static\" prebuilds every page for `typedpress export`"));
+            .help("leave it out for \"server\": pages render on WordPress, and `export const prerender = true` prebuilds one; \"static\" prebuilds every page for `spacepress export`"));
         }
     };
     if out.schema.output == crate::schema::Output::Static && out.schema.frontend.is_some() {
         return Err(Diag::new(
             span_of(ev, config, "output", config_span),
-            "`output: \"static\"` renders the site from tp/app/, and `frontend` hands it to another site",
+            "`output: \"static\"` renders the site from sp/app/, and `frontend` hands it to another site",
         )
-        .help("keep one: remove `frontend` to export tp/app/, or remove `output` to keep the other frontend"));
+        .help("keep one: remove `frontend` to export sp/app/, or remove `output` to keep the other frontend"));
     }
     phase2_config(&cfg_map, ev, config_span, &mut out)?;
     if let Some((_, span)) = ev.duplicate_key(config, Some("plugins")) {
@@ -437,7 +437,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             return Err(Diag::new(
                 span_of(ev, config, "plugins", config_span),
                 format!(
-                    "a sealed site can't run {denied}: it serves stored content around TypedPress's read rules. Remove it from plugins, or turn sealed mode off."
+                    "a sealed site can't run {denied}: it serves stored content around SpacePress's read rules. Remove it from plugins, or turn sealed mode off."
                 ),
             ));
         }
@@ -501,7 +501,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             if RESERVED_COLLECTIONS.contains(&canonical.as_str()) {
                 return Err(Diag::new(
                     c.span,
-                    format!("\"{canonical}\" is reserved: TypedPress serves a built-in route with that name"),
+                    format!("\"{canonical}\" is reserved: SpacePress serves a built-in route with that name"),
                 ));
             }
             let table = match c.options.as_ref().and_then(|options| {
@@ -515,7 +515,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 Some(_) => {
                     return Err(
                         Diag::new(span, "`storageName` must be an identifier starting with a letter")
-                            .help("use the existing physical name without the WordPress or tp_ prefix"),
+                            .help("use the existing physical name without the WordPress or sp_ prefix"),
                     );
                 }
             };
@@ -525,7 +525,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             {
                 return Err(Diag::new(
                     c.span,
-                    format!("\"{table}\" is reserved: TypedPress serves a built-in route with that name"),
+                    format!("\"{table}\" is reserved: SpacePress serves a built-in route with that name"),
                 ));
             }
             if let Some(other) = out.schema.collections.get(&table) {
@@ -541,7 +541,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 return Err(Diag::new(
                     c.span,
                     format!(
-                        "\"{table}\" is too long for a taxonomy: WordPress limits taxonomy names to 32 characters and TypedPress prefixes `tp_`"
+                        "\"{table}\" is too long for a taxonomy: WordPress limits taxonomy names to 32 characters and SpacePress prefixes `sp_`"
                     ),
                 )
                 .help(format!(
@@ -955,7 +955,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             seen_phys.insert(lower, (col_name.clone(), col.system));
         }
     }
-    // Validate resolved SQL physical table names: forbid reserved system table namespaces (`tp__*`)
+    // Validate resolved SQL physical table names: forbid reserved system table namespaces (`sp__*`)
     // and case-insensitive collisions across collections.
     let mut seen_tables: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for coll in out.schema.collections.values() {
@@ -964,19 +964,19 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         }
         let storage = coll.table.as_str();
         let lower_storage = storage.to_ascii_lowercase();
-        if lower_storage == "tp__revisions" || lower_storage == "tp__migrations" || lower_storage.starts_with("tp__") {
+        if lower_storage == "sp__revisions" || lower_storage == "sp__migrations" || lower_storage.starts_with("sp__") {
             return Err(Diag::new(
                 Span::NONE,
                 format!("`{}` uses reserved system table name `{storage}`", coll.key),
             )
-            .help("choose a `storageName` outside the `tp__*` system namespace")
+            .help("choose a `storageName` outside the `sp__*` system namespace")
             .code(crate::diag::Code::Schema));
         }
         if let Some(other) = seen_tables.get(&lower_storage) {
             return Err(Diag::new(
                 Span::NONE,
                 format!(
-                    "`{}` and `{other}` both map to SQL table `tp_{storage}` (table names are case-insensitive)",
+                    "`{}` and `{other}` both map to SQL table `sp_{storage}` (table names are case-insensitive)",
                     coll.key
                 ),
             )
@@ -2283,7 +2283,7 @@ fn collection_options(
             span("was"),
             "`was` is gone: forward-only migrations never rename SQL tables in place",
         )
-        .help("keep the existing physical table under a new TypeScript export with `storageName: \"<old_name>\"`, or opt into `typedpress/danger` for an explicit physical rename"));
+        .help("keep the existing physical table under a new TypeScript export with `storageName: \"<old_name>\"`, or opt into `spacepress/danger` for an explicit physical rename"));
     }
     let was = None;
     if let Some(name) = &existing_table
@@ -2331,7 +2331,7 @@ fn collection_options(
                 span("softDelete"),
                 "`softDelete: true` isn't available on `existingTable` tables",
             )
-            .help("remove `softDelete: true`; TypedPress does not alter adopted tables"));
+            .help("remove `softDelete: true`; SpacePress does not alter adopted tables"));
         }
         Some(sd) => sd,
         None => !auth && existing_table.is_none(),
@@ -2378,7 +2378,7 @@ fn collection_options(
         return Err(Diag::new(
             c.span,
             format!(
-                "\"{}\" is too long for an editor collection: WordPress post types are limited to 20 characters and TypedPress prefixes `tp_`",
+                "\"{}\" is too long for an editor collection: WordPress post types are limited to 20 characters and SpacePress prefixes `sp_`",
                 c.table()
             ),
         )
@@ -3118,7 +3118,7 @@ fn column(
             b.span_of("was"),
             "`.was()` is gone: forward-only migrations never rename columns in place",
         )
-        .help("use `.column(\"<old_name>\")` to map this field to the existing SQL column with zero DDL (and `.alias(\"<old_name>\")` to keep accepting the old API name), or opt into `typedpress/danger` for a physical rename"));
+        .help("use `.column(\"<old_name>\")` to map this field to the existing SQL column with zero DDL (and `.alias(\"<old_name>\")` to keep accepting the old API name), or opt into `spacepress/danger` for a physical rename"));
     }
     if let Some(col) = &b.storage_name {
         if place != Place::Top {
@@ -3343,7 +3343,7 @@ fn column(
     };
     let many_ref = b.ty == ColType::RefList;
     if many_ref {
-        // A many-ref is a set of links in TypedPress's join table, not a value: nothing to make unique,
+        // A many-ref is a set of links in SpacePress's join table, not a value: nothing to make unique,
         // default, translate or regenerate (docs/decisions/2026-11-11-authoring-surface.md, ruling 3).
         let bad = [
             ("unique", b.unique),
@@ -3356,7 +3356,7 @@ fn column(
                 b.span_of(m),
                 format!("`.{m}()` isn't valid on a `ref().many()` field (`{name}`)"),
             )
-            .help("a many-ref is a list of links TypedPress keeps in its own table; remove the modifier"));
+            .help("a many-ref is a list of links SpacePress keeps in its own table; remove the modifier"));
         }
     }
     let default = if b.terms {
@@ -3901,7 +3901,7 @@ fn link_key(r: &RefField) -> String {
 }
 
 /// A many-ref's join table key (`posts` + `relatedPosts` → `posts_related_posts`), stored as
-/// `{prefix}tp_<key>`.
+/// `{prefix}sp_<key>`.
 pub fn join_key(table: &str, field: &str) -> String {
     format!("{table}_{}", crate::schema::physical_name(field))
 }
@@ -4203,11 +4203,11 @@ pub(crate) fn signature_config(v: &Value, span: Span) -> Result<Json> {
         .is_match(&header)
     {
         return Err(Diag::new(span, "signature.header must be an HTTP header name")
-            .help("use stripe-signature or typedpress-signature"));
+            .help("use stripe-signature or spacepress-signature"));
     }
     let scheme = string(o.get("scheme"), span, "signature.scheme")?;
-    if scheme != "typedpress" && scheme != "hmac-sha256" {
-        return Err(Diag::new(span, "signature.scheme must be typedpress or hmac-sha256")
+    if scheme != "spacepress" && scheme != "hmac-sha256" {
+        return Err(Diag::new(span, "signature.scheme must be spacepress or hmac-sha256")
             .help("choose a supported HMAC scheme"));
     }
     Ok(serde_json::json!({"secret": secret, "header": header, "scheme": scheme}))
@@ -4273,8 +4273,8 @@ fn phase2_config(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, 
         out.schema.uploads = Some(config.into());
     }
     if let Some(v) = cfg.get("locales").filter(|v| !matches!(v, Value::Undef)) {
-        // Locales are turned off until they come back; TYPEDPRESS_LOCALES=1 keeps them for the test suite.
-        if std::env::var("TYPEDPRESS_LOCALES").as_deref() != Ok("1") {
+        // Locales are turned off until they come back; SPACEPRESS_LOCALES=1 keeps them for the test suite.
+        if std::env::var("SPACEPRESS_LOCALES").as_deref() != Ok("1") {
             return Err(Diag::new(span, "locales are turned off for now").help("remove locales from defineConfig"));
         }
         let o = object(v, span, "locales")?;

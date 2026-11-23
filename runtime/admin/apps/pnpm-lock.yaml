@@ -169,10 +169,10 @@ importers:
 
   .:
     dependencies:
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:packages/design-system
       '@wordpress/base-styles':
@@ -212,7 +212,7 @@ importers:
       '@testing-library/user-event':
         specifier: 'catalog:'
         version: 14.6.6(@testing-library/dom@10.4.1)
-      '@typedpress-admin/wp-build':
+      '@spacepress-admin/wp-build':
         specifier: workspace:*
         version: link:packages/wp-build
       '@types/node':
@@ -251,7 +251,7 @@ importers:
 
   dashboard-widgets/core-quick-stats:
     dependencies:
-      '@typedpress-admin/dashboard':
+      '@spacepress-admin/dashboard':
         specifier: workspace:*
         version: link:../../packages/dashboard
       '@wordpress/i18n':
@@ -260,7 +260,7 @@ importers:
 
   dashboard-widgets/core-recent-posts:
     dependencies:
-      '@typedpress-admin/dashboard':
+      '@spacepress-admin/dashboard':
         specifier: workspace:*
         version: link:../../packages/dashboard
       '@wordpress/i18n':
@@ -269,7 +269,7 @@ importers:
 
   dashboard-widgets/core-weather:
     dependencies:
-      '@typedpress-admin/dashboard':
+      '@spacepress-admin/dashboard':
         specifier: workspace:*
         version: link:../../packages/dashboard
       '@wordpress/i18n':
@@ -278,13 +278,13 @@ importers:
 
   fields/core-comments-fields:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/components':
@@ -314,10 +314,10 @@ importers:
 
   fields/core-media-fields:
     dependencies:
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/components':
@@ -350,10 +350,10 @@ importers:
 
   fields/core-plugin-fields:
     dependencies:
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/core-data':
@@ -368,13 +368,13 @@ importers:
 
   fields/core-post-fields:
     dependencies:
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/lazy-editor':
+      '@spacepress-admin/lazy-editor':
         specifier: workspace:*
         version: link:../../packages/lazy-editor
       '@wordpress/block-editor':
@@ -413,10 +413,10 @@ importers:
 
   fields/core-taxonomy-term-fields:
     dependencies:
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/core-data':
@@ -431,10 +431,10 @@ importers:
 
   fields/core-theme-fields:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
       '@wordpress/components':
@@ -455,10 +455,10 @@ importers:
 
   fields/core-user-fields:
     dependencies:
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/components':
@@ -488,13 +488,13 @@ importers:
 
   packages/admin-toolkit:
     dependencies:
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../design-system
-      '@typedpress-admin/private-apis':
+      '@spacepress-admin/private-apis':
         specifier: workspace:*
         version: link:../private-apis
       '@wordpress/a11y':
@@ -567,10 +567,10 @@ importers:
 
   packages/ai-agent:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
-      '@typedpress-admin/private-apis':
+      '@spacepress-admin/private-apis':
         specifier: workspace:*
         version: link:../private-apis
       '@wordpress/abilities':
@@ -627,37 +627,37 @@ importers:
       '@tanstack/history':
         specifier: ^1.120.17
         version: 1.162.5
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
-      '@typedpress-admin/ai-agent':
+      '@spacepress-admin/ai-agent':
         specifier: workspace:*
         version: link:../ai-agent
-      '@typedpress-admin/attachment-importer':
+      '@spacepress-admin/attachment-importer':
         specifier: workspace:*
         version: link:../attachment-importer
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../core-data-next
-      '@typedpress-admin/dashboard':
+      '@spacepress-admin/dashboard':
         specifier: workspace:*
         version: link:../dashboard
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../design-system
-      '@typedpress-admin/fields-next':
+      '@spacepress-admin/fields-next':
         specifier: workspace:*
         version: link:../fields-next
-      '@typedpress-admin/global-styles-engine':
+      '@spacepress-admin/global-styles-engine':
         specifier: workspace:*
         version: link:../global-styles-engine
-      '@typedpress-admin/lazy-editor':
+      '@spacepress-admin/lazy-editor':
         specifier: workspace:*
         version: link:../lazy-editor
-      '@typedpress-admin/schema':
+      '@spacepress-admin/schema':
         specifier: workspace:*
         version: link:../schema
       '@wordpress/a11y':
@@ -768,10 +768,10 @@ importers:
 
   packages/core-data-next:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
       '@wordpress/api-fetch':
@@ -804,10 +804,10 @@ importers:
       '@automattic/grid':
         specifier: 'catalog:'
         version: 0.2.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../design-system
       '@wordpress/base-styles':
@@ -932,13 +932,13 @@ importers:
 
   packages/fields-next:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../core-data-next
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
       '@wordpress/components':
@@ -1017,19 +1017,19 @@ importers:
 
   packages/lazy-editor:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../core-data-next
-      '@typedpress-admin/global-styles-engine':
+      '@spacepress-admin/global-styles-engine':
         specifier: workspace:*
         version: link:../global-styles-engine
-      '@typedpress-admin/load-assets':
+      '@spacepress-admin/load-assets':
         specifier: workspace:*
         version: link:../load-assets
-      '@typedpress-admin/private-apis':
+      '@spacepress-admin/private-apis':
         specifier: workspace:*
         version: link:../private-apis
       '@wordpress/core-data':
@@ -1079,16 +1079,16 @@ importers:
 
   packages/schema:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
-      '@typedpress-admin/attachment-importer':
+      '@spacepress-admin/attachment-importer':
         specifier: workspace:*
         version: link:../attachment-importer
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
-      '@typedpress-admin/views':
+      '@spacepress-admin/views':
         specifier: workspace:*
         version: link:../views
       '@wordpress/api-fetch':
@@ -1115,10 +1115,10 @@ importers:
 
   packages/screens:
     dependencies:
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
-      '@typedpress-admin/views':
+      '@spacepress-admin/views':
         specifier: workspace:*
         version: link:../views
       '@wordpress/api-fetch':
@@ -1138,7 +1138,7 @@ importers:
 
   packages/user-data:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
       '@wordpress/api-fetch':
@@ -1159,13 +1159,13 @@ importers:
 
   packages/views:
     dependencies:
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../core-data-next
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../design-system
       '@wordpress/base-styles':
@@ -1183,16 +1183,16 @@ importers:
 
   packages/widgets:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
-      '@typedpress-admin/boot':
+      '@spacepress-admin/boot':
         specifier: workspace:*
         version: link:../boot
-      '@typedpress-admin/dashboard':
+      '@spacepress-admin/dashboard':
         specifier: workspace:*
         version: link:../dashboard
-      '@typedpress-admin/schema':
+      '@spacepress-admin/schema':
         specifier: workspace:*
         version: link:../schema
       '@wordpress/api-fetch':
@@ -1246,25 +1246,25 @@ importers:
 
   routes/attachment:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/fields-next':
+      '@spacepress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@typedpress-admin/image-cropper':
+      '@spacepress-admin/image-cropper':
         specifier: workspace:*
         version: link:../../packages/image-cropper
-      '@typedpress-admin/schema':
+      '@spacepress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@wordpress/base-styles':
@@ -1321,10 +1321,10 @@ importers:
 
   routes/classic-admin:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/boot':
+      '@spacepress-admin/boot':
         specifier: workspace:*
         version: link:../../packages/boot
       '@types/react':
@@ -1339,7 +1339,7 @@ importers:
 
   routes/collection-edit:
     dependencies:
-      '@typedpress-admin/schema':
+      '@spacepress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@wordpress/route':
@@ -1348,7 +1348,7 @@ importers:
 
   routes/collection-list:
     dependencies:
-      '@typedpress-admin/schema':
+      '@spacepress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@wordpress/route':
@@ -1357,7 +1357,7 @@ importers:
 
   routes/collection-new:
     dependencies:
-      '@typedpress-admin/schema':
+      '@spacepress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@wordpress/route':
@@ -1366,7 +1366,7 @@ importers:
 
   routes/collections:
     dependencies:
-      '@typedpress-admin/schema':
+      '@spacepress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@wordpress/route':
@@ -1375,16 +1375,16 @@ importers:
 
   routes/custom-dashboard:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/boot':
+      '@spacepress-admin/boot':
         specifier: workspace:*
         version: link:../../packages/boot
-      '@typedpress-admin/dashboard':
+      '@spacepress-admin/dashboard':
         specifier: workspace:*
         version: link:../../packages/dashboard
-      '@typedpress-admin/widgets':
+      '@spacepress-admin/widgets':
         specifier: workspace:*
         version: link:../../packages/widgets
       '@wordpress/components':
@@ -1408,22 +1408,22 @@ importers:
 
   routes/dashboard:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/boot':
+      '@spacepress-admin/boot':
         specifier: workspace:*
         version: link:../../packages/boot
-      '@typedpress-admin/dashboard':
+      '@spacepress-admin/dashboard':
         specifier: workspace:*
         version: link:../../packages/dashboard
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/telemetry':
+      '@spacepress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@typedpress-admin/widgets':
+      '@spacepress-admin/widgets':
         specifier: workspace:*
         version: link:../../packages/widgets
       '@wordpress/components':
@@ -1478,13 +1478,13 @@ importers:
 
   routes/design-navigation-edit:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/lazy-editor':
+      '@spacepress-admin/lazy-editor':
         specifier: workspace:*
         version: link:../../packages/lazy-editor
       '@wordpress/block-editor':
@@ -1529,22 +1529,22 @@ importers:
 
   routes/design-navigation-list:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/fields-next':
+      '@spacepress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@typedpress-admin/telemetry':
+      '@spacepress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@typedpress-admin/views':
+      '@spacepress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/components':
@@ -1583,13 +1583,13 @@ importers:
 
   routes/design-styles:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/global-styles-engine':
+      '@spacepress-admin/global-styles-engine':
         specifier: workspace:*
         version: link:../../packages/global-styles-engine
       '@wordpress/a11y':
@@ -1661,7 +1661,7 @@ importers:
 
   routes/global-edit:
     dependencies:
-      '@typedpress-admin/schema':
+      '@spacepress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@wordpress/route':
@@ -1670,7 +1670,7 @@ importers:
 
   routes/globals:
     dependencies:
-      '@typedpress-admin/schema':
+      '@spacepress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@wordpress/route':
@@ -1679,7 +1679,7 @@ importers:
 
   routes/identity:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
       '@wordpress/api-fetch':
@@ -1697,28 +1697,28 @@ importers:
 
   routes/media:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/attachment-importer':
+      '@spacepress-admin/attachment-importer':
         specifier: workspace:*
         version: link:../../packages/attachment-importer
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/fields-next':
+      '@spacepress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@typedpress-admin/schema':
+      '@spacepress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
-      '@typedpress-admin/views':
+      '@spacepress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/block-editor':
@@ -1778,7 +1778,7 @@ importers:
 
   routes/media-document:
     dependencies:
-      '@typedpress-admin/schema':
+      '@spacepress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
 
@@ -1790,22 +1790,22 @@ importers:
 
   routes/plugin-list:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/telemetry':
+      '@spacepress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@typedpress-admin/views':
+      '@spacepress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/base-styles':
@@ -1858,31 +1858,31 @@ importers:
 
   routes/post-list:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/attachment-importer':
+      '@spacepress-admin/attachment-importer':
         specifier: workspace:*
         version: link:../../packages/attachment-importer
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/fields-next':
+      '@spacepress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@typedpress-admin/image-cropper':
+      '@spacepress-admin/image-cropper':
         specifier: workspace:*
         version: link:../../packages/image-cropper
-      '@typedpress-admin/telemetry':
+      '@spacepress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@typedpress-admin/views':
+      '@spacepress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/block-editor':
@@ -1957,7 +1957,7 @@ importers:
 
   routes/profile:
     dependencies:
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
       '@wordpress/core-data':
@@ -1972,10 +1972,10 @@ importers:
 
   routes/screen:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/screens':
+      '@spacepress-admin/screens':
         specifier: workspace:*
         version: link:../../packages/screens
       '@wordpress/route':
@@ -1993,7 +1993,7 @@ importers:
 
   routes/settings-experiments:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
       '@wordpress/components':
@@ -2020,13 +2020,13 @@ importers:
 
   routes/settings-general:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/components':
@@ -2056,13 +2056,13 @@ importers:
 
   routes/settings-reading:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/components':
@@ -2095,22 +2095,22 @@ importers:
 
   routes/term-add:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/fields-next':
+      '@spacepress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@typedpress-admin/views':
+      '@spacepress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/components':
@@ -2143,25 +2143,25 @@ importers:
 
   routes/term-edit:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/fields-next':
+      '@spacepress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@typedpress-admin/telemetry':
+      '@spacepress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@typedpress-admin/views':
+      '@spacepress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/components':
@@ -2194,25 +2194,25 @@ importers:
 
   routes/term-list:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/fields-next':
+      '@spacepress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@typedpress-admin/telemetry':
+      '@spacepress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@typedpress-admin/views':
+      '@spacepress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/components':
@@ -2251,25 +2251,25 @@ importers:
 
   routes/theme-list:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/fields-next':
+      '@spacepress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@typedpress-admin/telemetry':
+      '@spacepress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@typedpress-admin/views':
+      '@spacepress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/base-styles':
@@ -2318,16 +2318,16 @@ importers:
 
   routes/user:
     dependencies:
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/telemetry':
+      '@spacepress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@typedpress-admin/user-data':
+      '@spacepress-admin/user-data':
         specifier: workspace:*
         version: link:../../packages/user-data
       '@wordpress/components':
@@ -2360,25 +2360,25 @@ importers:
 
   routes/user-add:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/fields-next':
+      '@spacepress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@typedpress-admin/telemetry':
+      '@spacepress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@typedpress-admin/views':
+      '@spacepress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/components':
@@ -2405,25 +2405,25 @@ importers:
 
   routes/user-list:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/fields-next':
+      '@spacepress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@typedpress-admin/telemetry':
+      '@spacepress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@typedpress-admin/views':
+      '@spacepress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/api-fetch':
@@ -2468,25 +2468,25 @@ importers:
 
   routes/user-profile:
     dependencies:
-      '@typedpress-admin/admin-toolkit':
+      '@spacepress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@typedpress-admin/boot':
+      '@spacepress-admin/boot':
         specifier: workspace:*
         version: link:../../packages/boot
-      '@typedpress-admin/core-data-next':
+      '@spacepress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@typedpress-admin/dataviews':
+      '@spacepress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@typedpress-admin/design-system':
+      '@spacepress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@typedpress-admin/telemetry':
+      '@spacepress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@typedpress-admin/views':
+      '@spacepress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/api-fetch':

@@ -30,14 +30,14 @@ function FontFamilyItem( { font }: FontFamilyItemProps ) {
 		<Item onClick={ handleClick }>
 			<HStack justify="space-between">
 				<FlexItem style={ previewStyle }>{ font.name }</FlexItem>
-				<FlexItem className="typedpress-admin-global-styles-screen-typography__font-variants-count">
+				<FlexItem className="spacepress-admin-global-styles-screen-typography__font-variants-count">
 					{ sprintf(
 						/* translators: %d: Number of font variants. */
 						_n(
 							'%d variant',
 							'%d variants',
 							variantsCount,
-							'typedpress-admin'
+							'spacepress-admin'
 						),
 						variantsCount
 					) }

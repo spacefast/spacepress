@@ -1,6 +1,6 @@
-import { InputControl } from '@typedpress-admin/design-system';
+import { InputControl } from '@spacepress-admin/design-system';
 import type { User } from '@wordpress/core-data';
-import type { Field } from '@typedpress-admin/dataviews';
+import type { Field } from '@spacepress-admin/dataviews';
 
 export const fieldExtensions: Partial< Field< User > > = {
 	Edit: ( { data, field, onChange } ) => {

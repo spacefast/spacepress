@@ -5,15 +5,15 @@
  * the heavy imports to avoid pulling in the entire WordPress data stack.
  */
 
-jest.mock( '@typedpress-admin/views', () => ( {
+jest.mock( '@spacepress-admin/views', () => ( {
 	loadView: jest.fn(),
 } ) );
-jest.mock( '@typedpress-admin/core-data-next', () => ( {
+jest.mock( '@spacepress-admin/core-data-next', () => ( {
 	loadViewConfig: jest.fn(),
 } ) );
 
-import type { Filter } from '@typedpress-admin/dataviews';
-import type { ViewConfig } from '@typedpress-admin/core-data-next';
+import type { Filter } from '@spacepress-admin/dataviews';
+import type { ViewConfig } from '@spacepress-admin/core-data-next';
 import { viewToQuery, getDefaultView } from './view-utils';
 
 describe( 'viewToQuery', () => {

@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
+namespace SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
 
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
 
 /**
  * Resolves type for a given subject.

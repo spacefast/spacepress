@@ -12,33 +12,33 @@ services:
       retries: 60
   wordpress:
     environment: &uploads
-      TP_TEST_UPLOAD_KEY: GK111111111111111111111111
-      TP_TEST_UPLOAD_SECRET: "1111111111111111111111111111111111111111111111111111111111111111"
-      TP_TEST_UPLOAD_ENDPOINT: http://garage:3900
+      SP_TEST_UPLOAD_KEY: GK111111111111111111111111
+      SP_TEST_UPLOAD_SECRET: "1111111111111111111111111111111111111111111111111111111111111111"
+      SP_TEST_UPLOAD_ENDPOINT: http://garage:3900
   cli:
     environment: *uploads
   replica:
-    image: ${TP_WP_IMAGE:-wordpress:7.1.0-php8.5-apache}
+    image: ${SP_WP_IMAGE:-wordpress:7.1.0-php8.5-apache}
     environment:
       <<: *uploads
-      APACHE_RUN_USER: "#${TP_WP_UID:-1000}"
-      APACHE_RUN_GROUP: "#${TP_WP_GID:-1000}"
+      APACHE_RUN_USER: "#${SP_WP_UID:-1000}"
+      APACHE_RUN_GROUP: "#${SP_WP_GID:-1000}"
       WORDPRESS_DB_HOST: db
       WORDPRESS_DB_USER: wordpress
-      WORDPRESS_DB_PASSWORD: typedpress-test-db
+      WORDPRESS_DB_PASSWORD: spacepress-test-db
       WORDPRESS_DB_NAME: wordpress
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_ENVIRONMENT_TYPE', 'local');
         define('DISABLE_WP_CRON', true);
-        define('TP_IDENTITY_DEV_HTTP', true);
+        define('SP_IDENTITY_DEV_HTTP', true);
     profiles: [replica]
     ports:
-      - "${TP_WP_REPLICA_PORT:-8791}:80"
+      - "${SP_WP_REPLICA_PORT:-8791}:80"
     volumes:
       - replica:/var/www/html
-      - ./php/zz-typedpress-tests.ini:/usr/local/etc/php/conf.d/zz-typedpress-tests.ini:ro
-      - ./apache/zz-typedpress-tests.conf:/etc/apache2/conf-enabled/zz-typedpress-tests.conf:ro
-      - ${TP_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
+      - ./php/zz-spacepress-tests.ini:/usr/local/etc/php/conf.d/zz-spacepress-tests.ini:ro
+      - ./apache/zz-spacepress-tests.conf:/etc/apache2/conf-enabled/zz-spacepress-tests.conf:ro
+      - ${SP_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
 volumes:
   garage:
   replica:

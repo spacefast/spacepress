@@ -1,1 +1,1 @@
-export { Globals as default } from '@typedpress-admin/schema';
+export { Globals as default } from '@spacepress-admin/schema';

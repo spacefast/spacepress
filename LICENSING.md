@@ -1,6 +1,6 @@
 # Licensing
 
-TypedPress is licensed by component. The rule: anything that runs inside
+SpacePress is licensed by component. The rule: anything that runs inside
 WordPress is GPL-2.0-or-later, because WordPress plugins are derivative works
 of WordPress. Everything else is MIT.
 
@@ -13,12 +13,12 @@ of WordPress. Everything else is MIT.
 | Path | What |
 |---|---|
 | `migrate/zero/wp/` | the offline WordPress importer, licensed under GPL-2.0-or-later |
-| `runtime/TypedPress/` | the PHP runtime, shipped as the `typedpress-runtime` plugin |
-| `runtime/identity/` | the `typedpress-identity` plugin and its screens |
-| `runtime/admin/` | the `typedpress-admin` plugin and its screens, emitted unless `admin: false` |
-| `runtime/wp-plugin/` | the `typedpress-runtime` and `typedpress-app` plugin templates |
+| `runtime/SpacePress/` | the PHP runtime, shipped as the `spacepress-runtime` plugin |
+| `runtime/identity/` | the `spacepress-identity` plugin and its screens |
+| `runtime/admin/` | the `spacepress-admin` plugin and its screens, emitted unless `admin: false` |
+| `runtime/wp-plugin/` | the `spacepress-runtime` and `spacepress-app` plugin templates |
 
-and every plugin that `typedpress build` and `typedpress plugin` emit from them.
+and every plugin that `spacepress build` and `spacepress plugin` emit from them.
 
 ## MIT
 
@@ -26,8 +26,8 @@ and every plugin that `typedpress build` and `typedpress plugin` emit from them.
 |---|---|
 | `src/`, `crates/`, `build.rs`, `Cargo.toml`, `Cargo.lock` | the Rust compiler and CLI |
 | `runtime/client/` | the typed TypeScript client |
-| `types/` | the `"typedpress"` type declarations |
-| `packages/` | the npm packages, except the bundled WordPress code in `@typedpress/blocks` (below) |
+| `types/` | the `"spacepress"` type declarations |
+| `packages/` | the npm packages, except the bundled WordPress code in `@spacepress/blocks` (below) |
 | `examples/`, `www/`, `skills/`, `scripts/`, `tests/` | examples, the website and documentation, agent skills, tooling and tests |
 
 and everything else not listed above.
@@ -43,12 +43,12 @@ installer: distributed together, but separate works. The compiler's sources
 stay MIT, and because the packaged crate carries the embedded runtime,
 `Cargo.toml` declares the package as `MIT AND GPL-2.0-or-later`.
 
-The plugins written under `tp/dist/wp-content/plugins` (`typedpress-runtime`,
-`typedpress-identity`, `typedpress-admin`, `typedpress-app-<name>`) are
+The plugins written under `sp/dist/wp-content/plugins` (`spacepress-runtime`,
+`spacepress-identity`, `spacepress-admin`, `spacepress-app-<name>`) are
 GPL-2.0-or-later and each carries the license text. Files the compiler
-generates from your `typedpress.config.ts` and `tp/` (`schema.php`,
-`functions.php`, migrations, `tp/_generated/db.d.ts`,
-`tp/_generated/openapi.json`, `tp/_generated/client/types.ts` and `schema.ts`)
+generates from your `spacepress.config.ts` and `sp/` (`schema.php`,
+`functions.php`, migrations, `sp/_generated/db.d.ts`,
+`sp/_generated/openapi.json`, `sp/_generated/client/types.ts` and `schema.ts`)
 are yours. The client's `index.ts`, `react.ts` and `README.md` are copied from
 `runtime/client/` and stay MIT; the copy ships with its LICENSE. An app that
 declares a `store()` also gets `commerce.ts`, `cart-store.ts` and
@@ -59,10 +59,10 @@ LICENSE then names the Woo Store SDK they are adapted from (see below).
 
 | Package | License |
 |---|---|
-| `typedpress` | MIT. It downloads the compiler archive, which carries this file, both license texts and every upstream notice. |
-| `create-typedpress` | MIT |
-| `@typedpress/astro` | MIT |
-| `@typedpress/blocks` | `MIT AND GPL-2.0-or-later`: its own code (`bin/`, `dist/`) is MIT; `vendor/wp.cjs` bundles the WordPress block packages (`@wordpress/blocks`, `@wordpress/block-library`, `@wordpress/element` and their dependencies), which are GPL-2.0-or-later, and is distributed under GPL-2.0-or-later. The package ships both texts and `vendor/NOTICE.md`, which lists every bundled package, its version, license and source. |
+| `spacepress` | MIT. It downloads the compiler archive, which carries this file, both license texts and every upstream notice. |
+| `create-spacepress` | MIT |
+| `@spacepress/astro` | MIT |
+| `@spacepress/blocks` | `MIT AND GPL-2.0-or-later`: its own code (`bin/`, `dist/`) is MIT; `vendor/wp.cjs` bundles the WordPress block packages (`@wordpress/blocks`, `@wordpress/block-library`, `@wordpress/element` and their dependencies), which are GPL-2.0-or-later, and is distributed under GPL-2.0-or-later. The package ships both texts and `vendor/NOTICE.md`, which lists every bundled package, its version, license and source. |
 
 ## Third-party code
 
@@ -70,7 +70,7 @@ Third-party code keeps its own license and is not relicensed by this file:
 
 | Path | What |
 |---|---|
-| `runtime/TypedPress/vendor-prefixed/` | WordPress PHP toolkit (GPL-2.0-or-later) and the libraries it bundles |
+| `runtime/SpacePress/vendor-prefixed/` | WordPress PHP toolkit (GPL-2.0-or-later) and the libraries it bundles |
 | `runtime/identity/vendor-prefixed/` | passkey, JWT and TOTP libraries |
 | `runtime/identity/build/` | the bundled identity screens |
 | `runtime/admin/build/` | the bundled admin screens |

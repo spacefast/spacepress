@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 /**
- * `wp typedpress identity …` (and `typedpress identity …`), registered with the runtime's `wp typedpress` dispatcher.
- * Prints `{"data": …}` or `{"error": {code, detail}}` like every other `wp typedpress` command.
+ * `wp spacepress identity …` (and `spacepress identity …`), registered with the runtime's `wp spacepress` dispatcher.
+ * Prints `{"data": …}` or `{"error": {code, detail}}` like every other `wp spacepress` command.
  */
 final class Cli
 {
@@ -73,11 +73,11 @@ final class Cli
      */
     private static function agent(array $args, array $flags): array
     {
-        if (!class_exists(\TypedPress\Wp\AgentScope::class) || \TypedPress\Wp\Runtime::plugin() === null) {
-            throw new Failure('unavailable', 'Agent credentials need an active TypedPress app, which enforces their scope.', 503);
+        if (!class_exists(\SpacePress\Wp\AgentScope::class) || \SpacePress\Wp\Runtime::plugin() === null) {
+            throw new Failure('unavailable', 'Agent credentials need an active SpacePress app, which enforces their scope.', 503);
         }
         try {
-            return \TypedPress\Wp\AgentScope::cli($args, $flags);
+            return \SpacePress\Wp\AgentScope::cli($args, $flags);
         } catch (\InvalidArgumentException $e) {
             throw new Failure('invalid_command', $e->getMessage());
         }

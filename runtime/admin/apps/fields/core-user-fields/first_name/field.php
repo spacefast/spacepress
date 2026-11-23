@@ -2,11 +2,11 @@
 /**
  * First name field definition for core user fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'TypedPress Name', 'typedpress-admin' ),
+	'label'         => __( 'SpacePress Name', 'spacepress-admin' ),
 	'enableSorting' => true,
 );

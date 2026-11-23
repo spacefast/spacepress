@@ -9,23 +9,23 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\InvalidTag;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlockFactory;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlockFactoryInterface;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\ContextFactory;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyDescriptionExtractorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyDocBlockExtractorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Util\PhpDocTypeHelper;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\InvalidTag;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlockFactory;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlockFactoryInterface;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\ContextFactory;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyDescriptionExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyDocBlockExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Util\PhpDocTypeHelper;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
 
 /**
  * Extracts data using a PHPDoc parser.
@@ -120,7 +120,7 @@ class PhpDocExtractor implements PropertyDescriptionExtractorInterface, Property
      */
     public function getTypes(string $class, string $property, array $context = []): ?array
     {
-        typedpress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
+        spacepress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
 
         /** @var DocBlock $docBlock */
         [$docBlock, $source, $prefix, $declaringClass] = $this->findDocBlock($class, $property);
@@ -181,7 +181,7 @@ class PhpDocExtractor implements PropertyDescriptionExtractorInterface, Property
      */
     public function getTypesFromConstructor(string $class, string $property): ?array
     {
-        typedpress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getTypeFromConstructor()" instead.', __METHOD__, self::class);
+        spacepress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getTypeFromConstructor()" instead.', __METHOD__, self::class);
 
         $docBlock = $this->getDocBlockFromConstructor($class, $property);
 

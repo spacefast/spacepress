@@ -1,10 +1,10 @@
-//! `typedpress styles pull [dir] [--site <dir | @alias>] [--check]`: what was designed in a site's Styles
-//! screen or Site Editor becomes the project's `tp/theme.json`
+//! `spacepress styles pull [dir] [--site <dir | @alias>] [--check]`: what was designed in a site's Styles
+//! screen or Site Editor becomes the project's `sp/theme.json`
 //! (docs/decisions/2026-11-15-styles-from-wordpress.md).
 //!
-//! The site answers `wp typedpress styles export`: the project's shipped file with the owner's Global
-//! Styles merged over it. This writes that document to `tp/theme.json` and compiles the project
-//! once, so `tp/_generated/theme.css` follows. Without `--site` it reads the project's dev site.
+//! The site answers `wp spacepress styles export`: the project's shipped file with the owner's Global
+//! Styles merged over it. This writes that document to `sp/theme.json` and compiles the project
+//! once, so `sp/_generated/theme.css` follows. Without `--site` it reads the project's dev site.
 //! It never runs on its own: the owner's edits reach code only when the author pulls and commits them.
 
 use super::site::Site;
@@ -13,7 +13,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: typedpress styles pull [project-dir] [--site <dir | @alias>] [--check]";
+const USAGE: &str = "usage: spacepress styles pull [project-dir] [--site <dir | @alias>] [--check]";
 
 pub fn cli(args: &[String]) -> ExitCode {
     match run(args) {
@@ -55,7 +55,7 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
         }
     }
     let site = Site::resolve(site.as_deref(), &project);
-    let output = site.wp_output(&["typedpress".into(), "styles".into(), "export".into()])?;
+    let output = site.wp_output(&["spacepress".into(), "styles".into(), "export".into()])?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     // The answer is the last line that is a JSON object: a PHP notice or a Studio banner may come first.
     let answer = stdout
@@ -68,7 +68,7 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
         })
         .ok_or_else(|| {
             format!(
-                "the site did not answer `wp typedpress styles export` (exit {}):\n{}{}",
+                "the site did not answer `wp spacepress styles export` (exit {}):\n{}{}",
                 output.status.code().map_or("signal".into(), |c| c.to_string()),
                 stdout.trim(),
                 String::from_utf8_lossy(&output.stderr).trim()
@@ -76,7 +76,7 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
         })?;
     if let Some(error) = answer.get("error") {
         return Err(format!(
-            "the site refused `wp typedpress styles export`: {}",
+            "the site refused `wp spacepress styles export`: {}",
             error["message"].as_str().unwrap_or(&error.to_string())
         ));
     }
@@ -89,11 +89,11 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
         return Ok(ExitCode::SUCCESS);
     }
     if check {
-        eprintln!("{FILE} differs from the site's styles. Run `typedpress styles pull` to update it");
+        eprintln!("{FILE} differs from the site's styles. Run `spacepress styles pull` to update it");
         return Ok(ExitCode::from(1));
     }
     crate::sync::write_atomic(&path, text.as_bytes())?;
-    // Compile once with the new file, so tp/_generated/theme.css follows; a project that does not
+    // Compile once with the new file, so sp/_generated/theme.css follows; a project that does not
     // compile keeps its old file.
     if let Err(diagnostic) = super::build::refresh(&project) {
         match &current {

@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Uid;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Uid;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
 
 /**
  * A v6 UUID is lexicographically sortable and contains a 60-bit timestamp and 62 extra unique bits.

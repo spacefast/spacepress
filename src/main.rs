@@ -1,5 +1,5 @@
-//! `typedpress` — compiles `typedpress.config.ts` into WordPress plugins. The command line lives in `typedpress::cli`.
+//! `spacepress` — compiles `spacepress.config.ts` into WordPress plugins. The command line lives in `spacepress::cli`.
 
 fn main() -> std::process::ExitCode {
-    typedpress::cli::main()
+    spacepress::cli::main()
 }

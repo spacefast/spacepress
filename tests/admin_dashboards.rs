@@ -6,23 +6,23 @@
 use std::path::Path;
 use std::process::{Command, Output};
 
-fn tp() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_typedpress"))
+fn sp() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_spacepress"))
 }
 
 fn check(dir: &Path) -> Output {
-    tp().arg("check").arg(dir).output().expect("run typedpress check")
+    sp().arg("check").arg(dir).output().expect("run spacepress check")
 }
 
 fn build(dir: &Path) -> Output {
-    tp().arg("build").arg(dir).output().expect("run typedpress build")
+    sp().arg("build").arg(dir).output().expect("run spacepress build")
 }
 
 #[test]
 fn widgets_dashboards_and_kind_ui_compile_into_schema_php() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
+        tmp.path().join("spacepress.config.ts"),
         r#"import {
   adminDashboard,
   adminWidget,
@@ -33,7 +33,7 @@ fn widgets_dashboards_and_kind_ui_compile_into_schema_php() {
   query,
   richText,
   text,
-} from "typedpress";
+} from "spacepress";
 
 export const docs = collection(
   {
@@ -89,7 +89,7 @@ export const opsDashboard = adminDashboard({
   description: "Live editorial & sales overview",
   access: "editor",
   widgets: [
-    "tp/content-overview",
+    "sp/content-overview",
     { widget: salesPulse, width: 2, height: 2 },
   ],
 });
@@ -108,7 +108,7 @@ export default defineConfig({ name: "site" });
     );
     let schema = std::fs::read_to_string(
         tmp.path()
-            .join("tp/dist/wp-content/plugins/typedpress-app-site/tp/app/schema.php"),
+            .join("sp/dist/wp-content/plugins/spacepress-app-site/sp/app/schema.php"),
     )
     .expect("schema.php");
     assert!(schema.contains("'singularLabel' => 'Doc'"), "{schema}");
@@ -118,16 +118,16 @@ export default defineConfig({ name: "site" });
     assert!(schema.contains("'ability' => 'site/sales-metrics'"), "{schema}");
     assert!(schema.contains("'dashboards' => ["), "{schema}");
     assert!(schema.contains("'ops-dashboard' =>"), "{schema}");
-    assert!(schema.contains("'type' => 'tp-widget/sales-pulse'"), "{schema}");
-    assert!(schema.contains("'type' => 'tp/content-overview'"), "{schema}");
+    assert!(schema.contains("'type' => 'sp-widget/sales-pulse'"), "{schema}");
+    assert!(schema.contains("'type' => 'sp/content-overview'"), "{schema}");
 }
 
 #[test]
 fn rejects_non_readonly_widget_action_and_duplicate_home_dashboards() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        r#"import { mutation, adminWidget, defineConfig } from "typedpress";
+        tmp.path().join("spacepress.config.ts"),
+        r#"import { mutation, adminWidget, defineConfig } from "spacepress";
 
 export const mutate = mutation(
   { access: "editor" },
@@ -149,19 +149,19 @@ export default defineConfig({ name: "site" });
     assert!(err.contains("isn't readonly"), "{err}");
 
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        r#"import { adminDashboard, defineConfig } from "typedpress";
+        tmp.path().join("spacepress.config.ts"),
+        r#"import { adminDashboard, defineConfig } from "spacepress";
 
 export const one = adminDashboard({
   title: "One",
   home: true,
-  widgets: ["tp/content-overview"],
+  widgets: ["sp/content-overview"],
 });
 
 export const two = adminDashboard({
   title: "Two",
   home: true,
-  widgets: ["tp/recent-activity"],
+  widgets: ["sp/recent-activity"],
 });
 
 export default defineConfig({ name: "site" });

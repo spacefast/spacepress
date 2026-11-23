@@ -1,6 +1,6 @@
 .spacefast/state.json
 .spacefast/
-tp/.wp-plugins.build.lock
+sp/.wp-plugins.build.lock
 /.spacefast-*
 .spacefast/.spacefast-*
 .spacefast/.space-link-*.tmp

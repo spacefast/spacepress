@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Fqsen;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Type;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Object_;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Fqsen;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Type;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Object_;
 
 use function implode;
 

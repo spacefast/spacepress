@@ -1,8 +1,8 @@
 // Image sizes, focal point and private files on real WordPress (phase 2 §7.2). The app fragment
-// (app/tp/lanes/media.ts) configures `card` (120x120 cover) and `wide` (200 wide, inside).
+// (app/sp/lanes/media.ts) configures `card` (120x120 cover) and `wide` (200 wide, inside).
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
-import { createClient, TypedPressError } from "./app/tp/_generated/client/index.ts";
+import { createClient, SpacePressError } from "./app/sp/_generated/client/index.ts";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateSync, crc32 } from "node:zlib";
@@ -51,16 +51,16 @@ function sizeOnDisk(id: number, size: string): { file: string; w: number; h: num
 function muPlugin(name: string, php: string): void {
   wp("eval", `wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . '/${name}.php', base64_decode('${Buffer.from(php).toString("base64")}'));`);
 }
-after(() => wp("eval", "array_map('unlink', glob(WPMU_PLUGIN_DIR . '/typedpress-test-*.php'));"));
+after(() => wp("eval", "array_map('unlink', glob(WPMU_PLUGIN_DIR . '/spacepress-test-*.php'));"));
 
-/** Upload the split PNG through TypedPress; returns the media row. */
+/** Upload the split PNG through SpacePress; returns the media row. */
 async function uploadSplit() {
   const r = await upload(splitPng(), "split.png", "image/png");
   assert.equal(r.status, 201, JSON.stringify(r.json));
   return r.json.data;
 }
 
-if (process.env.TP_WP_S3 !== "1") {
+if (process.env.SP_WP_S3 !== "1") {
 test("an upload returns the configured sizes; the files exist with the right dimensions", async () => {
   const img = await uploadSplit();
   assert.equal(img.focal, null);
@@ -71,44 +71,44 @@ test("an upload returns the configured sizes; the files exist with the right dim
   for (const [size, w, h] of [["card", 120, 120], ["wide", 200, 100]] as const) {
     assert.ok(img.sizes[size].url.startsWith(`${harness.url}/wp-content/uploads/`), img.sizes[size].url);
     assert.equal((await fetch(img.sizes[size].url)).status, 200, `${size} file is served`);
-    const disk = sizeOnDisk(img.id, `tp_${size}`);
+    const disk = sizeOnDisk(img.id, `sp_${size}`);
     assert.deepEqual([disk.w, disk.h, disk.file], [w, h, img.sizes[size].url.split("/").pop()]);
   }
 });
 
 test("PATCH /media focal regenerates cover crops along the focal point; a theme size of the same shape is untouched", async () => {
-  // A theme's own 120x120 crop must never pick up TypedPress's focal point or share TypedPress's file.
+  // A theme's own 120x120 crop must never pick up SpacePress's focal point or share SpacePress's file.
   wp("option", "update", "thumbnail_size_w", "120");
   wp("option", "update", "thumbnail_size_h", "120");
   wp("option", "update", "thumbnail_crop", "1");
   const img = await uploadSplit();
-  const centred = sizeOnDisk(img.id, "tp_card");
+  const centred = sizeOnDisk(img.id, "sp_card");
   const theme = sizeOnDisk(img.id, "thumbnail");
-  const wide = sizeOnDisk(img.id, "tp_wide");
+  const wide = sizeOnDisk(img.id, "sp_wide");
   assert.notEqual(theme.file, centred.file);
 
   const left = await ok("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: 0, y: 0.5 } } });
   assert.deepEqual([left.focal, [left.sizes.card.width, left.sizes.card.height]], [{ x: 0, y: 0.5 }, [120, 120]]);
-  const leftCard = sizeOnDisk(img.id, "tp_card");
+  const leftCard = sizeOnDisk(img.id, "sp_card");
   assert.notEqual(leftCard.sha, centred.sha, "changing focal regenerates the cover crop (different bytes)");
   assert.deepEqual(leftCard.rgb, [255, 0], "the left focal crop is red");
   assert.equal(left.sizes.card.url.split("/").pop(), leftCard.file);
   assert.equal((await fetch(img.sizes.card.url)).status, 404, "the previous crop is removed after commit");
   assert.deepEqual(sizeOnDisk(img.id, "thumbnail"), theme, "the theme's same-shape crop is untouched");
-  assert.deepEqual(sizeOnDisk(img.id, "tp_wide"), wide, "inside sizes are not regenerated");
+  assert.deepEqual(sizeOnDisk(img.id, "sp_wide"), wide, "inside sizes are not regenerated");
 
   await ok("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: 1, y: 0.5 } } });
-  assert.deepEqual(sizeOnDisk(img.id, "tp_card").rgb, [0, 255], "the right focal crop is blue");
-  assert.equal(wp("post", "meta", "get", String(img.id), "_tp_focal"), '{"x":1,"y":0.5}');
+  assert.deepEqual(sizeOnDisk(img.id, "sp_card").rgb, [0, 255], "the right focal crop is blue");
+  assert.equal(wp("post", "meta", "get", String(img.id), "_sp_focal"), '{"x":1,"y":0.5}');
 });
 
 test("focal A → B → A inside one transaction: rollback keeps the committed crop, commit keeps the final one", async () => {
   const img = await uploadSplit();
-  /** Run focal updates in one transaction (optionally rolled back); returns the tp_card files left on disk. */
+  /** Run focal updates in one transaction (optionally rolled back); returns the sp_card files left on disk. */
   const sequence = (focals: [number, number][], rollback: boolean): string[] => JSON.parse(wp("eval", `
-    $media = \\TypedPress\\Wp\\Runtime::plugin()->app()->db->media();
+    $media = \\SpacePress\\Wp\\Runtime::plugin()->app()->db->media();
     try {
-      \\TypedPress\\db()->transaction(function () use ($media) {
+      \\SpacePress\\db()->transaction(function () use ($media) {
         foreach (${JSON.stringify(focals)} as [$x, $y]) {
           $media->update(${img.id}, ['focal' => ['x' => $x, 'y' => $y]]);
         }
@@ -116,31 +116,31 @@ test("focal A → B → A inside one transaction: rollback keeps the committed c
       });
     } catch (RuntimeException) {}
     $file = get_attached_file(${img.id});
-    echo wp_json_encode(array_map('basename', glob(dirname($file) . '/' . pathinfo($file, PATHINFO_FILENAME) . '-tp_card-*')));
+    echo wp_json_encode(array_map('basename', glob(dirname($file) . '/' . pathinfo($file, PATHINFO_FILENAME) . '-sp_card-*')));
   `));
 
   sequence([[0, 0.5]], false);
-  const committed = sizeOnDisk(img.id, "tp_card");
+  const committed = sizeOnDisk(img.id, "sp_card");
   assert.deepEqual(sequence([[1, 0.5], [0, 0.5]], true), [committed.file], "rollback: only the committed crop remains");
-  assert.deepEqual(sizeOnDisk(img.id, "tp_card"), committed);
+  assert.deepEqual(sizeOnDisk(img.id, "sp_card"), committed);
 
   const files = sequence([[1, 0.5], [0, 0.5]], false);
-  const final = sizeOnDisk(img.id, "tp_card");
+  const final = sizeOnDisk(img.id, "sp_card");
   assert.deepEqual(files, [final.file], "commit: exactly the final crop remains, and metadata points at it");
   assert.deepEqual(final.rgb, [255, 0]);
 });
 
 test("a crop that fails to render rolls the focal change back, and the same PATCH succeeds on retry", async () => {
   const img = await uploadSplit();
-  const before = sizeOnDisk(img.id, "tp_card");
+  const before = sizeOnDisk(img.id, "sp_card");
   // A must-use plugin that makes every image save fail while its flag option is set.
-  muPlugin("typedpress-test-editor-fails", "<?php\nadd_filter('wp_image_editors', fn ($e) => get_option('tp_test_editor_fails') ? [] : $e);\n");
-  wp("option", "update", "tp_test_editor_fails", "1");
+  muPlugin("spacepress-test-editor-fails", "<?php\nadd_filter('wp_image_editors', fn ($e) => get_option('sp_test_editor_fails') ? [] : $e);\n");
+  wp("option", "update", "sp_test_editor_fails", "1");
   try {
     const failed = await http("PATCH", `${api}/media/${img.id}`, { as: "editor", body: { focal: { x: 0, y: 0 } } });
     assert.equal(failed.status, 500, JSON.stringify(failed.json));
     assert.equal((await ok("GET", `/media/${img.id}`)).focal, null, "the focal point did not commit");
-    assert.deepEqual(sizeOnDisk(img.id, "tp_card"), before, "the previous crop is still in place");
+    assert.deepEqual(sizeOnDisk(img.id, "sp_card"), before, "the previous crop is still in place");
     const attachments = sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'attachment'")[0].n;
     const disk = () => wp("eval", "echo wp_json_encode(glob(wp_upload_dir()['path'] . '/*'));");
     const files = disk();
@@ -152,27 +152,27 @@ test("a crop that fails to render rolls the focal change back, and the same PATC
     assert.equal(sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'attachment'")[0].n, attachments);
     assert.equal(disk(), files);
   } finally {
-    wp("option", "delete", "tp_test_editor_fails");
+    wp("option", "delete", "sp_test_editor_fails");
   }
   const retried = await ok("PATCH", `/media/${img.id}`, { as: "editor", body: { focal: { x: 0, y: 0 } } });
   assert.deepEqual(retried.focal, { x: 0, y: 0 });
-  assert.deepEqual(sizeOnDisk(img.id, "tp_card").rgb, [255, 0]);
+  assert.deepEqual(sizeOnDisk(img.id, "sp_card").rgb, [255, 0]);
 
   // A late refusal may refresh another attachment or create an edited attachment. Rollback
   // owns only files actually created by this operation, never the committed source's metadata.
-  muPlugin("typedpress-test-native-upload", `<?php
+  muPlugin("spacepress-test-native-upload", `<?php
 add_filter('wp_generate_attachment_metadata', function ($meta) {
-    if (get_option('tp_test_native_upload') === 'generate') throw new RuntimeException('Native metadata refused');
+    if (get_option('sp_test_native_upload') === 'generate') throw new RuntimeException('Native metadata refused');
     return $meta;
 }, 100);
 add_action('rest_after_insert_attachment', function () {
-    if (get_option('tp_test_native_upload') !== 'refresh') return;
-    $id = (int) get_option('tp_test_native_source');
+    if (get_option('sp_test_native_upload') !== 'refresh') return;
+    $id = (int) get_option('sp_test_native_source');
     wp_update_attachment_metadata($id, wp_get_attachment_metadata($id));
     throw new RuntimeException('Native insert refused after existing metadata refresh');
 });
 add_filter('wp_edited_image_metadata', function ($meta) {
-    if (get_option('tp_test_native_upload') === 'edit') throw new RuntimeException('Native edited metadata refused');
+    if (get_option('sp_test_native_upload') === 'edit') throw new RuntimeException('Native edited metadata refused');
     return $meta;
 });
 `);
@@ -192,10 +192,10 @@ add_filter('wp_edited_image_metadata', function ($meta) {
   const attachments = sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'attachment'")[0].n;
   const disk = () => wp("eval", "echo wp_json_encode(glob(wp_upload_dir()['path'] . '/*'));");
   const files = disk();
-  wp("option", "update", "tp_test_native_source", String(img.id));
+  wp("option", "update", "sp_test_native_source", String(img.id));
   try {
     for (const phase of ["generate", "refresh", "edit"]) {
-      wp("option", "update", "tp_test_native_upload", phase);
+      wp("option", "update", "sp_test_native_upload", phase);
       const form = new FormData();
       form.append("file", new Blob([splitPng()], { type: "image/png" }), `rollback-native-${phase}-${run}.png`);
       const failed = phase === "edit"
@@ -207,8 +207,8 @@ add_filter('wp_edited_image_metadata', function ($meta) {
       assert.deepEqual(await Promise.all(sourceUrls.map(bytes)), committedBytes, `${phase}: committed source and renditions retain their bytes`);
     }
   } finally {
-    wp("option", "delete", "tp_test_native_upload");
-    wp("option", "delete", "tp_test_native_source");
+    wp("option", "delete", "sp_test_native_upload");
+    wp("option", "delete", "sp_test_native_source");
   }
   const edited = await http("POST", `${core}/media/${img.id}/edit`, { as: "editor", body: { src: source.json.source_url, rotation: 90 } });
   assert.equal(edited.status, 201, JSON.stringify(edited.json));
@@ -218,7 +218,7 @@ add_filter('wp_edited_image_metadata', function ($meta) {
   assert.deepEqual(await Promise.all(sourceUrls.map(bytes)), committedBytes, "successful editing also preserves its source");
 });
 
-test("native uploads enforce TypedPress authority and retain core validation, metadata, response and image sizes", async () => {
+test("native uploads enforce SpacePress authority and retain core validation, metadata, response and image sizes", async () => {
   const parent = Number(wp("post", "create", "--post_type=post", "--post_status=draft", `--post_author=${harness.users.author.id}`, "--post_title=Native media parent", "--porcelain"));
   const multipart = () => {
     const form = new FormData();
@@ -227,7 +227,7 @@ test("native uploads enforce TypedPress authority and retain core validation, me
     return form;
   };
   // A real WP capability grant makes core's upload permission pass, without making this viewer
-  // a TypedPress author. The request must still be refused before any attachment is persisted.
+  // a SpacePress author. The request must still be refused before any attachment is persisted.
   wp("user", "add-cap", "subscriber", "upload_files");
   try {
     const before = sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'attachment'")[0].n;
@@ -271,7 +271,7 @@ test("native uploads enforce TypedPress authority and retain core validation, me
   assert.equal(invalidUpload.json.code, "rest_upload_unknown_error");
 });
 
-test("native alt/delete share TypedPress rules and reference cleanup while caption/title retain WP permissions", async () => {
+test("native alt/delete share SpacePress rules and reference cleanup while caption/title retain WP permissions", async () => {
   const img = await uploadSplit();
   const post = await ok("POST", "/posts", { as: "admin", body: { title: `Native reference ${run}`, cover: img.id } });
   const refusedAlt = await http("POST", `${core}/media/${img.id}`, { as: "author", body: { alt_text: "Bypass", title: "Must not change" } });
@@ -294,10 +294,10 @@ test("native alt/delete share TypedPress rules and reference cleanup while capti
   assert.equal((await fetch(img.url)).status, 200);
 
   // A real native-plugin refusal must undo the reference writes too, not merely keep the file.
-  muPlugin("typedpress-test-native-delete", "<?php\nadd_filter('pre_delete_attachment', fn ($delete) => get_option('tp_test_native_delete') === 'early' ? false : $delete);\nadd_action('rest_delete_attachment', function () { if (get_option('tp_test_native_delete') === 'late') throw new RuntimeException('Native deletion refused'); });\n");
+  muPlugin("spacepress-test-native-delete", "<?php\nadd_filter('pre_delete_attachment', fn ($delete) => get_option('sp_test_native_delete') === 'early' ? false : $delete);\nadd_action('rest_delete_attachment', function () { if (get_option('sp_test_native_delete') === 'late') throw new RuntimeException('Native deletion refused'); });\n");
   try {
     for (const phase of ["early", "late"]) {
-      wp("option", "update", "tp_test_native_delete", phase);
+      wp("option", "update", "sp_test_native_delete", phase);
       const failed = await http("DELETE", `${core}/media/${img.id}?force=true`, { as: "editor" });
       assert.equal(failed.status, 500, JSON.stringify(failed.json));
       assert.equal(failed.json.code, phase === "early" ? "rest_cannot_delete" : "internal");
@@ -307,7 +307,7 @@ test("native alt/delete share TypedPress rules and reference cleanup while capti
       assert.equal((await fetch(img.sizes.card.url)).status, 200);
     }
   } finally {
-    wp("option", "delete", "tp_test_native_delete");
+    wp("option", "delete", "sp_test_native_delete");
   }
   const deleted = await http("DELETE", `${core}/media/${img.id}?force=true`, { as: "editor" });
   assert.equal(deleted.status, 200, JSON.stringify(deleted.json));
@@ -318,14 +318,14 @@ test("native alt/delete share TypedPress rules and reference cleanup while capti
   assert.equal((await fetch(img.sizes.card.url)).status, 404);
 });
 
-test("core regeneration: the missing-sizes pass fills TypedPress sizes without touching a same-shape theme crop; a full pass replaces renditions", async () => {
-  // A theme crop of TypedPress's card shape anchored top-left (different bytes from TypedPress's centred crop).
-  muPlugin("typedpress-test-theme-size", "<?php\nadd_action('init', fn () => add_image_size('theme_card', 120, 120, ['left', 'top']));\n");
+test("core regeneration: the missing-sizes pass fills SpacePress sizes without touching a same-shape theme crop; a full pass replaces renditions", async () => {
+  // A theme crop of SpacePress's card shape anchored top-left (different bytes from SpacePress's centred crop).
+  muPlugin("spacepress-test-theme-size", "<?php\nadd_action('init', fn () => add_image_size('theme_card', 120, 120, ['left', 'top']));\n");
   const img = await uploadSplit();
   const theme = sizeOnDisk(img.id, "theme_card");
   const files = (): string[] => JSON.parse(wp("eval", `
     $file = get_attached_file(${img.id});
-    echo wp_json_encode(array_map('basename', glob(dirname($file) . '/' . pathinfo($file, PATHINFO_FILENAME) . '-tp_*')));
+    echo wp_json_encode(array_map('basename', glob(dirname($file) . '/' . pathinfo($file, PATHINFO_FILENAME) . '-sp_*')));
   `));
 
   /** Drop sizes from the metadata (and their files), then let core's missing-sizes pass run. */
@@ -339,15 +339,15 @@ test("core regeneration: the missing-sizes pass fills TypedPress sizes without t
     require_once ABSPATH . 'wp-admin/includes/image.php';
     wp_update_image_subsizes(${img.id});
   `);
-  // Only a TypedPress size missing: core returns early, TypedPress fills it.
-  dropAndUpdate(["tp_card"]);
-  const filled = sizeOnDisk(img.id, "tp_card");
+  // Only a SpacePress size missing: core returns early, SpacePress fills it.
+  dropAndUpdate(["sp_card"]);
+  const filled = sizeOnDisk(img.id, "sp_card");
   assert.deepEqual([filled.w, filled.h], [120, 120]);
   assert.deepEqual(sizeOnDisk(img.id, "theme_card"), theme, "the theme's crop keeps its bytes");
   assert.equal(files().length, 2, "card + wide, nothing else");
-  // A TypedPress size and a theme size missing: core makes its own, TypedPress fills its absent one.
-  dropAndUpdate(["tp_card", "theme_card"]);
-  const both = sizeOnDisk(img.id, "tp_card");
+  // A SpacePress size and a theme size missing: core makes its own, SpacePress fills its absent one.
+  dropAndUpdate(["sp_card", "theme_card"]);
+  const both = sizeOnDisk(img.id, "sp_card");
   assert.deepEqual([both.w, both.h, files().length], [120, 120, 2]);
   const remade = sizeOnDisk(img.id, "theme_card");
   assert.deepEqual([remade.file, remade.w, remade.h, remade.rgb], [theme.file, theme.w, theme.h, theme.rgb], "core re-made its top-left crop on its own file");
@@ -357,19 +357,19 @@ test("core regeneration: the missing-sizes pass fills TypedPress sizes without t
   const meta = wp("eval", `
     require_once ABSPATH . 'wp-admin/includes/image.php';
     try {
-      \\TypedPress\\Wp\\Runtime::plugin()->db()->transaction(function () {
+      \\SpacePress\\Wp\\Runtime::plugin()->db()->transaction(function () {
         wp_update_attachment_metadata(${img.id}, wp_generate_attachment_metadata(${img.id}, get_attached_file(${img.id})));
         wp_get_attachment_metadata(${img.id});
         throw new RuntimeException('roll back');
       });
     } catch (RuntimeException) {}
-    echo wp_get_attachment_metadata(${img.id})['sizes']['tp_card']['file'];
+    echo wp_get_attachment_metadata(${img.id})['sizes']['sp_card']['file'];
   `);
   assert.deepEqual(files(), committed, "rollback removes the new renditions and keeps the committed ones");
   assert.ok(committed.includes(meta), "metadata (and its cache) still names a committed rendition");
 
-  // A full core pass (what regenerate plugins call) renders fresh TypedPress renditions, and TypedPress removes
-  // the ones they replace (WP-CLI's regenerate would delete old files itself, hiding TypedPress's cleanup).
+  // A full core pass (what regenerate plugins call) renders fresh SpacePress renditions, and SpacePress removes
+  // the ones they replace (WP-CLI's regenerate would delete old files itself, hiding SpacePress's cleanup).
   const before = files();
   wp("eval", `
     require_once ABSPATH . 'wp-admin/includes/image.php';
@@ -390,19 +390,19 @@ test("a size the original now fits drops its old rendition (metadata and file)",
     require_once ABSPATH . 'wp-admin/includes/image.php';
     $id = media_handle_sideload(['name' => 'fits.png', 'tmp_name' => $tmp], 0);
     $file = get_attached_file($id);
-    $stale = pathinfo($file, PATHINFO_FILENAME) . '-tp_card-stale.png';
+    $stale = pathinfo($file, PATHINFO_FILENAME) . '-sp_card-stale.png';
     copy($file, dirname($file) . '/' . $stale);
     $meta = wp_get_attachment_metadata($id);
-    $meta['sizes']['tp_card'] = ['file' => $stale, 'width' => 50, 'height' => 50, 'mime-type' => 'image/png'];
+    $meta['sizes']['sp_card'] = ['file' => $stale, 'width' => 50, 'height' => 50, 'mime-type' => 'image/png'];
     wp_update_attachment_metadata($id, $meta);
     echo $id;
   `);
   await ok("PATCH", `/media/${id}`, { as: "editor", body: { focal: { x: 0.5, y: 0.5 } } });
   const left = JSON.parse(wp("eval", `
     $file = get_attached_file(${id});
-    echo wp_json_encode([isset(wp_get_attachment_metadata(${id})['sizes']['tp_card']), is_file(dirname($file) . '/' . pathinfo($file, PATHINFO_FILENAME) . '-tp_card-stale.png')]);
+    echo wp_json_encode([isset(wp_get_attachment_metadata(${id})['sizes']['sp_card']), is_file(dirname($file) . '/' . pathinfo($file, PATHINFO_FILENAME) . '-sp_card-stale.png')]);
   `));
-  assert.deepEqual(left, [false, false], "no tp_card entry and no stale file");
+  assert.deepEqual(left, [false, false], "no sp_card entry and no stale file");
   const row = await ok("GET", `/media/${id}`);
   assert.equal(row.sizes.card.url, row.url, "the original serves the size");
 });
@@ -434,26 +434,26 @@ async function deck(text: string) {
 
 /**
  * The harness publishes WordPress on a host port the container can't reach, so the probe is routed
- * to the web server's in-network name with `tp_private_probe_url`, the filter hosts use for the
+ * to the web server's in-network name with `sp_private_probe_url`, the filter hosts use for the
  * same reason. Probing then exercises the real Apache `.htaccess` decision.
  */
 function probe(): string {
-  muPlugin("typedpress-test-probe-route", "<?php\nadd_filter('tp_private_probe_url', fn ($u) => str_replace(home_url(), 'http://wordpress', $u));\n");
-  return wp("eval", "echo \\TypedPress\\Wp\\WpFiles::probe() ? 'protected' : 'exposed';");
+  muPlugin("spacepress-test-probe-route", "<?php\nadd_filter('sp_private_probe_url', fn ($u) => str_replace(home_url(), 'http://wordpress', $u));\n");
+  return wp("eval", "echo \\SpacePress\\Wp\\WpFiles::probe() ? 'protected' : 'exposed';");
 }
 
 /** The stored file names in the decks bucket. */
-const stored = (): string[] => JSON.parse(wp("eval", "echo wp_json_encode(array_map('basename', glob(\\TypedPress\\Wp\\WpFiles::root() . '/blog/decks/*')));"));
+const stored = (): string[] => JSON.parse(wp("eval", "echo wp_json_encode(array_map('basename', glob(\\SpacePress\\Wp\\WpFiles::root() . '/blog/decks/*')));"));
 
 test("activation writes the deny rules and reports a passing probe", async () => {
   // Route the probe, remove the rules and the verdict, then reactivate the app plugin for real.
   probe();
-  wp("eval", "unlink(\\TypedPress\\Wp\\WpFiles::root() . '/.htaccess'); delete_option('tp_runtime_private_ok'); delete_option('tp_runtime_private_checked');");
+  wp("eval", "unlink(\\SpacePress\\Wp\\WpFiles::root() . '/.htaccess'); delete_option('sp_runtime_private_ok'); delete_option('sp_runtime_private_checked');");
   wp("plugin", "deactivate", harness.plugin);
   wp("plugin", "activate", harness.plugin);
-  assert.equal(wp("option", "get", "tp_runtime_private_ok"), "1");
-  assert.match(wp("eval", "echo file_get_contents(\\TypedPress\\Wp\\WpFiles::root() . '/.htaccess');"), /Require all denied/);
-  assert.equal(wp("option", "get", "tp_runtime_secret").length, 64);
+  assert.equal(wp("option", "get", "sp_runtime_private_ok"), "1");
+  assert.match(wp("eval", "echo file_get_contents(\\SpacePress\\Wp\\WpFiles::root() . '/.htaccess');"), /Require all denied/);
+  assert.equal(wp("option", "get", "sp_runtime_secret").length, 64);
   assert.equal((await ok("GET", "")).runtime.privateFiles.protected, true);
 });
 
@@ -461,16 +461,16 @@ test("a site already on runtime tables 0.2 gains the files table and working pro
   // What a site that ran the runtime before private files existed looks like: no table, no private
   // directory, no secret, no probe verdict, and no reactivation.
   probe(); // routes the probe to the in-network host (harness only)
-  sql("DROP TABLE wp_tp__files");
+  sql("DROP TABLE wp_sp__files");
   wp("eval", `
-    array_map('unlink', glob(\\TypedPress\\Wp\\WpFiles::root() . '/{,.}*', GLOB_BRACE) ?: []);
-    foreach (['tp_runtime_private_ok', 'tp_runtime_private_checked', 'tp_runtime_secret'] as $o) delete_option($o);
+    array_map('unlink', glob(\\SpacePress\\Wp\\WpFiles::root() . '/{,.}*', GLOB_BRACE) ?: []);
+    foreach (['sp_runtime_private_ok', 'sp_runtime_private_checked', 'sp_runtime_secret'] as $o) delete_option($o);
   `);
-  wp("option", "update", "tp_runtime_tables", "0.2");
+  wp("option", "update", "sp_runtime_tables", "0.2");
   wp("eval", "do_action('admin_init');");
-  assert.deepEqual(sql("SHOW TABLES LIKE 'wp\\_tp\\_\\_files'").length, 1, "the table exists again");
-  assert.equal(wp("option", "get", "tp_runtime_tables"), wp("eval", "echo \\TypedPress\\Wp\\Runtime::tablesVersion();"));
-  assert.equal(wp("option", "get", "tp_runtime_private_ok"), "1", "the deny rules were written and probed");
+  assert.deepEqual(sql("SHOW TABLES LIKE 'wp\\_sp\\_\\_files'").length, 1, "the table exists again");
+  assert.equal(wp("option", "get", "sp_runtime_tables"), wp("eval", "echo \\SpacePress\\Wp\\Runtime::tablesVersion();"));
+  assert.equal(wp("option", "get", "sp_runtime_private_ok"), "1", "the deny rules were written and probed");
   assert.equal((await uploadDeck(pdf("after upgrade"))).status, 201, "uploads work without reactivating anything");
 });
 
@@ -478,13 +478,13 @@ test("file rows belong to their app: another app's ids don't resolve", async () 
   probe();
   const row = await deck("mine");
   // Re-label the row as another app's (what a replaced or second app leaves behind).
-  sql(`UPDATE wp_tp__files SET app = 'other' WHERE id = ${row.id}`);
+  sql(`UPDATE wp_sp__files SET app = 'other' WHERE id = ${row.id}`);
   try {
     await problem("GET", `/files/decks/${row.id}`, { as: "author" }, { status: 404, code: "not_found", pointer: undefined });
     assert.equal((await fetch(row.url)).status, 404);
     await problem("POST", "/talks", { as: "author", body: { title: "Foreign", deck: row.id } }, { status: 422, code: "invalid_input", pointer: "/deck" });
   } finally {
-    sql(`UPDATE wp_tp__files SET app = 'blog' WHERE id = ${row.id}`);
+    sql(`UPDATE wp_sp__files SET app = 'blog' WHERE id = ${row.id}`);
   }
   assert.equal((await ok("GET", `/files/decks/${row.id}`, { as: "author" })).id, row.id);
 });
@@ -493,7 +493,7 @@ test("a signed URL streams the file through the REST route with the security hea
   probe();
   const row = await deck("slide one");
   assert.deepEqual([row.bucket, row.mime, row.filename, row.ownerId, "path" in row], ["decks", "application/pdf", "Q3 plan.pdf", harness.users.author.id, false]);
-  assert.ok(row.url.startsWith(`${harness.url}/wp-json/typedpress/v1/files/decks/${row.id}/download?`), row.url);
+  assert.ok(row.url.startsWith(`${harness.url}/wp-json/spacepress/v1/files/decks/${row.id}/download?`), row.url);
   const res = await fetch(row.url);
   assert.equal(res.status, 200);
   assert.deepEqual(new Uint8Array(await res.arrayBuffer()), pdf("slide one"));
@@ -512,7 +512,7 @@ test("a forged or expired signature gets 403 from WordPress", async () => {
   // Correctly signed with the site secret, but already expired.
   const expired = wp("eval", `
     $exp = time() - 1;
-    echo 'exp=' . $exp . '&sig=' . hash_hmac('sha256', "decks/${row.id}/$exp", get_option('tp_runtime_secret'));
+    echo 'exp=' . $exp . '&sig=' . hash_hmac('sha256', "decks/${row.id}/$exp", get_option('sp_runtime_secret'));
   `);
   assert.equal((await fetch(`${api}/files/decks/${row.id}/download?${expired}`)).status, 403);
 });
@@ -525,13 +525,13 @@ test("the owner rule holds over REST", async () => {
   assert.equal((await fetch((await ok("GET", `/files/decks/${row.id}`, { as: "author" })).url)).status, 200, "the owner gets a fresh working url");
 });
 
-test("Apache denies the direct /wp-content/uploads/typedpress-private/ URL", async () => {
+test("Apache denies the direct /wp-content/uploads/spacepress-private/ URL", async () => {
   probe();
   const before = stored();
   await deck("direct");
   const [file] = stored().filter((f) => !before.includes(f));
   assert.ok(file);
-  assert.equal((await fetch(`${harness.url}/wp-content/uploads/typedpress-private/blog/decks/${file}`)).status, 403);
+  assert.equal((await fetch(`${harness.url}/wp-content/uploads/spacepress-private/blog/decks/${file}`)).status, 403);
 });
 
 test("file(bucket) columns: checked on API and editor writes, populated for the owner only, nulled on delete", async () => {
@@ -539,17 +539,17 @@ test("file(bucket) columns: checked on API and editor writes, populated for the 
   const row = await deck("talk");
   await problem("POST", "/talks", { as: "author", body: { title: "Bad", deck: 999999 } }, { status: 422, code: "invalid_input", pointer: "/deck" });
   // Core REST saves with the SCF field go through the same check.
-  const editor = await fetch(`${harness.url}/wp-json/wp/v2/tp_talks`, {
+  const editor = await fetch(`${harness.url}/wp-json/wp/v2/sp_talks`, {
     method: "POST",
     headers: { ...auth("author"), "content-type": "application/json" },
-    body: JSON.stringify({ title: "Editor", status: "publish", acf: { tp_deck: 999999 } }),
+    body: JSON.stringify({ title: "Editor", status: "publish", acf: { sp_deck: 999999 } }),
   });
   assert.equal(editor.status, 400, await editor.text());
   // … including a file id nested in a group, rejected before core persists anything.
-  const nested = await fetch(`${harness.url}/wp-json/wp/v2/tp_talks`, {
+  const nested = await fetch(`${harness.url}/wp-json/wp/v2/sp_talks`, {
     method: "POST",
     headers: { ...auth("author"), "content-type": "application/json" },
-    body: JSON.stringify({ title: "Nested editor", status: "publish", acf: { tp_extras: { handout: 999999 } } }),
+    body: JSON.stringify({ title: "Nested editor", status: "publish", acf: { sp_extras: { handout: 999999 } } }),
   });
   assert.equal(nested.status, 400, await nested.text());
   assert.equal(sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_title = 'Nested editor'")[0].n, "0");
@@ -569,20 +569,20 @@ test("rollback: a failed upload leaves no bytes, a failed delete keeps the row, 
   const talk = await ok("POST", "/talks", { as: "author", body: { title: "Kept", deck: row.id } });
   const before = stored();
   // Run inside the web server (it owns the private directory): upload, then delete, each rolled back.
-  muPlugin("typedpress-test-rollback", `<?php
-add_action('rest_api_init', fn () => register_rest_route('typedpress-test/v1', '/rollback/(?P<id>\\\\d+)', ['methods' => 'POST', 'permission_callback' => '__return_true',
+  muPlugin("spacepress-test-rollback", `<?php
+add_action('rest_api_init', fn () => register_rest_route('spacepress-test/v1', '/rollback/(?P<id>\\\\d+)', ['methods' => 'POST', 'permission_callback' => '__return_true',
   'callback' => function ($r) {
-    $db = \\TypedPress\\Wp\\Runtime::plugin()->db();
+    $db = \\SpacePress\\Wp\\Runtime::plugin()->db();
     $out = [];
     $tmp = tempnam(get_temp_dir(), 'zr');
     file_put_contents($tmp, "%PDF-1.4\\n%%EOF\\n");
-    foreach (['upload' => fn () => \\TypedPress\\Media\\Files::upload('decks', $tmp, 'r.pdf', null), 'delete' => fn () => \\TypedPress\\Media\\Files::delete('decks', (int) $r['id'], null)] as $name => $op) {
+    foreach (['upload' => fn () => \\SpacePress\\Media\\Files::upload('decks', $tmp, 'r.pdf', null), 'delete' => fn () => \\SpacePress\\Media\\Files::delete('decks', (int) $r['id'], null)] as $name => $op) {
       try { $db->transaction(function () use ($op) { $op(); throw new RuntimeException('roll back'); }); } catch (RuntimeException $e) { $out[$name] = $e->getMessage(); }
     }
     return $out;
   }]));
 `);
-  const res = await fetch(`${harness.url}/wp-json/typedpress-test/v1/rollback/${row.id}`, { method: "POST" });
+  const res = await fetch(`${harness.url}/wp-json/spacepress-test/v1/rollback/${row.id}`, { method: "POST" });
   const text = await res.text();
   assert.equal(res.status, 200, text.slice(0, 2000));
   assert.deepEqual(JSON.parse(text), { upload: "roll back", delete: "roll back" }, "both operations ran and rolled back");
@@ -593,28 +593,28 @@ add_action('rest_api_init', fn () => register_rest_route('typedpress-test/v1', '
 
 test("a probe that cannot write its file is a failed probe, not a pass", async () => {
   assert.equal(probe(), "protected");
-  wp("eval", "chmod(\\TypedPress\\Wp\\WpFiles::root(), 0555);");
+  wp("eval", "chmod(\\SpacePress\\Wp\\WpFiles::root(), 0555);");
   try {
     assert.equal(probe(), "exposed");
     assert.equal((await uploadDeck(pdf("unproven"))).status, 503);
   } finally {
-    wp("eval", "chmod(\\TypedPress\\Wp\\WpFiles::root(), 0755);");
+    wp("eval", "chmod(\\SpacePress\\Wp\\WpFiles::root(), 0755);");
   }
   assert.equal(probe(), "protected");
 });
 
 test("without .htaccess the probe fails and uploads answer 503 until protection is back", async () => {
   assert.equal(probe(), "protected");
-  wp("eval", "unlink(\\TypedPress\\Wp\\WpFiles::root() . '/.htaccess');");
+  wp("eval", "unlink(\\SpacePress\\Wp\\WpFiles::root() . '/.htaccess');");
   try {
     assert.equal(probe(), "exposed");
     const r = await uploadDeck(pdf("leak"));
     assert.equal(r.status, 503, JSON.stringify(r.json));
     assert.equal(r.json.code, "files_unavailable");
-    assert.match(r.json.detail, /deny \/wp-content\/uploads\/typedpress-private\/ in your web server config/);
+    assert.match(r.json.detail, /deny \/wp-content\/uploads\/spacepress-private\/ in your web server config/);
     assert.equal((await ok("GET", "")).runtime.privateFiles.protected, false);
   } finally {
-    wp("eval", "\\TypedPress\\Wp\\WpFiles::protect();");
+    wp("eval", "\\SpacePress\\Wp\\WpFiles::protect();");
   }
   assert.equal(probe(), "protected");
   assert.equal((await uploadDeck(pdf("ok"))).status, 201);
@@ -664,7 +664,7 @@ test("a media item reads on the API exactly as on core's media route: its parent
       assert.equal(result.deck.id, file.id);
       assert.equal(result.image?.id, image.id);
     }
-    await assert.rejects(other.files.decks.get(file.id), (error: unknown) => error instanceof TypedPressError && error.status === 403);
+    await assert.rejects(other.files.decks.get(file.id), (error: unknown) => error instanceof SpacePressError && error.status === 403);
     const masked = await other.uploadRecords.get(record.id, { with: { deck: true } });
     assert.equal(masked.deck, file.id, "unauthorized relation loads reveal no download grant");
     assert.equal((await fetch(file.url.split("?")[0])).status, 403);
@@ -674,42 +674,42 @@ test("a media item reads on the API exactly as on core's media route: its parent
     const derivative = Buffer.from(await (await fetch(image.sizes.card.url)).arrayBuffer());
     assert.deepEqual(original, Buffer.from(splitPng()));
     assert.notDeepEqual(derivative, original);
-    // Core REST uploads follow the same WP hooks, including the TypedPress sizes used by the editor.
+    // Core REST uploads follow the same WP hooks, including the SpacePress sizes used by the editor.
     const coreUpload = await fetch(`${harness.url}/wp-json/wp/v2/media`, { method: "POST", headers: { ...auth("editor"), "Content-Type": "image/png", "Content-Disposition": 'attachment; filename="editor.png"' }, body: splitPng() });
     assert.equal(coreUpload.status, 201, await coreUpload.clone().text());
     const attachment: { id: number; source_url: string; media_details: { sizes: Record<string, { source_url: string }> } } = await coreUpload.json();
-    const coreDerivative = attachment.media_details.sizes.tp_card.source_url;
+    const coreDerivative = attachment.media_details.sizes.sp_card.source_url;
     assert.equal((await fetch(coreDerivative)).status, 200);
     // Persist a real block URL: it must remain useful without an expiring provider grant.
     await editor.posts.create({ title: "Bucket block", body: `<!-- wp:image {"id":${attachment.id}} --><figure class="wp-block-image"><img src="${attachment.source_url}"/></figure><!-- /wp:image -->` });
-    const manifest: Record<string, { key: string }> = JSON.parse(wp("eval", `echo wp_json_encode(\\TypedPress\\Wp\\Uploads::manifest(${image.id}));`));
+    const manifest: Record<string, { key: string }> = JSON.parse(wp("eval", `echo wp_json_encode(\\SpacePress\\Wp\\Uploads::manifest(${image.id}));`));
     assert.ok(Object.values(manifest).length >= 3);
     assert.ok(Object.values(manifest).every((entry) => /\/media\/[a-f0-9]{48}$/.test(entry.key)));
     const inspect = await ok("GET", "");
     const publicJson = JSON.stringify(inspect);
-    assert.equal(publicJson.includes("TP_TEST_UPLOAD_SECRET"), false);
+    assert.equal(publicJson.includes("SP_TEST_UPLOAD_SECRET"), false);
     assert.equal(publicJson.includes("1111111111111111111111111111111111111111111111111111111111111111"), false);
-    const fileKey = sql(`SELECT path FROM wp_tp__files WHERE id=${file.id}`)[0].path.slice(3);
-    const unsignedObject = "http://garage:3900/typedpress-uploads/" + fileKey.split("/").map(encodeURIComponent).join("/");
+    const fileKey = sql(`SELECT path FROM wp_sp__files WHERE id=${file.id}`)[0].path.slice(3);
+    const unsignedObject = "http://garage:3900/spacepress-uploads/" + fileKey.split("/").map(encodeURIComponent).join("/");
     assert.equal(wp("eval", `echo wp_remote_retrieve_response_code(wp_remote_get(${JSON.stringify(unsignedObject)}));`), "403", "the provider denies unsigned private-object reads");
     // Provisioning can run again after uploads without replacing the bucket, key or objects.
     execFileSync(fileURLToPath(new URL("./harness.sh", import.meta.url)), ["s3-setup"], { stdio: "pipe" });
     // New container, independent WP volume, same database and bucket. No A upload bytes survive.
-    compose("exec", "-T", "wordpress", "sh", "-c", "rm -rf /var/www/html/wp-content/uploads/* /tmp/typedpress-uploads-*");
+    compose("exec", "-T", "wordpress", "sh", "-c", "rm -rf /var/www/html/wp-content/uploads/* /tmp/spacepress-uploads-*");
     compose("--profile", "replica", "up", "-d", "replica");
-    const replicaUrl = `http://127.0.0.1:${process.env.TP_WP_REPLICA_PORT ?? "8791"}`;
+    const replicaUrl = `http://127.0.0.1:${process.env.SP_WP_REPLICA_PORT ?? "8791"}`;
     // Poll an actual HTTP signal while the fresh image installs core/config.
     const deadline = Date.now() + 60_000;
     while (true) {
-      try { if ((await fetch(`${replicaUrl}/wp-json/typedpress/v1`)).status === 200) break; } catch {}
-      assert.ok(Date.now() < deadline, "fresh replica reached the TypedPress route");
+      try { if ((await fetch(`${replicaUrl}/wp-json/spacepress/v1`)).status === 200) break; } catch {}
+      assert.ok(Date.now() < deadline, "fresh replica reached the SpacePress route");
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
     assert.equal(replicaPhp("echo count(glob(WP_CONTENT_DIR . '/uploads/*') ?: []);"), "0", "B starts without upload data");
     wp("option", "update", "home", replicaUrl);
     wp("option", "update", "siteurl", replicaUrl);
     compose("stop", "wordpress");
-    const replica = createClient({ url: `${replicaUrl}/wp-json/typedpress/v1`, headers: auth("editor") });
+    const replica = createClient({ url: `${replicaUrl}/wp-json/spacepress/v1`, headers: auth("editor") });
     const fresh = await replica.files.decks.get(file.id);
     assert.deepEqual(Buffer.from(await (await fetch(fresh.url)).arrayBuffer()), bytes);
     const freshImage = await replica.media.get(image.id);
@@ -719,8 +719,8 @@ test("a media item reads on the API exactly as on core's media route: its parent
     const focal = await replica.media.update(image.id, { focal: { x: 0, y: 0.5 } });
     assert.notDeepEqual(Buffer.from(await (await fetch(focal.sizes.card.url)).arrayBuffer()), derivative, "B hydrates original and generates a new crop");
     assert.equal((await fetch(freshImage.sizes.card.url)).status, 404, "superseded crop loses its manifest grant");
-    const responsive = replicaPhp(`echo wp_get_attachment_image_srcset(${attachment.id}, 'tp_wide');`);
-    assert.ok(responsive.includes('/wp-json/typedpress/v1/media/'), responsive);
+    const responsive = replicaPhp(`echo wp_get_attachment_image_srcset(${attachment.id}, 'sp_wide');`);
+    assert.ok(responsive.includes('/wp-json/spacepress/v1/media/'), responsive);
     for (const candidate of responsive.split(', ')) {
       assert.equal((await fetch(candidate.split(' ')[0])).status, 200, "core srcset uses durable variants");
     }
@@ -730,10 +730,10 @@ test("a media item reads on the API exactly as on core's media route: its parent
       const regenerated: { missing: string[]; restored: boolean | null; thumbnails: { size: string; url: string; bytes: string }[] } = JSON.parse(replicaPhp(String.raw`
         require_once ABSPATH . 'wp-admin/includes/image.php';
         $id = ${attachment.id}; $mode = ${JSON.stringify(mode)};
-        $db = \TypedPress\Wp\Runtime::plugin()->connection();
+        $db = \SpacePress\Wp\Runtime::plugin()->connection();
         $path = get_attached_file($id);
-        $before = \TypedPress\Wp\Uploads::manifest($id);
-        [$objects] = \TypedPress\Wp\Uploads::store()->page(\TypedPress\Wp\Uploads::prefix(), null);
+        $before = \SpacePress\Wp\Uploads::manifest($id);
+        [$objects] = \SpacePress\Wp\Uploads::store()->page(\SpacePress\Wp\Uploads::prefix(), null);
         $beforeKeys = array_column($objects, 'key');
         $regenerate = static function () use ($id): void {
           foreach ([1, 2] as $pass) {
@@ -748,9 +748,9 @@ test("a media item reads on the API exactly as on core's media route: its parent
           if ($mode === 'commit') $db->commit();
           if ($mode === 'rollback') {
             $db->rollback();
-            [$objects] = \TypedPress\Wp\Uploads::store()->page(\TypedPress\Wp\Uploads::prefix(), null);
+            [$objects] = \SpacePress\Wp\Uploads::store()->page(\SpacePress\Wp\Uploads::prefix(), null);
             $afterKeys = array_column($objects, 'key');
-            $restored = \TypedPress\Wp\Uploads::manifest($id) === $before
+            $restored = \SpacePress\Wp\Uploads::manifest($id) === $before
               && array_diff($beforeKeys, $afterKeys) === [] && array_diff($afterKeys, $beforeKeys) === [];
             // Reusing the same paths after rollback must not republish compensated objects.
             $regenerate();
@@ -759,10 +759,10 @@ test("a media item reads on the API exactly as on core's media route: its parent
           if ($db->inTransaction()) $db->rollback();
           throw $e;
         }
-        [$objects] = \TypedPress\Wp\Uploads::store()->page(\TypedPress\Wp\Uploads::prefix(), null);
+        [$objects] = \SpacePress\Wp\Uploads::store()->page(\SpacePress\Wp\Uploads::prefix(), null);
         $keys = array_column($objects, 'key');
         $missing = [];
-        foreach (\TypedPress\Wp\Uploads::manifest($id) as $rel => $entry) {
+        foreach (\SpacePress\Wp\Uploads::manifest($id) as $rel => $entry) {
           if (!in_array($entry['key'], $keys, true)) $missing[] = $rel;
         }
         $meta = wp_get_attachment_metadata($id);
@@ -790,16 +790,16 @@ test("a media item reads on the API exactly as on core's media route: its parent
       $id = ${attachment.id};
       $seen = null;
       add_filter('rest_pre_dispatch', static function ($result, $server, $request) use ($id, &$seen) {
-        if ($request->get_route() === '/typedpress-probe/attached') {
+        if ($request->get_route() === '/spacepress-probe/attached') {
           $path = get_attached_file($id);
           $seen = ['inside' => $request->get_method(), 'bytes' => is_string($path) && is_file($path) ? filesize($path) : 0];
           return new WP_REST_Response(['ok' => true]);
         }
         return $result;
       }, 10, 3);
-      \TypedPress\Wp\Runtime::plugin()->app();
-      $run = new ReflectionMethod(\TypedPress\Wp\Facade::class, 'run');
-      $run->invoke(null, new WP_REST_Request('GET', '/typedpress-probe/attached'));
+      \SpacePress\Wp\Runtime::plugin()->app();
+      $run = new ReflectionMethod(\SpacePress\Wp\Facade::class, 'run');
+      $run->invoke(null, new WP_REST_Request('GET', '/spacepress-probe/attached'));
       echo wp_json_encode($seen);
     `));
     assert.equal(viaGet.inside, "GET");
@@ -821,49 +821,49 @@ test("a media item reads on the API exactly as on core's media route: its parent
     assert.equal(restored.error, undefined, JSON.stringify(restored));
     assert.deepEqual(Buffer.from(await (await fetch((await replica.media.get(attachment.id)).url)).arrayBuffer()), original);
     const credentialFailure: { status: number; code: string; detail: string } = JSON.parse(replicaPhp(String.raw`
-      putenv('TP_TEST_UPLOAD_SECRET=invalid-test-credential');
+      putenv('SP_TEST_UPLOAD_SECRET=invalid-test-credential');
       $tmp = tempnam(sys_get_temp_dir(), 'credential'); file_put_contents($tmp, 'private');
-      try { (new \TypedPress\Media\S3(\TypedPress\Wp\Runtime::plugin()->schema->uploads()))->put(\TypedPress\Wp\Uploads::prefix() . 'denied', $tmp, 'text/plain'); }
-      catch (\TypedPress\HttpError $e) { echo wp_json_encode(['status' => $e->status, 'code' => $e->errorCode, 'detail' => $e->getMessage()]); }
+      try { (new \SpacePress\Media\S3(\SpacePress\Wp\Runtime::plugin()->schema->uploads()))->put(\SpacePress\Wp\Uploads::prefix() . 'denied', $tmp, 'text/plain'); }
+      catch (\SpacePress\HttpError $e) { echo wp_json_encode(['status' => $e->status, 'code' => $e->errorCode, 'detail' => $e->getMessage()]); }
       finally { unlink($tmp); }
     `));
     assert.deepEqual(credentialFailure, { status: 503, code: 'uploads_unavailable', detail: 'The configured upload storage is unavailable' });
     // Compensation removes a rolled-back private object while keeping committed bytes.
     const rollback: { before: number; after: number; rows: number } = JSON.parse(replicaPhp(String.raw`
-      \TypedPress\Wp\Runtime::plugin()->app();
-      $db = \TypedPress\Db::instance();
-      $store = \TypedPress\Wp\Uploads::store();
-      [$before] = $store->page(\TypedPress\Wp\Uploads::prefix(), null);
+      \SpacePress\Wp\Runtime::plugin()->app();
+      $db = \SpacePress\Db::instance();
+      $store = \SpacePress\Wp\Uploads::store();
+      [$before] = $store->page(\SpacePress\Wp\Uploads::prefix(), null);
       $tmp = tempnam(sys_get_temp_dir(), 'rollback'); file_put_contents($tmp, "%PDF-1.4\n%%EOF\n");
-      try { $db->transaction(function () use ($tmp) { \TypedPress\Media\Files::upload('decks', $tmp, 'rollback.pdf', null); throw new RuntimeException('rollback'); }); }
+      try { $db->transaction(function () use ($tmp) { \SpacePress\Media\Files::upload('decks', $tmp, 'rollback.pdf', null); throw new RuntimeException('rollback'); }); }
       catch (RuntimeException $e) { if ($e->getMessage() !== 'rollback') throw $e; }
-      [$after] = $store->page(\TypedPress\Wp\Uploads::prefix(), null);
+      [$after] = $store->page(\SpacePress\Wp\Uploads::prefix(), null);
       global $wpdb;
-      echo wp_json_encode(['before' => count($before), 'after' => count($after), 'rows' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}tp__files WHERE filename = 'rollback.pdf'")]);
+      echo wp_json_encode(['before' => count($before), 'after' => count($after), 'rows' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}sp__files WHERE filename = 'rollback.pdf'")]);
     `));
     assert.equal(rollback.after, rollback.before);
     assert.equal(rollback.rows, 0);
     // Upload failure must not succeed onto replica-local disk or leak provider request details.
     compose("stop", "garage");
-    await assert.rejects(replica.files.decks.upload(new Blob([bytes]), { filename: "failure.pdf" }), (error: unknown) => error instanceof TypedPressError && error.status === 503 && !error.message.includes("1111111111111111"));
-    await assert.rejects(replica.media.upload(new Blob([splitPng()], { type: "image/png" }), { filename: "failure.png" }), (error: unknown) => error instanceof TypedPressError && error.status === 503);
+    await assert.rejects(replica.files.decks.upload(new Blob([bytes]), { filename: "failure.pdf" }), (error: unknown) => error instanceof SpacePressError && error.status === 503 && !error.message.includes("1111111111111111"));
+    await assert.rejects(replica.media.upload(new Blob([splitPng()], { type: "image/png" }), { filename: "failure.png" }), (error: unknown) => error instanceof SpacePressError && error.status === 503);
     // Metadata deletion immediately revokes access even when the provider cannot delete yet.
     await replica.files.decks.delete(file.id);
     assert.equal((await fetch(fresh.url)).status, 404);
     await replica.media.delete(image.id);
     assert.equal((await fetch(focal.url)).status, 404);
     compose("up", "-d", "--wait", "garage");
-    assert.equal(replicaPhp("echo as_has_scheduled_action('tp_uploads_maintain', [], 'typedpress') ? 'scheduled' : 'missing';"), "scheduled", "cleanup has durable Action Scheduler delivery");
+    assert.equal(replicaPhp("echo as_has_scheduled_action('sp_uploads_maintain', [], 'spacepress') ? 'scheduled' : 'missing';"), "scheduled", "cleanup has durable Action Scheduler delivery");
     // Durable maintenance retries failed deletes; a committed editor attachment remains referenced.
     const recovered: { remaining: string[] } = JSON.parse(replicaPhp(String.raw`
-      \TypedPress\Wp\Uploads::reconcile(time() + 1);
-      [$objects] = \TypedPress\Wp\Uploads::store()->page(\TypedPress\Wp\Uploads::prefix(), null);
+      \SpacePress\Wp\Uploads::reconcile(time() + 1);
+      [$objects] = \SpacePress\Wp\Uploads::store()->page(\SpacePress\Wp\Uploads::prefix(), null);
       echo wp_json_encode(['remaining' => array_column($objects, 'key')]);
     `));
     assert.equal(recovered.remaining.includes(fileKey), false, "outage-deferred private deletion is retried");
     assert.ok(Object.values(manifest).every((entry) => !recovered.remaining.includes(entry.key)), "deleted media objects are collected");
     assert.equal((await fetch((await replica.media.get(attachment.id)).url)).status, 200, "reconciliation retains referenced objects");
-    assert.equal(replicaPhp("echo count(glob(sys_get_temp_dir() . '/typedpress-uploads-*') ?: []);"), "0", "successful requests clean processing scratch data");
+    assert.equal(replicaPhp("echo count(glob(sys_get_temp_dir() . '/spacepress-uploads-*') ?: []);"), "0", "successful requests clean processing scratch data");
     const logs = compose("logs", "--no-color", "replica");
     assert.equal(logs.includes("1111111111111111111111111111111111111111111111111111111111111111"), false, "credentials never enter server logs");
     assert.equal(logs.includes("GK111111111111111111111111"), false, "provider identity never enters server logs");

@@ -1,5 +1,5 @@
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components -- See: ARC-1359
-import { Tabs } from '@typedpress-admin/design-system';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components -- See: ARC-1359
+import { Tabs } from '@spacepress-admin/design-system';
 import { __ } from '@wordpress/i18n';
 import { pluginTabs } from './view-utils';
 import type { PluginTab } from './view-utils';

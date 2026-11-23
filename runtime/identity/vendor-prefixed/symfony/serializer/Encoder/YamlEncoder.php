@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Encoder;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotEncodableValueException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\RuntimeException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotEncodableValueException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\RuntimeException;
 use Symfony\Component\Yaml\Dumper;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Parser;

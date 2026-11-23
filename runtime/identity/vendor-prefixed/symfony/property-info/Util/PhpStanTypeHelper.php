@@ -9,25 +9,25 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Util;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Util;
 
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ParamTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ReturnTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\VarTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ArrayShapeNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ArrayTypeNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\CallableTypeNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\CallableTypeParameterNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ConstTypeNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\GenericTypeNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\NullableTypeNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ThisTypeNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\TypeNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\UnionTypeNode;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Type;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ParamTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ReturnTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\VarTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ArrayShapeNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ArrayTypeNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\CallableTypeNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\CallableTypeParameterNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ConstTypeNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\GenericTypeNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\NullableTypeNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ThisTypeNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\TypeNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\UnionTypeNode;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Type;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
 
 /**
  * Transforms a php doc tag value to a {@link Type} instance.

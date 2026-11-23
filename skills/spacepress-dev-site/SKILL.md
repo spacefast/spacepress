@@ -1,0 +1,83 @@
+---
+name: spacepress-dev-site
+description: "Use when running a SpacePress project locally or inspecting its local WordPress site: starting and stopping `spacepress dev`, finding the site's URL and login, reading records with `spacepress find`, running an action or a job by hand, or running WP-CLI on the site."
+compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `spacepress` CLI and Node.js 22+."
+---
+
+# Run and inspect the dev site
+
+## When to use
+
+- You need the project running to see a change, or to check what the site actually stores.
+
+## Inputs required
+
+- The project directory. Node.js 22+ and npm must be installed; Docker and PHP are not needed.
+
+## Procedure
+
+1. Check the state first. With the `spacepress` MCP server, call `dev_status`. Otherwise:
+
+   ```sh
+   spacepress dev status --json
+   ```
+
+   `state` is `none` (no site yet), `stopped` or `running`; `url` and `port` say where it is, and
+   `watching` whether a `spacepress dev` process is rebuilding it on save. `error` is null, or the
+   watching process's last build when it failed (`message` and the compiler's `diagnostics`): the
+   site then serves the last build that succeeded, so fix the source before reading the site.
+
+2. Start the site.
+   - `spacepress dev --detach` builds, starts WordPress and returns once the site is up. It keeps
+     rebuilding on every save in the background and logs to `.sp/dev/dev.log`. Use this from
+     an agent. It exits 1 and prints the error when the first build fails; WordPress is running
+     and the next save that builds clears it. Plain `spacepress dev` does the same when an agent runs it without a terminal.
+   - `spacepress dev` in a terminal stays in the foreground until Ctrl+C.
+   - `spacepress dev --no-watch` builds, starts WordPress and returns, with nothing watching. Run it
+     again after edits to rebuild.
+   - `--port <n>` picks the port for a new site. An existing site keeps its port.
+
+3. Read the start-up output: the site URL, `/wp-admin/`, and the local login
+   `admin` / `spacepress-test-admin` (local development only).
+
+4. Inspect the site. These run inside WordPress on the dev site, as the trusted command line:
+   - `spacepress find <storage name> '{"where":{"done":false},"limit":5}'`: read records. A kind's
+     storage name is the snake_case form of its export name (`shoppingList` is `shopping_list`); the
+     `schema` tool lists it as `path`. The `query` tool of
+     the `spacepress` MCP server does the same.
+   - `spacepress action <name> '<json>'`: run an action.
+   - `spacepress jobs list`: queued and finished jobs. `spacepress wp action-scheduler run --hooks=sp_job`
+     runs the queued ones now.
+   - `spacepress abilities`: the Abilities the app registers.
+   - `spacepress wp <args>`: any WP-CLI command, for example `spacepress wp plugin list`.
+
+5. Read the HTTP API as a visitor would: `GET <siteUrl>/wp-json/spacepress/v1` describes the app, and
+   `GET <siteUrl>/wp-json/spacepress/v1/<storage name>` lists what an anonymous visitor may read.
+
+6. Stop it with `spacepress dev stop`. The database, uploads and plugins are kept in
+   `.sp/dev/wordpress` for the next start.
+
+## Verification
+
+- `spacepress dev status --json` reports `"state":"running"`.
+- `spacepress find <storage name>` answers `{"data":[…]}`.
+
+## Failure modes / debugging
+
+- "Port … is occupied": pass another `--port`.
+- "Another spacepress dev command owns this project": a `spacepress dev` is already running for it. Use it,
+  or `spacepress dev stop` first.
+- "Local data was preserved": a save would drop or narrow stored data. If that is intended, stop,
+  then start once with `spacepress dev --allow-destructive`.
+- A site command prints `{"error":…}` with status 503: a migration is pending or refused. Run
+  `spacepress migrate` and read its answer.
+- An edit does not show: the site runs the last successful build. Read `.sp/dev/dev.log` (or
+  the `spacepress dev` terminal) for a diagnostic, or run `spacepress check`.
+
+## Escalation
+
+- `--site` points a site command at another site. Never add it to a write (`insert`, `update`,
+  `delete`, `action`) unless the owner named that site.
+- Never delete `.sp/dev/` to "reset" without asking: it holds the local database and uploads.
+
+Reference: `www/content/docs/getting-started/installation.md`, `www/content/docs/operations/cli-and-deploy.md`.

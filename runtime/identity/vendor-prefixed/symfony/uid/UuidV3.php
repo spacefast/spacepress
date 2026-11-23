@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Uid;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Uid;
 
 /**
  * A v3 UUID contains an MD5 hash of another UUID and a name.

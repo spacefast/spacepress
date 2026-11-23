@@ -10,7 +10,7 @@ use crate::config::{Entry, Failure, entry, fail, pointer};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use std::path::Path;
-use typedpress::loader::Fs;
+use spacepress::loader::Fs;
 
 /// The reason every manifest-only check ends with; censuses match on this prefix.
 pub(super) const NOT_RECOVERABLE: &str = "source not recoverable";

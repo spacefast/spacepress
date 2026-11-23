@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace SpacePress\Identity\Vendor\CBOR\Tag\TypedArray;
 
 /**
  * Tag 80: an array of IEEE 754 binary16 values, big endian.

@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge;
 
 use function defined;
 use RuntimeException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto\OpenSSLCrypto;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher\CipherAlgorithmIdentifier;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature\Signature;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto\OpenSSLCrypto;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher\CipherAlgorithmIdentifier;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature\Signature;
 
 /**
  * Base class for crypto engine implementations.

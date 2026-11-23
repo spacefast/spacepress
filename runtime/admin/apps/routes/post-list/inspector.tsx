@@ -1,19 +1,19 @@
 import { Link, useParams, useSearch } from '@wordpress/route';
-import { Page, unlock } from '@typedpress-admin/admin-toolkit';
+import { Page, unlock } from '@spacepress-admin/admin-toolkit';
 import { Button, IconButton } from '@wordpress/ui';
-import { usePostFields } from '@typedpress-admin/fields-next';
+import { usePostFields } from '@spacepress-admin/fields-next';
 import { __ } from '@wordpress/i18n';
 import { useDispatch, useRegistry, useSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
 import { useEffect, useState, useMemo } from '@wordpress/element';
-import { DataForm } from '@typedpress-admin/dataviews';
+import { DataForm } from '@spacepress-admin/dataviews';
 import { Notice } from '@wordpress/components';
 import type {
 	Field,
 	Form as FormType,
 	DataFormControlProps,
 	DataViewRenderFieldProps,
-} from '@typedpress-admin/dataviews';
+} from '@spacepress-admin/dataviews';
 import type { Post, Updatable } from '@wordpress/core-data';
 import { close } from '@wordpress/icons';
 import { store as editorStore } from '@wordpress/editor';
@@ -31,11 +31,11 @@ function SaveButton( {
 	isSuccess: boolean | undefined;
 	isDirty: boolean;
 } ) {
-	let saveButtonLabel: string = __( 'Save', 'typedpress-admin' );
+	let saveButtonLabel: string = __( 'Save', 'spacepress-admin' );
 	if ( isSaving ) {
-		saveButtonLabel = __( 'Saving…', 'typedpress-admin' );
+		saveButtonLabel = __( 'Saving…', 'spacepress-admin' );
 	} else if ( isSuccess && ! isDirty ) {
-		saveButtonLabel = __( 'Saved!', 'typedpress-admin' );
+		saveButtonLabel = __( 'Saved!', 'spacepress-admin' );
 	}
 	return (
 		<Button type="submit" disabled={ ! isDirty }>
@@ -158,7 +158,7 @@ function SingleEdit( {
 
 	return (
 		<form
-			className="typedpress-admin-post-list-inspector__form"
+			className="spacepress-admin-post-list-inspector__form"
 			onSubmit={ onSubmit }
 		>
 			<DataForm
@@ -280,7 +280,7 @@ function BulkEdit( {
 						const value =
 							props.item[ field.id as keyof Updatable< Post > ];
 						if ( value === undefined ) {
-							return __( '(Mixed)', 'typedpress-admin' );
+							return __( '(Mixed)', 'spacepress-admin' );
 						}
 						return field.render ? (
 							<field.render { ...props } />
@@ -381,7 +381,7 @@ function BulkEdit( {
 					}
 				} }
 			>
-				{ __( 'Clear Edits', 'typedpress-admin' ) }
+				{ __( 'Clear Edits', 'spacepress-admin' ) }
 			</Button>
 		</form>
 	);
@@ -417,14 +417,14 @@ export default function Inspector() {
 		<Page
 			title={
 				isBulk
-					? __( 'Bulk Edit', 'typedpress-admin' )
-					: __( 'Quick Edit', 'typedpress-admin' )
+					? __( 'Bulk Edit', 'spacepress-admin' )
+					: __( 'Quick Edit', 'spacepress-admin' )
 			}
 			actions={
 				<IconButton
 					variant="minimal"
 					tone="neutral"
-					label={ __( 'Close inspector', 'typedpress-admin' ) }
+					label={ __( 'Close inspector', 'spacepress-admin' ) }
 					icon={ close }
 					size="compact"
 					render={

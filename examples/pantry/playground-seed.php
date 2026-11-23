@@ -7,9 +7,9 @@ require_once '/wordpress/wp-load.php';
 wp_set_current_user(1);
 // Every write must succeed: a seed that half-ran would show a site that looks broken.
 $call = static function (string $method, string $route, array $body): void {
-	// The app's API (/wp-json/typedpress/v1), in process: each call dispatches to the core route as the
+	// The app's API (/wp-json/spacepress/v1), in process: each call dispatches to the core route as the
 	// current user, exactly as an HTTP request to the facade would.
-	[$status] = \TypedPress\Wp\Facade::route(\TypedPress\Wp\Runtime::plugin(), $method, $route, [], (string) wp_json_encode($body));
+	[$status] = \SpacePress\Wp\Facade::route(\SpacePress\Wp\Runtime::plugin(), $method, $route, [], (string) wp_json_encode($body));
 	if ($status >= 300) {
 		throw new RuntimeException("$method $route answered $status");
 	}
@@ -27,6 +27,6 @@ foreach ([
 	$call('POST', '/items', $item + ['lowStockAt' => 1]);
 }
 $call('POST', '/actions/consume', ['itemId' => 1, 'amount' => 1]);
-foreach (as_get_scheduled_actions(['hook' => 'tp_job', 'status' => ActionScheduler_Store::STATUS_PENDING, 'per_page' => 20], 'ids') as $id) {
-	ActionScheduler::runner()->process_action($id, 'typedpress-playground');
+foreach (as_get_scheduled_actions(['hook' => 'sp_job', 'status' => ActionScheduler_Store::STATUS_PENDING, 'per_page' => 20], 'ids') as $id) {
+	ActionScheduler::runner()->process_action($id, 'spacepress-playground');
 }

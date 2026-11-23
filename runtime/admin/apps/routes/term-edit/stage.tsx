@@ -1,14 +1,14 @@
 import { useParams, useNavigate } from '@wordpress/route';
-import { Page, type PageActionConfig } from '@typedpress-admin/admin-toolkit';
-import { useViewConfig } from '@typedpress-admin/views';
-import { useTaxonomyTermFields } from '@typedpress-admin/fields-next';
+import { Page, type PageActionConfig } from '@spacepress-admin/admin-toolkit';
+import { useViewConfig } from '@spacepress-admin/views';
+import { useTaxonomyTermFields } from '@spacepress-admin/fields-next';
 import {
 	DataForm,
 	useFormValidity,
 	type ActionModal,
 	type Field,
 	type Form,
-} from '@typedpress-admin/dataviews';
+} from '@spacepress-admin/dataviews';
 import { useMemo, useCallback } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
 import {
@@ -20,7 +20,7 @@ import {
 import { decodeEntities } from '@wordpress/html-entities';
 import { __, sprintf } from '@wordpress/i18n';
 import { store as noticesStore } from '@wordpress/notices';
-import { useTrack } from '@typedpress-admin/telemetry';
+import { useTrack } from '@spacepress-admin/telemetry';
 import { viewTermAction } from '../term-list/actions/view-term';
 import { useDeleteTermAction } from '../term-list/actions/delete-term';
 
@@ -111,7 +111,7 @@ export default function TermEditStage() {
 		createSuccessNotice(
 			sprintf(
 				// translators: %s is the name of the updated term.
-				__( '"%s" updated successfully.', 'typedpress-admin' ),
+				__( '"%s" updated successfully.', 'spacepress-admin' ),
 				mergedRecord.name
 			),
 			{
@@ -130,7 +130,7 @@ export default function TermEditStage() {
 				'message' in error &&
 				typeof error.message === 'string'
 					? decodeEntities( error.message )
-					: __( 'Could not save term.', 'typedpress-admin' );
+					: __( 'Could not save term.', 'spacepress-admin' );
 
 			createErrorNotice( message, {
 				type: 'snackbar',

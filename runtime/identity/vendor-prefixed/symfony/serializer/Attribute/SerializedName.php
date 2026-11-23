@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
 
 /**
  * @author Fabien Bourigault <bourigaultfabien@gmail.com>
@@ -37,6 +37,6 @@ class SerializedName
     }
 }
 
-if (!class_exists(\TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation\SerializedName::class, false)) {
-    class_alias(SerializedName::class, \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation\SerializedName::class);
+if (!class_exists(\SpacePress\Identity\Vendor\Symfony\Component\Serializer\Annotation\SerializedName::class, false)) {
+    class_alias(SerializedName::class, \SpacePress\Identity\Vendor\Symfony\Component\Serializer\Annotation\SerializedName::class);
 }

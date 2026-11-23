@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Algorithm\Mac;
+namespace SpacePress\Identity\Vendor\Cose\Algorithm\Mac;
 
-use TypedPress\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
-use TypedPress\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
-use TypedPress\Identity\Vendor\Cose\Key\Key;
-use TypedPress\Identity\Vendor\Cose\Key\SymmetricKey;
+use SpacePress\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
+use SpacePress\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
+use SpacePress\Identity\Vendor\Cose\Key\Key;
+use SpacePress\Identity\Vendor\Cose\Key\SymmetricKey;
 use const E_USER_WARNING;
 use function hash;
 use function hash_hmac;
@@ -31,7 +31,7 @@ use function trigger_error;
  * that are transported or derived by a recipient algorithm - neither of which this library implements. A shorter key
  * is therefore accepted, but it emits an E_USER_WARNING unless the caller explicitly acknowledges the risk by
  * creating the algorithm with `acknowledgeShortKey: true`, following the same shape as
- * TypedPress\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS1. From v5.0.0 the same call without that acknowledgement will throw an
+ * SpacePress\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS1. From v5.0.0 the same call without that acknowledgement will throw an
  * InvalidArgumentException instead of warning.
  *
  * @see https://www.rfc-editor.org/rfc/rfc9053#section-3.1

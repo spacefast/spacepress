@@ -1,7 +1,7 @@
 import type {
 	DashboardWidget,
 	RegisteredDashboardWidgetType,
-} from '@typedpress-admin/dashboard';
+} from '@spacepress-admin/dashboard';
 import type {
 	Route,
 	FlatMenuItem,

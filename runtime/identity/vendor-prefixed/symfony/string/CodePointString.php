@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\String;
+namespace SpacePress\Identity\Vendor\Symfony\Component\String;
 
-use TypedPress\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
 
 /**
  * Represents a string of Unicode code points encoded as UTF-8.

@@ -13,7 +13,7 @@ export function MediaLoading({ resource }: { resource: ReturnType<typeof useMedi
 			</Notice>
 		);
 	return (
-		<div className="typedpress-admin-media-loading">
+		<div className="spacepress-admin-media-loading">
 			<Spinner />
 		</div>
 	);

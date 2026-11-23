@@ -2,7 +2,7 @@ import { ContentError } from "./diagnostics.ts";
 import { isContentNode, type ContentNode, type ElementNode, type ElementProps, type SourceLocation } from "./nodes.ts";
 
 /**
- * The automatic-runtime entry point (`jsxImportSource: "@typedpress/blocks"`).
+ * The automatic-runtime entry point (`jsxImportSource: "@spacepress/blocks"`).
  *
  * It has the shape of a JSX runtime and none of the machinery: no vdom, no
  * reconciliation, no keys. `jsx` runs once per element while the authored
@@ -16,7 +16,7 @@ import { isContentNode, type ContentNode, type ElementNode, type ElementProps, t
  * used the component, so `<Block.Core.Cover>` on line 12 reports line 12.
  */
 
-export const Fragment: unique symbol = Symbol.for("@typedpress/blocks#Fragment");
+export const Fragment: unique symbol = Symbol.for("@spacepress/blocks#Fragment");
 
 /** The tag a fragment parks its children under until something splices them. */
 const FRAGMENT_TAG = "";
@@ -143,12 +143,12 @@ interface JsxSource {
 declare global {
   // Set by the compiler's bundler (see compiler/module.ts): the directory esbuild's relative fileNames are relative to.
   // eslint-disable-next-line no-var
-  var __tpBlocksSourceRoot: string | undefined;
+  var __spBlocksSourceRoot: string | undefined;
 }
 
 function toLocation(source: JsxSource | undefined): SourceLocation | undefined {
   if (!source || typeof source.fileName !== "string") return undefined;
-  const root = globalThis.__tpBlocksSourceRoot;
+  const root = globalThis.__spBlocksSourceRoot;
   const file = root !== undefined && !source.fileName.startsWith("/") ? `${root.replace(/\/$/, "")}/${source.fileName}` : source.fileName;
   return { file, line: source.lineNumber, column: source.columnNumber };
 }

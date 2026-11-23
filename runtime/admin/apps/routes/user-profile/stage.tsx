@@ -1,11 +1,11 @@
-import { useFieldCollections } from '@typedpress-admin/core-data-next';
-import { useViewConfig } from '@typedpress-admin/views';
-import { Page, unlock } from '@typedpress-admin/admin-toolkit';
+import { useFieldCollections } from '@spacepress-admin/core-data-next';
+import { useViewConfig } from '@spacepress-admin/views';
+import { Page, unlock } from '@spacepress-admin/admin-toolkit';
 import { useParams, useNavigate } from '@wordpress/route';
 import { Button, Icon } from '@wordpress/ui';
 import { decodeEntities } from '@wordpress/html-entities';
 import { __, sprintf } from '@wordpress/i18n';
-import { store as tpAdminStore, type StoreSelectors } from '@typedpress-admin/boot';
+import { store as spAdminStore, type StoreSelectors } from '@spacepress-admin/boot';
 import { select, useSelect, useDispatch } from '@wordpress/data';
 import {
 	__experimentalGrid as Grid,
@@ -19,8 +19,8 @@ import type { User } from '@wordpress/core-data';
 import { store as noticesStore } from '@wordpress/notices';
 import { useMemo, useState, useCallback, useRef } from '@wordpress/element';
 import { moreVertical, arrowUpRight } from '@wordpress/icons';
-import { DataForm } from '@typedpress-admin/dataviews';
-import { useTrack } from '@typedpress-admin/telemetry';
+import { DataForm } from '@spacepress-admin/dataviews';
+import { useTrack } from '@spacepress-admin/telemetry';
 import {
 	isInviteUser,
 	isPendingInvite,
@@ -61,10 +61,10 @@ export function UserProfileBreadcrumbs( {
 		<HStack spacing={ 2 } justify="flex-start">
 			<Page.Breadcrumbs items={ breadcrumbItems } />
 			{ showBadges && showPendingInviteBadge && (
-				<Badge>{ __( 'Pending invite', 'typedpress-admin' ) }</Badge>
+				<Badge>{ __( 'Pending invite', 'spacepress-admin' ) }</Badge>
 			) }
 			{ showBadges && showStoreOwnerBadge && isInviteMode && (
-				<Badge>{ __( 'Store owner', 'typedpress-admin' ) }</Badge>
+				<Badge>{ __( 'Store owner', 'spacepress-admin' ) }</Badge>
 			) }
 		</HStack>
 	);
@@ -118,7 +118,7 @@ export function UserEditContent( {
 			return {
 				currentUser: getCurrentUser(),
 				partnerContext: (
-					select( tpAdminStore ) as StoreSelectors
+					select( spAdminStore ) as StoreSelectors
 				 ).getDashboardContext().partner,
 			};
 		},
@@ -199,7 +199,7 @@ export function UserEditContent( {
 				void createSuccessNotice(
 					sprintf(
 						/* translators: %s: user name or email */
-						__( '%s updated.', 'typedpress-admin' ),
+						__( '%s updated.', 'spacepress-admin' ),
 						dataRef.current
 							? getUserDisplayName( dataRef.current )
 							: ''
@@ -220,7 +220,7 @@ export function UserEditContent( {
 					'message' in error &&
 					typeof error.message === 'string'
 						? decodeEntities( error.message )
-						: __( 'Could not update user.', 'typedpress-admin' );
+						: __( 'Could not update user.', 'spacepress-admin' );
 				void createErrorNotice( message, {
 					type: 'snackbar',
 					id: 'update-user-error',
@@ -251,11 +251,11 @@ export function UserEditContent( {
 	// Determine breadcrumb items
 	const breadcrumbItems = breadcrumbs || [
 		{
-			label: __( 'Users', 'typedpress-admin' ),
+			label: __( 'Users', 'spacepress-admin' ),
 			to: '/users/list/all',
 		},
 		{
-			label: data.email || __( 'User', 'typedpress-admin' ),
+			label: data.email || __( 'User', 'spacepress-admin' ),
 		},
 	];
 
@@ -292,7 +292,7 @@ export function UserEditContent( {
 						>
 							{ sprintf(
 								/* translators: %s: partner dashboard name (e.g. "Woo Store") */
-								__( 'Manage profile in %s', 'typedpress-admin' ),
+								__( 'Manage profile in %s', 'spacepress-admin' ),
 								partnerContext.dashboard_name
 							) }
 							<Icon icon={ arrowUpRight } size={ 16 } />
@@ -305,7 +305,7 @@ export function UserEditContent( {
 									<TriggerButton
 										icon={ moreVertical }
 										size="compact"
-										label={ __( 'Actions', 'typedpress-admin' ) }
+										label={ __( 'Actions', 'spacepress-admin' ) }
 									/>
 								}
 							/>
@@ -316,7 +316,7 @@ export function UserEditContent( {
 									} }
 								>
 									<Menu.ItemLabel>
-										{ __( 'Delete', 'typedpress-admin' ) }
+										{ __( 'Delete', 'spacepress-admin' ) }
 									</Menu.ItemLabel>
 								</Menu.Item>
 							</Menu.Popover>

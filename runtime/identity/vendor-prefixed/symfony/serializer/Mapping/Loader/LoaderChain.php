@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 
 /**
  * Calls multiple {@link LoaderInterface} instances in a chain.

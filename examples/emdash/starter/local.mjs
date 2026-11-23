@@ -9,14 +9,14 @@ import { fileURLToPath } from 'node:url';
 const execute = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
 export const repository = resolve(here, '../../..');
-export const first = resolve(process.env.TP_BIN ?? join(repository, 'target/debug/typedpress'));
+export const first = resolve(process.env.SP_BIN ?? join(repository, 'target/debug/spacepress'));
 export async function command(args) {
   return (await execute(first, args, { cwd: repository, timeout: 600000, maxBuffer: 8 * 1024 * 1024 })).stdout.trim();
 }
 export const wp = (project, ...args) => command(['wp', '--site', project, ...args]);
 async function freePort() {
-  // TP_EXAMPLE_PORT pins the WordPress port (a shared machine's assigned lane); otherwise any free one.
-  if (process.env.TP_EXAMPLE_PORT) return Number(process.env.TP_EXAMPLE_PORT);
+  // SP_EXAMPLE_PORT pins the WordPress port (a shared machine's assigned lane); otherwise any free one.
+  if (process.env.SP_EXAMPLE_PORT) return Number(process.env.SP_EXAMPLE_PORT);
   const server = createServer();
   await new Promise((done, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', done); });
   const address = server.address();
@@ -26,15 +26,15 @@ async function freePort() {
 }
 export async function makeProject(mode) {
   if (!['blank', 'starter', 'blog'].includes(mode)) throw new Error('Unknown example.');
-  const project = await mkdtemp(join(tmpdir(), `typedpress-emdash-${mode}-`));
-  await cp(join(here, '..', mode, 'typedpress.config.ts'), join(project, 'typedpress.config.ts'));
+  const project = await mkdtemp(join(tmpdir(), `spacepress-emdash-${mode}-`));
+  await cp(join(here, '..', mode, 'spacepress.config.ts'), join(project, 'spacepress.config.ts'));
   return project;
 }
 export async function install(project, mode) {
-  const owner = JSON.parse(await readFile(join(project, '.tp/dev/owner.json'), 'utf8'));
-  const expectedSite = join(project, '.tp/dev/wordpress');
-  if (owner.project !== await realpath(project) || owner.site !== expectedSite) throw new Error('TypedPress project ownership does not match.');
-  const theme = join(expectedSite, 'wp-content/themes/typedpress-publication');
+  const owner = JSON.parse(await readFile(join(project, '.sp/dev/owner.json'), 'utf8'));
+  const expectedSite = join(project, '.sp/dev/wordpress');
+  if (owner.project !== await realpath(project) || owner.site !== expectedSite) throw new Error('SpacePress project ownership does not match.');
+  const theme = join(expectedSite, 'wp-content/themes/spacepress-publication');
   await mkdir(theme, { recursive: true });
   await cp(join(here, 'theme'), theme, { recursive: true });
   await wp(project, 'eval-file', join(here, 'configure.php'), mode, expectedSite);
@@ -45,11 +45,11 @@ export async function start(project, mode) {
   await install(project, mode);
   const status = JSON.parse(await command(['dev', 'status', project]));
   if (status.isOnline !== true || typeof status.siteUrl !== 'string') throw new Error('Studio did not report an online WordPress site.');
-  return { project, site: join(project, '.tp/dev/wordpress'), base: status.siteUrl.replace(/\/$/, ''), mode };
+  return { project, site: join(project, '.sp/dev/wordpress'), base: status.siteUrl.replace(/\/$/, ''), mode };
 }
 export async function cleanup(project) {
-  const owner = JSON.parse(await readFile(join(project, '.tp/dev/owner.json'), 'utf8'));
-  const site = join(project, '.tp/dev/wordpress');
+  const owner = JSON.parse(await readFile(join(project, '.sp/dev/owner.json'), 'utf8'));
+  const site = join(project, '.sp/dev/wordpress');
   if (owner.project !== project || owner.site !== site) throw new Error('Refusing to clean another project.');
   await command(['dev', 'stop', project]);
   const status = JSON.parse(await command(['dev', 'status', project]));
@@ -71,14 +71,14 @@ export async function launch(mode) {
     const receipt = await start(project, mode);
     await writeFile(join(project, 'example.json'), JSON.stringify(receipt, null, 2) + '\n');
     console.log(JSON.stringify({ ...receipt, admin: `${receipt.base}/wp-admin/`,
-      initialLocalLogin: 'admin / typedpress-test-admin (disposable project only)',
+      initialLocalLogin: 'admin / spacepress-test-admin (disposable project only)',
       cleanup: `node ${join(here, '..', mode, 'run.mjs')} cleanup ${project}` }, null, 2));
   } catch (error) {
     let owner;
-    try { owner = await readFile(join(project, '.tp/dev/owner.json')); }
+    try { owner = await readFile(join(project, '.sp/dev/owner.json')); }
     catch (readError) { if (readError.code !== 'ENOENT') throw readError; }
     if (!owner) {
-      // Studio creation starts only after TypedPress has written its ownership marker.
+      // Studio creation starts only after SpacePress has written its ownership marker.
       await rm(project, { recursive: true });
       console.error(`Startup failed before site ownership; removed unused project ${project}.`);
     } else {

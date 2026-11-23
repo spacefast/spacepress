@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue;
 
 use function array_key_exists;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeTypeAndValue;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeTypeAndValue;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
 use Stringable;
 
 /**

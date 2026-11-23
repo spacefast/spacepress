@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Wp\Legacy;
+namespace SpacePress\Wp\Legacy;
 
-use TypedPress\HttpError;
-use TypedPress\Js;
-use TypedPress\Schema;
-use TypedPress\Wp\Connection;
-use TypedPress\Wp\Scf;
+use SpacePress\HttpError;
+use SpacePress\Js;
+use SpacePress\Schema;
+use SpacePress\Wp\Connection;
+use SpacePress\Wp\Scf;
 
 /**
- * `wp typedpress migrate-legacy <content-model.php> [--dry-run]`: turn an original Zero (0.8) site into
+ * `wp spacepress migrate-legacy <content-model.php> [--dry-run]`: turn an original Zero (0.8) site into
  * the new app's post types in place.
  *
  * Each post tagged `zero_collection` keeps its id, so references, media ids, revisions, comments
- * and links that name it stay valid: its `post_type` becomes `tp_<table>`, the term is removed,
- * and its `_zero_<resource>_<field>` rows become the new `tp_<column>` meta in the storage form
+ * and links that name it stay valid: its `post_type` becomes `sp_<table>`, the term is removed,
+ * and its `_zero_<resource>_<field>` rows become the new `sp_<column>` meta in the storage form
  * WpPostStore reads, plus SCF's field-key reference. Status, dates and author are the post row's
  * own and stay untouched. Revisions keep their parent, author and date; they gain the record's
  * field values (see revisionValues), so restoring one changes the title as it did before.

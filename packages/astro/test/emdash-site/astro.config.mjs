@@ -1,9 +1,9 @@
 import { defineConfig } from "astro/config";
-import { tpEmdash } from "@typedpress/astro/emdash";
+import { spEmdash } from "@spacepress/astro/emdash";
 
 const out = process.env.ASTRO_TEST_OUT;
 export default defineConfig({
   output: "static",
-  integrations: [tpEmdash()],
+  integrations: [spEmdash()],
   ...(out ? { outDir: `${out}/dist`, cacheDir: `${out}/cache` } : {}),
 });

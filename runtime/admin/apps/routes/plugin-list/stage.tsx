@@ -1,14 +1,14 @@
 import { useNavigate, useParams, useSearch } from '@wordpress/route';
-import { Page, RouterLink, unlock } from '@typedpress-admin/admin-toolkit';
-import { useFieldCollections } from '@typedpress-admin/core-data-next';
-import { DataViews, useView } from '@typedpress-admin/views';
+import { Page, RouterLink, unlock } from '@spacepress-admin/admin-toolkit';
+import { useFieldCollections } from '@spacepress-admin/core-data-next';
+import { DataViews, useView } from '@spacepress-admin/views';
 import { privateApis as coreDataPrivateApis } from '@wordpress/core-data';
-import { filterSortAndPaginate } from '@typedpress-admin/dataviews';
+import { filterSortAndPaginate } from '@spacepress-admin/dataviews';
 import { __ } from '@wordpress/i18n';
 import { useCallback, useMemo } from '@wordpress/element';
-import { serializeFilters, usePageView } from '@typedpress-admin/telemetry';
+import { serializeFilters, usePageView } from '@spacepress-admin/telemetry';
 import type { Plugin } from '@wordpress/core-data';
-import type { View } from '@typedpress-admin/dataviews';
+import type { View } from '@spacepress-admin/dataviews';
 import { usePluginActions } from './actions';
 import { PluginTabs } from './plugin-tabs';
 import { getDefaultView, viewToQuery } from './view-utils';
@@ -93,8 +93,8 @@ export default function PluginList() {
 
 	return (
 		<Page
-			title={ __( 'Plugins', 'typedpress-admin' ) }
-			subTitle={ __( 'Manage and install new plugins.', 'typedpress-admin' ) }
+			title={ __( 'Plugins', 'spacepress-admin' ) }
+			subTitle={ __( 'Manage and install new plugins.', 'spacepress-admin' ) }
 			hasPadding={ false }
 		>
 			<DataViews

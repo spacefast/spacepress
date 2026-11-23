@@ -1,10 +1,10 @@
-// Field-level access over /wp-json/typedpress/v1 on real WordPress (phase 2 §4.3), with the lane B
-// fixtures in tests/wp/app/tp/lanes/fields.ts: post-backed (SCF meta) and table rows are stripped,
+// Field-level access over /wp-json/spacepress/v1 on real WordPress (phase 2 §4.3), with the lane B
+// fixtures in tests/wp/app/sp/lanes/fields.ts: post-backed (SCF meta) and table rows are stripped,
 // including `with` rows, for anonymous, an owning author, an editor and an admin; refusals and
 // group merges reach postmeta. The policy matrix lives in tests/php/db_test.php.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { createClient } from "./app/tp/_generated/client/index.ts";
+import { createClient } from "./app/sp/_generated/client/index.ts";
 import { api, auth, harness, ok, problem, qs, run, first } from "./env.ts";
 
 let team: { id: number };
@@ -45,7 +45,7 @@ test("reads remove the columns a viewer may not read, per row and in with rows",
 
 // The selector policy itself is held in tests/php/db_test.php; here one postmeta-backed filter and one
 // relation filter across post↔table prove the WordPress path reaches it.
-test("filters on a hidden column are refused over /wp-json/typedpress/v1", async () => {
+test("filters on a hidden column are refused over /wp-json/spacepress/v1", async () => {
   const forbidden = (pointer: string) => ({ status: 403, code: "forbidden", pointer });
   await problem("GET", `/field_staff${where({ email: { like: "o%" } })}`, {}, forbidden("/where/email"));
   await problem("GET", `/field_staff${where({ teamId: { budget: { gt: 500 } } })}`, { as: "editor" }, forbidden("/where/teamId/budget"));

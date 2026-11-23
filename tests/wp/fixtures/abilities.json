@@ -4141,7 +4141,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "authors",
         "op": "list"
       }
@@ -4275,7 +4275,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "authors",
         "op": "get"
       }
@@ -4426,7 +4426,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "authors",
         "op": "create"
       }
@@ -4591,7 +4591,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "authors",
         "op": "update"
       }
@@ -4710,7 +4710,7 @@
       "annotations": {
         "destructive": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "authors",
         "op": "delete"
       }
@@ -4801,7 +4801,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "authors",
         "op": "revisions"
       }
@@ -5013,7 +5013,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "authors",
         "op": "stage"
       }
@@ -5174,7 +5174,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "authors",
         "op": "staged-get"
       }
@@ -5261,7 +5261,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "authors",
         "op": "staged-compare"
       }
@@ -5305,7 +5305,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "authors",
         "op": "staged-promote"
       }
@@ -5354,7 +5354,7 @@
       "annotations": {
         "idempotent": false
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "authors",
         "op": "staged-discard"
       }
@@ -5415,7 +5415,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "authors",
         "op": "staged-preview"
       }
@@ -10319,7 +10319,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "posts",
         "op": "list"
       }
@@ -10610,7 +10610,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "posts",
         "op": "get"
       }
@@ -11039,7 +11039,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "posts",
         "op": "create"
       }
@@ -11483,7 +11483,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "posts",
         "op": "update"
       }
@@ -11735,7 +11735,7 @@
       "annotations": {
         "destructive": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "posts",
         "op": "delete"
       }
@@ -11826,7 +11826,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "posts",
         "op": "revisions"
       }
@@ -12317,7 +12317,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "posts",
         "op": "stage"
       }
@@ -12611,7 +12611,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "posts",
         "op": "staged-get"
       }
@@ -12698,7 +12698,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "posts",
         "op": "staged-compare"
       }
@@ -12742,7 +12742,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "posts",
         "op": "staged-promote"
       }
@@ -12791,7 +12791,7 @@
       "annotations": {
         "idempotent": false
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "posts",
         "op": "staged-discard"
       }
@@ -12852,7 +12852,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "posts",
         "op": "staged-preview"
       }
@@ -17691,7 +17691,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "events",
         "op": "list"
       }
@@ -17852,7 +17852,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "events",
         "op": "get"
       }
@@ -18068,7 +18068,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "events",
         "op": "create"
       }
@@ -18299,7 +18299,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "events",
         "op": "update"
       }
@@ -18451,7 +18451,7 @@
       "annotations": {
         "destructive": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "events",
         "op": "delete"
       }
@@ -18542,7 +18542,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "events",
         "op": "revisions"
       }
@@ -18820,7 +18820,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "events",
         "op": "stage"
       }
@@ -19014,7 +19014,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "events",
         "op": "staged-get"
       }
@@ -19101,7 +19101,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "events",
         "op": "staged-compare"
       }
@@ -19145,7 +19145,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "events",
         "op": "staged-promote"
       }
@@ -19194,7 +19194,7 @@
       "annotations": {
         "idempotent": false
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "events",
         "op": "staged-discard"
       }
@@ -19255,7 +19255,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "events",
         "op": "staged-preview"
       }
@@ -22304,7 +22304,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "comments",
         "op": "list"
       }
@@ -22404,7 +22404,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "comments",
         "op": "get"
       }
@@ -22507,7 +22507,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "comments",
         "op": "create"
       }
@@ -22620,7 +22620,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "comments",
         "op": "update"
       }
@@ -22708,7 +22708,7 @@
       "annotations": {
         "destructive": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "comments",
         "op": "delete"
       }
@@ -22799,7 +22799,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "comments",
         "op": "revisions"
       }
@@ -25632,7 +25632,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "signups",
         "op": "list"
       }
@@ -25739,7 +25739,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "signups",
         "op": "get"
       }
@@ -25836,7 +25836,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "signups",
         "op": "create"
       }
@@ -25945,7 +25945,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "collection": "signups",
         "op": "update"
       }
@@ -26034,7 +26034,7 @@
       "annotations": {
         "destructive": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "signups",
         "op": "delete"
       }
@@ -26125,7 +26125,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "signups",
         "op": "revisions"
       }
@@ -26217,7 +26217,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "action": "approveComment",
         "op": "run"
       }
@@ -26256,7 +26256,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "action": "publishedCount",
         "op": "run"
       }
@@ -26304,7 +26304,7 @@
         "public": false
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "action": "agentNote",
         "op": "run"
       }
@@ -26369,7 +26369,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "global": "settings",
         "op": "get"
       }
@@ -26471,7 +26471,7 @@
         "public": true
       },
       "annotations": [],
-      "typedpress": {
+      "spacepress": {
         "global": "settings",
         "op": "update"
       }
@@ -28197,7 +28197,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "media",
         "op": "list"
       }
@@ -28281,7 +28281,7 @@
         "readonly": true,
         "idempotent": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "media",
         "op": "get"
       }
@@ -28364,7 +28364,7 @@
       "annotations": {
         "destructive": true
       },
-      "typedpress": {
+      "spacepress": {
         "collection": "media",
         "op": "delete"
       }

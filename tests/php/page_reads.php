@@ -4,18 +4,18 @@ declare(strict_types=1);
 
 /*
  * Every read a first/app/ page can make runs as the visitor (issue #311): the fixture
- * tests/fixtures/page-reads, built by `typedpress build`, on WordPress with php -S. Prints one JSON
+ * tests/fixtures/page-reads, built by `spacepress build`, on WordPress with php -S. Prints one JSON
  * object: for each surface, the note titles a signed-out visitor and an editor see.
  *
- *   TP_WP_THEMES=1 php tests/php/page_reads.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/page_reads.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
 
 $site = wpSite('page-reads', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor']]);
 wp_set_current_user(1);
-\TypedPress\db()->insert('notes', ['title' => 'Public one', 'slug' => 'public-one', 'status' => 'published']);
-\TypedPress\db()->insert('notes', ['title' => 'Secret draft', 'slug' => 'secret-draft', 'status' => 'draft']);
+\SpacePress\db()->insert('notes', ['title' => 'Public one', 'slug' => 'public-one', 'status' => 'published']);
+\SpacePress\db()->insert('notes', ['title' => 'Secret draft', 'slug' => 'secret-draft', 'status' => 'draft']);
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
@@ -56,7 +56,7 @@ $out = [];
 foreach (['anonymous' => [], 'editor' => $editor] as $who => $headers) {
     $home = fetch("$url/", headers: $headers);
     preg_match('#layout (\d+)#', $home['body'], $count);
-    $call = static fn (string $name): array => fetch("$url/wp-json/typedpress/v1/actions/$name", 'POST', [...$headers, 'Content-Type: application/json', ...($who === 'editor' ? ["X-WP-Nonce: $nonce"] : [])], '{}');
+    $call = static fn (string $name): array => fetch("$url/wp-json/spacepress/v1/actions/$name", 'POST', [...$headers, 'Content-Type: application/json', ...($who === 'editor' ? ["X-WP-Nonce: $nonce"] : [])], '{}');
     [$trusted, $visitor] = [$call('trustedTitles'), $call('visitorTitles')];
     $out[$who] = [
         'page' => $titles($home['body']),

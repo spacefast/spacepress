@@ -3,11 +3,11 @@
 // commits first wins; the other one, already past its role check, must not attach its email.
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
-use TypedPress\Identity\{Plugin, Security};
+use SpacePress\Identity\{Plugin, Security};
 
 $tag = bin2hex(random_bytes(4));
-add_role('tp_guest', 'Guest', ['read' => true]);
-$guest = wp_insert_user(['user_login' => 'zr_' . $tag, 'user_pass' => Security::token(), 'role' => 'tp_guest']);
+add_role('sp_guest', 'Guest', ['read' => true]);
+$guest = wp_insert_user(['user_login' => 'zr_' . $tag, 'user_pass' => Security::token(), 'role' => 'sp_guest']);
 Plugin::$accounts->ensure($guest);
 $victim = Plugin::$sessions->create($guest)['session'];
 $attacker = Plugin::$sessions->create($guest)['session'];

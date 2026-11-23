@@ -1,6 +1,6 @@
 // Staged versions (docs/staged.md) on WordPress and MariaDB, over HTTP as each kind of caller:
 // anonymous, a subscriber (reader), an author who doesn't own the item, the author who does, an
-// editor and an admin, each with an application password. Fixture: tests/wp/app/tp/lanes/staged.ts.
+// editor and an admin, each with an application password. Fixture: tests/wp/app/sp/lanes/staged.ts.
 // Concurrent stagers and promoters run against one item at once; MariaDB row locks decide.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
@@ -19,13 +19,13 @@ before(() => {
 
 const staged = (id: number, rest = "") => `${api}/bulletins/${id}/staged${rest}`;
 const stagedRows = (id: number) => sql(`SELECT ID FROM wp_posts WHERE post_parent = ${id} AND post_name = '${id}-autosave-staged-v1'`).map((r) => Number(r.ID));
-const logOf = (id: number) => sql(`SELECT \`change\`, \`by\` FROM wp_tp_bulletin_log WHERE \`bulletinId\` = ${id} ORDER BY id`);
+const logOf = (id: number) => sql(`SELECT \`change\`, \`by\` FROM wp_sp_bulletin_log WHERE \`bulletinId\` = ${id} ORDER BY id`);
 
 /** What a caller who may not update the item gets from every public surface of it. */
 async function surfaces(as?: Role) {
   const opts = as ? { as } : {};
   const text = async (url: string) => (await fetch(url, as ? { headers: { Authorization: "Basic " + btoa(`${as}:${harness.users[as].appPassword}`) } } : {})).text();
-  const item = (await http("GET", `${core}/tp_bulletins/${mine}`, opts)).json;
+  const item = (await http("GET", `${core}/sp_bulletins/${mine}`, opts)).json;
   return {
     api: (await http("GET", `${api}/bulletins/${mine}`, opts)).json,
     list: (await http("GET", `${api}/bulletins?search=${run}`, opts)).json,
@@ -36,7 +36,7 @@ async function surfaces(as?: Role) {
     page: await text(`${site}/bulletins/live-${run}/`),
     twin: await text(`${site}/bulletins/live-${run}.md`),
     stagedSlug: (await fetch(`${site}/bulletins/staged-${run}/`)).status,
-    feed: (await text(`${site}/?feed=rss2&post_type=tp_bulletins`)).replace(/<lastBuildDate>.*?<\/lastBuildDate>/, ""),
+    feed: (await text(`${site}/?feed=rss2&post_type=sp_bulletins`)).replace(/<lastBuildDate>.*?<\/lastBuildDate>/, ""),
     llms: await text(`${site}/llms.txt`),
   };
 }
@@ -202,8 +202,8 @@ test("edit locks: the block editor's lock refuses other writers on the API, core
   wp("eval", `require_once ABSPATH . 'wp-admin/includes/post.php'; wp_set_current_user(${harness.users.admin.id}); wp_set_post_lock(${id});`);
   const refused = await http("PATCH", `${api}/bulletins/${id}`, { as: "editor", body: { summary: "blocked" } });
   assert.deepEqual([refused.status, refused.json.code, refused.json.holder?.id], [409, "locked", harness.users.admin.id]);
-  const core409 = await http("POST", `${core}/tp_bulletins/${id}`, { as: "editor", body: { title: "blocked by core" } });
-  assert.deepEqual([core409.status, core409.json.code], [409, "tp_locked"]);
+  const core409 = await http("POST", `${core}/sp_bulletins/${id}`, { as: "editor", body: { title: "blocked by core" } });
+  assert.deepEqual([core409.status, core409.json.code], [409, "sp_locked"]);
   const ability = await http("POST", `${site}/wp-json/wp-abilities/v1/abilities/blog/bulletins-update/run`, { as: "editor", body: { input: { id, patch: { summary: "blocked" } } } });
   assert.equal(ability.status, 409, JSON.stringify(ability.json));
   assert.equal((await http("PATCH", `${api}/bulletins/${id}`, { as: "subscriber", body: { summary: "x" } })).status, 404, "a reader learns of no lock");

@@ -1,6 +1,6 @@
 // Shared helpers for the WordPress suites: the harness's `up` JSON (written by run.sh to
-// tests/wp/.harness.json), WP-CLI and SQL through harness.sh, and raw HTTP against TypedPress's API
-// (/wp-json/typedpress/v1, spec §3a) and core /wp/v2.
+// tests/wp/.harness.json), WP-CLI and SQL through harness.sh, and raw HTTP against SpacePress's API
+// (/wp-json/spacepress/v1, spec §3a) and core /wp/v2.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -17,8 +17,8 @@ interface Harness {
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
-export const harness: Harness = JSON.parse(readFileSync(process.env.TP_WP_HARNESS ?? join(here, ".harness.json"), "utf8"));
-export const api = `${harness.url}/wp-json/typedpress/v1`;
+export const harness: Harness = JSON.parse(readFileSync(process.env.SP_WP_HARNESS ?? join(here, ".harness.json"), "utf8"));
+export const api = `${harness.url}/wp-json/spacepress/v1`;
 export const core = `${harness.url}/wp-json/wp/v2`;
 
 export function auth(role: Role): Record<string, string> {
@@ -30,7 +30,7 @@ export function wp(...args: string[]): string {
   return execFileSync(join(here, "harness.sh"), ["wp", ...args], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).trim();
 }
 
-/** WP-CLI that may exit non-zero; returns stdout either way (`wp typedpress` prints {error} and exits 1). */
+/** WP-CLI that may exit non-zero; returns stdout either way (`wp spacepress` prints {error} and exits 1). */
 export function wpTry(...args: string[]): string {
   try {
     return wp(...args);
@@ -39,9 +39,9 @@ export function wpTry(...args: string[]): string {
   }
 }
 
-/** `wp typedpress <cmd> ...`: TypedPress's trusted CLI on WordPress; returns `data`. */
+/** `wp spacepress <cmd> ...`: SpacePress's trusted CLI on WordPress; returns `data`. */
 export function first(...args: string[]): any {
-  const out = JSON.parse(wp("typedpress", ...args));
+  const out = JSON.parse(wp("spacepress", ...args));
   assert.ok("data" in out, JSON.stringify(out));
   return out.data;
 }
@@ -83,14 +83,14 @@ export async function http(method: string, url: string, opts: { as?: Role; body?
   return { status: res.status, type: res.headers.get("content-type") ?? "", json };
 }
 
-/** A 2xx TypedPress call; returns `data`. */
+/** A 2xx SpacePress call; returns `data`. */
 export async function ok(method: string, path: string, opts: Parameters<typeof http>[2] = {}): Promise<any> {
   const r = await http(method, api + path, opts);
   assert.ok(r.status < 300, `${method} ${path} → ${r.status} ${JSON.stringify(r.json)}`);
   return r.json.data;
 }
 
-/** A TypedPress problem document with the expected status/code/pointer; returns it. */
+/** A SpacePress problem document with the expected status/code/pointer; returns it. */
 export async function problem(method: string, path: string, opts: Parameters<typeof http>[2], expect: { status: number; code: string; pointer: string | undefined }) {
   const r = await http(method, api + path, opts);
   assert.match(r.type, /^application\/problem\+json/);

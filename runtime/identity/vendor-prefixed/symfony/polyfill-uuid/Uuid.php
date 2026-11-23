@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Polyfill\Uuid;
+namespace SpacePress\Identity\Vendor\Symfony\Polyfill\Uuid;
 
 /**
  * @internal
@@ -39,7 +39,7 @@ final class Uuid
     public const TIME_OFFSET_BIN = "\x01\xb2\x1d\xd2\x13\x81\x40\x00";
     public const TIME_OFFSET_COM = "\xfe\x4d\xe2\x2d\xec\x7e\xc0\x00";
 
-    public static function uuid_create($uuid_type = \TP_IDENTITY_VENDOR_UUID_TYPE_DEFAULT)
+    public static function uuid_create($uuid_type = \SP_IDENTITY_VENDOR_UUID_TYPE_DEFAULT)
     {
         if (!is_numeric($uuid_type) && null !== $uuid_type) {
             trigger_error(\sprintf('uuid_create() expects parameter 1 to be int, %s given', \gettype($uuid_type)), \E_USER_WARNING);

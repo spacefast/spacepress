@@ -1,6 +1,6 @@
-import { useFieldCollections } from '@typedpress-admin/core-data-next';
+import { useFieldCollections } from '@spacepress-admin/core-data-next';
 import type { Theme } from '@wordpress/core-data';
-import type { Field } from '@typedpress-admin/dataviews';
+import type { Field } from '@spacepress-admin/dataviews';
 import { useMemo } from '@wordpress/element';
 import { decodeEntities } from '@wordpress/html-entities';
 import { __ } from '@wordpress/i18n';
@@ -64,7 +64,7 @@ export function useThemeFields( themes?: Theme[] ): Field< Theme >[] {
 				const decodedAuthor = decodeEntities( author );
 				allAuthors.add( decodedAuthor );
 			} else if ( author === '' ) {
-				allAuthors.add( __( 'Anonymous', 'typedpress-admin' ) );
+				allAuthors.add( __( 'Anonymous', 'spacepress-admin' ) );
 			}
 		} );
 

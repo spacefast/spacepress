@@ -6,7 +6,7 @@
  * transport targets infrastructure that does not exist here. The upstream
  * hooks are tracking-only (they never drive UI state — modal close handlers
  * record, they do not close), so a same-shaped no-op implementation is
- * behavior-preserving. If TypedPress ever grows its own product analytics, this is
+ * behavior-preserving. If SpacePress ever grows its own product analytics, this is
  * the seam to implement.
  */
 

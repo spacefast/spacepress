@@ -242,7 +242,7 @@ async function openSearch() {
 function closeSearch(restoreFocus = true) {
   if (!searchModal || searchModal.hidden) return false;
   searchModal.hidden = true;
-  if (!document.querySelector("tp-play.is-fullscreen")) {
+  if (!document.querySelector("sp-play.is-fullscreen")) {
     document.body.classList.remove("sp-no-scroll");
   }
   if (restoreFocus && lastFocusedEl?.isConnected) {
@@ -254,7 +254,7 @@ function closeSearch(restoreFocus = true) {
 
 function isTypingTarget(el) {
   if (!(el instanceof Element)) return false;
-  if (el.closest("input, textarea, select, [contenteditable='true'], tp-sandbox, tp-play")) return true;
+  if (el.closest("input, textarea, select, [contenteditable='true'], sp-sandbox, sp-play")) return true;
   return false;
 }
 

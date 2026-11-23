@@ -10,7 +10,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Webmozart\Assert;
+namespace SpacePress\Identity\Vendor\Webmozart\Assert;
 
 class InvalidArgumentException extends \InvalidArgumentException
 {

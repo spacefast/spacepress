@@ -1,6 +1,6 @@
 <?php
 
-namespace TypedPress\Identity\Vendor\Psr\Container;
+namespace SpacePress\Identity\Vendor\Psr\Container;
 
 use Throwable;
 

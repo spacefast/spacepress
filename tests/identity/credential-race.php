@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__.'/bootstrap.php';
-use TypedPress\Identity\{Plugin,Security};
+use SpacePress\Identity\{Plugin,Security};
 $db=Plugin::$db;$uid=Plugin::$accounts->emailLogin('race-'.bin2hex(random_bytes(5)).'@example.test');
 foreach(['email','password'] as $effect){
     $session=Plugin::$sessions->create($uid)['session'];$value=$effect==='email'?'claim-'.bin2hex(random_bytes(5)).'@example.test':Security::token();$old=get_userdata($uid)->user_pass;

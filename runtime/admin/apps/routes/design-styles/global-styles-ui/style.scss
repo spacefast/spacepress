@@ -2,7 +2,7 @@
 @use "@wordpress/base-styles/colors";
 @use "@wordpress/base-styles/mixins";
 
-.typedpress-admin-global-styles-preview {
+.spacepress-admin-global-styles-preview {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -10,13 +10,13 @@
 	cursor: pointer;
 }
 
-.typedpress-admin-global-styles-preview__wrapper {
+.spacepress-admin-global-styles-preview__wrapper {
 	max-width: 100%;
 	display: block;
 	width: 100%;
 }
 
-.typedpress-admin-typography-preview {
+.spacepress-admin-typography-preview {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -27,22 +27,22 @@
 	overflow: hidden;
 }
 
-.typedpress-admin-font-size__item {
+.spacepress-admin-font-size__item {
 	white-space: nowrap;
 	text-overflow: ellipsis;
 	overflow: hidden;
 	line-break: anywhere;
 }
 
-.typedpress-admin-font-size__item-value {
+.spacepress-admin-font-size__item-value {
 	color: #757575;
 }
 
-.typedpress-admin-global-styles-screen {
+.spacepress-admin-global-styles-screen {
 	margin: 12px 16px 16px;
 }
 
-.typedpress-admin-global-styles-screen-typography__indicator {
+.spacepress-admin-global-styles-screen-typography__indicator {
 	height: 24px;
 	width: 24px;
 	font-size: 14px;
@@ -52,20 +52,20 @@
 	border-radius: 2px;
 }
 
-.typedpress-admin-block-types-search {
+.spacepress-admin-block-types-search {
 	margin-bottom: 10px;
 	padding: 0 20px;
 }
 
-.typedpress-admin-global-styles-screen-typography__font-variants-count {
+.spacepress-admin-global-styles-screen-typography__font-variants-count {
 	color: var( --wpds-color-foreground-content-neutral-weak );
 }
 
-.typedpress-admin-global-styles-font-families__manage-fonts {
+.spacepress-admin-global-styles-font-families__manage-fonts {
 	justify-content: center;
 }
 
-.typedpress-admin-global-styles-screen .color-block-support-panel {
+.spacepress-admin-global-styles-screen .color-block-support-panel {
 	padding-left: 0;
 	padding-right: 0;
 	padding-top: 0;
@@ -73,21 +73,21 @@
 	row-gap: calc( 4px * 3 );
 }
 
-.typedpress-admin-global-styles-header__description {
+.spacepress-admin-global-styles-header__description {
 	padding: 0 16px;
 }
 
-.typedpress-admin-block-types-search {
+.spacepress-admin-block-types-search {
 	margin-bottom: 8px;
 	padding: 0 16px;
 }
 
-.typedpress-admin-global-styles-header {
+.spacepress-admin-global-styles-header {
 	// Need to override the too specific bottom margin for complementary areas.
 	margin-bottom: 0 !important;
 }
 
-.typedpress-admin-global-styles-subtitle {
+.spacepress-admin-global-styles-subtitle {
 	// Need to override the too specific styles for complementary areas.
 	margin-bottom: 0 !important;
 	text-transform: uppercase;
@@ -95,7 +95,7 @@
 	font-size: 11px !important;
 }
 
-.typedpress-admin-global-styles-section-title {
+.spacepress-admin-global-styles-section-title {
 	color: var( --wpds-color-foreground-content-neutral );
 	font-weight: 600;
 	line-height: 1.2;
@@ -103,22 +103,22 @@
 	margin: 0;
 }
 
-.typedpress-admin-global-styles-icon-with-current-color {
+.spacepress-admin-global-styles-icon-with-current-color {
 	fill: currentColor;
 }
 
-.typedpress-admin-global-styles__color-indicator-wrapper {
+.spacepress-admin-global-styles__color-indicator-wrapper {
 	// Match the height of the rest of the icons (24px).
 	height: variables.$grid-unit * 3;
 	flex-shrink: 0;
 }
 
-.typedpress-admin-global-styles__shadows-panel__options-container,
-.typedpress-admin-global-styles__typography-panel__options-container {
+.spacepress-admin-global-styles__shadows-panel__options-container,
+.spacepress-admin-global-styles__typography-panel__options-container {
 	height: variables.$grid-unit * 3;
 }
 
-.typedpress-admin-global-styles__block-preview-panel {
+.spacepress-admin-global-styles__block-preview-panel {
 	position: relative;
 	width: 100%;
 	border: #ddd 1px solid;
@@ -126,7 +126,7 @@
 	overflow: hidden;
 }
 
-.typedpress-admin-global-styles__shadow-preview-panel {
+.spacepress-admin-global-styles__shadow-preview-panel {
 	height: 144px;
 	border: #ddd 1px solid;
 	border-radius: 2px;
@@ -152,7 +152,7 @@
 		8px 8px;
 	background-size: 16px 16px;
 
-	.typedpress-admin-global-styles__shadow-preview-block {
+	.spacepress-admin-global-styles__shadow-preview-block {
 		border: #ddd 1px solid;
 		border-radius: 2px;
 		background-color: #fff;
@@ -161,21 +161,21 @@
 	}
 }
 
-.typedpress-admin-global-styles__shadow-editor__dropdown-content {
+.spacepress-admin-global-styles__shadow-editor__dropdown-content {
 	width: 280px;
 }
 
-.typedpress-admin-global-styles__shadow-editor-panel {
+.spacepress-admin-global-styles__shadow-editor-panel {
 	// because tooltip of the range control is too close to the edge and creates overflow
 	margin-bottom: 4px;
 }
 
-.typedpress-admin-global-styles__shadow-editor__dropdown {
+.spacepress-admin-global-styles__shadow-editor__dropdown {
 	width: 100%;
 	position: relative;
 }
 
-.typedpress-admin-global-styles__shadow-editor__dropdown-toggle {
+.spacepress-admin-global-styles__shadow-editor__dropdown-toggle {
 	width: 100%;
 	height: auto;
 	padding-top: 8px;
@@ -189,17 +189,17 @@
 	}
 }
 
-.typedpress-admin-global-styles__shadow-editor__remove-button {
+.spacepress-admin-global-styles__shadow-editor__remove-button {
 	position: absolute;
 	right: 8px;
 	top: 8px;
 	opacity: 0;
 
-	&.typedpress-admin-global-styles__shadow-editor__remove-button {
+	&.spacepress-admin-global-styles__shadow-editor__remove-button {
 		border: none;
 	}
 
-	.typedpress-admin-global-styles__shadow-editor__dropdown-toggle:hover + &,
+	.spacepress-admin-global-styles__shadow-editor__dropdown-toggle:hover + &,
 	&:focus,
 	&:hover {
 		opacity: 1;
@@ -211,7 +211,7 @@
 	}
 }
 
-.typedpress-admin-global-styles-screen-css {
+.spacepress-admin-global-styles-screen-css {
 	flex: 1 1 auto;
 	display: flex;
 	flex-direction: column;
@@ -242,12 +242,12 @@
 	}
 }
 
-.typedpress-admin-global-styles-screen-css-help-link {
+.spacepress-admin-global-styles-screen-css-help-link {
 	display: inline-block;
 	margin-top: 8px;
 }
 
-.typedpress-admin-global-styles-screen-variations {
+.spacepress-admin-global-styles-screen-variations {
 	margin-top: 16px;
 	border-top: 1px solid #ddd;
 
@@ -256,41 +256,41 @@
 	}
 }
 
-.typedpress-admin-global-styles-sidebar__navigator-provider {
+.spacepress-admin-global-styles-sidebar__navigator-provider {
 	height: 100%;
 }
 
-.typedpress-admin-global-styles-sidebar__navigator-screen {
+.spacepress-admin-global-styles-sidebar__navigator-screen {
 	display: flex;
 	flex-direction: column;
 	height: 100%;
 }
 
-.typedpress-admin-global-styles-sidebar__navigator-screen .single-column {
+.spacepress-admin-global-styles-sidebar__navigator-screen .single-column {
 	grid-column: span 1;
 }
 
-.typedpress-admin-global-styles-screen-root.typedpress-admin-global-styles-screen-root,
-.typedpress-admin-global-styles-screen-style-variations.typedpress-admin-global-styles-screen-style-variations {
+.spacepress-admin-global-styles-screen-root.spacepress-admin-global-styles-screen-root,
+.spacepress-admin-global-styles-screen-style-variations.spacepress-admin-global-styles-screen-style-variations {
 	background: unset;
 	color: inherit;
 }
 
-.typedpress-admin-global-styles-sidebar__panel .block-editor-block-icon svg {
+.spacepress-admin-global-styles-sidebar__panel .block-editor-block-icon svg {
 	fill: currentColor;
 }
 
-.typedpress-admin-global-styles-screen-root__active-style-tile {
+.spacepress-admin-global-styles-screen-root__active-style-tile {
 	// Todo: revisit use of Card component and/or remove override
 	// The &#{&} is a workaround for the specificity of the Card component.
 	&#{&},
-	&#{&} .typedpress-admin-global-styles-screen-root__active-style-tile-preview {
+	&#{&} .spacepress-admin-global-styles-screen-root__active-style-tile-preview {
 		border-radius: 2px;
 	}
 }
 
-.typedpress-admin-global-styles-color-palette-panel,
-.typedpress-admin-global-styles-gradient-palette-panel {
+.spacepress-admin-global-styles-color-palette-panel,
+.spacepress-admin-global-styles-gradient-palette-panel {
 	padding: variables.$grid-unit-20;
 }
 

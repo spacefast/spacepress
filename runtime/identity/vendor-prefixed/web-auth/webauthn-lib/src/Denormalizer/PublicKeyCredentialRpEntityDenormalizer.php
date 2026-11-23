@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Denormalizer;
+namespace SpacePress\Identity\Vendor\Webauthn\Denormalizer;
 
 use function assert;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialRpEntity;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use SpacePress\Identity\Vendor\Webauthn\PublicKeyCredentialRpEntity;
 
 final class PublicKeyCredentialRpEntityDenormalizer implements NormalizerInterface
 {

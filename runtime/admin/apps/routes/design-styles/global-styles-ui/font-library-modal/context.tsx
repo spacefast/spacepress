@@ -1,7 +1,7 @@
 import type {
 	FontFamilyPreset,
 	GlobalStylesConfig,
-} from '@typedpress-admin/global-styles-engine';
+} from '@spacepress-admin/global-styles-engine';
 import {
 	createContext,
 	useState,
@@ -411,7 +411,7 @@ function FontLibraryProvider( { children }: { children: React.ReactNode } ) {
 				const installError: Error & {
 					installationErrors?: string[];
 				} = new Error(
-					__( 'There was an error installing fonts.', 'typedpress-admin' )
+					__( 'There was an error installing fonts.', 'spacepress-admin' )
 				);
 
 				installError.installationErrors = installationErrorMessages;
@@ -426,7 +426,7 @@ function FontLibraryProvider( { children }: { children: React.ReactNode } ) {
 	async function uninstallFontFamily( fontFamilyToUninstall: FontFamily ) {
 		if ( ! fontFamilyToUninstall?.id ) {
 			throw new Error(
-				__( 'Font family to uninstall is not defined.', 'typedpress-admin' )
+				__( 'Font family to uninstall is not defined.', 'spacepress-admin' )
 			);
 		}
 		try {

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Doctrine\Deprecations;
+namespace SpacePress\Identity\Vendor\Doctrine\Deprecations;
 
-use TypedPress\Identity\Vendor\Psr\Log\LoggerInterface;
+use SpacePress\Identity\Vendor\Psr\Log\LoggerInterface;
 
 use function array_key_exists;
 use function array_reduce;
@@ -30,13 +30,13 @@ use const E_USER_DEPRECATED;
  * following methods:
  *
  *  - Minimal collection of deprecations via getTriggeredDeprecations()
- *    \TypedPress\Identity\Vendor\Doctrine\Deprecations\Deprecation::enableTrackingDeprecations();
+ *    \SpacePress\Identity\Vendor\Doctrine\Deprecations\Deprecation::enableTrackingDeprecations();
  *
  *  - Uses @trigger_error with E_USER_DEPRECATED
- *    \TypedPress\Identity\Vendor\Doctrine\Deprecations\Deprecation::enableWithTriggerError();
+ *    \SpacePress\Identity\Vendor\Doctrine\Deprecations\Deprecation::enableWithTriggerError();
  *
  *  - Sends deprecation messages via a PSR-3 logger
- *    \TypedPress\Identity\Vendor\Doctrine\Deprecations\Deprecation::enableWithPsrLogger($logger);
+ *    \SpacePress\Identity\Vendor\Doctrine\Deprecations\Deprecation::enableWithPsrLogger($logger);
  *
  * Packages that trigger deprecations should use the `trigger()` or
  * `triggerIfCalledFromOutside()` methods.

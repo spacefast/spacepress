@@ -1,6 +1,6 @@
 import { Button, IconButton } from '@wordpress/ui';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components -- See: ARC-1359
-import { Stack } from '@typedpress-admin/design-system';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components -- See: ARC-1359
+import { Stack } from '@spacepress-admin/design-system';
 import { __ } from '@wordpress/i18n';
 import {
 	flipHorizontal as flipHorizontalIcon,
@@ -33,16 +33,16 @@ export default function EditingToolsToolbar() {
 		<Stack
 			direction="row"
 			gap={ 2 }
-			className="typedpress-admin-media-editor__toolbar"
-			id="typedpress-admin-media-editor-toolbar"
+			className="spacepress-admin-media-editor__toolbar"
+			id="spacepress-admin-media-editor-toolbar"
 		>
 			<ZoomDropdown
-				label={ __( 'Zoom', 'typedpress-admin' ) }
+				label={ __( 'Zoom', 'spacepress-admin' ) }
 				zoom={ zoom }
 				onChange={ ( newZoom ) => setCropperState( { zoom: newZoom } ) }
 			/>
 			<AspectRatioDropdown
-				className="typedpress-admin-media-editor__tools-panel-dropdown"
+				className="spacepress-admin-media-editor__tools-panel-dropdown"
 				aspectRatio={ selectedAspectRatio }
 				onChange={ handleSetAspectRatio }
 				imageAspectRatios={ imageAspectRatios }
@@ -52,7 +52,7 @@ export default function EditingToolsToolbar() {
 			<IconButton
 				variant="minimal"
 				tone="neutral"
-				label={ __( 'Flip horizontal', 'typedpress-admin' ) }
+				label={ __( 'Flip horizontal', 'spacepress-admin' ) }
 				icon={ flipHorizontalIcon }
 				onClick={ () =>
 					handleSetFlip( {
@@ -64,7 +64,7 @@ export default function EditingToolsToolbar() {
 			<IconButton
 				variant="minimal"
 				tone="neutral"
-				label={ __( 'Flip vertical', 'typedpress-admin' ) }
+				label={ __( 'Flip vertical', 'spacepress-admin' ) }
 				icon={ flipVerticalIcon }
 				onClick={ () =>
 					handleSetFlip( {
@@ -78,17 +78,17 @@ export default function EditingToolsToolbar() {
 				tone="neutral"
 				icon={ rotateLeftIcon }
 				onClick={ () => handleSetRotation( rotation - 90 ) }
-				label={ __( 'Rotate 90° left', 'typedpress-admin' ) }
+				label={ __( 'Rotate 90° left', 'spacepress-admin' ) }
 			/>
 			<IconButton
 				variant="minimal"
 				tone="neutral"
 				icon={ rotateRightIcon }
-				label={ __( 'Rotate 90° right', 'typedpress-admin' ) }
+				label={ __( 'Rotate 90° right', 'spacepress-admin' ) }
 				onClick={ () => handleSetRotation( rotation + 90 ) }
 			/>
 			<Button variant="minimal" tone="neutral" onClick={ handleReset }>
-				{ __( 'Reset', 'typedpress-admin' ) }
+				{ __( 'Reset', 'spacepress-admin' ) }
 			</Button>
 		</Stack>
 	);

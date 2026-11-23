@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR;
+namespace SpacePress\Identity\Vendor\CBOR;
 
-use TypedPress\Identity\Vendor\CBOR\OtherObject\OtherObjectInterface;
+use SpacePress\Identity\Vendor\CBOR\OtherObject\OtherObjectInterface;
 
 abstract class OtherObject extends AbstractCBORObject implements OtherObjectInterface
 {

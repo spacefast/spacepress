@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Exception\X509ValidationException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Exception\X509ValidationException;
 
 /**
  * Exception thrown on certification path validation errors.

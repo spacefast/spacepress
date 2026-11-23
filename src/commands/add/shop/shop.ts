@@ -1,4 +1,4 @@
-import { store, product, productCategory, productTag, order } from "typedpress";
+import { store, product, productCategory, productTag, order } from "spacepress";
 
 export const shop = store({
   currency: "EUR",
@@ -12,7 +12,7 @@ export const shop = store({
     { type: "flatRate", title: "Courier", cost: "25.00" },
   ] }],
   payments: ["cod"],
-  email: { fromName: "TypedPress Shop", fromAddress: "shop@example.com" },
+  email: { fromName: "SpacePress Shop", fromAddress: "shop@example.com" },
 });
 export const products = product({ sync: "content/products/*.md", url: "/products/:slug" });
 export const categories = productCategory({ sync: "content/product-categories/*.md", url: "/shop/:path" });

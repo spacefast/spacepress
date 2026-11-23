@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature\RSA;
+namespace SpacePress\Identity\Vendor\Cose\Algorithm\Signature\RSA;
 
-use TypedPress\Identity\Vendor\Cose\Key\RsaKeyValidator;
+use SpacePress\Identity\Vendor\Cose\Key\RsaKeyValidator;
 use const OPENSSL_ALGO_SHA384;
 
 final class RS384 extends RSA

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Psr\EventDispatcher;
+namespace SpacePress\Identity\Vendor\Psr\EventDispatcher;
 
 /**
  * Defines a dispatcher for events.

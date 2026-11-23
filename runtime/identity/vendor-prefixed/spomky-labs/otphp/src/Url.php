@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\OTPHP;
+namespace SpacePress\Identity\Vendor\OTPHP;
 
 use function array_key_exists;
 use function is_string;
-use TypedPress\Identity\Vendor\OTPHP\Exception\InvalidProvisioningUriException;
+use SpacePress\Identity\Vendor\OTPHP\Exception\InvalidProvisioningUriException;
 
 /**
  * @readonly

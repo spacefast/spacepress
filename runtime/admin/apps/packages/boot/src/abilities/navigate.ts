@@ -1,8 +1,8 @@
 import { registerAbility } from '@wordpress/abilities';
 import { select } from '@wordpress/data';
-import { store as agentContextStore } from '@typedpress-admin/ai-agent';
-import type { SitemapData } from '@typedpress-admin/ai-agent';
-import { store as tpAdminStore } from '../store';
+import { store as agentContextStore } from '@spacepress-admin/ai-agent';
+import type { SitemapData } from '@spacepress-admin/ai-agent';
+import { store as spAdminStore } from '../store';
 
 /**
  * Minimal router interface for navigation with cache invalidation.
@@ -54,7 +54,7 @@ function isInSitemap( path: string ): boolean {
  */
 function isKnownRoute( path: string ): boolean {
 	try {
-		const routes = select( tpAdminStore ).getRoutes();
+		const routes = select( spAdminStore ).getRoutes();
 		return routes.some( ( route: { path: string } ) => {
 			// Replace TanStack $param segments with a regex that matches any path segment
 			const pattern = route.path.replace( /\$\w+/g, '[^/]+' );
@@ -78,11 +78,11 @@ export function registerNavigationAbility( router: Router ): void {
 
 	try {
 		void registerAbility( {
-			name: 'typedpress-admin/navigate',
+			name: 'spacepress-admin/navigate',
 			label: 'Navigate Admin Interface',
 			description:
 				'Navigate to a different page within the admin interface or to external dashboard pages',
-			category: 'typedpress-admin',
+			category: 'spacepress-admin',
 			meta: {
 				instructions: `Use this tool to navigate users to different pages in the admin interface.
 

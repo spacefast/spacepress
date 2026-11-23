@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
 
 use Psr\Cache\CacheItemPoolInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 
 /**
  * Caches metadata using a PSR-6 implementation.

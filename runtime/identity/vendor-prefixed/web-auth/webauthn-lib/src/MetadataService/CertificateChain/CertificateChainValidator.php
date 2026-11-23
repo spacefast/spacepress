@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\MetadataService\CertificateChain;
+namespace SpacePress\Identity\Vendor\Webauthn\MetadataService\CertificateChain;
 
 interface CertificateChainValidator
 {

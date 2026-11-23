@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions;
+namespace SpacePress\Identity\Vendor\Webauthn\AuthenticationExtensions;
 
 use function array_key_exists;
-use TypedPress\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
+use SpacePress\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
 
 final class PseudoRandomFunctionInputExtensionBuilder
 {

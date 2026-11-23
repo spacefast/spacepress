@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Encoder;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedValueException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedValueException;
 
 /**
  * @author Jordi Boggiano <j.boggiano@seld.be>

@@ -66,7 +66,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         } else {
             Ty::Class(id)
         };
-        Ok(Out::atom(format!("\\TypedPressApp\\{}()", self.classes[&id].name), ty))
+        Ok(Out::atom(format!("\\SpacePressApp\\{}()", self.classes[&id].name), ty))
     }
 
     fn class_parameter(&mut self, p: &Param, module: usize) -> Result<Ty> {
@@ -387,7 +387,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .iter()
                 .any(|(name, is_static, _)| !is_static && name.starts_with('#'))
         {
-            field_body.push_str("\t$__tp_class->brand($__tp_this);\n");
+            field_body.push_str("\t$__sp_class->brand($__sp_this);\n");
         }
         let receiver_ty = |instance: &Ty| if javascript { Ty::Dynamic } else { instance.clone() };
         for field in c.fields.iter().filter(|f| !f.is_static) {
@@ -415,22 +415,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             "field initializer does not match its inferred type; annotate the field",
                         );
                     }
-                    format!("\\TypedPressApp\\{helper}($__tp_this)")
+                    format!("\\SpacePressApp\\{helper}($__sp_this)")
                 }
-                None => "\\TypedPress\\Js::undefined()".into(),
+                None => "\\SpacePress\\Js::undefined()".into(),
             };
             if field.name.starts_with('#') {
                 field_body.push_str(&format!(
-                    "\t$__tp_class->privateDefine($__tp_this, {}, {value});\n",
+                    "\t$__sp_class->privateDefine($__sp_this, {}, {value});\n",
                     php_str(&field.name)
                 ));
             } else {
-                field_body.push_str(&format!("\t$__tp_this->p[{}] = {value};\n", php_str(&field.name)));
+                field_body.push_str(&format!("\t$__sp_this->p[{}] = {value};\n", php_str(&field.name)));
             }
         }
         writeln!(
             self.output,
-            "function {fields_name}(\\TypedPress\\JsObject $__tp_this, \\TypedPress\\JsClass $__tp_class) {{\n{field_body}}}\n"
+            "function {fields_name}(\\SpacePress\\JsObject $__sp_this, \\SpacePress\\JsClass $__sp_class) {{\n{field_body}}}\n"
         )
         .unwrap();
         let ctor = if let Some(f) = &c.constructor {
@@ -448,7 +448,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             )?;
             format!(
                 "\\Closure::fromCallable({})",
-                php_str(&format!("\\TypedPressApp\\{helper}"))
+                php_str(&format!("\\SpacePressApp\\{helper}"))
             )
         } else {
             "null".into()
@@ -502,7 +502,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             let callable = format!(
                 "\\Closure::fromCallable({})",
-                php_str(&format!("\\TypedPressApp\\{helper}"))
+                php_str(&format!("\\SpacePressApp\\{helper}"))
             );
             let slot = accessor_entries[accessor.is_static as usize]
                 .entry(accessor.name.clone())
@@ -554,7 +554,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let entry = format!(
                 "{} => \\Closure::fromCallable({})",
                 php_str(member),
-                php_str(&format!("\\TypedPressApp\\{helper}"))
+                php_str(&format!("\\SpacePressApp\\{helper}"))
             );
             match (*is_static, member.starts_with('#')) {
                 (true, false) => static_methods.push(entry),
@@ -574,7 +574,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 );
             }
             // Other well-known symbols change built-in protocols (iteration, string tags) that
-            // TypedPress's runtime doesn't route through class members.
+            // SpacePress's runtime doesn't route through class members.
             if let SymbolVal::WellKnown(name) = &**key
                 && !(*name == "hasInstance" && method.is_static)
             {
@@ -594,7 +594,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             symbol_entries[method.is_static as usize].push(format!(
                 "[{}, \\Closure::fromCallable({})]",
                 key,
-                php_str(&format!("\\TypedPressApp\\{helper}"))
+                php_str(&format!("\\SpacePressApp\\{helper}"))
             ));
         }
         let mut prototype_symbols = Vec::new();
@@ -618,11 +618,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         let parent_php = match (parent, class.builtin_base) {
-            (Some(id), _) => format!("\\TypedPressApp\\{}()", self.classes[&id].name),
-            (None, Some(builtin)) => format!("\\TypedPress\\JsClass::builtin({})", php_str(builtin)),
+            (Some(id), _) => format!("\\SpacePressApp\\{}()", self.classes[&id].name),
+            (None, Some(builtin)) => format!("\\SpacePress\\JsClass::builtin({})", php_str(builtin)),
             (None, None) => "null".into(),
         };
-        writeln!(self.output, "function {name}(): \\TypedPress\\JsClass {{\n\tstatic $class;\n\treturn $class ??= new \\TypedPress\\JsClass({parent_php}, {ctor}, \\Closure::fromCallable({}), [{}], [{}], {data}, [{}], [{}], {private_statics}, [{instance_accessors}], [{static_accessors}], symbolMethods: [{symbol_methods}], staticSymbolMethods: [{static_symbol_methods}], prototypeSymbols: [{prototype_symbols}]);\n}}\n", php_str(&format!("\\TypedPressApp\\{fields_name}")), own_methods.join(", "), static_methods.join(", "), private_methods.join(", "), static_private_methods.join(", ")).unwrap();
+        writeln!(self.output, "function {name}(): \\SpacePress\\JsClass {{\n\tstatic $class;\n\treturn $class ??= new \\SpacePress\\JsClass({parent_php}, {ctor}, \\Closure::fromCallable({}), [{}], [{}], {data}, [{}], [{}], {private_statics}, [{instance_accessors}], [{static_accessors}], symbolMethods: [{symbol_methods}], staticSymbolMethods: [{static_symbol_methods}], prototypeSymbols: [{prototype_symbols}]);\n}}\n", php_str(&format!("\\SpacePressApp\\{fields_name}")), own_methods.join(", "), static_methods.join(", "), private_methods.join(", "), static_private_methods.join(", ")).unwrap();
         Ok(id)
     }
 
@@ -633,14 +633,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.class_access_guard(span)?;
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\TypedPressApp\\{}()->construct(...({argv})->a)", info.name),
+                format!("\\SpacePressApp\\{}()->construct(...({argv})->a)", info.name),
                 Ty::Dynamic,
             ));
         }
         let arguments = self.checked_class_args(&info.constructor, args, span)?;
         self.class_access_guard(span)?;
         Ok(Out::atom(
-            format!("\\TypedPressApp\\{}()->construct({})", info.name, arguments.join(", ")),
+            format!("\\SpacePressApp\\{}()->construct({})", info.name, arguments.join(", ")),
             info.instance,
         ))
     }
@@ -705,14 +705,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if is_static {
                     format!("{}->get({})", receiver.wrapped(), php_str(prop))
                 } else {
-                    format!("\\TypedPress\\Js::dynamicGet({}, {})", receiver.php, php_str(prop))
+                    format!("\\SpacePress\\Js::dynamicGet({}, {})", receiver.php, php_str(prop))
                 },
                 accessor.ty.clone(),
             ));
         }
         if !is_static && let Some(ty) = self.error_member(&receiver.ty, prop) {
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::dynamicGet({}, {})", receiver.php, php_str(prop)),
+                format!("\\SpacePress\\Js::dynamicGet({}, {})", receiver.php, php_str(prop)),
                 ty,
             ));
         }
@@ -727,7 +727,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let php = if is_static {
             format!("{}->get({})", receiver.wrapped(), php_str(prop))
         } else {
-            format!("\\TypedPress\\Js::dataGet({}, {})", receiver.php, php_str(prop))
+            format!("\\SpacePress\\Js::dataGet({}, {})", receiver.php, php_str(prop))
         };
         Ok(Out::atom(
             php,
@@ -759,7 +759,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         self.class_access_guard(span)?;
         let Ty::Fn(_, ret) = signature else { unreachable!() };
         let php = format!(
-            "\\TypedPress\\JsClass::invoke({}, {}, [{}], {})",
+            "\\SpacePress\\JsClass::invoke({}, {}, [{}], {})",
             receiver.php,
             php_str(member),
             argv.join(", "),
@@ -806,7 +806,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if name == ":fields" {
             return Ok(Some(Out::atom(
                 format!(
-                    "\\TypedPressApp\\{}({}, \\TypedPressApp\\{}())",
+                    "\\SpacePressApp\\{}({}, \\SpacePressApp\\{}())",
                     self.classes[&id].fields, receiver.php, self.classes[&id].name
                 ),
                 Ty::Null,
@@ -816,7 +816,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             return Ok(Some(Out::atom(
                 format!(
-                    "\\TypedPress\\JsClass::builtin({})->initialize({}, ({argv})->a)",
+                    "\\SpacePress\\JsClass::builtin({})->initialize({}, ({argv})->a)",
                     php_str(builtin),
                     receiver.php
                 ),
@@ -832,7 +832,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             return Ok(Some(Out::atom(
                 format!(
-                    "\\TypedPressApp\\{}()->initialize({}, ({argv})->a)",
+                    "\\SpacePressApp\\{}()->initialize({}, ({argv})->a)",
                     info.name, receiver.php
                 ),
                 Ty::Null,
@@ -841,7 +841,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let argv = self.checked_class_args(&info.constructor, args, span)?;
         Ok(Some(Out::atom(
             format!(
-                "\\TypedPressApp\\{}()->initialize({}, [{}])",
+                "\\SpacePressApp\\{}()->initialize({}, [{}])",
                 info.name,
                 receiver.php,
                 argv.join(", ")
@@ -878,7 +878,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
                 format!(
-                    "\\TypedPressApp\\{}()->invokeOn({}, {}, ({argv})->a, {})",
+                    "\\SpacePressApp\\{}()->invokeOn({}, {}, ({argv})->a, {})",
                     self.classes[&id].name,
                     recv.php,
                     php_str(member),
@@ -894,7 +894,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let Ty::Fn(_, ret) = signature else { unreachable!() };
         Ok(Out::atom(
             format!(
-                "\\TypedPressApp\\{}()->invokeOn({}, {}, [{}], {})",
+                "\\SpacePressApp\\{}()->invokeOn({}, {}, [{}], {})",
                 self.classes[&id].name,
                 recv.php,
                 php_str(member),
@@ -923,7 +923,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         .iter()
                         .find_map(|s| info.privates.get(&(*s, name.to_string())).cloned())
                         .unwrap_or(Ty::Dynamic);
-                    return Ok((format!("\\TypedPressApp\\{}()", info.name), ty, id));
+                    return Ok((format!("\\SpacePressApp\\{}()", info.name), ty, id));
                 }
             }
             scope = current.parent.clone();
@@ -952,7 +952,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let tmp = self.tmp_var();
             return Ok(Out::atom(
                 format!(
-                    "(\\TypedPress\\Js::isNullish({tmp} = {}) ? \\TypedPress\\Js::undefined() : {})",
+                    "(\\SpacePress\\Js::isNullish({tmp} = {}) ? \\SpacePress\\Js::undefined() : {})",
                     receiver.php,
                     read(&tmp)
                 ),
@@ -1023,7 +1023,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let tmp = self.tmp_var();
             return Ok(Out::atom(
                 format!(
-                    "(\\TypedPress\\Js::isNullish({tmp} = {}) ? \\TypedPress\\Js::undefined() : {})",
+                    "(\\SpacePress\\Js::isNullish({tmp} = {}) ? \\SpacePress\\Js::undefined() : {})",
                     receiver.php,
                     call(&tmp)
                 ),
@@ -1074,7 +1074,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let tmp = self.tmp_var();
         Ok(Out::atom(
             format!(
-                "(({tmp} = \\TypedPressApp\\{found}) === \\TypedPress\\JsClass::absent() ? \\TypedPress\\Js::undefined() : {tmp})"
+                "(({tmp} = \\SpacePressApp\\{found}) === \\SpacePress\\JsClass::absent() ? \\SpacePress\\Js::undefined() : {tmp})"
             ),
             ty,
         ))

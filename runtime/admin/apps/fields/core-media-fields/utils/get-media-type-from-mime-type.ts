@@ -18,7 +18,7 @@ export function getMediaTypeFromMimeType( mimeType: string ): MediaType {
 	if ( mimeType.startsWith( 'image/' ) ) {
 		return {
 			type: 'image',
-			label: __( 'Image', 'typedpress-admin' ),
+			label: __( 'Image', 'spacepress-admin' ),
 			icon: image,
 		};
 	}
@@ -26,7 +26,7 @@ export function getMediaTypeFromMimeType( mimeType: string ): MediaType {
 	if ( mimeType.startsWith( 'video/' ) ) {
 		return {
 			type: 'video',
-			label: __( 'Video', 'typedpress-admin' ),
+			label: __( 'Video', 'spacepress-admin' ),
 			icon: video,
 		};
 	}
@@ -34,14 +34,14 @@ export function getMediaTypeFromMimeType( mimeType: string ): MediaType {
 	if ( mimeType.startsWith( 'audio/' ) ) {
 		return {
 			type: 'audio',
-			label: __( 'Audio', 'typedpress-admin' ),
+			label: __( 'Audio', 'spacepress-admin' ),
 			icon: audio,
 		};
 	}
 
 	return {
 		type: 'application',
-		label: __( 'Application', 'typedpress-admin' ),
+		label: __( 'Application', 'spacepress-admin' ),
 		icon: file,
 	};
 }

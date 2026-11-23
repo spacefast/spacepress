@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess;
 
 /**
  * Writes and reads values to/from an object/array graph.
@@ -23,7 +23,7 @@ interface PropertyAccessorInterface
      *
      * Example:
      *
-     *     use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
+     *     use SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
      *
      *     $propertyAccessor = PropertyAccess::createPropertyAccessor();
      *
@@ -56,7 +56,7 @@ interface PropertyAccessorInterface
      *
      * Example:
      *
-     *     use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
+     *     use SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
      *
      *     $propertyAccessor = PropertyAccess::createPropertyAccessor();
      *

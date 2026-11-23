@@ -66,7 +66,7 @@ test("a stack frame naming a longer path that ends with the bundle's path is not
 });
 
 test("a thrown location preserves the author's symlinked project path", async () => {
-  const base = mkdtempSync(path.join(tmpdir(), "typedpress-blocks-alias-"));
+  const base = mkdtempSync(path.join(tmpdir(), "spacepress-blocks-alias-"));
   try {
     const source = path.join(base, "source");
     const alias = path.join(base, "alias");
@@ -81,7 +81,7 @@ test("a thrown location preserves the author's symlinked project path", async ()
 });
 
 test("a module that renames its source directory keeps its original thrown diagnostic", async () => {
-  const base = mkdtempSync(path.join(tmpdir(), "typedpress-blocks-renamed-"));
+  const base = mkdtempSync(path.join(tmpdir(), "spacepress-blocks-renamed-"));
   try {
     const source = path.join(base, "source");
     const moved = path.join(base, "moved");
@@ -97,7 +97,7 @@ test("a module that renames its source directory keeps its original thrown diagn
 });
 
 test("compiling from inside withBlockApi is refused, since the module would see the DOM, and the globals are still restored", async () => {
-  const scratchRoot = mkdtempSync(path.join(tmpdir(), "typedpress-blocks-scratch-"));
+  const scratchRoot = mkdtempSync(path.join(tmpdir(), "spacepress-blocks-scratch-"));
   const before = process.env.TMPDIR;
   process.env.TMPDIR = scratchRoot;
   try {

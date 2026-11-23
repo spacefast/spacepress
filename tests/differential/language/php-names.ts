@@ -1,6 +1,6 @@
 // PHP spelling is private to each binding: source names, keys and closures retain
 // JavaScript identity even when multiple names collapse to one snake_case base.
-import { mutation, defineConfig } from "typedpress";
+import { mutation, defineConfig } from "spacepress";
 
 function bindings(itemId: number, item_id: number) {
   const httpStatus = 200;

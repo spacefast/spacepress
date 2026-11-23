@@ -1,6 +1,6 @@
 name: WordPress ahead
 
-# TypedPress against the WordPress that is coming, not only the floor it supports (7.1): the nightly build,
+# SpacePress against the WordPress that is coming, not only the floor it supports (7.1): the nightly build,
 # and the newest beta or release candidate when there is one. Weekly and by hand only, never on a PR:
 # a change in core must not turn every PR red. A failure names the build and each failing test in
 # the job summary; docs/wordpress-internals.md says what to look at in core.
@@ -21,7 +21,7 @@ permissions:
 env:
   XDEBUG_MODE: 'off'
   # Locales are turned off for apps; the suite still exercises them.
-  TYPEDPRESS_LOCALES: '1'
+  SPACEPRESS_LOCALES: '1'
 
 concurrency:
   group: wordpress-ahead
@@ -76,8 +76,8 @@ jobs:
       - name: In-process suites (tests/php)
         run: tests/php/run.sh 2>&1 | tee "$RUNNER_TEMP/php.log"
         env:
-          TP_WP_CORE_ZIP: ${{ steps.core.outputs.zip }}
-          TP_WP_CORE_SHA256: ${{ steps.core.outputs.sha256 }}
+          SP_WP_CORE_ZIP: ${{ steps.core.outputs.zip }}
+          SP_WP_CORE_SHA256: ${{ steps.core.outputs.sha256 }}
       - name: Summary
         if: always()
         run: |
@@ -101,7 +101,7 @@ jobs:
       matrix:
         build: ${{ fromJSON(needs.builds.outputs.matrix) }}
     env:
-      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
+      SP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.sp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -135,7 +135,7 @@ jobs:
       - name: WordPress lane (tests/wp)
         run: tests/wp/run.sh 2>&1 | tee "$RUNNER_TEMP/wp.log"
         env:
-          TP_WP_CORE_ZIP: ${{ steps.core.outputs.zip }}
+          SP_WP_CORE_ZIP: ${{ steps.core.outputs.zip }}
       - name: Summary
         if: always()
         run: |
@@ -159,7 +159,7 @@ jobs:
       matrix:
         build: ${{ fromJSON(needs.builds.outputs.matrix) }}
     env:
-      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
+      SP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.sp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -177,7 +177,7 @@ jobs:
             ~/.cargo/git
             target
           key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
-      - run: cargo build --locked --bin typedpress
+      - run: cargo build --locked --bin spacepress
       - name: Download ${{ matrix.build.name }}
         id: core
         uses: ./.github/actions/wordpress-build
@@ -188,15 +188,15 @@ jobs:
       # when one fails, so the summary lists them all.
       - name: Schema, seed, fetch, abilities, hardening and sealed lanes
         env:
-          TP_WP_CORE_ZIP: ${{ steps.core.outputs.zip }}
+          SP_WP_CORE_ZIP: ${{ steps.core.outputs.zip }}
         run: |
           status=0
           : > "$RUNNER_TEMP/wp-schema.log"
-          for lane in "schema-check/run.sh typedpress-wp-schema-check 8902" "seed-run.sh typedpress-wp-seed 8897" "fetch/run.sh typedpress-wp-fetch 8899" \
-                      "wordpress/run.sh typedpress-wp-wordpress 8898" "hardening/run.sh typedpress-wp-hardening 8896" "hardening/sealed-run.sh typedpress-wp-sealed 8895"; do
+          for lane in "schema-check/run.sh spacepress-wp-schema-check 8902" "seed-run.sh spacepress-wp-seed 8897" "fetch/run.sh spacepress-wp-fetch 8899" \
+                      "wordpress/run.sh spacepress-wp-wordpress 8898" "hardening/run.sh spacepress-wp-hardening 8896" "hardening/sealed-run.sh spacepress-wp-sealed 8895"; do
             read -r script project port <<<"$lane"
             echo "::group::tests/wp/$script"
-            TP_WP_PROJECT=$project TP_WP_PORT=$port "tests/wp/$script" 2>&1 | tee -a "$RUNNER_TEMP/wp-schema.log" || status=1
+            SP_WP_PROJECT=$project SP_WP_PORT=$port "tests/wp/$script" 2>&1 | tee -a "$RUNNER_TEMP/wp-schema.log" || status=1
             echo "::endgroup::"
           done
           exit $status

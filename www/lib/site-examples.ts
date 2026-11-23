@@ -1,6 +1,6 @@
 // The examples the site features, in the order it shows them. Each one is a real app that compiles
 // on main, and each covers ground the others do not. Every page shows the example's files and every
-// file `typedpress build` writes for them. The rest of examples/ are test harnesses, long demos or
+// file `spacepress build` writes for them. The rest of examples/ are test harnesses, long demos or
 // unfinished work, and stay in the repository.
 //
 // What the site says about an example lives in the example, so the two never drift:
@@ -9,7 +9,7 @@
 //                                         Playground opens
 //   examples/<name>/playground-seed.php   optional: PHP the blueprint runs once the plugins are
 //                                         active, which writes sample data through the app's own
-//                                         API (/wp-json/typedpress/v1), so access rules, hooks and jobs run as they
+//                                         API (/wp-json/spacepress/v1), so access rules, hooks and jobs run as they
 //                                         would for a real request
 //
 // Server-only: it reads files. The playground's browser script gets titles and summaries through

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Wp\Legacy;
+namespace SpacePress\Wp\Legacy;
 
-use TypedPress\App;
-use TypedPress\HttpError;
-use TypedPress\Js;
-use TypedPress\Wp\Plugin;
+use SpacePress\App;
+use SpacePress\HttpError;
+use SpacePress\Js;
+use SpacePress\Wp\Plugin;
 
 /** Explicit content and account imports run outside the app CLI's transaction. */
 final class Module
@@ -124,7 +124,7 @@ final class Module
     {
         $tmp = null;
         if ($file === '-') {
-            $tmp = (string) tempnam(sys_get_temp_dir(), 'typedpress-release');
+            $tmp = (string) tempnam(sys_get_temp_dir(), 'spacepress-release');
             file_put_contents($tmp, (string) stream_get_contents(STDIN));
             $file = $tmp;
         }

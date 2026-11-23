@@ -14,7 +14,7 @@ import { buildFrontend } from '../src/index.mjs';
 
 const require = createRequire(new URL('../../../tests/differential/client/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
-const compiler = process.env.TP_BIN ?? fileURLToPath(new URL('../../../target/debug/typedpress', import.meta.url));
+const compiler = process.env.SP_BIN ?? fileURLToPath(new URL('../../../target/debug/spacepress', import.meta.url));
 const exec = promisify(execFile);
 
 test('React Fast Refresh preserves state on a real Studio WordPress page', { timeout: 300000 }, async (t) => {
@@ -27,7 +27,7 @@ test('React Fast Refresh preserves state on a real Studio WordPress page', { tim
       await exec(compiler, ['dev', 'stop', root], { timeout: 60000 });
       await exited;
     }
-    const site = join(root, '.tp/dev/wordpress');
+    const site = join(root, '.sp/dev/wordpress');
     const studio = (...args) => exec('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', ...args], { timeout: 60000 });
     const { stdout } = await studio('list', '--format=json');
     if (JSON.parse(stdout).some((entry) => entry.path === site)) await studio('delete', site, '--no-files', '--format=json');
@@ -43,13 +43,13 @@ test('React Fast Refresh preserves state on a real Studio WordPress page', { tim
   `;
   const files = {
     'package.json': JSON.stringify({ name: 'refresh-fixture', type: 'module', devDependencies: {
-      '@typedpress/frontend': '0.1.0', react: '19.2.8', 'react-dom': '19.2.8',
+      '@spacepress/frontend': '0.1.0', react: '19.2.8', 'react-dom': '19.2.8',
     } }),
-    'typedpress.config.ts': `
-      import { defineConfig } from 'typedpress';
+    'spacepress.config.ts': `
+      import { defineConfig } from 'spacepress';
       export default defineConfig({ name: 'refresh-fixture', admin: false });
     `,
-    'tp/app/page.tsx': `
+    'sp/app/page.tsx': `
       import { frontend } from '../_generated/frontend';
       export const metadata = frontend.main;
       export default function Page() { return <main><div id="react" /></main>; }
@@ -61,7 +61,7 @@ test('React Fast Refresh preserves state on a real Studio WordPress page', { tim
       import Counter from './Counter.tsx';
       createRoot(document.querySelector('#react')!).render(createElement(Counter));
     `,
-    'browser/site.css': 'button { color: rgb(1, 2, 3); }\nmain { outline: 3px solid rgb(4, 5, 6); --tp-removed-rule: 1; }\n',
+    'browser/site.css': 'button { color: rgb(1, 2, 3); }\nmain { outline: 3px solid rgb(4, 5, 6); --sp-removed-rule: 1; }\n',
     'browser/Counter.tsx': component('Count'),
   };
   for (const [name, contents] of Object.entries(files)) {
@@ -69,16 +69,16 @@ test('React Fast Refresh preserves state on a real Studio WordPress page', { tim
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, contents);
   }
-  await mkdir(join(root, 'node_modules/@typedpress'), { recursive: true });
-  await symlink(fileURLToPath(new URL('..', import.meta.url)), join(root, 'node_modules/@typedpress/frontend'), 'junction');
+  await mkdir(join(root, 'node_modules/@spacepress'), { recursive: true });
+  await symlink(fileURLToPath(new URL('..', import.meta.url)), join(root, 'node_modules/@spacepress/frontend'), 'junction');
   await buildFrontend({ root });
-  await writeFile(join(root, '.tp/refresh-private.txt'), 'Local state');
-  const publicAssets = join(root, 'public/typedpress-assets');
+  await writeFile(join(root, '.sp/refresh-private.txt'), 'Local state');
+  const publicAssets = join(root, 'public/spacepress-assets');
   for (const file of await readdir(publicAssets, { recursive: true })) {
-    if (file.endsWith('.js')) assert.doesNotMatch(await readFile(join(publicAssets, file), 'utf8'), /@vite\/client|@react-refresh|__tp_vite/);
+    if (file.endsWith('.js')) assert.doesNotMatch(await readFile(join(publicAssets, file), 'utf8'), /@vite\/client|@react-refresh|__sp_vite/);
   }
 
-  const port = process.env.TP_DEV_TEST_PORT ?? '8813';
+  const port = process.env.SP_DEV_TEST_PORT ?? '8813';
   const local = `http://localhost:${port}`;
   let output = '';
   const changed = new EventEmitter();
@@ -122,11 +122,11 @@ test('React Fast Refresh preserves state on a real Studio WordPress page', { tim
     await page.goto(address);
     return page;
   };
-  const builtLinks = (page) => page.locator('link[href*="/typedpress-assets/"]').count();
+  const builtLinks = (page) => page.locator('link[href*="/spacepress-assets/"]').count();
   try {
     let page = await open(local);
-    const launcher = await page.locator('script[src*="/__tp_vite/"]').getAttribute('src');
-    const privateState = await fetch(new URL('/.tp/refresh-private.txt', launcher));
+    const launcher = await page.locator('script[src*="/__sp_vite/"]').getAttribute('src');
+    const privateState = await fetch(new URL('/.sp/refresh-private.txt', launcher));
     assert.equal(privateState.status, 403);
     await page.getByRole('button', { name: 'Count 0', exact: true }).click();
     await page.getByRole('button', { name: 'Count 1', exact: true }).waitFor();
@@ -140,7 +140,7 @@ test('React Fast Refresh preserves state on a real Studio WordPress page', { tim
 
     // The page arrived with the built bundle's stylesheet and preload. Vite's own take their
     // place, so a rule deleted from the source stops applying without a reload.
-    await page.waitForFunction(() => document.querySelectorAll('link[href*="/typedpress-assets/"]').length === 0);
+    await page.waitForFunction(() => document.querySelectorAll('link[href*="/spacepress-assets/"]').length === 0);
     const outline = () => page.locator('main').evaluate((main) => getComputedStyle(main).outlineStyle);
     assert.equal(await outline(), 'solid');
     await writeFile(join(root, 'browser/site.css'), 'button { color: rgb(1, 2, 3); }\n');
@@ -149,11 +149,11 @@ test('React Fast Refresh preserves state on a real Studio WordPress page', { tim
     await page.close();
 
     // While Vite serves the entries, dev leaves the built bundle as it was. A build afterwards
-    // must not ship that one: `typedpress build` builds the entries again first.
+    // must not ship that one: `spacepress build` builds the entries again first.
     const stale = await bundle();
     assert.doesNotMatch(stale, /Updated count/);
-    assert.match(stale, /--tp-removed-rule/);
-    // A stop signal to the watcher (the pid `typedpress dev status --json` reports) runs dev's own
+    assert.match(stale, /--sp-removed-rule/);
+    // A stop signal to the watcher (the pid `spacepress dev status --json` reports) runs dev's own
     // cleanup: Vite takes no signal handler of its own, so WordPress stops and the command exits 0.
     const { pid } = JSON.parse((await exec(compiler, ['dev', 'status', root, '--json'], { timeout: 60000 })).stdout);
     assert.ok(Number.isSafeInteger(pid) && pid !== session.pid, 'the watcher is on record');
@@ -162,20 +162,20 @@ test('React Fast Refresh preserves state on a real Studio WordPress page', { tim
     assert.deepEqual(await killed, [0, null], output);
     assert.equal(await online(), false, 'WordPress still runs after SIGTERM');
 
-    await exec(compiler, ['build', root, '--out', join(root, 'tp/dist/check')], { timeout: 120000, env: { ...process.env, NODE_ENV: 'test' } });
+    await exec(compiler, ['build', root, '--out', join(root, 'sp/dist/check')], { timeout: 120000, env: { ...process.env, NODE_ENV: 'test' } });
     const rebuilt = await bundle();
     assert.match(rebuilt, /Updated count/);
-    assert.doesNotMatch(rebuilt, /--tp-removed-rule/);
-    assert.doesNotMatch(rebuilt, /@vite\/client|@react-refresh|__tp_vite/);
+    assert.doesNotMatch(rebuilt, /--sp-removed-rule/);
+    assert.doesNotMatch(rebuilt, /@vite\/client|@react-refresh|__sp_vite/);
 
     // Opened from another machine through a proxy that passes only WordPress on (`tailscale serve`
     // with one mapping): Vite is not reachable there, so the page loads the built entry, which
     // runs, and dev says Fast Refresh is off.
-    const owner = JSON.parse(await readFile(join(root, '.tp/dev/owner.json'), 'utf8'));
+    const owner = JSON.parse(await readFile(join(root, '.sp/dev/owner.json'), 'utf8'));
     // 127.0.0.2 stands for the other machine's name for this one: not loopback by name, and not
-    // where Vite listens. `routeVite` passes /__tp_vite/ on to Vite, sockets included.
+    // where Vite listens. `routeVite` passes /__sp_vite/ on to Vite, sockets included.
     const proxy = (routeVite) => new Promise((done) => {
-      const target = (url) => (routeVite && url.startsWith('/__tp_vite/') ? owner.frontendPort : Number(port));
+      const target = (url) => (routeVite && url.startsWith('/__sp_vite/') ? owner.frontendPort : Number(port));
       const relay = createServer((incoming, outgoing) => {
         const upstream = request({ host: 'localhost', port: target(incoming.url), path: incoming.url, method: incoming.method, headers: incoming.headers }, (answer) => {
           outgoing.writeHead(answer.statusCode, answer.headers);
@@ -200,11 +200,11 @@ test('React Fast Refresh preserves state on a real Studio WordPress page', { tim
     t.after(() => shut(plain));
     let announced = `http://127.0.0.2:${plain.address().port}`;
     await start('--url', announced);
-    assert.match(output, new RegExp(`Fast Refresh is off: ${announced} does not pass /__tp_vite/ on to Vite`));
+    assert.match(output, new RegExp(`Fast Refresh is off: ${announced} does not pass /__sp_vite/ on to Vite`));
     page = await open(announced);
     await page.getByRole('button', { name: 'Updated count 0', exact: true }).click();
     await page.getByRole('button', { name: 'Updated count 1', exact: true }).waitFor();
-    assert.equal(await page.locator('script[src*="/__tp_vite/"]').count(), 0);
+    assert.equal(await page.locator('script[src*="/__sp_vite/"]').count(), 0);
     assert.ok(await builtLinks(page) > 0);
     // With Vite out of reach, a save builds the bundle again, so a reload shows the edit.
     await writeFile(join(root, 'browser/Counter.tsx'), component('Built again'));
@@ -220,7 +220,7 @@ test('React Fast Refresh preserves state on a real Studio WordPress page', { tim
     await stop();
     await shut(plain);
 
-    // The same address with /__tp_vite/ passed on to Vite: everything the page loads comes from
+    // The same address with /__sp_vite/ passed on to Vite: everything the page loads comes from
     // the site's own address, and Fast Refresh keeps state there too.
     const routed = await proxy(true);
     t.after(() => shut(routed));
@@ -233,7 +233,7 @@ test('React Fast Refresh preserves state on a real Studio WordPress page', { tim
     page.on('websocket', (socket) => asked.push(socket.url().replace(/^ws/, 'http')));
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto(announced);
-    assert.match(await page.locator('script[src*="/__tp_vite/"]').getAttribute('src'), new RegExp(`^${announced}/__tp_vite/`));
+    assert.match(await page.locator('script[src*="/__sp_vite/"]').getAttribute('src'), new RegExp(`^${announced}/__sp_vite/`));
     await page.getByRole('button', { name: 'Built again 0', exact: true }).click();
     await page.getByRole('button', { name: 'Built again 1', exact: true }).waitFor();
     await page.evaluate(() => { window.refreshProof = 'same document'; });

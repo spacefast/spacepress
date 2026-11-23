@@ -5,7 +5,7 @@ import {
 	__experimentalGetGradientClass,
 	// @ts-expect-error - WordPress block editor module doesn't have proper types
 } from '@wordpress/block-editor';
-import type { Color, Gradient } from '@typedpress-admin/global-styles-engine';
+import type { Color, Gradient } from '@spacepress-admin/global-styles-engine';
 
 interface ColorExampleProps {
 	colors: Color[] | Gradient[];
@@ -32,7 +32,7 @@ const ColorExamples = ( {
 						? __experimentalGetGradientClass( color.slug )
 						: getColorClassName( 'background-color', color.slug );
 				const classes = clsx(
-					'typedpress-admin-style-book__color-example',
+					'spacepress-admin-style-book__color-example',
 					className
 				);
 

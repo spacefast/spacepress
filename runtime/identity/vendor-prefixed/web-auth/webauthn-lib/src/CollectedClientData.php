@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn;
+namespace SpacePress\Identity\Vendor\Webauthn;
 
 use function array_key_exists;
 use function is_array;
 use function is_string;
 use const JSON_THROW_ON_ERROR;
-use TypedPress\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
+use SpacePress\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
 use function sprintf;
-use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use SpacePress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 class CollectedClientData
 {

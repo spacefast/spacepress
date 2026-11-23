@@ -6,7 +6,7 @@ import { devAll } from '../lib/dev.js';
 
 function showHelp() {
 	console.log( `
-@typedpress-admin/wp-build - WordPress Plugin Build Tool
+@spacepress-admin/wp-build - WordPress Plugin Build Tool
 
 Usage:
   wp-build <command>

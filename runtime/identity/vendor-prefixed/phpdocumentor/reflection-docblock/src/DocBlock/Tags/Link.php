@@ -11,13 +11,13 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Context as TypeContext;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Utils;
-use TypedPress\Identity\Vendor\Webmozart\Assert\Assert;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Context as TypeContext;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Utils;
+use SpacePress\Identity\Vendor\Webmozart\Assert\Assert;
 
 /**
  * Reflection class for a {@}link tag in a Docblock.

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR;
+namespace SpacePress\Identity\Vendor\CBOR;
 
-use TypedPress\Identity\Vendor\CBOR\Tag\TagInterface;
+use SpacePress\Identity\Vendor\CBOR\Tag\TagInterface;
 use function chr;
 use InvalidArgumentException;
 

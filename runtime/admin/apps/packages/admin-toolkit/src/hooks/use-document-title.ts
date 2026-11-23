@@ -5,7 +5,7 @@ import { decodeEntities } from '@wordpress/html-entities';
 import { speak } from '@wordpress/a11y';
 import type { UnstableBase } from '@wordpress/core-data';
 
-export const DEFAULT_SITE_NAME = 'TypedPress Admin';
+export const DEFAULT_SITE_NAME = 'SpacePress Admin';
 
 // Module-level flag to skip the initial page load announcement.
 // A ref wouldn't work here because useDocumentTitle unmounts/remounts per route.

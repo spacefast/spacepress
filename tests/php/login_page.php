@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 /*
  * One sign-in page (docs/decisions/2026-11-15-one-sign-in-page.md), over HTTP on WordPress with
- * php -S: tests/fixtures/login-page, built by `typedpress build`, with TypedPress Identity and Two Factor
- * active. wp-login.php renders tp/app/login.tsx and still runs WordPress's sign-in; an account
+ * php -S: tests/fixtures/login-page, built by `spacepress build`, with SpacePress Identity and Two Factor
+ * active. wp-login.php renders sp/app/login.tsx and still runs WordPress's sign-in; an account
  * with Identity MFA finishes on Two Factor's second step there; /identity sends a browser to
  * wp-login.php and treats its WordPress sign-in as signed in. Prints one JSON object: label => observed.
  *
@@ -19,15 +19,15 @@ $base = (string) getenv('LOGIN_PAGE_BASE');
 $site = wpSite('login-page', ['wpContent' => $argv[1], 'identity' => true, 'base' => $base, 'users' => ['reader' => 'subscriber'], 'muPlugins' => ['identity-http' => <<<'PHP'
     <?php
     // php -S speaks HTTP only; Identity allows that on a local site with this switch.
-    define('TP_IDENTITY_DEV_HTTP', true);
+    define('SP_IDENTITY_DEV_HTTP', true);
     PHP, 'early-schema' => <<<'PHP'
     <?php
     // Test only: a request carrying this header sees the identity schema a managed build has before
     // its initialize (version 3). The storage itself is already 4, so whatever Identity's boot reruns
     // on seeing 3 changes nothing.
     if (($_SERVER['HTTP_X_TEST_IDENTITY_SCHEMA'] ?? '') === '3') {
-        add_filter('option_tp_identity_schema_version', static fn () => '0', PHP_INT_MAX);
-        add_filter('pre_option_tp_identity_schema_version', static fn () => '0', PHP_INT_MAX);
+        add_filter('option_sp_identity_schema_version', static fn () => '0', PHP_INT_MAX);
+        add_filter('pre_option_sp_identity_schema_version', static fn () => '0', PHP_INT_MAX);
     }
     PHP, 'captcha' => <<<'PHP'
     <?php
@@ -42,20 +42,20 @@ $url = $site->url();
 $password = 'correct horse battery stapler';
 $reader = $site->addUser('ana', 'subscriber', $password);
 $mfaUser = $site->addUser('mo', 'subscriber', $password);
-\TypedPress\Identity\Plugin::$accounts->ensure($mfaUser);
-$mfa = new \TypedPress\Identity\Mfa(\TypedPress\Identity\Plugin::$db, \TypedPress\Identity\Plugin::$security);
-$totp = \TypedPress\Identity\Vendor\OTPHP\TOTP::createFromSecret($mfa->setup($mfaUser, 'Login page')['secret']);
+\SpacePress\Identity\Plugin::$accounts->ensure($mfaUser);
+$mfa = new \SpacePress\Identity\Mfa(\SpacePress\Identity\Plugin::$db, \SpacePress\Identity\Plugin::$security);
+$totp = \SpacePress\Identity\Vendor\OTPHP\TOTP::createFromSecret($mfa->setup($mfaUser, 'Login page')['secret']);
 $mfa->verify($mfaUser, $totp->now(), true) || throw new RuntimeException('MFA setup failed');
 $recovery = $mfa->recoveryCodes($mfaUser);
 // Two Factor's emailed codes are on for the site: an account with Identity MFA must still be asked
 // for Identity's factor only, and a WordPress session made another way never counts for Identity.
 $emailUser = $site->addUser('em', 'subscriber', $password);
-\TypedPress\Identity\Plugin::$accounts->ensure($emailUser);
-$emailTotp = \TypedPress\Identity\Vendor\OTPHP\TOTP::createFromSecret($mfa->setup($emailUser, 'Email too')['secret']);
+\SpacePress\Identity\Plugin::$accounts->ensure($emailUser);
+$emailTotp = \SpacePress\Identity\Vendor\OTPHP\TOTP::createFromSecret($mfa->setup($emailUser, 'Email too')['secret']);
 $mfa->verify($emailUser, $emailTotp->now(), true) || throw new RuntimeException('MFA setup failed');
 update_user_meta($emailUser, Two_Factor_Core::ENABLED_PROVIDERS_USER_META_KEY, ['Two_Factor_Email']);
 update_user_meta($emailUser, Two_Factor_Core::PROVIDER_USER_META_KEY, 'Two_Factor_Email');
-$app = \TypedPress\Identity\Applications::add('Login page app', 'http://127.0.0.1:18999/callback', 'http://127.0.0.1:18999', 'app_login_page');
+$app = \SpacePress\Identity\Applications::add('Login page app', 'http://127.0.0.1:18999/callback', 'http://127.0.0.1:18999', 'app_login_page');
 $site->actAs(null);
 $site->startServer();
 
@@ -135,11 +135,11 @@ function view(array $r): array
         'inputs' => $inputs,
         'errors' => $texts("//p[@class='problem']"),
         'notices' => $texts("//p[@class='notice']"),
-        // site.css is under 4 KB, so it is inlined (TypedPress\Assets::INLINE_LIMIT), not linked.
-        'stylesheet' => preg_match('/typedpress-app-site-[0-9a-f]{16}-css/', $r['body']) === 1,
+        // site.css is under 4 KB, so it is inlined (SpacePress\Assets::INLINE_LIMIT), not linked.
+        'stylesheet' => preg_match('/spacepress-app-site-[0-9a-f]{16}-css/', $r['body']) === 1,
         'robots' => str_contains($r['body'], 'noindex'),
         'cache' => $r['headers']['cache-control'][0] ?? null,
-        'methods link' => $texts("//p[@class='typedpress-identity-methods']/a")[0] ?? null,
+        'methods link' => $texts("//p[@class='spacepress-identity-methods']/a")[0] ?? null,
         'probes' => [
             'field' => isset($inputs['probe']),
             'head' => str_contains($r['body'], 'name="probe-head"'),
@@ -176,7 +176,7 @@ function wpSession(int $uid, string $token): bool
 function identitySessions(int $uid): array
 {
     wp_cache_flush();
-    $db = \TypedPress\Identity\Plugin::$db;
+    $db = \SpacePress\Identity\Plugin::$db;
     return $db->rows("SELECT id, wp_token, revoked_at FROM {$db->prefix}sessions WHERE wp_user_id=%d ORDER BY created_at DESC", $uid);
 }
 
@@ -306,15 +306,15 @@ $out['token'] = ['status' => $token['status'], 'sub' => json_decode($userinfo['b
 // The account screens open for the signed-in browser; Identity's REST knows it by its identity cookie.
 $account = $anon->go('/identity/account');
 $out['identity signed in'] = ['status' => $account['status'], 'app' => str_contains($account['body'], 'identity-root')];
-$me = $anon->go('/wp-json/typedpress-identity/v1/account');
+$me = $anon->go('/wp-json/spacepress-identity/v1/account');
 $out['identity rest'] = ['status' => $me['status'], 'id' => json_decode($me['body'], true)['data']['account']['id'] ?? null];
 // prompt=login wants a sign-in made after the request: wp-login.php with reauth.
 $fresh = $anon->go("/identity/authorize?$query&prompt=login");
 $out['prompt login'] = ['location' => $fresh['location'], 'identity cookie' => isset($anon->cookies['zi_session'])];
 // Signing out of Identity signs this browser out of WordPress too, and the other way round.
 $anon->go("/identity/account");
-preg_match('#"csrf":"([0-9a-f]{64})"#', $anon->go('/wp-json/typedpress-identity/v1/account')['body'], $c);
-$signout = $anon->go('/wp-json/typedpress-identity/v1/sign-out', [], ["Origin: $url", 'X-Identity-CSRF: ' . ($c[1] ?? '')]);
+preg_match('#"csrf":"([0-9a-f]{64})"#', $anon->go('/wp-json/spacepress-identity/v1/account')['body'], $c);
+$signout = $anon->go('/wp-json/spacepress-identity/v1/sign-out', [], ["Origin: $url", 'X-Identity-CSRF: ' . ($c[1] ?? '')]);
 $out['identity sign-out'] = ['status' => $signout['status'], 'wordpress signed in' => $anon->signedIn(), 'identity cookie' => isset($anon->cookies['zi_session'])];
 $after = $anon->go('/identity/account');
 $out['after sign-out'] = ['status' => $after['status'], 'to login' => str_starts_with((string) $after['location'], $login)];
@@ -329,11 +329,11 @@ $out['mfa methods'] = ['provider' => html_entity_decode($p[1] ?? ''), 'emailed' 
 // alone (no wp-login.php, no second step), is a WordPress session but not an identity one.
 $byEmail = planted($url, $emailUser, ['two-factor-provider' => 'Two_Factor_Email', 'two-factor-login' => time()]);
 $plain = planted($url, $mfaUser);
-$withFactor = planted($url, $mfaUser, ['two-factor-provider' => \TypedPress\Identity\Plugin::TWO_FACTOR_KEY, 'two-factor-login' => time()]);
+$withFactor = planted($url, $mfaUser, ['two-factor-provider' => \SpacePress\Identity\Plugin::TWO_FACTOR_KEY, 'two-factor-login' => time()]);
 $out['bridge'] = [
-    'other method' => $byEmail->go('/wp-json/typedpress-identity/v1/account')['status'],
+    'other method' => $byEmail->go('/wp-json/spacepress-identity/v1/account')['status'],
     'other method page' => str_starts_with((string) $byEmail->go('/identity/account')['location'], $login),
-    'cookie only' => $plain->go('/wp-json/typedpress-identity/v1/account')['status'],
+    'cookie only' => $plain->go('/wp-json/spacepress-identity/v1/account')['status'],
     'identity factor' => $withFactor->go('/identity/account')['status'],
     'no factor, no password' => $plain->signedIn(),
 ];
@@ -368,7 +368,7 @@ $other = WP_Session_Tokens::get_instance($wpUser)->create(time() + 3600);
 WP_Session_Tokens::get_instance($wpUser)->destroy_others($other);
 $userinfo = (new Browser($url))->go('/identity/userinfo', null, ['Authorization: Bearer ' . ($grant['access_token'] ?? '')]);
 $out['destroy others'] = [
-    'identity rest' => $h2->go('/wp-json/typedpress-identity/v1/account')['status'],
+    'identity rest' => $h2->go('/wp-json/spacepress-identity/v1/account')['status'],
     'userinfo' => $userinfo['status'],
     'refresh' => $refresh((string) ($grant['refresh_token'] ?? ''))['status'],
     'session revoked' => array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['wp_token'] === hash('sha256', $h2->token)))[0]['revoked_at'] !== null,
@@ -379,7 +379,7 @@ $h3 = planted($url, $wpUser);
 $h3->go('/identity/account');
 $row = array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['wp_token'] === hash('sha256', $h3->token)))[0];
 wp_cache_flush();
-\TypedPress\Identity\Plugin::$sessions->revoke($wpUser, $row['id']);
+\SpacePress\Identity\Plugin::$sessions->revoke($wpUser, $row['id']);
 $out['revoke identity'] = [
     'wordpress session' => wpSession($wpUser, $h3->token),
     'page' => str_starts_with((string) $h3->go('/identity/account')['location'], $login),
@@ -387,14 +387,14 @@ $out['revoke identity'] = [
 
 // ---------------------------------------------------------------- a mismatched identity cookie gives way to WordPress's sign-in (M5)
 // A guest's identity session planted in a browser that is signed in to WordPress as someone else.
-$guest = wp_insert_user(['user_login' => 'tp_guest_probe', 'user_pass' => wp_generate_password(32), 'role' => 'tp_guest']);
-\TypedPress\Identity\Plugin::$accounts->ensure($guest);
-$guestSession = \TypedPress\Identity\Plugin::$sessions->create($guest);
+$guest = wp_insert_user(['user_login' => 'sp_guest_probe', 'user_pass' => wp_generate_password(32), 'role' => 'sp_guest']);
+\SpacePress\Identity\Plugin::$accounts->ensure($guest);
+$guestSession = \SpacePress\Identity\Plugin::$sessions->create($guest);
 $m5 = planted($url, $wpUser);
 $m5->cookies['zi_session'] = $guestSession['secret'];
-$me5 = json_decode($m5->go('/wp-json/typedpress-identity/v1/account')['body'], true);
+$me5 = json_decode($m5->go('/wp-json/spacepress-identity/v1/account')['body'], true);
 $page5 = $m5->go('/identity/account');
-$me5 = json_decode($m5->go('/wp-json/typedpress-identity/v1/account')['body'], true);
+$me5 = json_decode($m5->go('/wp-json/spacepress-identity/v1/account')['body'], true);
 $out['mismatch'] = ['page' => $page5['status'], 'account' => (string) ($me5['data']['account']['id'] ?? ''), 'wu' => (string) $wpUser];
 
 // ---------------------------------------------------------------- RP logout ends both, and a bare link only asks (M3)
@@ -417,7 +417,7 @@ $out['logout confirmed'] = [
 $n1 = planted($url, $wpUser);
 $n1->go('/identity/account');
 $n1Row = array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['wp_token'] === hash('sha256', $n1->token)))[0];
-$expired = \TypedPress\Identity\Keys::sign(['iss' => \TypedPress\Identity\OAuth::issuer(), 'aud' => $app['id'], 'sub' => (string) $wpUser, 'sid' => $n1Row['id'], 'iat' => time() - 7200, 'exp' => time() - 3600]);
+$expired = \SpacePress\Identity\Keys::sign(['iss' => \SpacePress\Identity\OAuth::issuer(), 'aud' => $app['id'], 'sub' => (string) $wpUser, 'sid' => $n1Row['id'], 'iat' => time() - 7200, 'exp' => time() - 3600]);
 $silent = $n1->go('/identity/logout?id_token_hint=' . rawurlencode($expired));
 $out['expired hint'] = [
     'status' => $silent['status'],
@@ -426,7 +426,7 @@ $out['expired hint'] = [
     'identity revoked' => (array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['id'] === $n1Row['id']))[0]['revoked_at'] ?? null) !== null,
 ];
 // A current hint naming the browser's user ends both at once (the application showed who signs out).
-$current = \TypedPress\Identity\Keys::sign(['iss' => \TypedPress\Identity\OAuth::issuer(), 'aud' => $app['id'], 'sub' => (string) $wpUser, 'sid' => $n1Row['id'], 'iat' => time(), 'exp' => time() + 300]);
+$current = \SpacePress\Identity\Keys::sign(['iss' => \SpacePress\Identity\OAuth::issuer(), 'aud' => $app['id'], 'sub' => (string) $wpUser, 'sid' => $n1Row['id'], 'iat' => time(), 'exp' => time() + 300]);
 $named = $n1->go('/identity/logout?id_token_hint=' . rawurlencode($current));
 $out['named hint'] = ['status' => $named['status'], 'wordpress session' => wpSession($wpUser, $n1->token)];
 
@@ -446,14 +446,14 @@ $n2Grant = (static function () use ($n2, $url, $app): array {
     $t = (new Browser($url))->go('/identity/token', ['grant_type' => 'authorization_code', 'client_id' => $app['id'], 'redirect_uri' => 'http://127.0.0.1:18999/callback', 'code' => $back['code'] ?? '', 'code_verifier' => $verifier]);
     return json_decode($t['body'], true) ?? [];
 })();
-$idb = \TypedPress\Identity\Plugin::$db;
+$idb = \SpacePress\Identity\Plugin::$db;
 $idb->run("UPDATE {$idb->prefix}sessions SET expires_at=%d WHERE id=%s", time() - 60, $n2Row['id']);
 $n2Cookie = $n2->cookies['zi_session'] ?? '';
 $out['refresh after 24h'] = [
     'refresh' => $refresh((string) ($n2Grant['refresh_token'] ?? ''))['status'],
     // The expired row no longer signs the browser in; the live WordPress session opens a new one.
-    'expired secret' => \TypedPress\Identity\Plugin::$sessions->find($n2Cookie) === null,
-    'browser' => $n2->go('/wp-json/typedpress-identity/v1/account')['status'],
+    'expired secret' => \SpacePress\Identity\Plugin::$sessions->find($n2Cookie) === null,
+    'browser' => $n2->go('/wp-json/spacepress-identity/v1/account')['status'],
     'new cookie' => ($n2->cookies['zi_session'] ?? '') !== $n2Cookie,
 ];
 
@@ -466,14 +466,14 @@ unset($second->cookies['zi_session']);
 $second->go('/identity/account');
 $out['parallel first requests'] = [
     'rotated' => ($second->cookies['zi_session'] ?? '') !== $firstCookie,
-    'earlier cookie' => $n3->go('/wp-json/typedpress-identity/v1/account')['status'],
-    'later cookie' => $second->go('/wp-json/typedpress-identity/v1/account')['status'],
+    'earlier cookie' => $n3->go('/wp-json/spacepress-identity/v1/account')['status'],
+    'later cookie' => $second->go('/wp-json/spacepress-identity/v1/account')['status'],
 ];
 
 // ---------------------------------------------------------------- REST gives way to the WordPress sign-in too (M5 on REST)
 $rest = planted($url, $wpUser);
-$rest->cookies['zi_session'] = \TypedPress\Identity\Plugin::$sessions->create($guest)['secret'];
-$restMe = json_decode($rest->go('/wp-json/typedpress-identity/v1/account')['body'], true);
+$rest->cookies['zi_session'] = \SpacePress\Identity\Plugin::$sessions->create($guest)['secret'];
+$restMe = json_decode($rest->go('/wp-json/spacepress-identity/v1/account')['body'], true);
 $out['rest mismatch'] = ['account' => (string) ($restMe['data']['account']['id'] ?? ''), 'wu' => (string) $wpUser];
 
 // ---------------------------------------------------------------- turning MFA on keeps this browser signed in (N4)
@@ -481,16 +481,16 @@ $n4User = $site->addUser('nf', 'subscriber', $password);
 $n4 = planted($url, $n4User);
 $elsewhere = WP_Session_Tokens::get_instance($n4User)->create(time() + 3600);
 $n4->go('/identity/account');
-preg_match('#"csrf":"([0-9a-f]{64})"#', $n4->go('/wp-json/typedpress-identity/v1/account')['body'], $nc);
+preg_match('#"csrf":"([0-9a-f]{64})"#', $n4->go('/wp-json/spacepress-identity/v1/account')['body'], $nc);
 $headers = ["Origin: $url", 'X-Identity-CSRF: ' . ($nc[1] ?? ''), 'Content-Type: application/json'];
-$setup = json_decode($n4->go('/wp-json/typedpress-identity/v1/mfa/setup', [], $headers)['body'], true);
-$code = \TypedPress\Identity\Vendor\OTPHP\TOTP::createFromSecret((string) ($setup['data']['secret'] ?? 'AAAA'))->now();
-$enable = $n4->go('/wp-json/typedpress-identity/v1/mfa/enable', ['code' => $code], ["Origin: $url", 'X-Identity-CSRF: ' . ($nc[1] ?? '')]);
+$setup = json_decode($n4->go('/wp-json/spacepress-identity/v1/mfa/setup', [], $headers)['body'], true);
+$code = \SpacePress\Identity\Vendor\OTPHP\TOTP::createFromSecret((string) ($setup['data']['secret'] ?? 'AAAA'))->now();
+$enable = $n4->go('/wp-json/spacepress-identity/v1/mfa/enable', ['code' => $code], ["Origin: $url", 'X-Identity-CSRF: ' . ($nc[1] ?? '')]);
 $out['mfa enable'] = [
     'status' => $enable['status'],
     'this browser' => wpSession($n4User, $n4->token),
     'other session' => wpSession($n4User, $elsewhere),
-    'still signed in' => $n4->go('/wp-json/typedpress-identity/v1/account')['status'],
+    'still signed in' => $n4->go('/wp-json/spacepress-identity/v1/account')['status'],
 ];
 
 // ---------------------------------------------------------------- a cookieless logout ends no WordPress session (N1)
@@ -500,7 +500,7 @@ $out['mfa enable'] = [
 $c1 = planted($url, $wpUser);
 $c1->go('/identity/account');
 $c1Row = array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['wp_token'] === hash('sha256', $c1->token)))[0];
-$c1Hint = static fn (int $exp): string => \TypedPress\Identity\Keys::sign(['iss' => \TypedPress\Identity\OAuth::issuer(), 'aud' => $app['id'], 'sub' => (string) $wpUser, 'sid' => $c1Row['id'], 'iat' => $exp - 300, 'exp' => $exp]);
+$c1Hint = static fn (int $exp): string => \SpacePress\Identity\Keys::sign(['iss' => \SpacePress\Identity\OAuth::issuer(), 'aud' => $app['id'], 'sub' => (string) $wpUser, 'sid' => $c1Row['id'], 'iat' => $exp - 300, 'exp' => $exp]);
 $bare = new Browser($url);
 $bare->cookies = [];
 $cookieless = $bare->go('/identity/logout?id_token_hint=' . rawurlencode($c1Hint(time() - 3600)), null, ['Sec-Fetch-Site: cross-site']);
@@ -513,11 +513,11 @@ $out['cookieless current hint'] = ['status' => $current['status'], 'wordpress se
 // An application origin (here a sibling subdomain registered for CORS with credentials) calling with the
 // browser's WordPress cookie alone: no identity session, so no CSRF token to make account writes with.
 $x = planted($url, $wpUser);
-$cross = $x->go('/wp-json/typedpress-identity/v1/account', null, ['Origin: http://127.0.0.1:18999', 'Sec-Fetch-Site: same-site']);
+$cross = $x->go('/wp-json/spacepress-identity/v1/account', null, ['Origin: http://127.0.0.1:18999', 'Sec-Fetch-Site: same-site']);
 $out['rest from an app origin'] = ['status' => $cross['status'], 'csrf' => str_contains($cross['body'], '"csrf"'), 'identity cookie' => isset($x->cookies['zi_session'])];
-$noHeaders = $x->go('/wp-json/typedpress-identity/v1/account', null, ['Sec-Fetch-Site: none-given']);
+$noHeaders = $x->go('/wp-json/spacepress-identity/v1/account', null, ['Sec-Fetch-Site: none-given']);
 $out['rest without fetch metadata'] = $noHeaders['status'];
-$own = $x->go('/wp-json/typedpress-identity/v1/account', null, ["Origin: $url"]);
+$own = $x->go('/wp-json/spacepress-identity/v1/account', null, ["Origin: $url"]);
 $out['rest from the site'] = ['status' => $own['status'], 'identity cookie' => isset($x->cookies['zi_session'])];
 
 // ---------------------------------------------------------------- before schema 4, no redirect loop (item 3)

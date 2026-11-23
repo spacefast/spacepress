@@ -5,33 +5,33 @@ declare(strict_types=1);
 /*
  * What a page cache holds and what a write drops from it (tests/app_router.rs
  * `page_caches_drop_what_a_write_changed`): tests/fixtures/page-caching on WordPress with php -S, a
- * must-use plugin standing in for the host and recording each `tp_purge_urls` call. Every write is
+ * must-use plugin standing in for the host and recording each `sp_purge_urls` call. Every write is
  * followed by the page as the origin renders it then, so a purge the test expects is one a visitor
  * needs. Prints JSON.
  *
- *   TP_WP_THEMES=1 php tests/php/page_caching.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/page_caching.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
 
 $site = wpSite('page-caching', ['wpContent' => $argv[1], 'muPlugins' => ['host' => <<<'PHP'
     <?php
-    add_action('tp_purge_urls', static function (array $paths): void {
+    add_action('sp_purge_urls', static function (array $paths): void {
         $GLOBALS['test_purges'][] = $paths;
     });
     add_action('plugins_loaded', static function (): void {
-        if (!class_exists(\TypedPress\Wp\Connection::class)) {
+        if (!class_exists(\SpacePress\Wp\Connection::class)) {
             return;
         }
-        \TypedPress\Wp\Connection::$observer = static function (string $sql): void {
-            if (str_contains($sql, 'tp__app_reads')) {
+        \SpacePress\Wp\Connection::$observer = static function (string $sql): void {
+            if (str_contains($sql, 'sp__app_reads')) {
                 $GLOBALS['fixture_read_index_sql'] = 1 + ($GLOBALS['fixture_read_index_sql'] ?? 0);
             }
         };
         if (get_option('pagecaching_show_global')) {
-            \TypedPress\Extensions::onRead(static function (array $rows, string $collection): array {
+            \SpacePress\Extensions::onRead(static function (array $rows, string $collection): array {
                 if ($collection === 'drives') {
-                    $currency = \TypedPress\db()->globalGet('shop')['currency'];
+                    $currency = \SpacePress\db()->globalGet('shop')['currency'];
                     foreach ($rows as &$row) {
                         $row['name'] .= ' ' . $currency;
                     }
@@ -41,7 +41,7 @@ $site = wpSite('page-caching', ['wpContent' => $argv[1], 'muPlugins' => ['host' 
             });
         }
     });
-    add_action('tp_app_rendered', static function (): void {
+    add_action('sp_app_rendered', static function (): void {
         header('X-Fixture-Rendered: 1');
         header('X-Fixture-Read-Index: ' . ($GLOBALS['fixture_read_index_sql'] ?? 0));
     });
@@ -57,7 +57,7 @@ $site = wpSite('page-caching', ['wpContent' => $argv[1], 'muPlugins' => ['host' 
     });
     PHP]]);
 wp_set_current_user(1);
-$db = \TypedPress\db();
+$db = \SpacePress\db();
 $drive = static fn (string $name, string $media, float $price): int => (int) $db->insert('drives', ['name' => $name, 'slug' => strtolower($name), 'media' => $media, 'price' => $price, 'stock' => 3, 'status' => 'published'], true)[0]['id'];
 $alpha = $drive('Alpha', 'nvme', 10);
 $beta = $drive('Beta', 'hdd', 20);
@@ -93,7 +93,7 @@ function fetch(string $url, array $requestHeaders = []): array
         'read index SQL' => isset($headers['x-fixture-read-index']) ? (int) $headers['x-fixture-read-index'] : null,
         'cookie' => $headers['set-cookie'] ?? null,
         'location' => isset($headers['location']) ? parse_url($headers['location'], PHP_URL_PATH) : null,
-        'prebuilt' => $headers['x-typedpress-prebuilt'] ?? null,
+        'prebuilt' => $headers['x-spacepress-prebuilt'] ?? null,
         'menu' => str_contains($body, 'Fixture menu link'),
         'template' => str_contains($body, 'Fixture template body'),
         'rolled template' => str_contains($body, 'Template rollback probe'),
@@ -105,18 +105,18 @@ function fetch(string $url, array $requestHeaders = []): array
 }
 
 global $wpdb;
-$reads = "{$wpdb->prefix}tp__app_reads";
+$reads = "{$wpdb->prefix}sp__app_reads";
 $index = static fn (): array => array_map(static fn (array $r): string => "{$r['kind']} " . ($r['item'] === '*' ? '*' : '#') . " {$r['url']}", $wpdb->get_results("SELECT DISTINCT kind, CASE WHEN item = '*' THEN '*' ELSE '#' END AS item, url FROM $reads ORDER BY url, kind, item", ARRAY_A));
 /** The paths one write announced, sorted; null when it announced nothing. */
 $announced = static function (callable $write): ?array {
-    \TypedPress\Wp\Purges::flush(); // what setting up queued goes out first
+    \SpacePress\Wp\Purges::flush(); // what setting up queued goes out first
     $GLOBALS['test_purges'] = [];
     wp_set_current_user(1);
     try {
         $write();
     } catch (\RuntimeException) {
     }
-    \TypedPress\Wp\Purges::flush(); // the end of the request, for a write outside a transaction
+    \SpacePress\Wp\Purges::flush(); // the end of the request, for a write outside a transaction
     wp_set_current_user(0);
     $calls = $GLOBALS['test_purges'];
     if (count($calls) > 1) {
@@ -150,10 +150,10 @@ $out['redirect'] = fetch("$url/about");
 $out['late cookie'] = fetch("$url/about/", ['X-Fixture-Late-Cookie: 1']);
 $out['authorization'] = fetch("$url/about/", ['Authorization: Bearer fixture']);
 $out['literal prebuild'] = [
-    'paths' => array_column(\TypedPress\Render\Prebuilt::urls(\TypedPress\Wp\Runtime::plugin())['urls'], 'path'),
+    'paths' => array_column(\SpacePress\Render\Prebuilt::urls(\SpacePress\Wp\Runtime::plugin())['urls'], 'path'),
     'before' => fetch("$url/about/")['prebuilt'],
 ];
-\TypedPress\Render\Prebuilt::build();
+\SpacePress\Render\Prebuilt::build();
 $out['literal prebuild']['after'] = fetch("$url/about/");
 $out['literal prebuild']['authorization'] = fetch("$url/about/", ['Authorization: Bearer fixture']);
 // A second nvme drive, also the most expensive one: it joins the filtered list and takes the top.
@@ -195,15 +195,15 @@ $out['global'] = [
 ];
 // The same global saved from wp-admin (SCF's options page writes the option itself).
 fetch("$url/catalog/?media=nvme");
-$option = $announced(static fn () => update_option('tp_global_shop_currency', 'GBP'));
+$option = $announced(static fn () => update_option('sp_global_shop_currency', 'GBP'));
 $out['global option'] = ['announced' => $has($option, '/catalog/', '/drives/alpha/', '/top/'), 'catalog' => fetch("$url/catalog/")['currency']];
 
-$changed = $announced(static fn () => $db->transaction(static fn () => \TypedPress\Wp\Functions::tracked(
+$changed = $announced(static fn () => $db->transaction(static fn () => \SpacePress\Wp\Functions::tracked(
     static fn () => update_option('pagecaching_store_notice', 'Closed now')
 )));
 $out['option write'] = ['announced' => $has($changed, '/option/', '/option.md', '/about/'), 'line' => fetch("$url/option/")['line']];
 $rolled = $announced(static fn () => $db->transaction(static function (): void {
-    \TypedPress\Wp\Functions::tracked(static fn () => update_option('pagecaching_store_notice', 'Never shown'));
+    \SpacePress\Wp\Functions::tracked(static fn () => update_option('pagecaching_store_notice', 'Never shown'));
     throw new \RuntimeException('rollback');
 }));
 $out['option rollback'] = ['announced' => $rolled, 'line' => fetch("$url/option/")['line']];
@@ -224,7 +224,7 @@ $out['junk']['announced'] = array_values(array_filter($edited ?? [], static fn (
 // Declared parameters: each value is a page of its own, up to MAX_VARIANTS recorded per path. One
 // more is answered, private, and recorded nowhere, so a write names a bounded list. A variant no
 // render has confirmed for two cache windows gives its place up.
-$max = \TypedPress\Render\Cache::MAX_VARIANTS;
+$max = \SpacePress\Render\Cache::MAX_VARIANTS;
 $variants = [];
 for ($i = 1; $i <= $max + 2; $i++) {
     $variants[] = fetch("$url/catalog/?media=v$i")['cache'];
@@ -244,7 +244,7 @@ $out['variants'] += [
     'recorded one' => fetch("$url/catalog/?media=nvme")['cache'],
     'over the limit' => fetch("$url/catalog/?media=v" . ($max + 2))['cache'],
 ];
-$wpdb->query($wpdb->prepare("UPDATE $reads SET seenAt = %s WHERE url LIKE '/catalog/?media=v%'", gmdate('Y-m-d\TH:i:s.000\Z', time() - 3 * \TypedPress\Render\Cache::WINDOW)));
+$wpdb->query($wpdb->prepare("UPDATE $reads SET seenAt = %s WHERE url LIKE '/catalog/?media=v%'", gmdate('Y-m-d\TH:i:s.000\Z', time() - 3 * \SpacePress\Render\Cache::WINDOW)));
 $out['variants'] += [
     'after two windows' => fetch("$url/catalog/?media=v" . ($max + 2))['cache'],
     'recorded then' => $count(),
@@ -254,7 +254,7 @@ update_option('pagecaching_show_global', true);
 $hooked = fetch("$url/top/");
 $out['unknown read hook'] = ['line' => $hooked['line'], 'recorded global' => in_array('global:shop * /top/', $index(), true)];
 $announced(static fn () => wp_insert_post([
-    'post_type' => \TypedPress\Wp\Runtime::plugin()->schema->collection('drives')['wp']['postType'],
+    'post_type' => \SpacePress\Wp\Runtime::plugin()->schema->collection('drives')['wp']['postType'],
     'post_name' => 'unpublished',
     'post_title' => 'Unpublished',
     'post_status' => 'draft',
@@ -279,13 +279,13 @@ $changed = $announced(static fn () => wp_update_nav_menu_item($menu, 0, [
 $out['menu'] += ['announced' => $changed, 'after' => fetch("$url/about/")['menu']];
 
 $template = 0;
-$body = static fn (string $text): string => '<!-- wp:paragraph --><p>' . $text . '</p><!-- /wp:paragraph --><!-- wp:tp/page /-->';
+$body = static fn (string $text): string => '<!-- wp:paragraph --><p>' . $text . '</p><!-- /wp:paragraph --><!-- wp:sp/page /-->';
 $out['template'] = ['before' => fetch("$url/about/")['template']];
 $changed = $announced(static function () use ($db, $body, &$template): void {
     $db->transaction(static function () use ($body, &$template): void {
-        \TypedPress\Wp\Functions::tracked(static function () use ($body, &$template): void {
+        \SpacePress\Wp\Functions::tracked(static function () use ($body, &$template): void {
             $template = wp_insert_post([
-                'post_type' => 'wp_template', 'post_name' => 'tp-blank', 'post_title' => 'Fixture template',
+                'post_type' => 'wp_template', 'post_name' => 'sp-blank', 'post_title' => 'Fixture template',
                 'post_status' => 'publish', 'post_content' => $body('Fixture template body'),
             ]);
             wp_set_object_terms($template, get_stylesheet(), 'wp_theme');
@@ -294,7 +294,7 @@ $changed = $announced(static function () use ($db, $body, &$template): void {
 });
 $out['template'] += ['announced' => $changed, 'after' => fetch("$url/about/")['template']];
 $rolled = $announced(static fn () => $db->transaction(static function () use ($body, $template): void {
-    \TypedPress\Wp\Functions::tracked(static fn () => wp_update_post([
+    \SpacePress\Wp\Functions::tracked(static fn () => wp_update_post([
         'ID' => $template, 'post_content' => $body('Template rollback probe'),
     ]));
     throw new \RuntimeException('rollback');

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Algorithm;
+namespace SpacePress\Identity\Vendor\Cose\Algorithm;
 
 use function array_key_exists;
 use const E_USER_WARNING;

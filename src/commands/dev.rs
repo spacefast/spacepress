@@ -25,7 +25,7 @@ fn runner() -> Result<PathBuf, String> {
         hash.update(source.as_bytes());
     }
     let digest: String = hash.finalize().iter().map(|byte| format!("{byte:02x}")).collect();
-    let dir = cache.join("tp/dev").join(&digest[..16]);
+    let dir = cache.join("sp/dev").join(&digest[..16]);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     for (name, source) in TOOLS {
         let path = dir.join(name);
@@ -46,7 +46,7 @@ fn command(project: &Path, mode: &str) -> Result<Command, String> {
     Ok(command)
 }
 
-/// `typedpress export`'s throwaway WordPress (scripts/dev/studio.mjs `export`): its arguments follow.
+/// `spacepress export`'s throwaway WordPress (scripts/dev/studio.mjs `export`): its arguments follow.
 pub(super) fn export_command() -> Result<Command, String> {
     let mut command = Command::new(if cfg!(windows) { "npx.cmd" } else { "npx" });
     command.args(["--yes", "--package", STUDIO, "--", "node"]);
@@ -54,15 +54,15 @@ pub(super) fn export_command() -> Result<Command, String> {
     Ok(command)
 }
 
-/// WP-CLI on the project's dev site (`typedpress wp`, and the site commands without `--site`).
+/// WP-CLI on the project's dev site (`spacepress wp`, and the site commands without `--site`).
 pub(super) fn wp_command(project: &Path) -> Result<Command, String> {
     command(project, "wp")
 }
 
-/// `typedpress dev` has created this project's site: its marker (scripts/dev/studio.mjs) says Studio
+/// `spacepress dev` has created this project's site: its marker (scripts/dev/studio.mjs) says Studio
 /// finished creating it.
 pub(crate) fn created(project: &Path) -> bool {
-    std::fs::read(project.join(".tp/dev/owner.json"))
+    std::fs::read(project.join(".sp/dev/owner.json"))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
         .is_some_and(|owner| owner["created"] == true)
@@ -76,7 +76,7 @@ fn accepts(port: u16) -> bool {
     })
 }
 
-/// The recorded `typedpress dev` process still exists.
+/// The recorded `spacepress dev` process still exists.
 fn alive(pid: u64, state: &Path) -> bool {
     if cfg!(unix) {
         // The shell's own `kill`: no program has to be on PATH for it.
@@ -87,7 +87,7 @@ fn alive(pid: u64, state: &Path) -> bool {
             .status()
             .is_ok_and(|status| status.success())
     } else {
-        // The lock a running `typedpress dev` holds names its process (scripts/dev/studio.mjs).
+        // The lock a running `spacepress dev` holds names its process (scripts/dev/studio.mjs).
         std::fs::read(state.join("session.json"))
             .ok()
             .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
@@ -95,13 +95,13 @@ fn alive(pid: u64, state: &Path) -> bool {
     }
 }
 
-/// The project's dev site as data, for `typedpress dev status --json` and `typedpress mcp`'s `dev_status`.
-/// `state` is `none` (never created), `stopped` or `running`; `watching` says whether a `typedpress dev`
+/// The project's dev site as data, for `spacepress dev status --json` and `spacepress mcp`'s `dev_status`.
+/// `state` is `none` (never created), `stopped` or `running`; `watching` says whether a `spacepress dev`
 /// process is rebuilding it on save, and `pid` is that process. `error` is that process's last build
 /// when it failed (`message`, and the compiler's `diagnostics`), so a running site that does not
 /// serve the current source says so; it is null after a build that succeeded. `project` is canonical.
 ///
-/// It reads `.tp/dev/state.json`, which `typedpress dev` writes when the site is up, and checks the
+/// It reads `.sp/dev/state.json`, which `spacepress dev` writes when the site is up, and checks the
 /// port and the process itself, so it does not start Studio. A site started by a compiler from
 /// before that file is asked of Studio.
 pub(super) fn status(project: &Path) -> Result<serde_json::Value, String> {
@@ -109,26 +109,26 @@ pub(super) fn status(project: &Path) -> Result<serde_json::Value, String> {
         studio
             .stdin(std::process::Stdio::null())
             .output()
-            .map_err(|e| format!("typedpress needs Node.js 22+ and npm (npx) for the dev site: {e}"))
+            .map_err(|e| format!("spacepress needs Node.js 22+ and npm (npx) for the dev site: {e}"))
     })
 }
 
 /// [`status`], with `run` running Studio's own status when the project has no state file (a site
-/// started by a compiler from before it). `typedpress mcp` passes a runner bounded by its timeout and
+/// started by a compiler from before it). `spacepress mcp` passes a runner bounded by its timeout and
 /// cancellation.
 pub(super) fn status_with(
     project: &Path,
     run: impl FnOnce(Command) -> Result<std::process::Output, String>,
 ) -> Result<serde_json::Value, String> {
     use serde_json::{Value, json};
-    let dir = project.join(".tp/dev");
+    let dir = project.join(".sp/dev");
     let read = |name: &str| {
         std::fs::read(dir.join(name))
             .ok()
             .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
     };
     if !created(project) {
-        return Ok(json!({ "state": "none", "start": "typedpress dev" }));
+        return Ok(json!({ "state": "none", "start": "spacepress dev" }));
     }
     let report =
         |url: &str, port: u16, running: bool, pid: Option<u64>, [log, error]: [Value; 2], versions: [&Value; 2]| {
@@ -192,7 +192,7 @@ pub(super) fn status_with(
 
 /// Whether a coding agent, not a person at a terminal, started this command: the output is not a
 /// terminal and one of the variables agents set for the commands they run is present. `CI` wins:
-/// a pipeline that runs `typedpress dev` as a step waits on it. Answers with the variable that decided.
+/// a pipeline that runs `spacepress dev` as a step waits on it. Answers with the variable that decided.
 fn agent_drives(terminal: bool, env: impl Fn(&str) -> Option<String>) -> Option<&'static str> {
     let set = |name: &str| env(name).is_some_and(|value| !matches!(value.as_str(), "" | "0" | "false"));
     if terminal || set("CI") {
@@ -211,7 +211,7 @@ pub(super) fn url(project: &Path) -> Result<String, String> {
     let status = status(&project)?;
     match status["url"].as_str() {
         Some(url) if status["state"] == "running" => Ok(url.to_string()),
-        _ => Err("the dev site is not running; start it with typedpress dev, or pass --site <url>".into()),
+        _ => Err("the dev site is not running; start it with spacepress dev, or pass --site <url>".into()),
     }
 }
 
@@ -230,10 +230,10 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         if mode == "start" {
             // The watcher is a grandchild (npx, a shell, node) that a signal to this process never
             // reaches. It checks that this process still exists, and stops WordPress when it is gone.
-            command.env("TP_DEV_PARENT", std::process::id().to_string());
+            command.env("SP_DEV_PARENT", std::process::id().to_string());
             command
                 .arg(std::env::current_exe().map_err(|e| e.to_string())?)
-                .arg(args.out.clone().unwrap_or_else(|| project.join("tp/dist/wp-content")))
+                .arg(args.out.clone().unwrap_or_else(|| project.join("sp/dist/wp-content")))
                 .arg(args.port.to_string());
             if args.no_watch {
                 command.arg("--no-watch");
@@ -244,7 +244,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
                 let agent = agent_drives(std::io::stdout().is_terminal(), |name| std::env::var(name).ok());
                 if let Some(variable) = agent {
                     eprintln!(
-                        "typedpress dev: running in the background, because {variable} is set and the output is not a terminal; --foreground keeps it attached"
+                        "spacepress dev: running in the background, because {variable} is set and the output is not a terminal; --foreground keeps it attached"
                     );
                     command.arg("--detach");
                 }
@@ -261,7 +261,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         }
         let status = command
             .status()
-            .map_err(|e| format!("typedpress dev needs Node.js 22+ and npm (npx): {e}"))?;
+            .map_err(|e| format!("spacepress dev needs Node.js 22+ and npm (npx): {e}"))?;
         Ok(ExitCode::from(status.code().unwrap_or(1).clamp(0, 255) as u8))
     })();
     match result {

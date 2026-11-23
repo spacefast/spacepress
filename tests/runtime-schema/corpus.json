@@ -1,5 +1,5 @@
 {
-  "about": "Changes to a running site's schema (docs/spec/spec.md \u00a72.10), each with the verdict the compiler and the runtime must both give. The compiler reads a case as tp/_generated/runtime-schema.json of the project in base/ (src/runtime_schema.rs); the runtime reads it as an addField change on a site that runs that build (tests/php/runtimeschema_test.php). `compiler` and `runtime` are \"accept\" or the code of the refusal: a compiler diagnostic code when both refuse, a problem code where only the running site does. `stored` is the definition both sides must end up with. `kinds` are whole collections and globals added the same way (`name_` is the new kind's name).",
+  "about": "Changes to a running site's schema (docs/spec/spec.md \u00a72.10), each with the verdict the compiler and the runtime must both give. The compiler reads a case as sp/_generated/runtime-schema.json of the project in base/ (src/runtime_schema.rs); the runtime reads it as an addField change on a site that runs that build (tests/php/runtimeschema_test.php). `compiler` and `runtime` are \"accept\" or the code of the refusal: a compiler diagnostic code when both refuse, a problem code where only the running site does. `stored` is the definition both sides must end up with. `kinds` are whole collections and globals added the same way (`name_` is the new kind's name).",
   "format": 1,
   "cases": [
     {
@@ -1962,7 +1962,7 @@
       "runtime": "F3001"
     },
     {
-      "name": "a name TypedPress keeps a post's own records under: system",
+      "name": "a name SpacePress keeps a post's own records under: system",
       "kind": "articles",
       "field": "system",
       "definition": {
@@ -1975,7 +1975,7 @@
       }
     },
     {
-      "name": "a name TypedPress keeps a post's own records under: staged",
+      "name": "a name SpacePress keeps a post's own records under: staged",
       "kind": "articles",
       "field": "staged",
       "definition": {
@@ -2445,7 +2445,7 @@
       "runtime": "F3001"
     },
     {
-      "name": "a name TypedPress serves a route under",
+      "name": "a name SpacePress serves a route under",
       "op": "addCollection",
       "name_": "media",
       "definition": {
@@ -2488,7 +2488,7 @@
       },
       "compiler": "accept",
       "runtime": "F3001",
-      "note": "The site refuses adding a kind the build declares. A lock that lists such a kind is what `typedpress pull` writes after a collection the site added moved into source; the compiler builds it, taking the kind from source."
+      "note": "The site refuses adding a kind the build declares. A lock that lists such a kind is what `spacepress pull` writes after a collection the site added moved into source; the compiler builds it, taking the kind from source."
     },
     {
       "name": "a name the build's table has",

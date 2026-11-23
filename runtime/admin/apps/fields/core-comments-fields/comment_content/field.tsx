@@ -1,4 +1,4 @@
-import type { Field } from '@typedpress-admin/dataviews';
+import type { Field } from '@spacepress-admin/dataviews';
 import { __unstableStripHTML as stripHTML } from '@wordpress/dom';
 import type { Comment } from '@wordpress/core-data';
 

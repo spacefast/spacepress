@@ -17,7 +17,7 @@ const build = spawnSync(
 if (build.status !== 0) process.exit(build.status ?? 1);
 
 const out = path.join(target, "wasm32-unknown-unknown", "wasm");
-const built = "typedpress.wasm";
+const built = "spacepress.wasm";
 if (!existsSync(path.join(out, built))) throw new Error(`${built} is missing under ${out}`);
 const served = path.join(site, ".build", "compiler.wasm");
 mkdirSync(path.dirname(served), { recursive: true });

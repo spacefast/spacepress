@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Event;
+namespace SpacePress\Identity\Vendor\Webauthn\Event;
 
-use TypedPress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatement;
+use SpacePress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatement;
 
 class AttestationStatementLoaded implements WebauthnEvent
 {

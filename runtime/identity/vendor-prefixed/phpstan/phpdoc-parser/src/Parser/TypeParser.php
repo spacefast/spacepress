@@ -1,12 +1,12 @@
 <?php declare(strict_types = 1);
 
-namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser;
+namespace SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Parser;
 
 use LogicException;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TemplateTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TemplateTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
 use function in_array;
 use function str_replace;
 use function strlen;

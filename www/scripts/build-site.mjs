@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 const site = fileURLToPath(new URL("../", import.meta.url));
 const repo = resolve(site, "..");
 const target = resolve(repo, process.env.CARGO_TARGET_DIR ?? "target");
-const binary = resolve(target, "debug/typedpress");
-const env = { ...process.env, CARGO_TARGET_DIR: target, TP_BIN: binary };
+const binary = resolve(target, "debug/spacepress");
+const env = { ...process.env, CARGO_TARGET_DIR: target, SP_BIN: binary };
 
 function run(command, args, cwd = site) {
   const result = spawnSync(command, args, { cwd, env, stdio: "inherit" });
@@ -15,7 +15,7 @@ function run(command, args, cwd = site) {
 }
 
 run("bun", ["install", "--frozen-lockfile"]);
-run("cargo", ["build", "--locked", "--bin", "typedpress"], repo);
+run("cargo", ["build", "--locked", "--bin", "spacepress"], repo);
 run(process.execPath, ["scripts/build-wasm.mjs"]);
 run(process.execPath, ["scripts/build-showcase.ts"]);
 run("bun", ["scripts/build.mjs"]);

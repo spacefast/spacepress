@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute;
 
 /**
  * @author Kévin Dunglas <dunglas@gmail.com>
@@ -19,6 +19,6 @@ class Ignore
 {
 }
 
-if (!class_exists(\TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation\Ignore::class, false)) {
-    class_alias(Ignore::class, \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation\Ignore::class);
+if (!class_exists(\SpacePress\Identity\Vendor\Symfony\Component\Serializer\Annotation\Ignore::class, false)) {
+    class_alias(Ignore::class, \SpacePress\Identity\Vendor\Symfony\Component\Serializer\Annotation\Ignore::class);
 }

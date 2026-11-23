@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 fn cli(command: &str, project: &Path) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_typedpress"))
+    Command::new(env!("CARGO_BIN_EXE_spacepress"))
         .arg(command)
         .arg(project)
         .output()
@@ -89,7 +89,7 @@ fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
             "needs a hierarchical kind",
         ),
     ] {
-        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,product,productTag,order,table,text}} from 'typedpress'; {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        std::fs::write(project.path().join("spacepress.config.ts"), format!("import {{defineConfig,store,product,productTag,order,table,text}} from 'spacepress'; {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
         let out = cli("check", project.path());
         assert!(!out.status.success(), "accepted {exports}");
         assert!(
@@ -105,7 +105,7 @@ fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
 fn an_app_cannot_declare_an_ability_the_store_adds() {
     let project = tempfile::tempdir().unwrap();
     let config = |exports: &str| {
-        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,product,order,mutation}} from 'typedpress'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        std::fs::write(project.path().join("spacepress.config.ts"), format!("import {{defineConfig,store,product,order,mutation}} from 'spacepress'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
         cli("check", project.path())
     };
     let hijack = "export const completeOrder = mutation({ access:'anyone' }, async () => ({done:true}));";
@@ -150,7 +150,7 @@ fn an_app_cannot_declare_an_ability_the_store_adds() {
 fn a_taxonomy_cannot_declare_an_ability_twice() {
     let project = tempfile::tempdir().unwrap();
     let config = |exports: &str| {
-        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,taxonomy,mutation}} from 'typedpress'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        std::fs::write(project.path().join("spacepress.config.ts"), format!("import {{defineConfig,store,taxonomy,mutation}} from 'spacepress'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
         cli("check", project.path())
     };
     let action = "export const shelvesGet = mutation({}, async () => 1);";
@@ -182,8 +182,8 @@ fn actions_that_reach_orders_are_marked_personal() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path();
     std::fs::write(
-        project.join("typedpress.config.ts"),
-        r#"import { mutation, db, defineConfig, order, product, store } from "typedpress";
+        project.join("spacepress.config.ts"),
+        r#"import { mutation, db, defineConfig, order, product, store } from "spacepress";
 import { abilities } from "php/wordpress";
 export const shop = store({ currency: "EUR", country: "PL" });
 export const products = product({ inventory: true });
@@ -241,11 +241,11 @@ export default defineConfig({ name: "commerce" });
 "#,
     )
     .unwrap();
-    let program = typedpress::loader::load(&project.join("typedpress.config.ts")).unwrap();
-    let built = typedpress::pipeline::build(
+    let program = spacepress::loader::load(&project.join("spacepress.config.ts")).unwrap();
+    let built = spacepress::pipeline::build(
         project,
         &program,
-        || Ok(typedpress::pipeline::Previous::none()),
+        || Ok(spacepress::pipeline::Previous::none()),
         |_| None,
     )
     .unwrap_or_else(|d| panic!("{d:?}"));
@@ -274,18 +274,18 @@ export default defineConfig({ name: "commerce" });
         ])
     );
     // The runtime reads the mark from schema.php (`Register::action`).
-    let schema = typedpress::schema_php::render(&built.schema);
+    let schema = spacepress::schema_php::render(&built.schema);
     assert_eq!(schema.matches("'personal' => true").count(), 8, "{schema}");
 }
 #[test]
 fn a_sql_table_cannot_become_a_commerce_kind_of_the_same_name() {
     let project = tempfile::tempdir().unwrap();
     let config = |exports: &str| {
-        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,product,table,text}} from 'typedpress'; {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        std::fs::write(project.path().join("spacepress.config.ts"), format!("import {{defineConfig,store,product,table,text}} from 'spacepress'; {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
     };
     config("export const products = table({name:text()});");
     success(cli("build", project.path()));
-    let ledger = project.path().join("tp/_generated/migrations");
+    let ledger = project.path().join("sp/_generated/migrations");
     let deployed = std::fs::read_dir(&ledger).unwrap().count();
     config("export const shop = store({currency:'EUR',country:'PL'}); export const products = product();");
     for command in ["check", "build"] {
@@ -307,9 +307,9 @@ fn a_sql_table_cannot_become_a_commerce_kind_of_the_same_name() {
 fn commerce_references_names_and_existing_store_scaffolding() {
     let project = tempfile::tempdir().unwrap();
     std::fs::write(
-        project.path().join("typedpress.config.ts"),
+        project.path().join("spacepress.config.ts"),
         r#"
-import {defineConfig,store,product,productCategory,order,table,ref,text,query,db} from 'typedpress';
+import {defineConfig,store,product,productCategory,order,table,ref,text,query,db} from 'spacepress';
 export const shop=store({currency:'USD',country:'PL',shipping:[{name:'Rest  of world',countries:'rest',methods:[]}]});
 export const catalogItems=product();
 export const categories=productCategory();
@@ -322,36 +322,36 @@ export default defineConfig({name:'commerce'});
     )
     .unwrap();
     success(cli("build", project.path()));
-    let types = std::fs::read_to_string(project.path().join("tp/_generated/client/types.ts")).unwrap();
+    let types = std::fs::read_to_string(project.path().join("sp/_generated/client/types.ts")).unwrap();
     assert!(
         types.contains("interface WooCartRow"),
         "commerce runtime names must not merge with collection types"
     );
-    for file in std::fs::read_dir(project.path().join("tp/_generated/migrations")).unwrap() {
+    for file in std::fs::read_dir(project.path().join("sp/_generated/migrations")).unwrap() {
         let file = file.unwrap().path();
         if file.extension().is_some_and(|x| x == "sql") {
             let sql = std::fs::read_to_string(file).unwrap();
-            assert!(!sql.contains("REFERENCES `{prefix}tp_catalog_items`"));
-            assert!(!sql.contains("REFERENCES `{prefix}tp_orders`"));
+            assert!(!sql.contains("REFERENCES `{prefix}sp_catalog_items`"));
+            assert!(!sql.contains("REFERENCES `{prefix}sp_orders`"));
         }
     }
-    // An existing store outside tp/shop.ts must not acquire imports to that absent module.
-    let config = project.path().join("typedpress.config.ts");
+    // An existing store outside sp/shop.ts must not acquire imports to that absent module.
+    let config = project.path().join("spacepress.config.ts");
     let source = std::fs::read_to_string(&config)
         .unwrap()
         .replace("catalogItems", "products");
     std::fs::write(&config, source).unwrap();
     success(
-        Command::new(env!("CARGO_BIN_EXE_typedpress"))
+        Command::new(env!("CARGO_BIN_EXE_spacepress"))
             .args(["add", "shop"])
             .arg(project.path())
             .output()
             .unwrap(),
     );
-    assert!(!project.path().join("tp/shop.ts").exists());
-    assert!(!project.path().join("tp/app/(shop)/shop/page.tsx").exists());
+    assert!(!project.path().join("sp/shop.ts").exists());
+    assert!(!project.path().join("sp/app/(shop)/shop/page.tsx").exists());
     for sync in ["true", "{dir:'content/topics'}"] {
-        std::fs::write(&config,format!("import {{defineConfig,taxonomy}} from 'typedpress';export const topics=taxonomy({{}},{{sync:{sync}}});export default defineConfig({{name:'commerce'}});")).unwrap();
+        std::fs::write(&config,format!("import {{defineConfig,taxonomy}} from 'spacepress';export const topics=taxonomy({{}},{{sync:{sync}}});export default defineConfig({{name:'commerce'}});")).unwrap();
         let out = cli("check", project.path());
         assert!(!out.status.success());
         assert!(
@@ -365,28 +365,28 @@ export default defineConfig({name:'commerce'});
 fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database() {
     let project = tempfile::tempdir().unwrap();
     std::fs::write(
-        project.path().join("typedpress.config.ts"),
-        "import {defineConfig} from 'typedpress'; export default defineConfig({name:'shop'});",
+        project.path().join("spacepress.config.ts"),
+        "import {defineConfig} from 'spacepress'; export default defineConfig({name:'shop'});",
     )
     .unwrap();
-    std::fs::create_dir_all(project.path().join("tp/app")).unwrap();
+    std::fs::create_dir_all(project.path().join("sp/app")).unwrap();
     let layout =
         "export default function Layout({children}) { return <section data-existing=\"yes\">{children}</section>; }";
-    std::fs::write(project.path().join("tp/app/layout.tsx"), layout).unwrap();
+    std::fs::write(project.path().join("sp/app/layout.tsx"), layout).unwrap();
     std::fs::write(
-        project.path().join("tp/app/page.tsx"),
+        project.path().join("sp/app/page.tsx"),
         "export default function Home() { return <main>Existing app</main>; }",
     )
     .unwrap();
     let add = || {
-        Command::new(env!("CARGO_BIN_EXE_typedpress"))
+        Command::new(env!("CARGO_BIN_EXE_spacepress"))
             .args(["add", "shop"])
             .arg(project.path())
             .output()
             .unwrap()
     };
     success(add());
-    let checkout = project.path().join("tp/app/(shop)/checkout/page.md");
+    let checkout = project.path().join("sp/app/(shop)/checkout/page.md");
     let checkout_body = std::fs::read_to_string(&checkout).unwrap();
     std::fs::write(
         &checkout,
@@ -398,27 +398,27 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
     assert!(String::from_utf8_lossy(&refused.stderr).contains("native Checkout Block"));
     std::fs::write(checkout, checkout_body).unwrap();
     assert_eq!(
-        std::fs::read_to_string(project.path().join("tp/app/layout.tsx")).unwrap(),
+        std::fs::read_to_string(project.path().join("sp/app/layout.tsx")).unwrap(),
         layout
     );
-    assert!(project.path().join("tp/app/(shop)/layout.tsx").is_file());
+    assert!(project.path().join("sp/app/(shop)/layout.tsx").is_file());
     let product = project.path().join("content/products/ceramic-mug.md");
     let original = std::fs::read(&product).unwrap();
     success(add());
     assert_eq!(std::fs::read(&product).unwrap(), original);
-    let shop = project.path().join("tp/shop.ts");
+    let shop = project.path().join("sp/shop.ts");
     let source = std::fs::read_to_string(&shop).unwrap();
     let duplicate = source.replace(r#"countries: ["PL"]"#, r#"countries: ["PL", "PL"]"#);
     assert_ne!(source, duplicate);
     std::fs::write(shop, duplicate).unwrap();
-    let detail = project.path().join("tp/app/(shop)/products/[slug]/page.tsx");
+    let detail = project.path().join("sp/app/(shop)/products/[slug]/page.tsx");
     let source = std::fs::read_to_string(&detail).unwrap();
     std::fs::write(detail, format!("{source}\nexport const prerender = true;\n")).unwrap();
     success(cli("build", project.path()));
     let functions = std::fs::read_to_string(
         project
             .path()
-            .join("tp/dist/wp-content/plugins/typedpress-app-shop/tp/app/functions.php"),
+            .join("sp/dist/wp-content/plugins/spacepress-app-shop/sp/app/functions.php"),
     )
     .unwrap();
     let compact = functions.split_whitespace().collect::<String>().replace(",)", ")");
@@ -429,18 +429,18 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
         compact.contains(&format!("Seam::kindList('products',array('columns'=>array({fields}),")),
         "the catalog must project the fields it renders"
     );
-    let mig_dir = project.path().join("tp/_generated/migrations");
+    let mig_dir = project.path().join("sp/_generated/migrations");
     assert!(
         !mig_dir.exists() || std::fs::read_dir(&mig_dir).unwrap().next().is_none(),
         "Woo owns all commerce storage: no SQL migrations should be emitted"
     );
     let manifest: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(project.path().join("tp/dist/wp-content/typedpress-manifest.json")).unwrap(),
+        &std::fs::read(project.path().join("sp/dist/wp-content/spacepress-manifest.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(manifest["requires"]["woocommerce"], ">=11.3.0");
-    std::fs::write(project.path().join("insert.ts"), "import type {RegisteredKinds} from 'typedpress'; const input:RegisteredKinds['products']['$inferInsert']={name:'New product'}; const name:string=input.name;").unwrap();
-    std::fs::write(project.path().join("tsconfig.json"), serde_json::to_vec(&serde_json::json!({"compilerOptions":{"target":"ES2022","module":"ESNext","moduleResolution":"bundler","strict":true,"noEmit":true,"types":[],"paths":{"typedpress":[Path::new(env!("CARGO_MANIFEST_DIR")).join("types/typedpress/index.d.ts")]}},"include":["insert.ts","tp/_generated/db.d.ts"]})).unwrap()).unwrap();
+    std::fs::write(project.path().join("insert.ts"), "import type {RegisteredKinds} from 'spacepress'; const input:RegisteredKinds['products']['$inferInsert']={name:'New product'}; const name:string=input.name;").unwrap();
+    std::fs::write(project.path().join("tsconfig.json"), serde_json::to_vec(&serde_json::json!({"compilerOptions":{"target":"ES2022","module":"ESNext","moduleResolution":"bundler","strict":true,"noEmit":true,"types":[],"paths":{"spacepress":[Path::new(env!("CARGO_MANIFEST_DIR")).join("types/spacepress/index.d.ts")]}},"include":["insert.ts","sp/_generated/db.d.ts"]})).unwrap()).unwrap();
     success(
         Command::new(std::env::var("TSC").unwrap_or_else(|_| "tsc".into()))
             .arg("-p")
@@ -450,14 +450,14 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
     );
     let out = Command::new("php")
         .args(["-d", "memory_limit=1G"])
-        .env("TP_WP_THEMES", "1")
+        .env("SP_WP_THEMES", "1")
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/commerce_test.php"))
-        .arg(project.path().join("tp/dist/wp-content"))
+        .arg(project.path().join("sp/dist/wp-content"))
         .output()
         .unwrap();
     success(out);
     // The same store behind an external frontend: that origin reads the Store API and nothing else.
-    let config = project.path().join("typedpress.config.ts");
+    let config = project.path().join("spacepress.config.ts");
     let source = std::fs::read_to_string(&config).unwrap();
     let external = source.replace("name:'shop'", "name:'shop', frontend:'https://front.example.test'");
     assert_ne!(source, external);
@@ -465,9 +465,9 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
     success(cli("build", project.path()));
     let out = Command::new("php")
         .args(["-d", "memory_limit=1G"])
-        .env("TP_WP_THEMES", "1")
+        .env("SP_WP_THEMES", "1")
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/commerce_frontend_test.php"))
-        .arg(project.path().join("tp/dist/wp-content"))
+        .arg(project.path().join("sp/dist/wp-content"))
         .arg("https://front.example.test")
         .output()
         .unwrap();

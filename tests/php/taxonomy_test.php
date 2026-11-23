@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /*
  * `taxonomy()` and `terms()` on WordPress, in-process (tests/php/wp.php), on the app in
- * tests/fixtures/taxonomy (schema.php is what `typedpress build` emits for it, checked by tests/compiler.rs):
+ * tests/fixtures/taxonomy (schema.php is what `spacepress build` emits for it, checked by tests/compiler.rs):
  * term rows and their implicit fields, term meta fields, assigning through `on` and `terms()`, write
  * order, list filters, `with` both ways, access (assigning vs creating), the hierarchy and term URLs
  * (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34).
@@ -19,14 +19,14 @@ $merchantTags = $schema['taxonomies']['tags'];
 $merchantTags['key'] = 'merchantTags'; $merchantTags['label'] = 'Merchant tags';
 $merchantTags['columns']['uid'] = ['type' => 'text'];
 $merchantTags['relations'] = []; $merchantTags['url'] = null;
-$merchantTags['wp'] = ['taxonomy' => 'tp_merchant_tags', 'groupKey' => 'group_tp_merchant_tags', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_merchant_tags_', 'on' => ['posts']];
+$merchantTags['wp'] = ['taxonomy' => 'sp_merchant_tags', 'groupKey' => 'group_sp_merchant_tags', 'metaPrefix' => 'sp_', 'fieldKeyPrefix' => 'field_sp_merchant_tags_', 'on' => ['posts']];
 $schema['taxonomies']['merchantTags'] = $merchantTags;
 $wp = wpSite('taxonomy', [
     'schema' => $schema,
     'functions' => file_get_contents("$fixture/functions.php"),
     'users' => ['ed' => 'editor', 'alice' => 'author', 'sub' => 'subscriber'],
 ]);
-$db = \TypedPress\db();
+$db = \SpacePress\db();
 
 /** @return array{int, mixed} */
 function req(string $method, string $path, mixed $body = null, ?string $as = null, array $query = []): array
@@ -46,32 +46,32 @@ function isProblem(string $label, array $r, int $status, string $code, ?string $
 $names = static fn (array $rows): array => array_column($rows, 'name');
 
 // Authored uid keeps ordinary term metadata, including SCF's underscore-prefixed field reference.
-$merchant = wp_insert_term('Existing merchant tag', 'tp_merchant_tags')['term_id'];
-update_term_meta($merchant, 'tp_uid', 'merchant-42');
-update_term_meta($merchant, '_tp_uid', 'field_tp_merchant_tags_uid');
+$merchant = wp_insert_term('Existing merchant tag', 'sp_merchant_tags')['term_id'];
+update_term_meta($merchant, 'sp_uid', 'merchant-42');
+update_term_meta($merchant, '_sp_uid', 'field_sp_merchant_tags_uid');
 eq('existing authored taxonomy uid values keep their metadata key', $db->findFirst('merchantTags', ['where' => ['id' => $merchant]])['uid'], 'merchant-42');
 eq('authored uid filters use the existing metadata', array_column($db->findMany('merchantTags', ['where' => ['uid' => 'merchant-42']]), 'id'), [$merchant]);
 $db->update('merchantTags', ['uid' => 'merchant-43'], ['id' => $merchant]);
-eq('API writes preserve authored uid storage and the SCF field reference', [get_term_meta($merchant, 'tp_uid', true), get_term_meta($merchant, '_tp_uid', true)], ['merchant-43', 'field_tp_merchant_tags_uid']);
-eq('SCF reads the authored uid written through the API', get_field('field_tp_merchant_tags_uid', 'term_' . $merchant), 'merchant-43');
-update_field('field_tp_merchant_tags_uid', 'merchant-44', 'term_' . $merchant);
+eq('API writes preserve authored uid storage and the SCF field reference', [get_term_meta($merchant, 'sp_uid', true), get_term_meta($merchant, '_sp_uid', true)], ['merchant-43', 'field_sp_merchant_tags_uid']);
+eq('SCF reads the authored uid written through the API', get_field('field_sp_merchant_tags_uid', 'term_' . $merchant), 'merchant-43');
+update_field('field_sp_merchant_tags_uid', 'merchant-44', 'term_' . $merchant);
 eq('API reads the authored uid written through SCF', $db->findFirst('merchantTags', ['where' => ['id' => $merchant]])['uid'], 'merchant-44');
 $newMerchant = $db->insert('merchantTags', ['name' => 'New merchant tag', 'uid' => 'merchant-45'], true)[0];
-eq('API-created authored uid values use ordinary term metadata', [$newMerchant['uid'], get_term_meta($newMerchant['id'], 'tp_uid', true)], ['merchant-45', 'merchant-45']);
+eq('API-created authored uid values use ordinary term metadata', [$newMerchant['uid'], get_term_meta($newMerchant['id'], 'sp_uid', true)], ['merchant-45', 'merchant-45']);
 
 // ================================================================ registration (ruling 25)
 
-$taxonomy = get_taxonomy('tp_topics');
-check('the taxonomy registers as tp_<name> for its kinds', $taxonomy instanceof \WP_Taxonomy && $taxonomy->object_type === ['tp_posts', 'tp_pages'], $taxonomy?->object_type);
-eq('… hierarchical, in REST under tp_<name>, with no rewrite or query var', [$taxonomy->hierarchical, $taxonomy->show_in_rest, $taxonomy->rest_base, $taxonomy->rewrite, $taxonomy->query_var], [true, true, 'tp_topics', false, false]);
+$taxonomy = get_taxonomy('sp_topics');
+check('the taxonomy registers as sp_<name> for its kinds', $taxonomy instanceof \WP_Taxonomy && $taxonomy->object_type === ['sp_posts', 'sp_pages'], $taxonomy?->object_type);
+eq('… hierarchical, in REST under sp_<name>, with no rewrite or query var', [$taxonomy->hierarchical, $taxonomy->show_in_rest, $taxonomy->rest_base, $taxonomy->rewrite, $taxonomy->query_var], [true, true, 'sp_topics', false, false]);
 eq('… keeping write order', [$taxonomy->sort, $taxonomy->args], [true, ['orderby' => 'term_order']]);
-eq('… with per-taxonomy capabilities', (array) $taxonomy->cap, ['manage_terms' => 'manage_tp_topics', 'edit_terms' => 'edit_tp_topics', 'delete_terms' => 'delete_tp_topics', 'assign_terms' => 'assign_tp_topics']);
-eq('a taxonomy with a url is public', [$taxonomy->public, get_taxonomy('tp_tags')->public], [true, true]);
-eq('terms() registers the taxonomy for its kind', get_taxonomy('tp_tags')->object_type, ['tp_posts']);
-check('term fields are registered term meta', isset(get_registered_meta_keys('term', 'tp_topics')['tp_color']), array_keys(get_registered_meta_keys('term', 'tp_topics')));
-$group = acf_get_local_field_group('group_tp_topics');
-check('the SCF field group sits on the taxonomy', is_array($group) && $group['location'][0][0] === ['param' => 'taxonomy', 'operator' => '==', 'value' => 'tp_topics'], $group);
-eq('no table is created for a taxonomy', $wp->connection()->run("SELECT name FROM sqlite_master WHERE name LIKE '%tp_topics%'"), []);
+eq('… with per-taxonomy capabilities', (array) $taxonomy->cap, ['manage_terms' => 'manage_sp_topics', 'edit_terms' => 'edit_sp_topics', 'delete_terms' => 'delete_sp_topics', 'assign_terms' => 'assign_sp_topics']);
+eq('a taxonomy with a url is public', [$taxonomy->public, get_taxonomy('sp_tags')->public], [true, true]);
+eq('terms() registers the taxonomy for its kind', get_taxonomy('sp_tags')->object_type, ['sp_posts']);
+check('term fields are registered term meta', isset(get_registered_meta_keys('term', 'sp_topics')['sp_color']), array_keys(get_registered_meta_keys('term', 'sp_topics')));
+$group = acf_get_local_field_group('group_sp_topics');
+check('the SCF field group sits on the taxonomy', is_array($group) && $group['location'][0][0] === ['param' => 'taxonomy', 'operator' => '==', 'value' => 'sp_topics'], $group);
+eq('no table is created for a taxonomy', $wp->connection()->run("SELECT name FROM sqlite_master WHERE name LIKE '%sp_topics%'"), []);
 
 // ================================================================ term rows (ruling 27)
 
@@ -79,9 +79,9 @@ $news = $db->insert('topics', ['name' => 'News', 'color' => 'red', 'shades' => [
 eq('a term row: implicit fields, then the authored ones', array_keys($news), ['id', 'name', 'slug', 'description', 'parent', 'count', 'url', 'color', 'icon', 'owner', 'shades', 'note']);
 eq('… slug derived from the name, empty description, no parent, no items', [$news['slug'], $news['description'], $news['parent'], $news['count']], ['news', '', null, 0]);
 eq('… url from the pattern', $news['url'], home_url('/topics/news/'));
-eq('… term meta in TypedPress\'s value form', [$news['color'], $news['shades']], ['red', ['dark']]);
-eq('… stored under tp_<field>', get_term_meta($news['id'], 'tp_color', true), 'red');
-eq('the id is core\'s term id', get_term($news['id'], 'tp_topics')->name, 'News');
+eq('… term meta in SpacePress\'s value form', [$news['color'], $news['shades']], ['red', ['dark']]);
+eq('… stored under sp_<field>', get_term_meta($news['id'], 'sp_color', true), 'red');
+eq('the id is core\'s term id', get_term($news['id'], 'sp_topics')->name, 'News');
 $sports = $db->insert('topics', ['name' => 'Sports', 'slug' => 'sport'], true)[0];
 eq('a given slug is kept', $sports['slug'], 'sport');
 $other = $db->insert('topics', ['name' => 'Other', 'slug' => 'sport'], true)[0];
@@ -94,7 +94,7 @@ problem('url is read-only', fn () => $db->update('topics', ['url' => 'x'], ['id'
 problem('a term has no author', fn () => $db->insert('topics', ['name' => 'A', 'author' => 1]), 422, 'invalid_input', '/author');
 $updated = $db->update('topics', ['name' => 'World news', 'description' => 'Everywhere', 'color' => null], ['id' => $news['id']], true)[0];
 eq('an update writes core\'s fields and term meta', [$updated['name'], $updated['slug'], $updated['description'], $updated['color']], ['World news', 'news', 'Everywhere', null]);
-eq('a cleared field is gone from term meta', get_term_meta($news['id'], 'tp_color', true), '');
+eq('a cleared field is gone from term meta', get_term_meta($news['id'], 'sp_color', true), '');
 $short = $db->insert('tags', ['name' => 'Short'], true)[0];
 eq('a term with no fields of its own is a row too', array_keys($short), ['id', 'name', 'slug', 'description', 'count', 'url']);
 
@@ -124,7 +124,7 @@ problem('a flat taxonomy has no parent', fn () => $db->insert('tags', ['name' =>
 $p1 = $db->insert('posts', ['title' => 'First', 'topics' => [$sports['id'], $news['id']], 'labels' => [$tag['id']]], true)[0];
 eq('`on` gives the item a field named after the taxonomy, in write order', $p1['topics'], [$sports['id'], $news['id']]);
 eq('terms() is the same kind of field', $p1['labels'], [$tag['id']]);
-eq('the links are core\'s term relationships, in that order', wp_get_object_terms($p1['id'], 'tp_topics', ['fields' => 'ids', 'orderby' => 'term_order']), [$sports['id'], $news['id']]);
+eq('the links are core\'s term relationships, in that order', wp_get_object_terms($p1['id'], 'sp_topics', ['fields' => 'ids', 'orderby' => 'term_order']), [$sports['id'], $news['id']]);
 eq('core keeps the counts', $db->findFirst('topics', ['where' => ['id' => $sports['id']]])['count'], 1);
 $p2 = $db->insert('posts', ['title' => 'Second', 'topics' => [$news['id']]], true)[0];
 $p3 = $db->insert('posts', ['title' => 'Third'], true)[0];
@@ -134,7 +134,7 @@ eq('a write replaces the set, in its new order', $reordered['topics'], [$news['i
 problem('a term of another taxonomy is refused', fn () => $db->update('posts', ['topics' => [$tag['id']]], ['id' => $p3['id']]), 409, 'reference_violation', '/topics/0');
 problem('a duplicate id is refused', fn () => $db->update('posts', ['topics' => [$news['id'], $news['id']]], ['id' => $p3['id']]), 422, 'invalid_input', '/topics/1');
 problem('a name never creates a term', fn () => $db->update('posts', ['topics' => ['Brand new']], ['id' => $p3['id']]), 422, 'invalid_input', '/topics/0');
-check('… and none was created', get_term_by('name', 'Brand new', 'tp_topics') === false);
+check('… and none was created', get_term_by('name', 'Brand new', 'sp_topics') === false);
 
 // ================================================================ queries (ruling 28)
 
@@ -162,7 +162,7 @@ eq('an item with no term has no URL yet', str_contains((string) get_permalink($p
 
 eq('anyone reads terms', req('GET', '/topics')[0], 200);
 [$s, $read] = req('GET', '/topics', query: ['where' => '{"slug":"sport"}']);
-eq('… through TypedPress\'s pipeline', [$s, $names($read)], [200, ['Sports']]);
+eq('… through SpacePress\'s pipeline', [$s, $names($read)], [200, ['Sports']]);
 check('a field with a read rule is masked', !array_key_exists('note', $read[0]), $read[0]);
 [$s, $created] = req('POST', '/topics', ['name' => 'By alice'], as: 'alice');
 eq('the create rule (author) lets an author create', [$s, $created['name'] ?? null], [201, 'By alice']);
@@ -173,13 +173,13 @@ isProblem('tags: an author may not create', req('POST', '/tags', ['name' => 'nop
 eq('assigning needs the item\'s rule (pages: author), not the taxonomy\'s update rule', [$s, $assigned['topics'] ?? null], [201, [$news['id']]]);
 isProblem('… and an item kind the author may not write refuses', req('POST', '/posts', ['title' => 'No', 'labels' => [$tag['id']]], as: 'alice'), 403, 'forbidden');
 wp_set_current_user($wp->userId('alice'));
-check('assign_tp_topics is granted to someone who may write an attached kind', current_user_can('assign_tp_topics'));
-check('… assign_tp_tags is not: posts are editor-only', !current_user_can('assign_tp_tags'));
-check('edit_tp_topics (core\'s create check on a hierarchical taxonomy) follows the create rule', current_user_can('edit_tp_topics'));
-check('… delete_tp_topics follows the delete rule (editor)', !current_user_can('delete_tp_topics'));
-check('core\'s create path is refused without the create rule', is_wp_error(wp_insert_term('Sneaky', 'tp_tags')));
+check('assign_sp_topics is granted to someone who may write an attached kind', current_user_can('assign_sp_topics'));
+check('… assign_sp_tags is not: posts are editor-only', !current_user_can('assign_sp_tags'));
+check('edit_sp_topics (core\'s create check on a hierarchical taxonomy) follows the create rule', current_user_can('edit_sp_topics'));
+check('… delete_sp_topics follows the delete rule (editor)', !current_user_can('delete_sp_topics'));
+check('core\'s create path is refused without the create rule', is_wp_error(wp_insert_term('Sneaky', 'sp_tags')));
 wp_set_current_user($wp->userId('sub'));
-check('a subscriber who may write no attached kind has no assign capability', !current_user_can('assign_tp_tags'));
+check('a subscriber who may write no attached kind has no assign capability', !current_user_can('assign_sp_tags'));
 wp_set_current_user(0);
 
 // ================================================================ deletes (ruling 30)
@@ -199,17 +199,17 @@ eq('deleting a term removes its meta', (function () use ($db, $sports): array {
 
 // Deleting a parent term must not reparent child terms the viewer can't read (#522).
 (static function () use ($wp, $schema): void {
-    $db = \TypedPress\db();
+    $db = \SpacePress\db();
     $parent = $db->insert('topics', ['name' => 'Visible Parent'], true)[0];
     $child = $db->insert('topics', ['name' => 'Hidden Child', 'parent' => $parent['id']], true)[0];
     $restricted = $schema;
     $restricted['taxonomies']['topics']['access']['read'] = ['fn' => static fn (): array => ['id' => ['ne' => $child['id']]]];
-    $restrictedSchema = new \TypedPress\Schema($restricted);
-    $store = \TypedPress\Wp\CompositeStore::create($restrictedSchema, $wp->connection());
-    $restrictedDb = new \TypedPress\Db($store, $restrictedSchema, $db->media());
-    $editor = new \TypedPress\Viewer(['id' => $wp->userId('ed'), 'name' => 'ed', 'role' => 'editor']);
-    $previous = \TypedPress\Db::instance();
-    \TypedPress\Db::setInstance($restrictedDb);
+    $restrictedSchema = new \SpacePress\Schema($restricted);
+    $store = \SpacePress\Wp\CompositeStore::create($restrictedSchema, $wp->connection());
+    $restrictedDb = new \SpacePress\Db($store, $restrictedSchema, $db->media());
+    $editor = new \SpacePress\Viewer(['id' => $wp->userId('ed'), 'name' => 'ed', 'role' => 'editor']);
+    $previous = \SpacePress\Db::instance();
+    \SpacePress\Db::setInstance($restrictedDb);
     try {
         problem(
             'deleting a parent term refuses when a child term may be hidden from the viewer',
@@ -220,7 +220,7 @@ eq('deleting a term removes its meta', (function () use ($db, $sports): array {
         eq('the parent term stays', $db->findFirst('topics', ['where' => ['id' => $parent['id']]])['name'] ?? null, 'Visible Parent');
         eq('the hidden child keeps its parent', $db->findFirst('topics', ['where' => ['id' => $child['id']]])['parent'] ?? null, $parent['id']);
     } finally {
-        \TypedPress\Db::setInstance($previous);
+        \SpacePress\Db::setInstance($previous);
     }
     // A viewer who can read every term in the taxonomy can still delete the parent.
     $db->delete('topics', ['id' => $parent['id']], false, $editor);
@@ -249,15 +249,15 @@ eq('core term meta fields: constructed with ($taxonomy); get_value($object_id, $
 
 // `columns` on a term-backed kind: only what was asked (and the key) is selected, the result as before.
 $statements = [];
-\TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$statements): void {
+\SpacePress\Wp\Connection::$observer = static function (string $sql) use (&$statements): void {
     $statements[] = $sql;
 };
 $narrow = $db->findMany('topics', ['columns' => ['name' => true, 'shades' => true], 'orderBy' => ['id' => 'asc']]);
-\TypedPress\Wp\Connection::$observer = null;
+\SpacePress\Wp\Connection::$observer = null;
 $wide = array_map(static fn (array $r): array => array_intersect_key($r, array_flip(['name', 'shades'])), $db->findMany('topics', ['orderBy' => ['id' => 'asc']]));
 eq('a term read with columns returns what reading every column gave', $narrow, $wide);
 $termSql = array_values(array_filter($statements, static fn (string $s): bool => str_contains($s, 'AS `name`')))[0] ?? '';
-check('and selects no other term field or meta join', !str_contains($termSql, 'AS `color`') && !str_contains($termSql, 'AS `description`') && !str_contains($termSql, "meta_key = 'tp_color'"), $termSql);
+check('and selects no other term field or meta join', !str_contains($termSql, 'AS `color`') && !str_contains($termSql, 'AS `description`') && !str_contains($termSql, "meta_key = 'sp_color'"), $termSql);
 
 // Older sites can share the same term ID across taxonomies. Core never caches an ambiguous ID.
 $wpdb->insert($wpdb->term_taxonomy, ['term_id' => $tag['id'], 'taxonomy' => 'category', 'description' => '']);
@@ -273,16 +273,16 @@ check('listing URLs keeps unqualified shared term IDs ambiguous', is_wp_error($s
     $post = $db->insert('posts', ['title' => 'Admin only', 'labels' => [$term['id']], 'status' => 'draft'], true)[0];
     $raw = require "$fixture/schema.php";
     $raw['collections']['posts']['access']['read'] = ['role' => 'admin'];
-    $probe = new \TypedPress\Db($db->store(), new \TypedPress\Schema($raw), $db->media());
-    $editor = new \TypedPress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
+    $probe = new \SpacePress\Db($db->store(), new \SpacePress\Schema($raw), $db->media());
+    $editor = new \SpacePress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
     problem('a term on an item the viewer can\'t read refuses the delete', fn () => $probe->delete('tags', ['id' => $term['id']], false, $editor), 409, 'reference_violation');
-    eq('… and the item keeps the term', wp_get_object_terms($post['id'], 'tp_tags', ['fields' => 'ids']), [$term['id']]);
+    eq('… and the item keeps the term', wp_get_object_terms($post['id'], 'sp_tags', ['fields' => 'ids']), [$term['id']]);
     // An item in WordPress's trash still carries its terms, and core's term delete removes them.
     $trashedTerm = $db->insert('tags', ['name' => 'On a trashed item'], true)[0];
     $trashed = $db->insert('posts', ['title' => 'Trashed', 'labels' => [$trashedTerm['id']], 'status' => 'draft'], true)[0];
-    \TypedPress\Wp\Plugin::instance()->connection()->core(static fn () => wp_trash_post($trashed['id']));
+    \SpacePress\Wp\Plugin::instance()->connection()->core(static fn () => wp_trash_post($trashed['id']));
     problem('a term on a trashed item the viewer can\'t read refuses the delete', fn () => $probe->delete('tags', ['id' => $trashedTerm['id']], false, $editor), 409, 'reference_violation');
-    eq('… and the trashed item keeps it', wp_get_object_terms($trashed['id'], 'tp_tags', ['fields' => 'ids']), [$trashedTerm['id']]);
+    eq('… and the trashed item keeps it', wp_get_object_terms($trashed['id'], 'sp_tags', ['fields' => 'ids']), [$trashedTerm['id']]);
     $free = $db->insert('tags', ['name' => 'Free'], true)[0];
     eq('a term no item carries deletes', count($probe->delete('tags', ['id' => $free['id']], true, $editor)), 1);
 })();
@@ -295,13 +295,13 @@ check('listing URLs keeps unqualified shared term IDs ambiguous', is_wp_error($s
     $raw = require "$fixture/schema.php";
     $raw['collections']['posts']['access']['read'] = ['role' => 'anyone'];
     $raw['collections']['posts']['access']['update'] = ['role' => 'admin'];
-    $probe = new \TypedPress\Db($db->store(), new \TypedPress\Schema($raw), $db->media());
-    $editor = new \TypedPress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
+    $probe = new \SpacePress\Db($db->store(), new \SpacePress\Schema($raw), $db->media());
+    $editor = new \SpacePress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
     problem('editor cannot directly remove protected post term', fn () => $probe->update('posts', ['labels' => []], ['id' => $post['id']], false, $editor), 403, 'forbidden');
     $result = null;
     try { $probe->delete('tags', ['id' => $term['id']], false, $editor); $result = ['status' => 200]; }
-    catch (\Throwable $e) { $result = \TypedPress\App::problem($e); }
-    $links = wp_get_object_terms($post['id'], 'tp_tags', ['fields' => 'ids']);
+    catch (\Throwable $e) { $result = \SpacePress\App::problem($e); }
+    $links = wp_get_object_terms($post['id'], 'sp_tags', ['fields' => 'ids']);
     eq('deleting term must enforce linked post update rule', [$result['status'], $links], [409, [$term['id']]]);
 })();
 
@@ -311,29 +311,29 @@ check('listing URLs keeps unqualified shared term IDs ambiguous', is_wp_error($s
 (static function () use ($db, $fixture, $wp): void {
     $term = $db->insert('tags', ['name' => 'Only a public post carries this'], true)[0];
     $db->insert('posts', ['title' => 'Public link', 'labels' => [$term['id']], 'status' => 'published'], true);
-    $hiddenId = \TypedPress\Wp\Plugin::instance()->connection()->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => 'Unrelated hidden post', 'post_status' => 'publish', 'post_password' => 'not-a-credential-fixture', 'post_content' => 'Unrelated hidden content'], true));
+    $hiddenId = \SpacePress\Wp\Plugin::instance()->connection()->core(static fn () => wp_insert_post(['post_type' => 'sp_posts', 'post_title' => 'Unrelated hidden post', 'post_status' => 'publish', 'post_password' => 'not-a-credential-fixture', 'post_content' => 'Unrelated hidden content'], true));
     check('an unrelated protected post was seeded', is_int($hiddenId));
     $raw = require "$fixture/schema.php";
     $raw['taxonomies']['tags']['access']['delete'] = ['role' => 'anyone'];
-    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create(new \TypedPress\Schema($raw), $db->store()->db), new \TypedPress\Schema($raw), $db->media());
-    $visitor = new \TypedPress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
+    $probe = new \SpacePress\Db(\SpacePress\Wp\CompositeStore::create(new \SpacePress\Schema($raw), $db->store()->db), new \SpacePress\Schema($raw), $db->media());
+    $visitor = new \SpacePress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
     {
         $payload = str_repeat('x', 2 * 1024 * 1024);
         $wp->connection()->run('UPDATE wp_posts SET post_content = ? WHERE ID = ?', [$payload, $hiddenId]);
         unset($payload);
         $cols = 'post_author, post_date, post_date_gmt, post_content, post_title, post_excerpt, post_status, comment_status, ping_status, post_password, post_name, to_ping, pinged, post_modified, post_modified_gmt, post_content_filtered, post_parent, guid, menu_order, post_type, post_mime_type, comment_count';
         for ($i = 0; $i < 6; $i++) {
-            $wp->connection()->run("INSERT INTO wp_posts ($cols) SELECT $cols FROM wp_posts WHERE post_type = ? AND post_password = ?", ['tp_posts', 'not-a-credential-fixture']);
+            $wp->connection()->run("INSERT INTO wp_posts ($cols) SELECT $cols FROM wp_posts WHERE post_type = ? AND post_password = ?", ['sp_posts', 'not-a-credential-fixture']);
         }
         echo "hidden-volume setup: 1 * 2^6 unrelated protected posts * 2 MiB content; lowering request memory to 128M\n";
     }
     $limit = ini_get('memory_limit');
     ini_set('memory_limit', '128M');
     wp_cache_flush();
-    \TypedPress\Wp\CoreAccess::flush();
+    \SpacePress\Wp\CoreAccess::flush();
     eq('hidden post is not cached before viewer delete', wp_cache_get($hiddenId, 'posts'), false);
     try { $probe->delete('tags', ['id' => $term['id']], false, $visitor); $result = ['status' => 200]; }
-    catch (\Throwable $e) { $result = \TypedPress\App::problem($e); }
+    catch (\Throwable $e) { $result = \SpacePress\App::problem($e); }
     ini_set('memory_limit', $limit);
     $cached = wp_cache_get($hiddenId, 'posts');
     eq('the viewer\'s check loads no unrelated protected post', $cached !== false, false);
@@ -347,10 +347,10 @@ check('listing URLs keeps unqualified shared term IDs ambiguous', is_wp_error($s
     $post = $db->insert('posts', ['title' => 'Draft-only owner', 'labels' => [$term['id']], 'status' => 'draft'], true)[0];
     $raw = require "$fixture/schema.php";
     $raw['taxonomies']['tags']['access']['delete'] = ['role' => 'anyone'];
-    $probe = new \TypedPress\Db($db->store(), new \TypedPress\Schema($raw), $db->media());
-    $visitor = new \TypedPress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
+    $probe = new \SpacePress\Db($db->store(), new \SpacePress\Schema($raw), $db->media());
+    $visitor = new \SpacePress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
     problem('draft-only term owner refuses deletion for subscriber', fn () => $probe->delete('tags', ['id' => $term['id']], false, $visitor), 409, 'reference_violation');
-    eq('refused draft-only term owner retains link', wp_get_object_terms($post['id'], 'tp_tags', ['fields' => 'ids']), [$term['id']]);
+    eq('refused draft-only term owner retains link', wp_get_object_terms($post['id'], 'sp_tags', ['fields' => 'ids']), [$term['id']]);
 })();
 
 // Password-protected posts that carry the deleted term are decided in SQL, never loaded: one or 64
@@ -359,14 +359,14 @@ check('listing URLs keeps unqualified shared term IDs ambiguous', is_wp_error($s
 (static function () use ($db, $fixture, $wp): void {
     $raw = require "$fixture/schema.php";
     $raw['taxonomies']['tags']['access']['delete'] = ['role' => 'anyone'];
-    $schema = new \TypedPress\Schema($raw);
-    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
-    $viewer = new \TypedPress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
+    $schema = new \SpacePress\Schema($raw);
+    $probe = new \SpacePress\Db(\SpacePress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $viewer = new \SpacePress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
     $single = $db->insert('tags', ['name' => 'single protected referring post'], true)[0];
     $bulk = $db->insert('tags', ['name' => 'many protected referring posts'], true)[0];
-    $one = \TypedPress\Wp\Plugin::instance()->connection()->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => 'Q516 protected single', 'post_status' => 'publish', 'post_password' => 'q516-fixture'], true));
-    wp_set_object_terms($one, [$single['id']], 'tp_tags');
-    $seed = \TypedPress\Wp\Plugin::instance()->connection()->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => 'Q516 protected bulk', 'post_status' => 'publish', 'post_password' => 'q516-fixture'], true));
+    $one = \SpacePress\Wp\Plugin::instance()->connection()->core(static fn () => wp_insert_post(['post_type' => 'sp_posts', 'post_title' => 'Q516 protected single', 'post_status' => 'publish', 'post_password' => 'q516-fixture'], true));
+    wp_set_object_terms($one, [$single['id']], 'sp_tags');
+    $seed = \SpacePress\Wp\Plugin::instance()->connection()->core(static fn () => wp_insert_post(['post_type' => 'sp_posts', 'post_title' => 'Q516 protected bulk', 'post_status' => 'publish', 'post_password' => 'q516-fixture'], true));
     $payload = str_repeat('x', 2 * 1024 * 1024);
     $wp->connection()->run('UPDATE wp_posts SET post_content = ? WHERE ID = ?', [$payload, $seed]);
     unset($payload);
@@ -374,16 +374,16 @@ check('listing URLs keeps unqualified shared term IDs ambiguous', is_wp_error($s
     for ($i = 0; $i < 6; $i++) {
         $wp->connection()->run("INSERT INTO wp_posts ($cols) SELECT $cols FROM wp_posts WHERE post_title = ?", ['Q516 protected bulk']);
     }
-    $tt = get_term($bulk['id'], 'tp_tags')->term_taxonomy_id;
+    $tt = get_term($bulk['id'], 'sp_tags')->term_taxonomy_id;
     $wp->connection()->run('INSERT INTO wp_term_relationships (object_id, term_taxonomy_id, term_order) SELECT ID, ?, 0 FROM wp_posts WHERE post_title = ?', [$tt, 'Q516 protected bulk']);
     wp_cache_flush();
-    \TypedPress\Wp\CoreAccess::flush();
+    \SpacePress\Wp\CoreAccess::flush();
     $limit = ini_get('memory_limit');
     ini_set('memory_limit', '128M');
     problem('a protected post carrying the term refuses its delete', fn () => $probe->delete('tags', ['id' => $single['id']], false, $viewer), 409, 'reference_violation');
     problem('… and 64 large ones answer alike, loading none', fn () => $probe->delete('tags', ['id' => $bulk['id']], false, $viewer), 409, 'reference_violation');
     ini_set('memory_limit', $limit);
-    $editor = new \TypedPress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
+    $editor = new \SpacePress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
     problem('an editor is refused too: password visibility here is decided in SQL and fails closed', fn () => $probe->delete('tags', ['id' => $single['id']], false, $editor), 409, 'reference_violation');
 })();
 
@@ -393,17 +393,17 @@ check('listing URLs keeps unqualified shared term IDs ambiguous', is_wp_error($s
     $raw = require "$fixture/schema.php";
     $raw['taxonomies']['tags']['access']['delete'] = ['role' => 'anyone'];
     $raw['collections']['posts']['access']['update'] = ['role' => 'anyone'];
-    $schema = new \TypedPress\Schema($raw);
-    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
-    $viewer = new \TypedPress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
-    $core = \TypedPress\Wp\Plugin::instance()->connection();
+    $schema = new \SpacePress\Schema($raw);
+    $probe = new \SpacePress\Db(\SpacePress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $viewer = new \SpacePress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
+    $core = \SpacePress\Wp\Plugin::instance()->connection();
     foreach (['unrelated-one', 'unrelated-two', 'unrelated-three'] as $password) {
-        $core->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => "Unrelated $password", 'post_status' => 'publish', 'post_password' => $password], true));
+        $core->core(static fn () => wp_insert_post(['post_type' => 'sp_posts', 'post_title' => "Unrelated $password", 'post_status' => 'publish', 'post_password' => $password], true));
     }
     $carried = static function (string $name) use ($db, $core): array {
         $term = $db->insert('tags', ['name' => $name], true)[0];
-        $post = $core->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => "Carries $name", 'post_status' => 'publish', 'post_password' => 'scoped-fixture'], true));
-        wp_set_object_terms($post, [$term['id']], 'tp_tags');
+        $post = $core->core(static fn () => wp_insert_post(['post_type' => 'sp_posts', 'post_title' => "Carries $name", 'post_status' => 'publish', 'post_password' => 'scoped-fixture'], true));
+        wp_set_object_terms($post, [$term['id']], 'sp_tags');
 
         return [$term, $post];
     };
@@ -411,16 +411,16 @@ check('listing URLs keeps unqualified shared term IDs ambiguous', is_wp_error($s
     $_COOKIE['wp-postpass_' . COOKIEHASH] = (new \PasswordHash(8, true))->HashPassword('scoped-fixture');
     [$term, $post] = $carried('cookie-opened link');
     $statements = [];
-    \TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$statements): void {
+    \SpacePress\Wp\Connection::$observer = static function (string $sql) use (&$statements): void {
         $statements[] = $sql;
     };
     try { $probe->delete('tags', ['id' => $term['id']], false, $viewer); $result = ['status' => 200]; }
-    catch (\Throwable $e) { $result = \TypedPress\App::problem($e); }
-    \TypedPress\Wp\Connection::$observer = null;
+    catch (\Throwable $e) { $result = \SpacePress\App::problem($e); }
+    \SpacePress\Wp\Connection::$observer = null;
     $passwordReads = array_values(array_filter($statements, static fn (string $s): bool => str_contains($s, 'DISTINCT HEX(post_password)')));
     check('the delete check read some post passwords', $passwordReads !== []);
     check('… only those of the posts that carry the term', array_filter($passwordReads, static fn (string $s): bool => !str_contains($s, ' AND ID IN (')) === [], implode("\n", $passwordReads));
-    eq('a cookie that opens the carrying post lets the delete through, removing the link', [$result['status'], wp_get_object_terms($post, 'tp_tags', ['fields' => 'ids'])], [200, []]);
+    eq('a cookie that opens the carrying post lets the delete through, removing the link', [$result['status'], wp_get_object_terms($post, 'sp_tags', ['fields' => 'ids'])], [200, []]);
     $_COOKIE['wp-postpass_' . COOKIEHASH] = (new \PasswordHash(8, true))->HashPassword('unrelated-one');
     [$other] = $carried('cookie for another post');
     problem('a cookie for an unrelated protected post opens nothing here', fn () => $probe->delete('tags', ['id' => $other['id']], false, $viewer), 409, 'reference_violation');

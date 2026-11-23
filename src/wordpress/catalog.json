@@ -374,7 +374,7 @@
       "source": "wp-login.php",
       "byReference": false
     },
-    "typedpress_woo_order_stock": {
+    "spacepress_woo_order_stock": {
       "kind": "action",
       "params": [
         {
@@ -395,7 +395,7 @@
         }
       ],
       "description": "Fires when WooCommerce changes a product's stock for an order: a sale lowers it, a cancelled order or a restocked refund returns it.",
-      "source": "runtime/TypedPress/Commerce/Operations.php",
+      "source": "runtime/SpacePress/Commerce/Operations.php",
       "byReference": false,
       "async": true
     }

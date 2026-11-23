@@ -88,14 +88,14 @@ impl fmt::Display for Distrib {
 /// Why a query failed.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Error {
-    /// TypedPress compiles for fixed targets and has no browserslist data.
+    /// SpacePress compiles for fixed targets and has no browserslist data.
     Unsupported(String),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self::Unsupported(query) = self;
-        write!(f, "browserslist queries are not supported in TypedPress: '{query}'")
+        write!(f, "browserslist queries are not supported in SpacePress: '{query}'")
     }
 }
 
@@ -123,6 +123,6 @@ mod tests {
     #[test]
     fn every_query_is_refused() {
         let e = resolve(&["defaults"], &Opts::default()).unwrap_err();
-        assert_eq!(e.to_string(), "browserslist queries are not supported in TypedPress: 'defaults'");
+        assert_eq!(e.to_string(), "browserslist queries are not supported in SpacePress: 'defaults'");
     }
 }

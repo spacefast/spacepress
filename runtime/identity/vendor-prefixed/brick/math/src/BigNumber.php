@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Brick\Math;
+namespace SpacePress\Identity\Vendor\Brick\Math;
 
-use TypedPress\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
-use TypedPress\Identity\Vendor\Brick\Math\Exception\InvalidArgumentException;
-use TypedPress\Identity\Vendor\Brick\Math\Exception\MathException;
-use TypedPress\Identity\Vendor\Brick\Math\Exception\NumberFormatException;
-use TypedPress\Identity\Vendor\Brick\Math\Exception\PlatformException;
-use TypedPress\Identity\Vendor\Brick\Math\Exception\RoundingNecessaryException;
-use TypedPress\Identity\Vendor\Brick\Math\Internal\Safe;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\MathException;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\NumberFormatException;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\PlatformException;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\RoundingNecessaryException;
+use SpacePress\Identity\Vendor\Brick\Math\Internal\Safe;
 use JsonSerializable;
 use Override;
 use Stringable;

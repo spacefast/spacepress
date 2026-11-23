@@ -1,5 +1,5 @@
 {
-  "name": "typedpress-wp-hooks-test",
+  "name": "spacepress-wp-hooks-test",
   "private": true,
   "description": "A React app on the generated client's hooks, type-checked, bundled and run in Chromium against the tests/wp WordPress (tests/wp/hooks.test.ts)",
   "type": "module",

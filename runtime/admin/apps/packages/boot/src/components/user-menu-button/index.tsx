@@ -1,14 +1,14 @@
 import { Link } from '@wordpress/route';
-import { unlock } from '@typedpress-admin/admin-toolkit';
+import { unlock } from '@spacepress-admin/admin-toolkit';
 import { Button, Icon } from '@wordpress/ui';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
-import { Tooltip } from '@typedpress-admin/design-system';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components
+import { Tooltip } from '@spacepress-admin/design-system';
 import { privateApis as componentsPrivateApis } from '@wordpress/components';
 import { commentAuthorAvatar } from '@wordpress/icons';
 import { __ } from '@wordpress/i18n';
 import { useSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
-import { store as tpAdminStore } from '../../store';
+import { store as spAdminStore } from '../../store';
 import './style.scss';
 
 const { Menu } = unlock( componentsPrivateApis );
@@ -16,7 +16,7 @@ const { Menu } = unlock( componentsPrivateApis );
 function UserMenuButton() {
 	const { currentUser, logoutUrl } = useSelect( ( select ) => {
 		const { getCurrentUser } = select( coreStore );
-		const { getDashboardContext } = select( tpAdminStore );
+		const { getDashboardContext } = select( spAdminStore );
 		return {
 			currentUser: getCurrentUser(),
 			logoutUrl: getDashboardContext().logout_url,
@@ -31,7 +31,7 @@ function UserMenuButton() {
 					<Menu.TriggerButton
 						render={
 							<Tooltip.Trigger
-								aria-label={ __( 'Account', 'typedpress-admin' ) }
+								aria-label={ __( 'Account', 'spacepress-admin' ) }
 								render={
 									<Button
 										variant="minimal"
@@ -39,7 +39,7 @@ function UserMenuButton() {
 										tone="neutral"
 									/>
 								}
-								className="typedpress-admin-user-menu-button__button"
+								className="spacepress-admin-user-menu-button__button"
 							>
 								{ hasAvatar ? (
 									<img
@@ -64,7 +64,7 @@ function UserMenuButton() {
 					<Menu.Popover>
 						<Menu.Item render={ <Link to="/profile" /> }>
 							<Menu.ItemLabel>
-								{ __( 'Profile', 'typedpress-admin' ) }
+								{ __( 'Profile', 'spacepress-admin' ) }
 							</Menu.ItemLabel>
 						</Menu.Item>
 						<Menu.Item
@@ -74,12 +74,12 @@ function UserMenuButton() {
 							}
 						>
 							<Menu.ItemLabel>
-								{ __( 'Log out', 'typedpress-admin' ) }
+								{ __( 'Log out', 'spacepress-admin' ) }
 							</Menu.ItemLabel>
 						</Menu.Item>
 					</Menu.Popover>
 				</Menu>
-				<Tooltip.Popup>{ __( 'Account', 'typedpress-admin' ) }</Tooltip.Popup>
+				<Tooltip.Popup>{ __( 'Account', 'spacepress-admin' ) }</Tooltip.Popup>
 			</Tooltip.Root>
 		</Tooltip.Provider>
 	);

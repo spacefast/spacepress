@@ -11,13 +11,13 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Exception\CannotCreateTag;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Type;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Void_;
-use TypedPress\Identity\Vendor\Webmozart\Assert\Assert;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Exception\CannotCreateTag;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Type;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Void_;
+use SpacePress\Identity\Vendor\Webmozart\Assert\Assert;
 
 use function implode;
 /**

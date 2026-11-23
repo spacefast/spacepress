@@ -1,11 +1,11 @@
-//! `tp/app/` end to end (docs/spec/rendering.md §1–§3): the route conventions compile, the
+//! `sp/app/` end to end (docs/spec/rendering.md §1–§3): the route conventions compile, the
 //! generated `routes.d.ts` types links and params, and the router serves every page, layout,
 //! guard, catch-all, handler and error state on a real WordPress (tests/php/app_router.php).
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn first() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_typedpress"))
+    Command::new(env!("CARGO_BIN_EXE_spacepress"))
 }
 
 fn root() -> PathBuf {
@@ -26,7 +26,7 @@ fn copy(from: &Path, to: &Path) {
 }
 
 fn fixture(name: &str, test: &str) -> PathBuf {
-    let tmp = std::env::temp_dir().join(format!("typedpress-{name}-{test}-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-{name}-{test}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures").join(name), &tmp);
     tmp
@@ -43,21 +43,21 @@ fn guarded_home_links_and_item_moves_respect_wordpress_boundaries() {
     let project = project.path();
     for (file, source) in [
         (
-            "typedpress.config.ts",
-            r#"import { collection, defineConfig, slug, text } from "typedpress";
+            "spacepress.config.ts",
+            r#"import { collection, defineConfig, slug, text } from "spacepress";
 export const notes = collection({ title: text(), slug: slug({ source: "title" }).optional() }, {
   title: "title", url: "/notes/:slug",
 });
 export default defineConfig({ name: "guardboundaries", admin: false });"#,
         ),
         (
-            "tp/app/page.tsx",
+            "sp/app/page.tsx",
             r#"export const guard = "subscriber";
 export default function Home() { return <p>Signed-in home</p>; }"#,
         ),
         (
-            "tp/app/links/page.tsx",
-            r#"import { Link } from "typedpress/app";
+            "sp/app/links/page.tsx",
+            r#"import { Link } from "spacepress/app";
 export default function Links() {
   return <main>
     <Link href="/?s=drives" prefetch={undefined} requireAuth={undefined}>Search</Link>
@@ -68,7 +68,7 @@ export default function Links() {
 }"#,
         ),
         (
-            "tp/app/notes/[slug]/page.tsx",
+            "sp/app/notes/[slug]/page.tsx",
             r#"export const guard = ({ user }) => user === null;
 export default function Note() { return <p>Guarded public preview</p>; }"#,
         ),
@@ -81,8 +81,8 @@ export default function Note() { return <p>Guarded public preview</p>; }"#,
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/guarded_links_and_moves.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     assert!(
@@ -98,15 +98,15 @@ export default function Note() { return <p>Guarded public preview</p>; }"#,
 fn app_router_serves_pages_on_wordpress() {
     let project = fixture("app-router", "serve");
     copy(
-        &root().join("tests/fixtures/page-access/tp/app"),
-        &project.join("tp/app"),
+        &root().join("tests/fixtures/page-access/sp/app"),
+        &project.join("sp/app"),
     );
     build(&project);
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_router.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     assert!(
@@ -220,7 +220,7 @@ fn app_router_serves_pages_on_wordpress() {
     // `<Link>` to a path on the site is the router region's navigation, loaded on the page, names
     // the template its target renders in (this layout's `template = "blank"`), and is written at the
     // page's one address (`/notes/` under `/%postname%/`), never a redirect.
-    assert!(body.contains(r#"/notes/" data-wp-interactive="tp/router" data-wp-on--click="actions.navigate" data-tp-template="tp-blank" data-wp-init---tp-prefetch="callbacks.preparePrefetch" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
+    assert!(body.contains(r#"/notes/" data-wp-interactive="sp/router" data-wp-on--click="actions.navigate" data-sp-template="sp-blank" data-wp-init---sp-prefetch="callbacks.preparePrefetch" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
     assert_eq!(seen["router module"], true);
     // Reads run as the visitor: the draft is missing for anonymous visitors, masked fields absent.
     assert_eq!(page("note").0, 200);
@@ -384,7 +384,7 @@ fn app_router_serves_pages_on_wordpress() {
         seen["styles"],
         serde_json::json!({ "theme preset": true, "core preset": true, "project preset": true, "global styles": true, "additional css": true, "site icon": true })
     );
-    // What `typedpress styles pull` writes: the project's palette with the owner's color for `brand`.
+    // What `spacepress styles pull` writes: the project's palette with the owner's color for `brand`.
     assert_eq!(
         seen["styles export"],
         serde_json::json!([["version", "settings"], ["brand #123456", "code #0000aa"]])
@@ -398,13 +398,13 @@ fn app_router_serves_pages_on_wordpress() {
 /// item's path does not, so the two are compared without it.
 #[test]
 fn app_router_serves_item_pages_under_a_subdirectory() {
-    let project = std::env::temp_dir().join(format!("typedpress-full-site-subdir-{}", std::process::id()));
+    let project = std::env::temp_dir().join(format!("spacepress-full-site-subdir-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&project);
     copy(&root().join("examples/full-site"), &project);
     // A page folder with a dot in its name is a page like any other, with one address.
-    std::fs::create_dir_all(project.join("tp/app/release.v1")).unwrap();
+    std::fs::create_dir_all(project.join("sp/app/release.v1")).unwrap();
     std::fs::write(
-        project.join("tp/app/release.v1/page.tsx"),
+        project.join("sp/app/release.v1/page.tsx"),
         "export default function Release() { return <h1>Release v1</h1>; }\n",
     )
     .unwrap();
@@ -412,8 +412,8 @@ fn app_router_serves_item_pages_under_a_subdirectory() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_router_subdirectory.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     assert!(
@@ -448,7 +448,7 @@ fn app_router_serves_item_pages_under_a_subdirectory() {
             seen["links"][name],
             serde_json::json!({
                 "href": format!("{url}/notes/dawn-on-the-ridge/?q=tea%20time#body"),
-                "template": "tp-blank", "prefetch": "actions.prefetch"
+                "template": "sp-blank", "prefetch": "actions.prefetch"
             }),
             "{name}: {seen}"
         );
@@ -496,38 +496,38 @@ fn app_router_serves_item_pages_under_a_subdirectory() {
     let _ = std::fs::remove_dir_all(project);
 }
 
-/// `typedpress build` writes `tp/_generated/routes.d.ts`; with it, TypeScript checks every `<Link href>`
+/// `spacepress build` writes `sp/_generated/routes.d.ts`; with it, TypeScript checks every `<Link href>`
 /// and `PageProps<"route">` against the app's own routes.
 #[test]
 fn generated_routes_type_links_and_params() {
     let project = fixture("app-router", "types");
     build(&project);
-    let routes = std::fs::read_to_string(project.join("tp/_generated/routes.d.ts")).unwrap();
+    let routes = std::fs::read_to_string(project.join("sp/_generated/routes.d.ts")).unwrap();
     assert!(
         routes.contains(r#""notes/[slug]": { path: `/notes/${string}`; params: { slug: string } };"#),
         "{routes}"
     );
-    let types = root().join("types/typedpress");
+    let types = root().join("types/spacepress");
     std::fs::write(
         project.join("tsconfig.json"),
         serde_json::json!({
             "compilerOptions": {
                 "target": "ES2022", "lib": ["ES2022", "DOM"], "module": "ESNext", "moduleResolution": "bundler",
-                "strict": true, "noEmit": true, "types": [], "jsx": "react-jsx", "jsxImportSource": "typedpress",
+                "strict": true, "noEmit": true, "types": [], "jsx": "react-jsx", "jsxImportSource": "spacepress",
                 "allowImportingTsExtensions": true,
                 "paths": {
-                    "typedpress": [types.join("index.d.ts")],
-                    "typedpress/*": [types.join("*.d.ts")],
+                    "spacepress": [types.join("index.d.ts")],
+                    "spacepress/*": [types.join("*.d.ts")],
                 },
             },
-            "include": ["typedpress.config.ts", "tp"],
+            "include": ["spacepress.config.ts", "sp"],
         })
         .to_string(),
     )
     .unwrap();
     std::fs::write(
-        project.join("tp/app/_lib/links.tsx"),
-        r#"import { Link, type PageProps } from "typedpress/app";
+        project.join("sp/app/_lib/links.tsx"),
+        r#"import { Link, type PageProps } from "spacepress/app";
 export const ok = [<Link href="/notes/anything">x</Link>, <Link href="/docs">x</Link>, <Link href="/docs/a/b">x</Link>, <Link href="https://example.com">x</Link>];
 // @ts-expect-error: no route serves /nowhere
 export const missing = <Link href="/nowhere">x</Link>;
@@ -560,10 +560,10 @@ fn page_md_is_a_wordpress_page() {
     // A later build of the same app: one file changed in each of three ways, one removed, one added.
     let second = fixture("app-router", "content-second");
     copy(
-        &project.join("tp/_generated/migrations"),
-        &second.join("tp/_generated/migrations"),
+        &project.join("sp/_generated/migrations"),
+        &second.join("sp/_generated/migrations"),
     );
-    let app = second.join("tp/app");
+    let app = second.join("sp/app");
     std::fs::remove_dir_all(app.join("hidden")).unwrap();
     std::fs::create_dir_all(app.join("news")).unwrap();
     std::fs::write(app.join("news/page.md"), "# News\n\nNothing yet.\n").unwrap();
@@ -580,10 +580,10 @@ fn page_md_is_a_wordpress_page() {
     // A third build takes two pages away from visitors: one becomes a draft, one moves under a guard.
     let third = fixture("app-router", "content-third");
     copy(
-        &second.join("tp/_generated/migrations"),
-        &third.join("tp/_generated/migrations"),
+        &second.join("sp/_generated/migrations"),
+        &third.join("sp/_generated/migrations"),
     );
-    let app = third.join("tp/app");
+    let app = third.join("sp/app");
     std::fs::remove_dir_all(app.join("hidden")).unwrap();
     std::fs::remove_dir_all(app.join("colophon")).unwrap();
     std::fs::create_dir_all(app.join("account/colophon")).unwrap();
@@ -605,12 +605,12 @@ fn page_md_is_a_wordpress_page() {
     // gets a typo fixed; /colophon is now a page.tsx route.
     let fourth = fixture("app-router", "content-fourth");
     copy(
-        &third.join("tp/_generated/migrations"),
-        &fourth.join("tp/_generated/migrations"),
+        &third.join("sp/_generated/migrations"),
+        &fourth.join("sp/_generated/migrations"),
     );
-    std::fs::remove_dir_all(fourth.join("tp/app")).unwrap();
-    copy(&third.join("tp/app"), &fourth.join("tp/app"));
-    let app = fourth.join("tp/app");
+    std::fs::remove_dir_all(fourth.join("sp/app")).unwrap();
+    copy(&third.join("sp/app"), &fourth.join("sp/app"));
+    let app = fourth.join("sp/app");
     std::fs::create_dir_all(app.join("(docs)")).unwrap();
     std::fs::rename(app.join("(site)/guide"), app.join("(docs)/guide")).unwrap();
     let guide = app.join("(docs)/guide/page.md");
@@ -635,11 +635,11 @@ fn page_md_is_a_wordpress_page() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_content.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .arg(second.join("tp/dist/wp-content"))
-        .arg(third.join("tp/dist/wp-content"))
-        .arg(fourth.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .arg(second.join("sp/dist/wp-content"))
+        .arg(third.join("sp/dist/wp-content"))
+        .arg(fourth.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     for dir in [&project, &second, &third, &fourth] {
@@ -683,8 +683,8 @@ fn page_md_is_a_wordpress_page() {
     );
     assert!(body.contains(r#"<a href="https://example.com/map">map</a>"#), "{body}");
     assert!(
-        // Rendered as TypedPress renders every code block (TypedPress\Content\Code).
-        body.contains(r#"<pre class="typedpress-code language-sh"><code><span class="typedpress-code-line">typedpress build</span>"#),
+        // Rendered as SpacePress renders every code block (SpacePress\Content\Code).
+        body.contains(r#"<pre class="spacepress-code language-sh"><code><span class="spacepress-code-line">spacepress build</span>"#),
         "{body}"
     );
     let stored = &seen["guide stored"];
@@ -717,7 +717,7 @@ fn page_md_is_a_wordpress_page() {
         seen["guide twin"],
         serde_json::json!([
             200,
-            "# Field guide\n\nNotes are kept in **plain text**, one per walk.\n\n## What to carry\n\n- A pencil\n- A [map](https://example.com/map)\n\n```sh\ntypedpress build\n```\n",
+            "# Field guide\n\nNotes are kept in **plain text**, one per walk.\n\n## What to carry\n\n- A pencil\n- A [map](https://example.com/map)\n\n```sh\nspacepress build\n```\n",
             "text/markdown; charset=UTF-8"
         ])
     );
@@ -862,8 +862,8 @@ fn rejects(dir: &Path, files: &[(&str, &str)], message: &str, at: &str) {
     let _ = std::fs::remove_dir_all(dir);
     std::fs::create_dir_all(dir).unwrap();
     std::fs::write(
-        dir.join("typedpress.config.ts"),
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({});\n",
+        dir.join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({});\n",
     )
     .unwrap();
     for (path, source) in files {
@@ -885,114 +885,114 @@ fn rejects(dir: &Path, files: &[(&str, &str)], message: &str, at: &str) {
 /// build errors at the line, with the fix.
 #[test]
 fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
-    let dir = std::env::temp_dir().join(format!("typedpress-app-css-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("spacepress-app-css-{}", std::process::id()));
     let page = |import: &str| format!("{import}\nexport default function P() {{ return <p/>; }}\n");
     let styled = page("import \"./x.css\";");
     let module = page("import s from \"./x.module.css\";");
     rejects(
         &dir,
-        &[("tp/app/page.tsx", &styled), ("tp/app/x.ts", "export {};")],
+        &[("sp/app/page.tsx", &styled), ("sp/app/x.ts", "export {};")],
         "can't find \"./x.css\"",
-        "tp/app/page.tsx:1:1",
+        "sp/app/page.tsx:1:1",
     );
     rejects(
         &dir,
         &[
-            ("tp/app/page.tsx", &styled),
-            ("tp/app/x.css", "@import \"normalize.css\";\n.a {}\n"),
+            ("sp/app/page.tsx", &styled),
+            ("sp/app/x.css", "@import \"normalize.css\";\n.a {}\n"),
         ],
         "`@import \"normalize.css\"` isn't a local relative stylesheet",
-        "tp/app/x.css:1:1",
+        "sp/app/x.css:1:1",
     );
     rejects(
         &dir,
         &[
-            ("tp/app/page.tsx", &styled),
-            ("tp/app/x.css", "@import \"./y.css\";\n"),
-            ("tp/app/y.css", "@import \"./x.css\";\n"),
+            ("sp/app/page.tsx", &styled),
+            ("sp/app/x.css", "@import \"./y.css\";\n"),
+            ("sp/app/y.css", "@import \"./x.css\";\n"),
         ],
-        "circular CSS `@import` involving tp/app/x.css",
-        "tp/app/y.css:1:1",
+        "circular CSS `@import` involving sp/app/x.css",
+        "sp/app/y.css:1:1",
     );
     rejects(
         &dir,
         &[
-            ("tp/app/page.tsx", &styled),
-            ("tp/app/x.css", ".a {\n  background: url(./missing.png);\n}\n"),
+            ("sp/app/page.tsx", &styled),
+            ("sp/app/x.css", ".a {\n  background: url(./missing.png);\n}\n"),
         ],
         "can't find \"./missing.png\" referenced by `url(./missing.png)`",
-        "tp/app/x.css:2:15",
+        "sp/app/x.css:2:15",
     );
     rejects(
         &dir,
         &[
-            ("tp/app/page.tsx", &styled),
-            ("tp/app/x.css", ".a {\n  background: url(./secret.php);\n}\n"),
-            ("tp/app/secret.php", "<?php echo 1;\n"),
+            ("sp/app/page.tsx", &styled),
+            ("sp/app/x.css", ".a {\n  background: url(./secret.php);\n}\n"),
+            ("sp/app/secret.php", "<?php echo 1;\n"),
         ],
         "can't bundle \"./secret.php\" from `url(./secret.php)`",
-        "tp/app/x.css:2:15",
+        "sp/app/x.css:2:15",
     );
     rejects(
         &dir,
         &[
-            ("tp/app/page.tsx", &module),
-            ("tp/app/x.module.css", ":global(.a) {}\n"),
+            ("sp/app/page.tsx", &module),
+            ("sp/app/x.module.css", ":global(.a) {}\n"),
         ],
         "`:global` isn't supported in CSS modules",
-        "tp/app/x.module.css:1:1",
+        "sp/app/x.module.css:1:1",
     );
     rejects(
         &dir,
         &[
-            ("tp/app/page.tsx", &module),
-            ("tp/app/x.module.css", ".a { composes: b; }\n"),
+            ("sp/app/page.tsx", &module),
+            ("sp/app/x.module.css", ".a { composes: b; }\n"),
         ],
         "`composes` isn't supported in CSS modules",
-        "tp/app/x.module.css:1:6",
+        "sp/app/x.module.css:1:6",
     );
     rejects(
         &dir,
         &[
-            ("tp/app/page.tsx", &page("import data from \"./x.json\";")),
-            ("tp/app/x.json", "{}"),
+            ("sp/app/page.tsx", &page("import data from \"./x.json\";")),
+            ("sp/app/x.json", "{}"),
         ],
         "can't import \"./x.json\": expected TypeScript or JavaScript source",
-        "tp/app/page.tsx:1:1",
+        "sp/app/page.tsx:1:1",
     );
     rejects(
         &dir,
         &[
-            ("tp/app/page.tsx", &page("import x from \"./a.svg?bogus\";")),
-            ("tp/app/a.svg", "<svg/>"),
+            ("sp/app/page.tsx", &page("import x from \"./a.svg?bogus\";")),
+            ("sp/app/a.svg", "<svg/>"),
         ],
         "unsupported import query \"?bogus\"",
-        "tp/app/page.tsx:1:1",
+        "sp/app/page.tsx:1:1",
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// A fresh clone of a project that builds its stylesheets with `@typedpress/frontend` has no
-/// `tp/_generated/frontend-styles.json` (it stays out of Git). `check` and `check --json` compile it
+/// A fresh clone of a project that builds its stylesheets with `@spacepress/frontend` has no
+/// `sp/_generated/frontend-styles.json` (it stays out of Git). `check` and `check --json` compile it
 /// without reading `@import "tailwindcss"` as a copied stylesheet; `build` needs the built file.
 #[test]
 fn checks_a_fresh_clone_before_its_first_frontend_build() {
-    let dir = std::env::temp_dir().join(format!("typedpress-app-fresh-styles-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("spacepress-app-fresh-styles-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     for (path, source) in [
         (
-            "typedpress.config.ts",
-            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"fresh\" });\n",
+            "spacepress.config.ts",
+            "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"fresh\" });\n",
         ),
         (
             "package.json",
-            r#"{"devDependencies":{"@typedpress/frontend":"0.1.0"}}"#,
+            r#"{"devDependencies":{"@spacepress/frontend":"0.1.0"}}"#,
         ),
         (
-            "tp/app/page.tsx",
+            "sp/app/page.tsx",
             "import \"./site.css\";\nexport default function P() { return <h1 className=\"text-4xl\">Hi</h1>; }\n",
         ),
-        ("tp/app/site.css", "@import \"tailwindcss\" source(\"../\");\n"),
+        ("sp/app/site.css", "@import \"tailwindcss\" source(\"../\");\n"),
     ] {
         let path = dir.join(path);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1003,8 +1003,8 @@ fn checks_a_fresh_clone_before_its_first_frontend_build() {
     let json = first().arg("check").arg(&dir).arg("--json").output().unwrap();
     assert!(json.status.success(), "{}", String::from_utf8_lossy(&json.stdout));
     // No frontend build ran: `check` writes nothing.
-    assert!(!dir.join("tp/_generated/frontend-styles.json").exists());
-    assert!(!dir.join("public/typedpress-styles").exists());
+    assert!(!dir.join("sp/_generated/frontend-styles.json").exists());
+    assert!(!dir.join("public/spacepress-styles").exists());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1012,267 +1012,267 @@ fn checks_a_fresh_clone_before_its_first_frontend_build() {
 /// errors at the file, with the fix.
 #[test]
 fn refuses_route_shapes_and_exports_with_a_fix() {
-    let dir = std::env::temp_dir().join(format!("typedpress-app-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("spacepress-app-reject-{}", std::process::id()));
     let page = "export default function P() { return <p/>; }\n";
     rejects(
         &dir,
-        &[("tp/app/(a)/x/page.tsx", page), ("tp/app/(b)/x/page.tsx", page)],
+        &[("sp/app/(a)/x/page.tsx", page), ("sp/app/(b)/x/page.tsx", page)],
         "app/(b)/x/page.tsx and app/(a)/x/page.tsx both serve /x",
-        "tp/app/(b)/x/page.tsx",
+        "sp/app/(b)/x/page.tsx",
     );
     rejects(
         &dir,
         &[
-            ("tp/app/blog/[id]/page.tsx", page),
-            ("tp/app/blog/[slug]/page.tsx", page),
+            ("sp/app/blog/[id]/page.tsx", page),
+            ("sp/app/blog/[slug]/page.tsx", page),
         ],
         "both serve /blog/:",
-        "tp/app/blog/",
+        "sp/app/blog/",
     );
     rejects(
         &dir,
-        &[("tp/app/post-[slug]/page.tsx", page)],
+        &[("sp/app/post-[slug]/page.tsx", page)],
         "`post-[slug]` mixes text and a parameter",
-        "tp/app/post-[slug]",
+        "sp/app/post-[slug]",
     );
     rejects(
         &dir,
-        &[("tp/app/@modal/page.tsx", page)],
+        &[("sp/app/@modal/page.tsx", page)],
         "parallel route slot",
-        "tp/app/@modal",
+        "sp/app/@modal",
     );
     // `apiReference()` reads a JSON file of the app's `public/`, named as a literal.
     rejects(
         &dir,
         &[(
-            "tp/app/api/page.tsx",
-            "import { apiReference } from \"typedpress/content\";\nconst file = \"x.json\";\nexport default function P() { return <p>{apiReference(file).title}</p>; }\n",
+            "sp/app/api/page.tsx",
+            "import { apiReference } from \"spacepress/content\";\nconst file = \"x.json\";\nexport default function P() { return <p>{apiReference(file).title}</p>; }\n",
         )],
         "`apiReference()` takes the path of a JSON file in `public/`, as a string literal",
-        "tp/app/api/page.tsx:3",
+        "sp/app/api/page.tsx:3",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/api/page.tsx",
-            "import { apiReference } from \"typedpress/content\";\nexport default function P() { return <p>{apiReference(\"../secrets.json\").title}</p>; }\n",
+            "sp/app/api/page.tsx",
+            "import { apiReference } from \"spacepress/content\";\nexport default function P() { return <p>{apiReference(\"../secrets.json\").title}</p>; }\n",
         )],
         "`apiReference()` takes the path of a JSON file in `public/`",
-        "tp/app/api/page.tsx:2",
+        "sp/app/api/page.tsx:2",
     );
     rejects(
         &dir,
-        &[("tp/app/docs/[...rest]/more/page.tsx", page)],
+        &[("sp/app/docs/[...rest]/more/page.tsx", page)],
         "more/ is below a catch-all segment",
-        "tp/app/docs/[...rest]/more",
+        "sp/app/docs/[...rest]/more",
     );
     rejects(
         &dir,
-        &[("tp/app/wp-admin/page.tsx", page)],
+        &[("sp/app/wp-admin/page.tsx", page)],
         "would shadow /wp-admin",
-        "tp/app/wp-admin",
+        "sp/app/wp-admin",
     );
     // page.md: one page with one URL, a title, and only the front matter keys it reads.
     rejects(
         &dir,
-        &[("tp/app/docs/[slug]/page.md", "# Doc\n")],
+        &[("sp/app/docs/[slug]/page.md", "# Doc\n")],
         "app/docs/[slug]/page.md is below `[slug]`: a page.md is one page with one URL",
-        "tp/app/docs/[slug]/page.md:1:1",
+        "sp/app/docs/[slug]/page.md:1:1",
     );
     rejects(
         &dir,
-        &[("tp/app/about/page.md", "---\ntitle: About\ndescripton: Us\n---\n")],
+        &[("sp/app/about/page.md", "---\ntitle: About\ndescripton: Us\n---\n")],
         "page.md has no front matter key `descripton`",
-        "tp/app/about/page.md:3:1",
+        "sp/app/about/page.md:3:1",
     );
     rejects(
         &dir,
-        &[("tp/app/about/page.md", "Just text.\n")],
+        &[("sp/app/about/page.md", "Just text.\n")],
         "app/about/page.md has no title",
-        "tp/app/about/page.md:1:1",
+        "sp/app/about/page.md:1:1",
     );
     rejects(
         &dir,
-        &[("tp/app/about/page.md", "---\ntitle: About\nstatus: private\n---\n")],
+        &[("sp/app/about/page.md", "---\ntitle: About\nstatus: private\n---\n")],
         "`status` must be published or draft",
-        "tp/app/about/page.md:3:1",
+        "sp/app/about/page.md:3:1",
     );
     rejects(
         &dir,
-        &[("tp/app/about/page.md", "# About\n"), ("tp/app/about/page.tsx", page)],
+        &[("sp/app/about/page.md", "# About\n"), ("sp/app/about/page.tsx", page)],
         "app/about has both page.tsx and page.md",
-        "tp/app/about/page.md",
+        "sp/app/about/page.md",
     );
     rejects(
         &dir,
-        &[("tp/app/about/page.mdx", "# About\n")],
+        &[("sp/app/about/page.mdx", "# About\n")],
         "page.mdx isn't a route file",
-        "tp/app/about/page.mdx",
+        "sp/app/about/page.mdx",
     );
     rejects(
         &dir,
-        &[("tp/app/about/page.ts", "export default 1;\n")],
+        &[("sp/app/about/page.ts", "export default 1;\n")],
         "page.ts isn't a route file",
-        "tp/app/about/page.ts",
+        "sp/app/about/page.ts",
     );
     rejects(
         &dir,
-        &[("tp/app/about/loading.tsx", page)],
+        &[("sp/app/about/loading.tsx", page)],
         "loading.tsx isn't a route file",
-        "tp/app/about/loading.tsx",
+        "sp/app/about/loading.tsx",
     );
     rejects(
         &dir,
         &[
-            ("tp/app/x/page.tsx", page),
-            ("tp/app/x/route.ts", "export async function GET() { return {}; }\n"),
+            ("sp/app/x/page.tsx", page),
+            ("sp/app/x/route.ts", "export async function GET() { return {}; }\n"),
         ],
         "has both page.tsx and route.ts",
-        "tp/app/x/route.ts",
+        "sp/app/x/route.ts",
     );
     rejects(
         &dir,
-        &[("tp/app/x/not-found.tsx", page)],
-        "not-found.tsx works only at the root of tp/app/",
-        "tp/app/x/not-found.tsx",
+        &[("sp/app/x/not-found.tsx", page)],
+        "not-found.tsx works only at the root of sp/app/",
+        "sp/app/x/not-found.tsx",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/page.tsx",
+            "sp/app/page.tsx",
             "export const metdata = { title: \"x\" };\nexport default function P() { return <p/>; }\n",
         )],
         "app/page.tsx can't export `metdata`",
-        "tp/app/page.tsx",
+        "sp/app/page.tsx",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/page.tsx",
+            "sp/app/page.tsx",
             "export function Card() { return <p/>; }\nexport default function P() { return <Card/>; }\n",
         )],
-        "move components into tp/components/",
-        "tp/app/page.tsx",
+        "move components into sp/components/",
+        "sp/app/page.tsx",
     );
     rejects(
         &dir,
-        &[("tp/app/page.tsx", "export const metadata = { title: \"x\" };\n")],
+        &[("sp/app/page.tsx", "export const metadata = { title: \"x\" };\n")],
         "needs a default-exported component",
-        "tp/app/page.tsx",
+        "sp/app/page.tsx",
     );
     rejects(
         &dir,
-        &[("tp/app/blog/layout.tsx", page)],
+        &[("sp/app/blog/layout.tsx", page)],
         "app/blog/layout.tsx wraps no page",
-        "tp/app/blog/layout.tsx",
+        "sp/app/blog/layout.tsx",
     );
     rejects(
         &dir,
-        &[("tp/app/api/route.ts", "export const x = 1;\n")],
+        &[("sp/app/api/route.ts", "export const x = 1;\n")],
         "can't export `x`",
-        "tp/app/api/route.ts",
+        "sp/app/api/route.ts",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/api/route.ts",
+            "sp/app/api/route.ts",
             "export const guard = \"anyone\";\nexport async function GET() { return { status: \"ok\" }; }\n",
         )],
         "GET in app/api/route.ts returns",
-        "tp/app/api/route.ts",
+        "sp/app/api/route.ts",
     );
     rejects(
         &dir,
-        &[("tp/app/api/route.ts", "export async function GET() { return {}; }\n")],
+        &[("sp/app/api/route.ts", "export async function GET() { return {}; }\n")],
         "app/api/route.ts has HTTP handlers but no `guard`",
-        "tp/app/api/route.ts",
+        "sp/app/api/route.ts",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/api/route.ts",
-            "import { env } from \"typedpress\";\nexport const guard = \"anyone\";\nexport const signature = { secret: env(\"S\"), header: \"x-sig\", scheme: \"hmac-sha256\" };\nexport async function POST() { return {}; }\n",
+            "sp/app/api/route.ts",
+            "import { env } from \"spacepress\";\nexport const guard = \"anyone\";\nexport const signature = { secret: env(\"S\"), header: \"x-sig\", scheme: \"hmac-sha256\" };\nexport async function POST() { return {}; }\n",
         )],
         "exports both `guard` and `signature`",
-        "tp/app/api/route.ts",
+        "sp/app/api/route.ts",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/page.tsx",
+            "sp/app/page.tsx",
             "export const signature = {};\nexport default function P() { return <p/>; }\n",
         )],
         "no HTTP handler",
-        "tp/app/page.tsx",
+        "sp/app/page.tsx",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/page.tsx",
+            "sp/app/page.tsx",
             "export const access = \"admin\";\nexport default function P() { return <p/>; }\n",
         )],
         "can't export `access`",
-        "tp/app/page.tsx",
+        "sp/app/page.tsx",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/api/route.ts",
+            "sp/app/api/route.ts",
             "export const access = \"admin\";\nexport async function POST() { return {}; }\n",
         )],
         "can't export `access`",
-        "tp/app/api/route.ts",
+        "sp/app/api/route.ts",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/page.tsx",
+            "sp/app/page.tsx",
             "export const guard = { page: \"admin\" };\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
         )],
         "needs a `handlers` rule",
-        "tp/app/page.tsx",
+        "sp/app/page.tsx",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/page.tsx",
+            "sp/app/page.tsx",
             "export const guard = { handlers: \"admin\" };\nexport default function P() { return <p/>; }\n",
         )],
         "requires a page with unsigned HTTP handlers",
-        "tp/app/page.tsx",
+        "sp/app/page.tsx",
     );
     rejects(
         &dir,
         &[
             (
-                "tp/app/layout.tsx",
+                "sp/app/layout.tsx",
                 "export const access = \"admin\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
             ),
-            ("tp/app/page.tsx", page),
+            ("sp/app/page.tsx", page),
         ],
         "can't export `access`",
-        "tp/app/layout.tsx",
+        "sp/app/layout.tsx",
     );
     rejects(
         &dir,
         &[
             (
-                "tp/app/layout.tsx",
+                "sp/app/layout.tsx",
                 "export const guard = \"members\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
             ),
-            ("tp/app/page.tsx", page),
+            ("sp/app/page.tsx", page),
         ],
         "`guard` is",
-        "tp/app/layout.tsx",
+        "sp/app/layout.tsx",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/page.tsx",
+            "sp/app/page.tsx",
             "export const metadata = { title: 1 };\nexport default function P() { return <p/>; }\n",
         )],
         "`metadata.title` must be",
-        "tp/app/page.tsx",
+        "sp/app/page.tsx",
     );
     for (metadata, message) in [
         (
@@ -1298,30 +1298,30 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         rejects(
             &dir,
             &[(
-                "tp/app/page.tsx",
+                "sp/app/page.tsx",
                 &format!("export const metadata = {metadata};\nexport default function P() {{ return <p/>; }}\n"),
             )],
             message,
-            "tp/app/page.tsx",
+            "sp/app/page.tsx",
         );
     }
     rejects(
         &dir,
         &[(
-            "tp/app/page.tsx",
-            "import { redirect } from \"typedpress/app\";\nexport default function P() { redirect(\"javascript:alert(1)\"); }\n",
+            "sp/app/page.tsx",
+            "import { redirect } from \"spacepress/app\";\nexport default function P() { redirect(\"javascript:alert(1)\"); }\n",
         )],
         "isn't a URL a page can redirect to",
-        "tp/app/page.tsx:2:",
+        "sp/app/page.tsx:2:",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/page.tsx",
-            "import { Link } from \"typedpress/app\";\nexport default function P() { return <Link href=\"//evil.example\">x</Link>; }\n",
+            "sp/app/page.tsx",
+            "import { Link } from \"spacepress/app\";\nexport default function P() { return <Link href=\"//evil.example\">x</Link>; }\n",
         )],
         "isn't a URL a link can point to",
-        "tp/app/page.tsx:2:",
+        "sp/app/page.tsx:2:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -1331,144 +1331,144 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
 /// page, with the fix.
 #[test]
 fn refuses_prebuilt_pages_that_depend_on_the_request() {
-    let dir = std::env::temp_dir().join(format!("typedpress-app-prerender-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("spacepress-app-prerender-{}", std::process::id()));
     let page = "export default function P() { return <p/>; }\n";
     let static_config = (
-        "typedpress.config.ts",
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ output: \"static\" });\n",
+        "spacepress.config.ts",
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ output: \"static\" });\n",
     );
     rejects(
         &dir,
         &[(
-            "typedpress.config.ts",
-            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ output: \"hybrid\" });\n",
+            "spacepress.config.ts",
+            "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ output: \"hybrid\" });\n",
         )],
         "`output` is \"server\" or \"static\", not \"hybrid\"",
-        "typedpress.config.ts:2:",
+        "spacepress.config.ts:2:",
     );
     rejects(
         &dir,
         &[(
-            "typedpress.config.ts",
-            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ output: \"static\", frontend: \"https://example.com\" });\n",
+            "spacepress.config.ts",
+            "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ output: \"static\", frontend: \"https://example.com\" });\n",
         )],
         "`frontend` hands it to another site",
-        "typedpress.config.ts:2:",
+        "spacepress.config.ts:2:",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/page.tsx",
+            "sp/app/page.tsx",
             "export const prerender = \"yes\";\nexport default function P() { return <p/>; }\n",
         )],
         "`prerender` is \"yes\", not true or false",
-        "tp/app/page.tsx",
+        "sp/app/page.tsx",
     );
     rejects(
         &dir,
         &[
             static_config,
             (
-                "tp/app/about/page.tsx",
+                "sp/app/about/page.tsx",
                 "export const prerender = false;\nexport default function P() { return <p/>; }\n",
             ),
         ],
         "app/about/page.tsx says `prerender = false`, and `output: \"static\"` prebuilds every page",
-        "tp/app/about/page.tsx",
+        "sp/app/about/page.tsx",
     );
     rejects(
         &dir,
-        &[static_config, ("tp/app/blog/[slug]/page.tsx", page)],
+        &[static_config, ("sp/app/blog/[slug]/page.tsx", page)],
         "app/blog/[slug]/page.tsx is prebuilt (`output: \"static\"` prebuilds every page), and nothing lists its URLs",
-        "tp/app/blog/[slug]/page.tsx",
+        "sp/app/blog/[slug]/page.tsx",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/blog/[slug]/page.tsx",
+            "sp/app/blog/[slug]/page.tsx",
             "export const prerender = true;\nexport default function P() { return <p/>; }\n",
         )],
         "export `async function staticParams() { return [{ slug: \"…\" }]; }`",
-        "tp/app/blog/[slug]/page.tsx",
+        "sp/app/blog/[slug]/page.tsx",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/blog/[slug]/page.tsx",
+            "sp/app/blog/[slug]/page.tsx",
             "export async function staticParams() { return [{ slug: \"a\" }]; }\nexport default function P() { return <p/>; }\n",
         )],
         "exports `staticParams`, but it isn't prebuilt",
-        "tp/app/blog/[slug]/page.tsx",
+        "sp/app/blog/[slug]/page.tsx",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/about/page.tsx",
+            "sp/app/about/page.tsx",
             "export const prerender = true;\nexport async function staticParams() { return []; }\nexport default function P() { return <p/>; }\n",
         )],
         "exports `staticParams`, and its URL has no parameter",
-        "tp/app/about/page.tsx",
+        "sp/app/about/page.tsx",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/blog/[slug]/page.tsx",
+            "sp/app/blog/[slug]/page.tsx",
             "export const prerender = true;\nexport async function staticParams() { return [{ id: \"a\" }]; }\nexport default function P() { return <p/>; }\n",
         )],
         "staticParams in app/blog/[slug]/page.tsx returns",
-        "tp/app/blog/[slug]/page.tsx:2:",
+        "sp/app/blog/[slug]/page.tsx:2:",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/find/page.tsx",
-            "import { text } from \"typedpress\";\nexport const prerender = true;\nexport const search = { q: text().optional() };\nexport default function P() { return <p/>; }\n",
+            "sp/app/find/page.tsx",
+            "import { text } from \"spacepress\";\nexport const prerender = true;\nexport const search = { q: text().optional() };\nexport default function P() { return <p/>; }\n",
         )],
         "app/find/page.tsx is prebuilt (it says `prerender = true`), and it reads `search`",
-        "tp/app/find/page.tsx",
+        "sp/app/find/page.tsx",
     );
     rejects(
         &dir,
         &[
             (
-                "tp/app/account/layout.tsx",
+                "sp/app/account/layout.tsx",
                 "export const guard = \"subscriber\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
             ),
             (
-                "tp/app/account/page.tsx",
+                "sp/app/account/page.tsx",
                 "export const prerender = true;\nexport default function P() { return <p/>; }\n",
             ),
         ],
         "app/account/page.tsx is prebuilt (it says `prerender = true`), and app/account/layout.tsx guards it",
-        "tp/app/account/page.tsx",
+        "sp/app/account/page.tsx",
     );
     rejects(
         &dir,
         &[
             static_config,
             (
-                "tp/app/form/page.tsx",
+                "sp/app/form/page.tsx",
                 "export const guard = \"anyone\";\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
             ),
         ],
         "app/form/page.tsx has HTTP handlers, and a static site has no server to answer them",
-        "tp/app/form/page.tsx",
+        "sp/app/form/page.tsx",
     );
     // Through an imported helper too: the check follows the page's imports.
     rejects(
         &dir,
         &[
             (
-                "tp/app/_lib/who.ts",
+                "sp/app/_lib/who.ts",
                 "import { is_user_logged_in } from \"php/wordpress\";\nexport function who(): string { return is_user_logged_in() ? \"you\" : \"guest\"; }\n",
             ),
             (
-                "tp/app/hello/page.tsx",
+                "sp/app/hello/page.tsx",
                 "import { who } from \"../_lib/who\";\nexport const prerender = true;\nexport default function P() { return <p>{who()}</p>; }\n",
             ),
         ],
         "app/hello/page.tsx is prebuilt, and `is_user_logged_in` asks who the visitor is",
-        "tp/app/_lib/who.ts:2:",
+        "sp/app/_lib/who.ts:2:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -1485,25 +1485,25 @@ fn prerender_and_static_params_reach_the_route_table() {
         std::fs::write(path, source).unwrap();
     };
     write(
-        "typedpress.config.ts",
-        "import { defineConfig, collection, text, slug } from \"typedpress\";\nexport const notes = collection({ title: text(), slug: slug({ source: \"title\" }) }, { url: \"/notes/:slug\", access: { read: \"anyone\" } });\nexport { notes }; export default defineConfig({ name: \"hybrid\" });\n",
+        "spacepress.config.ts",
+        "import { defineConfig, collection, text, slug } from \"spacepress\";\nexport const notes = collection({ title: text(), slug: slug({ source: \"title\" }) }, { url: \"/notes/:slug\", access: { read: \"anyone\" } });\nexport { notes }; export default defineConfig({ name: \"hybrid\" });\n",
     );
-    write("tp/app/page.tsx", "export default function P() { return <p/>; }\n");
+    write("sp/app/page.tsx", "export default function P() { return <p/>; }\n");
     write(
-        "tp/app/about/page.tsx",
+        "sp/app/about/page.tsx",
         "export const prerender = true;\nexport default function P() { return <p/>; }\n",
     );
     write(
-        "tp/app/notes/[slug]/page.tsx",
+        "sp/app/notes/[slug]/page.tsx",
         "export const prerender = true;\nexport default function P() { return <p/>; }\n",
     );
     write(
-        "tp/app/tags/[tag]/page.tsx",
-        "import type { PageProps, StaticParams } from \"typedpress/app\";\nexport const prerender = true;\nexport async function staticParams(): Promise<StaticParams<\"tags/[tag]\">> { return [\"news\", \"notes\"].map((tag) => ({ tag })); }\nexport default function P({ params }: PageProps<\"tags/[tag]\">) { return <p>{params.tag}</p>; }\n",
+        "sp/app/tags/[tag]/page.tsx",
+        "import type { PageProps, StaticParams } from \"spacepress/app\";\nexport const prerender = true;\nexport async function staticParams(): Promise<StaticParams<\"tags/[tag]\">> { return [\"news\", \"notes\"].map((tag) => ({ tag })); }\nexport default function P({ params }: PageProps<\"tags/[tag]\">) { return <p>{params.tag}</p>; }\n",
     );
     build(project);
     let schema =
-        std::fs::read_to_string(project.join("tp/dist/wp-content/plugins/typedpress-app-hybrid/tp/app/schema.php"))
+        std::fs::read_to_string(project.join("sp/dist/wp-content/plugins/spacepress-app-hybrid/sp/app/schema.php"))
             .unwrap();
     let route = |id: &str| {
         schema
@@ -1521,10 +1521,10 @@ fn prerender_and_static_params_reach_the_route_table() {
     let out = Command::new("php")
         .arg("-r")
         .arg(format!(
-            "require '{}/runtime/TypedPress/bootstrap.php'; require '{}'; $s = require '{}'; $fn = '\\\\TypedPressApp\\\\' . $s['app']['files']['app/tags/[tag]/page.tsx']['staticParams']; echo \\TypedPress\\Js::jsonStringify($fn());",
+            "require '{}/runtime/SpacePress/bootstrap.php'; require '{}'; $s = require '{}'; $fn = '\\\\SpacePressApp\\\\' . $s['app']['files']['app/tags/[tag]/page.tsx']['staticParams']; echo \\SpacePress\\Js::jsonStringify($fn());",
             root().display(),
-            project.join("tp/dist/wp-content/plugins/typedpress-app-hybrid/tp/app/functions.php").display(),
-            project.join("tp/dist/wp-content/plugins/typedpress-app-hybrid/tp/app/schema.php").display(),
+            project.join("sp/dist/wp-content/plugins/spacepress-app-hybrid/sp/app/functions.php").display(),
+            project.join("sp/dist/wp-content/plugins/spacepress-app-hybrid/sp/app/schema.php").display(),
         ))
         .output()
         .unwrap();
@@ -1540,7 +1540,7 @@ fn prerender_and_static_params_reach_the_route_table() {
 /// Action Scheduler action renders each prebuilt URL as a signed-out visitor and writes its HTML and
 /// Markdown; the app serves them before WordPress parses the request; a write deletes the files of
 /// the URLs it changed and schedules their rebuild, so a visitor never gets stale content. The
-/// listing `typedpress export` reads is an editor's.
+/// listing `spacepress export` reads is an editor's.
 #[test]
 fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     let project = fixture("app-prebuilt", "serve");
@@ -1548,8 +1548,8 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_prebuilt.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     assert!(
@@ -1669,11 +1669,11 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
 fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value {
     let project = fixture("frontend-modes", variant);
     if app {
-        copy(&project.join("app/tp/app"), &project.join("tp/app"));
+        copy(&project.join("app/sp/app"), &project.join("sp/app"));
     }
     let _ = std::fs::remove_dir_all(project.join("app"));
     if let Some(frontend) = frontend {
-        let config = project.join("typedpress.config.ts");
+        let config = project.join("spacepress.config.ts");
         let text = std::fs::read_to_string(&config).unwrap();
         std::fs::write(
             &config,
@@ -1694,9 +1694,9 @@ fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value 
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/frontend_modes.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
-        .env("TP_TEST_BROWSER", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
+        .env("SP_TEST_BROWSER", "1")
         .output()
         .unwrap();
     assert!(
@@ -1711,7 +1711,7 @@ fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value 
 }
 
 /// spec §2.7 and §5 on WordPress: a kind's `url` is how WordPress resolves and links its items in
-/// every mode; with no tp/app/ the theme renders them, a first/app/ page that matches the
+/// every mode; with no sp/app/ the theme renders them, a first/app/ page that matches the
 /// pattern takes the URL over, `frontend: false` serves no public HTML, and an external frontend
 /// gets every front-end URL. wp-admin's REST and feeds keep working throughout, and a slug change
 /// (or a stale placeholder like a wrong year) 301s to the item's own URL.
@@ -1722,7 +1722,7 @@ fn frontend_modes_on_wordpress() {
     let off = modes("off", Some("false"), false);
     let external = modes("external", Some(r#""https://front.example""#), false);
     // In every mode wp-admin and sign-in work in a browser (spec §5): signed out, wp-admin is the
-    // login screen; signing in lands on TypedPress Admin, the default admin; classic pages open framed in
+    // login screen; signing in lands on SpacePress Admin, the default admin; classic pages open framed in
     // it until the user turns developer mode on, then classic wp-admin's dashboard and a list screen
     // render beside it; wp-admin's REST nonce works; signing out ends the session.
     for (mode, seen) in [("theme", &theme), ("app", &app), ("off", &off), ("external", &external)] {
@@ -1744,7 +1744,7 @@ fn frontend_modes_on_wordpress() {
             "{mode}"
         );
     }
-    // With no tp/app/, WordPress renders the whole site with its block theme: the home page,
+    // With no sp/app/, WordPress renders the whole site with its block theme: the home page,
     // core posts, kind URLs and its own 404 template. The app router adds nothing to any of them.
     let by_theme = |status: u64| serde_json::json!({ "status": status, "theme": true, "router": false });
     for (key, status) in [
@@ -1788,7 +1788,7 @@ fn frontend_modes_on_wordpress() {
     assert_eq!(theme["about"][0], 404);
     assert_eq!(theme["home"], 200);
 
-    // With tp/app/, its page renders the note through the router; a kind URL without a page and
+    // With sp/app/, its page renders the note through the router; a kind URL without a page and
     // a core post keep the theme. An address nothing serves is the theme's own 404 template, as
     // WordPress renders it: the app has no not-found.tsx to put in it.
     assert_eq!(app["note rendered"]["router"], true, "{app}");
@@ -1867,7 +1867,7 @@ fn frontend_modes_on_wordpress() {
     );
 
     // One sitemap, through core's (`wp-sitemap.xml`): core's own files for posts, pages, terms and
-    // authors, and TypedPress's provider with a file per kind that has a `url` and readable items. Only
+    // authors, and SpacePress's provider with a file per kind that has a `url` and readable items. Only
     // what a signed-out visitor may read is in it: no draft, no private or password-protected item,
     // no row a filter rule hides (`briefs`), no kind readers must sign in for (`drafts`), and no
     // kind without a `url` (`memos`).
@@ -1880,10 +1880,10 @@ fn frontend_modes_on_wordpress() {
             "/wp-sitemap-posts-page-1.xml",
             "/wp-sitemap-taxonomies-category-1.xml",
             "/wp-sitemap-users-1.xml",
-            "/wp-sitemap-typedpress-notes-1.xml",
-            "/wp-sitemap-typedpress-journal-1.xml",
-            "/wp-sitemap-typedpress-briefs-1.xml",
-            "/wp-sitemap-typedpress-vault-1.xml"
+            "/wp-sitemap-spacepress-notes-1.xml",
+            "/wp-sitemap-spacepress-journal-1.xml",
+            "/wp-sitemap-spacepress-briefs-1.xml",
+            "/wp-sitemap-spacepress-vault-1.xml"
         ]),
         "{sitemap}"
     );
@@ -1896,11 +1896,11 @@ fn frontend_modes_on_wordpress() {
             // Both admin and the editor have a published post; the users kind's read rule shows a
             // visitor the editor's row only, so only that author archive is listed.
             "/wp-sitemap-users-1.xml": ["/author/editor/"],
-            "/wp-sitemap-typedpress-notes-1.xml": ["/notes/renamed-note/"],
-            "/wp-sitemap-typedpress-journal-1.xml": ["/journal/2026/day-one/"],
-            "/wp-sitemap-typedpress-briefs-1.xml": ["/briefs/open-brief/"],
+            "/wp-sitemap-spacepress-notes-1.xml": ["/notes/renamed-note/"],
+            "/wp-sitemap-spacepress-journal-1.xml": ["/journal/2026/day-one/"],
+            "/wp-sitemap-spacepress-briefs-1.xml": ["/briefs/open-brief/"],
             // With no app page in front of it, WordPress renders a vault item for anyone.
-            "/wp-sitemap-typedpress-vault-1.xml": ["/members/vault/vault-item/"]
+            "/wp-sitemap-spacepress-vault-1.xml": ["/members/vault/vault-item/"]
         }),
         "{sitemap}"
     );
@@ -1911,7 +1911,7 @@ fn frontend_modes_on_wordpress() {
     assert_eq!(
         sitemap["with a post password"],
         serde_json::json!({
-            "/wp-sitemap-typedpress-notes-1.xml": ["/notes/renamed-note/"],
+            "/wp-sitemap-spacepress-notes-1.xml": ["/notes/renamed-note/"],
             "/wp-sitemap-posts-post-1.xml": ["/hello-world/", "/by-the-editor/"]
         }),
         "{sitemap}"
@@ -1926,8 +1926,8 @@ fn frontend_modes_on_wordpress() {
     // which file lists it depends on rows other readers can't see.
     let briefs_files = serde_json::json!([
         "/wp-sitemap.xml",
-        "/wp-sitemap-typedpress-briefs-1.xml",
-        "/wp-sitemap-typedpress-briefs-2.xml"
+        "/wp-sitemap-spacepress-briefs-1.xml",
+        "/wp-sitemap-spacepress-briefs-2.xml"
     ]);
     assert_eq!(sitemap["purged"], briefs_files);
     // So does a write that only changes who may read the row, and then the row is gone: the file
@@ -1956,17 +1956,17 @@ fn frontend_modes_on_wordpress() {
         "{}",
         app["sitemap"]
     );
-    // With tp/app/, its public pages are listed too: not the guarded one, not the one whose
+    // With sp/app/, its public pages are listed too: not the guarded one, not the one whose
     // metadata says `robots: { index: false }`, and not a route with parameters.
     assert_eq!(
-        app["sitemap"]["urls"]["/wp-sitemap-typedpress-app-pages-1.xml"],
+        app["sitemap"]["urls"]["/wp-sitemap-spacepress-app-pages-1.xml"],
         serde_json::json!(["/about/"]),
         "{}",
         app["sitemap"]
     );
     assert_eq!(
-        app["sitemap"]["urls"]["/wp-sitemap-typedpress-notes-1.xml"],
-        sitemap["urls"]["/wp-sitemap-typedpress-notes-1.xml"]
+        app["sitemap"]["urls"]["/wp-sitemap-spacepress-notes-1.xml"],
+        sitemap["urls"]["/wp-sitemap-spacepress-notes-1.xml"]
     );
     // `frontend: false` has no public pages, so no sitemap; an external frontend's sitemap is
     // answered here, with every entry at that site.
@@ -2014,10 +2014,10 @@ fn frontend_modes_on_wordpress() {
 fn client_components_compile_to_interactivity_stores() {
     let project = fixture("client-components", "stores");
     build(&project);
-    let plugin = project.join("tp/dist/wp-content/plugins/typedpress-app-clients");
+    let plugin = project.join("sp/dist/wp-content/plugins/spacepress-app-clients");
     let schema = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
-        .arg(plugin.join("tp/app/schema.php"))
+        .arg(plugin.join("sp/app/schema.php"))
         .output()
         .unwrap();
     let schema: serde_json::Value = serde_json::from_slice(&schema.stdout).unwrap();
@@ -2037,12 +2037,12 @@ fn client_components_compile_to_interactivity_stores() {
             .args(["-d", "memory_limit=512M"])
             .arg(root().join("tests/php/wp.php"))
             .arg("eval")
-            .arg(project.join("tp/dist/wp-content"))
+            .arg(project.join("sp/dist/wp-content"))
             .arg(
                 r#"
                 if ($arg) { wp_set_current_user($wp->userId('admin')); }
-                \TypedPress\Islands::context('clients/LikeButton', []);
-                \TypedPress\Islands::enqueue();
+                \SpacePress\Islands::context('clients/LikeButton', []);
+                \SpacePress\Islands::enqueue();
                 echo json_encode(wp_interactivity_config('clients/LikeButton')), "\n";
                 "#,
             )
@@ -2067,7 +2067,7 @@ fn client_components_compile_to_interactivity_stores() {
     );
     assert!(now.get("nonce").is_none(), "{now}");
     // The same store as a build before this one wrote it: its schema.php entry has no `client`.
-    let schema_php = plugin.join("tp/app/schema.php");
+    let schema_php = plugin.join("sp/app/schema.php");
     let text = std::fs::read_to_string(&schema_php).unwrap();
     std::fs::write(&schema_php, text.replace(", 'client' => true", "")).unwrap();
     let old = config("before", true);
@@ -2077,7 +2077,7 @@ fn client_components_compile_to_interactivity_stores() {
         old["actions"]["like"]
             .as_str()
             .unwrap()
-            .ends_with("/wp-json/typedpress/v1/actions/like"),
+            .ends_with("/wp-json/spacepress/v1/actions/like"),
         "{old}"
     );
     assert!(old["nonce"].is_string(), "{old}");
@@ -2089,9 +2089,9 @@ fn client_components_compile_to_interactivity_stores() {
         let file = islands[namespace]["file"].as_str().unwrap();
         let out = Command::new("node")
             .arg(root().join("tests/differential/client/drive.mjs"))
-            .arg(plugin.join("tp/app/client").join(file))
+            .arg(plugin.join("sp/app/client").join(file))
             .arg(root().join("tests/differential/client").join(script))
-            .arg(plugin.join("tp/app/client/typedpress-client.js"))
+            .arg(plugin.join("sp/app/client/spacepress-client.js"))
             .output()
             .unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -2113,10 +2113,10 @@ fn client_components_compile_to_interactivity_stores() {
     assert_eq!(
         effects,
         serde_json::json!({ "mounted": -1, "n": 10, "items": 2, "shown": 2, "seen": 100, "width": 777, "submitted": { "n": 0, "prevented": true },
-            "ref": { "tag": "OUTPUT", "asked": ["[data-tp-ref=\"box\"]"] }, "detached": "none" })
+            "ref": { "tag": "OUTPUT", "asked": ["[data-sp-ref=\"box\"]"] }, "detached": "none" })
     );
     // The server HTML carries the directives the store answers to.
-    let functions = std::fs::read_to_string(plugin.join("tp/app/functions.php")).unwrap();
+    let functions = std::fs::read_to_string(plugin.join("sp/app/functions.php")).unwrap();
     // A server component a client component renders stays a server component: Badge (in a file
     // that sorts before Switch.tsx) binds none of the Switch's state, though both have an `on`.
     let badge_name = schema["components"]["components/Badge.tsx#Badge"].as_str().unwrap();
@@ -2137,7 +2137,7 @@ fn client_components_compile_to_interactivity_stores() {
         "'data-wp-watch---effect1' => 'callbacks.effect1'",
         "'data-wp-init---mount2' => 'callbacks.mount2'",
         "'data-wp-on--submit' => 'actions.submit'",
-        "'data-tp-ref' => 'box'",
+        "'data-sp-ref' => 'box'",
     ] {
         assert!(directives.contains(directive), "{directive}");
     }
@@ -2147,121 +2147,121 @@ fn client_components_compile_to_interactivity_stores() {
 /// What generator B can't compile is a build error at the line, with the subset's alternative.
 #[test]
 fn refuses_client_code_outside_the_subset() {
-    let dir = std::env::temp_dir().join(format!("typedpress-client-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("spacepress-client-reject-{}", std::process::id()));
     let component =
-        |body: &str| format!("\"use client\";\nimport {{ useState }} from \"typedpress/client\";\n{body}\n");
+        |body: &str| format!("\"use client\";\nimport {{ useState }} from \"spacepress/client\";\n{body}\n");
     rejects(
         &dir,
         &[(
-            "tp/components/A.tsx",
+            "sp/components/A.tsx",
             &component("export function A() { const [n] = useState(0); return <><b>{n}</b></>; }"),
         )],
         "a client component returns one element",
-        "tp/components/A.tsx:3:",
+        "sp/components/A.tsx:3:",
     );
     let refs =
-        |body: &str| format!("\"use client\";\nimport {{ useRef, useState }} from \"typedpress/client\";\n{body}\n");
+        |body: &str| format!("\"use client\";\nimport {{ useRef, useState }} from \"spacepress/client\";\n{body}\n");
     rejects(
         &dir,
         &[(
-            "tp/components/A.tsx",
+            "sp/components/A.tsx",
             &refs("export function A() { const box = useRef(); const [n] = useState(0); return <b>{n}</b>; }"),
         )],
         "`box` is a `useRef()` no element has",
-        "tp/components/A.tsx:3:",
+        "sp/components/A.tsx:3:",
     );
     rejects(
         &dir,
         &[(
-            "tp/components/A.tsx",
+            "sp/components/A.tsx",
             &refs(
                 "export function A() { const box = useRef(); const [n] = useState(0); return <b ref={box}><i ref={box}>{n}</i></b>; }",
             ),
         )],
         "`box` is already attached to an element",
-        "tp/components/A.tsx:3:",
+        "sp/components/A.tsx:3:",
     );
     rejects(
         &dir,
         &[(
-            "tp/components/A.tsx",
+            "sp/components/A.tsx",
             &refs("export function A() { const [n] = useState(0); return <b ref={n}>{n}</b>; }"),
         )],
         "`ref` takes a `useRef()` of this component",
-        "tp/components/A.tsx:3:",
+        "sp/components/A.tsx:3:",
     );
     rejects(
         &dir,
         &[(
-            "tp/components/A.tsx",
+            "sp/components/A.tsx",
             "export function A() { return <b ref={null}>x</b>; }\n",
         )],
         "`ref` in a server component",
-        "tp/components/A.tsx:1:",
+        "sp/components/A.tsx:1:",
     );
     rejects(
         &dir,
         &[(
-            "tp/components/A.tsx",
+            "sp/components/A.tsx",
             &component("import dayjs from \"dayjs\";\nexport function A() { return <b/>; }"),
         )],
         "a \"use client\" component can't import \"dayjs\"",
-        "tp/components/A.tsx:3:",
+        "sp/components/A.tsx:3:",
     );
     rejects(
         &dir,
         &[(
-            "tp/components/A.tsx",
+            "sp/components/A.tsx",
             &component(
                 "export function A() { const [n, setN] = useState(0); return <b onClick={() => { n = 2; }}>{n}</b>; }",
             ),
         )],
         "`n` changes through `setN`",
-        "tp/components/A.tsx:3:",
+        "sp/components/A.tsx:3:",
     );
     rejects(
         &dir,
         &[(
-            "tp/components/A.tsx",
+            "sp/components/A.tsx",
             &component(
                 "const secret = 1;\nexport function A() { const [n, setN] = useState(0); return <b onClick={() => setN(secret)}>{n}</b>; }",
             ),
         )],
         "`secret` isn't available in the browser",
-        "tp/components/A.tsx:4:",
+        "sp/components/A.tsx:4:",
     );
     rejects(
         &dir,
         &[(
-            "tp/components/A.tsx",
+            "sp/components/A.tsx",
             &component("export function A() { const [n, setN] = useState(0); return <b onClick=\"go()\">{n}</b>; }"),
         )],
         "with a string is inline script",
-        "tp/components/A.tsx:3:",
+        "sp/components/A.tsx:3:",
     );
     rejects(
         &dir,
         &[
             (
-                "tp/components/A.tsx",
+                "sp/components/A.tsx",
                 &component("export function Same() { return <b/>; }"),
             ),
             (
-                "tp/components/B.tsx",
+                "sp/components/B.tsx",
                 &component("export function Same() { return <i/>; }"),
             ),
         ],
         "two \"use client\" components are named `Same`",
-        "tp/components/B.tsx:3:",
+        "sp/components/B.tsx:3:",
     );
     rejects(
         &dir,
         &[(
-            "tp/components/A.tsx",
+            "sp/components/A.tsx",
             &component("export function A() { const [n, setN] = useState(0); if (n) { setN(1); } return <b>{n}</b>; }"),
         )],
         "returns its element",
-        "tp/components/A.tsx:3:",
+        "sp/components/A.tsx:3:",
     );
     // Reactive lists and conditionals: the item is one keyed element, and each branch is one element.
     let shelf = |markup: &str| {
@@ -2289,48 +2289,48 @@ fn refuses_client_code_outside_the_subset() {
     ] {
         rejects(
             &dir,
-            &[("tp/components/A.tsx", &shelf(markup))],
+            &[("sp/components/A.tsx", &shelf(markup))],
             refusal,
-            "tp/components/A.tsx:3:",
+            "sp/components/A.tsx:3:",
         );
     }
     // `useLive`: a query the server and the browser both have (props and literals), and no `seed`.
     let live = |body: &str| {
         component(&format!(
-            "import {{ useLive }} from \"typedpress/client\";\nexport function A({{ n }}: {{ n: number }}) {{ {body} }}"
+            "import {{ useLive }} from \"spacepress/client\";\nexport function A({{ n }}: {{ n: number }}) {{ {body} }}"
         ))
     };
     rejects(
         &dir,
         &[
             (
-                "tp/schema.ts",
-                "import { table, text } from \"typedpress\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+                "sp/schema.ts",
+                "import { table, text } from \"spacepress\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
             ),
             (
-                "tp/components/A.tsx",
+                "sp/components/A.tsx",
                 &live(
                     "const [k, setK] = useState(5); const xs = useLive(\"notes\", { limit: k }); return <b onClick={() => setK(1)}>{xs.loading ? 1 : 0}</b>;",
                 ),
             ),
         ],
         "a `useLive` query reads props and literals only",
-        "tp/components/A.tsx:4:",
+        "sp/components/A.tsx:4:",
     );
     rejects(
         &dir,
         &[
             (
-                "tp/schema.ts",
-                "import { table, text } from \"typedpress\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+                "sp/schema.ts",
+                "import { table, text } from \"spacepress\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
             ),
             (
-                "tp/components/A.tsx",
+                "sp/components/A.tsx",
                 &live("const xs = useLive(\"notes\", { limit: n }, { seed: 1 }); return <b>{xs.loading ? 1 : 0}</b>;"),
             ),
         ],
         "`useLive` options are `{ enabled }`",
-        "tp/components/A.tsx:4:",
+        "sp/components/A.tsx:4:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -2343,35 +2343,35 @@ fn refuses_client_code_outside_the_subset() {
 fn forms_work_without_javascript() {
     let project = fixture("forms", "serve");
     // The same page at `/join` too: a page that isn't the front page has one address (`/join/`).
-    std::fs::create_dir_all(project.join("tp/app/join")).unwrap();
+    std::fs::create_dir_all(project.join("sp/app/join")).unwrap();
     std::fs::write(
-        project.join("tp/app/join/page.tsx"),
-        std::fs::read_to_string(project.join("tp/app/page.tsx"))
+        project.join("sp/app/join/page.tsx"),
+        std::fs::read_to_string(project.join("sp/app/page.tsx"))
             .unwrap()
             .replace("\"../server\"", "\"../../server\""),
     )
     .unwrap();
     build(&project);
     // `useFormState(action)` is typed with the action's result.
-    let types = root().join("types/typedpress");
+    let types = root().join("types/spacepress");
     std::fs::write(
         project.join("tsconfig.json"),
         serde_json::json!({
             "compilerOptions": {
                 "target": "ES2022", "lib": ["ES2022", "DOM"], "module": "ESNext", "moduleResolution": "bundler",
-                "strict": true, "noEmit": true, "types": [], "jsx": "react-jsx", "jsxImportSource": "typedpress",
+                "strict": true, "noEmit": true, "types": [], "jsx": "react-jsx", "jsxImportSource": "spacepress",
                 "allowImportingTsExtensions": true,
-                "paths": { "typedpress": [types.join("index.d.ts")], "typedpress/*": [types.join("*.d.ts")] },
+                "paths": { "spacepress": [types.join("index.d.ts")], "spacepress/*": [types.join("*.d.ts")] },
             },
-            "include": ["typedpress.config.ts", "tp", "typed.ts"],
+            "include": ["spacepress.config.ts", "sp", "typed.ts"],
         })
         .to_string(),
     )
     .unwrap();
     std::fs::write(
         project.join("typed.ts"),
-        r#"import { useFormState } from "typedpress/app";
-import { subscribe } from "./tp/server";
+        r#"import { useFormState } from "spacepress/app";
+import { subscribe } from "./sp/server";
 const state = useFormState(subscribe);
 export const seats: number | undefined = state.result?.seats;
 // @ts-expect-error: the result has no `nope`
@@ -2391,8 +2391,8 @@ export const typo = state.values.emial;
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/forms.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     // The same site under `/blog`: the form's return carries the home path, and the post comes back
@@ -2400,9 +2400,9 @@ export const typo = state.values.emial;
     let sub = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/forms.php"))
-        .arg(project.join("tp/dist/wp-content"))
+        .arg(project.join("sp/dist/wp-content"))
         .arg("/blog")
-        .env("TP_WP_THEMES", "1")
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -2431,8 +2431,8 @@ export const typo = state.values.emial;
         seen["form"],
         serde_json::json!({
             "method": "post",
-            "action": "/wp-json/typedpress/v1/actions/subscribe",
-            "hidden": [["_tp_return", "hidden", "/?ref=nav"], ["_tp_form", "hidden", "1"]],
+            "action": "/wp-json/spacepress/v1/actions/subscribe",
+            "hidden": [["_sp_return", "hidden", "/?ref=nav"], ["_sp_form", "hidden", "1"]],
             "page cache": "public, max-age=0, s-maxage=300, must-revalidate",
             "undeclared query": "private, no-store, max-age=0",
         }),
@@ -2469,7 +2469,7 @@ export const typo = state.values.emial;
     );
     // The fields of `<form action>` carry the state themselves: `aria-invalid` on the field the
     // error names, the typed value back where the page doesn't set one (never a password), a checked
-    // box checked again, and the form's `data-tp-form-state`. A success leaves the form empty.
+    // box checked again, and the form's `data-sp-form-state`. A success leaves the form empty.
     assert_eq!(
         seen["field state"],
         serde_json::json!({
@@ -2479,7 +2479,7 @@ export const typo = state.values.emial;
         }),
         "{seen}"
     );
-    // A form per row for one action: the state comes back on the row that posted (`_tp_form`), with
+    // A form per row for one action: the state comes back on the row that posted (`_sp_form`), with
     // the boxes and the radio choice it sent over the page's default; the other rows keep what is
     // stored. After a success every row shows the stored names.
     let row = |form: &str, name: &str, state: Option<&str>, invalid: Option<&str>, tags: &[&str], size: &[&str]| serde_json::json!({ "state": state, "form": form, "name": name, "invalid": invalid, "tags": tags, "size": size });
@@ -2567,9 +2567,9 @@ fn forms_submit_in_place_in_the_browser() {
     let mut server = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/serve_built.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
-        .env("TP_WP_SCRIPT_DEBUG", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
+        .env("SP_WP_SCRIPT_DEBUG", "1")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -2602,7 +2602,7 @@ fn forms_submit_in_place_in_the_browser() {
     );
     assert_eq!(
         seen["directive"],
-        serde_json::json!(["tp/router", "actions.submit"]),
+        serde_json::json!(["sp/router", "actions.submit"]),
         "{seen}"
     );
     assert_eq!(
@@ -2618,7 +2618,7 @@ fn forms_submit_in_place_in_the_browser() {
     // A second submit while the first was in flight sent nothing.
     assert_eq!(
         success["posts"],
-        serde_json::json!(["/wp-json/typedpress/v1/actions/subscribe"]),
+        serde_json::json!(["/wp-json/spacepress/v1/actions/subscribe"]),
         "{seen}"
     );
     // The same document: the window marker survives and no navigation entry was added.
@@ -2705,7 +2705,7 @@ fn forms_submit_in_place_in_the_browser() {
     assert_eq!(
         seen["failed"],
         serde_json::json!({
-            "posts": ["/wp-json/typedpress/v1/actions/subscribe"],
+            "posts": ["/wp-json/spacepress/v1/actions/subscribe"],
             "message": ["alert", true],
             "afterPending": { "busy": null, "disabled": [false] },
             "marker": "same document",
@@ -2714,7 +2714,7 @@ fn forms_submit_in_place_in_the_browser() {
     );
     assert_eq!(
         seen["dropped"],
-        serde_json::json!({ "posts": ["/wp-json/typedpress/v1/actions/subscribe"], "message": true, "marker": "same document" }),
+        serde_json::json!({ "posts": ["/wp-json/spacepress/v1/actions/subscribe"], "message": true, "marker": "same document" }),
         "{seen}"
     );
     // A `<Link>` click during a submit: the linked page stays; the late answer isn't rendered.
@@ -2805,19 +2805,19 @@ fn forms_submit_in_place_in_the_browser() {
     // marker out of the address), never a region swapped into other chrome.
     assert_eq!(
         seen["otherTemplate"],
-        serde_json::json!({ "from": "tp-blank", "to": "tp-page", "voted": "Voted bare", "header": 1, "regions": 1, "url": "/" }),
+        serde_json::json!({ "from": "sp-blank", "to": "sp-page", "voted": "Voted bare", "header": 1, "regions": 1, "url": "/" }),
         "{seen}"
     );
     // A stale answer in another block template is dropped after a `<Link>` navigation or a newer
     // submit (#537).
     assert_eq!(
         seen["otherTemplateStaleLink"],
-        serde_json::json!({ "url": "/other/", "other": true, "template": "tp-page", "marker": "same document" }),
+        serde_json::json!({ "url": "/other/", "other": true, "template": "sp-page", "marker": "same document" }),
         "{seen}"
     );
     assert_eq!(
         seen["otherTemplateOvertaken"],
-        serde_json::json!({ "url": "/?ref=nav", "done": "Subscribed three@example.test for 1 (weekly: false)", "template": "tp-page", "marker": "same document", "message": 1 }),
+        serde_json::json!({ "url": "/?ref=nav", "done": "Subscribed three@example.test for 1 (weekly: false)", "template": "sp-page", "marker": "same document", "message": 1 }),
         "{seen}"
     );
 }
@@ -2833,8 +2833,8 @@ fn comments_follow_the_kind_policy_on_every_path() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/comments.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -2849,7 +2849,7 @@ fn comments_follow_the_kind_policy_on_every_path() {
     assert_eq!(
         seen["signed out"],
         serde_json::json!({
-            "status": 200, "thread": ["TypedPress!"], "forms": 0, "sign in": "Sign in to comment",
+            "status": 200, "thread": ["SpacePress!"], "forms": 0, "sign in": "Sign in to comment",
             "cache": "public, max-age=0, s-maxage=300, must-revalidate",
         }),
         "{seen}"
@@ -2865,7 +2865,7 @@ fn comments_follow_the_kind_policy_on_every_path() {
         seen["first comment"],
         serde_json::json!({
             "status": 303, "stored": "unapproved", "notice": "Your comment is awaiting moderation.",
-            "ann sees": ["TypedPress!", "Hello from Ann (held)"], "others see": ["TypedPress!"], "bo sees": ["TypedPress!"],
+            "ann sees": ["SpacePress!", "Hello from Ann (held)"], "others see": ["SpacePress!"], "bo sees": ["SpacePress!"],
             "page cache": "private, no-store, max-age=0", "nonce": true,
         }),
         "{seen}"
@@ -2890,7 +2890,7 @@ fn comments_follow_the_kind_policy_on_every_path() {
     assert_eq!(
         depth["thread"],
         serde_json::json!([
-            "TypedPress!",
+            "SpacePress!",
             ">depth two",
             ">>depth three",
             "Hello from Ann",
@@ -2966,8 +2966,8 @@ fn search_pages_answer_as_the_visitor() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/search_pages.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -3082,45 +3082,45 @@ fn search_pages_answer_as_the_visitor() {
 /// this site. Anything else is a build error at the prop, with the fix.
 #[test]
 fn refuses_search_it_cannot_link() {
-    let dir = std::env::temp_dir().join(format!("typedpress-search-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("spacepress-search-reject-{}", std::process::id()));
     let schema = (
-        "tp/schema.ts",
-        "import { collection, text } from \"typedpress\";\nexport const memos = collection({ title: text() }, { title: \"title\", access: { read: \"anyone\", create: \"editor\", update: \"editor\", delete: \"editor\" } });\n",
+        "sp/schema.ts",
+        "import { collection, text } from \"spacepress\";\nexport const memos = collection({ title: text() }, { title: \"title\", access: { read: \"anyone\", create: \"editor\", update: \"editor\", delete: \"editor\" } });\n",
     );
     let page = |body: &str| {
         format!(
-            "import {{ Search, SearchResults }} from \"typedpress/app\";\nexport default function P() {{\n  return {body};\n}}\n"
+            "import {{ Search, SearchResults }} from \"spacepress/app\";\nexport default function P() {{\n  return {body};\n}}\n"
         )
     };
     rejects(
         &dir,
         &[
             schema,
-            ("tp/app/page.tsx", &page("<SearchResults kind=\"memos\" q=\"x\" />")),
+            ("sp/app/page.tsx", &page("<SearchResults kind=\"memos\" q=\"x\" />")),
         ],
         "`memos` has no url for a result to link to",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     rejects(
         &dir,
         &[
             schema,
-            ("tp/app/page.tsx", &page("<SearchResults kind=\"nope\" q=\"x\" />")),
+            ("sp/app/page.tsx", &page("<SearchResults kind=\"nope\" q=\"x\" />")),
         ],
         "there is no kind `nope` to search",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     rejects(
         &dir,
         &[
             schema,
             (
-                "tp/app/page.tsx",
+                "sp/app/page.tsx",
                 &page("<Search action=\"https://elsewhere.example/\" />"),
             ),
         ],
         "`<Search action>` is a path on this site",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -3129,34 +3129,34 @@ fn refuses_search_it_cannot_link() {
 /// error at the prop.
 #[test]
 fn refuses_comments_without_the_kind_option() {
-    let dir = std::env::temp_dir().join(format!("typedpress-comments-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("spacepress-comments-reject-{}", std::process::id()));
     let schema = (
-        "tp/schema.ts",
-        "import { collection, text, slug } from \"typedpress\";\nexport const memos = collection({ title: text(), slug: slug({ source: \"title\" }).optional() }, { title: \"title\", url: \"/memos/:slug\" });\n",
+        "sp/schema.ts",
+        "import { collection, text, slug } from \"spacepress\";\nexport const memos = collection({ title: text(), slug: slug({ source: \"title\" }).optional() }, { title: \"title\", url: \"/memos/:slug\" });\n",
     );
     rejects(
         &dir,
         &[
             schema,
             (
-                "tp/app/memos/[slug]/page.tsx",
-                "import { Comments, type PageProps } from \"typedpress/app\";\nexport default function Memo({ item }: PageProps<\"memos/[slug]\">) {\n  return <Comments for={item} />;\n}\n",
+                "sp/app/memos/[slug]/page.tsx",
+                "import { Comments, type PageProps } from \"spacepress/app\";\nexport default function Memo({ item }: PageProps<\"memos/[slug]\">) {\n  return <Comments for={item} />;\n}\n",
             ),
         ],
         "`memos` has comments off",
-        "tp/app/memos/[slug]/page.tsx:3:",
+        "sp/app/memos/[slug]/page.tsx:3:",
     );
     rejects(
         &dir,
         &[
             schema,
             (
-                "tp/app/page.tsx",
-                "import { Comments } from \"typedpress/app\";\nexport default function Home() {\n  return <Comments for={{ id: 1 }} />;\n}\n",
+                "sp/app/page.tsx",
+                "import { Comments } from \"spacepress/app\";\nexport default function Home() {\n  return <Comments for={{ id: 1 }} />;\n}\n",
             ),
         ],
         "`<Comments for>` takes a row of a collection",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -3164,51 +3164,51 @@ fn refuses_comments_without_the_kind_option() {
 /// What a form with an action can't be is a build error at the line, with the fix.
 #[test]
 fn refuses_forms_it_cannot_post() {
-    let dir = std::env::temp_dir().join(format!("typedpress-forms-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("spacepress-forms-reject-{}", std::process::id()));
     let server = (
-        "tp/server.ts",
-        "import { text, mutation } from \"typedpress\";\nexport const send = mutation({ access: \"anyone\" }, async ({ name }: { name: string }) => { return name; });\n",
+        "sp/server.ts",
+        "import { text, mutation } from \"spacepress\";\nexport const send = mutation({ access: \"anyone\" }, async ({ name }: { name: string }) => { return name; });\n",
     );
     let page = |body: &str| {
-        format!("import {{ useFormState }} from \"typedpress/app\";\nimport {{ send }} from \"../server\";\n{body}\n")
+        format!("import {{ useFormState }} from \"spacepress/app\";\nimport {{ send }} from \"../server\";\n{body}\n")
     };
     rejects(
         &dir,
         &[
             server,
             (
-                "tp/app/page.tsx",
+                "sp/app/page.tsx",
                 &page("export default function Page() { return <form action={send} method=\"get\"><button/></form>; }"),
             ),
         ],
         "a form with an action posts it form-encoded",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     rejects(
         &dir,
         &[
             server,
             (
-                "tp/app/page.tsx",
+                "sp/app/page.tsx",
                 &page(
                     "const other = 1;\nexport default function Page() { const s = useFormState(other); return <b>{String(s.pending)}</b>; }",
                 ),
             ),
         ],
         "`useFormState()` takes an action imported from your server code",
-        "tp/app/page.tsx:4:",
+        "sp/app/page.tsx:4:",
     );
     rejects(
         &dir,
         &[
             server,
             (
-                "tp/components/Box.tsx",
+                "sp/components/Box.tsx",
                 "\"use client\";\nimport { send } from \"../server\";\nexport function Box() { return <form action={send}><button/></form>; }\n",
             ),
         ],
         "a \"use client\" component's form calls its action from a handler",
-        "tp/components/Box.tsx:3:",
+        "sp/components/Box.tsx:3:",
     );
     // A field the action doesn't take: the action would refuse every submit, so the build does.
     rejects(
@@ -3216,56 +3216,56 @@ fn refuses_forms_it_cannot_post() {
         &[
             server,
             (
-                "tp/app/page.tsx",
+                "sp/app/page.tsx",
                 &page(
                     "export default function Page() { return <form action={send}><input name=\"nmae\" /><button/></form>; }",
                 ),
             ),
         ],
         "`nmae` isn't an input of `send`, so the action would refuse this form",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     rejects(
         &dir,
         &[
             server,
             (
-                "tp/app/page.tsx",
+                "sp/app/page.tsx",
                 &page(
                     "export default function Page() { return <form action={send}><p><select name=\"other\"><option>x</option></select></p></form>; }",
                 ),
             ),
         ],
         "`other` isn't an input of `send`",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     rejects(
         &dir,
         &[
             server,
             (
-                "tp/app/page.tsx",
+                "sp/app/page.tsx",
                 &page(
                     "export default function Page() { return <form action={send}><input type=\"image\" name=\"go\" src=\"/go.png\" alt=\"Go\" /></form>; }",
                 ),
             ),
         ],
         "an image button named `go` sends `go.x` and `go.y`, which `send` would refuse",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     // Controls the browser never sends with the form aren't checked: this page builds.
-    let ok = std::env::temp_dir().join(format!("typedpress-forms-ok-{}", std::process::id()));
+    let ok = std::env::temp_dir().join(format!("spacepress-forms-ok-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&ok);
-    std::fs::create_dir_all(ok.join("tp/app")).unwrap();
+    std::fs::create_dir_all(ok.join("sp/app")).unwrap();
     std::fs::write(
-        ok.join("typedpress.config.ts"),
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({});\n",
+        ok.join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({});\n",
     )
     .unwrap();
     std::fs::write(ok.join(server.0), server.1).unwrap();
     std::fs::write(
-        ok.join("tp/app/page.tsx"),
-        page("export default function Page() { return <form action={send}><input name=\"name\" /><button type=\"button\" name=\"preview\">Preview</button><input name=\"draft\" disabled /><button name=\"elsewhere\" formAction=\"/other\">Other</button><input name=\"_tp_form\" type=\"hidden\" value=\"1\" /><button>Send</button></form>; }"),
+        ok.join("sp/app/page.tsx"),
+        page("export default function Page() { return <form action={send}><input name=\"name\" /><button type=\"button\" name=\"preview\">Preview</button><input name=\"draft\" disabled /><button name=\"elsewhere\" formAction=\"/other\">Other</button><input name=\"_sp_form\" type=\"hidden\" value=\"1\" /><button>Send</button></form>; }"),
     )
     .unwrap();
     let out = first().arg("check").arg(&ok).output().unwrap();
@@ -3277,14 +3277,14 @@ fn refuses_forms_it_cannot_post() {
         &[
             server,
             (
-                "tp/app/page.tsx",
+                "sp/app/page.tsx",
                 &page(
                     "export default function Page() { const s = useFormState(send); return <b>{s.values.nmae}</b>; }",
                 ),
             ),
         ],
         "has no field `nmae`",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -3302,8 +3302,8 @@ fn live_regions_answer_page_reads() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/live_regions.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -3384,11 +3384,11 @@ fn live_regions_update_in_the_browser() {
     let mut server = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/serve_built.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
-        .env("TP_WP_SCRIPT_DEBUG", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
+        .env("SP_WP_SCRIPT_DEBUG", "1")
         .env(
-            "TP_SERVE_MU",
+            "SP_SERVE_MU",
             root().join("tests/differential/client/live-regions-mu.php"),
         )
         .stdout(std::process::Stdio::piped())
@@ -3490,21 +3490,21 @@ fn live_regions_update_in_the_browser() {
 /// `<Live>` without a literal id, or inside a client component, is a build error at the element.
 #[test]
 fn refuses_live_regions_it_cannot_name() {
-    let dir = std::env::temp_dir().join(format!("typedpress-live-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("spacepress-live-reject-{}", std::process::id()));
     let page = |body: &str| {
-        format!("import {{ Live }} from \"typedpress/app\";\nexport default function Home() {{\n  return {body};\n}}\n")
+        format!("import {{ Live }} from \"spacepress/app\";\nexport default function Home() {{\n  return {body};\n}}\n")
     };
     rejects(
         &dir,
-        &[("tp/app/page.tsx", &page("<Live><p>x</p></Live>"))],
+        &[("sp/app/page.tsx", &page("<Live><p>x</p></Live>"))],
         "`<Live>` needs an `id`",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     rejects(
         &dir,
-        &[("tp/app/page.tsx", &page("<Live id=\"Not Ok\"><p>x</p></Live>"))],
+        &[("sp/app/page.tsx", &page("<Live id=\"Not Ok\"><p>x</p></Live>"))],
         "`<Live id>` is a literal id",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -3512,32 +3512,32 @@ fn refuses_live_regions_it_cannot_name() {
 /// `<Pagination>` without the numbers it needs, or with the wrong types, is a build error at the prop.
 #[test]
 fn refuses_pagination_without_its_numbers() {
-    let dir = std::env::temp_dir().join(format!("typedpress-pagination-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("spacepress-pagination-reject-{}", std::process::id()));
     let page = |body: &str| {
         format!(
-            "import {{ Pagination }} from \"typedpress/app\";\nexport default function Home() {{\n  return {body};\n}}\n"
+            "import {{ Pagination }} from \"spacepress/app\";\nexport default function Home() {{\n  return {body};\n}}\n"
         )
     };
     rejects(
         &dir,
-        &[("tp/app/page.tsx", &page("<Pagination page={1} />"))],
+        &[("sp/app/page.tsx", &page("<Pagination page={1} />"))],
         "`<Pagination>` needs `pages`",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     rejects(
         &dir,
-        &[("tp/app/page.tsx", &page("<Pagination page={\"2\"} pages={4} />"))],
+        &[("sp/app/page.tsx", &page("<Pagination page={\"2\"} pages={4} />"))],
         "`<Pagination page>` takes a number",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/page.tsx",
+            "sp/app/page.tsx",
             &page("<Pagination page={1} pages={4} href=\"/x\" />"),
         )],
         "`<Pagination>` has no prop `href`",
-        "tp/app/page.tsx:3:",
+        "sp/app/page.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -3561,9 +3561,9 @@ fn client_components_hydrate_in_the_browser() {
     let mut server = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/serve_built.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
-        .env("TP_WP_SCRIPT_DEBUG", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
+        .env("SP_WP_SCRIPT_DEBUG", "1")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -3687,7 +3687,7 @@ fn the_client_outside_wordpress_runs_the_apps_abilities() {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.join("tp/dist/wp-content"))
+        .arg(project.join("sp/dist/wp-content"))
         .arg("root=admin")
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -3702,7 +3702,7 @@ fn the_client_outside_wordpress_runs_the_apps_abilities() {
         .arg(root().join("tests/differential/client/outside.mjs"))
         .arg(&url)
         .arg(&password)
-        .arg(project.join("tp/_generated/client"))
+        .arg(project.join("sp/_generated/client"))
         .output()
         .unwrap();
     let _ = Command::new("kill").arg(server.id().to_string()).output();
@@ -3765,19 +3765,19 @@ fn the_client_outside_wordpress_runs_the_apps_abilities() {
             format!("GET {run}/guestbook-list/run"),
             format!("GET {run}/guestbook-list/run"),
             format!("POST {run}/like/run"),
-            "GET /wp-json/typedpress/v1/me".to_string(),
+            "GET /wp-json/spacepress/v1/me".to_string(),
             format!("POST {run}/like/run"),
             format!("GET {run}/guestbook-list/run"),
             format!("POST {run}/like/run"),
-            "GET /wp-json/typedpress/v1/me".to_string(),
+            "GET /wp-json/spacepress/v1/me".to_string(),
             format!("POST {run}/guestbook-update/run"),
         ]),
         "{seen}"
     );
 }
 
-/// rendering.md §6.1 and §6.2 for `tp/app/` pages, on WordPress with a stand-in host listening
-/// on `tp_purge_urls`: an anonymous visitor's page is cacheable at the edge, a signed-in,
+/// rendering.md §6.1 and §6.2 for `sp/app/` pages, on WordPress with a stand-in host listening
+/// on `sp_purge_urls`: an anonymous visitor's page is cacheable at the edge, a signed-in,
 /// guarded or missing one is private; each cacheable render records what it read; an edit to one
 /// row purges exactly the URLs that read it or listed its kind, with their `.md` twins.
 #[test]
@@ -3787,8 +3787,8 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_cache.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -3856,7 +3856,7 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         serde_json::json!({ "status": 200, "cache": private, "edge": "no-cache", "batcache": "cancel" })
     );
     assert_eq!(seen["double slash index"], serde_json::json!([]));
-    // TypedPress's API and Identity's answer for whoever asks: Batcache never keeps them, signed in
+    // SpacePress's API and Identity's answer for whoever asks: Batcache never keeps them, signed in
     // by an application password or not, nor Identity's own API, which finds its session from its
     // cookie without WordPress setting the user.
     for (key, status) in [("api anonymous", 200), ("api app password", 200), ("identity api", 401)] {
@@ -3937,7 +3937,7 @@ fn app_pages_cache_and_purge_by_what_they_read() {
 
 /// One committed write, one announcement (docs/runtime-contract.md, "Purges"): a kind with a `url` is
 /// purged from two sources, the post hooks and the page cache's read index, and a write names the
-/// union once on `tp_purge_urls` and once to the prebuilt pages, under the one address WordPress
+/// union once on `sp_purge_urls` and once to the prebuilt pages, under the one address WordPress
 /// serves the page at (the other spelling redirects there). A row recorded under the old spelling
 /// still purges; a rolled-back write announces nothing; over the limit across both is one `/*`.
 #[test]
@@ -3947,8 +3947,8 @@ fn one_write_announces_its_purges_once() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_purges.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -4075,7 +4075,7 @@ fn check_reports_page_cache_plans_from_compiled_calls() {
 }
 
 /// What a page cache holds and what a write drops from it, on WordPress with a stand-in host
-/// listening on `tp_purge_urls` (tests/php/page_caching.php). Each purge is checked beside the page as
+/// listening on `sp_purge_urls` (tests/php/page_caching.php). Each purge is checked beside the page as
 /// the origin renders it after the write, so every expected path is one whose content changed.
 ///
 /// - A list read is a list read whatever it returned: a filtered catalog with one row, and a page
@@ -4091,8 +4091,8 @@ fn page_caches_drop_what_a_write_changed() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/page_caching.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -4224,7 +4224,7 @@ fn page_caches_drop_what_a_write_changed() {
             "announced": ["/catalog/", "/catalog/?media=nvme", "/catalog/?media=tape", "/catalog.md?media=nvme", "/top/"],
             "nvme": ["Alpha", "Delta"],
             "top": "Delta",
-            "twin": "# TypedPress test site\n\n- Alpha\n- Delta",
+            "twin": "# SpacePress test site\n\n- Alpha\n- Delta",
         }),
         "{seen}"
     );
@@ -4296,12 +4296,12 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     let project = fixture("app-assets", "serve");
     // An explicit asset import keeps its extension even when a TypeScript module shares its stem.
     for (path, source) in [
-        ("tp/app/site.ts", "export {};"),
+        ("sp/app/site.ts", "export {};"),
         (
-            "tp/app/about/page.module.ts",
+            "sp/app/about/page.module.ts",
             r#"export default { card: "other-card", title: "other-title" };"#,
         ),
-        ("tp/app/about/compass.ts", r#"export default "";"#),
+        ("sp/app/about/compass.ts", r#"export default "";"#),
     ] {
         std::fs::write(project.join(path), source).unwrap();
     }
@@ -4309,8 +4309,8 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_assets.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -4389,45 +4389,45 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
 }
 
 /// Binary static assets (images, fonts, etc.) imported from TSX or referenced by relative `url(...)`
-/// in imported stylesheets and CSS modules are copied under content-hashed names in `tp/app/assets/`
+/// in imported stylesheets and CSS modules are copied under content-hashed names in `sp/app/assets/`
 /// (served from `wp-content/`), deduplicated by bytes, and round-trip through hosted source bundles.
 #[cfg(feature = "host")]
 #[test]
 fn imported_binary_assets_and_css_urls_bundle_into_app_assets() {
     let project = tempfile::tempdir().unwrap();
     let project = project.path();
-    std::fs::create_dir_all(project.join("tp/app/about")).unwrap();
-    std::fs::create_dir_all(project.join("tp/app/fonts")).unwrap();
+    std::fs::create_dir_all(project.join("sp/app/about")).unwrap();
+    std::fs::create_dir_all(project.join("sp/app/fonts")).unwrap();
     std::fs::write(
-        project.join("typedpress.config.ts"),
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"binassets\", admin: false });\n",
+        project.join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"binassets\", admin: false });\n",
     )
     .unwrap();
     // Non-UTF-8 binary bytes for PNG, WebP, and WOFF2.
     let png_bytes: Vec<u8> = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00, 0xfe];
     let webp_bytes: Vec<u8> = vec![b'R', b'I', b'F', b'F', 0xff, 0x80, 0x01, 0x02, b'W', b'E', b'B', b'P'];
     let font_bytes: Vec<u8> = vec![b'w', b'O', b'F', b'2', 0x00, 0xff, 0xde, 0xad, 0xbe, 0xef];
-    std::fs::write(project.join("tp/app/about/hero.png"), &png_bytes).unwrap();
-    std::fs::write(project.join("tp/app/about/tile.webp"), &webp_bytes).unwrap();
-    std::fs::write(project.join("tp/app/fonts/inter.woff2"), &font_bytes).unwrap();
+    std::fs::write(project.join("sp/app/about/hero.png"), &png_bytes).unwrap();
+    std::fs::write(project.join("sp/app/about/tile.webp"), &webp_bytes).unwrap();
+    std::fs::write(project.join("sp/app/fonts/inter.woff2"), &font_bytes).unwrap();
     std::fs::write(
-        project.join("tp/app/about/theme.css"),
+        project.join("sp/app/about/theme.css"),
         "@font-face { font-family: Inter; src: url(\"../fonts/inter.woff2?v=1#f\") format(\"woff2\"); }\n.banner { background: url(./hero.png); }\n.root { background: url(/public-root.png); }\n",
     )
     .unwrap();
     std::fs::write(
-        project.join("tp/app/about/card.module.css"),
+        project.join("sp/app/about/card.module.css"),
         ".card { background-image: url('./tile.webp'); }\n",
     )
     .unwrap();
     std::fs::write(
-        project.join("tp/app/about/page.tsx"),
+        project.join("sp/app/about/page.tsx"),
         "import \"./theme.css\";\nimport styles from \"./card.module.css\";\nimport hero from \"./hero.png\";\nimport font from \"../fonts/inter.woff2\";\nexport default function About() {\n  return <div className={styles.card} data-font={font}><img src={hero} alt=\"Hero\" /></div>;\n}\n",
     )
     .unwrap();
 
     build(project);
-    let assets_dir = project.join("tp/dist/wp-content/plugins/typedpress-app-binassets/tp/app/assets");
+    let assets_dir = project.join("sp/dist/wp-content/plugins/spacepress-app-binassets/sp/app/assets");
     let entries: std::collections::BTreeMap<String, Vec<u8>> = std::fs::read_dir(&assets_dir)
         .unwrap()
         .filter_map(|e| e.ok())
@@ -4466,28 +4466,28 @@ fn imported_binary_assets_and_css_urls_bundle_into_app_assets() {
     let card_css = String::from_utf8(card_out).unwrap();
     assert_eq!(card_css, format!(".card_card{{background-image:url('./{tile_file}')}}"));
     let functions = std::fs::read_to_string(
-        project.join("tp/dist/wp-content/plugins/typedpress-app-binassets/tp/app/functions.php"),
+        project.join("sp/dist/wp-content/plugins/spacepress-app-binassets/sp/app/functions.php"),
     )
     .unwrap();
     assert!(
-        functions.contains(&format!("\\TypedPress\\Assets::url( '{hero_file}' )")),
+        functions.contains(&format!("\\SpacePress\\Assets::url( '{hero_file}' )")),
         "{functions}"
     );
     assert!(
-        functions.contains(&format!("\\TypedPress\\Assets::url( '{font_file}' )")),
+        functions.contains(&format!("\\SpacePress\\Assets::url( '{font_file}' )")),
         "{functions}"
     );
 
     // Hosted capture + compile round-trips binary assets byte-for-byte identically.
     let work = tempfile::tempdir().unwrap();
     let (sources, store) = (work.path().join("sources"), work.path().join("store"));
-    typedpress::host::sources(project, &sources).unwrap();
-    let built = typedpress::host::compile_to_store(&sources, &store, project, None).unwrap();
+    spacepress::host::sources(project, &sources).unwrap();
+    let built = spacepress::host::compile_to_store(&sources, &store, project, None).unwrap();
     let manifest: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(store.join(format!("build/{}.json", built.build_id))).unwrap())
             .unwrap();
     let hosted_assets = store.join(format!(
-        "app/{}/plugins/typedpress-app-binassets/tp/app/assets",
+        "app/{}/plugins/spacepress-app-binassets/sp/app/assets",
         manifest["app"].as_str().unwrap()
     ));
     for (name, bytes) in &entries {
@@ -4507,11 +4507,11 @@ fn imported_binary_assets_and_css_urls_bundle_into_app_assets() {
 fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
     let project = tempfile::tempdir().unwrap();
     let project = project.path();
-    std::fs::create_dir_all(project.join("tp/app/fonts")).unwrap();
-    std::fs::create_dir_all(project.join("tp/components")).unwrap();
+    std::fs::create_dir_all(project.join("sp/app/fonts")).unwrap();
+    std::fs::create_dir_all(project.join("sp/components")).unwrap();
     std::fs::write(
-        project.join("typedpress.config.ts"),
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"modernassets\", admin: false });\n",
+        project.join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"modernassets\", admin: false });\n",
     )
     .unwrap();
     // Valid 40x20 PNG (IHDR header) + WOFF2/TTF font bytes + SVG.
@@ -4521,17 +4521,17 @@ fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
     ];
     let woff2_bytes: Vec<u8> = vec![b'w', b'O', b'F', b'2', 0x00, 0xff, 0x01, 0x02];
     let ttf_bytes: Vec<u8> = vec![0x00, 0x01, 0x00, 0x00, 0xaa, 0xbb];
-    std::fs::write(project.join("tp/app/hero.png"), &png_bytes).unwrap();
-    std::fs::write(project.join("tp/app/fonts/inter.woff2"), &woff2_bytes).unwrap();
-    std::fs::write(project.join("tp/app/fonts/inter.ttf"), &ttf_bytes).unwrap();
-    std::fs::write(project.join("tp/app/note.txt"), "hello raw text").unwrap();
+    std::fs::write(project.join("sp/app/hero.png"), &png_bytes).unwrap();
+    std::fs::write(project.join("sp/app/fonts/inter.woff2"), &woff2_bytes).unwrap();
+    std::fs::write(project.join("sp/app/fonts/inter.ttf"), &ttf_bytes).unwrap();
+    std::fs::write(project.join("sp/app/note.txt"), "hello raw text").unwrap();
     std::fs::write(
-        project.join("tp/app/tokens.css"),
+        project.join("sp/app/tokens.css"),
         "@font-face { font-family: Inter; src: url(\"./fonts/inter.woff2\") format(\"woff2\"), url(\"./fonts/inter.ttf\") format(\"truetype\"); }\n:root { --accent: #ffffff; }\n",
     )
     .unwrap();
     std::fs::write(
-        project.join("tp/app/small.css"),
+        project.join("sp/app/small.css"),
         "@import \"./tokens.css\";\n.hero { background: url(./hero.png); color: var(--accent); }\n",
     )
     .unwrap();
@@ -4540,21 +4540,21 @@ fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
     for i in 0..260 {
         big_css.push_str(&format!(".big-rule-{i}{{padding:{i}px;margin:0}}\n"));
     }
-    std::fs::write(project.join("tp/app/large.css"), &big_css).unwrap();
-    std::fs::write(project.join("tp/app/standalone.css"), ".only-url { color: #aabbcc; }\n").unwrap();
+    std::fs::write(project.join("sp/app/large.css"), &big_css).unwrap();
+    std::fs::write(project.join("sp/app/standalone.css"), ".only-url { color: #aabbcc; }\n").unwrap();
     std::fs::write(
-        project.join("tp/components/icon.svg"),
+        project.join("sp/components/icon.svg"),
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><rect width=\"16\" height=\"16\"/></svg>",
     )
     .unwrap();
     std::fs::write(
-        project.join("tp/components/Badge.tsx"),
-        "\"use client\";\nimport { useState } from \"typedpress/client\";\nimport icon from \"./icon.svg\";\nimport inlineIcon from \"./icon.svg?inline\";\nexport function Badge() {\n  const [alt, setAlt] = useState(false);\n  return <button type=\"button\" onClick={() => setAlt(!alt)}><img className=\"client-img\" src={alt ? inlineIcon : icon} alt=\"Badge\" /></button>;\n}\n",
+        project.join("sp/components/Badge.tsx"),
+        "\"use client\";\nimport { useState } from \"spacepress/client\";\nimport icon from \"./icon.svg\";\nimport inlineIcon from \"./icon.svg?inline\";\nexport function Badge() {\n  const [alt, setAlt] = useState(false);\n  return <button type=\"button\" onClick={() => setAlt(!alt)}><img className=\"client-img\" src={alt ? inlineIcon : icon} alt=\"Badge\" /></button>;\n}\n",
     )
     .unwrap();
     std::fs::write(
-        project.join("tp/app/page.tsx"),
-        "import { Image } from \"typedpress/app\";\nimport \"./small.css\";\nimport \"./large.css\";\nimport heroUrl from \"./hero.png\";\nimport heroMeta from \"./hero.png?meta\";\nimport heroInline from \"./hero.png?inline\";\nimport rawNote from \"./note.txt?raw\";\nimport standaloneCssUrl from \"./standalone.css?url\";\nimport { Badge } from \"../components/Badge\";\nexport default function Home() {\n  return (\n    <main data-raw={rawNote} data-css-url={standaloneCssUrl}>\n      <Image className=\"priority-img\" src={heroMeta} alt=\"Hero\" priority />\n      <Image className=\"lazy-img\" src={heroUrl} alt=\"Lazy\" />\n      <img className=\"plain-img\" src={heroUrl} alt=\"Plain\" />\n      <img className=\"inline-img\" src={heroInline} alt=\"Inline\" />\n      <Badge />\n    </main>\n  );\n}\n",
+        project.join("sp/app/page.tsx"),
+        "import { Image } from \"spacepress/app\";\nimport \"./small.css\";\nimport \"./large.css\";\nimport heroUrl from \"./hero.png\";\nimport heroMeta from \"./hero.png?meta\";\nimport heroInline from \"./hero.png?inline\";\nimport rawNote from \"./note.txt?raw\";\nimport standaloneCssUrl from \"./standalone.css?url\";\nimport { Badge } from \"../components/Badge\";\nexport default function Home() {\n  return (\n    <main data-raw={rawNote} data-css-url={standaloneCssUrl}>\n      <Image className=\"priority-img\" src={heroMeta} alt=\"Hero\" priority />\n      <Image className=\"lazy-img\" src={heroUrl} alt=\"Lazy\" />\n      <img className=\"plain-img\" src={heroUrl} alt=\"Plain\" />\n      <img className=\"inline-img\" src={heroInline} alt=\"Inline\" />\n      <Badge />\n    </main>\n  );\n}\n",
     )
     .unwrap();
 
@@ -4562,8 +4562,8 @@ fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_assets_modern.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     assert!(
@@ -4580,11 +4580,11 @@ fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
     let inline_css = inlines[0].as_str().unwrap();
     assert!(inline_css.contains("--accent:#fff"), "{inline_css}");
     assert!(
-        inline_css.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/hero-"),
+        inline_css.contains("/wp-content/plugins/spacepress-app-modernassets/sp/app/assets/hero-"),
         "{inline_css}"
     );
     assert!(
-        inline_css.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/inter-"),
+        inline_css.contains("/wp-content/plugins/spacepress-app-modernassets/sp/app/assets/inter-"),
         "{inline_css}"
     );
     // Large CSS (> 4 KB) is linked externally.
@@ -4639,12 +4639,12 @@ fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
     // Client component Interactivity config carries its imported asset URL.
     let client_icon = seen["clientConfigAssets"]["icon"].as_str().unwrap();
     assert!(
-        client_icon.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/icon-"),
+        client_icon.contains("/wp-content/plugins/spacepress-app-modernassets/sp/app/assets/icon-"),
         "{client_icon}"
     );
 }
 
-/// `typedpress doctor --site <url> --links` on a served TypedPress site: every link and `#anchor` the docs
+/// `spacepress doctor --site <url> --links` on a served SpacePress site: every link and `#anchor` the docs
 /// pages make, from Markdown content, TSX and WordPress, is followed; the broken ones are reported
 /// with the page they are on.
 #[test]
@@ -4684,9 +4684,9 @@ fn doctor_finds_broken_links_and_anchors_on_a_site() {
     let mut server = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/serve_built.php"))
-        .arg(project.join("tp/dist/wp-content"))
+        .arg(project.join("sp/dist/wp-content"))
         .arg(compiled.join("seed"))
-        .env("TP_WP_THEMES", "1")
+        .env("SP_WP_THEMES", "1")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -4732,7 +4732,7 @@ fn doctor_finds_broken_links_and_anchors_on_a_site() {
     );
 }
 
-/// `apiReference()` from "typedpress/content": the app's own OpenAPI document, and one in `public/`,
+/// `apiReference()` from "spacepress/content": the app's own OpenAPI document, and one in `public/`,
 /// rendered by pages as an API reference, on WordPress over HTTP (tests/php/api_reference.php).
 #[test]
 fn api_reference_renders_openapi_as_pages() {
@@ -4741,8 +4741,8 @@ fn api_reference_renders_openapi_as_pages() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/api_reference.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -4759,7 +4759,7 @@ fn api_reference_renders_openapi_as_pages() {
     assert_eq!(index["status"], 200);
     assert_eq!(index["h1"], serde_json::json!(["Apiref API"]));
     assert!(
-        index["server"][0].as_str().unwrap().ends_with("/wp-json/typedpress/v1"),
+        index["server"][0].as_str().unwrap().ends_with("/wp-json/spacepress/v1"),
         "{index}"
     );
     assert_eq!(index["tags"][0], "notes");
@@ -4845,7 +4845,7 @@ fn api_reference_renders_openapi_as_pages() {
     );
 }
 
-/// A hierarchical kind at the site root (`url: "/:path"`), rendered by `tp/app/[...path]` beside the
+/// A hierarchical kind at the site root (`url: "/:path"`), rendered by `sp/app/[...path]` beside the
 /// app's own pages, on WordPress over HTTP (tests/php/docs_root.php).
 #[test]
 fn docs_at_the_site_root() {
@@ -4873,9 +4873,9 @@ fn docs_at_the_site_root() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/docs_root.php"))
-        .arg(project.join("tp/dist/wp-content"))
+        .arg(project.join("sp/dist/wp-content"))
         .arg(compiled.join("seed"))
-        .env("TP_WP_THEMES", "1")
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -4928,7 +4928,7 @@ fn docs_at_the_site_root() {
     // Neither the bare spelling nor another case of a hidden item's path redirects: a redirect would
     // tell the visitor the item exists.
     assert_eq!(seen["hidden"].as_object().unwrap().len(), 13);
-    // An item under a first segment WordPress or TypedPress owns (`/auth`) has no URL of its own.
+    // An item under a first segment WordPress or SpacePress owns (`/auth`) has no URL of its own.
     assert!(
         seen["reserved permalink"].as_str().unwrap().contains("?post_type="),
         "{seen}"
@@ -4941,7 +4941,7 @@ fn docs_at_the_site_root() {
     // A link under the root kind's catch-all carries no template, so a click loads the page.
     assert_eq!(
         seen["link templates"],
-        serde_json::json!({ "/about/": null, "/reference/config": null, "/playground": "tp-page" })
+        serde_json::json!({ "/about/": null, "/reference/config": null, "/playground": "sp-page" })
     );
 }
 
@@ -4956,8 +4956,8 @@ fn public_files_serve_at_the_site_root() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/public_root.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -5000,14 +5000,14 @@ fn public_files_serve_at_the_site_root() {
         seen["wpIndex"],
         serde_json::json!([200, "text/html; charset=utf-8", 21])
     );
-    // robots.txt, llms.txt, feeds and TypedPress Identity's discovery document stay WordPress's.
+    // robots.txt, llms.txt, feeds and SpacePress Identity's discovery document stay WordPress's.
     for (path, kept) in seen["wordpress"].as_object().unwrap() {
         assert_eq!(kept, true, "{path}");
     }
     // A `[slug]` route at the root doesn't take a file's path.
     assert_eq!(seen["beside a dynamic route"], 200);
     assert_eq!(seen["home"], false);
-    // `tp/app/about/page.tsx` wins over `public/about`.
+    // `sp/app/about/page.tsx` wins over `public/about`.
     assert_eq!(seen["about"], serde_json::json!([200, true, false]));
     // `<Link>` to a file in `public/` keeps its root path, though the root `[slug]` route also matches it;
     // a link to a page is written at the page's one address.
@@ -5045,7 +5045,7 @@ fn public_files_serve_at_the_site_root() {
 
 /// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
 /// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
-/// `nav`, `pager` and `headings` from "typedpress/content", on WordPress over HTTP (tests/php/docs_kind.php).
+/// `nav`, `pager` and `headings` from "spacepress/content", on WordPress over HTTP (tests/php/docs_kind.php).
 #[test]
 fn docs_kind_serves_a_folder_tree_with_navigation() {
     let project = fixture("docs-kind", "serve");
@@ -5071,9 +5071,9 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/docs_kind.php"))
-        .arg(project.join("tp/dist/wp-content"))
+        .arg(project.join("sp/dist/wp-content"))
         .arg(compiled.join("seed"))
-        .env("TP_WP_THEMES", "1")
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -5100,11 +5100,11 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // or below it. Core prints `single single-<post type> postid-<id>` for it, and sends none of the
     // no-cache headers it sends with a 404.
     let wordpress = &seen["wordpress"];
-    assert_eq!(wordpress["type"], "tp_docs");
+    assert_eq!(wordpress["type"], "sp_docs");
     let is_doc = |page: &serde_json::Value, what: &str| {
         let id = page["expected id"].as_u64().unwrap();
         assert!(id > 0, "{what}");
-        let query = serde_json::json!({ "id": id, "type": "tp_docs", "is_404": false, "is_singular": true });
+        let query = serde_json::json!({ "id": id, "type": "sp_docs", "is_404": false, "is_singular": true });
         assert_eq!(page["status"], 200, "{what}");
         assert_eq!(page["resolved"], query, "{what}: what WordPress resolved the URL to");
         assert_eq!(
@@ -5115,12 +5115,12 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             page["body"],
             serde_json::json!([
                 "wp-singular",
-                "tp_docs-template-default",
+                "sp_docs-template-default",
                 "single",
-                "single-tp_docs",
+                "single-sp_docs",
                 format!("postid-{id}"),
                 "wp-embed-responsive",
-                "typedpress-app"
+                "spacepress-app"
             ]),
             "{what}"
         );
@@ -5137,7 +5137,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // the doc, a 200, no 404 headers (core adds its `paged-2` body classes, as for any paged post).
     let paged = &wordpress["paged"];
     let doc =
-        serde_json::json!({ "id": paged["expected id"], "type": "tp_docs", "is_404": false, "is_singular": true });
+        serde_json::json!({ "id": paged["expected id"], "type": "sp_docs", "is_404": false, "is_singular": true });
     assert_eq!(
         (&paged["status"], &paged["resolved"], &paged["query"]),
         (&serde_json::json!(200), &doc, &doc),
@@ -5160,12 +5160,12 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     assert_eq!(missing["query"], not_found);
     assert_eq!(
         missing["body"],
-        serde_json::json!(["error404", "wp-embed-responsive", "typedpress-app"])
+        serde_json::json!(["error404", "wp-embed-responsive", "spacepress-app"])
     );
     assert_eq!(missing["cache"], "private, no-store, max-age=0");
     // One address per page (#462), the permalink structure's (`/%postname%/`, a trailing slash): the
     // bare spelling 301s there with its query string. The address itself, a `.md` twin, the REST routes
-    // (TypedPress's API among them) and WordPress's own paths answer where they are. A path no doc has, and
+    // (SpacePress's API among them) and WordPress's own paths answer where they are. A path no doc has, and
     // `/docs` (the catch-all with no item), are a 404 where they were asked, as WordPress answers one.
     assert_eq!(
         seen["spellings"],
@@ -5193,7 +5193,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         seen["sitemap"][0]
             .as_array()
             .unwrap()
-            .contains(&serde_json::json!("/wp-sitemap-typedpress-docs-1.xml")),
+            .contains(&serde_json::json!("/wp-sitemap-spacepress-docs-1.xml")),
         "{}",
         seen["sitemap"][0]
     );
@@ -5209,12 +5209,12 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             "/docs/reference/"
         ])
     );
-    // A site built before the `:path` rule was TypedPress's own holds a rule that hands the path to core's
+    // A site built before the `:path` rule was SpacePress's own holds a rule that hands the path to core's
     // `pagename`, which core skips unless a Page is at that path. It gets the new rule without anyone
     // flushing: a managed build's deploy sees the stored rules are behind and rebuilds them, and a
     // plugin-installed site rebuilds on its next request, which is already answered right.
-    let old_rule = "index.php?post_type=tp_docs&tp_kind=docs&pagename=$matches[1]";
-    let new_rule = "index.php?post_type=tp_docs&tp_kind=docs&tp_kind_path=$matches[1]";
+    let old_rule = "index.php?post_type=sp_docs&sp_kind=docs&pagename=$matches[1]";
+    let new_rule = "index.php?post_type=sp_docs&sp_kind=docs&sp_kind_path=$matches[1]";
     let deploy = &seen["stale site"]["deploy"];
     assert_eq!(deploy["rule before"], old_rule);
     assert_eq!(deploy["recorded before"], false);
@@ -5312,7 +5312,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         serde_json::json!([
             "#why Why depth-2",
             "#small-print Small print depth-3",
-            "#whats-tpapp What's tp/app/? depth-3",
+            "#whats-spapp What's sp/app/? depth-3",
             "#why-1 Why depth-2",
             "#step-1---install Step 1 - Install depth-3",
             "#the---force-flag The --force flag depth-3",
@@ -5326,7 +5326,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         serde_json::json!([
             "h2#why",
             "h3#small-print",
-            "h3#whats-tpapp",
+            "h3#whats-spapp",
             "h2#why-1",
             "h3#step-1---install",
             "h3#the---force-flag",
@@ -5414,7 +5414,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             [
                 "#why Why depth-2",
                 "#small-print Small print depth-3",
-                "#whats-tpapp What's tp/app/? depth-3",
+                "#whats-spapp What's sp/app/? depth-3",
                 "#why-1 Why depth-2",
                 "#step-1---install Step 1 - Install depth-3",
                 "#the---force-flag The --force flag depth-3",
@@ -5424,7 +5424,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             [
                 "h2#why",
                 "h3#small-print",
-                "h3#whats-tpapp",
+                "h3#whats-spapp",
                 "h2#why-1",
                 "h3#step-1---install",
                 "h3#the---force-flag",
@@ -5491,7 +5491,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // plain text escaped and unhighlighted, one stylesheet with a dark theme, and no script.
     let code = &seen["code"];
     assert_eq!(code["status"], 200);
-    assert_eq!(code["titles"], serde_json::json!(["typedpress.config.ts", "pnpm"]));
+    assert_eq!(code["titles"], serde_json::json!(["spacepress.config.ts", "pnpm"]));
     assert_eq!(
         code["keywords"],
         serde_json::json!(["import", "from", "export", "default"])
@@ -5514,7 +5514,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // Written back, each fence keeps its title, marked lines and group.
     assert_eq!(
         seen["code back"],
-        "Edit the config.\n\n```ts title=\"typedpress.config.ts\" {2}\nimport { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"docs\" });\n```\n\n```sh group=\"install\"\nnpm install first\n```\n\n```sh title=\"pnpm\" group=\"install\"\npnpm add first\n```\n\n```text\nplain <b>text</b>\n```\n"
+        "Edit the config.\n\n```ts title=\"spacepress.config.ts\" {2}\nimport { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"docs\" });\n```\n\n```sh group=\"install\"\nnpm install first\n```\n\n```sh title=\"pnpm\" group=\"install\"\npnpm add first\n```\n\n```text\nplain <b>text</b>\n```\n"
     );
     // The query API reads parent and order like any field.
     assert_eq!(
@@ -5526,10 +5526,10 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
 /// A folder-tree sync and a hierarchical kind refuse what they can't serve, at the line.
 #[test]
 fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
-    let dir = std::env::temp_dir().join(format!("typedpress-docs-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("spacepress-docs-reject-{}", std::process::id()));
     let kind = |fields: &str, options: &str| {
         format!(
-            "import {{ collection, table, text, slug, richText }} from \"typedpress\";\nexport const docs = collection({{ title: text(), body: richText().optional(), {fields} }}, {{ content: \"body\", {options} }});\n"
+            "import {{ collection, table, text, slug, richText }} from \"spacepress\";\nexport const docs = collection({{ title: text(), body: richText().optional(), {fields} }}, {{ content: \"body\", {options} }});\n"
         )
     };
     let cases = [
@@ -5538,24 +5538,24 @@ fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
         (kind("parent: text().optional()", "hierarchical: true"), "`parent` is reserved: hierarchical kinds add `parent` and `order`"),
         (kind("slug: slug({ source: \"title\" })", "url: \"/docs/:path\""), "`:path` in \"/docs/:path\" needs a hierarchical kind"),
         (
-            "import { table, text } from \"typedpress\";\nexport const docs = table({ title: text() }, { hierarchical: true });\n".to_string(),
+            "import { table, text } from \"spacepress\";\nexport const docs = table({ title: text() }, { hierarchical: true });\n".to_string(),
             "only collection() kinds can be hierarchical",
         ),
     ];
     for (schema, message) in cases {
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("tp")).unwrap();
+        std::fs::create_dir_all(dir.join("sp")).unwrap();
         std::fs::write(
-            dir.join("typedpress.config.ts"),
-            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({});\n",
+            dir.join("spacepress.config.ts"),
+            "import { defineConfig } from \"spacepress\";\nexport default defineConfig({});\n",
         )
         .unwrap();
-        std::fs::write(dir.join("tp/schema.ts"), &schema).unwrap();
+        std::fs::write(dir.join("sp/schema.ts"), &schema).unwrap();
         let out = first().arg("check").arg(&dir).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(out.status.code(), Some(1), "{message}: should fail:\n{stderr}");
         assert!(stderr.contains(message), "expected {message:?} in:\n{stderr}");
-        assert!(stderr.contains("--> tp/schema.ts:"), "{stderr}");
+        assert!(stderr.contains("--> sp/schema.ts:"), "{stderr}");
     }
     // At capture: two files with one slug, and a folder without its index file.
     for (files, message) in [
@@ -5574,14 +5574,14 @@ fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
         ),
     ] {
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("tp")).unwrap();
+        std::fs::create_dir_all(dir.join("sp")).unwrap();
         std::fs::write(
-            dir.join("typedpress.config.ts"),
-            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"docsreject\" });\n",
+            dir.join("spacepress.config.ts"),
+            "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"docsreject\" });\n",
         )
         .unwrap();
         std::fs::write(
-            dir.join("tp/schema.ts"),
+            dir.join("sp/schema.ts"),
             kind(
                 "slug: slug({ source: \"title\" })",
                 "hierarchical: true, sync: \"content/docs/**/*.md\"",
@@ -5619,7 +5619,7 @@ fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// A root catch-all answers every path of the app, and never one WordPress, TypedPress or the host
+/// A root catch-all answers every path of the app, and never one WordPress, SpacePress or the host
 /// owns: on Spacefast `/__spacefast/connectors/*` and `/__spacefast/client.js` are the host's.
 #[test]
 fn a_root_catch_all_leaves_reserved_paths_alone() {
@@ -5628,8 +5628,8 @@ fn a_root_catch_all_leaves_reserved_paths_alone() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_router_reserved.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -5652,7 +5652,7 @@ fn a_root_catch_all_leaves_reserved_paths_alone() {
 /// the file's own components; each refusal is at the component file.
 #[test]
 fn content_blocks_refuse_props_a_tag_cannot_write() {
-    let dir = std::env::temp_dir().join(format!("typedpress-blocks-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("spacepress-blocks-reject-{}", std::process::id()));
     for (component, message) in [
         (
             "export const blocks = [\"Card\"];\nexport function Card({ links }: { links: string[] }) { return <div>{links.length}</div>; }\n",
@@ -5668,18 +5668,18 @@ fn content_blocks_refuse_props_a_tag_cannot_write() {
         ),
     ] {
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("tp/components")).unwrap();
+        std::fs::create_dir_all(dir.join("sp/components")).unwrap();
         std::fs::write(
-            dir.join("typedpress.config.ts"),
-            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({});\n",
+            dir.join("spacepress.config.ts"),
+            "import { defineConfig } from \"spacepress\";\nexport default defineConfig({});\n",
         )
         .unwrap();
-        std::fs::write(dir.join("tp/components/Card.tsx"), component).unwrap();
+        std::fs::write(dir.join("sp/components/Card.tsx"), component).unwrap();
         let out = first().arg("check").arg(&dir).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(out.status.code(), Some(1), "{message}: should fail:\n{stderr}");
         assert!(stderr.contains(message), "expected {message:?} in:\n{stderr}");
-        assert!(stderr.contains("--> tp/components/Card.tsx"), "{stderr}");
+        assert!(stderr.contains("--> sp/components/Card.tsx"), "{stderr}");
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -5702,8 +5702,8 @@ fn component_blocks_edit_in_the_block_editor() {
     let mut server = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/serve_built.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -5798,9 +5798,9 @@ fn docs_example_reads_in_the_browser() {
     let mut server = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/serve_built.php"))
-        .arg(project.join("tp/dist/wp-content"))
+        .arg(project.join("sp/dist/wp-content"))
         .arg(compiled.join("seed"))
-        .env("TP_WP_THEMES", "1")
+        .env("SP_WP_THEMES", "1")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -5816,7 +5816,7 @@ fn docs_example_reads_in_the_browser() {
     docs_read_as_published(&seen, &url, &url, "/");
 }
 
-/// `typedpress export` (docs/decisions/2026-11-13-static-output.md): examples/docs (`output: "static"`),
+/// `spacepress export` (docs/decisions/2026-11-13-static-output.md): examples/docs (`output: "static"`),
 /// its content from content/docs/, rendered by a throwaway WordPress on SQLite, written as files and
 /// read in Chromium from a plain static server: the same pages a visitor reads on WordPress, with no
 /// WordPress at all. The draft is in no file, Markdown twins sit beside their pages, and llms.txt,
@@ -5847,7 +5847,7 @@ fn docs_example_exports_to_a_static_site() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let dist = project.join("tp/dist/static");
+    let dist = project.join("sp/dist/static");
     let mut files: Vec<String> = Vec::new();
     fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) {
         for entry in std::fs::read_dir(dir).unwrap() {
@@ -5866,11 +5866,11 @@ fn docs_example_exports_to_a_static_site() {
         .map(String::as_str)
         .filter(|f| !f.starts_with("wp-"))
         .collect();
-    // `.typedpress-export` marks the folder as an export, the only kind of folder a later export replaces.
+    // `.spacepress-export` marks the folder as an export, the only kind of folder a later export replaces.
     assert_eq!(
         pages,
         [
-            ".typedpress-export",
+            ".spacepress-export",
             "404.html",
             "about.html",
             "about.md",
@@ -5895,7 +5895,7 @@ fn docs_example_exports_to_a_static_site() {
     for module in [
         "wp-includes/js/dist/script-modules/interactivity/index.min.js",
         "wp-includes/js/dist/script-modules/interactivity-router/index.min.js",
-        "wp-content/plugins/typedpress-runtime/tp/Render/client/router.js",
+        "wp-content/plugins/spacepress-runtime/sp/Render/client/router.js",
     ] {
         assert!(files.iter().any(|f| f == module), "{module} in {files:?}");
     }
@@ -6003,7 +6003,7 @@ fn docs_example_exports_to_a_static_site() {
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
 }
 
-/// `typedpress export --site` (docs/decisions/2026-11-13-static-output.md): WordPress as the CMS somewhere
+/// `spacepress export --site` (docs/decisions/2026-11-13-static-output.md): WordPress as the CMS somewhere
 /// else. The hosted site (WordPress on SQLite, `tests/php/wp.php serve`) has a published and a draft
 /// note; the export renders its published content with an editor's application password, and the
 /// static page's client component calls the hosted site's public action across origins. The sign-in
@@ -6022,9 +6022,9 @@ fn static_export_from_a_hosted_site() {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.join("tp/dist/wp-content"))
+        .arg(project.join("sp/dist/wp-content"))
         .arg("chief=editor")
-        .env("TP_WP_THEMES", "1")
+        .env("SP_WP_THEMES", "1")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -6046,7 +6046,7 @@ fn static_export_from_a_hosted_site() {
                 "-d",
             ])
             .arg(body.to_string())
-            .arg(format!("{site}/wp-json/typedpress/v1{path}"))
+            .arg(format!("{site}/wp-json/spacepress/v1{path}"))
             .output()
             .unwrap();
         String::from_utf8_lossy(&out.stdout).into_owned()
@@ -6066,7 +6066,7 @@ fn static_export_from_a_hosted_site() {
             .arg("export")
             .arg(&project)
             .args(["--site", site_arg])
-            .env("TP_APP_PASSWORD", &editor)
+            .env("SP_APP_PASSWORD", &editor)
             .output()
             .unwrap()
     };
@@ -6077,7 +6077,7 @@ fn static_export_from_a_hosted_site() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let dist = project.join("tp/dist/static");
+    let dist = project.join("sp/dist/static");
     assert!(dist.join("notes/hello.html").is_file());
     assert!(!dist.join("notes/secret.html").exists(), "the draft is never exported");
     let mut server = Command::new("node")
@@ -6103,9 +6103,9 @@ fn static_export_from_a_hosted_site() {
     let counted = call("GET", "/cheers", serde_json::json!({}));
     // A checkout that differs from what the site runs is refused before anything is written, even
     // when only markup changed (the schema is the same; the compiled page is not).
-    let page = std::fs::read_to_string(project.join("tp/app/page.tsx")).unwrap();
+    let page = std::fs::read_to_string(project.join("sp/app/page.tsx")).unwrap();
     std::fs::write(
-        project.join("tp/app/page.tsx"),
+        project.join("sp/app/page.tsx"),
         page.replace("className=\"notes\"", "className=\"notes changed\""),
     )
     .unwrap();
@@ -6149,19 +6149,19 @@ fn static_export_refuses_what_needs_a_server() {
         std::fs::write(path, source).unwrap();
     };
     write(
-        "typedpress.config.ts",
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"refused\", output: \"static\" });\n",
+        "spacepress.config.ts",
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"refused\", output: \"static\" });\n",
     );
     write(
-        "tp/actions.ts",
-        "import { mutation } from \"typedpress\";\nexport const ping = mutation({ access: \"anyone\" }, async () => { return 1; });\n",
+        "sp/actions.ts",
+        "import { mutation } from \"spacepress\";\nexport const ping = mutation({ access: \"anyone\" }, async () => { return 1; });\n",
     );
     write(
-        "tp/components/Ping.tsx",
-        "\"use client\";\nimport { useState } from \"typedpress/client\";\nimport { ping } from \"../actions\";\nexport function Ping() { const [n, setN] = useState(0); return <button type=\"button\" onClick={async () => setN(await ping({}))}>{n}</button>; }\n",
+        "sp/components/Ping.tsx",
+        "\"use client\";\nimport { useState } from \"spacepress/client\";\nimport { ping } from \"../actions\";\nexport function Ping() { const [n, setN] = useState(0); return <button type=\"button\" onClick={async () => setN(await ping({}))}>{n}</button>; }\n",
     );
     write(
-        "tp/app/page.tsx",
+        "sp/app/page.tsx",
         "import { Ping } from \"../components/Ping\";\nexport default function Home() { return <main><Ping /></main>; }\n",
     );
     let out = first().arg("export").arg(project).output().unwrap();
@@ -6172,13 +6172,13 @@ fn static_export_refuses_what_needs_a_server() {
         "{stderr}"
     );
     assert!(
-        !project.join("tp/dist/static").exists(),
+        !project.join("sp/dist/static").exists(),
         "a refused export writes nothing"
     );
     // A link to a page the export doesn't contain.
     write(
-        "tp/app/page.tsx",
-        "import { Link } from \"typedpress/app\";\nexport default function Home() { return <main><Link href=\"/elsewhere\">x</Link></main>; }\n",
+        "sp/app/page.tsx",
+        "import { Link } from \"spacepress/app\";\nexport default function Home() { return <main><Link href=\"/elsewhere\">x</Link></main>; }\n",
     );
     let out = first().arg("export").arg(project).output().unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -6189,7 +6189,7 @@ fn static_export_refuses_what_needs_a_server() {
     );
     // A page that asks WordPress who the visitor is: refused at build, at the call.
     write(
-        "tp/app/page.tsx",
+        "sp/app/page.tsx",
         "import { is_user_logged_in } from \"php/wordpress\";\nexport default function Home() { return <main>{is_user_logged_in() ? \"you\" : \"guest\"}</main>; }\n",
     );
     let out = first().arg("export").arg(project).output().unwrap();
@@ -6201,8 +6201,8 @@ fn static_export_refuses_what_needs_a_server() {
     );
     // A page that redirects.
     write(
-        "tp/app/page.tsx",
-        "import { redirect } from \"typedpress/app\";\nexport default function Home() { redirect(\"/elsewhere\"); }\n",
+        "sp/app/page.tsx",
+        "import { redirect } from \"spacepress/app\";\nexport default function Home() { redirect(\"/elsewhere\"); }\n",
     );
     let out = first().arg("export").arg(project).output().unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -6211,8 +6211,8 @@ fn static_export_refuses_what_needs_a_server() {
     // --out never replaces the project, its sources, or a folder that isn't an export.
     for (out_dir, message) in [
         (project.to_path_buf(), "holds the project"),
-        (project.join("tp"), "is inside the project"),
-        (project.join("tp/dist"), "is where `typedpress build` writes"),
+        (project.join("sp"), "is inside the project"),
+        (project.join("sp/dist"), "is where `spacepress build` writes"),
     ] {
         let out = first()
             .arg("export")
@@ -6239,15 +6239,15 @@ fn static_export_refuses_what_needs_a_server() {
         std::fs::read_to_string(elsewhere.path().join("notes.txt")).unwrap(),
         "mine"
     );
-    assert!(project.join("typedpress.config.ts").is_file() && project.join("tp/app").is_dir());
+    assert!(project.join("spacepress.config.ts").is_file() && project.join("sp/app").is_dir());
     // `output: "server"` is told what export is for.
     write(
-        "typedpress.config.ts",
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"refused\" });\n",
+        "spacepress.config.ts",
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"refused\" });\n",
     );
     let out = first().arg("export").arg(project).output().unwrap();
     assert!(
-        String::from_utf8_lossy(&out.stderr).contains("set `output: \"static\"` in typedpress.config.ts"),
+        String::from_utf8_lossy(&out.stderr).contains("set `output: \"static\"` in spacepress.config.ts"),
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
@@ -6259,20 +6259,20 @@ fn drive_store_example_sells_on_wordpress() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("drive-store");
     let source = root().join("examples/drive-store");
-    std::fs::create_dir_all(project.join("tp")).unwrap();
+    std::fs::create_dir_all(project.join("sp")).unwrap();
     std::fs::copy(
-        source.join("typedpress.config.ts"),
-        project.join("typedpress.config.ts"),
+        source.join("spacepress.config.ts"),
+        project.join("spacepress.config.ts"),
     )
     .unwrap();
-    for name in ["content", "public", "tp/app", "tp/lib", "tp/wp-hooks", "tp/_generated"] {
+    for name in ["content", "public", "sp/app", "sp/lib", "sp/wp-hooks", "sp/_generated"] {
         copy(&source.join(name), &project.join(name));
     }
     for name in ["schema.ts", "server.ts"] {
-        std::fs::copy(source.join("tp").join(name), project.join("tp").join(name)).unwrap();
+        std::fs::copy(source.join("sp").join(name), project.join("sp").join(name)).unwrap();
     }
     build(&project);
-    let init_dir = std::fs::read_dir(project.join("tp/_generated/migrations"))
+    let init_dir = std::fs::read_dir(project.join("sp/_generated/migrations"))
         .unwrap()
         .map(|e| e.unwrap().path())
         .find(|p| p.is_dir())
@@ -6282,7 +6282,7 @@ fn drive_store_example_sells_on_wordpress() {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|op| op["op"] == "createTable" && op["table"] != "tp__revisions")
+        .filter(|op| op["op"] == "createTable" && op["table"] != "sp__revisions")
         .filter_map(|op| op["table"].as_str())
         .collect();
     assert_eq!(tables, ["stock_movements"]);
@@ -6290,8 +6290,8 @@ fn drive_store_example_sells_on_wordpress() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/drive_store.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     println!("{}", String::from_utf8_lossy(&out.stdout));
@@ -6321,7 +6321,7 @@ fn read_docs(url: &str) -> serde_json::Value {
 fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str, slash: &str) {
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
     // Home → the docs, by the reader's click; the doc has its title and the published tree.
-    assert_eq!(seen["home"], "TypedPress docs");
+    assert_eq!(seen["home"], "SpacePress docs");
     // The router region is processed as core processes a block theme's: core/router's state.url
     // comes from the server, follows a <Link> click that swapped the region in the same document,
     // and core's loading bar is in the footer with its styles.
@@ -6336,7 +6336,7 @@ fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str, 
     );
     assert_eq!(
         seen["intro"],
-        serde_json::json!({ "path": format!("/docs/introduction{slash}"), "title": "Introduction · TypedPress docs", "h1": "Introduction" })
+        serde_json::json!({ "path": format!("/docs/introduction{slash}"), "title": "Introduction · SpacePress docs", "h1": "Introduction" })
     );
     assert_eq!(
         seen["tree"],
@@ -6395,7 +6395,7 @@ fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str, 
     assert_eq!(seen["draftInTree"], false);
     assert_eq!(
         seen["about"],
-        serde_json::json!(["About · TypedPress docs", "TypedPress"])
+        serde_json::json!(["About · SpacePress docs", "SpacePress"])
     );
     // Every page's Markdown twin; none for the draft, and it isn't listed.
     assert_eq!(seen["twins"]["install"][0], 200);
@@ -6411,9 +6411,9 @@ fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str, 
     assert!(llms.contains("/about.md") && !llms.contains("Roadmap"), "{llms}");
 }
 
-/// Issue #311: every read a `tp/app/` page can make runs as the visitor, on WordPress over
+/// Issue #311: every read a `sp/app/` page can make runs as the visitor, on WordPress over
 /// HTTP. A collection whose read rule shows drafts to staff only, read through each path a page
-/// has (tests/php/page_reads.php): a page's and a layout's `db.query`, the `"typedpress:db"` kind API,
+/// has (tests/php/page_reads.php): a page's and a layout's `db.query`, the `"spacepress:db"` kind API,
 /// the Markdown twin, a `route.ts` handler, and the two kinds of read in an action a `"use client"`
 /// component calls. A signed-out visitor never sees the draft; an editor does. An editor's render
 /// is never shared, so the anonymous page after it is still the anonymous one.
@@ -6424,8 +6424,8 @@ fn page_reads_run_as_the_visitor() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/page_reads.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -6484,8 +6484,8 @@ fn static_routes_have_code_owned_pages() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/route_pages.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -6579,7 +6579,7 @@ fn route_ids_keep_pages_when_files_move() {
     let first = fixture("route-ids", "first");
     build(&first);
     let second = fixture("route-ids", "second");
-    let app = second.join("tp/app");
+    let app = second.join("sp/app");
     std::fs::create_dir_all(app.join("company")).unwrap();
     for page in ["about", "colophon"] {
         std::fs::rename(app.join(page), app.join("company").join(page)).unwrap();
@@ -6588,9 +6588,9 @@ fn route_ids_keep_pages_when_files_move() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/route_ids.php"))
-        .arg(first.join("tp/dist/wp-content"))
-        .arg(second.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(first.join("sp/dist/wp-content"))
+        .arg(second.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&first);
@@ -6628,37 +6628,37 @@ fn route_ids_keep_pages_when_files_move() {
 /// A route id is a literal, and two pages can't share one; the error is at the export.
 #[test]
 fn refuses_route_ids_it_cannot_keep() {
-    let dir = std::env::temp_dir().join(format!("typedpress-route-ids-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("spacepress-route-ids-{}", std::process::id()));
     let page =
         |id: &str| format!("export const route = {{ id: {id} }};\nexport default function P() {{ return <p/>; }}\n");
     rejects(
         &dir,
         &[
-            ("tp/app/a/page.tsx", &page("\"site.page\"")),
-            ("tp/app/b/page.tsx", &page("\"site.page\"")),
+            ("sp/app/a/page.tsx", &page("\"site.page\"")),
+            ("sp/app/b/page.tsx", &page("\"site.page\"")),
         ],
         "route id `site.page` is already app/a/page.tsx's",
-        "tp/app/b/page.tsx:1:14",
+        "sp/app/b/page.tsx:1:14",
     );
     rejects(
         &dir,
-        &[("tp/app/a/page.tsx", &page("\"site page\""))],
+        &[("sp/app/a/page.tsx", &page("\"site page\""))],
         "`route` must be `{ id: \"…\" }` with a literal id",
-        "tp/app/a/page.tsx:1:14",
+        "sp/app/a/page.tsx:1:14",
     );
     rejects(
         &dir,
         &[
-            ("tp/app/a/page.tsx", &page("\"site.page\"")),
-            ("tp/app/b/page.md", "---\nid: site.page\ntitle: B\n---\n\nText.\n"),
+            ("sp/app/a/page.tsx", &page("\"site.page\"")),
+            ("sp/app/b/page.md", "---\nid: site.page\ntitle: B\n---\n\nText.\n"),
         ],
         "id `site.page` is already app/a/page.tsx's",
-        "tp/app/b/page.md:2:",
+        "sp/app/b/page.md:2:",
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// `tp/app/login.tsx` is wp-login.php's sign-in view (docs/decisions/2026-11-15-one-sign-in-page.md):
+/// `sp/app/login.tsx` is wp-login.php's sign-in view (docs/decisions/2026-11-15-one-sign-in-page.md):
 /// accepted at the root only, typed with `LoginProps`, compiled into the route table as `login` with
 /// the root layout and its stylesheets, and `<LoginForm>` checks its props.
 #[test]
@@ -6666,7 +6666,7 @@ fn login_tsx_is_the_sign_in_page() {
     let project = fixture("login-page", "compile");
     build(&project);
     let schema =
-        std::fs::read_to_string(project.join("tp/dist/wp-content/plugins/typedpress-app-loginpage/tp/app/schema.php"))
+        std::fs::read_to_string(project.join("sp/dist/wp-content/plugins/spacepress-app-loginpage/sp/app/schema.php"))
             .unwrap();
     let login = schema
         .lines()
@@ -6676,11 +6676,11 @@ fn login_tsx_is_the_sign_in_page() {
     assert!(login.contains("'layouts' => ['app/layout.tsx']"), "{login}");
     assert!(login.contains("'styles' => ['site-"), "{login}");
     let functions = std::fs::read_to_string(
-        project.join("tp/dist/wp-content/plugins/typedpress-app-loginpage/tp/app/functions.php"),
+        project.join("sp/dist/wp-content/plugins/spacepress-app-loginpage/sp/app/functions.php"),
     )
     .unwrap();
     let form_args = functions
-        .split_once("\\TypedPress\\Render\\LoginView::form(")
+        .split_once("\\SpacePress\\Render\\LoginView::form(")
         .and_then(|(_, call)| call.split_once(')'))
         .map(|(args, _)| args.trim());
     assert_eq!(form_args, Some("'signin-form', 'Sign in', false, null"), "{functions}");
@@ -6688,40 +6688,40 @@ fn login_tsx_is_the_sign_in_page() {
     assert!(!schema.contains("'pattern' => '/login'"), "{schema}");
     let _ = std::fs::remove_dir_all(&project);
 
-    let dir = std::env::temp_dir().join(format!("tp-login-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sp-login-reject-{}", std::process::id()));
     let page = "export default function P() { return <p/>; }\n";
     rejects(
         &dir,
-        &[("tp/app/page.tsx", page), ("tp/app/account/login.tsx", page)],
-        "login.tsx works only at the root of tp/app/",
-        "tp/app/account/login.tsx",
+        &[("sp/app/page.tsx", page), ("sp/app/account/login.tsx", page)],
+        "login.tsx works only at the root of sp/app/",
+        "sp/app/account/login.tsx",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/login.tsx",
+            "sp/app/login.tsx",
             "export const guard = \"admin\";\nexport default function P() { return <p/>; }\n",
         )],
         "app/login.tsx can't export `guard`",
-        "tp/app/login.tsx",
+        "sp/app/login.tsx",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/login.tsx",
-            "import { LoginForm } from \"typedpress/app\";\nexport default function P() { return <LoginForm action=\"/x\" />; }\n",
+            "sp/app/login.tsx",
+            "import { LoginForm } from \"spacepress/app\";\nexport default function P() { return <LoginForm action=\"/x\" />; }\n",
         )],
         "`<LoginForm>` has no prop `action`",
-        "tp/app/login.tsx",
+        "sp/app/login.tsx",
     );
     rejects(
         &dir,
         &[(
-            "tp/app/login.tsx",
-            "import { LoginForm } from \"typedpress/app\";\nexport default function P() { return <LoginForm links={1} />; }\n",
+            "sp/app/login.tsx",
+            "import { LoginForm } from \"spacepress/app\";\nexport default function P() { return <LoginForm links={1} />; }\n",
         )],
         "`<LoginForm links>` takes",
-        "tp/app/login.tsx",
+        "sp/app/login.tsx",
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -6736,8 +6736,8 @@ fn one_sign_in_page_on_wordpress() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/login_page.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -6855,7 +6855,7 @@ fn one_sign_in_page_on_wordpress() {
         (&json(true), &json(false)),
         "{seen}"
     );
-    assert_eq!(step["provider"], "TypedPress_Identity_TwoFactorProvider", "{seen}");
+    assert_eq!(step["provider"], "SpacePress_Identity_TwoFactorProvider", "{seen}");
     assert_eq!(
         seen["mfa wrong code"],
         serde_json::json!({ "status": 200, "signed in": false, "asks again": true }),
@@ -6967,7 +6967,7 @@ fn one_sign_in_page_on_wordpress() {
     // that didn't pass it (another Two Factor method, wp_set_auth_cookie alone) is no identity session.
     assert_eq!(
         seen["mfa methods"],
-        serde_json::json!({ "provider": "TypedPress_Identity_TwoFactorProvider", "emailed": false }),
+        serde_json::json!({ "provider": "SpacePress_Identity_TwoFactorProvider", "emailed": false }),
         "{seen}"
     );
     assert_eq!(
@@ -7093,14 +7093,14 @@ fn one_sign_in_page_under_a_subdirectory() {
     let project = fixture("login-page", "subdir");
     // login.tsx redirects when asked (`redirect_to` naming `/go-account`), to check where its own
     // `redirect()` goes.
-    let login = project.join("tp/app/login.tsx");
+    let login = project.join("sp/app/login.tsx");
     let source = std::fs::read_to_string(&login).unwrap();
     std::fs::write(
         &login,
         source
             .replace(
-                "import { LoginForm, type LoginProps } from \"typedpress/app\";",
-                "import { LoginForm, redirect, type LoginProps } from \"typedpress/app\";",
+                "import { LoginForm, type LoginProps } from \"spacepress/app\";",
+                "import { LoginForm, redirect, type LoginProps } from \"spacepress/app\";",
             )
             .replace(
                 "export default function Login({ errors, messages, registerUrl }: LoginProps) {",
@@ -7112,8 +7112,8 @@ fn one_sign_in_page_under_a_subdirectory() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/login_page.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .env("LOGIN_PAGE_BASE", "/blog")
         .output()
         .unwrap();
@@ -7146,7 +7146,7 @@ fn json<T: serde::Serialize>(v: T) -> serde_json::Value {
     serde_json::to_value(v).unwrap()
 }
 
-/// `tp/app/` pages inside the active block theme's templates (docs/pages.md "Block templates",
+/// `sp/app/` pages inside the active block theme's templates (docs/pages.md "Block templates",
 /// tests/php/block_templates.php): the theme's header and footer wrap each page, a layout that
 /// places `<TemplatePart>` or a page that picks `"blank"` draws its own, the templates are listed
 /// in the Site Editor, and the 404 and sign-in pages are templates the owner edits.
@@ -7158,17 +7158,17 @@ fn pages_render_in_block_templates() {
     // template that only holds the Page content block.
     let without_login = fixture("block-templates", "no-login");
     copy(
-        &project.join("tp/_generated/migrations"),
-        &without_login.join("tp/_generated/migrations"),
+        &project.join("sp/_generated/migrations"),
+        &without_login.join("sp/_generated/migrations"),
     );
-    std::fs::remove_file(without_login.join("tp/app/login.tsx")).unwrap();
+    std::fs::remove_file(without_login.join("sp/app/login.tsx")).unwrap();
     build(&without_login);
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/block_templates.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .arg(without_login.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .arg(without_login.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -7275,14 +7275,14 @@ fn pages_render_in_block_templates() {
         ),
         "{seen}"
     );
-    // The Site Editor lists TypedPress's templates and the theme's 404, each holding the page block.
+    // The Site Editor lists SpacePress's templates and the theme's 404, each holding the page block.
     assert_eq!(
         seen["templates"],
         serde_json::json!({
             "404": { "source": "theme", "page block": true },
-            "tp-page": { "source": "plugin", "page block": true },
-            "tp-blank": { "source": "plugin", "page block": true },
-            "tp-login": { "source": "plugin", "page block": true },
+            "sp-page": { "source": "plugin", "page block": true },
+            "sp-blank": { "source": "plugin", "page block": true },
+            "sp-login": { "source": "plugin", "page block": true },
         }),
         "{seen}"
     );
@@ -7380,12 +7380,12 @@ fn pages_render_in_block_templates() {
     // within one template, and loads a page in another.
     assert_eq!(
         seen["links"],
-        serde_json::json!({ "page": "tp-page", "links": [["/notes/", "tp-page"], ["/bare/", "tp-blank"]] }),
+        serde_json::json!({ "page": "sp-page", "links": [["/notes/", "sp-page"], ["/bare/", "sp-blank"]] }),
         "{seen}"
     );
     assert_eq!(
         (&seen["studio"]["template"], &seen["bare"]["template"]),
-        (&json("tp-blank"), &json("tp-blank")),
+        (&json("sp-blank"), &json("sp-blank")),
         "{seen}"
     );
     // A route group's layout below the root renders, under the theme's parts.
@@ -7414,20 +7414,20 @@ fn pages_render_in_block_templates() {
         serde_json::json!({ "login form": false, "theme header": 1, "page": "All notes" }),
         "{seen}"
     );
-    // A template that doesn't place the page falls back to tp-page; the page never goes missing.
+    // A template that doesn't place the page falls back to sp-page; the page never goes missing.
     assert_eq!(
         seen["template without page"],
         serde_json::json!({ "status": 200, "page": "Bare", "owner text": false, "theme header": 1 }),
         "{seen}"
     );
-    // A template's page render that a plugin drops: tp-page renders it instead, without the
+    // A template's page render that a plugin drops: sp-page renders it instead, without the
     // dropped render's scripts, each head tag once.
     assert_eq!(
         seen["page render dropped"],
-        serde_json::json!({ "status": 200, "page": "Bare", "template": "tp-page", "dropped text": false, "descriptions": 1, "scripts": false }),
+        serde_json::json!({ "status": 200, "page": "Bare", "template": "sp-page", "dropped text": false, "descriptions": 1, "scripts": false }),
         "{seen}"
     );
-    // When neither the chosen template nor tp-page places it, the page is TypedPress's own document:
+    // When neither the chosen template nor sp-page places it, the page is SpacePress's own document:
     // one title, one description, none of the failed renders' scripts.
     assert_eq!(
         seen["no template places the page"],
@@ -7452,13 +7452,13 @@ fn pages_render_in_block_templates() {
 /// root too; a layout that only places `{children}`, or one that picks a template, gets none.
 #[test]
 fn root_layout_chrome_without_a_template_is_hinted() {
-    let dir = std::env::temp_dir().join(format!("tp-root-layout-hint-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sp-root-layout-hint-{}", std::process::id()));
     let check = |files: &[(&str, &str)]| -> String {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
-            dir.join("typedpress.config.ts"),
-            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({});\n",
+            dir.join("spacepress.config.ts"),
+            "import { defineConfig } from \"spacepress\";\nexport default defineConfig({});\n",
         )
         .unwrap();
         for (path, source) in files {
@@ -7471,27 +7471,27 @@ fn root_layout_chrome_without_a_template_is_hinted() {
         String::from_utf8_lossy(&out.stderr).to_string()
     };
     let page = (
-        "tp/app/page.tsx",
+        "sp/app/page.tsx",
         "export default function Home() { return <h1>Home</h1>; }\n",
     );
-    let chrome = "import type { LayoutProps } from \"typedpress/app\";\nexport default function Root({ children }: LayoutProps) { return <div><header>Site</header>{children}</div>; }\n";
+    let chrome = "import type { LayoutProps } from \"spacepress/app\";\nexport default function Root({ children }: LayoutProps) { return <div><header>Site</header>{children}</div>; }\n";
     let hint = "renders markup around {children}, which the theme's header and footer replace";
-    let out = check(&[("tp/app/layout.tsx", chrome), page]);
+    let out = check(&[("sp/app/layout.tsx", chrome), page]);
     assert!(out.contains(&format!("hint: app/layout.tsx {hint}")), "{out}");
     // The outermost layout of a route group.
     let out = check(&[
-        ("tp/app/(site)/layout.tsx", chrome),
+        ("sp/app/(site)/layout.tsx", chrome),
         (
-            "tp/app/(site)/about/page.tsx",
+            "sp/app/(site)/about/page.tsx",
             "export default function About() { return <h1>About</h1>; }\n",
         ),
     ]);
     assert!(out.contains(&format!("hint: app/(site)/layout.tsx {hint}")), "{out}");
     // Saying which template it renders in, or placing only its children, is no hint.
     let blank = format!("export const template = \"blank\";\n{chrome}");
-    assert!(!check(&[("tp/app/layout.tsx", &blank), page]).contains(hint));
-    let bare = "import type { LayoutProps } from \"typedpress/app\";\nexport default function Root({ children }: LayoutProps) { return <>{children}</>; }\n";
-    assert!(!check(&[("tp/app/layout.tsx", bare), page]).contains(hint));
+    assert!(!check(&[("sp/app/layout.tsx", &blank), page]).contains(hint));
+    let bare = "import type { LayoutProps } from \"spacepress/app\";\nexport default function Root({ children }: LayoutProps) { return <>{children}</>; }\n";
+    assert!(!check(&[("sp/app/layout.tsx", bare), page]).contains(hint));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -7500,16 +7500,16 @@ fn root_layout_chrome_without_a_template_is_hinted() {
 fn public_metadata_scripts_carry_a_content_version() {
     let project = tempfile::tempdir().unwrap();
     let project = project.path();
-    std::fs::create_dir_all(project.join("tp/app/plain")).unwrap();
+    std::fs::create_dir_all(project.join("sp/app/plain")).unwrap();
     std::fs::create_dir_all(project.join("public/scripts")).unwrap();
     std::fs::write(
-        project.join("typedpress.config.ts"),
-        r#"import { defineConfig } from "typedpress";
+        project.join("spacepress.config.ts"),
+        r#"import { defineConfig } from "spacepress";
 export default defineConfig({ name: "publicmodules", admin: false });"#,
     )
     .unwrap();
     std::fs::write(
-        project.join("tp/app/page.tsx"),
+        project.join("sp/app/page.tsx"),
         r#"export const metadata = () => ({ scripts: [
   "/scripts/module%20name.mjs?mode=one&mode=two#ready",
   "https://cdn.example/remote.js?mode=one#ready",
@@ -7518,13 +7518,13 @@ export default function Page() { return <p>With scripts</p>; }"#,
     )
     .unwrap();
     std::fs::write(
-        project.join("tp/app/plain/page.tsx"),
+        project.join("sp/app/plain/page.tsx"),
         "export default function Plain() { return <p>Without scripts</p>; }",
     )
     .unwrap();
 
-    let content = project.join("tp/dist/wp-content");
-    let schema = content.join("plugins/typedpress-app-publicmodules/tp/app/schema.php");
+    let content = project.join("sp/dist/wp-content");
+    let schema = content.join("plugins/spacepress-app-publicmodules/sp/app/schema.php");
     let scripts = |body: &str, stale: Option<&str>| {
         std::fs::write(project.join("public/scripts/module name.mjs"), body).unwrap();
         std::fs::write(project.join("public/notes.txt"), body).unwrap();
@@ -7532,8 +7532,8 @@ export default function Page() { return <p>With scripts</p>; }"#,
         let package = tempfile::tempdir().unwrap();
         let sources = package.path().join("sources");
         let store = package.path().join("store");
-        typedpress::host::sources(project, &sources).unwrap();
-        let built = typedpress::host::compile_to_store(&sources, &store, project, None).unwrap();
+        spacepress::host::sources(project, &sources).unwrap();
+        let built = spacepress::host::compile_to_store(&sources, &store, project, None).unwrap();
         let out = Command::new("php")
             .args(["-d", "memory_limit=512M"])
             .arg(root().join("tests/php/public_script_versions.php"))
@@ -7542,7 +7542,7 @@ export default function Page() { return <p>With scripts</p>; }"#,
             .arg(&built.runtime_revision)
             .arg(&built.build_id)
             .arg(stale.unwrap_or_default())
-            .env("TP_WP_THEMES", "1")
+            .env("SP_WP_THEMES", "1")
             .output()
             .unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -7554,7 +7554,7 @@ export default function Page() { return <p>With scripts</p>; }"#,
             .map(|b| format!("{b:02x}"))
             .collect();
         let expected = serde_json::json!([
-            format!("{base}/scripts/module%20name.mjs?mode=one&mode=two&tpv={version}#ready"),
+            format!("{base}/scripts/module%20name.mjs?mode=one&mode=two&spv={version}#ready"),
             "https://cdn.example/remote.js?mode=one#ready",
         ]);
         assert_eq!(seen["scripts"], expected);
@@ -7570,29 +7570,29 @@ export default function Page() { return <p>With scripts</p>; }"#,
     assert_eq!(std::fs::read(schema).unwrap(), original_schema);
 }
 
-/// The script modules with fixed names (`typedpress-client.js`, the runtime's `live.js` and
+/// The script modules with fixed names (`spacepress-client.js`, the runtime's `live.js` and
 /// `router.js`) carry a version that changes with what they are, so a browser never keeps one
 /// from an earlier build; the content-hashed client files are served with an immutable cache header
 /// (tests/php/script_versions.php).
 #[test]
 fn fixed_script_modules_carry_a_build_version() {
     let project = fixture("client-components", "versions");
-    let page = project.join("tp/app/page.tsx");
+    let page = project.join("sp/app/page.tsx");
     let source = std::fs::read_to_string(&page).unwrap();
     std::fs::write(
         &page,
         source
-            .replacen("import ", "import { Link } from \"typedpress/app\";\nimport ", 1)
+            .replacen("import ", "import { Link } from \"spacepress/app\";\nimport ", 1)
             .replace("<main>", "<main>\n      <Link href=\"/\">home</Link>"),
     )
     .unwrap();
     build(&project);
-    let content = project.join("tp/dist/wp-content");
+    let content = project.join("sp/dist/wp-content");
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/script_versions.php"))
         .arg(&content)
-        .env("TP_WP_THEMES", "1")
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     assert!(
@@ -7603,16 +7603,16 @@ fn fixed_script_modules_carry_a_build_version() {
     );
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let plugins = content.join("plugins");
-    let runtime = std::fs::read_to_string(plugins.join("typedpress-runtime/typedpress-runtime.php")).unwrap();
+    let runtime = std::fs::read_to_string(plugins.join("spacepress-runtime/spacepress-runtime.php")).unwrap();
     let runtime_hash = runtime
-        .split("define('TP_RUNTIME_HASH', '")
+        .split("define('SP_RUNTIME_HASH', '")
         .nth(1)
         .unwrap()
         .split('\'')
         .next()
         .unwrap()
         .to_string();
-    let client = std::fs::read(plugins.join("typedpress-app-clients/tp/app/client/typedpress-client.js")).unwrap();
+    let client = std::fs::read(plugins.join("spacepress-app-clients/sp/app/client/spacepress-client.js")).unwrap();
     let client_hash: String = {
         use sha2::Digest;
         sha2::Sha256::digest(&client)[..6]
@@ -7622,7 +7622,7 @@ fn fixed_script_modules_carry_a_build_version() {
     };
     assert_eq!(seen["router.js"], runtime_hash.as_str(), "{seen}");
     assert_eq!(seen["live.js"], runtime_hash.as_str(), "{seen}");
-    assert_eq!(seen["typedpress-client.js"], client_hash.as_str(), "{seen}");
+    assert_eq!(seen["spacepress-client.js"], client_hash.as_str(), "{seen}");
     // Content-hashed island stores need no version.
     assert!(
         seen.as_object()
@@ -7633,7 +7633,7 @@ fn fixed_script_modules_carry_a_build_version() {
         "{seen}"
     );
     // The shipped modules are minified; the committed client stays as generated.
-    let committed = std::fs::read(project.join("tp/_generated/client/client.js")).unwrap();
+    let committed = std::fs::read(project.join("sp/_generated/client/client.js")).unwrap();
     assert!(
         client.len() * 2 < committed.len(),
         "{} vs {}",
@@ -7642,7 +7642,7 @@ fn fixed_script_modules_carry_a_build_version() {
     );
     assert!(
         !String::from_utf8_lossy(&client).contains("\n  "),
-        "typedpress-client.js is minified"
+        "spacepress-client.js is minified"
     );
     let stores: Vec<&String> = seen
         .as_object()
@@ -7652,7 +7652,7 @@ fn fixed_script_modules_carry_a_build_version() {
         .collect();
     assert!(stores.len() >= 6, "{seen}");
     for name in stores {
-        let store = std::fs::read(plugins.join("typedpress-app-clients/tp/app/client").join(name)).unwrap();
+        let store = std::fs::read(plugins.join("spacepress-app-clients/sp/app/client").join(name)).unwrap();
         assert!(
             !String::from_utf8_lossy(&store).contains("// Generated by"),
             "{name} is minified"
@@ -7665,11 +7665,11 @@ fn fixed_script_modules_carry_a_build_version() {
             .collect();
         assert_eq!(name.split('.').nth(1), Some(digest.as_str()), "{name}");
     }
-    // The hashed client files get the assets' immutable cache header; typedpress-client.js has none.
-    let htaccess = std::fs::read_to_string(plugins.join("typedpress-app-clients/tp/app/client/.htaccess")).unwrap();
+    // The hashed client files get the assets' immutable cache header; spacepress-client.js has none.
+    let htaccess = std::fs::read_to_string(plugins.join("spacepress-app-clients/sp/app/client/.htaccess")).unwrap();
     assert!(htaccess.contains("immutable"), "{htaccess}");
     assert!(htaccess.contains(r#"<FilesMatch "\.[0-9a-f]{12}\.js$">"#), "{htaccess}");
-    let version = std::fs::read_to_string(plugins.join("typedpress-app-clients/tp/app/client-version.php")).unwrap();
+    let version = std::fs::read_to_string(plugins.join("spacepress-app-clients/sp/app/client-version.php")).unwrap();
     assert!(version.contains(&format!("return '{client_hash}';")), "{version}");
     let _ = std::fs::remove_dir_all(project);
 }

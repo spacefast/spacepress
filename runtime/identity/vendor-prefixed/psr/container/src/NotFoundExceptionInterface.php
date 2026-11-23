@@ -1,6 +1,6 @@
 <?php
 
-namespace TypedPress\Identity\Vendor\Psr\Container;
+namespace SpacePress\Identity\Vendor\Psr\Container;
 
 /**
  * No entry was found in the container.

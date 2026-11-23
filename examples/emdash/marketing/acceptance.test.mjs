@@ -13,8 +13,8 @@ import { command, wp, setup } from "./setup.mjs";
 const exec = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
 async function freePort() {
-  // TP_EXAMPLE_PORT pins the WordPress port (a shared machine's assigned lane); otherwise any free one.
-  if (process.env.TP_EXAMPLE_PORT) return Number(process.env.TP_EXAMPLE_PORT);
+  // SP_EXAMPLE_PORT pins the WordPress port (a shared machine's assigned lane); otherwise any free one.
+  if (process.env.SP_EXAMPLE_PORT) return Number(process.env.SP_EXAMPLE_PORT);
   const server = createServer();
   await new Promise((done) => server.listen(0, "127.0.0.1", done));
   const port = server.address().port;
@@ -44,7 +44,7 @@ async function saveNativeSiteTitle(base, title) {
     redirect: "manual",
     body: new URLSearchParams({
       log: "admin",
-      pwd: "typedpress-test-admin",
+      pwd: "spacepress-test-admin",
       "wp-submit": "Log In",
       redirect_to: base + "/wp-admin/",
     }),
@@ -54,7 +54,7 @@ async function saveNativeSiteTitle(base, title) {
     .getSetCookie()
     .map((item) => item.split(";")[0])
     .join("; ");
-  const screen = "/wp-admin/admin.php?page=typedpress-global-site";
+  const screen = "/wp-admin/admin.php?page=spacepress-global-site";
   const response = await fetch(base + screen, { headers: { cookie } });
   assert.equal(response.status, 200);
   const html = await response.text();
@@ -98,7 +98,7 @@ async function saveNativeSiteTitle(base, title) {
   }
   const body = new URLSearchParams(controls);
   const titleControl = [...body.keys()].find((name) =>
-    name.endsWith("[field_tp_global_site_identity_title]"),
+    name.endsWith("[field_sp_global_site_identity_title]"),
   );
   assert.ok(titleControl, "SCF group title control exists");
   body.set(titleControl, title);
@@ -133,11 +133,11 @@ test(
   "official marketing sections survive native SCF edits, render publicly, enforce access and persist across Studio rebuilds",
   { timeout: 900000 },
   async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "typedpress-emdash-marketing-"));
+    const root = await mkdtemp(join(tmpdir(), "spacepress-emdash-marketing-"));
     const project = join(root, "marketing");
-    const site = join(project, ".tp/dev/wordpress");
+    const site = join(project, ".sp/dev/wordpress");
     await mkdir(project);
-    for (const file of ["typedpress.config.ts", "seed.json"])
+    for (const file of ["spacepress.config.ts", "seed.json"])
       await cp(join(here, file), join(project, file));
     const evidence = join(root, "evidence");
     await mkdir(evidence);
@@ -272,12 +272,12 @@ test(
     // Move logos before the hero. Stored order, including repeat layouts, drives the next public reload.
     const logosIndex = edited.findIndex((s) => s.layout === "logos");
     edited.unshift(...edited.splice(logosIndex, 1));
-    await request(`/wp-json/wp/v2/tp_pages/${home.id}`, {
+    await request(`/wp-json/wp/v2/sp_pages/${home.id}`, {
       method: "POST",
       body: {
         acf: {
-          tp_sections: acfSections(edited),
-          tp_seo: {
+          sp_sections: acfSections(edited),
+          sp_seo: {
             title: "Native marketing SEO",
             description: "Editable native description",
             noindex: false,
@@ -309,9 +309,9 @@ test(
     priceSections.find((s) => s.layout === "pricing").plans[1].price = "$179";
     priceSections.find((s) => s.layout === "pricing").plans[1].highlighted =
       false;
-    await request(`/wp-json/wp/v2/tp_pages/${pricing.id}`, {
+    await request(`/wp-json/wp/v2/sp_pages/${pricing.id}`, {
       method: "POST",
-      body: { acf: { tp_sections: acfSections(priceSections) } },
+      body: { acf: { sp_sections: acfSections(priceSections) } },
     });
     assert.ok((await publicHtml("/pricing")).includes("$179"));
     assert.equal(
@@ -323,18 +323,18 @@ test(
     const contactSections = structuredClone(contact.sections);
     contactSections.find((s) => s.layout === "contact").options[0].link_url =
       "mailto:edited@halden.example";
-    await request(`/wp-json/wp/v2/tp_pages/${contact.id}`, {
+    await request(`/wp-json/wp/v2/sp_pages/${contact.id}`, {
       method: "POST",
-      body: { acf: { tp_sections: acfSections(contactSections) } },
+      body: { acf: { sp_sections: acfSections(contactSections) } },
     });
     assert.ok(
       (await publicHtml("/contact")).includes("mailto:edited@halden.example"),
     );
-    await request(`/wp-json/wp/v2/tp_pages/${about.id}`, {
+    await request(`/wp-json/wp/v2/sp_pages/${about.id}`, {
       method: "POST",
       body: {
         acf: {
-          tp_sections: [
+          sp_sections: [
             {
               acf_fc_layout: "text",
               headline: "Our native story",
@@ -375,10 +375,10 @@ test(
     // Representative invalid nested input is refused before changing persisted/public content.
     const invalid = structuredClone(edited);
     invalid.find((s) => s.layout === "features").features = [];
-    await request(`/wp-json/wp/v2/tp_pages/${home.id}`, {
+    await request(`/wp-json/wp/v2/sp_pages/${home.id}`, {
       method: "POST",
       expected: 400,
-      body: { acf: { tp_sections: acfSections(invalid) } },
+      body: { acf: { sp_sections: acfSections(invalid) } },
     });
     assert.deepEqual((await api(`/pages/${home.id}`)).sections, edited);
     await api(`/pages/${home.id}`, {
@@ -418,7 +418,7 @@ test(
       "marketing-acceptance",
       "--porcelain",
     );
-    await request(`/wp-json/wp/v2/tp_pages/${home.id}`, {
+    await request(`/wp-json/wp/v2/sp_pages/${home.id}`, {
       method: "POST",
       expected: 403,
       headers: {
@@ -494,7 +494,7 @@ test(
       await wp(project, "plugin", "list", "--status=active", "--format=json"),
     );
     assert.ok(active.some((p) => p.name === "marketing-acceptance-extra"));
-    assert.ok(active.some((p) => p.name === "typedpress-marketing-frontend"));
+    assert.ok(active.some((p) => p.name === "spacepress-marketing-frontend"));
     assert.ok(
       (await publicHtml("/")).includes("Every building, edited in WordPress."),
     );

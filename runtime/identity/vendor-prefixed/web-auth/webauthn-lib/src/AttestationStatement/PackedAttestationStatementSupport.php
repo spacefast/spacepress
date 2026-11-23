@@ -2,40 +2,40 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\AttestationStatement;
+namespace SpacePress\Identity\Vendor\Webauthn\AttestationStatement;
 
 use function array_key_exists;
-use TypedPress\Identity\Vendor\CBOR\Decoder;
-use TypedPress\Identity\Vendor\CBOR\MapObject;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Manager;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\Signature;
-use TypedPress\Identity\Vendor\Cose\Algorithms;
-use TypedPress\Identity\Vendor\Cose\Key\Key;
+use SpacePress\Identity\Vendor\CBOR\Decoder;
+use SpacePress\Identity\Vendor\CBOR\MapObject;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Manager;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\Signature;
+use SpacePress\Identity\Vendor\Cose\Algorithms;
+use SpacePress\Identity\Vendor\Cose\Key\Key;
 use function count;
 use function is_array;
 use function is_string;
 use function openssl_verify;
-use TypedPress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\UnknownExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\TBSCertificate;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticatorData;
-use TypedPress\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
-use TypedPress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use TypedPress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use TypedPress\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
-use TypedPress\Identity\Vendor\Webauthn\Exception\AttestationStatementVerificationException;
-use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidAttestationStatementException;
-use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
-use TypedPress\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
-use TypedPress\Identity\Vendor\Webauthn\StringStream;
-use TypedPress\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
-use TypedPress\Identity\Vendor\Webauthn\TrustPath\EmptyTrustPath;
-use TypedPress\Identity\Vendor\Webauthn\Util\CoseSignatureFixer;
+use SpacePress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\UnknownExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\TBSCertificate;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticatorData;
+use SpacePress\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
+use SpacePress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use SpacePress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use SpacePress\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
+use SpacePress\Identity\Vendor\Webauthn\Exception\AttestationStatementVerificationException;
+use SpacePress\Identity\Vendor\Webauthn\Exception\InvalidAttestationStatementException;
+use SpacePress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use SpacePress\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
+use SpacePress\Identity\Vendor\Webauthn\StringStream;
+use SpacePress\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
+use SpacePress\Identity\Vendor\Webauthn\TrustPath\EmptyTrustPath;
+use SpacePress\Identity\Vendor\Webauthn\Util\CoseSignatureFixer;
 
 final class PackedAttestationStatementSupport implements AttestationStatementSupport, CanDispatchEvents
 {

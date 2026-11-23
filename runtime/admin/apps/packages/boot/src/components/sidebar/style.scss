@@ -1,6 +1,6 @@
 @use "@wordpress/base-styles/variables";
 
-.typedpress-admin-sidebar__scrollable {
+.spacepress-admin-sidebar__scrollable {
 	overflow: auto;
 	height: 100%;
 	position: relative;
@@ -8,7 +8,7 @@
 	flex-direction: column;
 }
 
-.typedpress-admin-sidebar__content {
+.spacepress-admin-sidebar__content {
 	flex-grow: 1;
 	// Mark this section of the DOM as isolated, providing performance benefits
 	// by limiting calculations of layout, style and paint to a DOM subtree rather
@@ -17,13 +17,13 @@
 	position: relative;
 }
 
-.typedpress-admin-sidebar__sections {
+.spacepress-admin-sidebar__sections {
 	display: flex;
 	flex-direction: column;
 	gap: variables.$grid-unit-15;
 }
 
-.typedpress-admin-sidebar__section-label {
+.spacepress-admin-sidebar__section-label {
 	padding: variables.$grid-unit-10 variables.$grid-unit-15 variables.$grid-unit-05;
 	font-size: 11px;
 	font-weight: 600;
@@ -33,7 +33,7 @@
 	user-select: none;
 }
 
-.typedpress-admin-sidebar__footer {
+.spacepress-admin-sidebar__footer {
 	position: sticky;
 	bottom: 0;
 	background-color: var( --wpds-color-background-surface-neutral-weak );

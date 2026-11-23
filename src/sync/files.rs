@@ -43,7 +43,7 @@ pub fn tree_place(rel: &str, format: &str) -> Result<(String, Option<String>), S
     let index = stem == "index";
     if index && folders.is_empty() {
         return Err(format!(
-            "index.{format} at the top of the sync folder has no folder to stand for; the landing page of the kind is an app page (tp/app/<path>/page.tsx)"
+            "index.{format} at the top of the sync folder has no folder to stand for; the landing page of the kind is an app page (sp/app/<path>/page.tsx)"
         ));
     }
     let slug = if index { folders[folders.len() - 1] } else { stem };

@@ -1,4 +1,4 @@
-//! Build-time values. `typedpress.config.ts` evaluates to these; the compiler then
+//! Build-time values. `spacepress.config.ts` evaluates to these; the compiler then
 //! reads the schema out of them and compiles the functions they hold.
 
 use crate::diag::Span;
@@ -137,11 +137,11 @@ pub enum Value {
     Job(Rc<ActionVal>),
     /// `definePlugin({ name, hooks, actions, jobs })`, registered in `defineConfig({ use })`.
     Plugin(Rc<ActionVal>),
-    /// `adminScreen({ ... })`: a TypedPress Admin screen, registered by its export (docs/admin-screens.md).
+    /// `adminScreen({ ... })`: a SpacePress Admin screen, registered by its export (docs/admin-screens.md).
     Screen(Rc<ActionVal>),
-    /// `adminWidget({ ... })`: a TypedPress Admin dashboard widget, registered by its export.
+    /// `adminWidget({ ... })`: a SpacePress Admin dashboard widget, registered by its export.
     Widget(Rc<ActionVal>),
-    /// `adminDashboard({ ... })`: a TypedPress Admin custom dashboard, registered by its export.
+    /// `adminDashboard({ ... })`: a SpacePress Admin custom dashboard, registered by its export.
     Dashboard(Rc<ActionVal>),
     FileBucket(Rc<FileBucketVal>),
     Env(Rc<str>),
@@ -249,11 +249,11 @@ impl Closure {
     }
 }
 
-/// The `Object.prototype` methods TypedPress models: read as `Object.prototype.<name>` (a function
+/// The `Object.prototype` methods SpacePress models: read as `Object.prototype.<name>` (a function
 /// value, `Builtin::ObjectPrototypeMethod`) and called through `.call`/`.apply`.
 pub const OBJECT_PROTOTYPE_METHODS: &[&str] = &["hasOwnProperty", "propertyIsEnumerable", "toString"];
 
-/// Function properties TypedPress doesn't model: built-in own properties and `Function.prototype`.
+/// Function properties SpacePress doesn't model: built-in own properties and `Function.prototype`.
 pub const FUNCTION_BUILTIN_PROPERTIES: &[&str] = &[
     "name",
     "length",
@@ -270,27 +270,27 @@ pub const FUNCTION_BUILTIN_PROPERTIES: &[&str] = &[
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Builtin {
-    // "typedpress" exports
+    // "spacepress" exports
     Collection(StorageKind),
     Column(ColType),
     Id,
     /// email, url, slug, richText, media, select, group, repeater, blocks
     Field(&'static str),
-    /// `global(name, fields, options)` from "typedpress".
+    /// `global(name, fields, options)` from "spacepress".
     DefineGlobal,
     Store,
     DefineRelations,
     DefineConfig,
     DefinePlugin,
-    /// `destructiveMigrations(options?)` from `"typedpress/danger"`.
+    /// `destructiveMigrations(options?)` from `"spacepress/danger"`.
     DestructiveMigrations,
-    /// `adminScreen({ ... })` from "typedpress".
+    /// `adminScreen({ ... })` from "spacepress".
     AdminScreen,
-    /// `adminWidget({ ... })` from "typedpress".
+    /// `adminWidget({ ... })` from "spacepress".
     AdminWidget,
-    /// `adminDashboard({ ... })` from "typedpress".
+    /// `adminDashboard({ ... })` from "spacepress".
     AdminDashboard,
-    /// `item(path)` from "typedpress": the `{item.<path>}` placeholder of a screen action's input.
+    /// `item(path)` from "spacepress": the `{item.<path>}` placeholder of a screen action's input.
     Item,
     /// `job(options, handler)`.
     Job,
@@ -305,22 +305,22 @@ pub enum Builtin {
     Once,
     /// `"node:crypto"`: the module namespace (`None`) or one of its supported functions.
     NodeCrypto(Option<&'static str>),
-    /// `mail.send(message)` from "typedpress" / "spacepress", compiled to `TypedPress\Mail::send`.
+    /// `mail.send(message)` from "spacepress" / "spacepress", compiled to `SpacePress\Mail::send`.
     Mail,
-    /// `connectors.call(role, tool, args?)` and `connectors.enqueue(role, tool, args?, opts?)` from "spacepress" / "typedpress", compiled to `TypedPress\Connectors::call` / `::enqueue`.
+    /// `connectors.call(role, tool, args?)` and `connectors.enqueue(role, tool, args?, opts?)` from "spacepress" / "spacepress", compiled to `SpacePress\Connectors::call` / `::enqueue`.
     Connectors,
-    /// `abilities.call(name, input)` from "php/wordpress", compiled to `TypedPress\Wp\Abilities\Call::run`.
+    /// `abilities.call(name, input)` from "php/wordpress", compiled to `SpacePress\Wp\Abilities\Call::run`.
     Abilities,
-    /// A catalog WordPress function from "php/wordpress", compiled to `TypedPress\Wp\Functions::call`.
+    /// A catalog WordPress function from "php/wordpress", compiled to `SpacePress\Wp\Functions::call`.
     WpFunction(Rc<str>),
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,
     HttpError,
-    /// `ref(kind)` from "typedpress".
+    /// `ref(kind)` from "spacepress".
     Ref,
-    /// `terms(taxonomy)` from "typedpress": an item's terms of one taxonomy.
+    /// `terms(taxonomy)` from "spacepress": an item's terms of one taxonomy.
     Terms,
-    /// `wp` from "typedpress": WordPress's own kinds.
+    /// `wp` from "spacepress": WordPress's own kinds.
     Wp,
     /// `wp.posts`: core's posts, whose `.extend()` and `.clone()` make kinds.
     WpPosts,
@@ -336,12 +336,12 @@ pub enum Builtin {
     /// `Object.prototype.<name>` for a name in `OBJECT_PROTOTYPE_METHODS`: a function value
     /// called through `.call`/`.apply` with its receiver.
     ObjectPrototypeMethod(&'static str),
-    // "typedpress/app": page helpers, compiled by the app router; never run while the config builds.
+    // "spacepress/app": page helpers, compiled by the app router; never run while the config builds.
     /// `notFound()`, `redirect(url, status?)`, `<Content>`, `<Html>`, `<Link>`: by export name.
     App(&'static str),
-    // "typedpress/client": hooks for "use client" components, compiled to the Interactivity API.
+    // "spacepress/client": hooks for "use client" components, compiled to the Interactivity API.
     Client(&'static str),
-    // "typedpress/content": `nav`, `pager`, `headings` for a hierarchical kind's pages.
+    // "spacepress/content": `nav`, `pager`, `headings` for a hierarchical kind's pages.
     Content(&'static str),
 }
 
@@ -505,7 +505,7 @@ pub struct CollectionVal {
 pub enum PostKind {
     /// `wp.posts.extend(fields, options)`: core's `post` type, with the fields as post meta.
     Native,
-    /// `wp.posts.clone(fields, options)`: its own post type, `tp_<name>`, shaped like posts.
+    /// `wp.posts.clone(fields, options)`: its own post type, `sp_<name>`, shaped like posts.
     Clone,
 }
 
@@ -554,8 +554,8 @@ pub enum FnForm {
     Cron,
     /// One configuration object, for builders like `adminScreen` and `definePlugin`.
     Object,
-    /// A built-in plugin shipped inside TypedPress itself (e.g. `destructiveMigrations()` from
-    /// `"typedpress/danger"`). Skips npm package isolation because it has no user-authored code.
+    /// A built-in plugin shipped inside SpacePress itself (e.g. `destructiveMigrations()` from
+    /// `"spacepress/danger"`). Skips npm package isolation because it has no user-authored code.
     BuiltinPlugin,
 }
 

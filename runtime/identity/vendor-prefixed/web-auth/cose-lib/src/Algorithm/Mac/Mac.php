@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Algorithm\Mac;
+namespace SpacePress\Identity\Vendor\Cose\Algorithm\Mac;
 
-use TypedPress\Identity\Vendor\Cose\Algorithm\Algorithm;
-use TypedPress\Identity\Vendor\Cose\Key\Key;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Algorithm;
+use SpacePress\Identity\Vendor\Cose\Key\Key;
 use InvalidArgumentException;
 
 interface Mac extends Algorithm

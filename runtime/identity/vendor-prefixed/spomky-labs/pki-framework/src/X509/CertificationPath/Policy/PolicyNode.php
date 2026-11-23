@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Policy;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Policy;
 
 use ArrayIterator;
 use function count;
 use Countable;
 use function in_array;
 use IteratorAggregate;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy\PolicyInformation;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy\PolicyQualifierInfo;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy\PolicyInformation;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy\PolicyQualifierInfo;
 
 /**
  * Policy node class for certification path validation.

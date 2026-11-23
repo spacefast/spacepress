@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-use TypedPress\Identity\Vendor\Symfony\Polyfill\Php84 as p;
+use SpacePress\Identity\Vendor\Symfony\Polyfill\Php84 as p;
 
 if (\PHP_VERSION_ID >= 80400) {
     return;

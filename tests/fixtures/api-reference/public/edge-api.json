@@ -6,7 +6,7 @@
     "/x/{id}": {
       "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
       "get": {
-        "operationId": "items.list", "tags": ["Ünïcode"], "summary": "TypedPress",
+        "operationId": "items.list", "tags": ["Ünïcode"], "summary": "SpacePress",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": { "allOf": [{ "$ref": "#/components/schemas/A" }, { "type": "object", "properties": { "kind": { "const": "fixed" } } }] } } } } }
       },

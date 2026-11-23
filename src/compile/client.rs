@@ -14,7 +14,7 @@ use crate::client_component::{Analysis, Binding, refuse};
 
 /// The name a `useLive` field's server answer is read through: `<prefix><field>` resolves to the
 /// seeded `{ data, error, loading }` ([`Compiler::client_live_seed`]).
-pub(super) const LIVE_SEED: &str = "__tp_live_";
+pub(super) const LIVE_SEED: &str = "__sp_live_";
 
 /// The client component being compiled: its analysis, and whether the root element is still to come.
 pub(super) struct ClientCtx {
@@ -113,7 +113,7 @@ impl Compiler<'_, '_> {
                 parts.push(format!("{} => {local}", php_str(&name)));
             }
             extra.push(format!(
-                "'data-wp-context' => \\TypedPress\\Islands::context({}, [{}])",
+                "'data-wp-context' => \\SpacePress\\Islands::context({}, [{}])",
                 php_str(&self.client.as_ref().expect("client").analysis.namespace),
                 parts.join(", ")
             ));
@@ -184,7 +184,7 @@ impl Compiler<'_, '_> {
                         "give each element its own `useRef()`",
                     ));
                 }
-                extra.push(format!("'data-tp-ref' => {}", php_str(&attached)));
+                extra.push(format!("'data-sp-ref' => {}", php_str(&attached)));
                 continue;
             }
             // `key` keys React's reconciliation and never reaches the HTML; a list's key goes to
@@ -286,10 +286,10 @@ impl Compiler<'_, '_> {
         if alone {
             return Ok((php, Some(r)));
         }
-        // `data-tp-text` marks the span as the compiler's, not the author's.
+        // `data-sp-text` marks the span as the compiler's, not the author's.
         Ok((
             format!(
-                "\\TypedPress\\Html::element('span', ['data-wp-text' => {}, 'data-tp-text' => ''], {php})",
+                "\\SpacePress\\Html::element('span', ['data-wp-text' => {}, 'data-sp-text' => ''], {php})",
                 php_str(&r)
             ),
             None,
@@ -566,14 +566,14 @@ impl Compiler<'_, '_> {
                     };
                     let template = self.client_template(branch, None)?;
                     out.push(format!(
-                        "\\TypedPress\\Html::children(({php_test}) ? \\TypedPress\\Islands::eachChild({}, {}) : null, \\TypedPress\\Islands::template({}, {}, {template}, 'context.firstShown'))",
+                        "\\SpacePress\\Html::children(({php_test}) ? \\SpacePress\\Islands::eachChild({}, {}) : null, \\SpacePress\\Islands::template({}, {}, {template}, 'context.firstShown'))",
                         rendered,
                         php_str(&format!("{}::{}", self.client.as_ref().expect("client").analysis.namespace, path)),
-                        php_str("data-wp-each--tp-shown"),
+                        php_str("data-wp-each--sp-shown"),
                         php_str(&path),
                     ));
                 }
-                Ok(format!("\\TypedPress\\Html::children({})", out.join(", ")))
+                Ok(format!("\\SpacePress\\Html::children({})", out.join(", ")))
             }
         }
     }
@@ -651,7 +651,7 @@ impl Compiler<'_, '_> {
             })
             .collect::<String>();
         Ok(format!(
-            "\\TypedPress\\Html::children(\\TypedPress\\Islands::eachChild({}, {}), \\TypedPress\\Islands::template({}, {}, {template}, {}))",
+            "\\SpacePress\\Html::children(\\SpacePress\\Islands::eachChild({}, {}), \\SpacePress\\Islands::template({}, {}, {template}, {}))",
             rendered,
             php_str(&format!("{namespace}::{path}")),
             php_str(&format!("data-wp-each--{item_attr}")),
@@ -661,7 +661,7 @@ impl Compiler<'_, '_> {
     }
 
     /// A `useLive` field's first value: the read answered now, as the visitor, through the same
-    /// evaluation the subscription endpoint runs (`TypedPress\Live\Module::evaluate`), with the read's
+    /// evaluation the subscription endpoint runs (`SpacePress\Live\Module::evaluate`), with the read's
     /// descriptor and token beside it for the browser's subscription. Typed `{ data, error,
     /// loading }`, with `data` as the kind query API types the read.
     pub(super) fn client_live_seed(&mut self, field: &str, span: Span) -> Result<Out> {
@@ -699,7 +699,7 @@ impl Compiler<'_, '_> {
         state.insert("error".to_string(), (Ty::union([Ty::Obj(error), Ty::Undefined]), false));
         state.insert("loading".to_string(), (Ty::Bool, false));
         Ok(Out::atom(
-            format!("\\TypedPress\\Islands::live({}, {}, {on})", php_str(&kind), q.php),
+            format!("\\SpacePress\\Islands::live({}, {}, {on})", php_str(&kind), q.php),
             Ty::Obj(state),
         ))
     }

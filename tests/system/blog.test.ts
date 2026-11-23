@@ -1,6 +1,6 @@
 // The system suite's third site: examples/blog as its owner installs it on a fresh WordPress (design
 // §5.8 acceptance): the example's committed posts (content/posts/*.md) against the new site, where
-// `typedpress sync --check` reports them (exit 2), `typedpress sync` creates them, and a second run is a no-op.
+// `spacepress sync --check` reports them (exit 2), `spacepress sync` creates them, and a second run is a no-op.
 // The example is also built and checked for drift in tests/compiler.rs (the blog example test).
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,15 +15,15 @@ const wpContent = join(repo, "tests/system/.wp-content-blog");
 const project = join(work, "blog");
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const sync = (...flags: string[]) =>
-  spawnSync(join(process.env.CARGO_TARGET_DIR ?? join(repo, "target"), "debug/typedpress"), ["sync", project, "--site", receipt.url, "--no-commit", "--json", ...flags], { encoding: "utf8", env: { ...process.env, TP_APP_PASSWORD: `editor:${receipt.users.editor.appPassword}` } });
+  spawnSync(join(process.env.CARGO_TARGET_DIR ?? join(repo, "target"), "debug/spacepress"), ["sync", project, "--site", receipt.url, "--no-commit", "--json", ...flags], { encoding: "utf8", env: { ...process.env, SP_APP_PASSWORD: `editor:${receipt.users.editor.appPassword}` } });
 
 test("the blog's committed posts sync into a fresh WordPress, once", async () => {
   rmSync(project, { recursive: true, force: true });
-  cpSync(join(repo, "examples/blog"), project, { recursive: true, filter: (src) => !src.includes("/.tp") });
+  cpSync(join(repo, "examples/blog"), project, { recursive: true, filter: (src) => !src.includes("/.sp") });
   first("build", project, "--quiet");
-  const built = join(project, "tp/dist/wp-content/plugins");
+  const built = join(project, "sp/dist/wp-content/plugins");
   for (const name of readdirSync(built).filter((n) => !n.endsWith(".zip"))) cpSync(join(built, name), join(wpContent, "plugins", name), { recursive: true });
-  wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "typedpress-runtime", "typedpress-identity", "typedpress-app-blog");
+  wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "spacepress-runtime", "spacepress-identity", "spacepress-app-blog");
 
   const check = sync("--check");
   assert.equal(check.status, 2, check.stdout + check.stderr);
@@ -37,13 +37,13 @@ test("the blog's committed posts sync into a fresh WordPress, once", async () =>
   assert.deepEqual({ applied, written, refused, conflicts, failed }, { applied: 0, written: [], refused: [], conflicts: [], failed: [] });
 
   // Both posts, as the files say: the published one public, the draft only for staff.
-  const api = `${receipt.url}/wp-json/typedpress/v1`;
+  const api = `${receipt.url}/wp-json/spacepress/v1`;
   const editor = { Authorization: "Basic " + btoa(`editor:${receipt.users.editor.appPassword}`) };
   const posts = (await (await fetch(`${api}/posts?orderBy=title`, { headers: editor })).json()).data;
   assert.deepEqual(posts.map((p: { title: string; status: string; tags: string[] }) => [p.title, p.status, p.tags]), [
-    ["Hello, TypedPress", "published", ["news"]],
+    ["Hello, SpacePress", "published", ["news"]],
     ["Typed content, plain files", "draft", ["guide"]],
   ]);
   const anon = (await (await fetch(`${api}/posts`)).json()).data;
-  assert.deepEqual(anon.map((p: { title: string }) => p.title), ["Hello, TypedPress"]);
+  assert.deepEqual(anon.map((p: { title: string }) => p.title), ["Hello, SpacePress"]);
 });

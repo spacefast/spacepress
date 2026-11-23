@@ -1,7 +1,7 @@
 @use "@wordpress/base-styles/colors";
 @use "@wordpress/base-styles/variables";
 
-.typedpress-admin-dashboard-widget {
+.spacepress-admin-dashboard-widget {
 	display: flex;
 	flex-direction: column;
 	background: var( --wpds-color-background-surface-neutral-strong );
@@ -18,15 +18,15 @@
 	}
 }
 
-.typedpress-admin-dashboard-widget--fixed-height {
+.spacepress-admin-dashboard-widget--fixed-height {
 	height: 100%;
 }
 
-.typedpress-admin-dashboard-widget__header {
+.spacepress-admin-dashboard-widget__header {
 	padding: calc( 4 * var( --wpds-dimension-gap-xs ) );
 }
 
-.typedpress-admin-dashboard-widget__settings {
+.spacepress-admin-dashboard-widget__settings {
 	position: absolute;
 	top: variables.$grid-unit-20;
 	right: variables.$grid-unit-20;
@@ -34,7 +34,7 @@
 	background-color: var( --wpds-color-background-surface-neutral-strong );
 }
 
-.typedpress-admin-dashboard-widget__content {
+.spacepress-admin-dashboard-widget__content {
 	overflow: auto;
 	padding: 0 calc( 4 * var( --wpds-dimension-gap-xs ) )
 		calc( 4 * var( --wpds-dimension-gap-xs ) );
@@ -42,11 +42,11 @@
 	min-height: 0; // Allows flex item to shrink and overflow
 }
 
-.typedpress-admin-dashboard-widget__content--no-padding {
+.spacepress-admin-dashboard-widget__content--no-padding {
 	padding: 0;
 }
 
-.typedpress-admin-dashboard-widget--fade-overlay {
+.spacepress-admin-dashboard-widget--fade-overlay {
 	&::after {
 		content: "";
 		position: absolute;
@@ -64,7 +64,7 @@
 	}
 }
 
-.typedpress-admin-dashboard-widget__title {
+.spacepress-admin-dashboard-widget__title {
 	margin: 0;
 	padding: 0;
 	color: var( --wpds-color-foreground-content-neutral );
@@ -74,11 +74,11 @@
 	line-height: var( --wpds-typography-line-height-md );
 }
 
-.typedpress-admin-dashboard-widget__description {
+.spacepress-admin-dashboard-widget__description {
 	color: var( --wpds-color-foreground-content-neutral-weak );
 }
 
-.typedpress-admin-dashboard-widget-actions {
+.spacepress-admin-dashboard-widget-actions {
 	position: absolute;
 	top: variables.$grid-unit-10;
 	right: variables.$grid-unit-10;
@@ -87,12 +87,12 @@
 	box-sizing: border-box;
 }
 
-.typedpress-admin-dashboard-widget__info-icon {
+.spacepress-admin-dashboard-widget__info-icon {
 	color: var( --wpds-color-foreground-content-neutral-weak );
 	display: flex;
 }
 
-.typedpress-admin-dashboard-widget__info-tooltip {
+.spacepress-admin-dashboard-widget__info-tooltip {
 	max-width: 240px;
 	text-align: left;
 }

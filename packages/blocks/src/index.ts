@@ -1,5 +1,5 @@
 /**
- * `@typedpress/blocks`: the authoring surface for `.tsx` content and themes.
+ * `@spacepress/blocks`: the authoring surface for `.tsx` content and themes.
  *
  * A file default-exports a component. Imports, loops and conditionals are real
  * code and run once, at build time; what ships is serialized Gutenberg block

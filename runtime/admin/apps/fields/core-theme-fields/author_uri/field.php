@@ -2,12 +2,12 @@
 /**
  * Author Uri field definition for core theme fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Author URI', 'typedpress-admin' ),
+	'label'              => __( 'Author URI', 'spacepress-admin' ),
 	'enableSorting'      => false,
 	'enableGlobalSearch' => true,
 	'filterBy'           => false,

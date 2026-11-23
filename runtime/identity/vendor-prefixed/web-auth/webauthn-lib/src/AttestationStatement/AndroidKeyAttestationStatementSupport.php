@@ -2,37 +2,37 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\AttestationStatement;
+namespace SpacePress\Identity\Vendor\Webauthn\AttestationStatement;
 
 use function array_key_exists;
 use function array_merge;
-use TypedPress\Identity\Vendor\CBOR\Decoder;
-use TypedPress\Identity\Vendor\CBOR\Normalizable;
-use TypedPress\Identity\Vendor\Cose\Algorithms;
-use TypedPress\Identity\Vendor\Cose\Key\Ec2Key;
-use TypedPress\Identity\Vendor\Cose\Key\Key;
-use TypedPress\Identity\Vendor\Cose\Key\RsaKey;
+use SpacePress\Identity\Vendor\CBOR\Decoder;
+use SpacePress\Identity\Vendor\CBOR\Normalizable;
+use SpacePress\Identity\Vendor\Cose\Algorithms;
+use SpacePress\Identity\Vendor\Cose\Key\Ec2Key;
+use SpacePress\Identity\Vendor\Cose\Key\Key;
+use SpacePress\Identity\Vendor\Cose\Key\RsaKey;
 use function count;
 use function in_array;
 use function openssl_verify;
-use TypedPress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitTagging;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\UnknownExtension;
+use SpacePress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitTagging;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\UnknownExtension;
 use function sprintf;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticatorData;
-use TypedPress\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
-use TypedPress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use TypedPress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use TypedPress\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
-use TypedPress\Identity\Vendor\Webauthn\Exception\AttestationStatementVerificationException;
-use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidAttestationStatementException;
-use TypedPress\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
-use TypedPress\Identity\Vendor\Webauthn\StringStream;
-use TypedPress\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticatorData;
+use SpacePress\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
+use SpacePress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use SpacePress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use SpacePress\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
+use SpacePress\Identity\Vendor\Webauthn\Exception\AttestationStatementVerificationException;
+use SpacePress\Identity\Vendor\Webauthn\Exception\InvalidAttestationStatementException;
+use SpacePress\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
+use SpacePress\Identity\Vendor\Webauthn\StringStream;
+use SpacePress\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
 
 final class AndroidKeyAttestationStatementSupport implements AttestationStatementSupport, CanDispatchEvents
 {

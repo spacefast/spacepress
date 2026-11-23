@@ -4,7 +4,7 @@ export const fieldExtensions = {
 	elements: [
 		{
 			value: 'en_US',
-			label: __( 'English', 'typedpress-admin' ),
+			label: __( 'English', 'spacepress-admin' ),
 		},
 	],
 };

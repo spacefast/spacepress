@@ -1,4 +1,4 @@
-import importAttachment from '@typedpress-admin/attachment-importer';
+import importAttachment from '@spacepress-admin/attachment-importer';
 import { Button, FormFileUpload } from '@wordpress/components';
 import { useRegistry } from '@wordpress/data';
 import { __, _n, _x } from '@wordpress/i18n';

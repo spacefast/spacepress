@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\OTPHP\Exception;
+namespace SpacePress\Identity\Vendor\OTPHP\Exception;
 
 use InvalidArgumentException;
 use Throwable;

@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import apiFetch from '@wordpress/api-fetch';
 import { Button, Spinner } from '@wordpress/components';
 import { chartBar, listView, postList, table as tableIcon } from '@wordpress/icons';
-import { RouterLink } from '@typedpress-admin/admin-toolkit';
+import { RouterLink } from '@spacepress-admin/admin-toolkit';
 import type {
 	DeclarativeWidgetDefinition,
 	DeclarativeWidgetField,
-} from '@typedpress-admin/boot';
-import type { DashboardWidgetType, WidgetRenderProps } from '@typedpress-admin/dashboard';
+} from '@spacepress-admin/boot';
+import type { DashboardWidgetType, WidgetRenderProps } from '@spacepress-admin/dashboard';
 
 function atPath(value: unknown, path?: string): unknown {
 	if (!path) return value;
@@ -145,7 +145,7 @@ function DeclarativeWidgetBody({
 
 	if (loading) {
 		return (
-			<div className="tp-widget__loading">
+			<div className="sp-widget__loading">
 				<Spinner />
 				<span>Loading…</span>
 			</div>
@@ -178,16 +178,16 @@ function DeclarativeWidgetBody({
 						value: formatMetricValue(val),
 					}));
 		body = entries.length ? (
-			<div className="tp-widget__metrics">
+			<div className="sp-widget__metrics">
 				{entries.map((entry) => (
-					<div key={entry.key} className="tp-widget__metric">
-						<span className="tp-widget__metric-label">{entry.label}</span>
-						<span className="tp-widget__metric-value">{entry.value}</span>
+					<div key={entry.key} className="sp-widget__metric">
+						<span className="sp-widget__metric-label">{entry.label}</span>
+						<span className="sp-widget__metric-value">{entry.value}</span>
 					</div>
 				))}
 			</div>
 		) : (
-			<div className="tp-widget__empty">No metrics available.</div>
+			<div className="sp-widget__empty">No metrics available.</div>
 		);
 	} else if (display === 'list' || display === 'table') {
 		const rawList = atPath(data, definition.items);
@@ -206,11 +206,11 @@ function DeclarativeWidgetBody({
 					: [];
 
 		if (rows.length === 0) {
-			body = <div className="tp-widget__empty">No items to display.</div>;
+			body = <div className="sp-widget__empty">No items to display.</div>;
 		} else if (display === 'table') {
 			body = (
-				<div className="tp-widget__table-wrap">
-					<table className="tp-widget__table">
+				<div className="sp-widget__table-wrap">
+					<table className="sp-widget__table">
 						<thead>
 							<tr>
 								{fields.map((f) => (
@@ -224,7 +224,7 @@ function DeclarativeWidgetBody({
 									{fields.map((f) => (
 										<td key={fieldKey(f)}>
 											{f.format === 'badge' ? (
-												<span className="tp-widget__pill">
+												<span className="sp-widget__pill">
 													{formatFieldValue(atPath(row, fieldKey(f)))}
 												</span>
 											) : (
@@ -244,11 +244,11 @@ function DeclarativeWidgetBody({
 		} else {
 			const [primary, ...secondary] = fields;
 			body = (
-				<ul className="tp-widget__list">
+				<ul className="sp-widget__list">
 					{rows.slice(0, 8).map((row, idx) => (
-						<li key={String(row.id ?? idx)} className="tp-widget__row">
-							<div className="tp-widget__row-main">
-								<span className="tp-widget__row-title">
+						<li key={String(row.id ?? idx)} className="sp-widget__row">
+							<div className="sp-widget__row-main">
+								<span className="sp-widget__row-title">
 									{primary
 										? formatFieldValue(
 												atPath(row, fieldKey(primary)),
@@ -257,7 +257,7 @@ function DeclarativeWidgetBody({
 										: `#${idx + 1}`}
 								</span>
 								{secondary.length > 0 && (
-									<span className="tp-widget__row-meta">
+									<span className="sp-widget__row-meta">
 										{secondary
 											.slice(0, 2)
 											.map((f) =>
@@ -295,9 +295,9 @@ function DeclarativeWidgetBody({
 							value: formatFieldValue(val),
 						}));
 		body = (
-			<dl className="tp-widget__summary">
+			<dl className="sp-widget__summary">
 				{fields.map((f) => (
-					<div key={f.key} className="tp-widget__summary-row">
+					<div key={f.key} className="sp-widget__summary-row">
 						<dt>{f.label}</dt>
 						<dd>{f.value}</dd>
 					</div>
@@ -307,11 +307,11 @@ function DeclarativeWidgetBody({
 	}
 
 	return (
-		<div className="tp-widget">
+		<div className="sp-widget">
 			{body}
-			<div className="tp-widget__footer">
+			<div className="sp-widget__footer">
 				{definition.link ? (
-					<RouterLink to={definition.link.to} className="tp-widget__link-chip">
+					<RouterLink to={definition.link.to} className="sp-widget__link-chip">
 						{definition.link.label}
 					</RouterLink>
 				) : (
@@ -345,7 +345,7 @@ export function toDashboardWidgetType(
 		<DeclarativeWidgetBody definition={definition} setError={props.setError} />
 	);
 	return {
-		name: definition.type || `tp-widget/${definition.id}`,
+		name: definition.type || `sp-widget/${definition.id}`,
 		title: definition.title,
 		description: definition.description,
 		info: definition.info,

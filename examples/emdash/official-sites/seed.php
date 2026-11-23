@@ -1,8 +1,8 @@
 <?php
-/** Import the pinned upstream seed once into a newly owned native TypedPress site. */
+/** Import the pinned upstream seed once into a newly owned native SpacePress site. */
 [$mode, $seed_file, $site] = $args;
 if (!in_array($mode, ['starter', 'blog'], true) || realpath(ABSPATH) !== realpath($site)) WP_CLI::error('Site ownership mismatch.');
-if (get_option('tp_official_mode')) WP_CLI::error('This site is already seeded; refusing to overwrite content.');
+if (get_option('sp_official_mode')) WP_CLI::error('This site is already seeded; refusing to overwrite content.');
 $seed = json_decode(file_get_contents($seed_file), true, 512, JSON_THROW_ON_ERROR);
 function zof_seed_html($blocks) {
     $html = '';
@@ -27,10 +27,10 @@ function zof_seed_html($blocks) {
     }
     return $html;
 }
-update_option('tp_official_mode', $mode);
+update_option('sp_official_mode', $mode);
 update_option('blogname', $seed['settings']['title']);
 update_option('blogdescription', $seed['settings']['tagline']);
-update_option('tp_official_menus', $seed['menus']);
+update_option('sp_official_menus', $seed['menus']);
 $locations = get_nav_menu_locations();
 foreach ($seed['menus'] as $menu_seed) {
     $menu_id = wp_create_nav_menu($menu_seed['label']);
@@ -39,7 +39,7 @@ foreach ($seed['menus'] as $menu_seed) {
     $locations[$menu_seed['name']] = $menu_id;
 }
 set_theme_mod('nav_menu_locations', $locations);
-update_option('tp_official_widgets', $seed['widgetAreas']);
+update_option('sp_official_widgets', $seed['widgetAreas']);
 update_option('comment_moderation', 1);
 update_option('comment_previously_approved', 0);
 update_option('comments_notify', 0);
@@ -50,22 +50,22 @@ foreach ($seed['taxonomies'] as $taxonomy) foreach ($taxonomy['terms'] as $term)
 }
 $bylines = [];
 foreach ($seed['bylines'] ?? [] as $byline) {
-    $term = wp_insert_term($byline['displayName'], 'tp_credit', ['slug' => $byline['slug']]);
+    $term = wp_insert_term($byline['displayName'], 'sp_credit', ['slug' => $byline['slug']]);
     if (is_wp_error($term)) WP_CLI::error($term->get_error_message());
     $bylines[$byline['id']] = (int)$term['term_id'];
 }
 $receipt = [];
 foreach ($seed['content'] as $collection => $entries) foreach ($entries as $index => $entry) {
-    $id = wp_insert_post(['post_type' => 'tp_' . $collection, 'post_status' => $entry['status'] === 'published' ? 'publish' : 'draft',
+    $id = wp_insert_post(['post_type' => 'sp_' . $collection, 'post_status' => $entry['status'] === 'published' ? 'publish' : 'draft',
         'post_title' => $entry['data']['title'], 'post_name' => $entry['slug'], 'post_author' => 1,
         'post_content' => zof_seed_html($entry['data']['content'] ?? []), 'post_date' => gmdate('Y-m-d H:i:s', time() - ($index + 1) * DAY_IN_SECONDS),
         'comment_status' => $mode === 'blog' && $collection === 'posts' ? 'open' : 'closed',
-        'meta_input' => ['tp_excerpt' => $entry['data']['excerpt'] ?? '']], true);
+        'meta_input' => ['sp_excerpt' => $entry['data']['excerpt'] ?? '']], true);
     if (is_wp_error($id)) WP_CLI::error($id->get_error_message());
     foreach ($entry['taxonomies'] ?? [] as $taxonomy => $slugs) wp_set_object_terms($id, $slugs, $taxonomy === 'tag' ? 'post_tag' : 'category');
     foreach ($entry['bylines'] ?? [] as $credit) {
-        wp_set_object_terms($id, [$bylines[$credit['byline']]], 'tp_credit', true);
-        if (isset($credit['roleLabel'])) update_term_meta($bylines[$credit['byline']], 'tp_role', $credit['roleLabel']);
+        wp_set_object_terms($id, [$bylines[$credit['byline']]], 'sp_credit', true);
+        if (isset($credit['roleLabel'])) update_term_meta($bylines[$credit['byline']], 'sp_role', $credit['roleLabel']);
     }
     $receipt[] = ['id' => $id, 'collection' => $collection, 'slug' => $entry['slug'], 'image' => $entry['data']['featured_image']['$media'] ?? null];
 }

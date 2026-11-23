@@ -17,10 +17,10 @@ import {
 	RouterLink,
 	createConfirmModal,
 	useDocumentChanges,
-} from '@typedpress-admin/admin-toolkit';
-import type { Action, View, Field } from '@typedpress-admin/dataviews';
-import { DataViews, useView } from '@typedpress-admin/views';
-import { uploadAttachment } from '@typedpress-admin/attachment-importer';
+} from '@spacepress-admin/admin-toolkit';
+import type { Action, View, Field } from '@spacepress-admin/dataviews';
+import { DataViews, useView } from '@spacepress-admin/views';
+import { uploadAttachment } from '@spacepress-admin/attachment-importer';
 import { allowed, object, text, type Row } from './model';
 import { api, bootstrap, message, unwrap, useLoad } from './api';
 import { Loading } from './screens';
@@ -83,7 +83,7 @@ export function MediaLibrary() {
 		});
 	}, [navigate]);
 	const { view, updateView, isModified, resetToDefault } = useView({
-		kind: 'tpMedia',
+		kind: 'spMedia',
 		name: 'attachment',
 		slug: 'all',
 		defaultView,
@@ -216,7 +216,7 @@ export function MediaLibrary() {
 					if (url) {
 						return (
 							<RouterLink
-								className="typedpress-schema-media-thumb"
+								className="spacepress-schema-media-thumb"
 								to={`/media/${String(item.id)}`}
 							>
 								<img
@@ -231,7 +231,7 @@ export function MediaLibrary() {
 					const ext = mime.includes('/') ? mime.split('/')[1].toUpperCase() : mime.toUpperCase();
 					return (
 						<RouterLink
-							className="typedpress-schema-media-thumb is-file"
+							className="spacepress-schema-media-thumb is-file"
 							to={`/media/${String(item.id)}`}
 						>
 							<span>{ext}</span>
@@ -246,7 +246,7 @@ export function MediaLibrary() {
 				filterBy: false,
 				render: ({ item }) => (
 					<RouterLink
-						className="typedpress-schema-title-link"
+						className="spacepress-schema-title-link"
 						to={`/media/${String(item.id)}`}
 					>
 						{mediaTitle(item)}
@@ -259,7 +259,7 @@ export function MediaLibrary() {
 				enableSorting: false,
 				filterBy: false,
 				render: ({ item }) => (
-					<span className="typedpress-schema-badge is-neutral">
+					<span className="spacepress-schema-badge is-neutral">
 						{text(item.mime_type) ?? '—'}
 					</span>
 				),
@@ -270,7 +270,7 @@ export function MediaLibrary() {
 				enableSorting: false,
 				filterBy: false,
 				render: ({ item }) => (
-					<span className="typedpress-schema-cell-muted">
+					<span className="spacepress-schema-cell-muted">
 						{formatMediaDate(item.date_gmt ?? item.date)}
 					</span>
 				),
@@ -281,7 +281,7 @@ export function MediaLibrary() {
 				enableSorting: false,
 				filterBy: false,
 				render: ({ item }) => (
-					<span className="typedpress-schema-cell-truncate">
+					<span className="spacepress-schema-cell-truncate">
 						{text(item.alt_text) || '—'}
 					</span>
 				),
@@ -316,7 +316,7 @@ export function MediaLibrary() {
 				)
 			}
 		>
-			<div className="typedpress-schema-media-surface">
+			<div className="spacepress-schema-media-surface">
 				{canUpload && (
 					<DropZone
 						label="Drop files to upload"
@@ -383,7 +383,7 @@ function focal(value: unknown): { x: number; y: number } {
 export function MediaDocument() {
 	const { id } = useParams({ from: '/media/$id' });
 	const state = useLoad(async () => {
-		const [core, tp] = await Promise.all([
+		const [core, sp] = await Promise.all([
 			apiFetch({
 				path: `/wp/v2/media/${encodeURIComponent(id)}?context=edit`,
 			}).catch(() =>
@@ -393,13 +393,13 @@ export function MediaDocument() {
 			),
 			apiFetch(api(`/media/${encodeURIComponent(id)}`)),
 		]);
-		return { core: object(core), tp: object(unwrap(tp)) };
+		return { core: object(core), sp: object(unwrap(sp)) };
 	}, [id]);
 	return (
 		<Page
 			title="Media details"
 			breadcrumbs={
-				<RouterLink className="typedpress-schema-back" to="/media">
+				<RouterLink className="spacepress-schema-back" to="/media">
 					Back to Media
 				</RouterLink>
 			}
@@ -412,16 +412,16 @@ export function MediaDocument() {
 					key={id}
 					id={id}
 					core={state.value.core}
-					tp={state.value.tp}
+					sp={state.value.sp}
 				/>
 			)}
 		</Page>
 	);
 }
 
-function MediaForms({ id, core, tp }: { id: string; core: Row; tp: Row }) {
-	const [alt, setAlt] = useState(text(tp.alt) ?? ''),
-		[point, setPoint] = useState(focal(tp.focal));
+function MediaForms({ id, core, sp }: { id: string; core: Row; sp: Row }) {
+	const [alt, setAlt] = useState(text(sp.alt) ?? ''),
+		[point, setPoint] = useState(focal(sp.focal));
 	const [title, setTitle] = useState(
 			text(object(core.title).raw) ??
 				decodeEntities(text(object(core.title).rendered) ?? '')
@@ -494,7 +494,7 @@ function MediaForms({ id, core, tp }: { id: string; core: Row; tp: Row }) {
 		void navigate({ to: '/media' }).catch((e: unknown) => setError(message(e)));
 	}, [deleted, sharedChanges, navigate]);
 	return (
-		<div className="typedpress-schema-form">
+		<div className="spacepress-schema-form">
 			{error && (
 				<Notice status="error" isDismissible={false}>
 					{error}
@@ -507,7 +507,7 @@ function MediaForms({ id, core, tp }: { id: string; core: Row; tp: Row }) {
 			)}
 			{text(core.media_type) === 'image' && (
 				<img
-					className="typedpress-schema-media-preview"
+					className="spacepress-schema-media-preview"
 					src={text(core.source_url)}
 					alt={alt}
 				/>
@@ -542,7 +542,7 @@ function MediaForms({ id, core, tp }: { id: string; core: Row; tp: Row }) {
 				</Button>
 			</form>
 			<form
-				className="typedpress-schema-caption-form"
+				className="spacepress-schema-caption-form"
 				onSubmit={(e) => {
 					e.preventDefault();
 					void mutate(saveCaption, 'Caption and title saved.').catch(() => undefined);
@@ -571,7 +571,7 @@ function MediaForms({ id, core, tp }: { id: string; core: Row; tp: Row }) {
 				</Button>
 			</form>
 			{canUpdate && (
-				<div className="typedpress-schema-caption-form">
+				<div className="spacepress-schema-caption-form">
 					{confirming ? (
 						<>
 							<p>

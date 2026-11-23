@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Uid\Factory;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Uid\Factory;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\UuidV4;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\UuidV4;
 
 class RandomBasedUuidFactory
 {

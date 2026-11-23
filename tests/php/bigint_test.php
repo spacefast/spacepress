@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-// TypedPress\JsBigInt against Node: tests/php/fixtures/bigint-vectors.json holds random operands and
+// SpacePress\JsBigInt against Node: tests/php/fixtures/bigint-vectors.json holds random operands and
 // Node's result for every operation (regenerate with `node tests/php/fixtures/bigint-vectors.mjs
 // > tests/php/fixtures/bigint-vectors.json`). Pure PHP, no GMP or bcmath.
 
-require __DIR__ . '/../../runtime/TypedPress/bootstrap.php';
+require __DIR__ . '/../../runtime/SpacePress/bootstrap.php';
 
-use TypedPress\JsBigInt as B;
+use SpacePress\JsBigInt as B;
 
 $vectors = json_decode(file_get_contents(__DIR__ . '/fixtures/bigint-vectors.json'), true, 512, JSON_THROW_ON_ERROR);
 $show = static function (callable $f): string {
@@ -17,10 +17,10 @@ $show = static function (callable $f): string {
         return match (true) {
             is_string($r) => $r,
             is_bool($r) => $r ? 'true' : 'false',
-            is_int($r), is_float($r) => \TypedPress\Js::numStr($r),
+            is_int($r), is_float($r) => \SpacePress\Js::numStr($r),
             default => (string) $r,
         };
-    } catch (\TypedPress\JsError $e) {
+    } catch (\SpacePress\JsError $e) {
         return $e->jsName;
     }
 };

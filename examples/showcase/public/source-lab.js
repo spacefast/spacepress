@@ -51,7 +51,7 @@ async function start() {
   const response = await fetch(new URL('./sources.json', import.meta.url), {cache: 'no-store'});
   if (!response.ok) throw new Error(`Source files could not be loaded (${response.status}).`);
   const manifest = await response.json();
-  if (!manifest || typeof manifest.name !== 'string' || !stringFiles(manifest.files) || typeof manifest.files['typedpress.config.ts'] !== 'string' || !stringFiles(manifest.output)) {
+  if (!manifest || typeof manifest.name !== 'string' || !stringFiles(manifest.files) || typeof manifest.files['spacepress.config.ts'] !== 'string' || !stringFiles(manifest.output)) {
     throw new Error('The showcase source manifest is invalid.');
   }
   const baseline = {...manifest.files};
@@ -66,7 +66,7 @@ async function start() {
   let renderSequence = 0;
   const renderers = [];
   let hasStorage = true;
-  const storageKey = `typedpress-showcase-source-draft:${manifest.name}`;
+  const storageKey = `spacepress-showcase-source-draft:${manifest.name}`;
   const buildStorageKey = `${storageKey}:build`;
   let submission;
   let buildJob;
@@ -109,7 +109,7 @@ async function start() {
 
   const sourceSelect = element('select');
   sourceSelect.id = 'lab-source-file';
-  fillSelect(sourceSelect, Object.keys(baseline), 'typedpress.config.ts');
+  fillSelect(sourceSelect, Object.keys(baseline), 'spacepress.config.ts');
   const outputSelect = element('select');
   outputSelect.id = 'lab-output-file';
   fillSelect(outputSelect, Object.keys(output), 'functions.php');
@@ -382,7 +382,7 @@ async function start() {
       }
       nonce = value;
     }
-    const result = await fetch(`/wp-json/typedpress-showcase/v1/${path}`, {
+    const result = await fetch(`/wp-json/spacepress-showcase/v1/${path}`, {
       ...options,
       cache: 'no-store',
       credentials: 'same-origin',
@@ -598,7 +598,7 @@ async function start() {
           'schema.php': result.output.schemaPhp,
           'functions.php': result.output.functionsPhp,
           ...Object.fromEntries(Object.entries(result.output.client).map(([name, contents]) => [`client/${name}`, contents])),
-          'tp/_generated/db.d.ts': result.output.genTs,
+          'sp/_generated/db.d.ts': result.output.genTs,
           'snapshot.json': `${JSON.stringify(result.output.snapshot, null, 2)}\n`,
           ...Object.fromEntries(result.output.migrations.map(([name, contents]) => [`migrations/${name}`, contents])),
         };

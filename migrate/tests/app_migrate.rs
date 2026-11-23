@@ -9,9 +9,9 @@ fn repo() -> &'static Path {
 
 fn compiler() -> Command {
     Command::new(
-        std::env::var_os("TP_BIN")
+        std::env::var_os("SP_BIN")
             .map(PathBuf::from)
-            .unwrap_or_else(|| Path::new(env!("CARGO_BIN_EXE_typedpress-migrate")).with_file_name("typedpress")),
+            .unwrap_or_else(|| Path::new(env!("CARGO_BIN_EXE_spacepress-migrate")).with_file_name("spacepress")),
     )
 }
 
@@ -20,7 +20,7 @@ fn fixture(name: &str) -> PathBuf {
         .join("tests/app-migrate")
         .join(name)
 }
-/// `typedpress migrate app` with `flags`; without `--space` or `--unset`, the tables are `--fresh`.
+/// `spacepress migrate app` with `flags`; without `--space` or `--unset`, the tables are `--fresh`.
 fn migrate(input: &Path, out: &Path, flags: &[&str]) -> (bool, Value) {
     let mode: &[&str] = if ["--space", "--unset", "--fresh"].iter().any(|f| flags.contains(f)) {
         &[]
@@ -28,7 +28,7 @@ fn migrate(input: &Path, out: &Path, flags: &[&str]) -> (bool, Value) {
         &["--fresh"]
     };
     let flags: Vec<&str> = flags.iter().copied().filter(|f| *f != "--unset").collect();
-    let output = Command::new(env!("CARGO_BIN_EXE_typedpress-migrate"))
+    let output = Command::new(env!("CARGO_BIN_EXE_spacepress-migrate"))
         .args(["--from", "zero", "app"])
         .arg(input)
         .arg("--out")
@@ -45,13 +45,13 @@ fn build(project: &Path) {
     let output = compiler().arg("build").arg(project).arg("--quiet").output().unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let root = repo();
-    let types = root.join("types/typedpress/index.d.ts");
+    let types = root.join("types/spacepress/index.d.ts");
     // fetch, process and node:crypto come from the standard declarations (tests/host-types).
     let node = root.join("tests/host-types/node_modules/@types");
     assert!(node.join("node").is_dir(), "run: npm ci --prefix tests/host-types");
     std::fs::write(project.join("tsconfig.json"), serde_json::json!({
-        "compilerOptions": {"target":"ES2022", "lib":["ES2022"], "module":"ESNext", "moduleResolution":"bundler", "strict":true,"noEmit":true,"types":["node"],"typeRoots":[node],"paths":{"typedpress":[types]}},
-        "include":["typedpress.config.ts","tp/_generated/db.d.ts","tp/server/**/*.ts","tp/shared/**/*.ts","tp/app/**/route.ts"]
+        "compilerOptions": {"target":"ES2022", "lib":["ES2022"], "module":"ESNext", "moduleResolution":"bundler", "strict":true,"noEmit":true,"types":["node"],"typeRoots":[node],"paths":{"spacepress":[types]}},
+        "include":["spacepress.config.ts","sp/_generated/db.d.ts","sp/server/**/*.ts","sp/shared/**/*.ts","sp/app/**/route.ts"]
     }).to_string()).unwrap();
     let checked = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .arg("-p")
@@ -67,7 +67,7 @@ fn build(project: &Path) {
 }
 
 fn migration_folders(project: &Path) -> Vec<PathBuf> {
-    std::fs::read_dir(project.join(typedpress::pipeline::LEDGER))
+    std::fs::read_dir(project.join(spacepress::pipeline::LEDGER))
         .unwrap()
         .map(|entry| entry.unwrap().path())
         .collect()
@@ -82,11 +82,11 @@ fn migration_snapshot(project: &Path) -> Value {
             (id, ops)
         })
         .collect::<Vec<_>>();
-    typedpress::migrate::fold(&entries).unwrap().to_snapshot()
+    spacepress::migrate::fold(&entries).unwrap().to_snapshot()
 }
 
 fn compiled_schema(project: &Path) -> Value {
-    let plugins = project.join("tp/dist/wp-content/plugins");
+    let plugins = project.join("sp/dist/wp-content/plugins");
     let path = std::fs::read_dir(&plugins)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -96,17 +96,17 @@ fn compiled_schema(project: &Path) -> Value {
                     .file_name()
                     .unwrap()
                     .to_string_lossy()
-                    .starts_with("typedpress-app-")
+                    .starts_with("spacepress-app-")
         })
         .expect("built application plugin")
-        .join("tp/app/schema.php");
+        .join("sp/app/schema.php");
     let output = Command::new("php")
         .args([
             "-r",
             "require $argv[1]; echo json_encode(require $argv[2], JSON_THROW_ON_ERROR);",
             "--",
         ])
-        .arg(plugins.join("typedpress-runtime/tp/bootstrap.php"))
+        .arg(plugins.join("spacepress-runtime/sp/bootstrap.php"))
         .arg(path)
         .output()
         .unwrap();
@@ -144,7 +144,7 @@ fn generates_compiled_app_and_adoption_snapshot_without_touching_source() {
             .any(|entry| entry["pointer"] == "/realtime" && entry["outcome"] == "mapped"),
         "{written:#}"
     );
-    let config = std::fs::read_to_string(out.join("tp/server/index.ts")).unwrap();
+    let config = std::fs::read_to_string(out.join("sp/server/index.ts")).unwrap();
     assert!(!config.contains("invalidate"), "{config}");
     let snapshot = migration_snapshot(&out);
     assert_eq!(snapshot["tables"]["tasks"]["columns"]["id"]["autoIncrement"], true);
@@ -203,15 +203,15 @@ fn fresh_tables_for_a_new_space() {
         report["adoption_sql"]
             .as_str()
             .unwrap()
-            .contains("CREATE TABLE `{prefix}tp_tasks`")
+            .contains("CREATE TABLE `{prefix}sp_tasks`")
     );
-    let config = std::fs::read_to_string(out.join("tp/server/index.ts")).unwrap();
+    let config = std::fs::read_to_string(out.join("sp/server/index.ts")).unwrap();
     assert!(!config.contains("existingTable"), "{config}");
     let folders = migration_folders(&out);
     assert_eq!(folders.len(), 1);
     let sql = std::fs::read_to_string(folders[0].join("migration.sql")).unwrap();
-    assert!(sql.contains("CREATE TABLE `{prefix}tp_tasks`"));
-    assert!(!sql.contains("typedpress-adopt"));
+    assert!(sql.contains("CREATE TABLE `{prefix}sp_tasks`"));
+    assert!(!sql.contains("spacepress-adopt"));
     build(&out);
     // The committed init migration is what build expects: no second migration.
     assert_eq!(migration_folders(&out).len(), 1);
@@ -219,7 +219,7 @@ fn fresh_tables_for_a_new_space() {
         .args(["-d", "memory_limit=512M"])
         .arg(repo().join("tests/php/wp.php"))
         .arg("eval")
-        .arg(out.join("tp/dist/wp-content"))
+        .arg(out.join("sp/dist/wp-content"))
         .arg(
             r#"$r = fn ($n, $in) => $wp->call("POST", "/actions/$n", (object) $in, "admin")[1];
                $added = $r("add", ["input" => ["title" => "  Hello  "]]);
@@ -243,10 +243,10 @@ fn fresh_tables_for_a_new_space() {
     );
     assert!(ok);
     assert_eq!(adopted["tables"], "adopt");
-    let both = Command::new(env!("CARGO_BIN_EXE_typedpress-migrate"))
+    let both = Command::new(env!("CARGO_BIN_EXE_spacepress-migrate"))
         .args(["--from", "zero", "app"])
         .arg(fixture("board"))
-        .args(["--out", "/nonexistent-typedpress-out", "--fresh", "--space", "s"])
+        .args(["--out", "/nonexistent-spacepress-out", "--fresh", "--space", "s"])
         .output()
         .unwrap();
     assert_eq!(both.status.code(), Some(2));
@@ -618,13 +618,13 @@ fn omissions_are_errors_and_static_files_carry_over() {
     // don't apply the same way: refused. A cron whose path the candidate doesn't serve is refused
     // at the entry.
     overlay["access"] = serde_json::json!({ "public": ["/docs/**"] });
-    // On TypedPress the app's data URLs are /wp-json/typedpress/v1/* and the core routes /wp-json/*: a
+    // On SpacePress the app's data URLs are /wp-json/spacepress/v1/* and the core routes /wp-json/*: a
     // rule whose source can reach them is refused (here a catch-all host move).
     overlay["redirects"] = serde_json::json!([
         { "source": "/old", "destination": "/new", "status": 301 },
         { "source": "/*", "destination": "https://new.example/:splat", "status": 301 }
     ]);
-    // Path rules don't survive the move: the app's data URLs move to /wp-json/typedpress/v1/*.
+    // Path rules don't survive the move: the app's data URLs move to /wp-json/spacepress/v1/*.
     overlay["firewall"] =
         serde_json::json!([{ "name": "no-rest", "action": "block", "match": { "path": "/wp-json/*" } }]);
     overlay["cache"] = serde_json::json!({ "bypass": ["/__zero/*"] });
@@ -850,19 +850,19 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
     );
     build(&out);
     // The candidate adopts existing 0.8 tables; run it on a fresh site with its own.
-    let source = std::fs::read_to_string(out.join("tp/server/index.ts")).unwrap();
+    let source = std::fs::read_to_string(out.join("sp/server/index.ts")).unwrap();
     let fresh = regex::Regex::new(r#"existingTable: "[^"]*", "#)
         .unwrap()
         .replace_all(&source, "");
-    std::fs::write(out.join("tp/server/index.ts"), fresh.as_ref()).unwrap();
-    std::fs::remove_dir_all(out.join("tp/_generated/migrations")).unwrap();
+    std::fs::write(out.join("sp/server/index.ts"), fresh.as_ref()).unwrap();
+    std::fs::remove_dir_all(out.join("sp/_generated/migrations")).unwrap();
     let built = compiler().arg("build").arg(&out).arg("--quiet").output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     let run = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(repo().join("tests/php/wp.php"))
         .arg("eval")
-        .arg(out.join("tp/dist/wp-content"))
+        .arg(out.join("sp/dist/wp-content"))
         .arg(
             r#"putenv("NOTE_PREFIX=hi ");
                putenv("NOTE_KEY=k1");
@@ -873,7 +873,7 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
                $denied = $post("Bearer nope");
                // 0.8's request.url: https, the host as served, share-link secrets redacted.
                $parse = fn ($body) => json_decode($app->serveRoute($wp->route("POST", "/api/parse"), "POST", "/api/parse", "", $body, [], null, "https://notes.example/api/parse")[2], true);
-               $where = json_decode($app->serveRoute($wp->route("GET", "/api/where"), "GET", "/api/where", "t=1", "", [], null, \TypedPress\Wp\RouteRequest::url("Notes.Example:8080", "/api/where?__=s&t=1"))[2], true);
+               $where = json_decode($app->serveRoute($wp->route("GET", "/api/where"), "GET", "/api/where", "t=1", "", [], null, \SpacePress\Wp\RouteRequest::url("Notes.Example:8080", "/api/where?__=s&t=1"))[2], true);
                $saved = $post("Bearer k1");
                echo json_encode([
                  "denied" => $denied, "saved" => $saved, "where" => $where, "parsed" => $parse("{\"a\":1}"), "unparsed" => $parse("{"),
@@ -918,29 +918,29 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
         &["--space", "spc_migrate_test", "--users"],
     );
     assert!(ok, "{report:#}");
-    let source = std::fs::read_to_string(shared.join("tp/server/index.ts")).unwrap();
+    let source = std::fs::read_to_string(shared.join("sp/server/index.ts")).unwrap();
     std::fs::write(
-        shared.join("tp/server/index.ts"),
+        shared.join("sp/server/index.ts"),
         regex::Regex::new(r#"existingTable: "[^"]*", "#)
             .unwrap()
             .replace_all(&source, "")
             .as_ref(),
     )
     .unwrap();
-    std::fs::remove_dir_all(shared.join("tp/_generated/migrations")).unwrap();
+    std::fs::remove_dir_all(shared.join("sp/_generated/migrations")).unwrap();
     build(&shared);
     let run = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(repo().join("tests/php/wp.php"))
         .arg("eval")
-        .arg(shared.join("tp/dist/wp-content"))
+        .arg(shared.join("sp/dist/wp-content"))
         .arg(
             r#"$r = fn ($n, $in, $as) => $wp->call("POST", "/actions/$n", (object) $in, $as);
                echo json_encode([
                  "guestAdd" => $r("add", ["body" => "x"], null)[0],
                  "guestWhoami" => $r("whoami", [], null)[1],
                  "memberAdd" => $r("add", ["body" => "y"], "ada")[1],
-                 "rows" => $wp->scalar("SELECT COUNT(*) FROM {prefix}tp_notes"),
+                 "rows" => $wp->scalar("SELECT COUNT(*) FROM {prefix}sp_notes"),
                  "id" => $wp->userId("ada"),
                ]), "\n";"#,
         )
@@ -1274,7 +1274,7 @@ fn space_user_subjects_back_owner_scoped_handlers() {
     let root = temp.path().join("todo");
     trimmed("starter-todo", &root, &["pages", "client"], without_endpoints);
     let out = temp.path().join("candidate");
-    // Without Space Users, which TypedPress user a Spacefast account or a 0.8 guest becomes is an open
+    // Without Space Users, which SpacePress user a Spacefast account or a 0.8 guest becomes is an open
     // owner decision (Sign in with Spacefast), so userId stays refused and the refusal says so.
     let (ok, refused) = migrate(&root, &out, &["--space", "spc_migrate_test", "--dry-run"]);
     assert!(!ok);
@@ -1344,18 +1344,18 @@ fn profile_fields_convert_for_space_users_and_name_the_decision_otherwise() {
     let (ok, report) = migrate(&root, &out, &["--space", "spc_migrate_test", "--users"]);
     assert!(ok, "{report:#}");
     build(&out);
-    let source = std::fs::read_to_string(out.join("tp/server/index.ts")).unwrap();
+    let source = std::fs::read_to_string(out.join("sp/server/index.ts")).unwrap();
     let fresh = regex::Regex::new(r#"existingTable: "[^"]*", "#)
         .unwrap()
         .replace_all(&source, "");
-    std::fs::write(out.join("tp/server/index.ts"), fresh.as_ref()).unwrap();
-    std::fs::remove_dir_all(out.join("tp/_generated/migrations")).unwrap();
+    std::fs::write(out.join("sp/server/index.ts"), fresh.as_ref()).unwrap();
+    std::fs::remove_dir_all(out.join("sp/_generated/migrations")).unwrap();
     build(&out);
     let run = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(repo().join("tests/php/wp.php"))
         .arg("eval")
-        .arg(out.join("tp/dist/wp-content"))
+        .arg(out.join("sp/dist/wp-content"))
         .arg(r#"echo json_encode(["member" => $wp->call("POST", "/actions/me", (object) [], "ada")[1], "anonymous" => $wp->call("POST", "/actions/me", (object) [], null)[1]]), "\n";"#)
         .arg("null")
         .arg("ada=subscriber")
@@ -1567,7 +1567,7 @@ fn the_unused_favicon_option_is_dropped_with_a_review_entry() {
         .find(|e| e["pointer"] == "/favicon")
         .expect("favicon entry");
     assert_eq!(entry["outcome"], "review");
-    let config = std::fs::read_to_string(out.join("tp/server/index.ts")).unwrap();
+    let config = std::fs::read_to_string(out.join("sp/server/index.ts")).unwrap();
     assert!(!config.contains("icon.png"), "{config}");
     build(&out);
 }
@@ -1649,23 +1649,23 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     let (ok, report) = migrate(&fixture("site"), &out, &["--space", "spc_migrate_test"]);
     assert!(ok, "{report:#}");
     for file in [
-        "tp/app/page.tsx",
-        "tp/app/pricing/page.tsx",
-        "tp/app/docs/page.tsx",
-        "tp/app/layout.tsx",
-        "tp/shared/plans.ts",
+        "sp/app/page.tsx",
+        "sp/app/pricing/page.tsx",
+        "sp/app/docs/page.tsx",
+        "sp/app/layout.tsx",
+        "sp/shared/plans.ts",
     ] {
         assert!(out.join(file).is_file(), "{file}");
     }
-    let layout = std::fs::read_to_string(out.join("tp/app/layout.tsx")).unwrap();
+    let layout = std::fs::read_to_string(out.join("sp/app/layout.tsx")).unwrap();
     assert!(
         layout.contains("export const template = \"blank\";"),
         "the 0.8 layout draws the whole page, so it renders in the blank template: {layout}"
     );
-    let pricing = std::fs::read_to_string(out.join("tp/app/pricing/page.tsx")).unwrap();
+    let pricing = std::fs::read_to_string(out.join("sp/app/pricing/page.tsx")).unwrap();
     assert!(
         pricing.contains("import { plans } from '../../shared/plans';"),
-        "a single-quoted relative import moves with the page, one folder down, into tp/: {pricing}"
+        "a single-quoted relative import moves with the page, one folder down, into sp/: {pricing}"
     );
     build(&out);
     // Only parsed import declarations move, side-effect imports included; a string, a comment or
@@ -1694,14 +1694,14 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     let moved = temp.path().join("site-moved");
     let (ok, report) = migrate(&site, &moved, &["--space", "spc_migrate_test"]);
     assert!(ok, "{report:#}");
-    let about = std::fs::read_to_string(moved.join("tp/app/about/page.tsx")).unwrap();
+    let about = std::fs::read_to_string(moved.join("sp/app/about/page.tsx")).unwrap();
     assert!(about.contains("import '../../shared/setup';"), "{about}");
     // A re-export moves with its module too.
     assert!(
         about.contains("export { metadata } from '../../shared/meta';"),
         "{about}"
     );
-    assert!(moved.join("tp/shared/setup.ts").is_file());
+    assert!(moved.join("sp/shared/setup.ts").is_file());
     for decoy in decoys {
         assert!(about.contains(decoy), "rewrote non-import text {decoy:?}: {about}");
     }
@@ -1758,7 +1758,7 @@ fn the_configured_server_entry_is_read_from_sf_jsonc() {
     std::fs::create_dir_all(root.join("server")).unwrap();
     std::fs::write(
         root.join("sf.jsonc"),
-        "{\n  // the 0.8 runtime block\n  \"runtime\": { \"kind\": \"typedpress\", \"server\": \"server/app.ts\", },\n}\n",
+        "{\n  // the 0.8 runtime block\n  \"runtime\": { \"kind\": \"spacepress\", \"server\": \"server/app.ts\", },\n}\n",
     )
     .unwrap();
     std::fs::write(
@@ -1769,8 +1769,8 @@ fn the_configured_server_entry_is_read_from_sf_jsonc() {
     let out = temp.path().join("candidate");
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(ok, "{report:#}");
-    assert!(out.join("tp/server/index.ts").is_file());
-    assert!(!out.join("tp/server/app.ts").exists());
+    assert!(out.join("sp/server/index.ts").is_file());
+    assert!(!out.join("sp/server/app.ts").exists());
     build(&out);
     // JSX in a server entry is ImageResponse; v2 server code has no renderer for it.
     let (ok, refused) = migrate(&corpus("compile-notes"), &temp.path().join("notes"), &["--dry-run"]);
@@ -1820,20 +1820,20 @@ fn query_names_map_one_to_one_and_nested_pages_keep_imports() {
     std::fs::remove_file(root.join("pages/keys.tsx")).unwrap();
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(ok, "{report:#}");
-    let config = std::fs::read_to_string(out.join("tp/server/index.ts")).unwrap();
+    let config = std::fs::read_to_string(out.join("sp/server/index.ts")).unwrap();
     // RouteQuery keeps URLSearchParams names byte for byte, so `user.id` passes through unchanged.
     assert!(config.contains("req.query.get(\"user.id\")"), "{config}");
     assert!(
-        std::fs::read_to_string(out.join("tp/app/docs/page.tsx"))
+        std::fs::read_to_string(out.join("sp/app/docs/page.tsx"))
             .unwrap()
             .contains("from \"./data\"")
     );
     assert!(
-        std::fs::read_to_string(out.join("tp/app/docs/guide/page.tsx"))
+        std::fs::read_to_string(out.join("sp/app/docs/guide/page.tsx"))
             .unwrap()
             .contains("from \"../data\"")
     );
-    assert!(out.join("tp/app/docs/data.ts").is_file());
+    assert!(out.join("sp/app/docs/data.ts").is_file());
     build(&out);
 }
 
@@ -1872,7 +1872,7 @@ fn a_handler_named_like_a_table_is_exported_under_a_suffixed_name() {
         .args(["-d", "memory_limit=512M"])
         .arg(repo().join("tests/php/wp.php"))
         .arg("eval")
-        .arg(out.join("tp/dist/wp-content"))
+        .arg(out.join("sp/dist/wp-content"))
         .arg(
             r#"$r = fn ($n, $in) => $wp->call("POST", "/actions/$n", (object) $in, "admin")[1];
                $r("add", ["body" => "one"]);
@@ -1928,26 +1928,26 @@ fn a_handler_named_like_a_table_is_exported_under_a_suffixed_name() {
 
 /// Runs each named action of a built app in PHP with `inputs`, under `env`, and returns the results.
 fn run_actions(project: &Path, env: &[(&str, &str)], calls: &Value) -> Value {
-    let content = project.join("tp/dist/wp-content/plugins");
+    let content = project.join("sp/dist/wp-content/plugins");
     let app = std::fs::read_dir(&content)
         .unwrap()
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .find(|p| p.is_dir() && p.file_name().unwrap().to_string_lossy().starts_with("typedpress-app-"))
+        .find(|p| p.is_dir() && p.file_name().unwrap().to_string_lossy().starts_with("spacepress-app-"))
         .unwrap()
-        .join("tp/app");
+        .join("sp/app");
     let script = r#"
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $out = [];
 foreach (json_decode(file_get_contents('php://stdin'), true) as [$name, $input, $env]) {
-  \TypedPress\Env::isolate($env);
-  $fn = '\\TypedPressApp\\' . $schema['actions'][$name]['handler'];
-  try { $out[] = ['data' => $fn(\TypedPress\Seam::toJs($input, ['type' => 'json']), \TypedPress\Seam::ctx(['user' => null]))]; }
-  catch (\TypedPress\HttpError $e) { $out[] = ['error' => $e->errorCode]; }
+  \SpacePress\Env::isolate($env);
+  $fn = '\\SpacePressApp\\' . $schema['actions'][$name]['handler'];
+  try { $out[] = ['data' => $fn(\SpacePress\Seam::toJs($input, ['type' => 'json']), \SpacePress\Seam::ctx(['user' => null]))]; }
+  catch (\SpacePress\HttpError $e) { $out[] = ['error' => $e->errorCode]; }
 }
-echo \TypedPress\Js::jsonStringify($out);
+echo \SpacePress\Js::jsonStringify($out);
 "#;
     let env: serde_json::Map<String, Value> = env.iter().map(|(k, v)| (k.to_string(), Value::from(*v))).collect();
     let calls: Vec<Value> = calls
@@ -1964,7 +1964,7 @@ echo \TypedPress\Js::jsonStringify($out);
         .collect();
     let mut child = Command::new("php")
         .args(["-r", script])
-        .arg(content.join("typedpress-runtime/tp/bootstrap.php"))
+        .arg(content.join("spacepress-runtime/sp/bootstrap.php"))
         .arg(app)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -2088,7 +2088,7 @@ fn ctx_crypto_maps_to_node_crypto_with_the_original_results() {
     std::fs::write(root.join("server/index.ts"), source).unwrap();
     let (ok, refused) = migrate(&root, &temp.path().join("no"), &["--dry-run"]);
     assert!(!ok);
-    // Each service with no TypedPress counterpart says what is missing and what to do instead.
+    // Each service with no SpacePress counterpart says what is missing and what to do instead.
     let errors: Vec<(&str, &str, &str)> = refused["errors"]
         .as_array()
         .unwrap()
@@ -2179,7 +2179,7 @@ fn ctx_email_send_maps_to_mail_send_and_queries_still_refuse() {
 
 /// A run from a stored 0.8 finalize payload (`--manifest`), as a production census drives it.
 fn migrate_manifest(manifest: &Path, source: Option<&Path>, out: &Path) -> (bool, Value) {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_typedpress-migrate"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_spacepress-migrate"));
     command.args(["--from", "zero", "app", "--manifest"]).arg(manifest);
     if let Some(source) = source {
         command.arg(source);
@@ -2270,7 +2270,7 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     let server_only_path = temp.path().join("server-only.json");
     std::fs::write(&server_only_path, server_only.to_string()).unwrap();
     let out = temp.path().join("b2");
-    let output = Command::new(env!("CARGO_BIN_EXE_typedpress-migrate"))
+    let output = Command::new(env!("CARGO_BIN_EXE_spacepress-migrate"))
         .args(["--from", "zero", "app", "--manifest"])
         .arg(&server_only_path)
         .arg(&source)
@@ -2299,7 +2299,7 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
     std::fs::remove_file(source.join("sf.jsonc")).unwrap();
     std::fs::remove_file(source.join("theme.json")).unwrap();
     // Without them the server converts, and the later page still isn't part of it.
-    let output = Command::new(env!("CARGO_BIN_EXE_typedpress-migrate"))
+    let output = Command::new(env!("CARGO_BIN_EXE_spacepress-migrate"))
         .args(["--from", "zero", "app", "--manifest"])
         .arg(&server_only_path)
         .arg(&source)
@@ -2309,9 +2309,9 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
         .output()
         .unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
-    assert!(out.join("tp/server/index.ts").is_file());
+    assert!(out.join("sp/server/index.ts").is_file());
     assert!(
-        !out.join("tp/app/added/page.tsx").exists(),
+        !out.join("sp/app/added/page.tsx").exists(),
         "an unrecorded page reached the candidate"
     );
     std::fs::remove_dir_all(source.join("pages")).unwrap();
@@ -2471,7 +2471,7 @@ fn default_rest_and_destructured_handler_parameters_become_inputs() {
         .args(["-d", "memory_limit=512M"])
         .arg(repo().join("tests/php/wp.php"))
         .arg("eval")
-        .arg(out.join("tp/dist/wp-content"))
+        .arg(out.join("sp/dist/wp-content"))
         .arg(r#"$r = []; foreach ($arg as [$n, $in]) { $r[] = json_decode($app->cli(['action', $n, json_encode((object) $in)])[1], true); } echo json_encode($r), "\n";"#)
         .arg(calls.to_string())
         .output()
@@ -2566,7 +2566,7 @@ fn styles() -> &'static str {
     )
 }
 
-/// A 0.8 client app without pages converts: actions and tables into typedpress.config.ts, the client
+/// A 0.8 client app without pages converts: actions and tables into spacepress.config.ts, the client
 /// into public/, and the candidate checks with no diagnostics.
 #[test]
 fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
@@ -2579,12 +2579,12 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
     );
     assert!(ok, "{report:#}");
     for file in [
-        "typedpress.config.ts",
+        "spacepress.config.ts",
         "public/zero.css",
         "public/index.html",
-        "public/tp/main.js",
-        "public/tp/client.js",
-        "public/tp/handlers.js",
+        "public/sp/main.js",
+        "public/sp/client.js",
+        "public/sp/handlers.js",
         "public/app/client/index.js",
         "public/app/client/Shelf.js",
         "public/app/shared/format.js",
@@ -2647,7 +2647,7 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
     let checked: Value = serde_json::from_slice(&checked.stdout).unwrap();
     assert_eq!(checked["ok"], true, "{checked}");
     assert_eq!(checked["diagnostics"].as_array().unwrap().len(), 0, "{checked}");
-    // The candidate serves the client from public/app/, public/tp/ and its stylesheet folders
+    // The candidate serves the client from public/app/, public/sp/ and its stylesheet folders
     // (here public/client/), where 0.8 served nothing of the app, so a 0.8 redirect under them
     // would now break it: refused, not carried.
     let moved = temp.path().join("client-app-redirect");
@@ -2708,17 +2708,17 @@ console.log(JSON.stringify({ sent, result }));
 "#;
     let node = Command::new("node")
         .args(["--input-type=module", "-e", script])
-        .arg(out.join("public/tp/client.js"))
+        .arg(out.join("public/sp/client.js"))
         .output()
         .expect("node is required");
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let ran: Value = serde_json::from_slice(&node.stdout).unwrap();
-    assert_eq!(ran["sent"][0]["url"], "/wp-json/typedpress/v1/actions/banner", "{ran}");
+    assert_eq!(ran["sent"][0]["url"], "/wp-json/spacepress/v1/actions/banner", "{ran}");
     assert_eq!(ran["sent"][0]["method"], "POST");
     assert_eq!(ran["result"], "ABABAB");
     // A handler named like a table is the v2 action `<name>Query` (ruling 39): the generated
     // handler list carries that name, and the bridge posts there with the same input.
-    let handlers = out.join("public/tp/handlers.js");
+    let handlers = out.join("public/sp/handlers.js");
     let listed = std::fs::read_to_string(&handlers).unwrap();
     std::fs::write(
         &handlers,
@@ -2727,13 +2727,13 @@ console.log(JSON.stringify({ sent, result }));
     .unwrap();
     let renamed = Command::new("node")
         .args(["--input-type=module", "-e", script])
-        .arg(out.join("public/tp/client.js"))
+        .arg(out.join("public/sp/client.js"))
         .output()
         .unwrap();
     assert!(renamed.status.success(), "{}", String::from_utf8_lossy(&renamed.stderr));
     let renamed: Value = serde_json::from_slice(&renamed.stdout).unwrap();
     assert_eq!(
-        renamed["sent"][0]["url"], "/wp-json/typedpress/v1/actions/bannerAction",
+        renamed["sent"][0]["url"], "/wp-json/spacepress/v1/actions/bannerAction",
         "{renamed}"
     );
     assert_eq!(renamed["sent"][0]["body"], ran["sent"][0]["body"]);
@@ -2867,7 +2867,7 @@ fn copy_dir(from: &Path, to: &Path) {
 fn bridge(out: &Path, script: &str) -> Value {
     let node = Command::new("node")
         .args(["--input-type=module", "-e", script])
-        .arg(out.join("public/tp/client.js"))
+        .arg(out.join("public/sp/client.js"))
         .output()
         .expect("node is required");
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
@@ -2905,7 +2905,7 @@ console.log(JSON.stringify(sent[0]));
     );
     // Those are exactly the inputs the generated action takes.
     build(&out);
-    let plugin = out.join("tp/dist/wp-content/plugins/typedpress-app-shelf-notes/tp/app/schema.php");
+    let plugin = out.join("sp/dist/wp-content/plugins/spacepress-app-shelf-notes/sp/app/schema.php");
     let script = "echo json_encode(array_keys((require $argv[1])['actions']['page']['input']));";
     let php = Command::new("php").args(["-r", script]).arg(plugin).output().unwrap();
     assert!(php.status.success(), "{}", String::from_utf8_lossy(&php.stderr));
@@ -3068,7 +3068,7 @@ fn a_writing_get_that_never_reads_the_visitor_becomes_a_writing_get_route() {
         .args(["-d", "memory_limit=512M"])
         .arg(repo().join("tests/php/wp.php"))
         .arg("eval")
-        .arg(out.join("tp/dist/wp-content"))
+        .arg(out.join("sp/dist/wp-content"))
         .arg(
             r#"$get = fn ($tag) => $app->serveRoute($wp->route("GET", "/api/seen/$tag"), "GET", "/api/seen/$tag", "", "", [], null, "https://hits.example/api/seen/$tag");
                $first = $get("a"); $get("a"); $get("b");
@@ -3119,7 +3119,7 @@ fn crons_calling_converted_get_endpoints_are_carried() {
         .args(["-d", "memory_limit=512M"])
         .arg(repo().join("tests/php/wp.php"))
         .arg("eval")
-        .arg(out.join("tp/dist/wp-content"))
+        .arg(out.join("sp/dist/wp-content"))
         .arg(
             r#"$r = $app->serveRoute($wp->route("GET", "/api/sweep"), "GET", "/api/sweep", "", "", ["x-spacefast-cron" => "sweep.1.x"], null, "https://hits.example/api/sweep");
                global $wpdb;
@@ -3257,7 +3257,7 @@ fn a_finalize_manifest_supplies_the_published_zero_css() {
     copy_dir(&source, &published);
     std::fs::remove_file(published.join("sf.jsonc")).unwrap();
     let out = temp.path().join("out");
-    let output = Command::new(env!("CARGO_BIN_EXE_typedpress-migrate"))
+    let output = Command::new(env!("CARGO_BIN_EXE_spacepress-migrate"))
         .args(["--from", "zero", "app", "--manifest"])
         .arg(&manifest)
         .arg(&published)

@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature;
 
 use function array_key_exists;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BMPString;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\PrintableString;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\T61String;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UniversalString;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UTF8String;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\DN\DNParser;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\CaseIgnoreMatch;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\TranscodeStep;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BMPString;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\PrintableString;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\T61String;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UniversalString;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UTF8String;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\DN\DNParser;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\CaseIgnoreMatch;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\TranscodeStep;
 use function sprintf;
 use UnexpectedValueException;
 

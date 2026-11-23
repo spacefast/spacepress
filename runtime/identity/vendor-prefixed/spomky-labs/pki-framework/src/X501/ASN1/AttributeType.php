@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1;
 
 use function array_key_exists;
 use OutOfBoundsException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\PrintableString;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UTF8String;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\StringType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\PrintableString;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UTF8String;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\StringType;
 
 /**
  * Implements *AttributeType* ASN.1 type.

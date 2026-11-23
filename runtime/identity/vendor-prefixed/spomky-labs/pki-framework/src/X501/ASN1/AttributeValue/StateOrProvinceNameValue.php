@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature\DirectoryString;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature\DirectoryString;
 
 /**
  * 'stateOrProvinceName' attribute value.

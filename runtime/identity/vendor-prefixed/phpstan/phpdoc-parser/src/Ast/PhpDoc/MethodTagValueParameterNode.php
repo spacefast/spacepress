@@ -1,11 +1,11 @@
 <?php declare(strict_types = 1);
 
-namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
+namespace SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
 
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\TypeNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\TypeNode;
 
 class MethodTagValueParameterNode implements Node
 {

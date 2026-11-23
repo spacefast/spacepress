@@ -54,7 +54,7 @@ function Page< Entity = unknown >( {
 	showSidebarToggle = true,
 	saveButton,
 }: PageProps< Entity > ) {
-	const classes = clsx( 'typedpress-admin-page', className );
+	const classes = clsx( 'spacepress-admin-page', className );
 	const registry = useRegistry();
 
 	useEffect( () => {
@@ -97,7 +97,7 @@ function Page< Entity = unknown >( {
 				/>
 			) }
 			<div
-				className={ clsx( 'typedpress-admin-page__content', {
+				className={ clsx( 'spacepress-admin-page__content', {
 					'has-padding': hasPadding,
 					'has-border': hasBorder,
 					'is-constrained': contentWidth === 'constrained',

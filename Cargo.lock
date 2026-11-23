@@ -1553,7 +1553,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e"
 
 [[package]]
-name = "typedpress"
+name = "spacepress"
 version = "0.3.0"
 dependencies = [
  "boon",
@@ -1584,7 +1584,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "typedpress-migrate"
+name = "spacepress-migrate"
 version = "0.1.0"
 dependencies = [
  "indexmap",
@@ -1600,7 +1600,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
- "typedpress",
+ "spacepress",
 ]
 
 [[package]]

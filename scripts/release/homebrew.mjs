@@ -27,11 +27,11 @@ export async function formula({ directory }) {
     revision = source.revision;
     checksums.set(target, receipt[0]);
   }
-  const asset = (target, indent) => `${indent}url "https://github.com/spacefast/zero/releases/download/v${version}/${assetName({ version, target })}"\n${indent}sha256 "${checksums.get(target)}"`;
+  const asset = (target, indent) => `${indent}url "https://github.com/spacefast/spacepress/releases/download/v${version}/${assetName({ version, target })}"\n${indent}sha256 "${checksums.get(target)}"`;
   return `# Generated from verified release archives. Publish those exact archives before using this formula.
-class TypedPress < Formula
+class SpacePress < Formula
   desc "Compile a typed backend and run native WordPress locally"
-  homepage "https://github.com/spacefast/zero"
+  homepage "https://github.com/spacefast/spacepress"
   version "${version}"
   license all_of: ["MIT", "GPL-2.0-or-later"]
 
@@ -54,17 +54,17 @@ ${asset(targets['linux-x64'], '      ')}
   end
 
   def install
-    bin.install "typedpress"
+    bin.install "spacepress"
     pkgshare.install "LICENSE", "LICENSING.md", "Cargo.lock", "SOURCE.json", "licenses"
   end
 
   test do
-    (testpath/"typedpress.config.ts").write <<~TS
-      import { defineConfig, table, text } from 'typedpress';
+    (testpath/"spacepress.config.ts").write <<~TS
+      import { defineConfig, table, text } from 'spacepress';
       export const notes = table({ title: text() });
       export default defineConfig({});
     TS
-    system "#{bin}/typedpress", "check", testpath
+    system "#{bin}/spacepress", "check", testpath
   end
 end
 `;

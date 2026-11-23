@@ -1,6 +1,6 @@
 // Client runtime request building, against an in-process node:http server with canned responses.
-// The runtime is copied next to a fixture schema.ts/types.ts in the exact layout `typedpress build` emits
-// (tp/_generated/client/{index,schema,types}.ts), then imported for real.
+// The runtime is copied next to a fixture schema.ts/types.ts in the exact layout `spacepress build` emits
+// (sp/_generated/client/{index,schema,types}.ts), then imported for real.
 //
 // Run: node --test runtime/client/index.test.ts   (Node 22 strips types)
 
@@ -50,7 +50,7 @@ const dirs: string[] = [];
 let mod: any;
 
 async function load(schemaTs: string): Promise<unknown> {
-  const dir = mkdtempSync(join(tmpdir(), "typedpress-client-"));
+  const dir = mkdtempSync(join(tmpdir(), "spacepress-client-"));
   dirs.push(dir);
   copyFileSync(join(dirname(fileURLToPath(import.meta.url)), "index.ts"), join(dir, "index.ts"));
   writeFileSync(join(dir, "schema.ts"), schemaTs);
@@ -198,8 +198,8 @@ test("revisions.list follows the cursor and returns every revision, newest first
   const first = mod.createClient({ url });
   assert.deepEqual(await first.posts.revisions.list(1), [{ id: 9 }, { id: 8 }, { id: 7 }]);
   assert.deepEqual(seen.map((s) => [s.path, s.query.get("cursor"), s.query.get("limit")]), [
-    ["/wp-json/typedpress/v1/posts/1/revisions", null, "100"],
-    ["/wp-json/typedpress/v1/posts/1/revisions", "c1", "100"],
+    ["/wp-json/spacepress/v1/posts/1/revisions", null, "100"],
+    ["/wp-json/spacepress/v1/posts/1/revisions", "c1", "100"],
   ]);
 });
 
@@ -236,8 +236,8 @@ test("writes, revisions, globals, actions and auth run their abilities, with the
       'POST /posts-create/run {"title":"Hi"}',
       'POST /posts-update/run {"id":1,"patch":{"title":"Yo"}}',
       'POST /posts-delete/run {"id":1}',
-      "GET /wp-json/typedpress/v1/posts/1/revisions/4 null",
-      "POST /wp-json/typedpress/v1/posts/1/revisions/4/restore null",
+      "GET /wp-json/spacepress/v1/posts/1/revisions/4 null",
+      "POST /wp-json/spacepress/v1/posts/1/revisions/4/restore null",
       'POST /posts-stage/run {"id":1,"patch":{"title":"Staged"}}',
       'GET /posts-staged-get/run {"id":1}',
       'GET /posts-staged-compare/run {"id":1}',
@@ -254,8 +254,8 @@ test("writes, revisions, globals, actions and auth run their abilities, with the
       'POST /global-settings-update/run {"tagline":"x"}',
       'POST /approve-comment/run {"id":3}',
       "GET /published-count/run null",
-      "GET /wp-json/typedpress/v1/me null",
-      "GET /wp-json/typedpress/v1 null",
+      "GET /wp-json/spacepress/v1/me null",
+      "GET /wp-json/spacepress/v1 null",
     ],
   );
   assert.equal(seen[0].headers["content-type"], "application/json");
@@ -263,7 +263,7 @@ test("writes, revisions, globals, actions and auth run their abilities, with the
 
 test("auth headers: anonymous sends none, a guest's bearer is held, WP nonce, custom headers win", async () => {
   seen = [];
-  reply = (s) => (s.path === "/wp-json/typedpress/v1/auth/guest" ? tokens(1, guest) : ok(null)());
+  reply = (s) => (s.path === "/wp-json/spacepress/v1/auth/guest" ? tokens(1, guest) : ok(null)());
 
   const anon = mod.createClient({ url });
   await anon.auth.me();
@@ -289,18 +289,18 @@ test("auth headers: anonymous sends none, a guest's bearer is held, WP nonce, cu
   assert.equal(last().headers.authorization, basic);
   await anon.auth.guest().catch(() => undefined);
   const held = mod.createClient({ url, headers: { Authorization: basic } });
-  reply = (s) => (s.path === "/wp-json/typedpress/v1/auth/guest" ? tokens(2, guest) : ok(null)());
+  reply = (s) => (s.path === "/wp-json/spacepress/v1/auth/guest" ? tokens(2, guest) : ok(null)());
   await held.auth.guest();
   await held.auth.me();
   assert.equal(last().headers.authorization, basic);
 });
 
-test("problem documents become TypedPressError with every field; non-problem failures still map", async () => {
+test("problem documents become SpacePressError with every field; non-problem failures still map", async () => {
   const first = mod.createClient({ url });
   const problem = { type: "about:blank", title: "Invalid input", status: 422, code: "invalid_input", detail: "Too long", pointer: "/sections/1/heading" };
   reply = () => ({ status: 422, type: "application/problem+json", body: JSON.stringify(problem) });
   const err = await first.posts.create({ title: "x" }).catch((e: unknown) => e);
-  assert.ok(err instanceof mod.TypedPressError);
+  assert.ok(err instanceof mod.SpacePressError);
   assert.ok(err instanceof Error);
   assert.deepEqual(
     { type: err.type, title: err.title, status: err.status, code: err.code, detail: err.detail, pointer: err.pointer, message: err.message },
@@ -317,11 +317,11 @@ test("problem documents become TypedPressError with every field; non-problem fai
   const wpErr = await first.auth.me().catch((e: unknown) => e);
   assert.deepEqual([wpErr.status, wpErr.code, wpErr.detail], [403, "forbidden", "Cookie check failed"]);
 
-  // An ability's own errors, as core's run route answers them: TypedPress's code under `tp_`, the
+  // An ability's own errors, as core's run route answers them: SpacePress's code under `sp_`, the
   // pointer in `data`, and core's schema refusal as invalid_input with its reason.
-  reply = () => ({ status: 422, body: JSON.stringify({ code: "tp_invalid_input", message: "Too long", data: { status: 422, pointer: "/title" } }) });
-  const tpErr = await first.posts.create({ title: "x" }).catch((e: unknown) => e);
-  assert.deepEqual([tpErr.status, tpErr.code, tpErr.detail, tpErr.pointer], [422, "invalid_input", "Too long", "/title"]);
+  reply = () => ({ status: 422, body: JSON.stringify({ code: "sp_invalid_input", message: "Too long", data: { status: 422, pointer: "/title" } }) });
+  const spErr = await first.posts.create({ title: "x" }).catch((e: unknown) => e);
+  assert.deepEqual([spErr.status, spErr.code, spErr.detail, spErr.pointer], [422, "invalid_input", "Too long", "/title"]);
   reply = () => ({ status: 400, body: JSON.stringify({ code: "ability_invalid_input", message: "Ability \"blog/approve-comment\" has invalid input. Reason: input[id] is not of type integer.", data: { status: 400 } }) });
   const schemaErr = await first.actions.approveComment({ id: 1 }).catch((e: unknown) => e);
   assert.deepEqual([schemaErr.status, schemaErr.code], [422, "invalid_input"]);
@@ -335,7 +335,7 @@ test("problem documents become TypedPressError with every field; non-problem fai
   const html = await first.posts.list().catch((e: unknown) => e);
   assert.deepEqual([html.status, html.code], [0, "network"]);
   const down = await mod.createClient({ url: "http://127.0.0.1:1/wp-json" }).posts.list().catch((e: unknown) => e);
-  assert.deepEqual([down instanceof mod.TypedPressError, down.status, down.code], [true, 0, "network"]);
+  assert.deepEqual([down instanceof mod.SpacePressError, down.status, down.code], [true, 0, "network"]);
 });
 
 test("media upload is multipart with `file` (+ filename, type) and `alt`", async () => {
@@ -347,7 +347,7 @@ test("media upload is multipart with `file` (+ filename, type) and `alt`", async
   assert.deepEqual(await first.media.upload(new Blob([bytes], { type: "image/png" }), { alt: "A pixel", filename: "pixel.png" }), media);
 
   const s = last();
-  assert.deepEqual([s.method, s.path, s.headers.authorization], ["POST", "/wp-json/typedpress/v1/media", "Bearer zt_abc"]);
+  assert.deepEqual([s.method, s.path, s.headers.authorization], ["POST", "/wp-json/spacepress/v1/media", "Bearer zt_abc"]);
   assert.match(s.headers["content-type"] ?? "", /^multipart\/form-data; boundary=/);
   const form = await new Response(s.body, { headers: { "content-type": s.headers["content-type"] ?? "" } }).formData();
   const file = form.get("file") as File;
@@ -360,9 +360,9 @@ test("media upload is multipart with `file` (+ filename, type) and `alt`", async
   assert.deepEqual([(again.get("file") as File).name, again.has("alt")], ["own.png", false]);
 
   await first.media.list({ where: { mime: { like: "image/%" } }, limit: 5 });
-  assert.deepEqual([last().path, last().query.get("limit"), JSON.parse(last().query.get("where") ?? "")], ["/wp-json/typedpress/v1/media", "5", { mime: { like: "image/%" } }]);
+  assert.deepEqual([last().path, last().query.get("limit"), JSON.parse(last().query.get("where") ?? "")], ["/wp-json/spacepress/v1/media", "5", { mime: { like: "image/%" } }]);
   await first.media.delete(9);
-  assert.deepEqual([last().method, last().path], ["DELETE", "/wp-json/typedpress/v1/media/9"]);
+  assert.deepEqual([last().method, last().path], ["DELETE", "/wp-json/spacepress/v1/media/9"]);
 });
 
 test("media.update is a JSON PATCH of alt/focal", async () => {
@@ -370,27 +370,27 @@ test("media.update is a JSON PATCH of alt/focal", async () => {
   const first = mod.createClient({ url });
   await first.media.update(9, { focal: { x: 0.25, y: 1 }, alt: null });
   assert.deepEqual([last().method, last().path, last().headers["content-type"], JSON.parse(last().body.toString())],
-    ["PATCH", "/wp-json/typedpress/v1/media/9", "application/json", { focal: { x: 0.25, y: 1 }, alt: null }]);
+    ["PATCH", "/wp-json/spacepress/v1/media/9", "application/json", { focal: { x: 0.25, y: 1 }, alt: null }]);
 });
 
-test("files.<bucket> upload/get/delete hit TypedPress's /files/<bucket> REST route", async () => {
-  const row = { id: 4, bucket: "decks", url: "/wp-json/typedpress/v1/files/decks/4/download?exp=1&sig=ab" };
+test("files.<bucket> upload/get/delete hit SpacePress's /files/<bucket> REST route", async () => {
+  const row = { id: 4, bucket: "decks", url: "/wp-json/spacepress/v1/files/decks/4/download?exp=1&sig=ab" };
   reply = ok(row);
   const first = mod.createClient({ url });
   assert.deepEqual(await first.files.decks.upload(new Blob([new Uint8Array([37, 80])], { type: "application/pdf" }), { filename: "q3.pdf" }), row);
   const form = await new Response(last().body, { headers: { "content-type": last().headers["content-type"] ?? "" } }).formData();
-  assert.deepEqual([last().method, last().path, (form.get("file") as File).name], ["POST", "/wp-json/typedpress/v1/files/decks", "q3.pdf"]);
+  assert.deepEqual([last().method, last().path, (form.get("file") as File).name], ["POST", "/wp-json/spacepress/v1/files/decks", "q3.pdf"]);
   await first.files.decks.get(4);
-  assert.deepEqual([last().method, last().path], ["GET", "/wp-json/typedpress/v1/files/decks/4"]);
+  assert.deepEqual([last().method, last().path], ["GET", "/wp-json/spacepress/v1/files/decks/4"]);
   await first.files.decks.delete(4);
-  assert.deepEqual([last().method, last().path], ["DELETE", "/wp-json/typedpress/v1/files/decks/4"]);
+  assert.deepEqual([last().method, last().path], ["DELETE", "/wp-json/spacepress/v1/files/decks/4"]);
 });
 
 test("default base URL is WordPress's REST root on the page's origin", async () => {
   let requested = "";
   const first = mod.createClient({ fetch: async (input: RequestInfo | URL) => ((requested = String(input)), new Response('{"data":null}')) });
   await first.auth.me();
-  assert.equal(requested, "/wp-json/typedpress/v1/me");
+  assert.equal(requested, "/wp-json/spacepress/v1/me");
 });
 
 test("a 401 unauthenticated refreshes once at the issuer and retries once; a refused refresh forgets the session and surfaces the 401", async () => {
@@ -419,7 +419,7 @@ test("a 401 unauthenticated refreshes once at the issuer and retries once; a ref
   reply = (s) => (s.path === "/identity/token" ? (rotations++ === 0 ? rotated(3) : refused("invalid_grant")) : problem(401, "unauthenticated"));
   for (const title of ["x", "y"]) {
     const err = await first.posts.create({ title }).catch((e: unknown) => e);
-    assert.deepEqual([err instanceof mod.TypedPressError, err.status, err.code], [true, 401, "unauthenticated"]);
+    assert.deepEqual([err instanceof mod.SpacePressError, err.status, err.code], [true, 401, "unauthenticated"]);
   }
   assert.deepEqual(lines(), [
     'POST /wp-json/wp-abilities/v1/abilities/blog/posts-create/run Bearer za_2 {"input":{"title":"x"}}',
@@ -433,7 +433,7 @@ test("a 401 unauthenticated refreshes once at the issuer and retries once; a ref
 
 test("guests: the first unauthenticated write starts a guest session and retries; reads don't", async () => {
   reply = (s) => {
-    if (s.path === "/wp-json/typedpress/v1/auth/guest") return tokens(1, guest);
+    if (s.path === "/wp-json/spacepress/v1/auth/guest") return tokens(1, guest);
     return s.headers.authorization ? ok({ id: 1 })() : problem(401, "unauthenticated");
   };
   const first = mod.createClient({ url, auth: { guests: true } });
@@ -445,7 +445,7 @@ test("guests: the first unauthenticated write starts a guest session and retries
   assert.deepEqual(lines(), [
     "GET /wp-json/wp-abilities/v1/abilities/blog/posts-list/run -",
     'POST /wp-json/wp-abilities/v1/abilities/blog/posts-create/run - {"input":{"title":"Hi"}}',
-    "POST /wp-json/typedpress/v1/auth/guest - {}",
+    "POST /wp-json/spacepress/v1/auth/guest - {}",
     'POST /wp-json/wp-abilities/v1/abilities/blog/posts-create/run Bearer za_1 {"input":{"title":"Hi"}}',
     'POST /wp-json/wp-abilities/v1/abilities/blog/posts-create/run Bearer za_1 {"input":{"title":"Again"}}',
   ]);
@@ -476,7 +476,7 @@ test("guests: two first writes in flight share one guest, even when one 401 land
   await until(2);
   pending[0].release(denied());                       // a's 401 starts the guest
   await until(3);
-  assert.equal(pending[2].url, "http://x/wp-json/typedpress/v1/auth/guest");
+  assert.equal(pending[2].url, "http://x/wp-json/spacepress/v1/auth/guest");
   pending[2].release(json(201, { data: { accessToken: "za_g", refreshToken: "zr_g", expiresIn: 300, user: { id: 9, name: "Guest", role: "guest" } } }));
   await until(4);                                      // a retries with the guest
   pending[1].release(denied());                        // b's 401 arrives after the guest exists
@@ -767,15 +767,15 @@ test("signIn redirects to <issuer>/authorize with PKCE S256, state and nonce kep
   const browser = stubBrowser();
   try {
     seen = [];
-    reply = (s) => (s.path === "/wp-json/typedpress/v1/auth/config" ? ok({ issuer: `${origin}/identity`, guests: true })() : problem(404, "not_found"));
+    reply = (s) => (s.path === "/wp-json/spacepress/v1/auth/config" ? ok({ issuer: `${origin}/identity`, guests: true })() : problem(404, "not_found"));
     const first = mod.createClient({ url: `${origin}/wp-json`, auth: { clientId: "app_blog", redirectUri: "https://blog.test/callback" } });
     void first.auth.signIn({ returnTo: "/drafts" });
     const to = new URL(await browser.navigated);
 
     // No issuer option: it comes from /auth/config.
-    assert.deepEqual(lines(), ["GET /wp-json/typedpress/v1/auth/config -"]);
+    assert.deepEqual(lines(), ["GET /wp-json/spacepress/v1/auth/config -"]);
     assert.equal(`${to.origin}${to.pathname}`, `${origin}/identity/authorize`);
-    const pkce = JSON.parse(browser.store.get("typedpress.auth.pkce") ?? "{}");
+    const pkce = JSON.parse(browser.store.get("spacepress.auth.pkce") ?? "{}");
     assert.deepEqual(Object.fromEntries(to.searchParams), {
       response_type: "code",
       client_id: "app_blog",
@@ -814,10 +814,10 @@ test("handleCallback refuses a foreign state, exchanges the code with the verifi
 
   const forged = stubBrowser("?code=c0de&state=other");
   try {
-    forged.store.set("typedpress.auth.pkce", pkce);
+    forged.store.set("spacepress.auth.pkce", pkce);
     seen = [];
     const err = await mod.createClient({ url: base, auth }).auth.handleCallback().catch((e: unknown) => e);
-    assert.deepEqual([err instanceof mod.TypedPressError, err.code], [true, "invalid_state"]);
+    assert.deepEqual([err instanceof mod.SpacePressError, err.code], [true, "invalid_state"]);
     assert.deepEqual(seen, []);
   } finally {
     forged.restore();
@@ -825,7 +825,7 @@ test("handleCallback refuses a foreign state, exchanges the code with the verifi
 
   const browser = stubBrowser(`?code=c0de&state=${"s".repeat(43)}`);
   try {
-    browser.store.set("typedpress.auth.pkce", pkce);
+    browser.store.set("spacepress.auth.pkce", pkce);
     const first = mod.createClient({ url: base, auth });
     seen = [];
     assert.deepEqual(await first.auth.handleCallback(), member);
@@ -838,16 +838,16 @@ test("handleCallback refuses a foreign state, exchanges the code with the verifi
       client_id: "app_blog",
       code_verifier: "v".repeat(86),
     });
-    assert.deepEqual([seen[1].path, seen[1].headers.authorization], ["/wp-json/typedpress/v1/me", "Bearer at_1"]);
-    assert.equal(browser.store.has("typedpress.auth.pkce"), false);
-    const kept = JSON.parse(browser.store.get(`typedpress.auth:${base}`) ?? "{}");
+    assert.deepEqual([seen[1].path, seen[1].headers.authorization], ["/wp-json/spacepress/v1/me", "Bearer at_1"]);
+    assert.equal(browser.store.has("spacepress.auth.pkce"), false);
+    const kept = JSON.parse(browser.store.get(`spacepress.auth:${base}`) ?? "{}");
     assert.deepEqual({ ...kept, expiresAt: typeof kept.expiresAt, sid: typeof kept.sid }, { accessToken: "at_1", refreshToken: "rt_1", expiresAt: "number", clientId: "app_blog", idToken: "h.p.s", sid: "string" });
 
     seen = [];
     await first.auth.signOut({ returnTo: "https://blog.test/" });
     assert.deepEqual([seen.length, seen[0].path, form(seen[0])], [1, "/identity/revoke", { token: "rt_1", client_id: "app_blog" }]);
     // Signed out, the record keeps only the session generation (no tokens).
-    assert.deepEqual(Object.keys(JSON.parse(browser.store.get(`typedpress.auth:${base}`) ?? "{}")), ["sid"]);
+    assert.deepEqual(Object.keys(JSON.parse(browser.store.get(`spacepress.auth:${base}`) ?? "{}")), ["sid"]);
     const logout = new URL(browser.visits.at(-1) ?? "");
     assert.deepEqual(
       [`${logout.origin}${logout.pathname}`, Object.fromEntries(logout.searchParams)],
@@ -873,7 +873,7 @@ test("handleCallback returns only to its own origin, and only when tokens surviv
   ] as const) {
     const browser = stubBrowser(`?code=c&state=${"s".repeat(43)}`);
     try {
-      browser.store.set("typedpress.auth.pkce", JSON.stringify({ verifier: "v".repeat(86), state: "s".repeat(43), nonce: "n".repeat(43), returnTo }));
+      browser.store.set("spacepress.auth.pkce", JSON.stringify({ verifier: "v".repeat(86), state: "s".repeat(43), nonce: "n".repeat(43), returnTo }));
       await mod.createClient({ url: base, auth: { issuer, clientId: "app_blog", redirectUri: "https://blog.test/callback", storage } }).auth.handleCallback();
       assert.deepEqual(browser.visits, expected, `returnTo ${JSON.stringify(returnTo)} with ${storage} storage`);
     } finally {
@@ -885,10 +885,10 @@ test("handleCallback returns only to its own origin, and only when tokens surviv
 test("guests refresh at <issuer>/token with the clientId they were issued, and upgrade hands off to the issuer", async () => {
   const browser = stubBrowser();
   try {
-    const base = `${origin}/wp-json/typedpress/v1`;
+    const base = `${origin}/wp-json/spacepress/v1`;
     const first = mod.createClient({ url: base, auth: { issuer: `${origin}/identity`, clientId: "app_blog", redirectUri: "https://blog.test/callback" } });
     reply = (s) => {
-      if (s.path === "/wp-json/typedpress/v1/auth/guest") return tokens(1, { id: 9, name: "Guest", role: "guest" }, { clientId: "app_typedpress_guest" });
+      if (s.path === "/wp-json/spacepress/v1/auth/guest") return tokens(1, { id: 9, name: "Guest", role: "guest" }, { clientId: "app_spacepress_guest" });
       if (s.path === "/identity/token") return { status: 200, body: JSON.stringify({ access_token: "at_2", refresh_token: "rt_2", expires_in: 3600 }) };
       if (s.path === "/identity/handoff") return { status: 200, body: JSON.stringify({ handoff: "h1.secret" }) };
       return s.headers.authorization === "Bearer at_2" ? ok({ id: 1 })() : problem(401, "unauthenticated");
@@ -901,7 +901,7 @@ test("guests refresh at <issuer>/token with the clientId they were issued, and u
       seen.map((s) => [s.path, s.headers.authorization ?? "-"]),
       [["/wp-json/wp-abilities/v1/abilities/blog/posts-create/run", "Bearer za_1"], ["/identity/token", "-"], ["/wp-json/wp-abilities/v1/abilities/blog/posts-create/run", "Bearer at_2"]],
     );
-    assert.deepEqual(form(seen[1]), { grant_type: "refresh_token", refresh_token: "zr_1", client_id: "app_typedpress_guest" });
+    assert.deepEqual(form(seen[1]), { grant_type: "refresh_token", refresh_token: "zr_1", client_id: "app_spacepress_guest" });
 
     seen = [];
     void first.auth.upgrade();
@@ -939,7 +939,7 @@ const notice = (collection: string, ids: number[] | null = [1]) => ({ id: "n", a
 function liveServer(rows: (query: any) => unknown, poll = { minMs: 2000, maxMs: 30000 }) {
   const state = { requests: [] as any[][], fail: null as null | ReturnType<typeof problem>, errors: new Map<string, ReturnType<typeof problem>>() };
   reply = (s) => {
-    if (s.path !== "/wp-json/typedpress/v1/_live") {
+    if (s.path !== "/wp-json/spacepress/v1/_live") {
       // A kind's ability (`…/<kind>-list/run`): a list answers `{ rows }`, as the ability does.
       const ability = s.path.split("/").at(-2) ?? "";
       const kind = ability.replace(/-(list|get|create|update|delete)$/, "");
@@ -973,7 +973,7 @@ test("subscribe asks the subscription endpoint once, then sends back the token a
   await tick();
   assert.equal(transport.connects, 1, "the first subscriber connects the transport");
   assert.deepEqual(got, [[{ id: 1, title: "v1" }]], "the first answer");
-  assert.deepEqual([last().method, last().path], ["POST", "/wp-json/typedpress/v1/_live"]);
+  assert.deepEqual([last().method, last().path], ["POST", "/wp-json/spacepress/v1/_live"]);
   assert.deepEqual(server.requests[0], [{
     kind: "posts", op: "list",
     args: { where: { AND: [{ title: { like: "%v%" } }, { status: "draft" }] }, orderBy: { id: "desc" }, with: { author: true } },
@@ -1898,7 +1898,7 @@ test("without a live transport, watch polls; a transport registered later is pic
   assert.ok(seen.length > atLive, "and resumes when the transport goes down");
   stop();
 
-  delete (globalThis as Record<string, unknown>).__tpRealtime;
+  delete (globalThis as Record<string, unknown>).__spRealtime;
 
   // A second copy of the client (a host script's) registers; this copy's watchers connect to it.
   const other: any = await load(SCHEMA_TS);
@@ -1909,7 +1909,7 @@ test("without a live transport, watch polls; a transport registered later is pic
     assert.equal(second.connects, 1, "the registry is page-wide, not per module copy");
   } finally {
     stop2();
-    delete (globalThis as Record<string, unknown>).__tpRealtime;
+    delete (globalThis as Record<string, unknown>).__spRealtime;
   }
 });
 
@@ -1970,15 +1970,15 @@ test("useQuery keeps data through a network failure and drops it when the server
   const now = () => (memo as { snapshot: () => any }).snapshot();
   handlers.onData!(["one"]);
   assert.deepEqual(now().data, ["one"]);
-  handlers.onError!(new mod.TypedPressError({ type: "about:blank", title: "Network", status: 0, code: "network", detail: "down" }));
+  handlers.onError!(new mod.SpacePressError({ type: "about:blank", title: "Network", status: 0, code: "network", detail: "down" }));
   assert.deepEqual([now().data, now().error.code], [["one"], "network"], "a network failure keeps what was shown");
   handlers.onData!(["one"]);
-  handlers.onError!(new mod.TypedPressError({ type: "about:blank", title: "Unauthorized", status: 401, code: "unauthorized", detail: "signed out" }));
+  handlers.onError!(new mod.SpacePressError({ type: "about:blank", title: "Unauthorized", status: 401, code: "unauthorized", detail: "signed out" }));
   assert.deepEqual([now().data, now().error.status], [undefined, 401], "a refusal drops the previous visitor's rows");
   assert.equal(changed, 4);
 });
 
-// pageRead: TypedPress's own `<Live>` regions (docs/decisions/2026-11-14-live-regions.md).
+// pageRead: SpacePress's own `<Live>` regions (docs/decisions/2026-11-14-live-regions.md).
 
 test("pageRead: a page read is keyed apart from every kind read, and asks with { op: page, args: { url, region } }", async () => {
   const server = liveServer((q) => (q.op === "page" ? { html: `<p>${q.args.region}</p>`, kinds: ["posts"] } : [q.kind]));
@@ -2060,7 +2060,7 @@ test("pageRead: an answer `pending` (over the server's per-request cap of page r
 });
 
 /**
- * A TypedPress page: the client's module data (`wp-script-module-data-@typedpress/client`, what
+ * A SpacePress page: the client's module data (`wp-script-module-data-@spacepress/client`, what
  * `Islands::clientData` prints) and the `@wordpress/abilities` modules, as a signed-in page has them.
  * The module specifiers resolve through a loader hook to stubs that record each call; `getAbility`
  * knows only the abilities core-abilities would have registered.
@@ -2072,7 +2072,7 @@ async function onWordPressPage(run: (calls: { abilities: unknown[][] }) => Promi
   (globalThis as any).__wpRegistered = new Set(registered);
   if (!abilitiesStubbed) {
     abilitiesStubbed = true;
-    const dir = mkdtempSync(join(tmpdir(), "typedpress-wp-"));
+    const dir = mkdtempSync(join(tmpdir(), "spacepress-wp-"));
     dirs.push(dir);
     writeFileSync(join(dir, "abilities.mjs"), `
       export async function executeAbility(name, input) {
@@ -2098,10 +2098,10 @@ async function onWordPressPage(run: (calls: { abilities: unknown[][] }) => Promi
   const text = JSON.stringify(data);
   // Only the script tag WordPress prints is the client's data: an element of post content with the
   // same id (getElementById's first match) is not.
-  const selector = 'script[type="application/json"][id="wp-script-module-data-@typedpress/client"]';
+  const selector = 'script[type="application/json"][id="wp-script-module-data-@spacepress/client"]';
   Object.defineProperty(globalThis, "document", { configurable: true, value: {
     querySelector: (s: string) => (s === selector ? { textContent: text } : null),
-    getElementById: (id: string) => (id === "wp-script-module-data-@typedpress/client" ? { textContent: JSON.stringify({ root: "https://evil.test/wp-json/", api: "/x" }) } : null),
+    getElementById: (id: string) => (id === "wp-script-module-data-@spacepress/client" ? { textContent: JSON.stringify({ root: "https://evil.test/wp-json/", api: "/x" }) } : null),
   } });
   try {
     await run(calls);
@@ -2127,7 +2127,7 @@ test("a signed-in page runs every ability at its run route with the page's nonce
     await first.schema();
     assert.deepEqual([last().path, last().headers["x-wp-nonce"]], ["/sub/wp-json/acme/v2", "n0nce"]);
     // The server's refusal reaches the caller with its pointer.
-    reply = () => ({ status: 422, body: JSON.stringify({ code: "tp_invalid_input", message: "Too long", data: { status: 422, pointer: "/note" } }) });
+    reply = () => ({ status: 422, body: JSON.stringify({ code: "sp_invalid_input", message: "Too long", data: { status: 422, pointer: "/note" } }) });
     const invalid = await first.actions.approveComment({ id: 0 }).catch((e: unknown) => e);
     assert.deepEqual([invalid.status, invalid.code, invalid.pointer], [422, "invalid_input", "/note"]);
     assert.equal(calls.abilities.length, 0);
@@ -2159,7 +2159,7 @@ test("a visitor's page (no nonce in its data) runs every ability at its run rout
     await mod.createClient().actions.approveComment({ id: 3 });
     assert.deepEqual(calls.abilities, [], "core lists abilities only to a signed-in user");
     assert.deepEqual([last().method, last().path, last().headers["x-wp-nonce"], bodyInput(last())], ["POST", "/wp-json/wp-abilities/v1/abilities/blog/approve-comment/run", undefined, { id: 3 }]);
-  }, ["blog/approve-comment"], { root: `${origin}/wp-json/`, api: "/typedpress/v1" });
+  }, ["blog/approve-comment"], { root: `${origin}/wp-json/`, api: "/spacepress/v1" });
 });
 
 test("a client with its own url, credential or session doesn't use the page's data", async () => {
@@ -2175,25 +2175,25 @@ test("a client with its own url, credential or session doesn't use the page's da
     const page = mod.createClient();
     await page.auth.guest();
     await page.auth.me();
-    assert.deepEqual([calls.abilities.length, last().path, last().headers.authorization], [0, "/wp-json/typedpress/v1/me", "Bearer za_1"]);
-  }, ["blog/posts-list", "blog/me"], { root: `${origin}/wp-json/`, api: "/typedpress/v1", nonce: "n0nce" });
+    assert.deepEqual([calls.abilities.length, last().path, last().headers.authorization], [0, "/wp-json/spacepress/v1/me", "Bearer za_1"]);
+  }, ["blog/posts-list", "blog/me"], { root: `${origin}/wp-json/`, api: "/spacepress/v1", nonce: "n0nce" });
 });
 
 test("`url` may be the REST root, the app's API URL, a `?rest_route=` root or the site; each reaches the same routes", async () => {
   const requested: string[] = [];
   const recording = async (input: RequestInfo | URL) => (requested.push(String(input)), new Response('{"rows":[]}'));
-  for (const at of ["https://x.test/wp-json", "https://x.test/wp-json/typedpress/v1/", "https://x.test", "https://x.test/?rest_route=", "https://x.test/?rest_route=/typedpress/v1"]) {
+  for (const at of ["https://x.test/wp-json", "https://x.test/wp-json/spacepress/v1/", "https://x.test", "https://x.test/?rest_route=", "https://x.test/?rest_route=/spacepress/v1"]) {
     await mod.createClient({ url: at, fetch: recording }).posts.list({ limit: 1 });
     await mod.createClient({ url: at, fetch: async (input: RequestInfo | URL) => (requested.push(String(input)), new Response('{"data":{}}')) }).schema();
   }
   const run = "wp-abilities/v1/abilities/blog/posts-list/run";
   const input = `input=${encodeURIComponent(JSON.stringify({ limit: 1 }))}`;
   assert.deepEqual(requested, [
-    `https://x.test/wp-json/${run}?${input}`, "https://x.test/wp-json/typedpress/v1",
-    `https://x.test/wp-json/${run}?${input}`, "https://x.test/wp-json/typedpress/v1",
-    `https://x.test/wp-json/${run}?${input}`, "https://x.test/wp-json/typedpress/v1",
-    `https://x.test/?rest_route=${encodeURIComponent("/" + run)}&${input}`, "https://x.test/?rest_route=%2Ftypedpress%2Fv1",
-    `https://x.test/?rest_route=${encodeURIComponent("/" + run)}&${input}`, "https://x.test/?rest_route=%2Ftypedpress%2Fv1",
+    `https://x.test/wp-json/${run}?${input}`, "https://x.test/wp-json/spacepress/v1",
+    `https://x.test/wp-json/${run}?${input}`, "https://x.test/wp-json/spacepress/v1",
+    `https://x.test/wp-json/${run}?${input}`, "https://x.test/wp-json/spacepress/v1",
+    `https://x.test/?rest_route=${encodeURIComponent("/" + run)}&${input}`, "https://x.test/?rest_route=%2Fspacepress%2Fv1",
+    `https://x.test/?rest_route=${encodeURIComponent("/" + run)}&${input}`, "https://x.test/?rest_route=%2Fspacepress%2Fv1",
   ]);
 });
 
@@ -2263,7 +2263,7 @@ test("a page's REST root and namespace are used as printed, whatever credential 
       "/rest-nonce -",
       "/sub/rest/wp-abilities/v1/abilities/blog/published-count/run abcdef1234",
     ]);
-    assert.equal(seen[1].headers["x-typedpress-rest-session"], "page-session");
+    assert.equal(seen[1].headers["x-spacepress-rest-session"], "page-session");
     assert.equal(calls.abilities.length, 0, "a readonly action isn't sent through core's bracketed query string");
   }, ["blog/published-count"], { root: `${origin}/sub/rest/`, api: "/acme/v2", nonce: "old", nonceEndpoint: `${origin}/rest-nonce`, nonceSession: "page-session" });
 });
@@ -2285,7 +2285,7 @@ test("a `?rest_route=` root's other parameters stay as they are; the route is se
   assert.deepEqual([u.pathname, u.searchParams.get("rest_route"), u.searchParams.get("lang"), u.searchParams.get("input")],
     ["/site/index.php", "/wp-abilities/v1/abilities/blog/posts-list/run", "de", JSON.stringify({ limit: 1 })]);
 
-  await mod.createClient({ url: "https://x.test/site/rest/typedpress/v1?lang=de", fetch: recording }).posts.list();
+  await mod.createClient({ url: "https://x.test/site/rest/spacepress/v1?lang=de", fetch: recording }).posts.list();
   const pretty = new URL(requested[1]);
   assert.deepEqual([pretty.pathname, pretty.searchParams.get("lang")],
     ["/site/rest/wp-abilities/v1/abilities/blog/posts-list/run", "de"]);
@@ -2307,7 +2307,7 @@ test("a guest on a signed-in page sends only its Bearer credential", async () =>
     assert.equal(last().headers["x-wp-nonce"], "n0nce");
     await page.auth.me();
     assert.deepEqual([last().headers.authorization, last().headers["x-wp-nonce"], credentials], ["Bearer za_1", undefined, "omit"]);
-  }, [], { root: `${origin}/wp-json/`, api: "/typedpress/v1", nonce: "n0nce" });
+  }, [], { root: `${origin}/wp-json/`, api: "/spacepress/v1", nonce: "n0nce" });
 });
 
 test("a write retries only when renewal succeeds for the original WordPress session", async () => {
@@ -2323,14 +2323,14 @@ test("a write retries only when renewal succeeds for the original WordPress sess
       };
       const out = await mod.createClient().actions.approveComment({ id: 1 }).catch((e: unknown) => e);
       const runs = seen.filter((s) => s.path.endsWith("/approve-comment/run")).length;
-      assert.equal(seen.find((s) => s.path === "/rest-nonce")?.headers["x-typedpress-rest-session"], "page-session");
+      assert.equal(seen.find((s) => s.path === "/rest-nonce")?.headers["x-spacepress-rest-session"], "page-session");
       if (sameSession) {
         assert.deepEqual([out, runs], [5, 2]);
       } else {
-        assert.ok(out instanceof mod.TypedPressError);
+        assert.ok(out instanceof mod.SpacePressError);
         assert.deepEqual([out.status, out.code, runs], [409, "session_changed", 1]);
       }
-    }, ["blog/approve-comment"], { root: `${origin}/wp-json/`, api: "/typedpress/v1", nonce: "old", nonceEndpoint: `${origin}/rest-nonce`, nonceSession: "page-session" });
+    }, ["blog/approve-comment"], { root: `${origin}/wp-json/`, api: "/spacepress/v1", nonce: "old", nonceEndpoint: `${origin}/rest-nonce`, nonceSession: "page-session" });
   }
 });
 
@@ -2343,5 +2343,5 @@ test("a successful write that returns a nonce error code as data runs once", asy
       : { status: 200, body: JSON.stringify(result) };
     assert.deepEqual(await mod.createClient().actions.approveComment({ id: 1 }), result);
     assert.deepEqual(seen.map((s) => s.path), ["/wp-json/wp-abilities/v1/abilities/blog/approve-comment/run"]);
-  }, ["blog/approve-comment"], { root: `${origin}/wp-json/`, api: "/typedpress/v1", nonce: "old", nonceEndpoint: `${origin}/rest-nonce`, nonceSession: "page-session" });
+  }, ["blog/approve-comment"], { root: `${origin}/wp-json/`, api: "/spacepress/v1", nonce: "old", nonceEndpoint: `${origin}/rest-nonce`, nonceSession: "page-session" });
 });

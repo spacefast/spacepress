@@ -1,6 +1,6 @@
 import { Link, useSearch } from '@wordpress/route';
-import { store as coreDataNextStore } from '@typedpress-admin/core-data-next';
-import { Page } from '@typedpress-admin/admin-toolkit';
+import { store as coreDataNextStore } from '@spacepress-admin/core-data-next';
+import { Page } from '@spacepress-admin/admin-toolkit';
 import { __ } from '@wordpress/i18n';
 import { IconButton } from '@wordpress/ui';
 import { close } from '@wordpress/icons';
@@ -36,12 +36,12 @@ export default function Inspector() {
 
 	return (
 		<Page
-			title={ __( 'Quick Edit', 'typedpress-admin' ) }
+			title={ __( 'Quick Edit', 'spacepress-admin' ) }
 			actions={
 				<IconButton
 					variant="minimal"
 					tone="neutral"
-					label={ __( 'Close inspector', 'typedpress-admin' ) }
+					label={ __( 'Close inspector', 'spacepress-admin' ) }
 					icon={ close }
 					size="compact"
 					render={

@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Denormalizer;
+namespace SpacePress\Identity\Vendor\Webauthn\Denormalizer;
 
 use function array_key_exists;
 use function assert;
-use TypedPress\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\Uuid;
-use TypedPress\Identity\Vendor\Webauthn\CredentialRecord;
-use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
-use TypedPress\Identity\Vendor\Webauthn\TrustPath\TrustPath;
-use TypedPress\Identity\Vendor\Webauthn\Util\Base64;
+use SpacePress\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use SpacePress\Identity\Vendor\Webauthn\CredentialRecord;
+use SpacePress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use SpacePress\Identity\Vendor\Webauthn\TrustPath\TrustPath;
+use SpacePress\Identity\Vendor\Webauthn\Util\Base64;
 
 /**
  * @final

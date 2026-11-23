@@ -1,4 +1,4 @@
-import type { View } from '@typedpress-admin/dataviews';
+import type { View } from '@spacepress-admin/dataviews';
 
 export default function viewToQuery( view: View, postType: string ) {
 	const result: Record<
@@ -38,7 +38,7 @@ export default function viewToQuery( view: View, postType: string ) {
 	}
 
 	// Filters.
-	// Filter values from @typedpress-admin/dataviews are typed as `any`.
+	// Filter values from @spacepress-admin/dataviews are typed as `any`.
 	/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 	const status = view.filters?.find(
 		( filter ) => filter.field === 'status'

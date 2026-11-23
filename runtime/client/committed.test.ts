@@ -1,11 +1,11 @@
-// Every committed client (`tp/_generated/client/` in the repository, examples included) holds
-// the files `typedpress build` copies from runtime/client/ unchanged. A change to the runtime that
+// Every committed client (`sp/_generated/client/` in the repository, examples included) holds
+// the files `spacepress build` copies from runtime/client/ unchanged. A change to the runtime that
 // doesn't rebuild every committed client fails here, not later in an app that imports a stale copy.
 // This needs no build, so it runs on every PR. scripts/check-generated.sh (the rust job's `rest`
-// shard, on main) builds each example and compares everything under tp/_generated/.
+// shard, on main) builds each example and compares everything under sp/_generated/.
 //
 // Run: node --test runtime/client/committed.test.ts
-// Fix: `typedpress build` in each project this names, and commit its tp/_generated/client/.
+// Fix: `spacepress build` in each project this names, and commit its sp/_generated/client/.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -20,13 +20,13 @@ const runtime = (file: string) => readFileSync(join(repo, "runtime/client", file
 // The files src/client.rs copies; README.md gets the app's name in place of {{name}}.
 const COPIED = ["index.ts", "react.ts", "README.md", "LICENSE"];
 
-const clients = execFileSync("git", ["ls-files", "--", ":(glob)**/tp/_generated/client/index.ts"], { cwd: repo, encoding: "utf8" })
+const clients = execFileSync("git", ["ls-files", "--", ":(glob)**/sp/_generated/client/index.ts"], { cwd: repo, encoding: "utf8" })
   .split("\n")
   .filter(Boolean)
   .map((path) => dirname(path));
 
 test("the repository has committed clients to check", () => {
-  assert.ok(clients.length > 0, "git ls-files found no tp/_generated/client/index.ts");
+  assert.ok(clients.length > 0, "git ls-files found no sp/_generated/client/index.ts");
 });
 
 for (const dir of clients) {
@@ -47,6 +47,6 @@ for (const dir of clients) {
       if (commerce && file === "LICENSE") expected += "\nPortions are adapted from Spacefast's Woo Store SDK (@woo/storefront-core),\nhttps://github.com/spacefast/woo-store-sdk, under the MIT License above.\n";
       return committed !== expected;
     });
-    assert.deepEqual(stale, [], `${dir} is stale: run \`typedpress build\` in ${dirname(dirname(dirname(dir)))} and commit ${dir}/`);
+    assert.deepEqual(stale, [], `${dir} is stale: run \`spacepress build\` in ${dirname(dirname(dirname(dir)))} and commit ${dir}/`);
   });
 }

@@ -2,13 +2,13 @@
 /**
  * Caption field definition for core media fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'placeholder'   => __( 'No caption', 'typedpress-admin' ),
-	'label'         => __( 'Caption', 'typedpress-admin' ),
+	'placeholder'   => __( 'No caption', 'spacepress-admin' ),
+	'label'         => __( 'Caption', 'spacepress-admin' ),
 	'enableSorting' => true,
 	'filterBy'      => false,
 );

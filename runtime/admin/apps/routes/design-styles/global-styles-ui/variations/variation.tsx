@@ -60,7 +60,7 @@ export default function Variation( {
 	if ( variation?.description ) {
 		label = sprintf(
 			/* translators: 1: variation title. 2: variation description. */
-			_x( '%1$s (%2$s)', 'variation label', 'typedpress-admin' ),
+			_x( '%1$s (%2$s)', 'variation label', 'spacepress-admin' ),
 			variation?.title,
 			variation?.description
 		);
@@ -68,7 +68,7 @@ export default function Variation( {
 
 	const content = (
 		<div
-			className={ clsx( 'typedpress-admin-global-styles-variations_item', {
+			className={ clsx( 'spacepress-admin-global-styles-variations_item', {
 				'is-active': isActive,
 			} ) }
 			role="button"
@@ -82,7 +82,7 @@ export default function Variation( {
 		>
 			<div
 				className={ clsx(
-					'typedpress-admin-global-styles-variations_item-preview',
+					'spacepress-admin-global-styles-variations_item-preview',
 					{ 'is-pill': isPill }
 				) }
 			>

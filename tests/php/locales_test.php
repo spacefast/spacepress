@@ -70,7 +70,7 @@ unset($articles['columns']['pageId'], $articles['columns']['translationGroup']);
 $schema['collections']['articles'] = $articles;
 
 $functions = <<<'PHP'
-    function localizedChildren__read($ctx) { return $ctx->p['user'] === null ? new \TypedPress\JsObject(['locale' => 'en']) : true; }
+    function localizedChildren__read($ctx) { return $ctx->p['user'] === null ? new \SpacePress\JsObject(['locale' => 'en']) : true; }
     function localizedChildren__beforeUpdate($patch) {
         if (array_key_exists('pageId', $patch->p) && $patch->p['pageId'] === null) {
             $patch->p['detached'] = true;
@@ -86,13 +86,13 @@ $functions = <<<'PHP'
             $patch->p['price']++;
         }
         if ($existing->p['title'] === 'Tag DE' && isset($patch->p['price'])) {
-            $patch->p['tags'] = new \TypedPress\JsArray(['b']); // a different synced column than the one propagated
+            $patch->p['tags'] = new \SpacePress\JsArray(['b']); // a different synced column than the one propagated
         }
         if ($existing->p['title'] === 'Adopt DE' && isset($patch->p['price'])) {
             $patch->p['price']++; // rewrites the value it is adopting
         }
         if ($existing->p['title'] === 'Spawn on adopt' && isset($patch->p['price'])) {
-            \TypedPress\db()->insert('pages', ['title' => 'Spawned FR', 'locale' => 'fr', 'translationOf' => $existing->p['id']]);
+            \SpacePress\db()->insert('pages', ['title' => 'Spawned FR', 'locale' => 'fr', 'translationOf' => $existing->p['id']]);
         }
         if ($existing->p['title'] === 'Order EN' && ($patch->p['stampedAt'] ?? null) === '2001-01-01T00:00:00.000Z') {
             $patch->p['price'] = 5; // a hook changes a synced value during a bulk update of another column
@@ -102,46 +102,46 @@ $functions = <<<'PHP'
         }
         if ($existing->p['title'] === 'Spawn DE' && isset($patch->p['price'])) {
             // creates a French translation while the group still holds its old values
-            \TypedPress\db()->insert('pages', ['title' => 'Spawn FR', 'locale' => 'fr', 'translationOf' => $existing->p['id']]);
+            \SpacePress\db()->insert('pages', ['title' => 'Spawn FR', 'locale' => 'fr', 'translationOf' => $existing->p['id']]);
         }
         return $patch;
     }
     function pages__afterUpdate($row, $previous) {
         if ($row->p['price'] === 13 && $row->p['locale'] === 'de') {
-            throw new \TypedPress\JsError('de refuses 13');
+            throw new \SpacePress\JsError('de refuses 13');
         }
         if ($row->p['title'] === 'Between' && $row->p['price'] === 41) {
             // between two rows of one group in a bulk update: touch the first again
-            \TypedPress\db()->update('pages', ['title' => 'Order EN'], ['title' => 'Order']);
+            \SpacePress\db()->update('pages', ['title' => 'Order EN'], ['title' => 'Order']);
         }
         if ($row->p['title'] === 'Between' && $row->p['stampedAt'] === '2001-01-01T00:00:00.000Z') {
             // restore the first row's synced value: what was handed to the second must follow
-            \TypedPress\db()->update('pages', ['price' => 41], ['title' => 'Order EN']);
+            \SpacePress\db()->update('pages', ['price' => 41], ['title' => 'Order EN']);
         }
         if ($row->p['title'] === 'Mid' && $row->p['price'] === 51) {
-            \TypedPress\db()->update('pages', ['price' => 57], ['title' => 'Late DE']); // a nested write to a row still to come
+            \SpacePress\db()->update('pages', ['price' => 57], ['title' => 'Late DE']); // a nested write to a row still to come
         }
         if ($row->p['title'] === 'Mid' && $row->p['price'] === 52) {
-            \TypedPress\db()->insert('pages', ['title' => 'Late FR', 'locale' => 'fr', 'translationOf' => \TypedPress\db()->findFirst('pages', ['where' => ['title' => 'Late DE']])['id']]);
+            \SpacePress\db()->insert('pages', ['title' => 'Late FR', 'locale' => 'fr', 'translationOf' => \SpacePress\db()->findFirst('pages', ['where' => ['title' => 'Late DE']])['id']]);
         }
         if ($row->p['title'] === 'Late DE' && $row->p['price'] === 53 && $previous->p['price'] !== 53) {
             // the sibling written early deletes the row that started the group write, then fails
-            \TypedPress\db()->delete('pages', ['title' => 'Late']);
-            if (\TypedPress\db()->findFirst('pages', ['where' => ['title' => 'Late']]) === null) {
-                throw new \TypedPress\JsError('de refuses 53');
+            \SpacePress\db()->delete('pages', ['title' => 'Late']);
+            if (\SpacePress\db()->findFirst('pages', ['where' => ['title' => 'Late']]) === null) {
+                throw new \SpacePress\JsError('de refuses 53');
             }
         }
         if ($row->p['title'] === 'Kick' && $row->p['price'] === 31) {
             // a nested bulk update over two translations whose group the outer update also covers,
             // changing another synced column than the outer one
-            \TypedPress\db()->update('pages', ['tags' => ['b']], ['title' => ['in' => ['Nest DE', 'Nest FR']]]);
+            \SpacePress\db()->update('pages', ['tags' => ['b']], ['title' => ['in' => ['Nest DE', 'Nest FR']]]);
         }
-        if ($row->p['price'] === 21 && $row->p['locale'] === 'en' && ($other = \TypedPress\db()->findFirst('pages', ['where' => ['title' => 'Coffee']])) !== null) {
-            \TypedPress\db()->update('pages', ['price' => 22], ['id' => $other['id']]); // another group, from inside a sync
+        if ($row->p['price'] === 21 && $row->p['locale'] === 'en' && ($other = \SpacePress\db()->findFirst('pages', ['where' => ['title' => 'Coffee']])) !== null) {
+            \SpacePress\db()->update('pages', ['price' => 22], ['id' => $other['id']]); // another group, from inside a sync
         }
         $group = $row->p['translations']->p;
         ksort($group);
-        \TypedPress\db()->insert('notes', ['pageId' => $row->p['id'], 'body' => 'afterUpdate ' . $row->p['locale'] . ':' . $row->p['price'] . ' ' . json_encode($group)]);
+        \SpacePress\db()->insert('notes', ['pageId' => $row->p['id'], 'body' => 'afterUpdate ' . $row->p['locale'] . ':' . $row->p['price'] . ' ' . json_encode($group)]);
     }
     PHP;
 
@@ -151,9 +151,9 @@ $wp = wpSite('locales', [
     // In-process App::handle calls lack the REST URL Polylang uses to select its context.
     'muPlugins' => ['polylang-context' => "<?php add_filter('pll_context', static fn (\$class) => \$class ?: 'PLL_REST_Request');"],
 ]);
-$db = \TypedPress\db();
-$anon = new \TypedPress\Viewer(null);
-$editor = new \TypedPress\Viewer($wp->user('editor'));
+$db = \SpacePress\db();
+$anon = new \SpacePress\Viewer(null);
+$editor = new \SpacePress\Viewer($wp->user('editor'));
 // Reads are anonymous; writes are the editor's: a unique slug may only be written by a viewer who can
 // read the whole collection (#72), and the public read rule gives everyone that for pages.
 $rest = static function (string $method, string $path, array $query = [], mixed $body = null, array $headers = []) use ($wp): array {
@@ -205,7 +205,7 @@ eq('translationOf copies synced columns, keeps localized + per-row ones', [$stat
 eq('translations list the whole group on every row (API rows hide translationGroup)', [
     $tee['translations'], $db->findFirst('pages', ['where' => ['id' => $tea['id']]])['translations'], array_key_exists('translationGroup', $tee),
     array_key_exists('translationGroup', $db->findFirst('pages', ['where' => ['id' => $tea['id']]])),
-    array_key_exists('translationGroup', \TypedPress\Seam::findFirst('pages', ['where' => ['id' => $tea['id']]])->p),
+    array_key_exists('translationGroup', \SpacePress\Seam::findFirst('pages', ['where' => ['id' => $tea['id']]])->p),
 ], [['en' => $tea['id'], 'de' => $tee['id']], ['en' => $tea['id'], 'de' => $tee['id']], false, true, false]);
 problem('a synced column that differs from the group → 422', fn () => $db->insert('pages', ['title' => 'Thé', 'locale' => 'fr', 'translationOf' => $tea['id'], 'price' => 9]), 422, 'invalid_input', '/price');
 problem('one row per locale per group → 409', fn () => $db->insert('pages', ['title' => 'Tee 2', 'locale' => 'de', 'translationOf' => $tea['id']]), 409, 'unique_violation', '/locale');
@@ -278,7 +278,7 @@ $db->delete('pages', ['title' => ['in' => ['Late', 'Mid', 'Late DE', 'Late FR']]
 $db->delete('notes', ['id' => ['notIn' => $before]]);
 // A row from before localization (no group yet): its old revisions show the group it has now.
 $legacy = $db->insert('pages', ['title' => 'Legacy'], true)[0];
-$wp->exec('UPDATE {prefix}tp_pages SET `translationGroup` = NULL WHERE `id` = ?', [$legacy['id']]);
+$wp->exec('UPDATE {prefix}sp_pages SET `translationGroup` = NULL WHERE `id` = ?', [$legacy['id']]);
 $db->update('pages', ['title' => 'Legacy v2'], ['id' => $legacy['id']]);
 $legacyRevision = array_reverse($db->revisions('pages', $legacy['id']))[0]['id'];
 $legacyDe = $db->insert('pages', ['title' => 'Alt', 'locale' => 'de', 'translationOf' => $legacy['id']], true)[0];
@@ -346,15 +346,15 @@ $db->delete('pages', ['id' => $boxed['id']]);
 $adopt = $db->insert('pages', ['title' => 'Adopt', 'price' => 7], true)[0];
 problem('a hook rewriting an adopted synced value → 409, nothing committed', fn () => $db->transaction(function () use ($db, $adopt, $wp) {
     $de = $db->insert('pages', ['title' => 'Adopt DE', 'locale' => 'de', 'price' => 1], true)[0];
-    $wp->exec('UPDATE {prefix}tp_pages SET `translationGroup` = ? WHERE `id` = ?', [$db->findFirst('pages', ['where' => ['id' => $adopt['id']]])['translationGroup'], $de['id']]); // linked outside the pipeline
-    \TypedPress\Locale\GroupSync::adopt('pages', $db->findFirst('pages', ['where' => ['id' => $de['id']]]));
+    $wp->exec('UPDATE {prefix}sp_pages SET `translationGroup` = ? WHERE `id` = ?', [$db->findFirst('pages', ['where' => ['id' => $adopt['id']]])['translationGroup'], $de['id']]); // linked outside the pipeline
+    \SpacePress\Locale\GroupSync::adopt('pages', $db->findFirst('pages', ['where' => ['id' => $de['id']]]));
 }), 409, 'conflict', '/price');
 eq('… no Adopt DE row was committed', count($db->findMany('pages', ['locale' => '*', 'where' => ['title' => 'Adopt DE']])), 0);
 problem('… and a hook that adds a translation during a group adoption is checked too', fn () => $db->transaction(function () use ($db, $adopt, $wp) {
     $de = $db->insert('pages', ['title' => 'Spawn on adopt', 'locale' => 'de', 'price' => 1], true)[0];
-    $wp->exec('UPDATE {prefix}tp_pages SET `translationGroup` = ? WHERE `id` = ?', [$db->findFirst('pages', ['where' => ['id' => $adopt['id']]])['translationGroup'], $de['id']]);
+    $wp->exec('UPDATE {prefix}sp_pages SET `translationGroup` = ? WHERE `id` = ?', [$db->findFirst('pages', ['where' => ['id' => $adopt['id']]])['translationGroup'], $de['id']]);
     $rows = $db->findMany('pages', ['locale' => '*', 'where' => ['id' => ['in' => [$adopt['id'], $de['id']]]], 'orderBy' => ['id' => 'asc']]);
-    \TypedPress\Locale\GroupSync::adoptAll('pages', $rows);
+    \SpacePress\Locale\GroupSync::adoptAll('pages', $rows);
 }), 409, 'conflict', '/price');
 eq('… nothing of it committed', count($db->findMany('pages', ['locale' => '*', 'where' => ['title' => ['in' => ['Spawn on adopt', 'Spawned FR']]]])), 0);
 $db->delete('pages', ['id' => $adopt['id']]);
@@ -435,7 +435,7 @@ check('trusted rows carry the group id', is_string($stored['translationGroup']) 
 
 // translationOf copies synced values from storage, not from the caller's field-filtered view.
 $hidePrice = true;
-\TypedPress\Extensions::onRead(static function (array $rows, string $c, ?\TypedPress\Viewer $v) use (&$hidePrice): array {
+\SpacePress\Extensions::onRead(static function (array $rows, string $c, ?\SpacePress\Viewer $v) use (&$hidePrice): array {
     return $c === 'pages' && $v !== null && $hidePrice ? array_map(static fn ($r) => array_diff_key($r, ['price' => 1]), $rows) : $rows;
 }, constraintSafe: true);
 $de = $db->insert('pages', ['title' => 'Tee wieder', 'locale' => 'de', 'translationOf' => $tea['id']], true, $editor)[0];

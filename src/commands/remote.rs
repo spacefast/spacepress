@@ -1,6 +1,6 @@
-//! A WordPress site running the TypedPress plugin, over HTTP: finding its REST API, the credential
+//! A WordPress site running the SpacePress plugin, over HTTP: finding its REST API, the credential
 //! every remote command signs in with ([`sign_in`]), and its deploy receiver
-//! (`/wp-json/typedpress-deploy/v1`, served by runtime/typedpress-plugin/src/Receiver.php).
+//! (`/wp-json/spacepress-deploy/v1`, served by runtime/spacepress-plugin/src/Receiver.php).
 use crate::sync::client::Credential;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -8,7 +8,7 @@ use std::time::Duration;
 
 /// The deploy protocol this command speaks (`Site::PROTOCOL` in the plugin).
 pub(crate) const PROTOCOL: u64 = 1;
-const NAMESPACE: &str = "typedpress-deploy/v1";
+const NAMESPACE: &str = "spacepress-deploy/v1";
 
 /// A site's URL as it is stored and compared: scheme, host, port and path, no trailing slash. An
 /// address that carries a user or password is refused without being repeated: it would land in the
@@ -20,7 +20,7 @@ pub(crate) fn normalize(site: &str) -> Result<String, String> {
     })?;
     if !url.username().is_empty() || url.password().is_some() {
         return Err(format!(
-            "{}://{}: give the site's address without a user or password; typedpress login asks the site for a credential",
+            "{}://{}: give the site's address without a user or password; spacepress login asks the site for a credential",
             url.scheme(),
             url.host_str().unwrap_or("the site")
         ));
@@ -52,7 +52,7 @@ pub(crate) struct Discovered {
     pub(crate) name: String,
     /// Core's Authorize Application screen, when the site accepts application passwords.
     pub(crate) authorize: Option<String>,
-    /// The TypedPress plugin is active.
+    /// The SpacePress plugin is active.
     pub(crate) plugin: bool,
 }
 
@@ -101,14 +101,14 @@ pub(crate) fn discover(site: &str) -> Result<Discovered, String> {
     Err(format!("{site} does not look like a WordPress site: {last}"))
 }
 
-/// Where `typedpress login` keeps credentials: `TP_CONFIG_DIR`, else `$XDG_CONFIG_HOME/tp`, else
-/// `~/.config/tp`.
+/// Where `spacepress login` keeps credentials: `SP_CONFIG_DIR`, else `$XDG_CONFIG_HOME/sp`, else
+/// `~/.config/sp`.
 fn config_dir() -> Result<PathBuf, String> {
     let env = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
-    env("TP_CONFIG_DIR")
-        .or_else(|| env("XDG_CONFIG_HOME").map(|dir| dir.join("tp")))
-        .or_else(|| env("HOME").map(|home| home.join(".config/tp")))
-        .ok_or_else(|| "set HOME or TP_CONFIG_DIR so typedpress has a place to keep the site's credential".to_string())
+    env("SP_CONFIG_DIR")
+        .or_else(|| env("XDG_CONFIG_HOME").map(|dir| dir.join("sp")))
+        .or_else(|| env("HOME").map(|home| home.join(".config/sp")))
+        .ok_or_else(|| "set HOME or SP_CONFIG_DIR so spacepress has a place to keep the site's credential".to_string())
 }
 
 fn sites_file() -> Result<PathBuf, String> {
@@ -125,7 +125,7 @@ fn read_sites() -> Result<serde_json::Map<String, Value>, String> {
             .and_then(|v| v["sites"].as_object().cloned())
             .ok_or_else(|| {
                 format!(
-                    "{} is not typedpress's credential file; move it away and run typedpress login again",
+                    "{} is not spacepress's credential file; move it away and run spacepress login again",
                     path.display()
                 )
             }),
@@ -173,24 +173,24 @@ pub(crate) fn forget(site: &str) -> Result<bool, String> {
     Ok(had)
 }
 
-const PASSWORD_ENV: &str = "TP_APP_PASSWORD";
-const TOKEN_ENV: &str = "TP_TOKEN";
+const PASSWORD_ENV: &str = "SP_APP_PASSWORD";
+const TOKEN_ENV: &str = "SP_TOKEN";
 
 /// The usage line of every command that talks to a site and takes either credential.
-pub(crate) const SIGN_IN: &str = "       sign in first with: typedpress login <site-url>   (in CI: TP_APP_PASSWORD=user:application-password or TP_TOKEN=<bearer token>)";
+pub(crate) const SIGN_IN: &str = "       sign in first with: spacepress login <site-url>   (in CI: SP_APP_PASSWORD=user:application-password or SP_TOKEN=<bearer token>)";
 
 /// A credential for one site, and where it came from.
 pub(crate) struct SignIn {
     pub(crate) credential: Credential,
-    /// The REST root that answered `typedpress login`, when this is the credential it stored.
+    /// The REST root that answered `spacepress login`, when this is the credential it stored.
     pub(crate) rest: Option<String>,
 }
 
 /// The one way every remote command (push, sync, pull, export, abilities pull, doctor) gets its
-/// credential for `site`. `TP_APP_PASSWORD` (`user:application-password`) or `TP_TOKEN` (a bearer
+/// credential for `site`. `SP_APP_PASSWORD` (`user:application-password`) or `SP_TOKEN` (a bearer
 /// token from the identity plugin) in the environment is an explicit override, for CI and scripts
-/// where nobody runs `typedpress login`; setting both is an error. Otherwise the credential
-/// `typedpress login` stored for this site. `Ok(None)` when there is neither.
+/// where nobody runs `spacepress login`; setting both is an error. Otherwise the credential
+/// `spacepress login` stored for this site. `Ok(None)` when there is neither.
 pub(crate) fn sign_in(site: &str) -> Result<Option<SignIn>, String> {
     // An address that carries a user or password is refused here, without repeating it, before any
     // message could name it.
@@ -215,7 +215,7 @@ pub(crate) fn sign_in(site: &str) -> Result<Option<SignIn>, String> {
         }
         (None, None) => {}
     }
-    // Stored under the address `typedpress login` was given, normalized the same way.
+    // Stored under the address `spacepress login` was given, normalized the same way.
     let sites = read_sites()?;
     let Some(entry) = sites.get(&key) else {
         return Ok(None);
@@ -226,7 +226,7 @@ pub(crate) fn sign_in(site: &str) -> Result<Option<SignIn>, String> {
         entry["password"].as_str(),
     ) else {
         return Err(format!(
-            "the stored credential for {key} is incomplete. Run: typedpress login {key}"
+            "the stored credential for {key} is incomplete. Run: spacepress login {key}"
         ));
     };
     Ok(Some(SignIn {
@@ -238,12 +238,12 @@ pub(crate) fn sign_in(site: &str) -> Result<Option<SignIn>, String> {
 /// [`sign_in`], for a command that can't work signed out.
 pub(crate) fn require(site: &str) -> Result<SignIn, String> {
     let site = normalize(site)?;
-    sign_in(&site)?.ok_or_else(|| format!("not signed in to {site}. Run: typedpress login {site}"))
+    sign_in(&site)?.ok_or_else(|| format!("not signed in to {site}. Run: spacepress login {site}"))
 }
 
-/// The site a project deploys to (`.tp/site.json`, written by `typedpress login` inside a project).
+/// The site a project deploys to (`.sp/site.json`, written by `spacepress login` inside a project).
 pub(crate) fn linked(project: &Path) -> Option<String> {
-    let bytes = std::fs::read(project.join(".tp/site.json")).ok()?;
+    let bytes = std::fs::read(project.join(".sp/site.json")).ok()?;
     serde_json::from_slice::<Value>(&bytes).ok()?["site"]
         .as_str()
         .map(str::to_owned)
@@ -251,7 +251,7 @@ pub(crate) fn linked(project: &Path) -> Option<String> {
 
 pub(crate) fn link(project: &Path, site: &str) -> Result<(), String> {
     crate::sync::write_atomic(
-        &project.join(".tp/site.json"),
+        &project.join(".sp/site.json"),
         (serde_json::to_string_pretty(&json!({ "site": site })).expect("JSON") + "\n").as_bytes(),
     )
 }
@@ -295,7 +295,7 @@ impl Api {
         let signed = require(site)?;
         let Credential::AppPassword(password) = &signed.credential else {
             return Err(format!(
-                "deploying needs an application password, not TP_TOKEN. Run: typedpress login {site}, or set {PASSWORD_ENV}=user:application-password"
+                "deploying needs an application password, not SP_TOKEN. Run: spacepress login {site}, or set {PASSWORD_ENV}=user:application-password"
             ));
         };
         let rest = match signed.rest {
@@ -311,7 +311,7 @@ impl Api {
         Ok(Api::new(site, &rest, password))
     }
 
-    /// `<rest>/typedpress-deploy/v1<path>` with query pairs, on either REST root form.
+    /// `<rest>/spacepress-deploy/v1<path>` with query pairs, on either REST root form.
     fn url(&self, path: &str, query: &[(&str, &str)]) -> String {
         let mut url = format!("{}/{NAMESPACE}{path}", self.rest);
         let mut separator = if url.contains('?') { '&' } else { '?' };
@@ -388,8 +388,8 @@ impl Api {
         if status >= 300 {
             let message = match (status, parsed["code"].as_str().unwrap_or("")) {
                 (404, "rest_no_route") => no_plugin(&self.site),
-                (401, _) | (403, "tp_forbidden") => format!(
-                    "{} ({}). Sign in again: typedpress login {}",
+                (401, _) | (403, "sp_forbidden") => format!(
+                    "{} ({}). Sign in again: spacepress login {}",
                     parsed["message"].as_str().unwrap_or("the site refused the credential"),
                     self.site,
                     self.site
@@ -410,7 +410,7 @@ impl Api {
 
 pub(crate) fn no_plugin(site: &str) -> String {
     format!(
-        "{site} does not have the TypedPress plugin active. Run `typedpress plugin` to write typedpress.zip, then in wp-admin: Plugins, Add Plugin, Upload Plugin, and activate it."
+        "{site} does not have the SpacePress plugin active. Run `spacepress plugin` to write spacepress.zip, then in wp-admin: Plugins, Add Plugin, Upload Plugin, and activate it."
     )
 }
 
@@ -459,17 +459,17 @@ mod tests {
         let pretty = Api::new("https://example.test", "https://example.test/wp-json", "u:p");
         assert_eq!(
             pretty.url("/site", &[]),
-            "https://example.test/wp-json/typedpress-deploy/v1/site"
+            "https://example.test/wp-json/spacepress-deploy/v1/site"
         );
         assert_eq!(
             pretty.url("/plugin", &[("sha256", "ab")]),
-            "https://example.test/wp-json/typedpress-deploy/v1/plugin?sha256=ab"
+            "https://example.test/wp-json/spacepress-deploy/v1/plugin?sha256=ab"
         );
         // Without pretty permalinks the route is itself a query value, so further pairs follow `&`.
         let plain = Api::new("https://example.test", "https://example.test/?rest_route=", "u:p");
         assert_eq!(
             plain.url("/deployments/1/trees/app", &[("index", "0"), ("total", "2")]),
-            "https://example.test/?rest_route=/typedpress-deploy/v1/deployments/1/trees/app&index=0&total=2"
+            "https://example.test/?rest_route=/spacepress-deploy/v1/deployments/1/trees/app&index=0&total=2"
         );
     }
 }

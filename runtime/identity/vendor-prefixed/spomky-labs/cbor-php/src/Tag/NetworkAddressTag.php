@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR\Tag;
+namespace SpacePress\Identity\Vendor\CBOR\Tag;
 
 use function bin2hex;
-use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
-use TypedPress\Identity\Vendor\CBOR\CBORObject;
-use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use TypedPress\Identity\Vendor\CBOR\Normalizable;
-use TypedPress\Identity\Vendor\CBOR\Tag;
+use SpacePress\Identity\Vendor\CBOR\ByteStringObject;
+use SpacePress\Identity\Vendor\CBOR\CBORObject;
+use SpacePress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use SpacePress\Identity\Vendor\CBOR\Normalizable;
+use SpacePress\Identity\Vendor\CBOR\Tag;
 use function implode;
 use function in_array;
 use function inet_ntop;

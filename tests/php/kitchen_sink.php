@@ -106,9 +106,9 @@ function notices(string $html): array
 function drain(): void
 {
     global $site;
-    $waiting = static fn (): int => (int) $site->scalar("SELECT COUNT(*) FROM {prefix}tp__jobs WHERE `state` = 'pending' AND `attempts` = 0 AND `job` <> 'typedpress.webhook'");
+    $waiting = static fn (): int => (int) $site->scalar("SELECT COUNT(*) FROM {prefix}sp__jobs WHERE `state` = 'pending' AND `attempts` = 0 AND `job` <> 'spacepress.webhook'");
     for ($i = 0; $i < 20 && $waiting() > 0; $i++) {
-        if (ActionScheduler_QueueRunner::instance()->run('TypedPress tests') === 0) {
+        if (ActionScheduler_QueueRunner::instance()->run('SpacePress tests') === 0) {
             usleep(250_000);
         }
     }
@@ -119,7 +119,7 @@ function mailbox(WpSite $site): array
 {
     return array_map(
         static fn (array $row): array => json_decode((string) $row['input'], true)['message'],
-        $site->sql("SELECT `input` FROM {prefix}tp__jobs WHERE `job` = 'typedpress.mail' ORDER BY `createdAt` DESC, `id` DESC"),
+        $site->sql("SELECT `input` FROM {prefix}sp__jobs WHERE `job` = 'spacepress.mail' ORDER BY `createdAt` DESC, `id` DESC"),
     );
 }
 
@@ -173,15 +173,15 @@ check('a missing workshop uses the app 404', str_contains($body, 'Kitchen page n
 [$status, $prerender] = $site->call('GET', '/prerender', as: 'host');
 eq('the visit page enumerates its static route', [$status, array_column($prerender['urls'] ?? [], 'path')], [200, ['/visits/saturday']]);
 
-// ---- sign-in: the app's login component, with the notice tp/wp-hooks/login_message.ts adds
+// ---- sign-in: the app's login component, with the notice sp/wp-hooks/login_message.ts adds
 [$status, $body] = visit('/wp-login.php');
 eq('WordPress login renders', $status, 200);
 check('WordPress uses the app login component', str_contains($body, 'Sign in to the Community Kitchen'));
-check('the login_message hook adds its escaped notice', str_contains($body, 'sign in to reserve seats') && str_contains($body, 'title="About TypedPress test site"'), $body);
+check('the login_message hook adds its escaped notice', str_contains($body, 'sign in to reserve seats') && str_contains($body, 'title="About SpacePress test site"'), $body);
 
 // ---- the home page: its client component, and the layout's assets
 [, $home] = visit('/');
-check('the workshop board is a client component with its ref attached', str_contains($home, 'data-wp-interactive="kitchen-sink/WorkshopBoard"') && str_contains($home, 'data-tp-ref="toggle"'));
+check('the workshop board is a client component with its ref attached', str_contains($home, 'data-wp-interactive="kitchen-sink/WorkshopBoard"') && str_contains($home, 'data-sp-ref="toggle"'));
 check('the board uses its CSS module classes', str_contains($home, 'class="WorkshopBoard_board"'));
 check('the layout places the imported SVG and links the feed', preg_match('~<img src="[^"]+/whisk-[0-9a-f]+\.svg"~', $home) === 1 && str_contains($home, 'application/rss+xml'));
 
@@ -190,8 +190,8 @@ check('the layout places the imported SVG and links the feed', preg_match('~<img
 foreach (['Hosted by <a href="https://example.com/mina">Mina Okafor</a>', '<li>Bread flour · 500 g</li>', '<h2>Bring a jar</h2>', '<cite>Mina Okafor</cite>', 'Bring: apron, scale'] as $part) {
     check("the workshop page renders $part", str_contains($workshop, $part));
 }
-check('the workshop renders its live region, and its comment form for a member', str_contains($workshop, 'data-tp-live="registration"')
-    && str_contains(visit('/events/bread-basics/', as: 'cook')[1], 'typedpress-comments-form'));
+check('the workshop renders its live region, and its comment form for a member', str_contains($workshop, 'data-sp-live="registration"')
+    && str_contains(visit('/events/bread-basics/', as: 'cook')[1], 'spacepress-comments-form'));
 check('a guest is offered sign-in, with the workshop to come back to', preg_match('~href="[^"]*wp-login\.php\?redirect_to=[^"]*events%2Fbread-basics~', $workshop) === 1 && !str_contains($workshop, 'Reserve seats'));
 [, $recipes] = visit('/recipes/');
 check('the recipe list shows servings and the recipe\'s topic', str_contains($recipes, 'serves 8') && preg_match('~<span class="kitchen-topic" style="border-color:\s*#7a3b12;?">Bread</span>~', $recipes) === 1, $recipes);
@@ -222,9 +222,9 @@ $eventId = (int) $site->scalar("SELECT ID FROM {prefix}posts WHERE post_name = '
 // ---- reserving a seat, on a fresh site: the page's form, the reservation code, the mail
 [$status, $refused] = submit('/events/bread-basics/', 'Reserve seats', ['seats' => 2, 'email' => 'someone-else@example.test'], 'cook');
 eq('the form takes no address to mail: a typed one is refused, and nothing is reserved or sent',
-    [$status, notices($refused), (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_registrations'), count(mailbox($site))], [200, ["Unknown field 'email'"], 0, 0]);
+    [$status, notices($refused), (int) $site->scalar('SELECT COUNT(*) FROM {prefix}sp_registrations'), count(mailbox($site))], [200, ["Unknown field 'email'"], 0, 0]);
 [$status, $booked] = submit('/events/bread-basics/', 'Reserve seats', ['seats' => 2, 'allergies' => 'nuts, <b>dairy</b>'], 'cook');
-$mine = $site->sql('SELECT `code`, `seats`, `preferences` FROM {prefix}tp_registrations WHERE `memberId` = ?', [$site->userId('cook')])[0] ?? null;
+$mine = $site->sql('SELECT `code`, `seats`, `preferences` FROM {prefix}sp_registrations WHERE `memberId` = ?', [$site->userId('cook')])[0] ?? null;
 check('a subscriber reserves seats through the form', $status === 200 && $mine !== null && (int) $mine['seats'] === 2
     && preg_match('/\A[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\z/', (string) $mine['code']) === 1, [$status, $mine, notices($booked)]);
 check('the page shows the reservation code', $mine !== null && str_contains($booked, 'Reservation code: ' . $mine['code']) && str_contains($booked, 'A confirmation is on its way'));
@@ -232,12 +232,12 @@ eq('the allergies are stored as plain text', json_decode((string) ($mine['prefer
 $sent = mailbox($site)[0] ?? [];
 eq('the confirmation goes to the account\'s own address, from the local default sender',
     [$sent['to'] ?? null, $sent['from'] ?? null, array_key_exists('replyTo', $sent), $sent['subject'] ?? null],
-    [[['email' => 'cook@example.test', 'name' => 'cook']], ['email' => \TypedPress\Mail::LOCAL_SENDER], false, 'Reservation for Bread basics']);
+    [[['email' => 'cook@example.test', 'name' => 'cook']], ['email' => \SpacePress\Mail::LOCAL_SENDER], false, 'Reservation for Bread basics']);
 check('the mail is the React Email template, as HTML and text, with the code and the workshop link', $mine !== null
     && str_contains($sent['html'] ?? '', $mine['code']) && str_contains($sent['html'] ?? '', '/events/bread-basics/')
     && str_contains($sent['text'] ?? '', "Your booking code is {$mine['code']}."), $sent);
 drain();
-eq('the mail job hands the message to WordPress', $site->scalar("SELECT `state` FROM {prefix}tp__jobs WHERE `job` = 'typedpress.mail' ORDER BY `createdAt` DESC, `id` DESC"), 'done');
+eq('the mail job hands the message to WordPress', $site->scalar("SELECT `state` FROM {prefix}sp__jobs WHERE `job` = 'spacepress.mail' ORDER BY `createdAt` DESC, `id` DESC"), 'done');
 [$status, $problem] = $site->call('POST', '/actions/bookSeats', ['eventId' => $eventId, 'seats' => 1], as: 'cook');
 eq('a second reservation for the same workshop is a 409', [$status, $problem['code'] ?? null], [409, 'already_registered']);
 eq('nothing is mailed for the refused reservation', count(mailbox($site)), 1);
@@ -257,7 +257,7 @@ check('a member reads only their own reservation', !str_contains($second, (strin
 [$status, $cancelled] = submit('/events/bread-basics/', 'Cancel my reservation', [], 'subscriber');
 check('a member cancels their reservation', $status === 200 && notices($cancelled) === ['Your reservation of 1 seat(s) is cancelled.'], [$status, notices($cancelled) ?: $cancelled]);
 eq('the cancelled reservation is soft-deleted',
-    [(int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_registrations WHERE `_live` = 1'), (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_registrations WHERE `deletedAt` IS NOT NULL')],
+    [(int) $site->scalar('SELECT COUNT(*) FROM {prefix}sp_registrations WHERE `_live` = 1'), (int) $site->scalar('SELECT COUNT(*) FROM {prefix}sp_registrations WHERE `deletedAt` IS NOT NULL')],
     [1, 1]);
 
 // ---- media and the private handout on the workshop page
@@ -306,22 +306,22 @@ eq('a visitor\'s message is queued as mail to the site\'s admin, replying to the
 eq('beforeCreate trims the title', [$status, $class['title'] ?? null], [201, 'Knife skills']);
 drain();
 eq('afterCreate queued the job, which ran once: the option and the log entry', [(bool) get_option('kitchen_has_workshops'),
-    (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `message` = ?', [$class['id'], 'Workshop created'])], [true, 1]);
-eq('afterPublish logs the publication', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `message` = ?', [$class['id'], 'Workshop published']), 1);
+    (int) $site->scalar('SELECT COUNT(*) FROM {prefix}sp_activity WHERE `eventId` = ? AND `message` = ?', [$class['id'], 'Workshop created'])], [true, 1]);
+eq('afterPublish logs the publication', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}sp_activity WHERE `eventId` = ? AND `message` = ?', [$class['id'], 'Workshop published']), 1);
 [$status, $problem] = $site->call('PATCH', "/events/{$class['id']}", ['registrationOpen' => true], as: 'host');
 eq('beforeUpdate refuses to reopen a past workshop', [$status, $problem['code'] ?? null], [409, 'workshop_over']);
 $body = '{"desk":"front"}';
 [$status] = visit('/api/registration?workshop=' . rawurlencode('Bread Basics'), ['x-kitchen-signature: ' . hash_hmac('sha256', $body, 'local-test-registration-key'), 'Content-Type: application/json'], $body);
-eq('the signed route closes registration, finding the workshop by its title', [$status, (bool) get_post_meta($eventId, 'tp_registrationOpen', true)], [204, false]);
-eq('afterUpdate logs the closing', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` = ? AND `message` = ?', [$eventId, 'Registration closed']), 1);
+eq('the signed route closes registration, finding the workshop by its title', [$status, (bool) get_post_meta($eventId, 'sp_registrationOpen', true)], [204, false]);
+eq('afterUpdate logs the closing', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}sp_activity WHERE `eventId` = ? AND `message` = ?', [$eventId, 'Registration closed']), 1);
 [$status, $problem] = $site->call('DELETE', "/events/$eventId", as: 'admin');
 eq('beforeDelete keeps a workshop that has reservations', [$status, $problem['code'] ?? null, get_post($eventId) !== null], [409, 'has_registrations', true]);
 eq('an admin deletes a workshop that has none', $site->call('DELETE', "/events/{$class['id']}", as: 'admin')[0], 200);
 eq('afterDelete logs the deletion, and the log keeps its rows without the workshop',
-    $site->sql('SELECT `eventId`, `message` FROM {prefix}tp_activity WHERE `message` LIKE ?', ['Workshop deleted%']), [['eventId' => null, 'message' => 'Workshop deleted: Knife skills']]);
-$aliasRows = \TypedPress\Db::instance()->findMany('activity', ['where' => ['message' => 'Workshop published']]);
+    $site->sql('SELECT `eventId`, `message` FROM {prefix}sp_activity WHERE `message` LIKE ?', ['Workshop deleted%']), [['eventId' => null, 'message' => 'Workshop deleted: Knife skills']]);
+$aliasRows = \SpacePress\Db::instance()->findMany('activity', ['where' => ['message' => 'Workshop published']]);
 eq('column alias works in where filters and returns the canonical field name', $aliasRows[0]['summary'] ?? null, 'Workshop published');
-eq('the deleted workshop\'s earlier entries stay, unlinked', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_activity WHERE `eventId` IS NULL'), 3);
+eq('the deleted workshop\'s earlier entries stay, unlinked', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}sp_activity WHERE `eventId` IS NULL'), 3);
 
 [$status, $staff] = submit('/staff/', 'Check the schedule', [], 'host');
 check('the staff form calls the workshops Ability and shows its answer', $status === 200 && preg_match('~\A0 workshop\(s\) open for registration · times in \S+\z~', notices($staff)[0] ?? '') === 1, [$status, notices($staff)]);
@@ -365,7 +365,7 @@ check('table() exposes /revisions and /revisions/diff over REST',
 eq('the schedule screen\'s recap action drafts a WordPress post', [$status, $recap['title'] ?? null, $recap['status'] ?? null, get_post_type((int) ($recap['postId'] ?? 0))], [200, 'Recap: Bread basics', 'draft', 'post']);
 
 // ---- the app's MCP server
-$mcp = '/wp-json/mcp/typedpress-kitchen-sink';
+$mcp = '/wp-json/mcp/spacepress-kitchen-sink';
 $headers = ['Authorization: Basic ' . base64_encode($site->appPassword('admin')),
     'Content-Type: application/json', 'Accept: application/json, text/event-stream'];
 [$status, , $init] = visit($mcp, $headers, json_encode(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize',
@@ -377,8 +377,8 @@ eq('the app MCP server accepts a session', $status, 200);
 eq('the app MCP server answers', $status, 200);
 check('the app exposes the workshop schedule to MCP', str_contains($body, 'kitchen-sink-upcoming'));
 
-// ---- a page that throws renders tp/app/error.tsx with a 500 (last: it breaks the log's table)
-$site->exec('DROP TABLE {prefix}tp_activity');
+// ---- a page that throws renders sp/app/error.tsx with a 500 (last: it breaks the log's table)
+$site->exec('DROP TABLE {prefix}sp_activity');
 [$status, $body] = visit('/staff/', as: 'host');
-check('a failing page answers 500 with the app\'s error page', $status === 500 && str_contains($body, 'The kitchen page could not load') && !str_contains($body, 'tp_activity'), [$status, substr(strip_tags($body), 0, 300)]);
+check('a failing page answers 500 with the app\'s error page', $status === 500 && str_contains($body, 'The kitchen page could not load') && !str_contains($body, 'sp_activity'), [$status, substr(strip_tags($body), 0, 300)]);
 finish('kitchen_sink');

@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR;
+namespace SpacePress\Identity\Vendor\CBOR;
 
-use TypedPress\Identity\Vendor\Brick\Math\BigInteger;
-use TypedPress\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
-use TypedPress\Identity\Vendor\Brick\Math\Exception\MathException;
+use SpacePress\Identity\Vendor\Brick\Math\BigInteger;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\MathException;
 use InvalidArgumentException;
 use function is_string;
 use function ord;

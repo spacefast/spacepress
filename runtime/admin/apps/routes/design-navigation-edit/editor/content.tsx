@@ -1,4 +1,4 @@
-import { unlock } from '@typedpress-admin/admin-toolkit';
+import { unlock } from '@spacepress-admin/admin-toolkit';
 import {
 	privateApis as blockEditorPrivateApis,
 	store as blockEditorStore,

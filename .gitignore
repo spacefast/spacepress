@@ -1,5 +1,5 @@
 /target
-.tp/
+.sp/
 
 **/vendor/
 /scripts/.tools/
@@ -26,8 +26,8 @@ runtime/identity/apps/node_modules/
 /tests/wp/.wp-content-spacefast/
 /tests/host-types/node_modules/
 /tests/differential/client/node_modules/
-**/tp/dist/
+**/sp/dist/
 /tests/wp/hooks/node_modules/
 
-# Built by docs/typedpress-guide-src/build.mjs (28 MB with the browser compiler and plugin zips).
-/docs/typedpress-guide/
+# Built by docs/spacepress-guide-src/build.mjs (28 MB with the browser compiler and plugin zips).
+/docs/spacepress-guide/

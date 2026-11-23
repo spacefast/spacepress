@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception;
 
 use UnexpectedValueException;
 

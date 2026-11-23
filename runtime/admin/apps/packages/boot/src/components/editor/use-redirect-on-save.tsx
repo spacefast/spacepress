@@ -1,4 +1,4 @@
-import { entityEditorPath } from '@typedpress-admin/schema';
+import { entityEditorPath } from '@spacepress-admin/schema';
 import { useEffect, useRef } from 'react';
 import { useNavigate } from '@wordpress/route';
 import { useSelect } from '@wordpress/data';

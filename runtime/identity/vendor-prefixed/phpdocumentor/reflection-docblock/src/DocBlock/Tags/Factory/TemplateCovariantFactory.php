@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\TemplateCovariant;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\TypeResolver;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TemplateTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
-use TypedPress\Identity\Vendor\Webmozart\Assert\Assert;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\TemplateCovariant;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\TypeResolver;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\TemplateTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
+use SpacePress\Identity\Vendor\Webmozart\Assert\Assert;
 
 use function is_string;
 

@@ -1,16 +1,16 @@
 import type { Plugin } from '@wordpress/core-data';
 import { __ } from '@wordpress/i18n';
-import type { Field } from '@typedpress-admin/dataviews';
+import type { Field } from '@spacepress-admin/dataviews';
 
 export const fieldExtensions: Partial< Field< Plugin > > = {
 	render: ( { item }: { item: Plugin } ) => {
 		switch ( item.status ) {
 			case 'active':
-				return __( 'Active', 'typedpress-admin' );
+				return __( 'Active', 'spacepress-admin' );
 			case 'network-active':
-				return __( 'Network Active', 'typedpress-admin' );
+				return __( 'Network Active', 'spacepress-admin' );
 			default:
-				return __( 'Inactive', 'typedpress-admin' );
+				return __( 'Inactive', 'spacepress-admin' );
 		}
 	},
 };

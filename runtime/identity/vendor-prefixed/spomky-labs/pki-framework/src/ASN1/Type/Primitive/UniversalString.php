@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
 
 use function mb_strlen;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveString;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveString;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
 use function unpack;
 
 /**

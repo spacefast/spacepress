@@ -32,7 +32,7 @@ export async function buildSourceLab({outdir}) {
   await fs.copyFile(path.join(here, 'source-compiler-worker.js'), path.join(outdir, 'source-compiler-worker.js'));
   await fs.copyFile(path.join(here, '../public/source-lab.css'), path.join(outdir, 'source-lab.css'));
   await fs.writeFile(path.join(outdir, 'code-notices.txt'), [
-    'TypedPress showcase source lab',
+    'SpacePress showcase source lab',
     '@pierre/diffs 1.6.2 — Apache-2.0 — https://diffs.com',
     'Shiki 4.3.0 — MIT — https://shiki.style',
     'Dependency licenses follow. Exact versions: examples/showcase/code-tools/package-lock.json.',

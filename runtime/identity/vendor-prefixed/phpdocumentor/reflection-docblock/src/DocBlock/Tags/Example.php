@@ -11,10 +11,10 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use TypedPress\Identity\Vendor\Webmozart\Assert\Assert;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use SpacePress\Identity\Vendor\Webmozart\Assert\Assert;
 
 use function array_key_exists;
 use function preg_match;

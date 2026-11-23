@@ -1,6 +1,6 @@
 import clsx from 'clsx';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
-import { Stack } from '@typedpress-admin/design-system';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components
+import { Stack } from '@spacepress-admin/design-system';
 import { useSelect } from '@wordpress/data';
 import { store as coreStore, useEntityId } from '@wordpress/core-data';
 import MediaRenderer from '../media-renderer';
@@ -28,8 +28,8 @@ export default function MediaEditorCanvas() {
 
 	return (
 		<Stack
-			className={ clsx( 'typedpress-admin-media-details__content-container', {
-				'typedpress-admin-media-details__content-container--cropper':
+			className={ clsx( 'spacepress-admin-media-details__content-container', {
+				'spacepress-admin-media-details__content-container--cropper':
 					isImageEditorOpen,
 			} ) }
 			direction="column"

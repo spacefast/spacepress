@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess;
 
 /**
  * Traverses a property path and provides additional methods to find out

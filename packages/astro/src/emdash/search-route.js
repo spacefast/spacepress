@@ -5,8 +5,8 @@ import { search } from "./client.js";
 export async function GET({ url }) {
   const q = url.searchParams.get("q")?.trim() ?? "";
   if (!q) return Response.json({ items: [] });
-  // eslint-disable-next-line no-undef -- set by tpEmdash() through Vite's `define`
-  const pagesAt = typeof __TP_EMDASH_PAGES_AT__ === "string" ? __TP_EMDASH_PAGES_AT__ : "/pages/";
+  // eslint-disable-next-line no-undef -- set by spEmdash() through Vite's `define`
+  const pagesAt = typeof __SP_EMDASH_PAGES_AT__ === "string" ? __SP_EMDASH_PAGES_AT__ : "/pages/";
   const [posts, pages] = await Promise.all([search(q, { collections: ["posts"], limit: 6 }), search(q, { collections: ["pages"], limit: 4 })]);
   return Response.json({
     items: [

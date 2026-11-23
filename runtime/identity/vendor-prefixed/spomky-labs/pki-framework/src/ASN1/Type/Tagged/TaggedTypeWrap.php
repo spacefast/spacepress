@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
 
 /**
  * Base class to wrap inner element for tagging.

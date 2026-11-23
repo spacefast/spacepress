@@ -1,7 +1,7 @@
-# TypedPress frontend builds
+# SpacePress frontend builds
 
-Use `@typedpress/frontend` to build browser modules and Tailwind styles for
-TypedPress pages. The package sets up Vite, Rolldown, and Tailwind. TypedPress
+Use `@spacepress/frontend` to build browser modules and Tailwind styles for
+SpacePress pages. The package sets up Vite, Rolldown, and Tailwind. SpacePress
 ships the resulting assets with the app plugin and WordPress serves them.
 
 ## Import Tailwind from a page or layout
@@ -10,18 +10,18 @@ From this repository's root, run `npm pack ./packages/frontend` to make a
 tarball. Install it and Tailwind in the project.
 
 ```sh
-npm install -D /path/to/typedpress-frontend-0.1.0.tgz tailwindcss
+npm install -D /path/to/spacepress-frontend-0.1.0.tgz tailwindcss
 ```
 
 Put a plain stylesheet next to a page or layout.
 
 ```css
-/* tp/app/site.css */
+/* sp/app/site.css */
 @import "tailwindcss" source("../");
 ```
 
 ```tsx
-// tp/app/page.tsx
+// sp/app/page.tsx
 import "./site.css";
 
 export default function Page() {
@@ -29,16 +29,16 @@ export default function Page() {
 }
 ```
 
-Run `typedpress dev` or `typedpress build`. Installing `@typedpress/frontend`
+Run `spacepress dev` or `spacepress build`. Installing `@spacepress/frontend`
 as a project dependency enables Vite for plain stylesheet imports. The compiler
 finds the stylesheets through the page and layout import graph, so each route
 links the styles it reaches. CSS modules keep their existing class names and
 compiler behavior.
 
-Native `typedpress sources` and `typedpress push` prepare the same assets
+Native `spacepress sources` and `spacepress push` prepare the same assets
 before capture. The resulting source capture can compile on a host without
-Node.js. Keep `public/typedpress-styles/` and
-`tp/_generated/frontend-styles.json` out of Git.
+Node.js. Keep `public/spacepress-styles/` and
+`sp/_generated/frontend-styles.json` out of Git.
 
 ## Build a browser entry
 
@@ -50,15 +50,15 @@ import "./site.css";
 ```css
 /* browser/site.css */
 @import "tailwindcss" source(none);
-@source "../tp/app";
-@source "../tp/components";
+@source "../sp/app";
+@source "../sp/components";
 ```
 
-Run `npx typedpress-frontend`, then add the generated metadata to the page or
+Run `npx spacepress-frontend`, then add the generated metadata to the page or
 layout that needs the assets.
 
 ```tsx
-// tp/app/page.tsx
+// sp/app/page.tsx
 import { frontend } from "../_generated/frontend";
 
 export const metadata = frontend.main;
@@ -68,11 +68,11 @@ export default function Page() {
 }
 ```
 
-Run `typedpress build` or `typedpress dev` after the frontend build. Run the
+Run `spacepress build` or `spacepress dev` after the frontend build. Run the
 frontend build again before capturing sources for a deployment. Keep
-`public/typedpress-assets/` and `tp/_generated/frontend.ts` out of Git and
+`public/spacepress-assets/` and `sp/_generated/frontend.ts` out of Git and
 include them in the deployed source capture. The package only replaces a
-`public/typedpress-assets/` directory it generated.
+`public/spacepress-assets/` directory it generated.
 
 Browser modules can use npm dependencies installed in the project, `@/` imports
 rooted at `src/`, and `import.meta.env.PUBLIC_*`. JSX entries use the automatic
@@ -84,7 +84,7 @@ Call `buildFrontend` from the project's build script when different pages
 need different bundles.
 
 ```js
-import { buildFrontend } from "@typedpress/frontend";
+import { buildFrontend } from "@spacepress/frontend";
 
 await buildFrontend({
   entries: {
@@ -105,38 +105,38 @@ does not server-render React or schedule hydration.
 
 ## Edit React browser components
 
-Build the browser entries once to create their metadata. Start `typedpress dev`
+Build the browser entries once to create their metadata. Start `spacepress dev`
 and open a WordPress page that uses one of those entries. Saving a React component
 updates the open page through Vite Fast Refresh. Compatible edits preserve React
 state, such as the value of a counter. Run the frontend build again when you
-change the entry list or framework options, then restart `typedpress dev`.
+change the entry list or framework options, then restart `spacepress dev`.
 
-While Vite serves the entries, `typedpress dev` does not rewrite
-`public/typedpress-assets/`. `typedpress build`, `typedpress push` and
-`typedpress export` build the entries again before they read `public/`, with the
+While Vite serves the entries, `spacepress dev` does not rewrite
+`public/spacepress-assets/`. `spacepress build`, `spacepress push` and
+`spacepress export` build the entries again before they read `public/`, with the
 entry list and framework options of the last frontend build
-(`.tp/frontend-dev.json`), so they never ship a bundle from before your edits.
+(`.sp/frontend-dev.json`), so they never ship a bundle from before your edits.
 An entry whose source file you deleted is left out, and a record with no entry
-left is removed. A checkout with no `.tp/` has no such record: run the frontend
-build there first, as a deployment's build script does. `typedpress check`
-compiles a fresh checkout before any frontend build; `typedpress build` and
-`typedpress export` build the imported stylesheets first.
+left is removed. A checkout with no `.sp/` has no such record: run the frontend
+build there first, as a deployment's build script does. `spacepress check`
+compiles a fresh checkout before any frontend build; `spacepress build` and
+`spacepress export` build the imported stylesheets first.
 
 ### Open the dev site from another machine
 
 Vite listens on this machine. A browser on another machine reaches it only
-through the site's own address, so pass the path `/__tp_vite/` on to Vite in
-the proxy you put in front of the site. `typedpress dev` prints Vite's port when
+through the site's own address, so pass the path `/__sp_vite/` on to Vite in
+the proxy you put in front of the site. `spacepress dev` prints Vite's port when
 the path is not passed on, and keeps that port across restarts. With
 Tailscale:
 
 ```sh
 tailscale serve --bg --https=8443 http://localhost:8787
-tailscale serve --bg --https=8443 --set-path=/__tp_vite/ http://localhost:<vite port>/__tp_vite/
-typedpress dev --url https://box.example.ts.net:8443
+tailscale serve --bg --https=8443 --set-path=/__sp_vite/ http://localhost:<vite port>/__sp_vite/
+spacepress dev --url https://box.example.ts.net:8443
 ```
 
-Without that mapping the page loads the built entry, `typedpress dev` prints
+Without that mapping the page loads the built entry, `spacepress dev` prints
 one line saying Fast Refresh is off, and each save builds the bundle again:
 reload the page to see the edit. With `--host` and an `http://` address the
 browser loads Vite from that address directly and nothing else is needed.
@@ -151,7 +151,7 @@ compiler from the project's Vue 3 package. Solid dependencies use their
 compiled browser-compatible exports.
 
 ```js
-import { buildFrontend } from "@typedpress/frontend";
+import { buildFrontend } from "@spacepress/frontend";
 
 await buildFrontend({
   frameworks: {
@@ -172,5 +172,5 @@ from this entry build.
 The mixed-framework check serves the result in WordPress and clicks a
 counter from each framework. With the repo's differential browser tools and
 Chromium installed, run `npm run test:frameworks --prefix packages/frontend`
-from the repo root. Set `TP_BIN` if the local compiler is outside
-`target/debug/typedpress`.
+from the repo root. Set `SP_BIN` if the local compiler is outside
+`target/debug/spacepress`.

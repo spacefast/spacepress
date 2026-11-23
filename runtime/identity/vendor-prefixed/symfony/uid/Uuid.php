@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Uid;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Uid;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
 
 /**
  * @author Grégoire Pineau <lyrixx@lyrixx.info>
@@ -173,7 +173,7 @@ class Uuid extends AbstractUid
 
     public function compare(AbstractUid $other): int
     {
-        if (false !== $cmp = typedpress_identity_vendor_uuid_compare($this->uid, $other->uid)) {
+        if (false !== $cmp = spacepress_identity_vendor_uuid_compare($this->uid, $other->uid)) {
             return $cmp;
         }
 

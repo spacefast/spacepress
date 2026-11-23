@@ -28,7 +28,7 @@ function useWpOrgPluginDetails( slug: string ) {
 		setIsLoading( true );
 		setError( null );
 
-		// TypedPress, check cache to avoid re-fetching on every re-render/open
+		// SpacePress, check cache to avoid re-fetching on every re-render/open
 		const cached = pluginInfoCache.get( slug );
 		if ( cached ) {
 			setData( cached );
@@ -103,10 +103,10 @@ export default function PluginDetailModal( {
 
 	const title = useMemo( () => {
 		if ( isLoading ) {
-			return __( 'Loading plugin…', 'typedpress-admin' );
+			return __( 'Loading plugin…', 'spacepress-admin' );
 		}
 		if ( error ) {
-			return __( 'Plugin not found', 'typedpress-admin' );
+			return __( 'Plugin not found', 'spacepress-admin' );
 		}
 		return decodeEntities( data?.name || slug );
 	}, [ isLoading, error, data?.name, slug ] );
@@ -132,7 +132,7 @@ export default function PluginDetailModal( {
 				<div className="plugin-details-error">
 					{ __(
 						'There was an error fetching plugin details.',
-						'typedpress-admin'
+						'spacepress-admin'
 					) }
 				</div>
 			) }

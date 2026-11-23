@@ -1,5 +1,5 @@
 // Untyped JavaScript for tests/differential/language/builtin-instanceof.ts: `instanceof` with a
-// built-in class on the right, through TypedPress's checked JavaScript dispatch. picomatch 4.0.7
+// built-in class on the right, through SpacePress's checked JavaScript dispatch. picomatch 4.0.7
 // (`glob instanceof RegExp`) and files-sdk 3.1.2 (`pattern instanceof RegExp`) both branch on it.
 
 export function instances() {

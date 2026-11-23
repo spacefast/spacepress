@@ -12,7 +12,7 @@ permissions:
 env:
   XDEBUG_MODE: 'off'
   # Locales are turned off for apps; the suite still exercises them.
-  TYPEDPRESS_LOCALES: '1'
+  SPACEPRESS_LOCALES: '1'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -66,7 +66,7 @@ jobs:
         shard: [compiler, slow, rest]
     env:
       SHARD: ${{ matrix.shard }}
-      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
+      SP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.sp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -89,7 +89,7 @@ jobs:
           key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: .tp/cache/plugins
+          path: .sp/cache/plugins
           key: plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       # tests/sync.rs serves a WordPress-on-SQLite site (tests/php/wp.php).
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -118,10 +118,10 @@ jobs:
             cargo test --locked "${compiler[@]/#/--test=}"
           elif [ "$SHARD" = slow ]; then
             cargo test --locked "${slow[@]/#/--test=}"
-            cargo test --locked -p typedpress-migrate
+            cargo test --locked -p spacepress-migrate
           else
             rest=()
-            for name in $(cargo metadata --no-deps --format-version 1 | jq -r ' .packages[] | select(.name == "typedpress") | .targets[] | select(.kind[] == "test") | .name'); do
+            for name in $(cargo metadata --no-deps --format-version 1 | jq -r ' .packages[] | select(.name == "spacepress") | .targets[] | select(.kind[] == "test") | .name'); do
               [[ " ${compiler[*]} ${slow[*]} " == *" $name "* ]] || rest+=("--test=$name")
             done
             cargo test --locked --lib --bins "${rest[@]}"
@@ -131,28 +131,28 @@ jobs:
         if: matrix.shard == 'compiler'
         run: |
           npm ci --prefix examples/npm-compat --ignore-scripts --no-audit --no-fund
-          TP_BIN="$GITHUB_WORKSPACE/target/debug/typedpress" node examples/npm-compat/verify.mjs --isolated
+          SP_BIN="$GITHUB_WORKSPACE/target/debug/spacepress" node examples/npm-compat/verify.mjs --isolated
       # Every app under examples/ compiles (files-sdk, a probe of what doesn't yet, is left out).
       - if: matrix.shard == 'rest'
-        run: scripts/check-examples.sh target/debug/typedpress
-      # Every example's committed tp/_generated/ (client, db.d.ts, openapi.json, a migration the
+        run: scripts/check-examples.sh target/debug/spacepress
+      # Every example's committed sp/_generated/ (client, db.d.ts, openapi.json, a migration the
       # compiler would add) is what this compiler builds. This job runs after merging, on main;
       # on PRs, runtime/client/committed.test.ts checks only the copied client files.
       - if: matrix.shard == 'rest'
-        run: scripts/check-generated.sh target/debug/typedpress
+        run: scripts/check-generated.sh target/debug/spacepress
       - name: Migration tool checks
         if: matrix.shard == 'rest'
         env:
-          TP_MIGRATE_BIN: ${{ github.workspace }}/target/debug/typedpress-migrate
+          SP_MIGRATE_BIN: ${{ github.workspace }}/target/debug/spacepress-migrate
         run: |
-          cargo build --locked -p typedpress-migrate
+          cargo build --locked -p spacepress-migrate
           node --test migrate/zero/census/census.test.mjs migrate/zero/census/usage.test.mjs
           php migrate/tests/legacy_test.php
-      # @typedpress/astro against a TypedPress site on WordPress-on-SQLite, and a real astro build.
+      # @spacepress/astro against a SpacePress site on WordPress-on-SQLite, and a real astro build.
       - name: Astro loaders
         if: matrix.shard == 'rest'
         env:
-          TP_BIN: ${{ github.workspace }}/target/debug/typedpress
+          SP_BIN: ${{ github.workspace }}/target/debug/spacepress
         run: |
           npm ci --prefix packages/astro --ignore-scripts --no-audit --no-fund
           tsc -p packages/astro
@@ -161,7 +161,7 @@ jobs:
       - name: Astro twin example
         if: matrix.shard == 'rest'
         env:
-          TP_BIN: ${{ github.workspace }}/target/debug/typedpress
+          SP_BIN: ${{ github.workspace }}/target/debug/spacepress
         run: |
           npm ci --prefix examples/astro-garden --ignore-scripts --no-audit --no-fund
           npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
@@ -171,7 +171,7 @@ jobs:
       - name: Migrated Astro example
         if: matrix.shard == 'rest'
         env:
-          TP_BIN: ${{ github.workspace }}/target/debug/typedpress
+          SP_BIN: ${{ github.workspace }}/target/debug/spacepress
         run: |
           npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
           npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
@@ -179,18 +179,18 @@ jobs:
       - name: Scaffolder on WordPress
         if: matrix.shard == 'rest'
         env:
-          TP_BIN: ${{ github.workspace }}/target/debug/typedpress
-        run: npm test --prefix packages/create-typedpress
+          SP_BIN: ${{ github.workspace }}/target/debug/spacepress
+        run: npm test --prefix packages/create-spacepress
       - name: Docker-free local development acceptance
         if: matrix.shard == 'rest'
         run: node --test scripts/dev/acceptance.test.mjs
       - name: Offline deployment and recovery acceptance
         if: matrix.shard == 'rest'
         env:
-          TP_DEPLOY_BIN: ${{ github.workspace }}/target/debug/typedpress
+          SP_DEPLOY_BIN: ${{ github.workspace }}/target/debug/spacepress
         run: node --test scripts/deploy/artifact.test.mjs scripts/deploy/wordpress.test.mjs
 
-  # Each example's own test against real WordPress (Studio, through `typedpress dev`): the HTTP
+  # Each example's own test against real WordPress (Studio, through `spacepress dev`): the HTTP
   # verifiers and the EmDash counterparts. check-examples.sh above
   # only compiles them. Port 8940 is the runner's own; the frontend of official-sites uses 8941.
   examples:
@@ -198,9 +198,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      TP_BIN: ${{ github.workspace }}/target/debug/typedpress
-      TP_EXAMPLE_PORT: '8940'
-      TP_EXAMPLE_FRONTEND_PORT: '8941'
+      SP_BIN: ${{ github.workspace }}/target/debug/spacepress
+      SP_EXAMPLE_PORT: '8940'
+      SP_EXAMPLE_FRONTEND_PORT: '8941'
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       # The official-source suite needs Node.js 22.23.4 or newer (examples/emdash/test.mjs).
@@ -220,7 +220,7 @@ jobs:
             ~/.cargo/git
             target
           key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
-      - run: cargo build --locked --bin typedpress
+      - run: cargo build --locked --bin spacepress
       # The files-sdk probe runs nightly in files-sdk.yml: with --expect-red it reports rather than
       # gates, and it took most of this job.
       - name: Example HTTP verifiers on WordPress
@@ -228,14 +228,14 @@ jobs:
       - name: EmDash counterparts on WordPress
         run: node examples/emdash/test.mjs publishing agents platform official-source
       - name: Subscriptions calendar
-        run: node --test examples/subscriptions/tp/lib/calendar.test.mjs
+        run: node --test examples/subscriptions/sp/lib/calendar.test.mjs
 
   www:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       PLUGINS_URL: http://localhost:8960
-      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
+      SP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.sp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -254,7 +254,7 @@ jobs:
           key: rust-www-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: .tp/cache/plugins
+          path: .sp/cache/plugins
           key: plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: npm run build --prefix www
       - run: tsc --project www/tsconfig.json
@@ -274,7 +274,7 @@ jobs:
       - run: cargo build --locked --no-default-features --features host --target x86_64-unknown-linux-musl
       - run: cargo clippy --locked --lib --no-default-features --target wasm32-unknown-unknown -- -D warnings
       - run: cargo build --locked --lib --no-default-features --profile wasm --target wasm32-unknown-unknown
-      - run: cargo build --locked --bin typedpress
+      - run: cargo build --locked --bin spacepress
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .node-version
@@ -379,7 +379,7 @@ jobs:
       - run: npm install --global typescript@5.9.3
       - run: npm ci --prefix tests/host-types --ignore-scripts --no-audit --no-fund
       - run: tsc -p tests/host-types
-      - run: tsc -p types/typedpress/tests
+      - run: tsc -p types/spacepress/tests
       # The WordPress hook catalog and its declarations match the pinned sources.
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -394,14 +394,14 @@ jobs:
       - run: node --test runtime/client/*.test.ts
       - run: node --test examples/showcase/build-app.test.mjs examples/showcase/rebuild-service.test.mjs
       - run: node --test scripts/dev/studio.test.mjs
-      - run: node --test packages/cli/test/*.test.mjs packages/create-typedpress/test/*.test.mjs scripts/release/archive.test.mjs
+      - run: node --test packages/cli/test/*.test.mjs packages/create-spacepress/test/*.test.mjs scripts/release/archive.test.mjs
 
   wp:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
-      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
+      SP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.sp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -422,7 +422,7 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .tp/cache/plugins
+            .sp/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: corepack enable
@@ -442,7 +442,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wp-admin-browser-${{ github.run_attempt }}
-          path: /tmp/typedpress-admin-browser
+          path: /tmp/spacepress-admin-browser
           if-no-files-found: ignore
           retention-days: 7
 
@@ -451,7 +451,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
+      SP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.sp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -472,16 +472,16 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .tp/cache/plugins
+            .sp/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: cargo build --locked --workspace
       - name: Source, content and account imports
-        run: TP_WP_PROJECT=typedpress-wp-migrate TP_WP_PORT=8794 migrate/tests/wp/migrate-run.sh
+        run: SP_WP_PROJECT=spacepress-wp-migrate SP_WP_PORT=8794 migrate/tests/wp/migrate-run.sh
       - name: Documented import workflow
-        run: TP_WP_PROJECT=typedpress-wp-import-system TP_WP_PORT=8809 migrate/tests/wp/legacy/system-run.sh
+        run: SP_WP_PROJECT=spacepress-wp-import-system SP_WP_PORT=8809 migrate/tests/wp/legacy/system-run.sh
       - name: Spacefast cross-prefix content and account import
-        run: TP_WP_PROJECT=typedpress-wp-spacefast TP_WP_PORT=8892 migrate/tests/wp/legacy/spacefast-run.sh
+        run: SP_WP_PROJECT=spacepress-wp-spacefast SP_WP_PORT=8892 migrate/tests/wp/legacy/spacefast-run.sh
 
   # Schema checks, seeding, outbound fetch and WordPress abilities: split from wp-migrate, which
   # ran past its timeout once both halves shared one runner.
@@ -495,7 +495,7 @@ jobs:
       matrix:
         lanes: [schema, store]
     env:
-      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
+      SP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.sp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -516,47 +516,47 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .tp/cache/plugins
+            .sp/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
-      - run: cargo build --locked --bin typedpress
+      - run: cargo build --locked --bin spacepress
       - name: Deploy-time schema check against live rows
         if: matrix.lanes == 'schema'
-        run: TP_WP_PROJECT=typedpress-wp-schema-check TP_WP_PORT=8902 tests/wp/schema-check/run.sh
-      - name: TypedPress-publish seed and sync adoption
+        run: SP_WP_PROJECT=spacepress-wp-schema-check SP_WP_PORT=8902 tests/wp/schema-check/run.sh
+      - name: SpacePress-publish seed and sync adoption
         if: matrix.lanes == 'schema'
-        run: TP_WP_PROJECT=typedpress-wp-seed TP_WP_PORT=8897 tests/wp/seed-run.sh
+        run: SP_WP_PROJECT=spacepress-wp-seed SP_WP_PORT=8897 tests/wp/seed-run.sh
       - name: Outbound fetch with SSRF refusals
         if: matrix.lanes == 'schema'
-        run: TP_WP_PROJECT=typedpress-wp-fetch TP_WP_PORT=8899 tests/wp/fetch/run.sh
+        run: SP_WP_PROJECT=spacepress-wp-fetch SP_WP_PORT=8899 tests/wp/fetch/run.sh
       - name: WordPress abilities and wp-hooks from TypeScript
         if: matrix.lanes == 'schema'
-        run: TP_WP_PROJECT=typedpress-wp-wordpress TP_WP_PORT=8898 tests/wp/wordpress/run.sh
+        run: SP_WP_PROJECT=spacepress-wp-wordpress SP_WP_PORT=8898 tests/wp/wordpress/run.sh
       - name: Opinionated WordPress hardening, and stock WordPress without an app
         if: matrix.lanes == 'schema'
-        run: TP_WP_PROJECT=typedpress-wp-hardening TP_WP_PORT=8896 tests/wp/hardening/run.sh
+        run: SP_WP_PROJECT=spacepress-wp-hardening SP_WP_PORT=8896 tests/wp/hardening/run.sh
       - name: Sealed mode on its own stack
         if: matrix.lanes == 'store'
-        run: TP_WP_PROJECT=typedpress-wp-sealed TP_WP_PORT=8895 tests/wp/hardening/sealed-run.sh
+        run: SP_WP_PROJECT=spacepress-wp-sealed SP_WP_PORT=8895 tests/wp/hardening/sealed-run.sh
       - name: Build store, managed initialize, and inspecting a candidate without changing the site
         if: matrix.lanes == 'store'
-        run: TP_WP_PROJECT=typedpress-wp-store TP_WP_PORT=8901 tests/wp/store-run.sh
+        run: SP_WP_PROJECT=spacepress-wp-store SP_WP_PORT=8901 tests/wp/store-run.sh
       - name: A managed build installs only from initialize, and installs what plugins install on boot
         if: matrix.lanes == 'store'
-        run: TP_WP_PROJECT=typedpress-wp-store-install TP_WP_PORT=8903 tests/wp/store-install-run.sh
-      - name: The TypedPress plugin on a stock WordPress, with typedpress login and typedpress push
+        run: SP_WP_PROJECT=spacepress-wp-store-install SP_WP_PORT=8903 tests/wp/store-install-run.sh
+      - name: The SpacePress plugin on a stock WordPress, with spacepress login and spacepress push
         if: matrix.lanes == 'store'
-        run: TP_WP_PROJECT=typedpress-wp-plugin TP_WP_PORT=8905 tests/wp/plugin/run.sh
-      - name: The TypedPress plugin on a WordPress network, one app per site
+        run: SP_WP_PROJECT=spacepress-wp-plugin SP_WP_PORT=8905 tests/wp/plugin/run.sh
+      - name: The SpacePress plugin on a WordPress network, one app per site
         if: matrix.lanes == 'store'
-        run: TP_WP_PROJECT=typedpress-wp-plugin-ms TP_WP_PORT=8907 tests/wp/plugin/multisite-run.sh
+        run: SP_WP_PROJECT=spacepress-wp-plugin-ms SP_WP_PORT=8907 tests/wp/plugin/multisite-run.sh
 
   wp-s3:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
+      SP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.sp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -577,19 +577,19 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .tp/cache/plugins
+            .sp/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - name: Shared S3 storage across disposable replicas
-        run: TP_WP_PROJECT=typedpress-wp-s3 TP_WP_PORT=8792 TP_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
+        run: SP_WP_PROJECT=spacepress-wp-s3 SP_WP_PORT=8792 SP_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
 
-  # Hosted typedpress/app pages, client components in Chromium and route.ts handlers, from `typedpress compile-sources`.
+  # Hosted spacepress/app pages, client components in Chromium and route.ts handlers, from `spacepress compile-sources`.
   wp-pages:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
+      SP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.sp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -610,23 +610,23 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .tp/cache/plugins
+            .sp/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
-      - run: cargo build --locked --bin typedpress
+      - run: cargo build --locked --bin spacepress
       - name: Hosted pages, client components, action and HTTP routes from compile-sources
         run: |
           npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
           npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
-          TP_WP_PROJECT=typedpress-wp-pages TP_WP_PORT=8873 tests/wp/hosted-pages-run.sh
+          SP_WP_PROJECT=spacepress-wp-pages SP_WP_PORT=8873 tests/wp/hosted-pages-run.sh
 
-  # `typedpress dev` from a release binary after removing its build checkout.
+  # `spacepress dev` from a release binary after removing its build checkout.
   installed:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
+      SP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.sp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -646,7 +646,7 @@ jobs:
           key: rust-release-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: .tp/cache/plugins
+          path: .sp/cache/plugins
           key: plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: tests/wp/installed/run.sh
 
@@ -655,7 +655,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
+      SP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.sp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -676,7 +676,7 @@ jobs:
           key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: .tp/cache/plugins
+          path: .sp/cache/plugins
           key: plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: tests/system/run.sh
 

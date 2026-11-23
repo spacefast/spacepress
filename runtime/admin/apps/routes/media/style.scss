@@ -49,8 +49,8 @@
 	}
 }
 
-.typedpress-admin-post-list-inspector__form {
-	// Fix tertiary button styles that differ between the TypedPress Admin design system and Gutenberg.
+.spacepress-admin-post-list-inspector__form {
+	// Fix tertiary button styles that differ between the SpacePress Admin design system and Gutenberg.
 	// This ensures readonly fields display as simple data, and don't look like a disabled button.
 	.dataforms-layouts-panel__field-control
 		.components-button.is-tertiary[aria-disabled="true"] {

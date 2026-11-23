@@ -119,7 +119,7 @@ for (const input of inputs) {
       dir = dirname(dir);
       continue;
     }
-    if (!pkg.name.startsWith("@typedpress-admin/")) {
+    if (!pkg.name.startsWith("@spacepress-admin/")) {
       const key = pkg.name + "@" + pkg.version;
       if (!licenses.has(key)) {
         const entries = await readdir(dir);

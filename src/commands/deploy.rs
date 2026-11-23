@@ -10,13 +10,13 @@ pub(crate) fn write_metadata(stage: &std::path::Path, built: &crate::pipeline::B
         "destructiveChanges": built.warnings,
     });
     crate::emit::write(
-        &stage.join("typedpress-deployment.json"),
+        &stage.join("spacepress-deployment.json"),
         serde_json::to_vec_pretty(&value)?,
     )?;
     Ok(())
 }
 
-/// `typedpress deploy <mode> …`: the offline adapter (runtime/TypedPress/Deployment/Local.php) on its own PHP.
+/// `spacepress deploy <mode> …`: the offline adapter (runtime/SpacePress/Deployment/Local.php) on its own PHP.
 pub(crate) fn adapter(args: &[String]) -> ExitCode {
     let result = (|| -> std::io::Result<ExitCode> {
         let directory = tempfile::tempdir()?;
@@ -24,22 +24,22 @@ pub(crate) fn adapter(args: &[String]) -> ExitCode {
             ("entry.php", include_bytes!("../../scripts/deploy/local.php").as_slice()),
             (
                 "Json.php",
-                include_bytes!("../../runtime/TypedPress/Json.php").as_slice(),
+                include_bytes!("../../runtime/SpacePress/Json.php").as_slice(),
             ),
-            ("Env.php", include_bytes!("../../runtime/TypedPress/Env.php").as_slice()),
+            ("Env.php", include_bytes!("../../runtime/SpacePress/Env.php").as_slice()),
             (
                 "Artifact.php",
-                include_bytes!("../../runtime/TypedPress/Deployment/Artifact.php").as_slice(),
+                include_bytes!("../../runtime/SpacePress/Deployment/Artifact.php").as_slice(),
             ),
             (
                 "Local.php",
-                include_bytes!("../../runtime/TypedPress/Deployment/Local.php").as_slice(),
+                include_bytes!("../../runtime/SpacePress/Deployment/Local.php").as_slice(),
             ),
         ] {
             let mut file = std::fs::File::create(directory.path().join(name))?;
             file.write_all(bytes)?;
         }
-        let status = Command::new(std::env::var_os("TP_DEPLOY_PHP").unwrap_or_else(|| "php".into()))
+        let status = Command::new(std::env::var_os("SP_DEPLOY_PHP").unwrap_or_else(|| "php".into()))
             .arg(directory.path().join("entry.php"))
             .args(args)
             .status()?;

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
 
 use function in_array;
 use LogicException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\T61String;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\T61String;
 use function sprintf;
 
 /**

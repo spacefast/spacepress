@@ -29,11 +29,11 @@ $html = new DOMDocument();
 $xpath = new DOMXPath($html);
 
 $inlineStyles = [];
-foreach ($xpath->query('//style[starts-with(@id, "typedpress-app-")]') as $s) {
+foreach ($xpath->query('//style[starts-with(@id, "spacepress-app-")]') as $s) {
     $inlineStyles[] = trim($s->textContent);
 }
 $externalStyles = [];
-foreach ($xpath->query('//link[@rel="stylesheet"][starts-with(@id, "typedpress-app-")]') as $l) {
+foreach ($xpath->query('//link[@rel="stylesheet"][starts-with(@id, "spacepress-app-")]') as $l) {
     $href = (string) $l->getAttribute('href');
     $r = fetchUrl($href);
     $externalStyles[] = ['file' => basename((string) parse_url($href, PHP_URL_PATH)), 'status' => $r['status'], 'len' => strlen($r['body'])];

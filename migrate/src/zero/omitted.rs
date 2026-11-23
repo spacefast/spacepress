@@ -12,7 +12,7 @@ use regex::{Regex, RegexBuilder};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use typedpress::loader::Fs;
+use spacepress::loader::Fs;
 
 pub(super) const CLIENT: &str = "the 0.8 client app is not carried over";
 pub(super) const PAGES: &str = "the 0.8 page is not carried over";
@@ -48,7 +48,7 @@ static OS_METADATA_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(OS_METADA
 /// content, and nearly every local checkout has one, so they are skipped without an error.
 const SKIPPED_DIRECTORIES: &[&str] = &[".git", ".hg", ".svn", "node_modules", ".spacefast", ".stattic"];
 /// Directories 0.8 never published beyond the deny list (publish-policy's `IGNORED_SEGMENTS`).
-const UNPUBLISHED_DIRECTORIES: &[&str] = &[".wrangler", ".vercel", ".netlify", ".turbo", ".cache", ".tp"];
+const UNPUBLISHED_DIRECTORIES: &[&str] = &[".wrangler", ".vercel", ".netlify", ".turbo", ".cache", ".sp"];
 /// publish-policy's `publishPathIgnored` beyond its segment lists: Next's build cache and the
 /// CLI's own temporary and lock files, at any depth (matched on the lowercased path).
 const IGNORED_PATH_PATTERN: &str = r"(?:^|/)\.next/cache(?:/|$)|(?:^|/)\.spacefast-(?:[0-9a-f-]{36}\.(?:tmp(?:\.mjs)?|rollback|retired)|[0-9a-f]{24}\.lock)$";
@@ -127,7 +127,7 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 /// - `redirects`: the rules stage runs before entries, pages and WordPress, and a redirect doesn't
 ///   yield to an existing path (monorepo runtime/engine/runtime/serve.php, redirects.php). Only
 ///   when no rule can reach a URL the v2 app answers that 0.8 kept out of the redirect stage:
-///   WordPress's and TypedPress's paths (`/wp-json/typedpress/v1/*` and `/wp-json/*`; reserved first segments,
+///   WordPress's and SpacePress's paths (`/wp-json/spacepress/v1/*` and `/wp-json/*`; reserved first segments,
 ///   as 0.8's data URLs were) and the folders the candidate serves (see `redirect_reaches_app`).
 /// - `cleanUrls`, `index`: compiled over the static files, which v2 publishes from public/.
 /// - `analytics`, `system`: frozen from the file config whatever the runtime.
@@ -137,7 +137,7 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 ///   `/wp-json` lane enforces it through the same access engine (see `carries`).
 ///
 /// Every other key is refused. Path rules don't survive the move, because the app's data URLs
-/// move from 0.8's `/__zero/*` to TypedPress's `/wp-json/typedpress/v1/*`: so `access` path patterns, `cache`
+/// move from 0.8's `/__zero/*` to SpacePress's `/wp-json/spacepress/v1/*`: so `access` path patterns, `cache`
 /// and `firewall` are refused, as is `sell` (its product file and paid assets would be swept into
 /// public/).
 ///
@@ -203,10 +203,10 @@ pub(super) fn carries(key: &str, value: &serde_json::Value, served: &BTreeSet<St
 /// - an absolute URL or an empty source;
 /// - a first segment holding a pattern character (the engine compiles `:name` anywhere in a
 ///   segment to `[^/]+`, so `/w:x` matches `/wp-json`, and `*` to a splat);
-/// - a first segment WordPress or TypedPress owns (`app::RESERVED_TP`, `wp-json` among them), or one
+/// - a first segment WordPress or SpacePress owns (`app::RESERVED_SP`, `wp-json` among them), or one
 ///   starting with `wp-` (WordPress's own entry points);
 /// - a first segment the candidate serves files under (`served`, from its public/ tree: the
-///   converted client's `app/`, `tp/` and stylesheet folders, and the carried static files).
+///   converted client's `app/`, `sp/` and stylesheet folders, and the carried static files).
 ///
 /// The last one is read from what the candidate writes, so it covers every folder the converter
 /// adds. A carried static file keeps its 0.8 path and was a table entry on 0.8 too, so a rule
@@ -227,7 +227,7 @@ fn redirect_reaches_app(rule: &serde_json::Value, served: &BTreeSet<String>) -> 
     first.is_empty()
         || first.contains([':', '*'])
         || lower.starts_with("wp-")
-        || typedpress::app::RESERVED_TP.contains(&lower.as_str())
+        || spacepress::app::RESERVED_SP.contains(&lower.as_str())
         || served.contains(&lower)
 }
 /// The WordPress-style theme file 0.8 read for the pages' theme tokens (`THEME_JSON_FILE`).
@@ -628,7 +628,7 @@ pub(super) fn sweep(
         if name == "index.html" && client_app {
             continue;
         }
-        let reserved = typedpress::app::RESERVED_TP.contains(&first.to_ascii_lowercase().as_str());
+        let reserved = spacepress::app::RESERVED_SP.contains(&first.to_ascii_lowercase().as_str());
         match fs.read_to_string(&root.join(&relative)) {
             Ok(text) if !reserved => {
                 out.files.insert(format!("public/{name}"), text);
@@ -636,7 +636,7 @@ pub(super) fn sweep(
             }
             Ok(_) => errors.push(file(fail(
                 &at,
-                format!("{STATIC}: /{first} belongs to WordPress or TypedPress on v2"),
+                format!("{STATIC}: /{first} belongs to WordPress or SpacePress on v2"),
             ))),
             // Binary files (images, fonts) need byte-exact copies, which the text candidate can't hold.
             Err(_) => errors.push(file(fail(
@@ -735,7 +735,7 @@ mod tests {
     /// A redirect is carried only when its first segment is a literal nothing on v2 answers.
     #[test]
     fn a_redirect_reaches_the_app_unless_its_first_segment_is_a_free_literal() {
-        let served: std::collections::BTreeSet<String> = ["app", "tp", "client", "assets"].map(String::from).into();
+        let served: std::collections::BTreeSet<String> = ["app", "sp", "client", "assets"].map(String::from).into();
         for (source, reaches) in [
             ("/", false),
             ("/old", false),
@@ -743,7 +743,7 @@ mod tests {
             // Any wp- first segment is WordPress territory, so even an unknown one is refused.
             ("/wp-jsonx/a", true),
             ("/wp-json/*", true),
-            ("/WP-JSON/tp", true),
+            ("/WP-JSON/sp", true),
             ("/*", true),
             ("/:lang/*", true),
             ("/a*", true),
@@ -753,12 +753,12 @@ mod tests {
             ("/w:x", true),
             // The converted client app's modules and runtime live under these on v2.
             ("/app/*", true),
-            ("/tp/client.js", true),
-            // WordPress and TypedPress reserve these first segments.
+            ("/sp/client.js", true),
+            // WordPress and SpacePress reserve these first segments.
             ("/wp-admin/*", true),
             ("/wp-content/uploads/*", true),
             ("/identity", true),
-            ("/typedpress-admin", false),
+            ("/spacepress-admin", false),
             ("/apps/old", false),
             // Any folder the candidate serves, read from its public/ tree, and WordPress's wp-*.
             ("/client/*", true),

@@ -1,7 +1,7 @@
-// Written by `typedpress add api-reference`; yours to change. One operation: who may call it, what it
+// Written by `spacepress add api-reference`; yours to change. One operation: who may call it, what it
 // takes and answers, and a request to copy.
-import { Html, Link, notFound, type PageProps } from "typedpress/app";
-import { apiReference } from "typedpress/content";
+import { Html, Link, notFound, type PageProps } from "spacepress/app";
+import { apiReference } from "spacepress/content";
 import { ApiFields } from "../../../../components/ApiFields";
 
 export const metadata = ({ params }: PageProps<"api/[tag]/[operation]">) => {

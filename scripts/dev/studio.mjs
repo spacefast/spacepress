@@ -56,7 +56,7 @@ async function studioBinary() {
     const pkg = await json(packagePath);
     if (pkg.name === 'wp-studio' && pkg.version === STUDIO_VERSION) return main;
   }
-  throw new Error(`Cannot find wp-studio@${STUDIO_VERSION}. Run typedpress dev with Node.js 22+ and npm installed.`);
+  throw new Error(`Cannot find wp-studio@${STUDIO_VERSION}. Run spacepress dev with Node.js 22+ and npm installed.`);
 }
 
 function execute(file, args, { capture = false, log = false, timeout = 180000, env = process.env, input = 'ignore' } = {}) {
@@ -84,7 +84,7 @@ async function plainDirectory(path) {
 }
 
 export async function ownedState(project, create) {
-  const first = join(project, '.tp');
+  const first = join(project, '.sp');
   if (await exists(first)) await plainDirectory(first);
   else if (create) await mkdir(first);
   const state = join(first, 'dev');
@@ -99,7 +99,7 @@ export async function ownedState(project, create) {
     if (await exists(owner.site)) await plainDirectory(owner.site);
     return { state, marker, owner };
   }
-  if (!create) throw new Error('No local development site. Run typedpress dev first.');
+  if (!create) throw new Error('No local development site. Run spacepress dev first.');
   await mkdir(state, { mode: 0o700 });
   const owner = { version: 1, project, site: join(state, 'wordpress'), generated: [], created: false };
   await atomicJson(marker, owner);
@@ -112,16 +112,16 @@ export async function lock(state) {
   try { await mkdir(gate); }
   catch (error) {
     if (error.code !== 'EEXIST') throw error;
-    throw new Error('Another command is acquiring the development site. If it was interrupted, inspect .tp/dev/session-claim.');
+    throw new Error('Another command is acquiring the development site. If it was interrupted, inspect .sp/dev/session-claim.');
   }
   try {
     if (await exists(path)) {
       const session = await json(path).catch(() => null);
-      if (!Number.isSafeInteger(session?.pid) || session.pid <= 0) throw new Error('Development lock is incomplete; inspect .tp/dev/session.json before removing it.');
+      if (!Number.isSafeInteger(session?.pid) || session.pid <= 0) throw new Error('Development lock is incomplete; inspect .sp/dev/session.json before removing it.');
       let active = true;
       try { process.kill(session.pid, 0); }
       catch (error) { if (error.code !== 'ESRCH') throw error; active = false; }
-      if (active) throw new Error('Another typedpress dev command owns this project. Use typedpress dev stop first.');
+      if (active) throw new Error('Another spacepress dev command owns this project. Use spacepress dev stop first.');
       await rm(path);
     }
     const file = await open(path, 'wx', 0o600);
@@ -134,7 +134,7 @@ export async function lock(state) {
 }
 
 export async function migrationHistory(project) {
-  const directory = join(project, 'tp/_generated/migrations');
+  const directory = join(project, 'sp/_generated/migrations');
   if (!await exists(directory)) return {};
   const history = {};
   const entries = await readdir(directory, { withFileTypes: true });
@@ -151,16 +151,16 @@ export async function migrationHistory(project) {
 }
 
 async function appRevision(content) {
-  const manifest = await readFile(join(content, 'typedpress-manifest.json'));
+  const manifest = await readFile(join(content, 'spacepress-manifest.json'));
   const { app } = JSON.parse(manifest);
-  const plugin = await readFile(join(content, 'plugins', `typedpress-app-${app}.zip`));
+  const plugin = await readFile(join(content, 'plugins', `spacepress-app-${app}.zip`));
   return createHash('sha256').update(manifest).update(plugin).digest('hex');
 }
 
 const fileHash = async (path) => createHash('sha256').update(await readFile(path)).digest('hex');
 
 // What identifies each plugin's files in a build: the hash of the ZIP the build wrote beside the
-// folder (TypedPress's own plugins), else the tree hash the manifest pins (a dependency), else the
+// folder (SpacePress's own plugins), else the tree hash the manifest pins (a dependency), else the
 // version. A plugin whose print is unchanged since the last publish is not copied again.
 export async function pluginPrints(content, manifest) {
   const prints = {};
@@ -182,7 +182,7 @@ async function availablePort(port) {
 
 // `changed(slug)` says whether a plugin's files differ from what the site holds; by default all do.
 export async function publishPlugins(content, managed, changed = () => true) {
-  const manifest = await json(join(content, 'typedpress-manifest.json'));
+  const manifest = await json(join(content, 'spacepress-manifest.json'));
   if (managed.owner.app && managed.owner.app !== manifest.app) {
     throw new Error('Changing the application name needs a separate local site; the existing app and data were preserved.');
   }
@@ -195,13 +195,13 @@ export async function publishPlugins(content, managed, changed = () => true) {
     const destination = join(target, slug);
     if (await exists(destination)) {
       await plainDirectory(destination);
-      if (!managed.owner.generated.includes(slug)) throw new Error(`Plugin ${slug} already exists and is not managed by TypedPress. Move or rename it before continuing.`);
+      if (!managed.owner.generated.includes(slug)) throw new Error(`Plugin ${slug} already exists and is not managed by SpacePress. Move or rename it before continuing.`);
     }
   }
   for (const slug of plugins) {
     const destination = join(target, slug);
     if (!changed(slug) && managed.owner.generated.includes(slug) && await exists(destination)) continue;
-    const stage = join(target, `.tp-${slug}-${randomUUID()}`);
+    const stage = join(target, `.sp-${slug}-${randomUUID()}`);
     const backup = `${stage}.previous`;
     await cp(join(content, 'plugins', slug), stage, { recursive: true, dereference: true });
     const previous = await exists(destination);
@@ -220,8 +220,8 @@ export async function publishPlugins(content, managed, changed = () => true) {
       await atomicJson(managed.marker, managed.owner);
     }
   }
-  const activate = [...manifest.dependencies.map((d) => d.slug), 'typedpress-runtime'];
-  for (const slug of ['typedpress-identity', `typedpress-app-${manifest.app}`, 'typedpress-admin']) {
+  const activate = [...manifest.dependencies.map((d) => d.slug), 'spacepress-runtime'];
+  for (const slug of ['spacepress-identity', `spacepress-app-${manifest.app}`, 'spacepress-admin']) {
     if (plugins.includes(slug)) activate.push(slug);
   }
   const spec = {
@@ -236,8 +236,8 @@ export async function publishPlugins(content, managed, changed = () => true) {
   return { manifest, activate, spec };
 }
 
-// `typedpress dev --url` and `--host`: the address WordPress writes into every page (`url`), and the
-// address of this machine TypedPress listens on (`listen`). Studio 2.2.0 serves a site on localhost
+// `spacepress dev --url` and `--host`: the address WordPress writes into every page (`url`), and the
+// address of this machine SpacePress listens on (`listen`). Studio 2.2.0 serves a site on localhost
 // only, and names it http://localhost:<port> or a `.local` domain behind its own proxy on ports
 // 80 and 443, so neither is Studio's to set.
 // A host name as DNS spells it: letters, digits and hyphens between dots. Nothing else reaches the
@@ -261,7 +261,7 @@ export function siteAddress(flags, port) {
     // A scoped IPv6 address (fe80::1%eth0) has no form in a URL WordPress can write.
     const named = isIP(host) ? !unspecified(host) && !host.includes('%') : HOSTNAME.test(host) && !/^[0-9.]+$/.test(host);
     if (!named) throw new Error('--host takes one address or name of this machine, such as 10.0.0.24 (ip -4 addr lists them).');
-    if (flags.includes('--no-watch')) throw new Error('--host needs typedpress dev to keep running, because that process is what listens there. Use --detach instead of --no-watch.');
+    if (flags.includes('--no-watch')) throw new Error('--host needs spacepress dev to keep running, because that process is what listens there. Use --detach instead of --no-watch.');
     url = `http://${isIP(host) === 6 ? `[${host}]` : host}:${port}`;
   }
   if (announced !== undefined) {
@@ -295,30 +295,30 @@ const phpString = (text) => `'${text.replaceAll('\\', '\\\\').replaceAll("'", "\
 // host and scheme are the address too, as WordPress documents for a site behind a proxy, but from
 // this file instead of a header any client can send.
 export const addressPhp = (url) => `<?php
-// Written by typedpress dev --url / --host, and removed by a start without them.
-$tp_dev_url = ${phpString(url)};
-$_SERVER['HTTP_HOST'] = substr( $tp_dev_url, strpos( $tp_dev_url, '://' ) + 3 );
-if ( 0 === strpos( $tp_dev_url, 'https://' ) ) {
+// Written by spacepress dev --url / --host, and removed by a start without them.
+$sp_dev_url = ${phpString(url)};
+$_SERVER['HTTP_HOST'] = substr( $sp_dev_url, strpos( $sp_dev_url, '://' ) + 3 );
+if ( 0 === strpos( $sp_dev_url, 'https://' ) ) {
 	$_SERVER['HTTPS'] = 'on';
 }
-$tp_dev_address = static function () use ( $tp_dev_url ) {
-	return $tp_dev_url;
+$sp_dev_address = static function () use ( $sp_dev_url ) {
+	return $sp_dev_url;
 };
-foreach ( array( 'pre_option_home', 'pre_option_siteurl' ) as $tp_dev_option ) {
+foreach ( array( 'pre_option_home', 'pre_option_siteurl' ) as $sp_dev_option ) {
 	if ( function_exists( 'add_filter' ) ) {
-		add_filter( $tp_dev_option, $tp_dev_address );
+		add_filter( $sp_dev_option, $sp_dev_address );
 	} else {
-		$GLOBALS['wp_filter'][ $tp_dev_option ][10][] = array( 'function' => $tp_dev_address, 'accepted_args' => 1 );
+		$GLOBALS['wp_filter'][ $sp_dev_option ][10][] = array( 'function' => $sp_dev_address, 'accepted_args' => 1 );
 	}
 }
-unset( $tp_dev_url, $tp_dev_address, $tp_dev_option );
+unset( $sp_dev_url, $sp_dev_address, $sp_dev_option );
 `;
 
-const ADDRESS_FILE = 'tp-dev-address.php';
-const ADDRESS_LINE = `if ( is_file( ABSPATH . '${ADDRESS_FILE}' ) ) { require ABSPATH . '${ADDRESS_FILE}'; } // typedpress dev --url / --host`;
+const ADDRESS_FILE = 'sp-dev-address.php';
+const ADDRESS_LINE = `if ( is_file( ABSPATH . '${ADDRESS_FILE}' ) ) { require ABSPATH . '${ADDRESS_FILE}'; } // spacepress dev --url / --host`;
 
 // Where in wp-config.php the address line goes, found by PHP's own tokenizer: PHP code that reads
-// the file at the path in $tp_config and prints the byte offset of the `require_once ABSPATH .
+// the file at the path in $sp_config and prints the byte offset of the `require_once ABSPATH .
 // 'wp-settings.php';` that loads WordPress, or -1 when the file is not shaped so that it surely is
 // that one. The require must be the file's last code (only whitespace, comments, a `?>` and blank
 // text after it), as in wp-config-sample.php and the configs WordPress and Studio write, and the
@@ -333,7 +333,7 @@ const ADDRESS_LINE = `if ( is_file( ABSPATH . '${ADDRESS_FILE}' ) ) { require AB
 export const SETTINGS_OFFSET = String.raw`
 $code = array();
 $offset = 0;
-foreach (token_get_all(file_get_contents($tp_config)) as $token) {
+foreach (token_get_all(file_get_contents($sp_config)) as $token) {
   $id = is_array($token) ? $token[0] : null;
   $text = is_array($token) ? $token[1] : $token;
   $skip = in_array($id, array(T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_CLOSE_TAG), true) || ($id === T_INLINE_HTML && trim($text) === '');
@@ -385,7 +385,7 @@ export function withAddressLine(config, offset) {
 
 // `php(code)` runs PHP code and answers what it printed.
 export const settingsOffset = async (php, config) => {
-  const out = (await php(`$tp_config = ${phpString(config)};${SETTINGS_OFFSET}`)).trim();
+  const out = (await php(`$sp_config = ${phpString(config)};${SETTINGS_OFFSET}`)).trim();
   if (!/^-?\d+$/.test(out)) throw new Error(`Could not read wp-config.php with PHP's tokenizer: ${out.slice(0, 200)}`);
   return Number(out);
 };
@@ -424,46 +424,46 @@ export async function forward(host, port, upstream) {
   };
 }
 
-// Directory names never watched anywhere, and the project paths TypedPress writes itself.
-const IGNORED_NAMES = new Set(['.tp', '.git', 'node_modules']);
-// public/typedpress-assets is the compiler's output too: a build writes the browser entries' bundle
+// Directory names never watched anywhere, and the project paths SpacePress writes itself.
+const IGNORED_NAMES = new Set(['.sp', '.git', 'node_modules']);
+// public/spacepress-assets is the compiler's output too: a build writes the browser entries' bundle
 // there again, which must not read as a source change and start the next build.
-const GENERATED = new Set(['tp/_generated', 'tp/dist', 'public/typedpress-styles', 'public/typedpress-assets']);
+const GENERATED = new Set(['sp/_generated', 'sp/dist', 'public/spacepress-styles', 'public/spacepress-assets']);
 const ignoredPath = (name) => IGNORED_NAMES.has(name.split('/').at(-1)) || GENERATED.has(name);
-const isSource = (name) => /\.(?:[cm]?[jt]sx?|css|svg)$/.test(name) || name.split('/')[0] === 'public' || /^tp\/app\/(.*\/)?page\.md$/.test(name) || name === 'tp/theme.json' || name === 'package.json';
+const isSource = (name) => /\.(?:[cm]?[jt]sx?|css|svg)$/.test(name) || name.split('/')[0] === 'public' || /^sp\/app\/(.*\/)?page\.md$/.test(name) || name === 'sp/theme.json' || name === 'package.json';
 // Tailwind can scan markup and Vite can read fonts and images referenced from CSS.
 const isFrontendSource = (name) => /\.(?:html?|mdx?|png|jpe?g|gif|webp|avif|woff2?|ttf|otf)$/.test(name);
 
-// The Studio site's must-use plugin, written on every start. While `typedpress dev` watches,
+// The Studio site's must-use plugin, written on every start. While `spacepress dev` watches,
 // live.json (scripts/dev/live.mjs) names the session and its build, and every document a person
 // opens carries the reload client, all from the site's own address.
 export const DEV_PLUGIN = `<?php
-// Written by typedpress dev. Local development only.
+// Written by spacepress dev. Local development only.
 // Allow identity callbacks on the site's HTTP origin.
-if (!defined('TP_IDENTITY_DEV_HTTP')) define('TP_IDENTITY_DEV_HTTP', true);
+if (!defined('SP_IDENTITY_DEV_HTTP')) define('SP_IDENTITY_DEV_HTTP', true);
 // Studio's PHP looks at a file's modification time at most every two seconds
 // (opcache.revalidate_freq=2), so a request just after a rebuild would run the previous build's
 // code. From here on (the plugins load after this file) every request checks.
 ini_set('opcache.revalidate_freq', '0');
 (static function () {
-    // What typedpress dev publishes while it watches. With none (--no-watch, or it stopped), the
+    // What spacepress dev publishes while it watches. With none (--no-watch, or it stopped), the
     // site is as a build leaves it.
-    $state = __DIR__ . '/typedpress-dev/live.json';
+    $state = __DIR__ . '/spacepress-dev/live.json';
     $live = is_readable($state) ? json_decode((string) file_get_contents($state), true) : null;
     if (!is_array($live) || !isset($live['session'], $live['revision'])) return;
-    // A page rendered to be kept (a prerender, typedpress export) carries no reload client.
-    if (isset($_SERVER['HTTP_X_TYPEDPRESS_PRERENDER']) || isset($_SERVER['HTTP_X_TYPEDPRESS_EXPORT'])) return;
+    // A page rendered to be kept (a prerender, spacepress export) carries no reload client.
+    if (isset($_SERVER['HTTP_X_SPACEPRESS_PRERENDER']) || isset($_SERVER['HTTP_X_SPACEPRESS_EXPORT'])) return;
     // Pages render from the current build on each request, never from a prerendered file.
-    add_filter('tp_prebuilt_serve', '__return_false');
+    add_filter('sp_prebuilt_serve', '__return_false');
     // A reload sends the request again, so only a GET answer carries the client: never the page a
     // form submission returns (wp-login.php after a failed login), which a reload would resubmit.
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') return;
-    $client = static fn (): string => plugins_url('typedpress-dev/live-client.js', __FILE__);
+    $client = static fn (): string => plugins_url('spacepress-dev/live-client.js', __FILE__);
     $enqueue = static function () use ($live, $client): void {
-        wp_enqueue_script('typedpress-dev', add_query_arg('build', $live['session'] . '.' . (int) $live['revision'], $client()), [], null, ['strategy' => 'defer']);
+        wp_enqueue_script('spacepress-dev', add_query_arg('build', $live['session'] . '.' . (int) $live['revision'], $client()), [], null, ['strategy' => 'defer']);
     };
-    // Themed pages, the login page, wp-admin, and TypedPress Admin, which prints its own document.
-    foreach (['wp_enqueue_scripts', 'login_enqueue_scripts', 'admin_enqueue_scripts', 'tp_admin_init'] as $hook) {
+    // Themed pages, the login page, wp-admin, and SpacePress Admin, which prints its own document.
+    foreach (['wp_enqueue_scripts', 'login_enqueue_scripts', 'admin_enqueue_scripts', 'sp_admin_init'] as $hook) {
         add_action($hook, $enqueue);
     }
     // An HTML file from public/ (/index.html): the runtime drops every output buffer, sends the
@@ -472,11 +472,11 @@ ini_set('opcache.revalidate_freq', '0');
     // browser keeps no copy: the next load is the file as it is then.
     add_filter('status_header', static function ($header, $code) use ($live, $client) {
         if ((int) $code !== 200 || !doing_filter('do_parse_request')
-            || !class_exists(\\TypedPress\\Wp\\PublicFiles::class) || !class_exists(\\TypedPress\\Wp\\Plugin::class)) {
+            || !class_exists(\\SpacePress\\Wp\\PublicFiles::class) || !class_exists(\\SpacePress\\Wp\\Plugin::class)) {
             return $header;
         }
-        $plugin = \\TypedPress\\Wp\\Plugin::instance();
-        $file = $plugin === null ? null : \\TypedPress\\Wp\\PublicFiles::fallbackFile($plugin);
+        $plugin = \\SpacePress\\Wp\\Plugin::instance();
+        $file = $plugin === null ? null : \\SpacePress\\Wp\\PublicFiles::fallbackFile($plugin);
         if ($file === null || preg_match('/\\\\.html?$/i', $file) !== 1) return $header;
         $tag = '<script src="' . esc_url(add_query_arg('build', $live['session'] . '.' . (int) $live['revision'], $client())) . '" defer></script>';
         ob_start(static function (string $html) use ($tag): string {
@@ -500,7 +500,7 @@ export async function sourceDigest(project) {
   let frontend = false;
   try {
     const pkg = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'));
-    frontend = ['dependencies', 'devDependencies'].some((key) => typeof pkg?.[key]?.['@typedpress/frontend'] === 'string');
+    frontend = ['dependencies', 'devDependencies'].some((key) => typeof pkg?.[key]?.['@spacepress/frontend'] === 'string');
   } catch {
     // The compiler reports a malformed package.json when it builds.
   }
@@ -590,12 +590,12 @@ export async function watchSources(project, onChange, onError) {
   return { close };
 }
 
-// `typedpress export` from local content: a throwaway WordPress on SQLite, in a temporary directory, with
-// the build's plugins active and tp/content/ seeded as a publish seeds a Space. Prints one JSON
+// `spacepress export` from local content: a throwaway WordPress on SQLite, in a temporary directory, with
+// the build's plugins active and sp/content/ seeded as a publish seeds a Space. Prints one JSON
 // line ({url, credential}) once it serves, keeps serving until its standard input closes, then stops
 // and removes the site. The site is never a project's dev site and holds nothing but the export's input.
 async function exportSite(content, seed) {
-  const work = await mkdtemp(join(tmpdir(), 'typedpress-export-'));
+  const work = await mkdtemp(join(tmpdir(), 'spacepress-export-'));
   const site = join(work, 'wordpress');
   const studio = await studioBinary();
   const run = (args, options) => execute(process.execPath, [studio, ...args, '--path', site], options);
@@ -612,7 +612,7 @@ async function exportSite(content, seed) {
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
   process.once('SIGHUP', stop);
-  // `typedpress` closes this pipe when it is done or gone: from then on, the site has no reason to live.
+  // `spacepress` closes this pipe when it is done or gone: from then on, the site has no reason to live.
   const released = new Promise((done) => { process.stdin.once('end', done); process.stdin.once('close', done); });
   process.stdin.resume();
   released.then(() => { if (!printed) stop(); });
@@ -625,30 +625,30 @@ async function exportSite(content, seed) {
     await rm(work, { recursive: true, force: true });
   }
   try {
-    await run(['create', '--name', `TypedPress export ${randomUUID().slice(0, 8)}`, '--wp', await wordpressVersion(), '--php', '8.4',
+    await run(['create', '--name', `SpacePress export ${randomUUID().slice(0, 8)}`, '--wp', await wordpressVersion(), '--php', '8.4',
       '--admin-username', 'admin', '--admin-password', randomUUID(), '--skip-browser', '--skip-log-details'],
       { capture: true, timeout: 600000, env: { ...process.env, STUDIO_BASE_PORT: String(port) } });
     created = true;
-    const manifest = await json(join(content, 'typedpress-manifest.json'));
+    const manifest = await json(join(content, 'spacepress-manifest.json'));
     const plugins = Object.keys(manifest.plugins);
     if (!plugins.every((slug) => /^[a-z0-9][a-z0-9-]*$/.test(slug))) throw new Error('Invalid plugin slug in build manifest.');
     for (const slug of plugins) await cp(join(content, 'plugins', slug), join(site, 'wp-content/plugins', slug), { recursive: true, dereference: true });
-    const activate = [...manifest.dependencies.map((d) => d.slug), 'typedpress-runtime'];
-    for (const slug of ['typedpress-identity', `typedpress-app-${manifest.app}`]) if (plugins.includes(slug)) activate.push(slug);
+    const activate = [...manifest.dependencies.map((d) => d.slug), 'spacepress-runtime'];
+    for (const slug of ['spacepress-identity', `spacepress-app-${manifest.app}`]) if (plugins.includes(slug)) activate.push(slug);
     for (const slug of activate) await run(['wp', 'plugin', 'activate', slug], { capture: true });
     const spec = join(work, 'setup.json');
     await atomicJson(spec, { site, wordpress: WORDPRESS_VERSION, sqlite: '3.1.2', localized: manifest.locales !== null });
     await run(['wp', 'eval-file', join(here, 'setup.php'), spec, '--use-include'], { capture: true });
-    // WordPress's sample post, page and comment are not the project's content: gone before TypedPress
+    // WordPress's sample post, page and comment are not the project's content: gone before SpacePress
     // stores anything of its own.
     await run(['wp', 'post', 'delete', '1', '2', '3', '--force'], { capture: true }).catch(() => {});
-    await run(['wp', 'typedpress', 'migrate'], { capture: true });
+    await run(['wp', 'spacepress', 'migrate'], { capture: true });
     if (seed && await exists(seed)) {
-      const records = join(site, 'wp-content/typedpress-export-seed');
+      const records = join(site, 'wp-content/spacepress-export-seed');
       await cp(seed, records, { recursive: true });
-      await run(['wp', 'typedpress', 'seed', `--records=${records}`], { capture: true });
+      await run(['wp', 'spacepress', 'seed', `--records=${records}`], { capture: true });
     }
-    const password = (await run(['wp', 'user', 'application-password', 'create', 'admin', 'typedpress export', '--porcelain'], { capture: true })).trim();
+    const password = (await run(['wp', 'user', 'application-password', 'create', 'admin', 'spacepress export', '--porcelain'], { capture: true })).trim();
     const status = JSON.parse(await run(['status', '--format', 'json'], { capture: true }));
     process.stdout.write(JSON.stringify({ url: status.siteUrl.replace(/\/$/, ''), credential: `admin:${password}` }) + '\n');
     printed = true;
@@ -662,7 +662,7 @@ async function exportSite(content, seed) {
 }
 
 async function main() {
-  if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('typedpress dev requires Node.js 22 or newer.');
+  if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('spacepress dev requires Node.js 22 or newer.');
   if (process.argv[2] === 'export') return exportSite(resolve(process.argv[3]), process.argv[4] ? resolve(process.argv[4]) : null);
   const [mode, directory, first, output, requestedPort = '8787', ...flags] = process.argv.slice(2);
   const noWatch = flags.includes('--no-watch');
@@ -676,7 +676,7 @@ async function main() {
   const studioEnv = { ...process.env };
   const runStudio = (args, options) => execute(process.execPath, [studio, ...args, '--path', managed.owner.site], { env: studioEnv, ...options });
   if (mode === 'wp') {
-    // `typedpress wp` and the site commands: WP-CLI's own stdio and exit status, untouched.
+    // `spacepress wp` and the site commands: WP-CLI's own stdio and exit status, untouched.
     const child = spawn(process.execPath, [studio, 'wp', ...process.argv.slice(4), '--path', managed.owner.site], { stdio: 'inherit' });
     const [code, signal] = await once(child, 'exit');
     process.exitCode = code ?? (signal === 'SIGINT' ? 130 : 1);
@@ -715,7 +715,7 @@ async function main() {
   }
   if (mode !== 'start') throw new Error(`Unknown dev command: ${mode}`);
   const content = resolve(output);
-  if (inside(content, managed.state) || inside(managed.state, content)) throw new Error('--out must not overlap .tp/dev.');
+  if (inside(content, managed.state) || inside(managed.state, content)) throw new Error('--out must not overlap .sp/dev.');
   // Nothing to put in the background when the command returns by itself.
   if (flags.includes('--detach') && !noWatch) return detached(managed);
   const release = await lock(managed.state);
@@ -723,7 +723,7 @@ async function main() {
   const diagnosticPath = join(managed.state, 'diagnostics.json');
   await rm(join(managed.state, 'stop'), { force: true });
   let watcher, timer, stopTimer, stopping = false, running = false, dirty = false, siteStarted = false, siteUrl, relay, live;
-  // What `typedpress dev status --json` reads: where the site is, the process that rebuilds it, and the
+  // What `spacepress dev status --json` reads: where the site is, the process that rebuilds it, and the
   // last build's error while it stands. Written once the site is up, and again when the error changes.
   let state, buildError = null;
   const record = async () => {
@@ -745,8 +745,8 @@ async function main() {
   let publishedRevision;
   const build = async (allowDestructive = false) => {
     // Before the history check, which would read a moved ledger as changed and point at --allow-destructive.
-    if (await exists(join(project, 'tp/migrations'))) {
-      throw new Error('tp/migrations/ moved to tp/_generated/migrations/; move it with `mkdir -p tp/_generated && rmdir tp/_generated/migrations 2>/dev/null; git mv tp/migrations tp/_generated/migrations`, then start again.');
+    if (await exists(join(project, 'sp/migrations'))) {
+      throw new Error('sp/migrations/ moved to sp/_generated/migrations/; move it with `mkdir -p sp/_generated && rmdir sp/_generated/migrations 2>/dev/null; git mv sp/migrations sp/_generated/migrations`, then start again.');
     }
     const args = ['build', project, '--out', content, '--diagnostics-file', diagnosticPath];
     if (managed.owner.snapshot && !allowDestructive) {
@@ -754,7 +754,7 @@ async function main() {
       // snapshot looks unchanged. Only the dev-owned build may extend the accepted history.
       const history = JSON.stringify(await migrationHistory(project));
       if (history !== JSON.stringify(managed.owner.migrations) && history !== JSON.stringify(managed.owner.pending?.migrations)) {
-        throw new Error('Migration history changed outside typedpress dev. Inspect it, then restart once with --allow-destructive to apply deliberately.');
+        throw new Error('Migration history changed outside spacepress dev. Inspect it, then restart once with --allow-destructive to apply deliberately.');
       }
       const snapshot = join(managed.state, 'preserve.json');
       await atomicJson(snapshot, managed.owner.pending?.snapshot ?? managed.owner.snapshot);
@@ -763,7 +763,7 @@ async function main() {
     await rm(diagnosticPath, { force: true });
     try {
       // While Vite serves the browser entries, the compiler leaves their built bundle alone.
-      await execute(first, args, { timeout: 300000, log: true, env: frontend?.serving ? { ...studioEnv, TP_DEV_SERVES_FRONTEND: '1' } : studioEnv });
+      await execute(first, args, { timeout: 300000, log: true, env: frontend?.serving ? { ...studioEnv, SP_DEV_SERVES_FRONTEND: '1' } : studioEnv });
     } catch (error) {
       error.diagnostics = (await json(diagnosticPath).catch(() => null))?.diagnostics;
       throw error;
@@ -772,22 +772,22 @@ async function main() {
     if (revision === publishedRevision && !managed.owner.pending) return revision;
     managed.owner.pending = {
       migrations: await migrationHistory(project),
-      snapshot: (await json(join(content, 'typedpress-deployment.json'))).snapshot,
+      snapshot: (await json(join(content, 'spacepress-deployment.json'))).snapshot,
     };
     await atomicJson(managed.marker, managed.owner);
     return revision;
   };
-  // `wp typedpress migrate`, checked against live rows (spec §2.9). With --allow-destructive, a refused
+  // `wp spacepress migrate`, checked against live rows (spec §2.9). With --allow-destructive, a refused
   // drop is confirmed at the counts the refusal reports; anything else (a required field rows lack)
   // stays an error to fix in the schema.
   const migrate = async (allowDestructive) => {
     try {
-      await runStudio(['wp', 'typedpress', 'migrate'], { capture: true });
+      await runStudio(['wp', 'spacepress', 'migrate'], { capture: true });
     } catch (error) {
       const refusal = /\{"error":.*\}/.exec(error.stdout ?? '')?.[0];
       const problem = refusal ? JSON.parse(refusal).error : null;
       if (!allowDestructive || problem?.code !== 'schema_refused' || problem.drop.length !== problem.refusals.length) throw error;
-      await runStudio(['wp', 'typedpress', 'migrate', `--drop=${problem.drop.join(',')}`]);
+      await runStudio(['wp', 'spacepress', 'migrate', `--drop=${problem.drop.join(',')}`]);
     }
   };
   // What the site holds from the last configure that finished: nothing until the first one, and
@@ -799,16 +799,16 @@ async function main() {
   const configure = async (allowDestructive = false) => {
     const previous = applied;
     applied = null;
-    const snapshot = (await json(join(content, 'typedpress-deployment.json'))).snapshot;
-    const manifest = await json(join(content, 'typedpress-manifest.json'));
+    const snapshot = (await json(join(content, 'spacepress-deployment.json'))).snapshot;
+    const manifest = await json(join(content, 'spacepress-manifest.json'));
     const prints = await pluginPrints(content, manifest);
-    const schema = await fileHash(join(content, 'plugins', `typedpress-app-${manifest.app}`, 'tp/app/schema.php'));
+    const schema = await fileHash(join(content, 'plugins', `spacepress-app-${manifest.app}`, 'sp/app/schema.php'));
     const history = await migrationHistory(project);
     const retired = managed.owner.generated.filter((slug) => !(slug in manifest.plugins));
     for (const slug of retired) await plainDirectory(join(managed.owner.site, 'wp-content/plugins', slug));
     if (retired.length) await runStudio(['wp', 'plugin', 'deactivate', ...retired]);
     const { activate, spec } = await publishPlugins(content, managed, (slug) => prints[slug] !== previous?.prints[slug]);
-    // The plugin set: activation, and the development identity app (TypedPress Identity may be new).
+    // The plugin set: activation, and the development identity app (SpacePress Identity may be new).
     const plugins = !previous || retired.length > 0 || Object.keys(prints).some((slug) => !(slug in previous.prints));
     if (plugins) {
       const active = JSON.parse(await runStudio(['wp', 'plugin', 'list', '--status=active', '--format=json'], { capture: true })).map((plugin) => plugin.name);
@@ -827,7 +827,7 @@ async function main() {
       await migrate(allowDestructive);
     }
     if (plugins) {
-      await runStudio(['wp', 'typedpress', 'identity', 'app', 'add', '--name=TypedPress development', '--id=app_zero_dev',
+      await runStudio(['wp', 'spacepress', 'identity', 'app', 'add', '--name=SpacePress development', '--id=app_zero_dev',
         `--redirect=${siteUrl}/auth/callback`, `--origin=${siteUrl}`]);
     }
     for (const slug of retired) await rm(join(managed.owner.site, 'wp-content/plugins', slug), { recursive: true });
@@ -840,7 +840,7 @@ async function main() {
   };
   try {
     running = true;
-    if (!await exists(join(project, 'typedpress.config.ts'))) throw new Error(`No typedpress.config.ts in ${project}`);
+    if (!await exists(join(project, 'spacepress.config.ts'))) throw new Error(`No spacepress.config.ts in ${project}`);
     let digest = await sourceDigest(project);
     // --allow-destructive applies to the first build that reaches the site: when the first build
     // fails, the rebuild after the fix is that build, so the flag holds until a configure succeeds.
@@ -861,10 +861,10 @@ async function main() {
     if (!managed.owner.created) {
       await availablePort(Number(requestedPort));
       if (await exists(managed.owner.site) && (await readdir(managed.owner.site)).length) {
-        throw new Error('A previous Studio creation was interrupted. Inspect .tp/dev/wordpress; TypedPress will not adopt or delete it automatically.');
+        throw new Error('A previous Studio creation was interrupted. Inspect .sp/dev/wordpress; SpacePress will not adopt or delete it automatically.');
       }
-      await runStudio(['create', '--name', `TypedPress ${project.split(sep).at(-1)}`, '--wp', await wordpressVersion(), '--php', '8.4',
-        '--admin-username', 'admin', '--admin-password', 'typedpress-test-admin', '--skip-browser', '--skip-log-details'],
+      await runStudio(['create', '--name', `SpacePress ${project.split(sep).at(-1)}`, '--wp', await wordpressVersion(), '--php', '8.4',
+        '--admin-username', 'admin', '--admin-password', 'spacepress-test-admin', '--skip-browser', '--skip-log-details'],
         { timeout: 600000, env: { ...studioEnv, STUDIO_BASE_PORT: requestedPort } });
       managed.owner.created = true;
       await atomicJson(managed.marker, managed.owner);
@@ -888,12 +888,12 @@ async function main() {
       watch: !noWatch, write: atomicJson,
     });
     if (address.listen) relay = await forward(address.listen, port, port);
-    const mu = join(managed.owner.site, 'wp-content/mu-plugins/typedpress-dev-runtime.php');
-    if (!managed.owner.devMu && await exists(mu)) throw new Error('typedpress-dev-runtime.php already exists and is not managed by TypedPress.');
+    const mu = join(managed.owner.site, 'wp-content/mu-plugins/spacepress-dev-runtime.php');
+    if (!managed.owner.devMu && await exists(mu)) throw new Error('spacepress-dev-runtime.php already exists and is not managed by SpacePress.');
     await writeFile(mu, DEV_PLUGIN);
     managed.owner.devMu = true;
     await atomicJson(managed.marker, managed.owner);
-    const devAssets = join(dirname(mu), 'typedpress-dev');
+    const devAssets = join(dirname(mu), 'spacepress-dev');
     await mkdir(devAssets, { recursive: true });
     const publish = (signal) => atomicJson(join(devAssets, 'live.json'), signal);
     // No session yet: a signal left by a process that was killed is not this one's.
@@ -902,8 +902,8 @@ async function main() {
       await configure(allowDestructive);
       allowDestructive = false;
       publishedRevision = initialRevision;
-      const response = await fetch(`${local}/wp-json/typedpress/v1`, { signal: AbortSignal.timeout(15000) });
-      if (!response.ok) throw new Error(`TypedPress application is not ready: HTTP ${response.status}. Run typedpress doctor --site ${local}`);
+      const response = await fetch(`${local}/wp-json/spacepress/v1`, { signal: AbortSignal.timeout(15000) });
+      if (!response.ok) throw new Error(`SpacePress application is not ready: HTTP ${response.status}. Run spacepress doctor --site ${local}`);
     }
     // The session starts once the site holds this build, so a page left open from an earlier
     // session reloads into it and not into what the site held before.
@@ -915,13 +915,13 @@ async function main() {
     if (startupError) await report(startupError);
     const summary = [`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`];
     if (await exists(join(project, 'public/index.html'))) summary.push(`App:       ${url}/index.html`);
-    if (managed.owner.generated.includes('typedpress-admin')) summary.push(`TypedPress Admin: ${url}/wp-admin/new/`);
-    summary.push('Initial login: admin / typedpress-test-admin (local development only; unchanged if you edited it)\n');
+    if (managed.owner.generated.includes('spacepress-admin')) summary.push(`SpacePress Admin: ${url}/wp-admin/new/`);
+    summary.push('Initial login: admin / spacepress-test-admin (local development only; unchanged if you edited it)\n');
     if (address.listen) summary.push(`Listening on ${address.listen} port ${port}: whoever can reach it is an administrator of this WordPress and can run code on this machine as you.`);
     else if (address.url) summary.push(`Listening on this machine only: point your proxy for ${url} at ${local}`);
-    summary.push(`Data persists in ${managed.owner.site}\nStop: typedpress dev stop ${JSON.stringify(project)}`);
+    summary.push(`Data persists in ${managed.owner.site}\nStop: spacepress dev stop ${JSON.stringify(project)}`);
     console.log(summary.join('\n'));
-    // What `typedpress dev status --json` and `typedpress mcp` read without starting Studio: where the site
+    // What `spacepress dev status --json` and `spacepress mcp` read without starting Studio: where the site
     // is, and the process that rebuilds it on save (none after --no-watch).
     state = {
       version: 1, url, local, port,
@@ -976,10 +976,10 @@ async function main() {
       // during the build is built next (dirty).
       dirty = true; clearTimeout(timer); timer = setTimeout(rebuild, 80);
     }, (error) => { console.error(`File watcher: ${error.message}`); void stop(); });
-    // The `typedpress dev` command this process runs under, when it stays attached (a --detach start
+    // The `spacepress dev` command this process runs under, when it stays attached (a --detach start
     // has a channel to the command that started it, which returns). Ctrl+C reaches this process
     // itself, but a `kill` of that command does not: when it is gone, stop as `dev stop` does.
-    const attached = process.send ? NaN : Number(process.env.TP_DEV_PARENT);
+    const attached = process.send ? NaN : Number(process.env.SP_DEV_PARENT);
     const abandoned = () => {
       if (!Number.isSafeInteger(attached) || attached <= 0) return false;
       try { process.kill(attached, 0); return false; }
@@ -1010,24 +1010,24 @@ async function main() {
   }
 }
 
-// What `typedpress dev --detach` says once the background process reports the site is up: standard
+// What `spacepress dev --detach` says once the background process reports the site is up: standard
 // output, standard error and the exit status. A first build that failed leaves the process running,
 // as it does in the foreground (saving a fix rebuilds), but the command exits 1 and prints the
-// error: a script or an agent that goes on after `typedpress dev --detach` must not take a site that
+// error: a script or an agent that goes on after `spacepress dev --detach` must not take a site that
 // does not serve the current source for a started app.
 export function detachedReport({ summary, failed }, pid, log) {
   const out = `${summary}\nRunning in the background (pid ${pid}), rebuilding on save.\nLog:  ${log}`;
   if (!failed) return { out, error: '', code: 0 };
   return {
     out,
-    error: `typedpress dev: the first build failed, so the site does not serve this source yet:\n${failed.trimEnd()}\n`
-      + `WordPress is running in the background (pid ${pid}). Fix the error and save: it rebuilds, and typedpress dev status --json reports the error until a build succeeds.`,
+    error: `spacepress dev: the first build failed, so the site does not serve this source yet:\n${failed.trimEnd()}\n`
+      + `WordPress is running in the background (pid ${pid}). Fix the error and save: it rebuilds, and spacepress dev status --json reports the error until a build succeeds.`,
     code: 1,
   };
 }
 
-// `typedpress dev --detach`: the same command as a background process in its own session, so it outlives
-// the terminal or the agent that started it. Its output goes to .tp/dev/dev.log. This process
+// `spacepress dev --detach`: the same command as a background process in its own session, so it outlives
+// the terminal or the agent that started it. Its output goes to .sp/dev/dev.log. This process
 // waits for the one message the child sends when the site is ready, prints what the child printed,
 // and returns; a child that stops before that has failed, and its output is the explanation.
 async function detached(managed) {
@@ -1038,7 +1038,7 @@ async function detached(managed) {
     try { process.kill(session.pid, 0); }
     catch (error) { if (error.code !== 'ESRCH') throw error; active = false; }
   }
-  if (active) throw new Error('Another typedpress dev command owns this project. Use typedpress dev stop first.');
+  if (active) throw new Error('Another spacepress dev command owns this project. Use spacepress dev stop first.');
   const log = join(managed.state, 'dev.log');
   const out = await open(log, 'w', 0o600);
   try {
@@ -1063,5 +1063,5 @@ async function detached(managed) {
 
 const invokedPath = process.argv[1] && await realpath(process.argv[1]).catch(() => null);
 if (invokedPath === modulePath) {
-  main().catch((error) => { console.error(`typedpress dev: ${error.message}`); process.exitCode = 1; });
+  main().catch((error) => { console.error(`spacepress dev: ${error.message}`); process.exitCode = 1; });
 }

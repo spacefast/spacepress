@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\Encoder;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\Encoder;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\XmlEncoder;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Encoder\XmlEncoder;
 
 /**
  * A helper providing autocompletion for available XmlEncoder options.

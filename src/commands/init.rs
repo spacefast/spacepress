@@ -1,18 +1,18 @@
-//! `typedpress init [dir] [--check]`: what a coding agent needs to work in a project, written into it.
+//! `spacepress init [dir] [--check]`: what a coding agent needs to work in a project, written into it.
 //!
 //! - A section of `AGENTS.md` between two markers. Everything outside the markers is the author's
 //!   and is never touched; a rerun replaces the section only.
-//! - A `typedpress` server in `.mcp.json` that starts `typedpress mcp`. An entry already named `typedpress` is
+//! - A `spacepress` server in `.mcp.json` that starts `spacepress mcp`. An entry already named `spacepress` is
 //!   the author's and is left as it is.
 //! - The skills this binary carries (`skills/` in the repository), under each directory in
 //!   [`SKILL_DIRS`].
-//! - With `--github`, `.github/workflows/typedpress-sync.yml` at the repository's root: the workflow
-//!   that runs `typedpress sync --pr` ([`super::init_github`]). Once written, reruns keep it in step.
+//! - With `--github`, `.github/workflows/spacepress-sync.yml` at the repository's root: the workflow
+//!   that runs `spacepress sync --pr` ([`super::init_github`]). Once written, reruns keep it in step.
 //!
 //! The section is generated from the compiled project (its kinds, actions, jobs, routes and
-//! endpoints, as `typedpress mcp`'s `schema` tool describes them) and from the command table, so it goes
-//! out of date when the config or the compiler changes. `typedpress check` and `typedpress build` say so in one
-//! line, and `typedpress init --check` exits 1 for CI.
+//! endpoints, as `spacepress mcp`'s `schema` tool describes them) and from the command table, so it goes
+//! out of date when the config or the compiler changes. `spacepress check` and `spacepress build` say so in one
+//! line, and `spacepress init --check` exits 1 for CI.
 
 use super::{build, describe};
 use crate::docs_files::SKILLS;
@@ -21,17 +21,17 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const BEGIN: &str = "<!-- typedpress:begin -->";
-const END: &str = "<!-- typedpress:end -->";
+const BEGIN: &str = "<!-- spacepress:begin -->";
+const END: &str = "<!-- spacepress:end -->";
 /// Where agents look for a project's skills: `.agents/skills` (Codex and the shared convention)
 /// and `.claude/skills` (Claude Code).
 const SKILL_DIRS: [&str; 2] = [".agents/skills", ".claude/skills"];
-const USAGE: &str = "usage: typedpress init [dir] [--check] [--github]";
+const USAGE: &str = "usage: spacepress init [dir] [--check] [--github]";
 
-/// The `typedpress` entry `.mcp.json` gets. `--no-install` runs the project's own `typedpress` and never
+/// The `spacepress` entry `.mcp.json` gets. `--no-install` runs the project's own `spacepress` and never
 /// downloads a package by that name.
 fn mcp_server() -> Value {
-    json!({ "command": "npx", "args": ["--no-install", "typedpress", "mcp"] })
+    json!({ "command": "npx", "args": ["--no-install", "spacepress", "mcp"] })
 }
 
 /// A skill's `name` and `description` from its front matter.
@@ -81,29 +81,29 @@ fn section(project: &Value) -> String {
     let api = describe::API;
     let name = project["name"].as_str().unwrap_or_default();
     let mut s = format!(
-        "{BEGIN}\n## TypedPress\n\n\
-         Written by `typedpress init` from this project's config; edit outside this section, and run `typedpress init` again \
+        "{BEGIN}\n## SpacePress\n\n\
+         Written by `spacepress init` from this project's config; edit outside this section, and run `spacepress init` again \
          after the config changes.\n\n\
-         This project is the TypedPress app `{name}`. TypedPress compiles `typedpress.config.ts` and the `tp/` folder into WordPress \
+         This project is the SpacePress app `{name}`. SpacePress compiles `spacepress.config.ts` and the `sp/` folder into WordPress \
          plugins. Server code is TypeScript compiled to PHP: a documented subset, not Node.js.\n\n\
          ### Rules\n\n\
-         - Server TypeScript compiles to PHP — never import Node.js built-ins (`fs`, `path`, `crypto`, `process`) or arbitrary npm packages in `typedpress.config.ts`, `tp/app/`, actions, hooks, or jobs.\n\
-         - Keep import boundaries exact: schema & server builders (`collection`, `table`, `global`, `wp`, `query`, `mutation`, `job`, `cron`, `db`, `HttpError`, `defineConfig`) come from `\"typedpress\"`; visitor-scoped kind queries come from `\"typedpress:db\"`; server page helpers (`Link`, `Content`, `useFormState`) come from `\"typedpress/app\"`; interactive hooks (`useState`, `useLive`) come from `\"typedpress/client\"` inside `\"use client\"` components only.\n\
-         - Headful WordPress is the default: pages in `tp/app/` compile to server-rendered PHP and `\"use client\"` components compile to WordPress Interactivity API islands. Only reach for `tp/_generated/client/` or `@typedpress/astro` when building a separate external frontend.\n\
+         - Server TypeScript compiles to PHP — never import Node.js built-ins (`fs`, `path`, `crypto`, `process`) or arbitrary npm packages in `spacepress.config.ts`, `sp/app/`, actions, hooks, or jobs.\n\
+         - Keep import boundaries exact: schema & server builders (`collection`, `table`, `global`, `wp`, `query`, `mutation`, `job`, `cron`, `db`, `HttpError`, `defineConfig`) come from `\"spacepress\"`; visitor-scoped kind queries come from `\"spacepress:db\"`; server page helpers (`Link`, `Content`, `useFormState`) come from `\"spacepress/app\"`; interactive hooks (`useState`, `useLive`) come from `\"spacepress/client\"` inside `\"use client\"` components only.\n\
+         - Headful WordPress is the default: pages in `sp/app/` compile to server-rendered PHP and `\"use client\"` components compile to WordPress Interactivity API islands. Only reach for `sp/_generated/client/` or `@spacepress/astro` when building a separate external frontend.\n\
          - Pick `collection()` for editorial content (Gutenberg, drafts, revisions, comments, `sync: \"content/**/*.md\"`) and `table()` for relational app data in SQL tables.\n\
          - Use `.column(\"old_name\")` when renaming a field and `storageName: \"old_table\"` when renaming a table export to keep its physical SQL name.\n\
-         - Set explicit `access` rules on kinds and server functions and a `guard` on routes. Use `typedpress:db` for user-facing reads and `destructive: true` on mutations that perform destructive work.\n\
-         - Run `typedpress check` after every edit to `typedpress.config.ts` or `tp/` (`typedpress check --fix` applies lint fixes such as `capital_P_dangit`).\n\
-         - Never edit `tp/_generated/` or `tp/dist/`: `typedpress build` writes them. Commit `tp/_generated/`.\n\
-         - Look an API up before using it: the `docs_search` and `docs_read` tools of the `typedpress` MCP server \
+         - Set explicit `access` rules on kinds and server functions and a `guard` on routes. Use `spacepress:db` for user-facing reads and `destructive: true` on mutations that perform destructive work.\n\
+         - Run `spacepress check` after every edit to `spacepress.config.ts` or `sp/` (`spacepress check --fix` applies lint fixes such as `capital_P_dangit`).\n\
+         - Never edit `sp/_generated/` or `sp/dist/`: `spacepress build` writes them. Commit `sp/_generated/`.\n\
+         - Look an API up before using it: the `docs_search` and `docs_read` tools of the `spacepress` MCP server \
          (`.mcp.json`) answer from the documentation this compiler was built with.\n\
-         - `typedpress dev` runs the project on a local WordPress site; site commands such as `typedpress find <storage name>` read it (the `API` column below gives each kind's).\n\n\
+         - `spacepress dev` runs the project on a local WordPress site; site commands such as `spacepress find <storage name>` read it (the `API` column below gives each kind's).\n\n\
          ### Layout\n\n\
-         - `typedpress.config.ts`: `export default defineConfig({{ ... }})`, the app's name and options. It may export kinds, actions and jobs too.\n\
-         - `tp/`: kinds, actions and jobs, in any file. Each registers under its export name (`export const posts = collection({{ ... }})`); `defineConfig` doesn't list them, and a kind's hooks are `.on({{ ... }})` on its declaration.\n\
-         - `tp/app/`: pages (`page.tsx`, `layout.tsx`) and HTTP routes (`route.ts`), by folder.\n\
-         - `tp/_generated/`: migrations, types and the typed client. Written by `typedpress build`.\n\
-         - `tp/dist/` and `.tp/`: build output and the local dev site. Not committed.\n\n"
+         - `spacepress.config.ts`: `export default defineConfig({{ ... }})`, the app's name and options. It may export kinds, actions and jobs too.\n\
+         - `sp/`: kinds, actions and jobs, in any file. Each registers under its export name (`export const posts = collection({{ ... }})`); `defineConfig` doesn't list them, and a kind's hooks are `.on({{ ... }})` on its declaration.\n\
+         - `sp/app/`: pages (`page.tsx`, `layout.tsx`) and HTTP routes (`route.ts`), by folder.\n\
+         - `sp/_generated/`: migrations, types and the typed client. Written by `spacepress build`.\n\
+         - `sp/dist/` and `.sp/`: build output and the local dev site. Not committed.\n\n"
     );
     let kinds = project["kinds"].as_object().filter(|kinds| !kinds.is_empty());
     s.push_str("### Kinds\n\n");
@@ -208,7 +208,7 @@ fn section(project: &Value) -> String {
         project["endpoints"]["abilities"].as_str().unwrap_or_default(),
     );
     let table: Value =
-        serde_json::from_str(crate::cli::COMMANDS).expect("runtime/TypedPress/Cli/commands.json is JSON");
+        serde_json::from_str(crate::cli::COMMANDS).expect("runtime/SpacePress/Cli/commands.json is JSON");
     for (group, title) in [
         ("build", "### Commands on the project's files"),
         (
@@ -219,7 +219,7 @@ fn section(project: &Value) -> String {
         let _ = writeln!(s, "{title}\n");
         for row in table[group].as_array().into_iter().flatten() {
             let usage = format!(
-                "typedpress {} {}",
+                "spacepress {} {}",
                 row["name"].as_str().unwrap_or_default(),
                 row["args"].as_str().unwrap_or_default()
             );
@@ -243,7 +243,7 @@ fn section(project: &Value) -> String {
 }
 
 /// The byte offset of the line that is exactly `marker`, if there is one. A marker quoted inside the
-/// author's prose ("do not edit below `<!-- typedpress:begin -->`") is text, not a marker.
+/// author's prose ("do not edit below `<!-- spacepress:begin -->`") is text, not a marker.
 fn marker_line(text: &str, marker: &str) -> Option<usize> {
     let mut at = 0;
     for line in text.split_inclusive('\n') {
@@ -280,32 +280,32 @@ fn with_section(current: Option<&str>, section: &str) -> Result<String, String> 
             Ok(format!("{current}{gap}{section}"))
         }
         _ => Err(format!(
-            "AGENTS.md has one of the marker lines {BEGIN} and {END} without the other, or in the wrong order; restore the pair or delete both, then run typedpress init again"
+            "AGENTS.md has one of the marker lines {BEGIN} and {END} without the other, or in the wrong order; restore the pair or delete both, then run spacepress init again"
         )),
     }
 }
 
-/// `.mcp.json` with a `typedpress` server, or `None` when it already has one. The file is the author's:
+/// `.mcp.json` with a `spacepress` server, or `None` when it already has one. The file is the author's:
 /// the entry is inserted into its text, so numbers, key order, indentation and every other server
 /// stay exactly as written. Only a missing file, or one with no `mcpServers` object, is written in
 /// full.
 fn with_server(current: Option<&str>) -> Result<Option<String>, String> {
     let Some(text) = current else {
-        let config = json!({ "mcpServers": { "typedpress": mcp_server() } });
+        let config = json!({ "mcpServers": { "spacepress": mcp_server() } });
         return Ok(Some(serde_json::to_string_pretty(&config).expect("json") + "\n"));
     };
     let config: Value = serde_json::from_str(text)
-        .map_err(|e| format!(".mcp.json is not valid JSON ({e}); fix it, then run typedpress init again"))?;
+        .map_err(|e| format!(".mcp.json is not valid JSON ({e}); fix it, then run spacepress init again"))?;
     let config = config.as_object().ok_or(".mcp.json is not a JSON object")?;
     let entry = serde_json::to_string(&mcp_server()).expect("json");
     match config.get("mcpServers") {
-        Some(Value::Object(servers)) if servers.contains_key("typedpress") => Ok(None),
+        Some(Value::Object(servers)) if servers.contains_key("spacepress") => Ok(None),
         Some(Value::Object(servers)) => {
             // After the `{` that opens the top-level `mcpServers` value.
             let open = json_value_start(text, "mcpServers").ok_or(".mcp.json: cannot find mcpServers")?;
             let comma = if servers.is_empty() { "" } else { "," };
             Ok(Some(format!(
-                "{}\"typedpress\": {entry}{comma}{}",
+                "{}\"spacepress\": {entry}{comma}{}",
                 &text[..=open],
                 &text[open + 1..]
             )))
@@ -316,7 +316,7 @@ fn with_server(current: Option<&str>) -> Result<Option<String>, String> {
             let open = text.find('{').expect("a JSON object starts with {");
             let comma = if config.is_empty() { "" } else { "," };
             Ok(Some(format!(
-                "{}\"mcpServers\": {{\"typedpress\": {entry}}}{comma}{}",
+                "{}\"mcpServers\": {{\"spacepress\": {entry}}}{comma}{}",
                 &text[..=open],
                 &text[open + 1..]
             )))
@@ -361,7 +361,7 @@ fn json_value_start(text: &str, key: &str) -> Option<usize> {
     None
 }
 
-/// Every file `typedpress init` would write that differs from what is there: (path relative to the
+/// Every file `spacepress init` would write that differs from what is there: (path relative to the
 /// project, its new contents).
 fn pending(project: &Path, described: &Value, github: bool) -> Result<Vec<(PathBuf, String)>, String> {
     let read = |rel: &Path| match std::fs::read_to_string(project.join(rel)) {
@@ -409,7 +409,7 @@ fn pending(project: &Path, described: &Value, github: bool) -> Result<Vec<(PathB
     match super::init_github::workflow(project, &dirs) {
         None if github => {
             return Err(
-                "typedpress init --github writes .github/workflows/ at the root of the project's git repository, and this project is in none; run git init (or clone it) first".into(),
+                "spacepress init --github writes .github/workflows/ at the root of the project's git repository, and this project is in none; run git init (or clone it) first".into(),
             );
         }
         None => {}
@@ -422,7 +422,7 @@ fn pending(project: &Path, described: &Value, github: bool) -> Result<Vec<(PathB
     Ok(out)
 }
 
-/// Writes `rel` (a path `typedpress init` owns) below `project`, or for the sync workflow below the
+/// Writes `rel` (a path `spacepress init` owns) below `project`, or for the sync workflow below the
 /// project's repository root, and nowhere else.
 ///
 /// - A directory on the way that is a symbolic link is refused: `.claude` pointing elsewhere would
@@ -456,7 +456,7 @@ fn target(project: &Path, rel: &Path) -> Result<PathBuf, String> {
         dir.push(part);
         if std::fs::symlink_metadata(&dir).is_ok_and(|meta| meta.file_type().is_symlink()) {
             return Err(format!(
-                "{} is a symbolic link; typedpress init writes only inside the project. Replace it with a directory, or run without it",
+                "{} is a symbolic link; spacepress init writes only inside the project. Replace it with a directory, or run without it",
                 dir.strip_prefix(project).unwrap_or(&dir).display()
             ));
         }
@@ -466,7 +466,7 @@ fn target(project: &Path, rel: &Path) -> Result<PathBuf, String> {
         let target = path.canonicalize().map_err(|e| format!("{}: {e}", rel.display()))?;
         if !target.starts_with(project) {
             return Err(format!(
-                "{} links outside the project; typedpress init writes only inside it",
+                "{} links outside the project; spacepress init writes only inside it",
                 rel.display()
             ));
         }
@@ -494,30 +494,30 @@ fn new_file_permissions() -> std::fs::Permissions {
     })
 }
 
-/// A project that ran `typedpress init` before: its `AGENTS.md` has the section.
+/// A project that ran `spacepress init` before: its `AGENTS.md` has the section.
 fn installed(project: &Path) -> bool {
     std::fs::read_to_string(project.join("AGENTS.md")).is_ok_and(|text| marker_line(&text, BEGIN).is_some())
 }
 
-/// The one line `typedpress check` and `typedpress build` print when a project's agent files no longer match
-/// its config or this compiler. Nothing for a project that never ran `typedpress init`.
+/// The one line `spacepress check` and `spacepress build` print when a project's agent files no longer match
+/// its config or this compiler. Nothing for a project that never ran `spacepress init`.
 pub(super) fn stale_hint(project: &Path, schema: &crate::schema::Schema) -> Option<String> {
     if !installed(project) && !super::init_github::written(project) {
         return None;
     }
     let pending = pending(project, &describe::project(schema), false).ok()?;
-    let workflow = |(path, _): &(PathBuf, String)| path.ends_with(".github/workflows/typedpress-sync.yml");
+    let workflow = |(path, _): &(PathBuf, String)| path.ends_with(".github/workflows/spacepress-sync.yml");
     let agents = installed(project);
     let mut stale = Vec::new();
     if agents && pending.iter().any(|p| !workflow(p)) {
         stale.push("AGENTS.md and the agent skills no longer match this project or this compiler");
     }
     if pending.iter().any(workflow) {
-        stale.push(".github/workflows/typedpress-sync.yml is out of date");
+        stale.push(".github/workflows/spacepress-sync.yml is out of date");
     }
     (!stale.is_empty()).then(|| {
         format!(
-            "{}; run typedpress init to update {}",
+            "{}; run spacepress init to update {}",
             stale.join(", and "),
             if stale.len() == 1 && pending.iter().all(workflow) {
                 "it"
@@ -535,7 +535,7 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
             "--check" => check = true,
             "--github" => github = true,
             other if other.starts_with('-') => {
-                eprintln!("unknown option {other} for typedpress init\n{USAGE}");
+                eprintln!("unknown option {other} for spacepress init\n{USAGE}");
                 return ExitCode::from(2);
             }
             other => project = PathBuf::from(other),
@@ -548,9 +548,9 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    if !project.join("typedpress.config.ts").is_file() {
+    if !project.join("spacepress.config.ts").is_file() {
         eprintln!(
-            "no typedpress.config.ts in {}; typedpress init adds the agent files to an existing project (npm create typedpress <dir> creates one)",
+            "no spacepress.config.ts in {}; spacepress init adds the agent files to an existing project (npm create spacepress <dir> creates one)",
             project.display()
         );
         return ExitCode::from(1);
@@ -560,7 +560,7 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
         Ok(built) => built,
         Err(diagnostic) => {
             eprint!("{}", crate::diag::render(&diagnostic, &project));
-            eprintln!("typedpress init describes the compiled project; fix this, then run it again");
+            eprintln!("spacepress init describes the compiled project; fix this, then run it again");
             return ExitCode::from(1);
         }
     };
@@ -591,7 +591,7 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
         for (path, _) in &pending {
             eprintln!("out of date: {}", path.display());
         }
-        eprintln!("run typedpress init to update them");
+        eprintln!("run spacepress init to update them");
         return ExitCode::from(1);
     }
     // Every path is checked before any is written, so a refusal leaves the project as it was.
@@ -647,9 +647,9 @@ mod tests {
         let config: serde_json::Value = serde_json::from_str(&added).unwrap();
         assert_eq!(config["mcpServers"]["other"]["command"], "x");
         assert_eq!(config["extra"], 1);
-        assert_eq!(config["mcpServers"]["typedpress"]["args"][2], "mcp");
+        assert_eq!(config["mcpServers"]["spacepress"]["args"][2], "mcp");
         assert_eq!(
-            with_server(Some(r#"{"mcpServers":{"typedpress":{"command":"mine"}}}"#)).unwrap(),
+            with_server(Some(r#"{"mcpServers":{"spacepress":{"command":"mine"}}}"#)).unwrap(),
             None
         );
         assert!(with_server(Some("{ not json")).is_err());

@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\CacheWarmer;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\CacheWarmer;
 
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpKernel\CacheWarmer\CacheWarmerInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryCompiler;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryCompiler;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
 
-typedpress_identity_vendor_trigger_deprecation('symfony/serializer', '7.3', 'The "%s" class is deprecated.', CompiledClassMetadataCacheWarmer::class);
+spacepress_identity_vendor_trigger_deprecation('symfony/serializer', '7.3', 'The "%s" class is deprecated.', CompiledClassMetadataCacheWarmer::class);
 
 /**
  * @author Fabien Bourigault <bourigaultfabien@gmail.com>

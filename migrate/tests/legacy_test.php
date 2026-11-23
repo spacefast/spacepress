@@ -2,29 +2,29 @@
 
 declare(strict_types=1);
 
-// Mapping a Zero 0.8 release onto the new app's schema (TypedPress\Wp\Legacy\Model).
+// Mapping a Zero 0.8 release onto the new app's schema (SpacePress\Wp\Legacy\Model).
 // Pure logic; the data import itself is proven against real WordPress in migrate/tests/wp/legacy.
 
-require __DIR__ . '/../../runtime/TypedPress/bootstrap.php';
+require __DIR__ . '/../../runtime/SpacePress/bootstrap.php';
 require __DIR__ . '/../../tests/php/harness.php';
 require __DIR__ . '/../zero/wp/Model.php';
 require __DIR__ . '/../zero/wp/Users.php';
 
-use TypedPress\HttpError;
-use TypedPress\Schema;
-use TypedPress\Wp\Legacy\Model;
-use TypedPress\Wp\Legacy\Users;
+use SpacePress\HttpError;
+use SpacePress\Schema;
+use SpacePress\Wp\Legacy\Model;
+use SpacePress\Wp\Legacy\Users;
 
 // The release the original compiler produced for tests/wp/legacy/capsule.ts.
 $release = require __DIR__ . '/wp/legacy/content-model.php';
 $schema = static fn (array $overrides = []) => new Schema(['version' => 5, 'runtime' => Schema::SERIES, 'collections' => array_replace_recursive([
-    'projects' => ['editor' => true, 'title' => 'title', 'primaryKey' => 'id', 'wp' => ['postType' => 'tp_projects', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_projects_'], 'columns' => [
+    'projects' => ['editor' => true, 'title' => 'title', 'primaryKey' => 'id', 'wp' => ['postType' => 'sp_projects', 'metaPrefix' => 'sp_', 'fieldKeyPrefix' => 'field_sp_projects_'], 'columns' => [
         'id' => ['type' => 'integer', 'primaryKey' => true], 'title' => ['type' => 'text', 'notNull' => true],
         'budget' => ['type' => 'real'], 'active' => ['type' => 'boolean'], 'kickoff' => ['type' => 'timestamp'],
         'stage' => ['type' => 'text', 'enum' => ['idea', 'live', 'done']], 'tags' => ['type' => 'select', 'enum' => ['red', 'green', 'blue']],
         'cover' => ['type' => 'media'], 'gallery' => ['type' => 'mediaList'],
     ]],
-    'tasks' => ['editor' => true, 'title' => 'title', 'primaryKey' => 'id', 'wp' => ['postType' => 'tp_tasks', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_tasks_'], 'columns' => [
+    'tasks' => ['editor' => true, 'title' => 'title', 'primaryKey' => 'id', 'wp' => ['postType' => 'sp_tasks', 'metaPrefix' => 'sp_', 'fieldKeyPrefix' => 'field_sp_tasks_'], 'columns' => [
         'id' => ['type' => 'integer', 'primaryKey' => true], 'title' => ['type' => 'text', 'notNull' => true], 'notes' => ['type' => 'text'],
         'projectId' => ['type' => 'integer', 'notNull' => true, 'references' => ['collection' => 'projects', 'column' => 'id']],
         'parentId' => ['type' => 'integer', 'references' => ['collection' => 'tasks', 'column' => 'id']],
@@ -133,13 +133,13 @@ $member = static fn (array $columns, string $role = 'subscriber', string $name =
 eq('a member row: email, name and normalized defaults in storage form', $member(['since' => ['type' => 'timestamp', 'default' => ['value' => '2026-03-01T12:00:00+02:00']], 'tags' => ['type' => 'select', 'enum' => ['a', 'b'], 'default' => ['value' => ['a']]]]),
     ['email' => 'ada@example.test', 'name' => 'Ada', 'since' => '2026-03-01T10:00:00.000Z', 'tags' => '["a"]']);
 eq('a column without a default is cleared (validators see the row the move leaves)', $member(['note' => ['type' => 'text']]), ['email' => 'ada@example.test', 'name' => 'Ada', 'note' => null]);
-putenv('TP_NOW=2030-01-01T00:00:00.000Z');
-putenv('TP_NOW_STEP=1'); // every clock read moves the pinned clock a millisecond
+putenv('SP_NOW=2030-01-01T00:00:00.000Z');
+putenv('SP_NOW_STEP=1'); // every clock read moves the pinned clock a millisecond
 try {
     $stamps = $member(['joinedAt' => ['type' => 'timestamp', 'default' => ['now' => true]], 'seenAt' => ['type' => 'timestamp', 'default' => ['now' => true]]]);
 } finally {
-    putenv('TP_NOW_STEP');
-    putenv('TP_NOW');
+    putenv('SP_NOW_STEP');
+    putenv('SP_NOW');
 }
 eq('a member row\'s now defaults are one instant', [$stamps['joinedAt'], $stamps['seenAt']], ['2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']);
 problem('a name over the member column\'s bound', fn () => $member([], 'subscriber', str_repeat('x', 81)), 422, 'invalid_input', '/users/5/name');
@@ -149,7 +149,7 @@ problem('a media default', fn () => $member(['avatar' => ['type' => 'media', 'de
 problem('a private file default', fn () => $member(['brief' => ['type' => 'file', 'bucket' => 'briefs', 'default' => ['value' => 999]]]), 422, 'legacy_unmappable', '/users/5/brief');
 problem('...or one nested in a group', fn () => $member(['profile' => ['type' => 'group', 'fields' => ['cv' => ['type' => 'file', 'bucket' => 'briefs']], 'default' => ['value' => ['cv' => 999]]]]), 422, 'legacy_unmappable', '/users/5/profile');
 problem('a reference default', fn () => $member(['teamId' => ['type' => 'integer', 'default' => ['value' => 1], 'references' => ['collection' => 'teams', 'column' => 'id']]]), 422, 'legacy_unmappable', '/users/5/teamId');
-eval('namespace TypedPressApp; function legacy_role_check($v, $ctx) { return ($ctx->p["data"]->p["role"] === "admin" || $v !== "pro") ? true : "pro needs admin"; }');
+eval('namespace SpacePressApp; function legacy_role_check($v, $ctx) { return ($ctx->p["data"]->p["role"] === "admin" || $v !== "pro") ? true : "pro needs admin"; }');
 problem('validators see the user\'s role (a subscriber can\'t default to pro)', fn () => $member(['plan' => ['type' => 'text', 'default' => ['value' => 'pro'], 'rules' => ['validate' => 'legacy_role_check']]]), 422, 'invalid_input', '/users/5/plan');
 eq('...and an admin can', $member(['plan' => ['type' => 'text', 'default' => ['value' => 'pro'], 'rules' => ['validate' => 'legacy_role_check']]], 'admin')['plan'], 'pro');
 

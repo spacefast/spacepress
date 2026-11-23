@@ -33,6 +33,22 @@ check('the refusal does not disclose the deploying account', !str_contains(json_
 [$status, $body] = $request($unscoped);
 eq('an unscoped administrator may list deployment history', $status, 200);
 eq('the permitted list includes its deploying account', $body['deployments'][0]['by'] ?? null, 'admin');
+// On a network another site may still run the pre-release plugin and scope a password under the earlier
+// key after this site has moved: the receiver refuses it as it refuses one scoped under the current key.
+update_option('sp_brand_upgrade', 1);
+[$earlier, $earlierItem] = WP_Application_Passwords::create_new_application_password($admin, ['name' => 'scoped elsewhere']);
+$passwords = get_user_meta($admin, WP_Application_Passwords::USERMETA_KEY_APPLICATION_PASSWORDS, true);
+foreach ($passwords as &$entry) {
+    if ($entry['uuid'] === $earlierItem['uuid']) {
+        $entry['tp_scope'] = ['write' => false, 'personal' => false, 'abilities' => null];
+    }
+}
+unset($entry);
+update_user_meta($admin, WP_Application_Passwords::USERMETA_KEY_APPLICATION_PASSWORDS, $passwords);
+$curl = curl_init($wp->url() . '/wp-json/spacepress-deploy/v1/site');
+curl_setopt_array($curl, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_USERPWD => 'admin:' . $earlier]);
+$body = json_decode((string) curl_exec($curl), true);
+eq('a password scoped under the earlier key cannot deploy on a settled site', [curl_getinfo($curl, CURLINFO_RESPONSE_CODE), $body['code'] ?? null], [403, 'sp_forbidden']);
 
 // An uploaded/previously-ready commerce build must not reach this unqualified host's installer
 // or become live through rollback. Use real build-store files and the public selection path.

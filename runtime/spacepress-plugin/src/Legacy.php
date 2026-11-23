@@ -122,9 +122,8 @@ final class Legacy
     }
 
     /**
-     * Whether the site has finished moving its stored names. Until then an application password may
-     * still carry its scope under the earlier key, and an account's status may sit in the earlier
-     * identity table.
+     * Whether the site has finished moving its stored names. Until then an account's status may sit
+     * in the earlier identity table.
      */
     public static function settled(): bool
     {
@@ -133,10 +132,14 @@ final class Legacy
         return $done !== 'started' && (int) $done >= 1;
     }
 
-    /** The application password's scope under the earlier key, before the site's move; null without one. */
+    /**
+     * Whether the application password carries a scope under the earlier key. Checked after the site's
+     * move too: user meta is a network's, and another site on it may still run the pre-release plugin
+     * and write the earlier key.
+     */
     public static function scoped(array $password): bool
     {
-        return !self::settled() && array_key_exists(self::SCOPE, $password);
+        return array_key_exists(self::SCOPE, $password);
     }
 
     /** The earlier identity table, while the site hasn't moved it. */

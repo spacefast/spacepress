@@ -95,7 +95,7 @@ eq('… under the current key', [$entry['sp_scope'] ?? null, array_key_exists('t
 check('the guest role moved', get_role('sp_guest') !== null && get_role('tp_guest') === null);
 check('the subscriber who was a guest is still one', in_array('sp_guest', (new WP_User($wp->userId('subscriber')))->roles, true));
 eq('the S3 namespace is kept', get_option('sp_upload_namespace'), str_repeat('ab', 16));
-eq('… and stored objects keep their key prefix', \SpacePress\Wp\BrandUpgrade::uploadPrefix(), $legacy);
+eq('… and stored objects keep their key prefix', [\SpacePress\Wp\BrandUpgrade::uploadPrefix(), str_starts_with(\SpacePress\Wp\Uploads::prefix(), $legacy . '/' . str_repeat('ab', 16) . '/')], [$legacy, true]);
 check('the private files directory moved', is_dir(WP_CONTENT_DIR . '/uploads/spacepress-private') && !file_exists(WP_CONTENT_DIR . '/uploads/' . $legacy . '-private'));
 eq('identity\'s cron event moved', array_values(array_filter(array_merge(...array_map('array_keys', array_values(array_filter(_get_cron_array(), 'is_array')))), static fn ($h) => str_contains($h, 'identity'))),
     array_map(static fn (string $h): string => 'sp_' . substr($h, 3), $before['cron']));

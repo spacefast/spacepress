@@ -40,6 +40,8 @@ final class BrandUpgrade
     public const VERSION = 1;
     /** The S3 key prefix stored objects keep when the app's config sets none (see {@see uploadPrefix()}). */
     public const UPLOAD_PREFIX = 'sp_upload_prefix';
+    /** `[app => earlier app name]` for apps renamed with the brand whose stored objects keep their keys. */
+    private const UPLOAD_APP = 'sp_upload_app';
 
     private const LEGACY = 'typedpress';
     private const LEGACY_UPLOAD_PREFIX = 'typedpress';
@@ -248,6 +250,14 @@ final class BrandUpgrade
         return $schema;
     }
 
+    /** The app name its S3 keys are derived from: the earlier one, for an app the rename renamed. */
+    public static function uploadApp(string $app): string
+    {
+        $kept = get_option(self::UPLOAD_APP);
+
+        return is_array($kept) && is_string($kept[$app] ?? null) ? $kept[$app] : $app;
+    }
+
     /** The S3 key prefix uploads use when the app's config sets none. */
     public static function uploadPrefix(): string
     {
@@ -290,13 +300,24 @@ final class BrandUpgrade
                 'fieldKeyPrefix' => $fieldKeyPrefixes[] = 'field_tp_' . substr($current, 9),
             };
         }
-        $ledger = $prefix . 'tp__migrations';
-        if (self::existingTables($db, $ledger, exact: true) !== []) {
-            foreach (array_column($db->run("SELECT DISTINCT `app` FROM `$ledger`"), 'app') as $app) {
-                $apps[] = (string) $app;
+        // An app whose name carried the pre-release brand (`typedpress-site`) is named `spacepress-site`
+        // now; what its site keyed by the name moves to the new one.
+        $renamedApp = null;
+        if (str_starts_with($schema->name(), 'spacepress-')) {
+            $renamedApp = [self::LEGACY . substr($schema->name(), strlen('spacepress')) => $schema->name()];
+        }
+        foreach ([$prefix . 'tp__migrations', $prefix . 'sp__migrations'] as $ledger) {
+            if (self::existingTables($db, $ledger, exact: true) !== []) {
+                foreach (array_column($db->run("SELECT DISTINCT `app` FROM `$ledger`"), 'app') as $app) {
+                    $apps[] = $renamedApp[(string) $app] ?? (string) $app;
+                }
             }
         }
         $apps = array_values(array_unique($apps));
+        $earlierApps = array_merge(...array_map(static fn (string $a): array => [$a => $a], $apps));
+        foreach ((array) $renamedApp as $from => $to) {
+            $earlierApps[$to] = $from;
+        }
         $tables = [];
         $owned = [];
         foreach (array_unique($names) as $name) {
@@ -312,7 +333,7 @@ final class BrandUpgrade
         }
         foreach ($apps as $app) {
             foreach (self::APP_OPTION_SUFFIXES as $suffix) {
-                $options['tp_' . $app . $suffix] = 'sp_' . $app . $suffix;
+                $options['tp_' . $earlierApps[$app] . $suffix] = 'sp_' . $app . $suffix;
             }
         }
         foreach (self::RUNTIME_OPTION_SHAPES as $head => $shape) {
@@ -393,7 +414,7 @@ final class BrandUpgrade
         }
         $groups = [self::LEGACY => 'spacepress', self::LEGACY . '-app' => 'spacepress-app'];
         foreach ($apps as $app) {
-            $groups[self::LEGACY . '-' . $app] = 'spacepress-' . $app;
+            $groups[self::LEGACY . '-' . $earlierApps[$app]] = 'spacepress-' . $app;
         }
         $jobs = [];
         foreach (self::JOBS as $job) {
@@ -413,7 +434,7 @@ final class BrandUpgrade
             $private = [$from, WP_CONTENT_DIR . '/uploads/' . self::PRIVATE_DIR[array_key_first(self::PRIVATE_DIR)]];
         }
 
-        return ['globalRefs' => $globalRefs, 'tables' => $tables, 'owned' => $owned, 'options' => $options, 'sitemeta' => $sitemeta, 'meta' => $meta, 'metaValues' => $fieldKeys,
+        return ['renamedApp' => $renamedApp ?? [], 'globalRefs' => $globalRefs, 'tables' => $tables, 'owned' => $owned, 'options' => $options, 'sitemeta' => $sitemeta, 'meta' => $meta, 'metaValues' => $fieldKeys,
             'postTypes' => $postTypes, 'taxonomies' => $taxonomies, 'hooks' => $hooks, 'groups' => $groups, 'jobs' => $jobs,
             'plugins' => $plugins, 'private' => $private, 'apps' => $apps];
     }
@@ -601,7 +622,23 @@ final class BrandUpgrade
     {
         $wpdb = $db->wpdb();
         $moved = [];
+        // Objects already in S3 keep their keys: the prefix (and app name) a site without
+        // `uploads.prefix` stored them under. Recorded first, while the earlier namespace option is
+        // still there to show the site has stored any, so a resumed run never loses it.
+        if (isset($plan['options']['tp_upload_namespace']) && get_option(self::UPLOAD_PREFIX) === false) {
+            add_option(self::UPLOAD_PREFIX, self::LEGACY_UPLOAD_PREFIX, '', false);
+            if ($plan['renamedApp'] !== [] && get_option(self::UPLOAD_APP) === false) {
+                add_option(self::UPLOAD_APP, array_flip($plan['renamedApp']), '', false);
+            }
+        }
         $moved['tables'] = self::moveTables($db, $plan['tables']);
+        // The app's own name, where the site keyed something by it: ledger rows (each keeps its id and
+        // SHA-256), private file records, runtime schema versions. Stored S3 keys stay as written.
+        foreach ($plan['renamedApp'] as $from => $to) {
+            foreach (['sp__migrations', 'sp__files', 'sp__schema_versions'] as $table) {
+                $moved['app'] = ($moved['app'] ?? 0) + self::rename($db, $db->prefix() . $table, 'app', [$from => $to], optional: true);
+            }
+        }
         if (!$db->sqlite()) {
             // Every table the runtime and this app own, by its current name: those moved just now, and
             // those an earlier attempt moved before it stopped.
@@ -650,10 +687,7 @@ final class BrandUpgrade
                 update_option(self::FILES_HELD, $plan['private'], false);
             }
         }
-        // Objects already in S3 keep their keys: the prefix a site without `uploads.prefix` used.
-        if (isset($plan['options']['tp_upload_namespace']) && get_option(self::UPLOAD_PREFIX) === false) {
-            add_option(self::UPLOAD_PREFIX, self::LEGACY_UPLOAD_PREFIX, '', false);
-        }
+
         // Runtime schema states are sealed with a key that named the pre-release build: one that checks
         // out under it is sealed again under the current one (its versions and hashes stay as they are).
         foreach ($plan['apps'] as $app) {

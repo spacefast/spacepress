@@ -43,7 +43,7 @@ final class Uploads
             }
         }
 
-        return trim($prefix, '/') . '/' . $site . '/' . hash('sha256', Runtime::plugin()->schema->name()) . '/';
+        return trim($prefix, '/') . '/' . $site . '/' . hash('sha256', BrandUpgrade::uploadApp(Runtime::plugin()->schema->name())) . '/';
     }
 
     public static function fileKey(string $rel): string

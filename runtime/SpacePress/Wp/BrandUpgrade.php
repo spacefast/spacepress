@@ -489,7 +489,7 @@ final class BrandUpgrade
 
         $plugins = [];
         foreach (self::activePluginList() as $basename) {
-            $to = self::pluginBasename($basename);
+            $to = self::pluginBasename($basename, (array) $renamedApp);
             if ($to !== $basename && is_file(WP_PLUGIN_DIR . '/' . $to)) {
                 $plugins[$basename] = $to;
             }
@@ -1313,14 +1313,19 @@ final class BrandUpgrade
     /** The plugins the runtime shipped under the earlier name, by directory; an app's is `typedpress-app-<name>`. */
     private const PLUGINS = ['typedpress' => 'spacepress', 'typedpress-runtime' => 'spacepress-runtime', 'typedpress-identity' => 'spacepress-identity', 'typedpress-admin' => 'spacepress-admin'];
 
-    /** The current basename of one of the runtime's own plugins, or the basename unchanged for any other plugin. */
-    private static function pluginBasename(string $basename): string
+    /**
+     * The current basename of one of the runtime's own plugins, or the basename unchanged for any other
+     * plugin. A renamed app's plugin takes the app's current name: `<brand>-app-<earlier app name>`.
+     *
+     * @param array<string, string> $renamedApp
+     */
+    private static function pluginBasename(string $basename, array $renamedApp): string
     {
         $parts = explode('/', $basename);
         if (count($parts) !== 2 || $parts[1] !== $parts[0] . '.php') {
             return $basename;
         }
-        $to = self::PLUGINS[$parts[0]] ?? (preg_match('/\A' . self::LEGACY . '-app-([a-z0-9][a-z0-9-]*)\z/D', $parts[0], $m) === 1 ? 'spacepress-app-' . $m[1] : null);
+        $to = self::PLUGINS[$parts[0]] ?? (preg_match('/\A' . self::LEGACY . '-app-([a-z0-9][a-z0-9-]*)\z/D', $parts[0], $m) === 1 ? 'spacepress-app-' . ($renamedApp[$m[1]] ?? $m[1]) : null);
 
         return $to === null ? $basename : "$to/$to.php";
     }

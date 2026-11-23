@@ -166,6 +166,14 @@ foreach (glob("$held/*") ?: [] as $f) {
 rmdir($held);
 rename($kept, $to);
 
+// A plugin's basename: the runtime's own move to the current name, an app renamed with the brand
+// takes the app's current name, and any other plugin keeps its own.
+$basename = (new ReflectionClass(\SpacePress\Wp\BrandUpgrade::class))->getMethod('pluginBasename');
+$renamed = [$legacy . '-site' => 'spacepress-site'];
+eq('plugin basenames map to the current names', array_map(static fn (string $b): string => $basename->invoke(null, $b, $renamed),
+    ["$legacy-runtime/$legacy-runtime.php", "$legacy-app-$legacy-site/$legacy-app-$legacy-site.php", "$legacy-app-blog/$legacy-app-blog.php", "$legacy-seo/$legacy-seo.php", 'akismet/akismet.php']),
+    ['spacepress-runtime/spacepress-runtime.php', 'spacepress-app-spacepress-site/spacepress-app-spacepress-site.php', 'spacepress-app-blog/spacepress-app-blog.php', "$legacy-seo/$legacy-seo.php", 'akismet/akismet.php']);
+
 // A second run: the marker is recorded, so nothing moves; and a forced replan finds nothing to do.
 eq('a second ensure changes nothing', \SpacePress\Wp\BrandUpgrade::ensure($wp->plugin()->schema), []);
 $plan = \SpacePress\Wp\BrandUpgrade::plan($wp->connection(), $wp->plugin()->schema);

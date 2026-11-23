@@ -939,7 +939,10 @@ pub fn fold(entries: &[(String, Json)]) -> Result<FoldedState, Diag> {
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
 
     // A site deployed by a pre-release compiler keys its revisions table as that compiler named it.
-    let current: Vec<(String, Json)> = sorted.iter().map(|(id, doc)| (id.clone(), legacy_revisions(doc))).collect();
+    let current: Vec<(String, Json)> = sorted
+        .iter()
+        .map(|(id, doc)| (id.clone(), legacy_revisions(doc)))
+        .collect();
     let sorted: Vec<&(String, Json)> = current.iter().collect();
 
     let mut state = FoldedState::empty();

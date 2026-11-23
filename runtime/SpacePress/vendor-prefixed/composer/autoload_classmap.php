@@ -21,7 +21,6 @@ return array(
     'Override' => $vendorDir . '/symfony/polyfill-php83/Resources/stubs/Override.php',
     'PhpToken' => $vendorDir . '/wp-php-toolkit/markdown/vendor-patched/symfony/polyfill-php80/Resources/stubs/PhpToken.php',
     'SQLite3Exception' => $vendorDir . '/symfony/polyfill-php83/Resources/stubs/SQLite3Exception.php',
-    'Stringable' => $vendorDir . '/wp-php-toolkit/markdown/vendor-patched/symfony/polyfill-php80/Resources/stubs/Stringable.php',
     'SpacePress\\Vendor\\AsyncAws\\Core\\AbstractApi' => $vendorDir . '/async-aws/core/src/AbstractApi.php',
     'SpacePress\\Vendor\\AsyncAws\\Core\\AwsClientFactory' => $vendorDir . '/async-aws/core/src/AwsClientFactory.php',
     'SpacePress\\Vendor\\AsyncAws\\Core\\AwsError\\AwsError' => $vendorDir . '/async-aws/core/src/AwsError/AwsError.php',
@@ -974,6 +973,7 @@ return array(
     'SpacePress\\Vendor\\WordPress\\Merge\\Validate\\InvalidMergeException' => $vendorDir . '/wp-php-toolkit/merge/Validate/class-invalidmergeexception.php',
     'SpacePress\\Vendor\\WordPress\\Merge\\Validate\\MergeValidator' => $vendorDir . '/wp-php-toolkit/merge/Validate/class-mergevalidator.php',
     'SpacePress_Vendor_ComposerAutoloaderInit13c3acfa4eaaf3747ca455e049c26d35' => $vendorDir . '/wp-php-toolkit/markdown/vendor-patched/composer/autoload_real.php',
+    'Stringable' => $vendorDir . '/wp-php-toolkit/markdown/vendor-patched/symfony/polyfill-php80/Resources/stubs/Stringable.php',
     'UnhandledMatchError' => $vendorDir . '/wp-php-toolkit/markdown/vendor-patched/symfony/polyfill-php80/Resources/stubs/UnhandledMatchError.php',
     'ValueError' => $vendorDir . '/wp-php-toolkit/markdown/vendor-patched/symfony/polyfill-php80/Resources/stubs/ValueError.php',
 );

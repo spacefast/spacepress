@@ -1,5 +1,5 @@
 {
-	"name": "@typedpress-admin/widgets",
+	"name": "@spacepress-admin/widgets",
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
@@ -9,10 +9,10 @@
 	},
 	"license": "GPL-2.0-or-later",
 	"dependencies": {
-		"@typedpress-admin/admin-toolkit": "workspace:*",
-		"@typedpress-admin/boot": "workspace:*",
-		"@typedpress-admin/dashboard": "workspace:*",
-		"@typedpress-admin/schema": "workspace:*",
+		"@spacepress-admin/admin-toolkit": "workspace:*",
+		"@spacepress-admin/boot": "workspace:*",
+		"@spacepress-admin/dashboard": "workspace:*",
+		"@spacepress-admin/schema": "workspace:*",
 		"@wordpress/api-fetch": "catalog:",
 		"@wordpress/components": "catalog:",
 		"@wordpress/data": "catalog:",

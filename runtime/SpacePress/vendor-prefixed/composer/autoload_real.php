@@ -36,8 +36,8 @@ class ComposerAutoloaderInitSpacePressRuntime
 
         $filesToLoad = \SpacePress\Vendor\Composer\Autoload\ComposerStaticInitSpacePressRuntime::$files;
         $requireFile = \Closure::bind(static function ($fileIdentifier, $file) {
-            if (empty($GLOBALS['_spp_runtime_vendor_autoload_files'][$fileIdentifier])) {
-                $GLOBALS['_spp_runtime_vendor_autoload_files'][$fileIdentifier] = true;
+            if (empty($GLOBALS['__sp_runtime_vendor_autoload_files'][$fileIdentifier])) {
+                $GLOBALS['__sp_runtime_vendor_autoload_files'][$fileIdentifier] = true;
 
                 require $file;
             }

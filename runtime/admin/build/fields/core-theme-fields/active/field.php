@@ -2,21 +2,21 @@
 /**
  * Active field definition for core theme fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'     => 'boolean',
-	'label'    => __( 'Active?', 'typedpress-admin' ),
+	'label'    => __( 'Active?', 'spacepress-admin' ),
 	'filterBy' => false,
 	'elements' => array(
 		array(
 			'value' => true,
-			'label' => __( 'Yes', 'typedpress-admin' ),
+			'label' => __( 'Yes', 'spacepress-admin' ),
 		),
 		array(
 			'value' => false,
-			'label' => __( 'No', 'typedpress-admin' ),
+			'label' => __( 'No', 'spacepress-admin' ),
 		),
 	),
 );

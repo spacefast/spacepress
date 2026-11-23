@@ -7,20 +7,20 @@ namespace SpacePress\Identity\Vendor\Composer\Autoload;
 class ComposerStaticInitSpacePressIdentity
 {
     public static $files = array (
-        '0ec0c67876a2c494d9c7382aa6200638' => __DIR__ . '/..' . '/symfony/deprecation-contracts/function.php',
-        '9b62a7407cecd9d8e685d8128698ff3a' => __DIR__ . '/..' . '/symfony/polyfill-ctype/bootstrap.php',
-        'eadac5c457fbdd201ebbf05a2029c235' => __DIR__ . '/..' . '/symfony/polyfill-intl-grapheme/bootstrap.php',
-        '48ee283f799cb19b2cfc062182334fb2' => __DIR__ . '/..' . '/symfony/polyfill-intl-normalizer/bootstrap.php',
-        '39ffeb8ac75b4d8a9dda804b5531553d' => __DIR__ . '/..' . '/symfony/polyfill-mbstring/bootstrap.php',
-        '2f785fb773925813de32446d43c39507' => __DIR__ . '/..' . '/symfony/string/Resources/functions.php',
-        'bc19f2ffe50f9d1d4cdaf09c3d55ad7a' => __DIR__ . '/..' . '/symfony/polyfill-php83/bootstrap.php',
-        '8b1d1609844dd12c1c6fec124ac394d9' => __DIR__ . '/..' . '/symfony/polyfill-php84/bootstrap.php',
-        'bc897f49defae5c4f6feb97909adc32c' => __DIR__ . '/..' . '/symfony/polyfill-uuid/bootstrap.php',
-        'f0c437a2f9363777c3977e7e21f98ea2' => __DIR__ . '/..' . '/symfony/clock/Resources/now.php',
+        'cf302b379424dacda5e94ee178367bf6' => __DIR__ . '/..' . '/symfony/deprecation-contracts/function.php',
+        'b61d65825e9706808e88009a131129a8' => __DIR__ . '/..' . '/symfony/polyfill-ctype/bootstrap.php',
+        '36e3814bd8ba7c578441149400a6d529' => __DIR__ . '/..' . '/symfony/polyfill-intl-grapheme/bootstrap.php',
+        'a31189bd131bebfe0e02ca7d17e48721' => __DIR__ . '/..' . '/symfony/polyfill-intl-normalizer/bootstrap.php',
+        '59ef690d10a11b111eed1634e973e8f2' => __DIR__ . '/..' . '/symfony/polyfill-mbstring/bootstrap.php',
+        '52c355c262d0d3a03041f8af6bc386ec' => __DIR__ . '/..' . '/symfony/string/Resources/functions.php',
+        'fb7635bd1f3967c5996f03e8f41f2099' => __DIR__ . '/..' . '/symfony/polyfill-php83/bootstrap.php',
+        'bba257d8811d14e6c0f7cef49cbaa80e' => __DIR__ . '/..' . '/symfony/polyfill-php84/bootstrap.php',
+        '7ab5376a8aba202a2d209d898187898d' => __DIR__ . '/..' . '/symfony/polyfill-uuid/bootstrap.php',
+        '35d735c4d8ba2d6bd7561489ea8d8e89' => __DIR__ . '/..' . '/symfony/clock/Resources/now.php',
     );
 
     public static $prefixLengthsPsr4 = array (
-        'T' =>
+        'S' =>
         array (
             'SpacePress\\Identity\\Vendor\\phpDocumentor\\Reflection\\' => 52,
             'SpacePress\\Identity\\Vendor\\Webmozart\\Assert\\' => 44,

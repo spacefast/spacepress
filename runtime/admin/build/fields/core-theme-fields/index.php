@@ -2,7 +2,7 @@
 /**
  * Core theme fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(

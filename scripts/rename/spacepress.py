@@ -37,7 +37,7 @@ SHORT = re.compile(
     rb"|(?:tpv|tpapp|tpswap)(?![A-Za-z0-9])"
     rb")"
 )
-VENDOR_SHORT = re.compile(rb"(?<![A-Za-z0-9])(?:TP(?=_(?:IDENTITY_)?VENDOR_)|_tp(?=_(?:runtime|identity)_vendor_))")
+VENDOR_SHORT = re.compile(rb"(?<![A-Za-z0-9])(?:TP(?=_(?:IDENTITY_)?VENDOR_)|(?<=_)tp(?=_(?:runtime|identity)_vendor_))")
 
 SKIP_PREFIXES = ("runtime/admin/build/", "runtime/identity/build/")
 BRAND_ONLY = re.compile(r"(^|/)vendor-prefixed/|^migrate/src/zero/client08/|^crates/oxc-browserslist/src/|(^|/)(package-lock\.json|pnpm-lock\.yaml|bun\.lock|Cargo\.lock|composer\.lock)$")

@@ -2,32 +2,32 @@
 /**
  * Status field definition for core comments fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
-$tp_admin_comment_statuses = array(
+$sp_admin_comment_statuses = array(
 	array(
 		'value' => 'approved',
-		'label' => __( 'Approved', 'typedpress-admin' ),
+		'label' => __( 'Approved', 'spacepress-admin' ),
 	),
 	array(
 		'value' => 'hold',
-		'label' => __( 'Unapproved', 'typedpress-admin' ),
+		'label' => __( 'Unapproved', 'spacepress-admin' ),
 	),
 	array(
 		'value' => 'spam',
-		'label' => __( 'Spam', 'typedpress-admin' ),
+		'label' => __( 'Spam', 'spacepress-admin' ),
 	),
 	array(
 		'value' => 'trash',
-		'label' => __( 'Trash', 'typedpress-admin' ),
+		'label' => __( 'Trash', 'spacepress-admin' ),
 	),
 );
 
 return array(
 	'type'          => 'select',
-	'label'         => __( 'Status', 'typedpress-admin' ),
+	'label'         => __( 'Status', 'spacepress-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
-	'elements'      => $tp_admin_comment_statuses,
+	'elements'      => $sp_admin_comment_statuses,
 );

@@ -2,12 +2,12 @@
 /**
  * Show toolbar when viewing site field definition for core user fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'          => 'boolean',
-	'label'         => __( 'Show toolbar when viewing site', 'typedpress-admin' ),
+	'label'         => __( 'Show toolbar when viewing site', 'spacepress-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 	'enableHiding'  => false,

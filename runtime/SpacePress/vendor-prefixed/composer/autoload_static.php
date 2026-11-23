@@ -7,13 +7,13 @@ namespace SpacePress\Vendor\Composer\Autoload;
 class ComposerStaticInitSpacePressRuntime
 {
     public static $files = array (
-        'a64b3e5a52d3c2532c378151100da344' => __DIR__ . '/..' . '/symfony/deprecation-contracts/function.php',
-        '66d05a3f31a5223faebffac1030ba0b9' => __DIR__ . '/..' . '/symfony/polyfill-php83/bootstrap.php',
-        '60243ee37ba746b051bdbb14d6118521' => __DIR__ . '/..' . '/symfony/polyfill-intl-normalizer/bootstrap.php',
+        '18ded33f0655d3a8e443ffc27322a79a' => __DIR__ . '/..' . '/symfony/deprecation-contracts/function.php',
+        '53afc9a38226bfdb83e6af09f9915250' => __DIR__ . '/..' . '/symfony/polyfill-php83/bootstrap.php',
+        '59bd426590c29ea93084f0b4086482d2' => __DIR__ . '/..' . '/symfony/polyfill-intl-normalizer/bootstrap.php',
     );
 
     public static $prefixLengthsPsr4 = array (
-        'T' =>
+        'S' =>
         array (
             'SpacePress\\Vendor\\Symfony\\Polyfill\\Php83\\' => 41,
             'SpacePress\\Vendor\\Symfony\\Polyfill\\Intl\\Normalizer\\' => 51,
@@ -97,7 +97,7 @@ class ComposerStaticInitSpacePressRuntime
     );
 
     public static $prefixesPsr0 = array (
-        'T' =>
+        'S' =>
         array (
             'SpacePress\\Vendor\\Highlight\\' =>
             array (
@@ -126,7 +126,6 @@ class ComposerStaticInitSpacePressRuntime
         'Override' => __DIR__ . '/..' . '/symfony/polyfill-php83/Resources/stubs/Override.php',
         'PhpToken' => __DIR__ . '/..' . '/wp-php-toolkit/markdown/vendor-patched/symfony/polyfill-php80/Resources/stubs/PhpToken.php',
         'SQLite3Exception' => __DIR__ . '/..' . '/symfony/polyfill-php83/Resources/stubs/SQLite3Exception.php',
-        'Stringable' => __DIR__ . '/..' . '/wp-php-toolkit/markdown/vendor-patched/symfony/polyfill-php80/Resources/stubs/Stringable.php',
         'SpacePress\\Vendor\\AsyncAws\\Core\\AbstractApi' => __DIR__ . '/..' . '/async-aws/core/src/AbstractApi.php',
         'SpacePress\\Vendor\\AsyncAws\\Core\\AwsClientFactory' => __DIR__ . '/..' . '/async-aws/core/src/AwsClientFactory.php',
         'SpacePress\\Vendor\\AsyncAws\\Core\\AwsError\\AwsError' => __DIR__ . '/..' . '/async-aws/core/src/AwsError/AwsError.php',
@@ -1079,6 +1078,7 @@ class ComposerStaticInitSpacePressRuntime
         'SpacePress\\Vendor\\WordPress\\Merge\\Validate\\InvalidMergeException' => __DIR__ . '/..' . '/wp-php-toolkit/merge/Validate/class-invalidmergeexception.php',
         'SpacePress\\Vendor\\WordPress\\Merge\\Validate\\MergeValidator' => __DIR__ . '/..' . '/wp-php-toolkit/merge/Validate/class-mergevalidator.php',
         'SpacePress_Vendor_ComposerAutoloaderInitSpacePressRuntime' => __DIR__ . '/..' . '/wp-php-toolkit/markdown/vendor-patched/composer/autoload_real.php',
+        'Stringable' => __DIR__ . '/..' . '/wp-php-toolkit/markdown/vendor-patched/symfony/polyfill-php80/Resources/stubs/Stringable.php',
         'UnhandledMatchError' => __DIR__ . '/..' . '/wp-php-toolkit/markdown/vendor-patched/symfony/polyfill-php80/Resources/stubs/UnhandledMatchError.php',
         'ValueError' => __DIR__ . '/..' . '/wp-php-toolkit/markdown/vendor-patched/symfony/polyfill-php80/Resources/stubs/ValueError.php',
     );

@@ -1,1 +1,1 @@
-<?php return array('name' => 'term-add', 'dependencies' => array('wp-core-data', 'wp-data'), 'moduleDependencies' => array('@typedpress-admin/core-data-next', '@wordpress/route'), 'version' => '4c77dbe02a6e25451966');
+<?php return array('name' => 'term-add', 'dependencies' => array('wp-core-data', 'wp-data'), 'moduleDependencies' => array('@spacepress-admin/core-data-next', '@wordpress/route'), 'version' => '01cc90ab896ed2fadfa8');

@@ -2,11 +2,11 @@
 /**
  * Website field definition for core user fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'          => 'url',
-	'label'         => __( 'Website', 'typedpress-admin' ),
+	'label'         => __( 'Website', 'spacepress-admin' ),
 	'enableSorting' => true,
 );

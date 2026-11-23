@@ -2,13 +2,13 @@
 /**
  * Description field definition for core media fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'placeholder'   => __( 'No description', 'typedpress-admin' ),
-	'label'         => __( 'Description', 'typedpress-admin' ),
+	'placeholder'   => __( 'No description', 'spacepress-admin' ),
+	'label'         => __( 'Description', 'spacepress-admin' ),
 	'enableSorting' => true,
 	'filterBy'      => false,
 );

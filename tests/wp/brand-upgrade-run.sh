@@ -97,4 +97,10 @@ before_again=$(snapshot)
 curl -sf "$url/" >/dev/null || true
 h wp eval 'var_export(\SpacePress\Wp\BrandUpgrade::ensure(\SpacePress\Wp\Runtime::plugin()->schema));' >/dev/null
 check 'a second load and ensure change nothing' "$(snapshot)" "$before_again"
+# A foreign key's current name taken by another table in the database (MySQL names constraints per
+# database) stops a move before any change.
+h sql 'CREATE TABLE wp_tp_probe_a (id INT PRIMARY KEY) ENGINE=InnoDB; CREATE TABLE wp_tp_probe_b (a INT, CONSTRAINT tp_probe_fk FOREIGN KEY (a) REFERENCES wp_tp_probe_a (id)) ENGINE=InnoDB; CREATE TABLE wp_other_probe (a INT, CONSTRAINT sp_probe_fk FOREIGN KEY (a) REFERENCES wp_tp_probe_a (id)) ENGINE=InnoDB' >/dev/null
+check 'a foreign key name taken elsewhere in the database is a conflict' "$(h wp eval 'echo json_encode(\SpacePress\Wp\BrandUpgrade::conflicts(new \SpacePress\Wp\Connection($GLOBALS["wpdb"]), ["tables" => ["wp_tp_probe_b" => "wp_sp_probe_b"], "options" => [], "meta" => [], "sitemeta" => [], "postTypes" => [], "taxonomies" => [], "private" => null, "renamedApp" => []]));')" \
+	'["foreign key sp_probe_fk on wp_other_probe (wanted by wp_tp_probe_b)"]'
+h sql 'DROP TABLE wp_other_probe, wp_tp_probe_b, wp_tp_probe_a' >/dev/null
 exit $fail

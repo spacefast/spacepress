@@ -180,6 +180,14 @@ $plan = \SpacePress\Wp\BrandUpgrade::plan($wp->connection(), $wp->plugin()->sche
 eq('… and a fresh plan finds nothing left to move', array_filter([$plan['tables'], $plan['options'], ...array_values($plan['meta']), $plan['postTypes'], $plan['taxonomies'], $plan['plugins'], $plan['private']]), []);
 eq('… so the stored state is byte for byte the same', $state(), $after);
 
+// A renamed app with a migration recorded under both its names stops the move before any change.
+$empty = ['tables' => [], 'options' => [], 'meta' => [], 'sitemeta' => [], 'postTypes' => [], 'taxonomies' => [], 'private' => null, 'renamedApp' => ["$legacy-site" => 'spacepress-site']];
+foreach (["$legacy-site", 'spacepress-site'] as $app) {
+    $wp->sql("INSERT INTO `{$p}sp__migrations` (`app`, `id`, `kind`, `applied_at`) VALUES (?, '20260101000000_aaaaaa_init', 'schema', '2026-01-01T00:00:00.000Z')", [$app]);
+}
+eq('a migration recorded for an app under both names is a conflict', \SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), $empty), ["migration 20260101000000_aaaaaa_init recorded for both $legacy-site and spacepress-site"]);
+$wp->sql("DELETE FROM `{$p}sp__migrations` WHERE `app` IN (?, ?)", ["$legacy-site", 'spacepress-site']);
+
 function BrandUpgrade_done(): bool
 {
     return \SpacePress\Wp\BrandUpgrade::done();

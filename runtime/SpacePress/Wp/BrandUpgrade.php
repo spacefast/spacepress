@@ -643,17 +643,29 @@ final class BrandUpgrade
                 }
             }
         }
-        // A table about to move that already has a foreign key under the name one of its keys moves to.
+        // A foreign key of a table about to move takes its current name ({@see renameForeignKeys()}),
+        // and MySQL names constraints once per database: that name may be taken by any table in it.
         if (!$db->sqlite() && $plan['tables'] !== []) {
             $marks = implode(', ', array_fill(0, count($plan['tables']), '?'));
+            $next = [];
             foreach ($db->run("SELECT TABLE_NAME AS t, CONSTRAINT_NAME AS n FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME IN ($marks)", array_keys($plan['tables'])) as $row) {
-                $names[$row['t']][] = (string) $row['n'];
+                if (preg_match('/\A(m[0-9a-f]{7}_)?tp_/', (string) $row['n'], $m) === 1) {
+                    $next[substr(($m[1] ?? '') . 'sp_' . substr((string) $row['n'], strlen(($m[1] ?? '') . 'tp_')), 0, 64)] = $row['t'];
+                }
             }
-            foreach ($names ?? [] as $table => $keys) {
-                foreach ($keys as $key) {
-                    if (preg_match('/\A(m[0-9a-f]{7}_)?tp_/', $key, $m) === 1 && in_array(($m[1] ?? '') . 'sp_' . substr($key, strlen(($m[1] ?? '') . 'tp_')), $keys, true)) {
-                        $found[] = "foreign key on $table";
-                    }
+            if ($next !== []) {
+                $marks = implode(', ', array_fill(0, count($next), '?'));
+                foreach ($db->run("SELECT TABLE_NAME AS t, CONSTRAINT_NAME AS n FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_NAME IN ($marks)", array_keys($next)) as $row) {
+                    $found[] = "foreign key {$row['n']} on {$row['t']} (wanted by {$next[$row['n']]})";
+                }
+            }
+        }
+        // A renamed app's ledger rows take its current name, and the ledger is keyed by (app, id).
+        $ledger = $db->prefix() . (isset($plan['tables'][$db->prefix() . 'tp__migrations']) ? 'tp__migrations' : 'sp__migrations');
+        if ($plan['renamedApp'] !== [] && self::existingTables($db, $ledger, exact: true) !== []) {
+            foreach ($plan['renamedApp'] as $from => $to) {
+                foreach ($db->run("SELECT a.`id` AS id FROM `$ledger` a JOIN `$ledger` b ON b.`id` = a.`id` AND b.`app` = ? WHERE a.`app` = ?", [$to, $from]) as $row) {
+                    $found[] = "migration {$row['id']} recorded for both $from and $to";
                 }
             }
         }

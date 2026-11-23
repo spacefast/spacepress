@@ -12,12 +12,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub const SP_MODULE: &str = "spacepress";
-/// SpacePress canonical module specifiers (normalized to internal compiler module names on parse).
-pub const SP_MODULE: &str = "spacepress";
-pub const SP_APP_MODULE: &str = "spacepress/app";
-pub const SP_CONTENT_MODULE: &str = "spacepress/content";
-pub const SP_CLIENT_MODULE: &str = "spacepress/client";
-pub const SP_DB_MODULE: &str = "spacepress:db";
+/// Spacefast's name for [`SP_MODULE`], rewritten to it on parse.
 pub const SPACEFAST_APP_MODULE: &str = "spacefast/app";
 /// Email templates (docs/design-react-email.md), beside `spacepress.config.ts`.
 pub const EMAILS_DIR: &str = "emails";
@@ -218,7 +213,7 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
 
 #[cfg(feature = "cli")]
 pub(crate) fn stylesheet_inputs(project: &Path) -> Result<Vec<String>> {
-    let entry = crate::layout::project_config(|p| p.is_file(), project);
+    let entry = project.join(crate::layout::CONFIG);
     let program = load_with_styles(Rc::new(Disk), &entry, true)
         .map_err(|diagnostics| diagnostics.into_iter().next().expect("failed load has diagnostics"))?;
     let mut styles: Vec<_> = program
@@ -245,7 +240,7 @@ pub(crate) fn frontend_enabled(fs: &dyn Fs, root: &Path) -> Result<bool> {
     }
     .map_err(|error| Diag::new(Span::NONE, format!("can't read package.json: {error}")).code(diag::Code::Import))?;
     Ok(["dependencies", "devDependencies"].iter().any(|key| {
-        package[*key]["@spacepress/frontend"].is_string() || package[*key]["@spacepress/frontend"].is_string()
+        package[*key]["@spacepress/frontend"].is_string()
     }))
 }
 
@@ -709,7 +704,7 @@ fn load_module(
                 if prop == "PreviewProps" && matches!(obj.kind, ExprKind::Ident(_)))
         });
     }
-    normalize_spacepress_modules(&mut body, commonjs.as_mut());
+    normalize_spacefast_modules(&mut body, commonjs.as_mut());
     // `"spacepress:db"` gives this app's kinds to the module that imports them; re-exporting it would hand
     // them on under another module's name, which no evaluator path resolves.
     // Locals bound by `import { x } from "spacepress:db"`: exporting one again is the same re-export.
@@ -1420,35 +1415,18 @@ fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> R
     )))
 }
 
-/// Maps `"spacepress"`, `"spacefast/app"`, and `"spacepress/*"` specifiers onto the compiler's
-/// canonical internal module names on parsed AST statements.
-fn normalize_spacepress_spec(spec: &str) -> Option<&'static str> {
-    match spec {
-        SP_MODULE | SPACEFAST_APP_MODULE => Some(SP_MODULE),
-        SP_APP_MODULE => Some(APP_MODULE),
-        SP_CONTENT_MODULE => Some(CONTENT_MODULE),
-        SP_CLIENT_MODULE => Some(CLIENT_MODULE),
-        SP_DB_MODULE => Some(DB_MODULE),
-        _ => None,
-    }
-}
-
-fn normalize_spacepress_modules(body: &mut [Stmt], commonjs: Option<&mut CommonJs>) {
-    for stmt in body {
-        match stmt {
-            Stmt::Import { source, .. }
-            | Stmt::ExportNames { from: Some(source), .. }
-            | Stmt::ExportAll { from: source, .. } => {
-                if let Some(mapped) = normalize_spacepress_spec(source) {
-                    *source = mapped.to_owned();
-                }
-            }
-            _ => {}
+/// Rewrites `"spacefast/app"` imports, exports and requires to `"spacepress"`.
+fn normalize_spacefast_modules(body: &mut [Stmt], commonjs: Option<&mut CommonJs>) {
+    let sources = body.iter_mut().filter_map(|stmt| match stmt {
+        Stmt::Import { source, .. } | Stmt::ExportNames { from: Some(source), .. } | Stmt::ExportAll { from: source, .. } => {
+            Some(source)
         }
-    }
-    for (spec, _) in commonjs.into_iter().flat_map(|c| c.requires.iter_mut()) {
-        if let Some(mapped) = normalize_spacepress_spec(spec) {
-            *spec = mapped.to_owned();
+        _ => None,
+    });
+    let requires = commonjs.into_iter().flat_map(|c| c.requires.iter_mut().map(|(spec, _)| spec));
+    for spec in sources.chain(requires) {
+        if spec == SPACEFAST_APP_MODULE {
+            *spec = SP_MODULE.to_owned();
         }
     }
 }

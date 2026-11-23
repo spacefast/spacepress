@@ -9,7 +9,7 @@ use std::process::{Command, Stdio};
 /// rewriting them: keep it alive until the caller has read `public/`.
 pub(crate) fn prepare_styles(project: &Path) -> Result<Option<File>> {
     let error = |message: String| Diag::new(Span::NONE, message).code(crate::diag::Code::Import);
-    if !crate::layout::project_config(|p| p.is_file(), project).is_file() {
+    if !project.join(crate::layout::CONFIG).is_file() {
         return Ok(None);
     }
     if !crate::loader::frontend_enabled(&crate::loader::Disk, project)? {

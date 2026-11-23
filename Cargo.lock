@@ -1455,6 +1455,57 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8e2fb0f499abb4d162f2bedad68f5ef91a1682b5a03596ddb67efd37768d100"
 
 [[package]]
+name = "spacepress"
+version = "0.3.0"
+dependencies = [
+ "boon",
+ "imagesize",
+ "indexmap",
+ "oxc-css-parser",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_ast_visit",
+ "oxc_codegen",
+ "oxc_isolated_declarations",
+ "oxc_minifier",
+ "oxc_parser",
+ "oxc_semantic",
+ "oxc_span",
+ "oxc_syntax",
+ "oxc_transformer",
+ "pulldown-cmark",
+ "regex",
+ "ryu-js",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "ureq",
+ "url",
+ "zip",
+]
+
+[[package]]
+name = "spacepress-migrate"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_codegen",
+ "oxc_parser",
+ "oxc_semantic",
+ "oxc_span",
+ "oxc_transformer",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "spacepress",
+ "tempfile",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1551,57 +1602,6 @@ name = "typed-path"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e"
-
-[[package]]
-name = "spacepress"
-version = "0.3.0"
-dependencies = [
- "boon",
- "imagesize",
- "indexmap",
- "oxc-css-parser",
- "oxc_allocator",
- "oxc_ast",
- "oxc_ast_visit",
- "oxc_codegen",
- "oxc_isolated_declarations",
- "oxc_minifier",
- "oxc_parser",
- "oxc_semantic",
- "oxc_span",
- "oxc_syntax",
- "oxc_transformer",
- "pulldown-cmark",
- "regex",
- "ryu-js",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "ureq",
- "url",
- "zip",
-]
-
-[[package]]
-name = "spacepress-migrate"
-version = "0.1.0"
-dependencies = [
- "indexmap",
- "oxc_allocator",
- "oxc_ast",
- "oxc_codegen",
- "oxc_parser",
- "oxc_semantic",
- "oxc_span",
- "oxc_transformer",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "spacepress",
-]
 
 [[package]]
 name = "typenum"

@@ -5,19 +5,8 @@
 //!   declarations, the typed client and the locks.
 //! - `sp/dist/` is written by `spacepress build` and ignored by git: the deployable output.
 
-/// The SpacePress config at the project root (preferred).
-pub const SPACEPRESS_CONFIG: &str = "spacepress.config.ts";
-/// Legacy config filename supported for existing workspaces.
+/// The config at the project root: the entry every module is reached from.
 pub const CONFIG: &str = "spacepress.config.ts";
-
-/// Resolve the project's config entry file: prefers `spacepress.config.ts`, else `spacepress.config.ts`.
-pub fn project_config(exists: impl Fn(&std::path::Path) -> bool, project: &std::path::Path) -> std::path::PathBuf {
-    let sp = project.join(SPACEPRESS_CONFIG);
-    if exists(&sp) {
-        return sp;
-    }
-    project.join(CONFIG)
-}
 /// The SpacePress root.
 pub const ROOT: &str = "sp";
 /// Written by SpacePress, committed.

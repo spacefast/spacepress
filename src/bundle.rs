@@ -17,9 +17,7 @@ use std::{
 };
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const SPACEPRESS_FORMAT: &str = "spacepress.source-bundle.v1";
-pub const SPACEPRESS_APP_FILE: &str = "app.spacepress.json";
-pub const SPACEPRESS_VENDOR_FILE: &str = "vendor.spacepress.json";
+pub const FORMAT: &str = "spacepress.source-bundle.v1";
 pub const APP_FILE: &str = "app.spacepress.json";
 pub const VENDOR_FILE: &str = "vendor.spacepress.json";
 pub const MANIFEST_FILE: &str = "manifest.json";
@@ -196,8 +194,7 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
         fs: fs.clone(),
         packages,
     });
-    let entry = crate::layout::project_config(|p| fs.is_file(p), &project);
-    let is_spacepress_config = entry.file_name().is_some_and(|n| n == crate::layout::SPACEPRESS_CONFIG);
+    let entry = project.join(crate::layout::CONFIG);
     let program = loader::load_from(recording.clone(), &entry).map_err(|mut d| d.remove(0))?;
     let built = pipeline::build(&project, &program, || Ok(pipeline::Previous::none()), |_| None)?;
     if built.plugins.as_ref().is_some_and(|p| !p.plugins.is_empty()) {
@@ -260,12 +257,7 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
     }
     let app = serde_json::to_string(&app).map_err(|e| failure(e.to_string()))?;
     let vendor = serde_json::to_string(&vendor).map_err(|e| failure(e.to_string()))?;
-    let format = if is_spacepress_config {
-        SPACEPRESS_FORMAT
-    } else {
-        "spacepress.source-bundle.v1"
-    };
-    let manifest = manifest_for(format, &built.schema.name, &app, &vendor);
+    let manifest = manifest_for(&built.schema.name, &app, &vendor);
     let mut public_files = Vec::new();
     capture_assets(&*fs, &project.join("public"), &project, &mut public_files)?;
     public_files.sort();
@@ -346,16 +338,10 @@ pub fn sources(project: &Path, destination: &Path) -> Result<Manifest, Diag> {
 #[cfg(feature = "host")]
 pub(crate) fn write_sources(project: &Path, destination: &Path, packages: bool) -> Result<Manifest, Diag> {
     let captured = capture(Rc::new(loader::Disk), project, packages)?;
-    let parsed: Manifest = serde_json::from_str(&captured.manifest).map_err(|e| failure(e.to_string()))?;
-    let (app_file, vendor_file) = if parsed.format == SPACEPRESS_FORMAT {
-        (SPACEPRESS_APP_FILE, SPACEPRESS_VENDOR_FILE)
-    } else {
-        (APP_FILE, VENDOR_FILE)
-    };
     write_capture(
         project,
         destination,
-        [(app_file, &captured.app), (vendor_file, &captured.vendor)],
+        [(APP_FILE, &captured.app), (VENDOR_FILE, &captured.vendor)],
         &captured.manifest,
     )
 }
@@ -378,9 +364,9 @@ pub(crate) fn write_capture(
 }
 
 /// The manifest of a capture whose bundles are `app` and `vendor`.
-pub(crate) fn manifest_for(format: &str, name: &str, app: &str, vendor: &str) -> String {
+pub(crate) fn manifest_for(name: &str, app: &str, vendor: &str) -> String {
     serde_json::to_string(&Manifest {
-        format: format.into(),
+        format: FORMAT.into(),
         name: name.into(),
         app_sha256: hash(app.as_bytes()),
         vendor_sha256: hash(vendor.as_bytes()),
@@ -1009,8 +995,7 @@ pub(crate) fn compile_tree(
 ) -> Result<Compiled, Diag> {
     let bytes = std::fs::read(source.join(MANIFEST_FILE)).map_err(io)?;
     let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
-    let is_spacepress_bundle = manifest.format == SPACEPRESS_FORMAT;
-    if !(is_spacepress_bundle || manifest.format == "spacepress.source-bundle.v1")
+    if manifest.format != FORMAT
         || manifest.name.is_empty()
         || !manifest
             .name
@@ -1019,14 +1004,9 @@ pub(crate) fn compile_tree(
     {
         return Err(failure("invalid source bundle format or app name"));
     }
-    let (app_file, vendor_file) = if is_spacepress_bundle && source.join(SPACEPRESS_APP_FILE).is_file() {
-        (SPACEPRESS_APP_FILE, SPACEPRESS_VENDOR_FILE)
-    } else {
-        (APP_FILE, VENDOR_FILE)
-    };
     let sources = read_bundles(
         source,
-        [(app_file, &manifest.app_sha256), (vendor_file, &manifest.vendor_sha256)],
+        [(APP_FILE, &manifest.app_sha256), (VENDOR_FILE, &manifest.vendor_sha256)],
     )?;
     if sources.files.keys().any(|path| {
         path.strip_prefix(crate::pipeline::OLD_LEDGER)
@@ -1068,7 +1048,7 @@ pub(crate) fn compile_tree(
         root: root.clone(),
         sources,
     });
-    let entry = crate::layout::project_config(|p| fs.is_file(p), &root);
+    let entry = root.join(crate::layout::CONFIG);
     let program = loader::load_from(fs.clone(), &entry).map_err(|mut d| d.remove(0))?;
     let previous_migrations = previous.map(|p| p.join("migrations"));
     let mut prev_entries: Vec<(String, serde_json::Value)> = Vec::new();

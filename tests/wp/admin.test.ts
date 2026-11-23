@@ -175,11 +175,11 @@ test("a declared screen: its declaration is served to users who may open it, wit
   const core = JSON.parse(wp("eval", "echo wp_json_encode(['fields' => function_exists('wp_register_entity_fields'), 'actions' => function_exists('wp_register_entity_actions')]);"));
   assert.deepEqual(screen.registry, { fields: core.fields ? "core" : "spacepress-admin", actions: core.actions ? "core" : "spacepress-admin" });
   if (core.fields) {
-    const registered = await (await fetch(`${site}/wp-json/wp/v2/entity-fields?kind=tpAdminScreen&name=test-comments`, { headers: auth("editor") })).json();
+    const registered = await (await fetch(`${site}/wp-json/wp/v2/entity-fields?kind=spAdminScreen&name=test-comments`, { headers: auth("editor") })).json();
     assert.deepEqual(registered.fields.map((f: { id: string; origin: { registeredBy: string } }) => [f.id, f.origin.registeredBy]), [["name", "spacepress-admin"], ["body", "spacepress-admin"], ["approved", "spacepress-admin"]]);
   }
   if (core.actions) {
-    const registered = await (await fetch(`${site}/wp-json/wp/v2/entity-actions?kind=tpAdminScreen&name=test-comments`, { headers: auth("editor") })).json();
+    const registered = await (await fetch(`${site}/wp-json/wp/v2/entity-actions?kind=spAdminScreen&name=test-comments`, { headers: auth("editor") })).json();
     assert.deepEqual(registered.actions.map((a: { id: string; ability: string }) => [a.id, a.ability]), [["approve", "blog/comments-update"]]);
   }
   // Each table kind is a screen too, with delete bound to the kind's delete ability; the method is

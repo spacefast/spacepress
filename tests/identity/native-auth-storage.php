@@ -448,4 +448,12 @@ declare(strict_types=1);
         remove_filter('application_password_is_api_request', '__return_true');
     }
     echo "PASS identity storage failures refuse cookie, native password, application password, Bearer/OAuth and runtime authentication\n";
+    // A provider identity signs in to the account it created, on every engine. Its key is a
+    // binary column, which SQLite's MySQL adapter never matched against a string.
+    $issuer = 'https://issuer.storage.test';
+    $subject = 'subject-' . bin2hex(random_bytes(6));
+    $first = $accounts->provider($issuer, $subject, $subject . '@storage.test', 'Provider Probe');
+    $again = $accounts->provider($issuer, $subject, $subject . '@storage.test', 'Provider Probe');
+    $assert($first > 0 && $again === $first, 'a second provider sign-in finds the account the first created');
+    echo "PASS a provider identity signs in to its own account again\n";
 })();

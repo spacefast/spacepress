@@ -92,9 +92,14 @@ final class BrandUpgrade
     /** The key of an application password's scope on its entry. */
     private const SCOPE_KEY = 'tp_scope';
 
+    /** `sp_brand_upgrade`: the version once the move finished, `started` while one is under way. */
+    private const STARTED = 'started';
+
     public static function done(): bool
     {
-        return (int) get_option(self::DONE, 0) >= self::VERSION;
+        $value = get_option(self::DONE, 0);
+
+        return $value !== self::STARTED && (int) $value >= self::VERSION;
     }
 
     /**
@@ -103,9 +108,24 @@ final class BrandUpgrade
      */
     public static function pending(): bool
     {
+        // Settled sites answer from the autoloaded marker: no query.
+        $marker = get_option(self::DONE, 0);
+        if ($marker === self::STARTED) {
+            // A move that started and stopped part way is still pending: the next request resumes it.
+            return true;
+        }
+        if ((int) $marker >= self::VERSION) {
+            return false;
+        }
         global $wpdb;
+        if ($wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->options} WHERE option_name = %s", 'tp_runtime_tables')) !== null) {
+            return true;
+        }
+        // No state under the earlier name (a site installed after the rename): record that once, so
+        // later requests skip the probe. add_option keeps a concurrent move's marker if one won.
+        add_option(self::DONE, self::VERSION, '', true);
 
-        return !self::done() && $wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->options} WHERE option_name = %s", 'tp_runtime_tables')) !== null;
+        return false;
     }
 
     /**
@@ -132,9 +152,14 @@ final class BrandUpgrade
                 return;
             }
             $plan = self::plan($db, $schema);
-            $conflicts = self::conflicts($db, $plan);
-            if ($conflicts !== []) {
-                throw new \RuntimeException('SpacePress cannot move this site\'s stored names: ' . implode('; ', $conflicts) . '. Nothing was changed. Each of these exists under both its earlier name and its current one; keep the one this site uses and rename or export the other, then reload.');
+            // A resumed move finds the names it already moved under both spellings only where it left
+            // them half done; each step below is safe to run again, so only a first attempt checks.
+            if (get_option(self::DONE) !== self::STARTED) {
+                $conflicts = self::conflicts($db, $plan);
+                if ($conflicts !== []) {
+                    throw new \RuntimeException('SpacePress cannot move this site\'s stored names: ' . implode('; ', $conflicts) . '. Nothing was changed. Each of these exists under both its earlier name and its current one; keep the one this site uses and rename or export the other, then reload.');
+                }
+                update_option(self::DONE, self::STARTED, true);
             }
             $moved = self::apply($db, $plan);
             update_option(self::DONE, self::VERSION, true);
@@ -382,6 +407,8 @@ final class BrandUpgrade
             self::renameForeignKeys($db, array_values(array_filter($plan['owned'], static fn (string $t): bool => self::existingTables($db, $t, exact: true) !== [])));
         }
         // A value a boot wrote under the current name moments ago gives way to the site's stored one.
+        // The plan lists only old names still present, so on a resumed run an option already moved
+        // is not in it and keeps its value.
         foreach (self::REGENERATED as $name) {
             if (isset($plan['options'][$name])) {
                 $db->run("DELETE FROM `{$wpdb->options}` WHERE `option_name` = ?", [$plan['options'][$name]]);
@@ -537,6 +564,16 @@ final class BrandUpgrade
              WHERE k.CONSTRAINT_SCHEMA = DATABASE() AND k.TABLE_NAME IN ($marks) AND k.REFERENCED_TABLE_NAME IS NOT NULL ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION",
             $tables,
         );
+        // Every key of these tables by name, as `columns -> schema.table(columns) delete/update`: a key
+        // already added under its new name by a run that stopped before dropping the old one is reused.
+        $defined = [];
+        foreach ($rows as $row) {
+            $defined[$row['t']][(string) $row['n']][] = $row;
+        }
+        // InnoDB enforces NO ACTION as RESTRICT, and MySQL reports an omitted rule as either.
+        $rule = static fn (string $r): string => $r === 'NO ACTION' ? 'RESTRICT' : $r;
+        $shape = static fn (array $parts): string => implode(',', array_column($parts, 'c')) . '>' . $parts[0]['rs'] . '.' . $parts[0]['rt'] . '(' . implode(',', array_column($parts, 'rc')) . ')'
+            . $rule((string) $parts[0]['d']) . '/' . $rule((string) $parts[0]['u']);
         $keys = [];
         foreach ($rows as $row) {
             $name = (string) $row['n'];
@@ -560,8 +597,14 @@ final class BrandUpgrade
                 $update = in_array($k['update'], $rules, true) ? $k['update'] : 'RESTRICT';
                 // The target as stored: another database's table stays that database's.
                 $target = ($k['schema'] !== '' && $k['schema'] !== $here ? $q($k['schema']) . '.' : '') . $q($k['table']);
-                $db->run('ALTER TABLE ' . $q((string) $table) . ' ADD CONSTRAINT ' . $q($k['to']) . ' FOREIGN KEY (' . implode(', ', array_map($q, $k['cols'])) . ') REFERENCES ' . $target
-                    . ' (' . implode(', ', array_map($q, $k['refs'])) . ") ON DELETE $delete ON UPDATE $update");
+                $existing = $defined[$table][$k['to']] ?? null;
+                if ($existing !== null && $shape($existing) !== $shape($defined[$table][$name])) {
+                    throw new \RuntimeException("Cannot rename foreign key $name on $table: $table already has a different key named {$k['to']}");
+                }
+                if ($existing === null) {
+                    $db->run('ALTER TABLE ' . $q((string) $table) . ' ADD CONSTRAINT ' . $q($k['to']) . ' FOREIGN KEY (' . implode(', ', array_map($q, $k['cols'])) . ') REFERENCES ' . $target
+                        . ' (' . implode(', ', array_map($q, $k['refs'])) . ") ON DELETE $delete ON UPDATE $update");
+                }
                 $db->run('ALTER TABLE ' . $q((string) $table) . ' DROP FOREIGN KEY ' . $q($name));
                 // The index MySQL made for the old key outlives it; the new key made its own.
                 if ($db->run('SELECT 1 AS x FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?', [(string) $table, $name]) !== []) {

@@ -20,7 +20,7 @@ cleanup() {
 	(cd "$work/legacy" 2>/dev/null && TP_WP_PROJECT=$SP_WP_PROJECT TP_WP_PORT=$SP_WP_PORT tests/wp/harness.sh down >/dev/null 2>&1) || true
 	rm -rf -- "$work"
 }
-trap cleanup EXIT
+[[ ${SP_WP_KEEP:-0} == 1 ]] || trap cleanup EXIT
 
 # The site as the earlier release built and ran it: its compiler, its harness.
 git -C "$repo" archive "$legacy" | (mkdir "$work/legacy" && tar -x -C "$work/legacy")
@@ -58,6 +58,14 @@ for slug in spacepress-runtime spacepress-identity spacepress-admin spacepress-a
 	cp -r "$work/new/plugins/$slug" "$work/site/plugins/"
 done
 old_plugins=typedpress-runtime,typedpress-identity,typedpress-app-pantry,typedpress-admin
+# A first attempt that stopped part way, as a request killed mid-move leaves it: the marker says
+# started, the tables and the runtime's options are moved, and one foreign key has its new copy but
+# still its old one. The next request has to finish from there.
+h sql "UPDATE wp_options SET option_name = 'sp_runtime_tables' WHERE option_name = 'tp_runtime_tables'" >/dev/null
+h sql "INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('sp_brand_upgrade', 'started', 'on')" >/dev/null
+h sql "RENAME TABLE $(q "SHOW TABLES LIKE 'wp\_tp\_%'" | sed 's/.*/`&` TO `&`/; s/`wp_tp_\([^`]*\)`$/`wp_sp_\1`/' | paste -sd,)" >/dev/null
+rules=$(q "SELECT CONCAT('ON DELETE ', DELETE_RULE, ' ON UPDATE ', UPDATE_RULE) FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'tp_items_locationId_fk'")
+h sql "ALTER TABLE wp_sp_items ADD CONSTRAINT sp_items_locationId_fk FOREIGN KEY (locationId) REFERENCES wp_sp_locations (id) $rules" >/dev/null
 h wp plugin activate spacepress-runtime spacepress-identity spacepress-app-pantry spacepress-admin --skip-plugins="$old_plugins" >/dev/null
 h wp plugin deactivate "${old_plugins//,/ }" --skip-plugins="$old_plugins" >/dev/null 2>&1 || true
 

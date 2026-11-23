@@ -167,8 +167,8 @@ fn website_reads_stay_within_budget() {
     let report = measure("www", &content, seed.as_deref());
     // A doc page is two statements: the doc, and the navigation tree's rows (one read for the
     // sidebar and the pager). It was 4 (5 signed in), and its sidebar asked the object cache for
-    // each of its 14 docs on its own: 44 round trips, now 32, and still 32 with 23 published docs.
-    // The API list has 23 published rows and costs what drive-store's 4 do. It was 75.
+    // each of its 14 docs on its own: 44 round trips, now 32, and still 32 with 24 published docs.
+    // The API list has 24 published rows and costs what drive-store's 4 do. It was 75.
     // A GET route handler that only reads sends no START TRANSACTION and no COMMIT: 3, now 1.
     hold(
         "www",
@@ -182,7 +182,7 @@ fn website_reads_stay_within_budget() {
             ("api-list/signed-in", 6, 35, 32),
         ],
     );
-    assert_eq!(report["api-list/anonymous"]["rows"], 23, "{report:#}");
+    assert_eq!(report["api-list/anonymous"]["rows"], 24, "{report:#}");
     same_for_everyone("www", &report, "api-list");
     same_for_everyone("www", &report, "route-handler");
 }

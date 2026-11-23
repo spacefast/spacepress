@@ -13,7 +13,7 @@ const active = () => JSON.parse(wp("plugin", "list", "--status=active", "--field
 const json = (headers: Record<string, string>, method: string, path: string, body?: unknown) =>
   fetch(`${site}${path}`, { method, headers: { ...headers, ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
 
-const LISTED = ["action-scheduler", "hello-dolly", "mcp-adapter", "secure-custom-fields", "two-factor", "spacepress", "spacepress-admin", `spacepress-app-${harness.plugin.replace(/^spacepress-app-/, "")}`, "spacepress-identity", "spacepress-runtime"];
+const LISTED = ["action-scheduler", "hello-dolly", "mcp-adapter", "secure-custom-fields", "spacepress", "spacepress-admin", `spacepress-app-${harness.plugin.replace(/^spacepress-app-/, "")}`, "spacepress-identity", "spacepress-runtime", "two-factor"];
 
 test("the build's manifest and the running app hold the same list, exactly; the site reports it is sealed", async () => {
   const listed = JSON.parse(wp("eval", "echo file_get_contents(WP_CONTENT_DIR . '/spacepress-manifest.json') ?: '{}';") || "{}").sealed;

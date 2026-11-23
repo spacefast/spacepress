@@ -227,7 +227,7 @@ test("registered meta: a SpacePress field is written through SpacePress's valida
   await box(`plain_${run}`);
   assert.equal(wp("post", "meta", "get", String(note), `plain_${run}`), "boxed");
   // SpacePress's keys, in every form the database matches them by: letter case and accents.
-  for (const key of ["sp_mood", "Sp_Mood", "SP_MOOD", "ţp_mood", "sp_undeclared"]) {
+  for (const key of ["sp_mood", "Sp_Mood", "SP_MOOD", "şp_mood", "sp_undeclared"]) {
     await box(key);
   }
   // `_sp_mood` is SCF's reference to SpacePress's field, written by SpacePress's own save.

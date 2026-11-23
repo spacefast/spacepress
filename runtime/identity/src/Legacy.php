@@ -25,6 +25,9 @@ final class Legacy
     /** Schema::migrateLocked()'s tables. */
     private const TABLES = ['accounts', 'emails', 'providers', 'sessions', 'challenges', 'applications', 'codes', 'tokens', 'events', 'limits', 'organizations', 'members', 'passkeys', 'mfa', 'recovery_codes', 'deliveries'];
 
+    /** Identity's Two Factor provider as a WordPress sign-in a pre-release build made recorded it on its session. */
+    public const TWO_FACTOR_KEY = 'TypedPress_Identity_TwoFactorProvider';
+
     /** A session secret's digest as a pre-release build stored it (Sessions::digest() under its domain). */
     public static function sessionDigest(string $secret): string
     {

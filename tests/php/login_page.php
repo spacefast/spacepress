@@ -330,11 +330,14 @@ $out['mfa methods'] = ['provider' => html_entity_decode($p[1] ?? ''), 'emailed' 
 $byEmail = planted($url, $emailUser, ['two-factor-provider' => 'Two_Factor_Email', 'two-factor-login' => time()]);
 $plain = planted($url, $mfaUser);
 $withFactor = planted($url, $mfaUser, ['two-factor-provider' => \SpacePress\Identity\Plugin::TWO_FACTOR_KEY, 'two-factor-login' => time()]);
+// A sign-in made before the rename recorded the provider's earlier name on its WordPress session.
+$withFormerFactor = planted($url, $mfaUser, ['two-factor-provider' => \SpacePress\Identity\Legacy::TWO_FACTOR_KEY, 'two-factor-login' => time()]);
 $out['bridge'] = [
     'other method' => $byEmail->go('/wp-json/spacepress-identity/v1/account')['status'],
     'other method page' => str_starts_with((string) $byEmail->go('/identity/account')['location'], $login),
     'cookie only' => $plain->go('/wp-json/spacepress-identity/v1/account')['status'],
     'identity factor' => $withFactor->go('/identity/account')['status'],
+    'identity factor, former name' => $withFormerFactor->go('/identity/account')['status'],
     'no factor, no password' => $plain->signedIn(),
 ];
 

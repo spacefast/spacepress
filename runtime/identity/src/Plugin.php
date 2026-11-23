@@ -672,9 +672,10 @@ final class Plugin
         // An account with Identity MFA counts as signed in only when that WordPress sign-in passed
         // Identity's factor on wp-login.php (Two Factor records the method on the session). A
         // session made any other way (another Two Factor method, a plugin that sets the auth cookie
-        // itself) doesn't open an identity session.
+        // itself) doesn't open an identity session. A sign-in made before the rename recorded the
+        // provider's earlier name.
         if ((new Mfa(self::$db, self::$security))->enabled($uid)
-            && (($wp["two-factor-provider"] ?? null) !== self::TWO_FACTOR_KEY || empty($wp["two-factor-login"]))) {
+            && (!in_array($wp["two-factor-provider"] ?? null, [self::TWO_FACTOR_KEY, Legacy::TWO_FACTOR_KEY], true) || empty($wp["two-factor-login"]))) {
             return null;
         }
         self::$accounts->ensure($uid);

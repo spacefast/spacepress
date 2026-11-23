@@ -6974,7 +6974,7 @@ fn one_sign_in_page_on_wordpress() {
         seen["bridge"],
         serde_json::json!({
             "other method": 401, "other method page": true, "cookie only": 401,
-            "identity factor": 200, "no factor, no password": true
+            "identity factor": 200, "identity factor, former name": 200, "no factor, no password": true
         }),
         "{seen}"
     );

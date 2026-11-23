@@ -209,6 +209,11 @@ final class Accounts
     /** Ordinary requests only provision fixed material and enqueue the background inventory. */
     public static function provisionPasswordHash(): void
     {
+        // Written under the current names while identity's storage is still under the earlier one,
+        // these would be set aside by the next boot's move, and again on every boot it fails.
+        if (!Legacy::settled() && !Plugin::storageCurrent()) {
+            return;
+        }
         $hash = get_option(self::DUMMY_PASSWORD_HASH);
         if (!is_string($hash) || wp_password_needs_rehash($hash)) {
             $hash = wp_hash_password(Security::token(48));
@@ -296,6 +301,10 @@ final class Accounts
     /** Keep profiles after upgrades: removing the last old hash must not change just its user's work. */
     public static function rememberPasswordHash(string $hash): void
     {
+        // As in provisionPasswordHash(): the move would set the profiles written now aside.
+        if (!Legacy::settled() && !Plugin::storageCurrent()) {
+            return;
+        }
         $profile = self::passwordProfile($hash);
         if ($profile === self::UNSUPPORTED_PASSWORD_PROFILE) {
             return;

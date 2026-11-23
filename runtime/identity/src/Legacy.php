@@ -122,7 +122,9 @@ final class Legacy
             foreach (self::REGENERATED as $name) {
                 // Made by a boot that found nothing: the site's own value takes the name, that one is set aside.
                 if ($wp->get_var($wp->prepare("SELECT 1 FROM {$wp->options} WHERE option_name = %s", self::SHORT . $name)) !== null) {
-                    $wp->update($wp->options, ['option_name' => 'sp_identity_' . $name . '__superseded_' . time(), 'autoload' => 'off'], ['option_name' => 'sp_identity_' . $name]);
+                    if ($wp->update($wp->options, ['option_name' => 'sp_identity_' . $name . '__superseded_' . time(), 'autoload' => 'off'], ['option_name' => 'sp_identity_' . $name]) === false) {
+                        throw new Failure('storage_unavailable', "Cannot set identity's option sp_identity_$name aside: " . $wp->last_error, 503);
+                    }
                 }
             }
             if ($tables !== []) {

@@ -14,7 +14,18 @@ require __DIR__ . '/harness.php';
 const LEGACY_COMMIT = '45d81e72857beb2d2f6b6c15bc3d749ead96baf2';
 
 // The children. `settled`: one boot of the moved site, printing every query it sent. `cronfail`: one
-// boot whose save of the cron events fails, printing the identity options it left.
+// boot whose save of the cron events fails, printing the identity options it left. `boot`: one boot,
+// printing every identity option; `boot throw` makes the save of the cron events throw instead.
+if (($argv[1] ?? '') === 'boot') {
+    $site = json_decode((string) file_get_contents("{$argv[2]}/site.json"), true, 512, JSON_THROW_ON_ERROR);
+    wpDefine($argv[2], $site['url']);
+    if (($argv[3] ?? '') === 'throw') {
+        $GLOBALS['wp_filter']['pre_update_option_cron'][10]['throw'] = ['accepted_args' => 2, 'function' => static fn () => throw new \RuntimeException('the cron save threw')];
+    }
+    require_once ABSPATH . 'wp-settings.php';
+    echo json_encode($GLOBALS['wpdb']->get_col("SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE '%identity\\_%' ORDER BY option_name")), "\n";
+    exit(0);
+}
 if (($argv[1] ?? '') === 'cronfail') {
     $site = json_decode((string) file_get_contents("{$argv[2]}/site.json"), true, 512, JSON_THROW_ON_ERROR);
     wpDefine($argv[2], $site['url']);
@@ -47,6 +58,25 @@ file_put_contents("$dir/site.json", json_encode(['activate' => ['spacepress-iden
 exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=512M ' . escapeshellarg(__DIR__ . '/wp.php') . ' activate ' . escapeshellarg($dir) . ' 2>&1', $out, $code);
 $code === 0 || throw new RuntimeException("switching to identity alone failed:\n" . implode("\n", $out));
 file_put_contents("$dir/site.json", json_encode($site, JSON_THROW_ON_ERROR));
+$boot = static function (string $mode = '') use ($dir): array {
+    exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=512M ' . escapeshellarg(__FILE__) . ' boot ' . escapeshellarg($dir) . ($mode === '' ? '' : ' ' . escapeshellarg($mode)) . ' 2>&1', $out, $code);
+
+    return [$code, json_decode((string) end($out), true)];
+};
+// Tables that cannot be renamed (here: a view naming a missing table, which SQLite checks on every
+// rename) keep the move from finishing on every boot. No boot writes identity's options under the
+// current names meanwhile, so none sets one aside, and nothing piles up.
+$sqlite = new PDO("sqlite:$dir/content/database/wp.sqlite", null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$sqlite->exec('CREATE VIEW spacepress_test_broken AS SELECT * FROM spacepress_test_missing');
+[$code, $first] = $boot();
+[, $second] = $boot();
+$sqlite->exec('DROP VIEW spacepress_test_broken');
+$sqlite = null;
+check('a boot whose table rename fails reports it', $code === 0 && str_contains((string) @file_get_contents("$dir/content/debug.log"), "Cannot move identity's tables"));
+eq('… and writes nothing under the current names, so the next boot sets nothing aside', [array_values(array_filter((array) $first, static fn (string $o): bool => str_starts_with($o, 'sp_identity_'))), $second], [[], $first]);
+// Something other than a Failure out of the move is reported too, not fatal to the request.
+[$code, $after] = $boot('throw');
+check('a move that throws something else is reported, not fatal', $code === 0 && is_array($after) && str_contains((string) @file_get_contents("$dir/content/debug.log"), 'the cron save threw'));
 // A boot that cannot save the moved cron events leaves the move unfinished, for the next boot.
 $out = [];
 exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=512M ' . escapeshellarg(__FILE__) . ' cronfail ' . escapeshellarg($dir) . ' 2>&1', $out, $code);

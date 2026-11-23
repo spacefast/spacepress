@@ -120,7 +120,8 @@ final class Plugin
                     try {
                         Legacy::move($wpdb);
                         self::installStorage();
-                    } catch (Failure $failure) {
+                    } catch (\Throwable $failure) {
+                        // Any failure, a database error too: reported, never fatal to the request.
                         error_log('[spacepress] ' . $failure->getMessage());
                         add_action('admin_notices', static fn () => current_user_can('manage_options') && printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('SpacePress Identity: ' . $failure->getMessage())));
                     }

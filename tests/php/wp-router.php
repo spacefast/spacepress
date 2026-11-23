@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 /*
  * `php -S` router for a WpSite (tests/php/wp.php): what the production web server does for SpacePress.
- * Static files are served from the site; `/wp-content/uploads/spacepress-private/` is denied (the
- * private-files probe checks exactly that); and everything else runs WordPress's index.php, which
+ * Static files are served from the site; `/wp-content/uploads/spacepress-private/` and a pre-release
+ * site's kept root are denied (the private-files probe checks exactly that); and everything else runs
+ * WordPress's index.php, which
  * parses `/wp-json/...` itself, as behind a real web server. SP_TEST_SITE names the site directory.
  */
 
@@ -30,7 +31,8 @@ if ($base !== '') {
     }
     $path = substr($path, strlen($base)) ?: '/';
 }
-if (str_starts_with($path, '/wp-content/uploads/spacepress-private/')) {
+// A site upgraded from a pre-release build keeps its private root where it was: denied the same way.
+if (str_starts_with($path, '/wp-content/uploads/spacepress-private/') || str_starts_with($path, '/wp-content/uploads/typedpress-private/')) {
     http_response_code(403);
     exit;
 }

@@ -206,7 +206,7 @@ final class BrandUpgrade
             }
             self::$moving = true;
             try {
-                $moved = self::apply($db, $plan);
+                $moved = self::apply($db, ['resumed' => $stored === self::STARTED] + $plan);
             } finally {
                 self::$moving = false;
             }
@@ -377,9 +377,8 @@ final class BrandUpgrade
     /** The local private root a pre-release build made, kept where it is; null on a site that had none. */
     public static function privateDir(): ?string
     {
-        $dir = self::uploadKeys()['private'] ?? null;
-
-        return is_string($dir) && $dir !== '' ? $dir : null;
+        // Only the one directory a pre-release build made: nothing else this option holds names a path.
+        return (self::uploadKeys()['private'] ?? null) === self::LEGACY_PRIVATE_DIR ? self::LEGACY_PRIVATE_DIR : null;
     }
 
     /** The directory an app's local private files are under: the earlier name, for an app renamed while it had some. */
@@ -387,7 +386,8 @@ final class BrandUpgrade
     {
         $apps = self::uploadKeys()['privateApps'] ?? [];
 
-        return is_string($apps[$app] ?? null) ? $apps[$app] : $app;
+        // Only the app's earlier name, as the rename made it: never a path elsewhere.
+        return ($apps[$app] ?? null) === self::earlierApp($app) ? self::earlierApp($app) : $app;
     }
 
     /** The app name its S3 keys are derived from: the earlier one, for an app the rename renamed. */
@@ -587,12 +587,16 @@ final class BrandUpgrade
         // Where the files this site stored stay ({@see uploadKeys()}): S3 objects under the prefix and
         // app name their keys were derived from; the local private root, and a renamed app's directory
         // in it, where they are.
+        // Only a site that ran a pre-release build here has any: on a network the uploads directory is
+        // shared, and a site added since (whose own options hold nothing of the earlier runtime's)
+        // must not take another site's private root as its own.
         $keys = [];
         if (isset($options['tp_upload_namespace'])) {
             $keys += ['prefix' => self::LEGACY_UPLOAD_PREFIX, 'apps' => array_flip($renamedApp ?? [])];
         }
         $root = WP_CONTENT_DIR . '/uploads/' . self::LEGACY_PRIVATE_DIR;
-        if (is_dir($root) && !is_link($root)) {
+        // A link to a directory (a persistent volume, say) is the root as the earlier build used it.
+        if (is_dir($root) && ($tables !== [] || $options !== [] || get_option(self::DONE) === self::STARTED)) {
             $keys['private'] = self::LEGACY_PRIVATE_DIR;
             $privateApps = array_filter(array_flip($renamedApp ?? []), static fn (string $earlier): bool => is_dir("$root/$earlier"));
             $privateApps !== [] && $keys['privateApps'] = $privateApps;
@@ -838,11 +842,18 @@ final class BrandUpgrade
                 }
             }
         }
-        // Where the stored files stay: a record already there must be exactly what this move writes.
-        if (($plan['keys'] ?? []) !== []) {
-            $row = $wpdb->get_row($wpdb->prepare("SELECT option_value, autoload FROM {$wpdb->options} WHERE option_name = %s", self::UPLOAD_KEYS), ARRAY_A);
-            if ($row !== null && !self::uploadKeysAre($row, $plan['keys'])) {
-                $found[] = 'option ' . self::UPLOAD_KEYS;
+        // Where the stored files stay: a record already there (written by anything but this move,
+        // which writes it only after this check) must be exactly what this move writes, or absent.
+        $row = $wpdb->get_row($wpdb->prepare("SELECT option_value, autoload FROM {$wpdb->options} WHERE option_name = %s", self::UPLOAD_KEYS), ARRAY_A);
+        if ($row !== null && (($plan['keys'] ?? []) === [] || !self::uploadKeysAre($row, $plan['keys']))) {
+            $found[] = 'option ' . self::UPLOAD_KEYS;
+        }
+        // A renamed app's local files are found under one directory: the earlier one, when it has
+        // one. Files under the current name too would no longer be found.
+        foreach ($plan['keys']['privateApps'] ?? [] as $current => $earlier) {
+            $dir = WP_CONTENT_DIR . '/uploads/' . self::LEGACY_PRIVATE_DIR . "/$current";
+            if (file_exists($dir) || is_link($dir)) {
+                $found[] = "directory $dir (and " . dirname($dir) . "/$earlier): the files under both names would be read from one";
             }
         }
         // A renamed app reads its runtime schema versions under both names as one chain ({@see historyApp()}):
@@ -878,9 +889,15 @@ final class BrandUpgrade
         // Files already stored stay where they are ({@see uploadKeys()}). Recorded first, while the
         // earlier namespace option and directory are still there to show the site has stored any, so
         // a resumed run never loses it.
+        $row = $wpdb->get_row($wpdb->prepare("SELECT option_value, autoload FROM {$wpdb->options} WHERE option_name = %s", self::UPLOAD_KEYS), ARRAY_A);
+        if ($row !== null && $plan['resumed'] && is_array($stored = maybe_unserialize((string) $row['option_value']))
+            && array_intersect_key($stored, $plan['keys']) == $plan['keys'] && self::uploadKeysAre($row, $stored)) {
+            // A resumed move: the record a first attempt wrote, while the namespace option it reads
+            // was still under the earlier name, already holds this plan's keys and the S3 ones.
+            $plan['keys'] = $stored;
+        }
         if ($plan['keys'] !== []) {
             $keys = $plan['keys'];
-            $row = $wpdb->get_row($wpdb->prepare("SELECT option_value, autoload FROM {$wpdb->options} WHERE option_name = %s", self::UPLOAD_KEYS), ARRAY_A);
             if ($row === null) {
                 $db->run("INSERT INTO `{$wpdb->options}` (`option_name`, `option_value`, `autoload`) VALUES (?, ?, 'on')", [self::UPLOAD_KEYS, serialize($keys)]);
             } elseif (!self::uploadKeysAre($row, $keys)) {

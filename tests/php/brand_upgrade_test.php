@@ -94,6 +94,14 @@ eq('… and stored objects keep their key prefix', [\SpacePress\Wp\BrandUpgrade:
 // rules (a compatibility exception, as the S3 keys are): recorded, nothing moved, nothing copied.
 eq('the private files stay in their directory, and the runtime keeps them there', [is_dir(WP_CONTENT_DIR . "/uploads/$legacy-private"), file_exists(WP_CONTENT_DIR . '/uploads/spacepress-private'), \SpacePress\Wp\WpFiles::root(), \SpacePress\Wp\BrandUpgrade::privateDir()],
     [true, false, WP_CONTENT_DIR . "/uploads/$legacy-private", "$legacy-private"]);
+// A file stored before the rename is read from where it is, and its direct URL stays denied.
+$kept = (new \SpacePress\Wp\WpFiles($wp->connection(), 'blog'))->stream('decks/kept.bin');
+ob_start();
+$kept();
+eq('… a file stored before is read from where it is', ob_get_clean(), 'stored before the rename');
+$wp->startServer();
+$direct = wp_remote_get(apply_filters('sp_private_probe_url', \SpacePress\Wp\WpFiles::url('blog/decks/kept.bin')), ['timeout' => 5]);
+eq('… and its direct URL, where it always was, is still refused', [\SpacePress\Wp\WpFiles::url('blog/decks/kept.bin'), wp_remote_retrieve_response_code($direct)], [content_url("uploads/$legacy-private/blog/decks/kept.bin"), 403]);
 // The kept directory's own deny rules (an owner's, for their server) stay as they are when the runtime protects it.
 $rules = WP_CONTENT_DIR . "/uploads/$legacy-private/.htaccess";
 $ownRules = "# the owner's rules\nRequire all denied\n";
@@ -173,15 +181,29 @@ $empty = ['tables' => [], 'options' => [], 'meta' => [], 'sitemeta' => [], 'post
 foreach (["$legacy-site", 'spacepress-site'] as $app) {
     $wp->sql("INSERT INTO `{$p}sp__migrations` (`app`, `id`, `kind`, `applied_at`) VALUES (?, '20260101000000_aaaaaa_init', 'schema', '2026-01-01T00:00:00.000Z')", [$app]);
 }
-eq('a migration recorded for an app under both names is a conflict', \SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), $empty), ["migration 20260101000000_aaaaaa_init recorded for both $legacy-site and spacepress-site"]);
+eq('a migration recorded for an app under both names is a conflict', array_values(array_diff(\SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), $empty), ['option sp_upload_keys'])), ["migration 20260101000000_aaaaaa_init recorded for both $legacy-site and spacepress-site"]);
 $wp->sql("DELETE FROM `{$p}sp__migrations` WHERE `app` IN (?, ?)", ["$legacy-site", 'spacepress-site']);
 foreach (["$legacy-site", 'spacepress-site'] as $app) {
     $wp->sql("INSERT INTO `{$p}sp__schema_versions` (`app`, `version`, `parent`, `format`, `build`, `actor`, `changes`, `hash`, `createdAt`) VALUES (?, 1, 0, 1, '', '{}', '[]', '', '2026-01-01T00:00:00.000Z')", [$app]);
 }
+// A resumed move (marker `started`) after the namespace option had moved: the record a first attempt
+// wrote, which names the S3 keys too, still answers this plan, which no longer sees that option.
+$keysNow = get_option(\SpacePress\Wp\BrandUpgrade::UPLOAD_KEYS);
+$apply = (new ReflectionClass(\SpacePress\Wp\BrandUpgrade::class))->getMethod('apply');
+$resumePlan = \SpacePress\Wp\BrandUpgrade::plan($wp->connection(), $wp->plugin()->schema);
+eq('a resumed move keeps the stored-files record a first attempt wrote', [$resumePlan['keys'] !== $keysNow, (static function () use ($apply, $wp, $resumePlan): string {
+    try {
+        $apply->invoke(null, $wp->connection(), ['resumed' => true] + $resumePlan);
+
+        return 'resumed';
+    } catch (\RuntimeException $e) {
+        return $e->getMessage();
+    }
+})(), get_option(\SpacePress\Wp\BrandUpgrade::UPLOAD_KEYS)], [true, 'resumed', $keysNow]);
 $kept = get_option(\SpacePress\Wp\BrandUpgrade::UPLOAD_KEYS);
 eq('a record of stored files this move did not write stops it before any change', [update_option(\SpacePress\Wp\BrandUpgrade::UPLOAD_KEYS, ['prefix' => 'other'], true), array_values(array_intersect(\SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), ['keys' => ['private' => "$legacy-private"], 'renamedApp' => []] + $empty), ['option sp_upload_keys'])), update_option(\SpacePress\Wp\BrandUpgrade::UPLOAD_KEYS, $kept, true)],
     [true, ['option sp_upload_keys'], true]);
-eq('… and so is a runtime schema version recorded under both', \SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), $empty), ["runtime schema version 1 recorded for both $legacy-site and spacepress-site"]);
+eq('… and so is a runtime schema version recorded under both', array_values(array_diff(\SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), $empty), ['option sp_upload_keys'])), ["runtime schema version 1 recorded for both $legacy-site and spacepress-site"]);
 $wp->sql("DELETE FROM `{$p}sp__schema_versions` WHERE `app` IN (?, ?)", ["$legacy-site", 'spacepress-site']);
 
 // A move stopped after the tables were renamed and before the ledger rows took the app's new name:

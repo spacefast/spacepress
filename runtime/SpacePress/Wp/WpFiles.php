@@ -96,6 +96,10 @@ final class WpFiles implements FileStorage
     /** Probe again when the last probe is a day old. */
     private static function recheck(): void
     {
+        // Nothing under either private root before a pre-release site's move decides which it keeps.
+        if (BrandUpgrade::pending()) {
+            return;
+        }
         if (!Uploads::active() && (int) get_option(self::CHECKED, 0) < time() - DAY_IN_SECONDS) {
             self::probe();
         }

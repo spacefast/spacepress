@@ -74,6 +74,9 @@ update_option('theme_mods_typedpress-default', ['custom_css_post_id' => -1, 'own
 // Site state the runtime keeps: the S3 namespace, the guest role, a scoped application password,
 // a cron event of identity, and one option of another plugin that only shares the prefix.
 add_option('tp_upload_namespace', str_repeat('ab', 16), '', false);
+// A private file the earlier runtime stored locally, under its root and the app's name.
+wp_mkdir_p(WP_CONTENT_DIR . '/uploads/typedpress-private/blog/decks');
+file_put_contents(WP_CONTENT_DIR . '/uploads/typedpress-private/blog/decks/kept.bin', 'stored before the rename');
 \TypedPress\Wp\IdentityBridge::provision();
 $editor = $wp->userId('editor');
 [$password, $item] = WP_Application_Passwords::create_new_application_password($editor, ['name' => 'agent']);

@@ -175,7 +175,7 @@ final class BrandUpgrade
             if (self::done()) {
                 return;
             }
-            $plan = self::plan($db, $schema);
+            $plan = self::plan($db, self::withRuntimeKinds($schema));
             // A resumed move finds the names it already moved under both spellings only where it left
             // them half done; each step below is safe to run again, so only a first attempt checks.
             if (get_option(self::DONE) !== self::STARTED) {
@@ -220,6 +220,32 @@ final class BrandUpgrade
             str_starts_with($name, 'tp/') => 'sp/' . substr($name, 3),
             default => $name,
         };
+    }
+
+    /**
+     * The app's schema with the kinds and fields its site added at runtime (`runtimeSchema: true`),
+     * read from the stored state under whichever name it is in now: their posts, terms and fields are
+     * the site's too and move with the rest. A state not written by apply under either key adds nothing.
+     */
+    private static function withRuntimeKinds(\SpacePress\Schema $schema): \SpacePress\Schema
+    {
+        $raw = $schema->raw();
+        if (!isset($raw['runtimeSchema'])) {
+            return $schema;
+        }
+        $app = $schema->name();
+        foreach ([\SpacePress\RuntimeSchema\Loader::option($app), 'tp_' . $app . '_runtime_schema'] as $option) {
+            $state = get_option($option);
+            if (!is_array($state)) {
+                continue;
+            }
+            $current = \SpacePress\RuntimeSchema\Loader::sealedBy($state) ? $state : \SpacePress\RuntimeSchema\Loader::reseal($state, self::LEGACY . '-runtime-schema:');
+            if ($current !== null) {
+                return new \SpacePress\Schema(\SpacePress\RuntimeSchema\Loader::apply($raw, $current));
+            }
+        }
+
+        return $schema;
     }
 
     /** The S3 key prefix uploads use when the app's config sets none. */
@@ -627,6 +653,19 @@ final class BrandUpgrade
         // Objects already in S3 keep their keys: the prefix a site without `uploads.prefix` used.
         if (isset($plan['options']['tp_upload_namespace']) && get_option(self::UPLOAD_PREFIX) === false) {
             add_option(self::UPLOAD_PREFIX, self::LEGACY_UPLOAD_PREFIX, '', false);
+        }
+        // Runtime schema states are sealed with a key that named the pre-release build: one that checks
+        // out under it is sealed again under the current one (its versions and hashes stay as they are).
+        foreach ($plan['apps'] as $app) {
+            $option = \SpacePress\RuntimeSchema\Loader::option($app);
+            $state = get_option($option);
+            if (is_array($state) && isset($state['seal']) && !\SpacePress\RuntimeSchema\Loader::sealedBy($state)) {
+                $resealed = \SpacePress\RuntimeSchema\Loader::reseal($state, self::LEGACY . '-runtime-schema:');
+                if ($resealed !== null) {
+                    update_option($option, $resealed, false);
+                    $moved['runtimeSchema'] = ($moved['runtimeSchema'] ?? 0) + 1;
+                }
+            }
         }
         // Core's cache of theme directories, which named the earlier runtime's theme path; core rebuilds it.
         delete_site_transient('theme_roots');

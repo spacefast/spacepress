@@ -74,6 +74,10 @@ final class Plugin
     public static function storageCurrent(): bool
     {
         global $wpdb;
+        // Without the runtime, nothing else will move identity's storage: it moves its own.
+        if (!class_exists(\SpacePress\Wp\BrandUpgrade::class)) {
+            Legacy::move($wpdb);
+        }
 
         // The runtime's marker answers on a settled site (autoloaded: no query).
         $upgrade = get_option('sp_brand_upgrade', 0);

@@ -114,11 +114,11 @@ final class Loader
      * written some other way and is not served. The content is JSON with fixed float precision, so
      * the seal reads the same whatever `serialize_precision` a PHP process runs with.
      */
-    public static function seal(array $state): string
+    public static function seal(array $state, ?string $key = null): string
     {
         unset($state['seal']);
 
-        return hash_hmac('sha256', (string) \SpacePress\Json::encode(self::sorted($state), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), self::key());
+        return hash_hmac('sha256', (string) \SpacePress\Json::encode(self::sorted($state), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), $key ?? self::key());
     }
 
     /** A state with its seal. */
@@ -140,9 +140,22 @@ final class Loader
     }
 
     /** The site's salt (wp-config's keys), with a fixed fallback outside WordPress (the pure suites). */
-    private static function key(): string
+    private static function key(?string $context = null): string
     {
-        return 'spacepress-runtime-schema:' . (function_exists('wp_salt') ? wp_salt('auth') : 'no-wordpress');
+        return ($context ?? 'spacepress-runtime-schema:') . (function_exists('wp_salt') ? wp_salt('auth') : 'no-wordpress');
+    }
+
+    /**
+     * A state sealed under another context (a pre-release build's), sealed again under this
+     * runtime's, when its seal checks out there; null when it doesn't (it was never apply's).
+     */
+    public static function reseal(array $state, string $context): ?array
+    {
+        if (!is_string($state['seal'] ?? null) || !hash_equals(self::seal($state, self::key($context)), $state['seal'])) {
+            return null;
+        }
+
+        return self::sealed($state);
     }
 
     /** Keys in one order at every level, so a state and its JSON copy seal the same. */

@@ -4143,7 +4143,7 @@
           "id": { "type": "integer" },
           "bookId": {
             "anyOf": [
-              { "type": "integer" },
+              { "type": ["integer", "string", "object"] },
               {
                 "anyOf": [
                   { "$ref": "#/components/schemas/Book" },

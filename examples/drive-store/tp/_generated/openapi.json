@@ -4625,7 +4625,7 @@
           "connector": { "type": ["string", "null"], "enum": ["sata", "sas", "nvme", "usb", null] },
           "condition": { "type": ["string", "null"], "enum": ["like-new", "good", "fair", "for-parts", null] },
           "powerOnHours": { "type": ["integer", "null"], "minimum": 0 },
-          "testedOn": { "type": ["string", "null"], "format": "date" },
+          "testedOn": { "type": ["string", "null"] },
           "serial": {
             "type": ["string", "null"],
             "maxLength": 80,
@@ -4854,7 +4854,7 @@
           "name": { "type": "string" },
           "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
           "description": { "type": "string" },
-          "parent": { "type": ["integer", "null"] },
+          "parent": { "type": ["integer", "string", "object", "null"] },
           "count": { "type": "integer" },
           "url": { "type": ["string", "null"] },
           "drives": {

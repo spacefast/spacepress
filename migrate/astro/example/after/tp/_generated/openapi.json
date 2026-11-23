@@ -3738,14 +3738,14 @@
           "id": { "type": "integer" },
           "title": { "type": "string" },
           "description": { "type": "string" },
-          "pubDate": { "type": "string", "format": "date" },
+          "pubDate": { "type": "string" },
           "heroImage": { "type": ["string", "null"] },
           "tags": { "type": ["object", "array", "string", "number", "integer", "boolean", "null"] },
           "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
           "body": { "type": ["string", "null"] },
           "parent": {
             "anyOf": [
-              { "type": ["integer", "null"] },
+              { "type": ["integer", "string", "object", "null"] },
               {
                 "anyOf": [
                   { "$ref": "#/components/schemas/Blog" },

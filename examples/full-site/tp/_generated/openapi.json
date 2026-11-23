@@ -4112,7 +4112,7 @@
           "id": { "type": "integer" },
           "noteId": {
             "anyOf": [
-              { "type": "integer" },
+              { "type": ["integer", "string", "object"] },
               {
                 "anyOf": [
                   { "$ref": "#/components/schemas/Note" },

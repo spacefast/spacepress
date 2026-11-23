@@ -5582,11 +5582,11 @@
           "kind": { "type": "string", "enum": ["ssd", "hdd", "nvme", "sd", "usb"] },
           "capacityGb": { "type": "number", "minimum": 0.001 },
           "interface": { "type": "string", "minLength": 1, "maxLength": 80 },
-          "purchasedOn": { "type": ["string", "null"], "format": "date" },
-          "warrantyUntil": { "type": ["string", "null"], "format": "date" },
+          "purchasedOn": { "type": ["string", "null"] },
+          "warrantyUntil": { "type": ["string", "null"] },
           "placeId": {
             "anyOf": [
-              { "type": ["integer", "null"] },
+              { "type": ["integer", "string", "object", "null"] },
               {
                 "anyOf": [
                   { "$ref": "#/components/schemas/Place" },
@@ -5742,7 +5742,7 @@
           },
           "driveId": {
             "anyOf": [
-              { "type": "integer" },
+              { "type": ["integer", "string", "object"] },
               {
                 "anyOf": [
                   { "$ref": "#/components/schemas/Drive" },
@@ -5751,7 +5751,7 @@
               }
             ]
           },
-          "readOn": { "type": "string", "format": "date" },
+          "readOn": { "type": "string" },
           "powerOnHours": { "type": "integer", "minimum": 0 },
           "wearPercent": { "type": "number", "minimum": 0, "maximum": 100 },
           "reallocatedSectors": { "type": "integer", "minimum": 0 },
@@ -5833,7 +5833,7 @@
           },
           "driveId": {
             "anyOf": [
-              { "type": "integer" },
+              { "type": ["integer", "string", "object"] },
               {
                 "anyOf": [
                   { "$ref": "#/components/schemas/Drive" },
@@ -5844,7 +5844,7 @@
           },
           "description": { "type": "string", "minLength": 1, "maxLength": 500 },
           "usedGb": { "type": "number", "minimum": 0 },
-          "lastBackupOn": { "type": ["string", "null"], "format": "date" },
+          "lastBackupOn": { "type": ["string", "null"] },
           "author": { "type": ["integer", "null"] },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" },

@@ -110,6 +110,9 @@ final class BrandUpgrade
     /** `sp_brand_upgrade`: the version once the move finished, `started` while one is under way. */
     private const STARTED = 'started';
 
+    /** True while this request runs the move, under its lock. */
+    private static bool $moving = false;
+
     public static function done(): bool
     {
         $value = get_option(self::DONE, 0);
@@ -135,19 +138,30 @@ final class BrandUpgrade
         if (self::legacyState()) {
             return true;
         }
+        // Inside the move itself (it holds the lock and writes the marker), there is nothing to decide.
+        if (self::$moving) {
+            return true;
+        }
         // No state under the earlier name (a site installed after the rename): record that once,
         // under the lock and from a fresh read, so a move another request just started is never
         // marked finished. Later requests answer from the autoloaded marker.
         global $wpdb;
-        Migrator::locked(new Connection($wpdb), 'sp_brand_upgrade', static function (): void {
-            $stored = $GLOBALS['wpdb']->get_var($GLOBALS['wpdb']->prepare("SELECT option_value FROM {$GLOBALS['wpdb']->options} WHERE option_name = %s", self::DONE));
+        // The answer is the database's, read under the lock: this request's cache may predate a
+        // move another request started.
+        $pending = (bool) Migrator::locked(new Connection($wpdb), 'sp_brand_upgrade', static function () use ($wpdb): bool {
+            $stored = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::DONE));
             if ($stored === null && !self::legacyState()) {
                 add_option(self::DONE, self::VERSION, '', true);
+
+                return false;
             }
+
+            return $stored === null || $stored === self::STARTED || (int) $stored < self::VERSION;
         });
         wp_cache_delete(self::DONE, 'options');
+        wp_cache_delete('alloptions', 'options');
 
-        return get_option(self::DONE) === self::STARTED;
+        return $pending;
     }
 
     /** Whether the database holds what a pre-release runtime or identity wrote: one indexed read. */
@@ -181,21 +195,29 @@ final class BrandUpgrade
         $network = is_multisite() ? 'spacepress-network:' . substr(hash('sha256', DB_NAME . ':' . $wpdb->base_prefix . ':' . get_current_network_id()), 0, 40) : null;
         $site = static fn (callable $fn) => $network === null ? $fn() : $db->locked($network, 30, $fn);
         $site(static fn () => Migrator::locked($db, 'sp_brand_upgrade', static function () use ($db, $schema, &$moved): void {
+            // Under the lock, from the database: another request may have finished, or started, since.
+            $stored = $db->wpdb()->get_var($db->wpdb()->prepare("SELECT option_value FROM {$db->wpdb()->options} WHERE option_name = %s", self::DONE));
             wp_cache_delete(self::DONE, 'options');
-            if (self::done()) {
+            wp_cache_delete('alloptions', 'options');
+            if ($stored !== null && $stored !== self::STARTED && (int) $stored >= self::VERSION) {
                 return;
             }
             $plan = self::plan($db, self::withRuntimeKinds($schema));
             // A resumed move finds the names it already moved under both spellings only where it left
             // them half done; each step below is safe to run again, so only a first attempt checks.
-            if (get_option(self::DONE) !== self::STARTED) {
+            if ($stored !== self::STARTED) {
                 $conflicts = self::conflicts($db, $plan);
                 if ($conflicts !== []) {
                     throw new \RuntimeException('SpacePress cannot move this site\'s stored names: ' . implode('; ', $conflicts) . '. Nothing was changed. Each of these exists under both its earlier name and its current one; keep the one this site uses and rename or export the other, then reload.');
                 }
                 update_option(self::DONE, self::STARTED, true);
             }
-            $moved = self::apply($db, $plan);
+            self::$moving = true;
+            try {
+                $moved = self::apply($db, $plan);
+            } finally {
+                self::$moving = false;
+            }
             update_option(self::DONE, self::VERSION, true);
             InstallMarker::forget();
         }));
@@ -825,12 +847,23 @@ final class BrandUpgrade
         // Runtime schema states are sealed with a key that named the pre-release build: one that checks
         // out under it is sealed again under the current one (its versions and hashes stay as they are).
         foreach ($plan['apps'] as $app) {
+            // Read from the database: the options were renamed by SQL, past WordPress's cache.
             $option = \SpacePress\RuntimeSchema\Loader::option($app);
-            $state = get_option($option);
+            wp_cache_delete($option, 'options');
+            wp_cache_delete('alloptions', 'options');
+            wp_cache_delete('notoptions', 'options');
+            $raw = $wpdb->get_row($wpdb->prepare("SELECT option_value, autoload FROM {$wpdb->options} WHERE option_name = %s", $option), ARRAY_A);
+            $state = $raw === null ? null : maybe_unserialize((string) $raw['option_value']);
             if (is_array($state) && isset($state['seal']) && !\SpacePress\RuntimeSchema\Loader::sealedBy($state)) {
                 $resealed = \SpacePress\RuntimeSchema\Loader::reseal($state, self::LEGACY . '-runtime-schema:');
                 if ($resealed !== null) {
-                    update_option($option, $resealed, false);
+                    // As apply() writes it (autoloaded), and checked once written.
+                    update_option($option, $resealed, true);
+                    wp_cache_delete($option, 'options');
+                    $written = maybe_unserialize((string) $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $option)));
+                    if (!is_array($written) || !\SpacePress\RuntimeSchema\Loader::sealedBy($written)) {
+                        throw new \RuntimeException("The runtime schema state of $app did not keep its new seal; reload to try again.");
+                    }
                     $moved['runtimeSchema'] = ($moved['runtimeSchema'] ?? 0) + 1;
                 }
             }

@@ -963,8 +963,10 @@ function wpDefine(string $dir, string $url): void
     foreach (['DB_NAME' => 'wordpress', 'DB_USER' => '', 'DB_PASSWORD' => '', 'DB_HOST' => '', 'DB_CHARSET' => 'utf8mb4', 'DB_COLLATE' => ''] as $k => $v) {
         define($k, $v);
     }
+    // The site's own keys: a site another release's harness installed keeps the keys it was given
+    // (`salts` in site.json), as a real site keeps its wp-config.php across an update.
     foreach (['AUTH_KEY', 'SECURE_AUTH_KEY', 'LOGGED_IN_KEY', 'NONCE_KEY', 'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT'] as $k) {
-        define($k, "spacepress-test-$k");
+        define($k, ($site['salts'] ?? 'spacepress-test-') . $k);
     }
     $GLOBALS['table_prefix'] = 'wp_';
     define('WP_DEBUG', true);

@@ -17,6 +17,8 @@ require "$checkout/tests/php/wp.php";
 
 $schema = require "$checkout/tests/fixtures/blog/schema.php";
 $schema['collections']['comments']['revisions'] = true;
+// Runtime schema changes on (`runtimeSchema: true`): the site adds a field of its own.
+$schema['runtimeSchema'] = ['version' => 0, 'hash' => ''];
 // A custom-table child of a custom table, so the site has a foreign key between two of its tables.
 $schema['collections']['replies'] = ['key' => 'replies', 'editor' => false, 'table' => 'tp_replies', 'primaryKey' => 'id', 'revisions' => false, 'softDelete' => false,
     'uid' => false, 'columns' => ['id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
@@ -51,6 +53,10 @@ add_option('tp_global_other_plugin', 'not ours', '', false);
 $ownerPage = wp_insert_post(['post_type' => 'page', 'post_status' => 'draft', 'post_title' => 'Owner page', 'post_name' => 'typedpress-home-owner']);
 // Meta on the owner's own page that shares the spelling of an app field's nested row, with no SCF reference.
 add_post_meta($ownerPage, 'tp_seo_metaTitle', 'not the app\'s');
+// A field the site added at runtime, through the earlier runtime's schema versions, with a value.
+$versions = \TypedPress\Wp\SchemaVersions::of($wp->plugin());
+$versions->apply(0, ['format' => 1, 'changes' => [['op' => 'addField', 'kind' => 'posts', 'field' => 'mood', 'definition' => ['type' => 'text']]]], ['user' => 1, 'login' => 'admin', 'via' => 'test']);
+update_post_meta($post['id'], 'tp_mood', 'calm');
 // The owner's saved copy of the sign-in template, as the Site Editor stores one.
 wp_insert_post(['post_type' => 'wp_template', 'post_status' => 'publish', 'post_name' => 'tp-login', 'post_title' => 'Sign in',
     'post_content' => '<!-- wp:paragraph --><p>Owner text</p><!-- /wp:paragraph --><!-- wp:tp/login-form /-->', 'tax_input' => ['wp_theme' => ['typedpress-default']]]);

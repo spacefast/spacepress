@@ -18,7 +18,7 @@ $dir = $before['dir'];
 $repo = dirname(__DIR__, 2);
 // Identity alone: the pre-release runtime and app are deactivated, this checkout's identity takes the place of its own.
 wpCopy("$repo/runtime/identity", "$dir/content/plugins/spacepress-identity", ['apps', 'composer.json', 'composer.lock']);
-$site = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
+$site = ['salts' => 'typedpress-test-'] + json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
 file_put_contents("$dir/site.json", json_encode(['activate' => ['spacepress-identity'], 'deactivate' => ['typedpress-app-blog', 'typedpress-identity', 'typedpress-runtime']] + $site, JSON_THROW_ON_ERROR));
 exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=512M ' . escapeshellarg(__DIR__ . '/wp.php') . ' activate ' . escapeshellarg($dir) . ' 2>&1', $out, $code);
 $code === 0 || throw new RuntimeException("switching to identity alone failed:\n" . implode("\n", $out));

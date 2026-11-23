@@ -22,12 +22,17 @@ $before = require __DIR__ . '/brand_upgrade/legacy.php';
 
 $schema = require dirname(__DIR__) . '/fixtures/blog/schema.php';
 $schema['collections']['comments']['revisions'] = true;
+// Runtime schema changes on (`runtimeSchema: true`): the site adds a field of its own.
+$schema['runtimeSchema'] = ['version' => 0, 'hash' => ''];
 // A custom-table child of a custom table, so the site has a foreign key between two of its tables.
 $schema['collections']['replies'] = ['key' => 'replies', 'editor' => false, 'table' => 'sp_replies', 'primaryKey' => 'id', 'revisions' => false, 'softDelete' => false,
     'uid' => false, 'columns' => ['id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
         'commentId' => ['type' => 'integer', 'notNull' => true, 'references' => ['collection' => 'comments', 'column' => 'id', 'onDelete' => 'cascade']],
         'body' => ['type' => 'text', 'notNull' => true]],
     'access' => array_fill_keys(['read', 'create', 'update', 'delete'], ['role' => 'editor'])];
+// The earlier harness gave the site its keys under the earlier name; the site keeps them.
+$site = json_decode((string) file_get_contents("{$before['dir']}/site.json"), true, 512, JSON_THROW_ON_ERROR);
+file_put_contents("{$before['dir']}/site.json", json_encode(['salts' => 'typedpress-test-'] + $site, JSON_THROW_ON_ERROR));
 $wp = WpSite::adopt($before['dir'], ['schema' => $schema, 'identity' => true, 'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php')],
     ['typedpress-app-blog', 'typedpress-identity', 'typedpress-runtime']);
 
@@ -93,6 +98,7 @@ eq('nothing else is left under the earlier names', [
 
 // The app reads what it wrote before.
 [$status, $post] = $wp->call('GET', '/posts/' . $before['post'], as: 'editor');
+eq('the field the site added at runtime is still served, with its value', [$post['mood'] ?? null, \SpacePress\RuntimeSchema\Loader::sealedBy(get_option(\SpacePress\RuntimeSchema\Loader::option('blog'))), count(\SpacePress\Wp\SchemaVersions::of($wp->plugin())->list())], ['calm', true, 1]);
 eq('the post reads back through the API, a group\'s field included', [$status, $post['title'] ?? null, $post['excerpt'] ?? null, $post['seo']['metaTitle'] ?? null], [200, 'Kept through the rename', 'Short', 'Legacy SEO']);
 [$status, $global] = $wp->call('GET', '/globals/settings', as: 'editor');
 eq('the global\'s value reads back', [$status, $global['tagline'] ?? null], [200, 'Kept tagline']);

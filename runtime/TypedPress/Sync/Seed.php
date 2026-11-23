@@ -212,7 +212,7 @@ final class Seed
             if ($dry) { throw new SeedDryRun($receipt); }
             return $receipt;
         };
-        if (!$dry) { return $plan(); }
+        if (!$dry) { return \TypedPress\Preview::seeding($plan); }
         try { return $plugin->connection()->transaction($plan); }
         catch (SeedDryRun $rollback) { return $rollback->counts; }
     }

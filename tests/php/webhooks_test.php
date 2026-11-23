@@ -77,7 +77,19 @@ define('TP_HOOK_SECRET', 'whsec_test');
 putenv('TP_INBOUND_SECRET=inbound_test');
 $schema = require dirname(__DIR__) . '/fixtures/blog/schema.php';
 $schema['webhooks'] = [
-    ['url' => ['env' => 'TP_HOOK_URL'], 'secret' => ['env' => 'TP_HOOK_SECRET'], 'events' => ['comments.created', 'comments.updated']],
+    ['url' => ['env' => 'TP_HOOK_URL'], 'secret' => ['env' => 'TP_HOOK_SECRET'], 'events' => ['comments.created', 'comments.updated', 'pings.created']],
+];
+// A synced collection the seed writes, whose afterCreate hook sends mail.
+$schema['collections']['pings'] = [
+    'primaryKey' => 'id', 'editor' => false, 'uid' => true, 'sync' => ['dir' => 'content/pings', 'format' => 'json'],
+    'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']],
+    'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true], 'relations' => [],
+    'hooks' => ['afterCreate' => 'pings__afterCreate'],
+    'columns' => [
+        'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+        'name' => ['type' => 'text', 'notNull' => true],
+        'uid' => ['type' => 'text', 'unique' => true, 'system' => true, 'rules' => ['pattern' => ['source' => '^zr_[0-9a-f]{20}$', 'flags' => '']]],
+    ],
 ];
 $signed = static fn (string $scheme, string $header) => ['input' => ['n' => ['type' => 'integer']], 'handler' => 'action__inbound',
     'access' => ['role' => 'editor'], 'agents' => false, 'idempotent' => false,
@@ -90,6 +102,11 @@ $functions = file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php'
     function action__inbound(\TypedPress\JsObject $input, $ctx)
     {
         return ['n' => $input->p['n'] ?? null, 'user' => $ctx->p['user']];
+    }
+
+    function pings__afterCreate($row)
+    {
+        \TypedPress\Mail::send(new \TypedPress\JsObject(['from' => 'app@example.test', 'to' => 'owner@example.test', 'subject' => 'New ping', 'text' => $row->p['name'] ?? '']));
     }
 
     function route__woo(\TypedPress\JsObject $req, $ctx)
@@ -143,6 +160,40 @@ $body = json_decode($retried[1]['body'] ?? 'null', true);
 check('both attempts carry the same event id; updates include previous', count($retried) === 2 && $body['event'] === 'comments.updated'
     && $body['data']['row']['body'] === 'edited' && $body['data']['previous']['body'] === 'first', $retried);
 eq('webhook jobs retry up to 8 times', Webhooks::spec()['retries'], 8);
+
+// ---- the seed on a preview binding (Loader::load's `preview`) ----------------------------------------------------
+$seedDir = sys_get_temp_dir() . '/tp-webhooks-seed-' . bin2hex(random_bytes(4));
+mkdir($seedDir);
+$seedPings = static function (string $name) use ($seedDir, $wp): array {
+    file_put_contents("$seedDir/pings.json", wp_json_encode(['collection' => 'pings', 'format' => 'json',
+        'records' => [['uid' => \TypedPress\Sync\Uid::mint(), 'fields' => ['name' => $name]]]]));
+
+    return \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+};
+$queued = static function () use ($jobs): array {
+    $count = ['typedpress.webhook' => 0, 'typedpress.mail' => 0];
+    foreach ($jobs() as $j) {
+        if (isset($count[$j['job']])) {
+            $count[$j['job']]++;
+        }
+    }
+
+    return $count;
+};
+$before = $queued();
+eq('off by default: a seed write queues its webhook and its hook\'s mail, as on production',
+    [$seedPings('production')['pings']['created'], array_map(static fn ($n, $b) => $n - $b, $queued(), $before)], [1, [1, 1]]);
+\TypedPress\Preview::bind(true);
+$before = $queued();
+eq('on a preview, a seed write is stored and queues no webhook and no mail',
+    [$seedPings('preview')['pings']['created'], $queued(), $db->findFirst('pings', ['where' => ['name' => 'preview']])['name'] ?? null], [1, $before, 'preview']);
+problem('a message the seed\'s hook sends on a preview is still checked', static fn () => \TypedPress\Preview::seeding(
+    static fn () => \TypedPress\Mail::send(new \TypedPress\JsObject(['from' => 'app@example.test', 'to' => 'owner@example.test', 'subject' => '']))), 422, 'invalid_input', '/subject');
+$db->insert('pings', ['name' => 'after the seed']);
+eq('after the seed a preview write queues its webhook and mail again', array_map(static fn ($n, $b) => $n - $b, $queued(), $before), [1, 1]);
+\TypedPress\Preview::bind(false);
+unlink("$seedDir/pings.json");
+rmdir($seedDir);
 
 // ---- inbound ------------------------------------------------------------------------------------------------------
 $now = 1769904060; // the pinned clock

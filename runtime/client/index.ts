@@ -1089,7 +1089,7 @@ export function createClient(options: ClientOptions = {}): Client {
     },
     // An app built before `<app>/me` was the signed-in user may have its own `me` action; its
     // `auth.me()` reads the app API's `/me` instead.
-    me: () => (SCHEMA.actions.includes("me") ? request<User | null>("GET", `${API}/me`) : ability<User | null>("me", {}, readonly)),
+    me: () => ((SCHEMA.actions as readonly string[]).includes("me") ? request<User | null>("GET", `${API}/me`) : ability<User | null>("me", {}, readonly)),
     async signOut(opts = {}) {
       const current = held();
       const from = currentSid();

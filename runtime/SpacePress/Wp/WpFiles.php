@@ -21,7 +21,6 @@ final class WpFiles implements FileStorage
     public const OK = 'sp_runtime_private_ok';
     public const CHECKED = 'sp_runtime_private_checked';
     private const DIR = 'spacepress-private';
-    private const INDEX = "<?php\n// Silence is golden.\n";
     private const HTACCESS = "# SpacePress private files: served only through signed download URLs.\n<IfModule mod_authz_core.c>\n\tRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n\tOrder deny,allow\n\tDeny from all\n</IfModule>\n";
 
     public function __construct(private readonly Connection $db, private readonly string $app)
@@ -82,6 +81,11 @@ final class WpFiles implements FileStorage
     /** The secret, and with local storage the deny rules and a probe: activation, and a managed build's initialize. */
     public static function install(): void
     {
+        // A pre-release site's private root is decided by its move ({@see BrandUpgrade::privateDir()}):
+        // nothing is written under either name before it.
+        if (BrandUpgrade::pending()) {
+            return;
+        }
         self::ensureSecret();
         if (!Uploads::active()) {
             self::protect();
@@ -112,7 +116,17 @@ final class WpFiles implements FileStorage
     /** `WP_CONTENT_DIR/uploads/spacepress-private` exactly, whatever the media upload directory is. */
     public static function root(): string
     {
-        return WP_CONTENT_DIR . '/uploads/' . self::DIR;
+        return WP_CONTENT_DIR . '/uploads/' . self::dir();
+    }
+
+    /**
+     * The private root's directory under uploads: a site installed by a pre-release build keeps the
+     * one it has ({@see BrandUpgrade::privateDir()}): its files stay at the URL and under the deny
+     * rules they have always had.
+     */
+    private static function dir(): string
+    {
+        return BrandUpgrade::privateDir() ?? self::DIR;
     }
 
     /** Write the deny rules (and an empty index) into the private root. */
@@ -122,45 +136,15 @@ final class WpFiles implements FileStorage
         if (!is_dir($root) && !wp_mkdir_p($root)) {
             throw new \RuntimeException("Cannot create $root");
         }
-        if (@file_get_contents("$root/.htaccess") !== self::HTACCESS) {
+        // The runtime's rules where it made the directory. A pre-release site's kept root has the rules
+        // its owner and server already rely on: a different `.htaccess` there is theirs and stays
+        // (the probe tells whether the directory is denied).
+        if (BrandUpgrade::privateDir() === null ? @file_get_contents("$root/.htaccess") !== self::HTACCESS : !file_exists("$root/.htaccess") && !is_link("$root/.htaccess")) {
             file_put_contents("$root/.htaccess", self::HTACCESS);
         }
         if (!is_file("$root/index.php")) {
-            file_put_contents("$root/index.php", self::INDEX);
+            file_put_contents("$root/index.php", "<?php\n// Silence is golden.\n");
         }
-    }
-
-    /**
-     * Whether a directory holds only what the runtime writes into a new one: its `.htaccess` (the
-     * runtime's rules, or `$rules`), its `index.php`, and probe files a stopped probe() left (removed
-     * with `$clear`). A directory that can't be listed holds something unknown.
-     */
-    public static function onlyProtection(string $dir, ?string $rules = null, bool $clear = false): bool
-    {
-        if (is_link($dir) || !is_dir($dir)) {
-            return false;
-        }
-        $names = scandir($dir);
-        if ($names === false) {
-            return false;
-        }
-        $probes = [];
-        foreach (array_diff($names, ['.', '..']) as $name) {
-            if (is_link("$dir/$name") || !is_file("$dir/$name")) {
-                return false;
-            }
-            if (preg_match('/\Aprobe-[0-9a-f]{16}\.txt\z/', $name) === 1 && @file_get_contents("$dir/$name") === 'first') {
-                $probes[] = "$dir/$name";
-                continue;
-            }
-            $want = ['.htaccess' => [self::HTACCESS, $rules], 'index.php' => [self::INDEX]][$name] ?? [];
-            if (!in_array(@file_get_contents("$dir/$name"), array_filter($want, 'is_string'), true)) {
-                return false;
-            }
-        }
-        $clear && array_map('unlink', $probes);
-
-        return true;
     }
 
     /**
@@ -200,7 +184,7 @@ final class WpFiles implements FileStorage
     /** Direct URL of a path below the private root. */
     public static function url(string $rel): string
     {
-        return content_url('uploads/' . self::DIR . '/' . $rel);
+        return content_url('uploads/' . self::dir() . '/' . $rel);
     }
 
     /** `sp_private_probe_url` lets a host route the probe (e.g. a container's internal name). */
@@ -291,7 +275,7 @@ final class WpFiles implements FileStorage
 
     private function absolute(string $rel): string
     {
-        return self::root() . '/' . $this->app . '/' . $rel;
+        return self::root() . '/' . BrandUpgrade::privateApp($this->app) . '/' . $rel;
     }
 
     public function stream(string $rel): \Closure

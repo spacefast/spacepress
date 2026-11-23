@@ -28,19 +28,11 @@ namespace SpacePress\Wp;
  * table is created beside a stored one. A site with no legacy state changes nothing; running it
  * again changes nothing.
  */
-/** The private files couldn't move safely yet: everything else moved, the files wait. */
-final class PrivateFilesHeld extends \RuntimeException
-{
-}
-
 final class BrandUpgrade
 {
     public const DONE = 'sp_brand_upgrade';
-    /** `[from, to]` while the private files wait for the server to refuse their new directory. */
-    private const FILES_HELD = 'sp_brand_upgrade_files';
     public const VERSION = 1;
-    /** The S3 key prefix stored objects keep when the app's config sets none (see {@see uploadPrefix()}). */
-    /** The S3 key names of objects stored before the rename ({@see uploadKeys()}). */
+    /** Where files stored before the rename stay: S3 key names and the local private root ({@see uploadKeys()}). */
     public const UPLOAD_KEYS = 'sp_upload_keys';
 
     private const LEGACY = 'typedpress';
@@ -102,7 +94,8 @@ final class BrandUpgrade
     private const BLOCKS = ['<!-- wp:tp/page ' => '<!-- wp:sp/page ', '<!-- wp:tp/login-form ' => '<!-- wp:sp/login-form '];
     private const GUEST_CLIENT = ['app_typedpress_guest' => 'app_spacepress_guest'];
     private const TWO_FACTOR = ['TypedPress_Identity_TwoFactorProvider' => 'SpacePress_Identity_TwoFactorProvider'];
-    private const PRIVATE_DIR = ['typedpress-private' => 'spacepress-private'];
+    /** The local private root a pre-release build kept under uploads. */
+    private const LEGACY_PRIVATE_DIR = 'typedpress-private';
     /** The key of an application password's scope on its entry. */
     private const SCOPE_KEY = 'tp_scope';
 
@@ -285,10 +278,24 @@ final class BrandUpgrade
      */
     public static function narrower(array $current, array $earlier): array
     {
+        // A name, or a `<namespace>/*` pattern, holds when the other list grants it too (exactly, or by a
+        // pattern that covers it): the abilities both lists let a request run, as AgentScope reads them.
+        $covers = static function (string $name, array $list): bool {
+            foreach ($list as $pattern) {
+                if ($pattern === $name || (str_ends_with($pattern, '/*') && strlen($pattern) > 2 && str_starts_with($name, substr($pattern, 0, -1)))) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
         $abilities = match (true) {
             $current['abilities'] === null => $earlier['abilities'],
             $earlier['abilities'] === null => $current['abilities'],
-            default => array_values(array_intersect($current['abilities'], $earlier['abilities'])),
+            default => array_values(array_unique([
+                ...array_filter($current['abilities'], static fn (string $n): bool => $covers($n, $earlier['abilities'])),
+                ...array_filter($earlier['abilities'], static fn (string $n): bool => $covers($n, $current['abilities'])),
+            ])),
         };
 
         return ['write' => $current['write'] && $earlier['write'], 'personal' => $current['personal'] && $earlier['personal'], 'abilities' => $abilities];
@@ -341,10 +348,17 @@ final class BrandUpgrade
     }
 
     /**
-     * The S3 key names a site's stored objects were written under, when its config sets no
-     * `uploads.prefix`: `['prefix' => …, 'apps' => [app => earlier app name]]`, one autoloaded option
-     * written whole (so a resumed move never finds half of it), present only on a site that had
-     * objects before the rename. Every other site reads nothing for it.
+     * Where a site's files stored before the rename stay, as they were written, in one autoloaded
+     * option written whole (so a resumed move never finds half of it), present only on a site that
+     * stored any; every other site reads nothing for it:
+     *   prefix, apps: the S3 key prefix (when the config sets no `uploads.prefix`) and the earlier
+     *     name of an app renamed with the brand, which its keys are derived from;
+     *   private, privateApps: the local private root under uploads and the earlier app directory in it.
+     *
+     * A compatibility exception, kept on purpose, as the S3 keys are: the local private root stays at
+     * its earlier path rather than moving under another URL, so the owner's files keep the deny rules
+     * and server config that protect them (their own rules, every host of a network), and nothing is
+     * copied or moved. A site installed since uses `spacepress-private`.
      */
     private static function uploadKeys(): array
     {
@@ -354,11 +368,26 @@ final class BrandUpgrade
         return is_array($kept) ? $kept : [];
     }
 
-    /** Whether a stored `sp_upload_keys` row is exactly what the move writes for these renamed apps, autoloaded. */
-    private static function uploadKeysAre(array $row, array $renamedApp): bool
+    /** Whether a stored `sp_upload_keys` row is exactly `$keys`, autoloaded. */
+    private static function uploadKeysAre(array $row, array $keys): bool
     {
-        return maybe_unserialize((string) $row['option_value']) === ['prefix' => self::LEGACY_UPLOAD_PREFIX, 'apps' => array_flip($renamedApp)]
-            && in_array($row['autoload'], ['on', 'yes', 'auto-on'], true);
+        return maybe_unserialize((string) $row['option_value']) === $keys && in_array($row['autoload'], ['on', 'yes', 'auto-on'], true);
+    }
+
+    /** The local private root a pre-release build made, kept where it is; null on a site that had none. */
+    public static function privateDir(): ?string
+    {
+        $dir = self::uploadKeys()['private'] ?? null;
+
+        return is_string($dir) && $dir !== '' ? $dir : null;
+    }
+
+    /** The directory an app's local private files are under: the earlier name, for an app renamed while it had some. */
+    public static function privateApp(string $app): string
+    {
+        $apps = self::uploadKeys()['privateApps'] ?? [];
+
+        return is_string($apps[$app] ?? null) ? $apps[$app] : $app;
     }
 
     /** The app name its S3 keys are derived from: the earlier one, for an app the rename renamed. */
@@ -382,7 +411,7 @@ final class BrandUpgrade
     /**
      * Every rename this site needs, as exact old => new names, read without changing anything.
      *
-     * @return array{tables: array<string, string>, options: array<string, string>, sitemeta: array<string, string>, meta: array<string, array<string, string>>, metaValues: array<string, string>, postTypes: array<string, string>, taxonomies: array<string, string>, hooks: array<string, string>, groups: array<string, string>, jobs: array<string, string>, plugins: array<string, string>, private: ?array{string, string}, apps: list<string>}
+     * @return array{tables: array<string, string>, options: array<string, string>, sitemeta: array<string, string>, meta: array<string, array<string, string>>, metaValues: array<string, string>, postTypes: array<string, string>, taxonomies: array<string, string>, hooks: array<string, string>, groups: array<string, string>, jobs: array<string, string>, plugins: array<string, string>, keys: array<string, mixed>, apps: list<string>}
      */
     public static function plan(Connection $db, \SpacePress\Schema $schema): array
     {
@@ -555,15 +584,23 @@ final class BrandUpgrade
                 $plugins[$basename] = $to;
             }
         }
-        $private = null;
-        $from = WP_CONTENT_DIR . '/uploads/' . array_key_first(self::PRIVATE_DIR);
-        if (is_dir($from) && !is_link($from)) {
-            $private = [$from, WP_CONTENT_DIR . '/uploads/' . self::PRIVATE_DIR[array_key_first(self::PRIVATE_DIR)]];
+        // Where the files this site stored stay ({@see uploadKeys()}): S3 objects under the prefix and
+        // app name their keys were derived from; the local private root, and a renamed app's directory
+        // in it, where they are.
+        $keys = [];
+        if (isset($options['tp_upload_namespace'])) {
+            $keys += ['prefix' => self::LEGACY_UPLOAD_PREFIX, 'apps' => array_flip($renamedApp ?? [])];
+        }
+        $root = WP_CONTENT_DIR . '/uploads/' . self::LEGACY_PRIVATE_DIR;
+        if (is_dir($root) && !is_link($root)) {
+            $keys['private'] = self::LEGACY_PRIVATE_DIR;
+            $privateApps = array_filter(array_flip($renamedApp ?? []), static fn (string $earlier): bool => is_dir("$root/$earlier"));
+            $privateApps !== [] && $keys['privateApps'] = $privateApps;
         }
 
         return ['scfPrefixes' => [...$fieldKeyPrefixes, 'field_tp_member_'], 'kinds' => $kinds, 'renamedApp' => $renamedApp ?? [], 'globalRefs' => $globalRefs, 'tables' => $tables, 'owned' => $owned, 'options' => $options, 'sitemeta' => $sitemeta, 'meta' => $meta, 'fieldMeta' => $fieldsOn, 'metaValues' => $fieldKeys,
             'postTypes' => $postTypes, 'taxonomies' => $taxonomies, 'hooks' => $hooks, 'groups' => $groups, 'jobs' => $jobs,
-            'plugins' => $plugins, 'private' => $private, 'apps' => $apps];
+            'plugins' => $plugins, 'keys' => $keys, 'apps' => $apps];
     }
 
     /**
@@ -613,8 +650,17 @@ final class BrandUpgrade
             foreach ((array) ($spec['columns'] ?? $spec['fields'] ?? []) as $column => $def) {
                 // Post, term and user meta: `sp_<field>` (an auth collection's members keep theirs on the user).
                 if (($wp['metaPrefix'] ?? null) === 'sp_' || $member) {
-                    // `[table, object type]`: the members' fields are on users, a kind's on its posts or terms.
-                    $owner = $member ? ['usermeta', null] : (is_string($wp['postType'] ?? null) ? ['postmeta', $wp['postType']] : (is_string($wp['taxonomy'] ?? null) ? ['termmeta', $wp['taxonomy']] : null));
+                    // `[table, object type]`: the members' fields are on users, a kind's on its posts or
+                    // terms; only the columns each store keeps in meta (not a core column: a user's
+                    // email, a post's title, a term's name, a many-ref's join rows).
+                    $owner = match (true) {
+                        $member => in_array($column, [$spec['primaryKey'] ?? null, 'email', 'name', 'role', 'guest', 'passwordHash', 'suspendedAt'], true) ? null : ['usermeta', null],
+                        // WpPostStore::isMeta(): not a wp_posts column, a system column or a many-ref's join rows.
+                        is_string($wp['postType'] ?? null) => !in_array($column, [$spec['primaryKey'] ?? null, $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null, $spec['excerpt'] ?? null], true)
+                            && !(is_array($def) && ($def['system'] ?? false)) && (is_array($def) ? ($def['type'] ?? null) : null) !== 'refList' ? ['postmeta', $wp['postType']] : null,
+                        is_string($wp['taxonomy'] ?? null) => WpTermStore::isMeta($spec, (string) $column) ? ['termmeta', $wp['taxonomy']] : null,
+                        default => null,
+                    };
                     $owner !== null && $out[] = ['field', 'sp_' . $column, ...$owner];
                 }
                 if (is_string($wp['fieldKeyPrefix'] ?? null) && str_starts_with($wp['fieldKeyPrefix'], 'field_sp_')) {
@@ -666,7 +712,8 @@ final class BrandUpgrade
         foreach (array_chunk(array_values(array_unique(array_map(static fn (array $r): int => (int) $r['o'], $refs))), 500) as $objects) {
             $marks = implode(', ', array_fill(0, count($objects), '?'));
             foreach ($db->run("SELECT `$object` AS o, `meta_key` AS k FROM `$table` WHERE `$object` IN ($marks) AND (`meta_key` LIKE 'tp\\_%' OR `meta_key` LIKE 'sp\\_%' OR `meta_key` LIKE '\\_tp\\_%' OR `meta_key` LIKE '\\_sp\\_%')", $objects) as $row) {
-                $have[(int) $row['o']][(string) $row['k']] = true;
+                // Keyed as the database compares meta keys (case- and accent-insensitive collations).
+                $have[(int) $row['o']][strtolower(remove_accents((string) $row['k']))] = true;
             }
         }
         foreach ($refs as $row) {
@@ -674,10 +721,12 @@ final class BrandUpgrade
             $rest = substr((string) $row['k'], 4);
             // The pair moves together, on that object only: its reference row and its value row.
             foreach (['_tp_' . $rest => '_sp_' . $rest, 'tp_' . $rest => 'sp_' . $rest] as $from => $to) {
-                if (!isset($have[$o][$from])) {
+                $f = strtolower(remove_accents($from));
+                $t = strtolower(remove_accents($to));
+                if (!isset($have[$o][$f])) {
                     continue;
                 }
-                if (isset($have[$o][$to])) {
+                if (isset($have[$o][$t])) {
                     if ($taken !== null) {
                         $taken[] = "$table key $to on object $o (and $from)";
                         continue;
@@ -688,8 +737,8 @@ final class BrandUpgrade
                     continue;
                 }
                 $db->run("UPDATE `$table` SET `meta_key` = ? WHERE `$object` = ? AND `meta_key` = ?", [$to, $o, $from]);
-                unset($have[$o][$from]);
-                $have[$o][$to] = true;
+                unset($have[$o][$f]);
+                $have[$o][$t] = true;
                 $count++;
             }
         }
@@ -730,6 +779,9 @@ final class BrandUpgrade
                 }
             }
         }
+        $taken = [];
+        self::cron($plan['hooks'] ?? [], $taken);
+        array_push($found, ...$taken);
         // SCF's pairs, object by object, checked as scfPairs() would move them, without moving any.
         foreach (['postmeta', 'termmeta', 'usermeta'] as $table) {
             $taken = [];
@@ -786,10 +838,10 @@ final class BrandUpgrade
                 }
             }
         }
-        // The S3 key names this move records: one already there must be exactly what it would write.
-        if (isset($plan['options']['tp_upload_namespace'])) {
+        // Where the stored files stay: a record already there must be exactly what this move writes.
+        if (($plan['keys'] ?? []) !== []) {
             $row = $wpdb->get_row($wpdb->prepare("SELECT option_value, autoload FROM {$wpdb->options} WHERE option_name = %s", self::UPLOAD_KEYS), ARRAY_A);
-            if ($row !== null && !self::uploadKeysAre($row, $plan['renamedApp'])) {
+            if ($row !== null && !self::uploadKeysAre($row, $plan['keys'])) {
                 $found[] = 'option ' . self::UPLOAD_KEYS;
             }
         }
@@ -812,115 +864,8 @@ final class BrandUpgrade
                 }
             }
         }
-        if ($plan['private'] !== null && file_exists($plan['private'][1]) && !WpFiles::onlyProtection($plan['private'][1], is_file($plan['private'][0] . '/.htaccess') ? (string) file_get_contents($plan['private'][0] . '/.htaccess') : null)) {
-            $found[] = "directory {$plan['private'][1]}";
-        }
-        // A renamed app's own private files directory, under either root.
-        foreach ($plan['renamedApp'] as $from => $to) {
-            foreach ([WP_CONTENT_DIR . '/uploads/' . array_key_first(self::PRIVATE_DIR), WpFiles::root()] as $root) {
-                if (is_dir("$root/$from") && (file_exists("$root/$to") || is_link("$root/$to"))) {
-                    $found[] = "directory $root/$to (and $root/$from)";
-                }
-            }
-        }
 
         return $found;
-    }
-
-    /**
-     * The private files never move somewhere the web server serves. A server may deny the earlier
-     * path by its name rather than by `.htaccess`, and the directory is shared by a network's sites,
-     * any of which may reach it first, so every move is proven the same way: the deny rules the files
-     * will be served under (the earlier directory's own `.htaccess` when it has one, else the
-     * runtime's) are written into the new directory and a file there is fetched through its URL;
-     * only a refusal lets the files move, and the rules stay in force across the move (the earlier
-     * directory's `.htaccess`, when it has one, takes the new one's place). Otherwise they stay where
-     * they are (their downloads fail, they are not exposed), uploads stay closed, an administrator
-     * sees why, and a retry tries again. One move at a time, under a network-wide lock.
-     */
-    private static function movePrivateFiles(string $from, string $to): int
-    {
-        global $wpdb;
-        // The directory is the network's, so the lock is too: the database and the network's base prefix.
-        $lock = 'spacepress-private:' . substr(hash('sha256', DB_NAME . ':' . $wpdb->base_prefix), 0, 40);
-
-        return (int) (new Connection($wpdb))->locked($lock, 30, static function () use ($from, $to): int {
-            if (!is_dir($from) || is_link($from)) {
-                return 0;
-            }
-            // The rules the files will be served under: the earlier directory's, or the runtime's.
-            $rules = is_file("$from/.htaccess") && !is_link("$from/.htaccess") ? (string) file_get_contents("$from/.htaccess") : null;
-            if (file_exists($to) && !WpFiles::onlyProtection($to, $rules, clear: true)) {
-                throw new \RuntimeException("Both $from and $to hold files; keep the one this site uses and move the other aside, then reload.");
-            }
-            WpFiles::protect();
-            if (is_string($rules) && file_put_contents("$to/.htaccess", $rules) !== strlen($rules)) {
-                throw new \RuntimeException("Cannot write $to/.htaccess");
-            }
-            if (!WpFiles::probe()) {
-                // Only what was written there (onlyProtection() checked it): gone again, so nothing
-                // (a later recheck) opens uploads there.
-                array_map('unlink', array_filter([$to . '/.htaccess', $to . '/index.php'], 'is_file'));
-                @rmdir($to);
-                $problem = "the web server serves $to: deny it (as you did $from), then reload. The private files stay in $from until then";
-                error_log('[spacepress] ' . $problem);
-                add_action('admin_notices', static fn () => current_user_can('manage_options') && printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('SpacePress: ' . $problem)));
-                throw new PrivateFilesHeld($problem);
-            }
-            // The earlier directory arrives with its own `.htaccess` (the rules just proven) when it has
-            // one; without one, the runtime's proven rules go in with it before it takes the name.
-            if ($rules === null && file_put_contents("$from/.htaccess", (string) file_get_contents("$to/.htaccess")) === false) {
-                throw new \RuntimeException("Cannot write $from/.htaccess");
-            }
-            if (!is_file("$from/index.php")) {
-                copy("$to/index.php", "$from/index.php");
-            }
-            array_map('unlink', array_filter([$to . '/.htaccess', $to . '/index.php'], 'is_file'));
-            rmdir($to);
-            if (!rename($from, $to)) {
-                throw new \RuntimeException("Cannot move $from to $to");
-            }
-
-            return 1;
-        });
-    }
-
-    /**
-     * Private files held back by an earlier attempt, tried again at most once an hour from the
-     * runtime's own scheduled maintenance and from wp-admin (so a plugin-installed site retries
-     * without anyone reloading a particular page). The verdict that gated the first attempt is the
-     * one stored with them: a failed probe since never lets them move unchecked.
-     */
-    public static function retryPrivateFiles(): void
-    {
-        $held = get_option(self::FILES_HELD);
-        if (!is_array($held) || count($held) < 2 || get_transient('sp_brand_upgrade_files_retry') !== false) {
-            return;
-        }
-        set_transient('sp_brand_upgrade_files_retry', 1, HOUR_IN_SECONDS);
-        try {
-            self::movePrivateFiles((string) $held[0], (string) $held[1]);
-            delete_option(self::FILES_HELD);
-        } catch (PrivateFilesHeld) {
-        }
-    }
-
-    /** Where the held files are retried: hooks the runtime already runs (no schedule of its own). */
-    public static function register(): void
-    {
-        // Read from the autoloaded options already in memory: a site with nothing held asks the database nothing.
-        if (!isset(wp_load_alloptions()[self::FILES_HELD])) {
-            return;
-        }
-        add_action('admin_init', [self::class, 'retryPrivateFiles']);
-        add_action(Jobs\ActionSchedulerQueue::MAINTAIN, [self::class, 'retryPrivateFiles']);
-        // Until they move, every administrator sees why, on every wp-admin screen.
-        add_action('admin_notices', static function (): void {
-            $held = get_option(self::FILES_HELD);
-            if (is_array($held) && current_user_can('manage_options')) {
-                printf('<div class="notice notice-error"><p>%s</p></div>', esc_html("SpacePress: the private files are still in {$held[0]}, because the web server serves {$held[1]}. Deny that directory as you did the earlier one; SpacePress moves them within the hour after, and their downloads work again."));
-            }
-        });
     }
 
     // ================================================================ applying it
@@ -930,27 +875,28 @@ final class BrandUpgrade
     {
         $wpdb = $db->wpdb();
         $moved = [];
-        // Objects already in S3 keep their keys: the prefix (and app name) a site without
-        // `uploads.prefix` stored them under. Recorded first, while the earlier namespace option is
-        // still there to show the site has stored any, so a resumed run never loses it.
-        if (isset($plan['options']['tp_upload_namespace'])) {
-            $keys = ['prefix' => self::LEGACY_UPLOAD_PREFIX, 'apps' => array_flip($plan['renamedApp'])];
+        // Files already stored stay where they are ({@see uploadKeys()}). Recorded first, while the
+        // earlier namespace option and directory are still there to show the site has stored any, so
+        // a resumed run never loses it.
+        if ($plan['keys'] !== []) {
+            $keys = $plan['keys'];
             $row = $wpdb->get_row($wpdb->prepare("SELECT option_value, autoload FROM {$wpdb->options} WHERE option_name = %s", self::UPLOAD_KEYS), ARRAY_A);
             if ($row === null) {
                 $db->run("INSERT INTO `{$wpdb->options}` (`option_name`, `option_value`, `autoload`) VALUES (?, ?, 'on')", [self::UPLOAD_KEYS, serialize($keys)]);
-            } elseif (!self::uploadKeysAre($row, $plan['renamedApp'])) {
+            } elseif (!self::uploadKeysAre($row, $keys)) {
                 // A resumed move wrote it whole; anything else was not this move's.
-                throw new \RuntimeException('The option ' . self::UPLOAD_KEYS . ' holds something this move did not write; move it aside, then reload. The S3 keys of stored uploads depend on it.');
+                throw new \RuntimeException('The option ' . self::UPLOAD_KEYS . ' holds something this move did not write; move it aside, then reload. Where stored uploads are found depends on it.');
             }
-            // Checked once written, before the namespace option it stands for moves.
+            // Checked once written, before the options it stands for move.
             if (maybe_unserialize((string) $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::UPLOAD_KEYS))) !== $keys) {
-                throw new \RuntimeException('Cannot record the S3 key names of stored uploads; reload to try again.');
+                throw new \RuntimeException('Cannot record where stored uploads are; reload to try again.');
             }
             wp_cache_delete('alloptions', 'options');
         }
         $moved['tables'] = self::moveTables($db, $plan['tables']);
         // The app's own name, where the site keyed something by it: ledger rows (each keeps its id and
-        // SHA-256), private file records, runtime schema versions. Stored S3 keys stay as written.
+        // SHA-256) and private file records. Stored S3 keys and local private files stay as written
+        // ({@see uploadKeys()}), runtime schema versions too ({@see historyApp()}).
         foreach ($plan['renamedApp'] as $from => $to) {
             // Runtime schema versions stay under the name they were written with: each row's hash covers
             // it (SchemaVersions::hashOf()), and the app reads them by both names ({@see historyApp()}).
@@ -975,6 +921,14 @@ final class BrandUpgrade
             $db->run("UPDATE `{$wpdb->options}` SET `option_name` = ?, `autoload` = 'off' WHERE `option_name` = ?", [$to . '__superseded_' . time(), $to]);
         }
         $moved['options'] = self::rename($db, $wpdb->options, 'option_name', $plan['options']);
+        // Renamed by SQL past WordPress's cache: what this request writes from here (a probe's verdict,
+        // a role) compares against the stored rows, not values cached before the move.
+        wp_cache_delete('alloptions', 'options');
+        wp_cache_delete('notoptions', 'options');
+        foreach ($plan['options'] as $from => $to) {
+            wp_cache_delete($from, 'options');
+            wp_cache_delete($to, 'options');
+        }
         $moved['sitemeta'] = is_multisite() ? self::renameWhere($db, $wpdb->sitemeta, 'meta_key', $plan['sitemeta'], '`site_id` = ' . (int) get_current_network_id()) : 0;
         $moved['meta'] = 0;
         foreach ($plan['meta'] as $table => $keys) {
@@ -1010,30 +964,6 @@ final class BrandUpgrade
             + self::rename($db, $db->prefix() . 'sp_identity_codes', 'client_id', self::GUEST_CLIENT, optional: true)
             + self::rename($db, $db->prefix() . 'sp_identity_tokens', 'client_id', self::GUEST_CLIENT, optional: true);
         $moved['plugins'] = self::activePlugins($plan['plugins']);
-        // A renamed app's local private files live under its name: the directory follows the records.
-        foreach ($plan['renamedApp'] as $from => $to) {
-            foreach ([WP_CONTENT_DIR . '/uploads/' . array_key_first(self::PRIVATE_DIR), WpFiles::root()] as $root) {
-                if (is_dir("$root/$from") && !is_link("$root/$from")) {
-                    if (file_exists("$root/$to")) {
-                        throw new \RuntimeException("Both $root/$from and $root/$to hold private files; keep the one this site uses and move the other aside, then reload.");
-                    }
-                    if (!rename("$root/$from", "$root/$to")) {
-                        throw new \RuntimeException("Cannot move $root/$from to $root/$to");
-                    }
-                    $moved['files'] = ($moved['files'] ?? 0) + 1;
-                }
-            }
-        }
-        if ($plan['private'] !== null) {
-            try {
-                $moved['files'] = self::movePrivateFiles(...$plan['private']);
-            } catch (PrivateFilesHeld) {
-                // Everything else is moved; the files wait for the server (see movePrivateFiles()).
-                // Autoloaded, so a site with nothing held answers `register()` from the options it loaded.
-                update_option(self::FILES_HELD, $plan['private'], true);
-            }
-        }
-
         // Runtime schema states are sealed with a key that named the pre-release build: one that checks
         // out under it is sealed again under the current one (its versions and hashes stay as they are).
         foreach ($plan['apps'] as $app) {
@@ -1354,7 +1284,10 @@ final class BrandUpgrade
             }
             foreach ($passwords as $i => $entry) {
                 if (is_array($entry) && array_key_exists($from, $entry)) {
-                    $passwords[$i][$to] ??= self::earlierScope($entry);
+                    // What the entry granted before the move, read as the runtime reads it (both keys:
+                    // the narrower; a present null under either is that key's narrowest), kept whole.
+                    $earlier = AgentScope::normalize(self::earlierScope($entry));
+                    $passwords[$i][$to] = array_key_exists($to, $entry) ? self::narrower(AgentScope::normalize($entry[$to]), $earlier) : $earlier;
                     // User meta is shared by a network's sites: another site may not have moved yet and
                     // still reads the earlier key. It stays there on a network, unused once all moved.
                     if (!is_multisite()) {
@@ -1421,7 +1354,7 @@ final class BrandUpgrade
     }
 
     /** wp-cron events of the runtime's hooks, with the same times, arguments and schedules. */
-    private static function cron(array $hooks): int
+    private static function cron(array $hooks, ?array &$taken = null): int
     {
         $cron = _get_cron_array();
         if (!is_array($cron)) {
@@ -1437,11 +1370,22 @@ final class BrandUpgrade
                     if (is_string($event['schedule'] ?? null) && isset(self::CRON_SCHEDULES[$event['schedule']])) {
                         $event['schedule'] = self::CRON_SCHEDULES[$event['schedule']];
                     }
+                    // The same event under its current hook is the one moving; a different one is not this move's to replace.
+                    if (isset($cron[$time][$hooks[$hook]][$key]) && $cron[$time][$hooks[$hook]][$key] != $event) {
+                        if ($taken !== null) {
+                            $taken[] = "scheduled event {$hooks[$hook]} at $time";
+                            continue;
+                        }
+                        throw new \RuntimeException("A different {$hooks[$hook]} event at $time is already scheduled beside $hook; unschedule the one this site doesn't use, then reload.");
+                    }
                     $cron[$time][$hooks[$hook]][$key] = $event;
                 }
                 unset($cron[$time][$hook]);
                 $count++;
             }
+        }
+        if ($taken !== null) {
+            return 0;
         }
         // Checked: the move is recorded done only once the events run under their current hooks.
         if ($count > 0 && is_wp_error($saved = _set_cron_array($cron, true))) {

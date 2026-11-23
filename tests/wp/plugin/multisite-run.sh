@@ -79,7 +79,7 @@ local_admin="newsadmin:$(wp user application-password create newsadmin lane --po
 docker cp "$work/spacepress.zip" "$("$harness" compose ps -q cli)":/tmp/spacepress.zip >/dev/null
 wp plugin install /tmp/spacepress.zip --activate-network >/dev/null
 network=$(wp plugin list --status=active-network --field=name | sort | tr '\n' ' ')
-[[ $network == "action-scheduler mcp-adapter secure-custom-fields two-factor spacepress " ]] || fail "activating SpacePress for the network activates what it depends on for the network: $network"
+[[ $network == "action-scheduler mcp-adapter secure-custom-fields spacepress two-factor " ]] || fail "activating SpacePress for the network activates what it depends on for the network: $network"
 for site in "$url" "$news" "$shop"; do
   [[ $(curl -s -u "$super" "$site/wp-json/spacepress-deploy/v1/site" | json ready) == true ]] || fail "$site is ready for a deployment"
 done

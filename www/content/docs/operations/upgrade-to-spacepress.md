@@ -28,11 +28,12 @@ It refuses to run when a renamed path already exists. Review the staged diff, ru
 
 ## 2. Upgrade the site
 
-The new plugins move the site's stored state on their first request. This covers the app's tables, the migration ledger, revisions, queued jobs, Action Scheduler actions and groups, options, post and user meta, post types, taxonomies, roles, application-password scopes, private files and active plugins.
+The new plugins move the site's stored state on their first request. This covers the app's tables, the migration ledger, revisions, queued jobs, Action Scheduler actions and groups, options, post and user meta, post types, taxonomies, roles, application-password scopes and active plugins.
 
 - Tables are renamed, not copied.
 - Each applied migration keeps its recorded SHA-256, and the ledger gains one `data` entry saying what moved.
 - Files already in S3 keep their key prefix.
+- Private files stay in the directory they are in, at the same URL and under the same server rules. A site installed after the rename uses `uploads/spacepress-private`.
 - Options of other plugins that only look like SpacePress's are left alone.
 - If a new name is already taken, nothing is changed. The site shows which name it found twice.
 
@@ -65,5 +66,5 @@ Environment constants in `wp-config.php` take the `SP_` prefix, for example `SP_
 
 - REST routes are under `/wp-json/spacepress/v1`.
 - Outgoing webhooks are signed with the `SpacePress-Signature` header.
-- Identity sessions and signed preview links issued before the upgrade stop working, so people sign in again once.
+- Identity sessions stay signed in. Signed preview and live links issued before the upgrade stop working and are issued again.
 - Update any client that calls the API directly. The typed client and `@spacepress/astro` follow when you rebuild.

@@ -78,6 +78,17 @@ add_option('tp_upload_namespace', str_repeat('ab', 16), '', false);
 $editor = $wp->userId('editor');
 [$password, $item] = WP_Application_Passwords::create_new_application_password($editor, ['name' => 'agent']);
 \TypedPress\Wp\AgentScope::store($editor, $item['uuid'], ['write' => true, 'personal' => false, 'abilities' => null]);
+// A password whose entry carries both keys (another plugin's copy, or a hand edit): an explicit null
+// under the current one (its narrowest), a write grant under the earlier one. Not widened by the move.
+[, $both] = WP_Application_Passwords::create_new_application_password($editor, ['name' => 'both']);
+$entries = WP_Application_Passwords::get_user_application_passwords($editor);
+foreach ($entries as $i => $e) {
+    if ($e['uuid'] === $both['uuid']) {
+        $entries[$i]['sp_scope'] = null;
+        $entries[$i]['tp_scope'] = ['write' => true, 'personal' => true, 'abilities' => null];
+    }
+}
+update_user_meta($editor, WP_Application_Passwords::USERMETA_KEY_APPLICATION_PASSWORDS, $entries);
 (new WP_User($wp->userId('subscriber')))->set_role('tp_guest');
 add_option('tp_unrelated_plugin_setting', 'not ours', '', false);
 

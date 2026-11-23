@@ -68,7 +68,7 @@ ok "spacepress.zip uploads and activates through wp-admin's Upload Plugin"
 
 # Activating SpacePress installed and activated what it depends on, each pinned by checksum.
 active=$(wp plugin list --status=active --field=name | sort | tr '\n' ' ')
-[[ $active == "action-scheduler mcp-adapter secure-custom-fields two-factor spacepress " ]] || fail "activating SpacePress installs and activates the four pinned plugins: $active"
+[[ $active == "action-scheduler mcp-adapter secure-custom-fields spacepress two-factor " ]] || fail "activating SpacePress installs and activates the four pinned plugins: $active"
 screen=$(browser screen 'admin.php?page=spacepress-setup' '<div class="wrap"><h1>SpacePress')
 [[ $screen == *"SpacePress installed and activated the plugins it needs: Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, Two Factor 0.17.0."* ]] || fail "the SpacePress screen says what activation installed: $screen"
 [[ $screen == *"No SpacePress app is deployed to this site yet."* && $screen != *"Not installed"* && $screen == *"spacepress login $url"* ]] || fail "the SpacePress screen is ready and shows the commands: $screen"

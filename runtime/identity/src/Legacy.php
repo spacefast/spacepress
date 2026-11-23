@@ -23,13 +23,18 @@ final class Legacy
     /** Schema::migrateLocked()'s tables. */
     private const TABLES = ['accounts', 'emails', 'providers', 'sessions', 'challenges', 'applications', 'codes', 'tokens', 'events', 'limits', 'organizations', 'members', 'passkeys', 'mfa', 'recovery_codes', 'deliveries'];
 
-    /** Whether there is identity storage under the earlier name: one indexed read. */
-    public static function pending(): bool
+    /** Whether identity's schema version is stored under the earlier name: one indexed read. */
+    public static function stored(): bool
     {
         global $wpdb;
 
-        return (int) get_option('sp_brand_upgrade', 0) < 1
-            && $wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->options} WHERE option_name = %s", self::SHORT . 'schema_version')) !== null;
+        return $wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->options} WHERE option_name = %s", self::SHORT . 'schema_version')) !== null;
+    }
+
+    /** Whether there is identity storage under the earlier name the runtime hasn't moved. */
+    public static function pending(): bool
+    {
+        return (int) get_option('sp_brand_upgrade', 0) < 1 && self::stored();
     }
 
     /** Moves identity's storage when the runtime isn't here to move the whole site. */

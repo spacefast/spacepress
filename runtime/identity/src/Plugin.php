@@ -82,8 +82,7 @@ final class Plugin
         // The runtime's marker answers on a settled site (autoloaded: no query).
         $upgrade = get_option('sp_brand_upgrade', 0);
 
-        return $upgrade !== 'started' && ((int) $upgrade > 0
-            || $wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->options} WHERE option_name = %s", 'tp_identity_schema_version')) === null);
+        return $upgrade !== 'started' && ((int) $upgrade > 0 || !Legacy::stored());
     }
 
     public static function boot(string $file): void

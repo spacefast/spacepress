@@ -239,9 +239,9 @@ pub(crate) fn frontend_enabled(fs: &dyn Fs, root: &Path) -> Result<bool> {
         Err(error) => Err(error),
     }
     .map_err(|error| Diag::new(Span::NONE, format!("can't read package.json: {error}")).code(diag::Code::Import))?;
-    Ok(["dependencies", "devDependencies"].iter().any(|key| {
-        package[*key]["@spacepress/frontend"].is_string()
-    }))
+    Ok(["dependencies", "devDependencies"]
+        .iter()
+        .any(|key| package[*key]["@spacepress/frontend"].is_string()))
 }
 
 #[derive(serde::Deserialize)]
@@ -1418,12 +1418,14 @@ fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> R
 /// Rewrites `"spacefast/app"` imports, exports and requires to `"spacepress"`.
 fn normalize_spacefast_modules(body: &mut [Stmt], commonjs: Option<&mut CommonJs>) {
     let sources = body.iter_mut().filter_map(|stmt| match stmt {
-        Stmt::Import { source, .. } | Stmt::ExportNames { from: Some(source), .. } | Stmt::ExportAll { from: source, .. } => {
-            Some(source)
-        }
+        Stmt::Import { source, .. }
+        | Stmt::ExportNames { from: Some(source), .. }
+        | Stmt::ExportAll { from: source, .. } => Some(source),
         _ => None,
     });
-    let requires = commonjs.into_iter().flat_map(|c| c.requires.iter_mut().map(|(spec, _)| spec));
+    let requires = commonjs
+        .into_iter()
+        .flat_map(|c| c.requires.iter_mut().map(|(spec, _)| spec));
     for spec in sources.chain(requires) {
         if spec == SPACEFAST_APP_MODULE {
             *spec = SP_MODULE.to_owned();

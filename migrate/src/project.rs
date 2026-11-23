@@ -1,9 +1,9 @@
 use crate::config::{Failure, fail};
+use spacepress::{diag, loader, pipeline, wasm};
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use spacepress::{diag, loader, pipeline, wasm};
 
 pub fn check(files: &BTreeMap<PathBuf, String>) -> Result<pipeline::Built, Failure> {
     let root = Path::new("/candidate");

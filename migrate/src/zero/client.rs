@@ -20,9 +20,9 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::{ImportDeclarationSpecifier, ModuleExportName, Statement, StringLiteral};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
+use spacepress::loader::Fs;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use spacepress::loader::Fs;
 
 /// The compatibility module and the Preact build it runs on, written under `public/sp/`.
 const RUNTIME: &[(&str, &str)] = &[

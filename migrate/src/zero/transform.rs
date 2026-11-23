@@ -5,13 +5,13 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
 use spacepress::diag::{self, Span};
 use spacepress::ir::{
     ArrEl, DeclKind, Expr, ExprKind as E, FnBody, Func, ImportName, LogOp, Pat, Prop, PropKey, Stmt, TyAnn,
 };
 use spacepress::lower::Lowerer;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 pub(super) fn parse(path: &Path, text: &str) -> Result<Vec<Stmt>, Failure> {
     let arena = Allocator::default();

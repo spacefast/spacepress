@@ -4,11 +4,11 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Value};
-use std::collections::HashMap;
-use std::path::Path;
 use spacepress::diag;
 use spacepress::ir::{ArrEl, DeclKind, Expr, ExprKind, FnBody, ImportName, Pat, Prop, PropKey, Stmt, UnOp};
 use spacepress::lower::Lowerer;
+use std::collections::HashMap;
+use std::path::Path;
 
 use super::{Failure, Source, fail, pointer};
 

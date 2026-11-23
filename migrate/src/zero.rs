@@ -10,12 +10,12 @@ mod transform;
 
 use crate::config::{Entry, Failure, fail};
 use serde::Serialize;
+use spacepress::loader::Fs;
+use spacepress::{diag, loader};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::rc::Rc;
-use spacepress::loader::Fs;
-use spacepress::{diag, loader};
 
 /// What a capsule's 0.8 tables become.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

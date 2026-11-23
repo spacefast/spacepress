@@ -2,11 +2,11 @@ use crate::config::{Entry, Failure, entry, fail};
 use crate::project;
 use serde::Serialize;
 use serde_json::Value;
+use spacepress::{astro_content, diag, loader::Disk, sync::front_matter};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use spacepress::{astro_content, diag, loader::Disk, sync::front_matter};
 
 const USAGE: &str = "usage: spacepress-migrate --from astro app <project> --out <new-dir> [--dry-run]";
 const CONFIG: &str = "import { defineConfig } from \"spacepress\";\nexport default defineConfig({});\n";

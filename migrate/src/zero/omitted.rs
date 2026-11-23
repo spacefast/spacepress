@@ -9,10 +9,10 @@
 //! the same URLs. The rest are refused here with what replaces them.
 use crate::config::{Failure, fail, pointer};
 use regex::{Regex, RegexBuilder};
+use spacepress::loader::Fs;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use spacepress::loader::Fs;
 
 pub(super) const CLIENT: &str = "the 0.8 client app is not carried over";
 pub(super) const PAGES: &str = "the 0.8 page is not carried over";

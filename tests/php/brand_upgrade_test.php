@@ -58,7 +58,7 @@ $legacy = 'typedpress';
 $after = $state();
 // The one stored value that keeps the earlier name on purpose (the S3 key prefix of objects already
 // stored), and the look-alikes this test planted for other plugins and the site's owner.
-$hasLegacy = static fn (array $rows): array => array_values(array_filter(array_map('json_encode', $rows), static fn (string $r): bool => !str_contains($r, '"sp_upload_prefix"')
+$hasLegacy = static fn (array $rows): array => array_values(array_filter(array_map('json_encode', $rows), static fn (string $r): bool => !str_contains($r, '"sp_upload_keys"')
     && !preg_match('/tp_(unrelated|prebuilt_other|global_other)|typedpress-home-owner|not the app/', $r)
     && (str_contains($r, $legacy) || preg_match('/(?<![a-z0-9])_?tp_/', $r) === 1)));
 
@@ -121,6 +121,10 @@ eq('the foreign key keeps its target and rule, under the name the compiler gives
 $wp->exec("ALTER TABLE `{$p}sp_replies` ADD COLUMN `probe` BIGINT NULL");
 eq('… and the table still takes an ALTER, keeping its row and its key', [(int) $wp->scalar("SELECT COUNT(*) FROM `{$p}sp_replies`"), $wp->scalar("SELECT REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_NAME = ? AND CONSTRAINT_NAME = 'sp_replies_commentId_fk'", ["{$p}sp_replies"])], [1, "{$p}sp_comments"]);
 $wp->exec("ALTER TABLE `{$p}sp_replies` DROP COLUMN `probe`");
+
+$session = \SpacePress\Identity\Plugin::$sessions->find($before['session']);
+eq('a session the earlier identity opened stays signed in', [(int) ($session['wp_user_id'] ?? 0), $session === null ? null : hash_equals((string) $session['secret_hash'], \SpacePress\Identity\Sessions::digest($before['session']))], [$before['editor'], true]);
+eq('… its row now holds the current digest', (int) $wp->scalar("SELECT COUNT(*) FROM `{$p}sp_identity_sessions` WHERE secret_hash = ?", [\SpacePress\Identity\Sessions::digest($before['session'])]), 1);
 
 // A password a pre-release build scoped, met before the site has moved (another site of a network,
 // or a request that comes first): the earlier key is read, so it stays as narrow as it was.

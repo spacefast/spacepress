@@ -25,6 +25,12 @@ final class Legacy
     /** Schema::migrateLocked()'s tables. */
     private const TABLES = ['accounts', 'emails', 'providers', 'sessions', 'challenges', 'applications', 'codes', 'tokens', 'events', 'limits', 'organizations', 'members', 'passkeys', 'mfa', 'recovery_codes', 'deliveries'];
 
+    /** A session secret's digest as a pre-release build stored it (Sessions::digest() under its domain). */
+    public static function sessionDigest(string $secret): string
+    {
+        return hash("sha256", "typedpress-identity-session-v1\0" . $secret);
+    }
+
     /** Whether identity's schema version is stored under the earlier name: one indexed read. */
     public static function stored(): bool
     {

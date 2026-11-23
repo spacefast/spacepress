@@ -40,9 +40,8 @@ final class BrandUpgrade
     private const FILES_HELD = 'sp_brand_upgrade_files';
     public const VERSION = 1;
     /** The S3 key prefix stored objects keep when the app's config sets none (see {@see uploadPrefix()}). */
-    public const UPLOAD_PREFIX = 'sp_upload_prefix';
-    /** `[app => earlier app name]` for apps renamed with the brand whose stored objects keep their keys. */
-    private const UPLOAD_APP = 'sp_upload_app';
+    /** The S3 key names of objects stored before the rename ({@see uploadKeys()}). */
+    public const UPLOAD_KEYS = 'sp_upload_keys';
 
     private const LEGACY = 'typedpress';
     private const LEGACY_UPLOAD_PREFIX = 'typedpress';
@@ -300,20 +299,34 @@ final class BrandUpgrade
         return $schema;
     }
 
+    /**
+     * The S3 key names a site's stored objects were written under, when its config sets no
+     * `uploads.prefix`: `['prefix' => …, 'apps' => [app => earlier app name]]`, one autoloaded option
+     * written whole (so a resumed move never finds half of it), present only on a site that had
+     * objects before the rename. Every other site reads nothing for it.
+     */
+    private static function uploadKeys(): array
+    {
+        $kept = wp_load_alloptions()[self::UPLOAD_KEYS] ?? null;
+        $kept = is_string($kept) ? maybe_unserialize($kept) : $kept;
+
+        return is_array($kept) ? $kept : [];
+    }
+
     /** The app name its S3 keys are derived from: the earlier one, for an app the rename renamed. */
     public static function uploadApp(string $app): string
     {
-        $kept = get_option(self::UPLOAD_APP);
+        $apps = self::uploadKeys()['apps'] ?? [];
 
-        return is_array($kept) && is_string($kept[$app] ?? null) ? $kept[$app] : $app;
+        return is_string($apps[$app] ?? null) ? $apps[$app] : $app;
     }
 
     /** The S3 key prefix uploads use when the app's config sets none. */
     public static function uploadPrefix(): string
     {
-        $stored = get_option(self::UPLOAD_PREFIX);
+        $prefix = self::uploadKeys()['prefix'] ?? null;
 
-        return is_string($stored) && $stored !== '' ? $stored : 'spacepress';
+        return is_string($prefix) && $prefix !== '' ? $prefix : 'spacepress';
     }
 
     // ================================================================ the plan
@@ -755,11 +768,8 @@ final class BrandUpgrade
         // Objects already in S3 keep their keys: the prefix (and app name) a site without
         // `uploads.prefix` stored them under. Recorded first, while the earlier namespace option is
         // still there to show the site has stored any, so a resumed run never loses it.
-        if (isset($plan['options']['tp_upload_namespace']) && get_option(self::UPLOAD_PREFIX) === false) {
-            add_option(self::UPLOAD_PREFIX, self::LEGACY_UPLOAD_PREFIX, '', false);
-            if ($plan['renamedApp'] !== [] && get_option(self::UPLOAD_APP) === false) {
-                add_option(self::UPLOAD_APP, array_flip($plan['renamedApp']), '', false);
-            }
+        if (isset($plan['options']['tp_upload_namespace']) && get_option(self::UPLOAD_KEYS) === false) {
+            add_option(self::UPLOAD_KEYS, ['prefix' => self::LEGACY_UPLOAD_PREFIX, 'apps' => array_flip($plan['renamedApp'])], '', true);
         }
         $moved['tables'] = self::moveTables($db, $plan['tables']);
         // The app's own name, where the site keyed something by it: ledger rows (each keeps its id and

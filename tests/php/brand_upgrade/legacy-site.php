@@ -57,6 +57,9 @@ add_post_meta($ownerPage, 'tp_seo_metaTitle', 'not the app\'s');
 $versions = \TypedPress\Wp\SchemaVersions::of($wp->plugin());
 $versions->apply(0, ['format' => 1, 'changes' => [['op' => 'addField', 'kind' => 'posts', 'field' => 'mood', 'definition' => ['type' => 'text']]]], ['user' => 1, 'login' => 'admin', 'via' => 'test']);
 update_post_meta($post['id'], 'tp_mood', 'calm');
+// A signed-in identity session of the editor's, as the earlier identity opened it (its browser keeps the secret).
+\TypedPress\Identity\Plugin::$accounts->ensure($wp->userId('editor'));
+$opened = \TypedPress\Identity\Plugin::$sessions->create($wp->userId('editor'));
 // The owner's saved copy of the sign-in template, as the Site Editor stores one.
 wp_insert_post(['post_type' => 'wp_template', 'post_status' => 'publish', 'post_name' => 'tp-login', 'post_title' => 'Sign in',
     'post_content' => '<!-- wp:paragraph --><p>Owner text</p><!-- /wp:paragraph --><!-- wp:tp/login-form /-->', 'tax_input' => ['wp_theme' => ['typedpress-default']]]);
@@ -83,6 +86,7 @@ echo json_encode([
     'gone' => $gone['id'],
     'comment' => $comment['id'],
     'editor' => $editor,
+    'session' => $opened['secret'],
     'tables' => $tables,
     'ledger' => $wp->sql("SELECT `app`, `id`, `kind`, `sql` FROM `{$p}tp__migrations` ORDER BY `id`"),
     'revisions' => $wp->sql("SELECT `collection`, `pk`, `version`, `op` FROM `{$p}tp__revisions` ORDER BY `id`"),

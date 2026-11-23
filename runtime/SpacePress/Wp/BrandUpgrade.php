@@ -27,9 +27,16 @@ namespace SpacePress\Wp;
  * table is created beside a stored one. A site with no legacy state changes nothing; running it
  * again changes nothing.
  */
+/** The private files couldn't move safely yet: everything else moved, the files wait. */
+final class PrivateFilesHeld extends \RuntimeException
+{
+}
+
 final class BrandUpgrade
 {
     public const DONE = 'sp_brand_upgrade';
+    /** `[from, to]` while the private files wait for the server to refuse their new directory. */
+    private const FILES_HELD = 'sp_brand_upgrade_files';
     public const VERSION = 1;
     /** The S3 key prefix stored objects keep when the app's config sets none (see {@see uploadPrefix()}). */
     public const UPLOAD_PREFIX = 'sp_upload_prefix';
@@ -156,6 +163,8 @@ final class BrandUpgrade
     public static function ensure(\SpacePress\Schema $schema): array
     {
         if (self::done()) {
+            self::retryPrivateFiles();
+
             return [];
         }
         global $wpdb;
@@ -493,6 +502,62 @@ final class BrandUpgrade
         return $found;
     }
 
+    /**
+     * The private files never move somewhere the web server serves when it refused them where they
+     * were. A server may deny the earlier path by its name rather than by `.htaccess`, so when the
+     * earlier directory was proven refused (its probe passed), the deny rules are written into the
+     * new one and probed through its URL first; only a refusal there lets the files move. Otherwise
+     * they stay where they are (their downloads fail, they are not exposed), uploads stay closed, an
+     * administrator sees why, and the next upgrade attempt tries again. A directory that was never
+     * proven refused is no safer where it is, so it moves. On a network the directory is shared, so
+     * it moves once, under a network-wide lock.
+     */
+    private static function movePrivateFiles(string $from, string $to): int
+    {
+        global $wpdb;
+        $lock = 'spacepress-private:' . substr(hash('sha256', DB_NAME . ':' . $wpdb->base_prefix), 0, 40);
+
+        return (int) Migrator::locked(new Connection($wpdb), $lock, static function () use ($from, $to): int {
+            if (!is_dir($from) || is_link($from)) {
+                return 0;
+            }
+            if (file_exists($to) && !self::freshPrivateRoot($to)) {
+                throw new \RuntimeException("Both $from and $to hold files; keep the one this site uses and move the other aside, then reload.");
+            }
+            $wasRefused = get_option(WpFiles::OK) === '1';
+            WpFiles::protect();
+            if ($wasRefused && !WpFiles::probe()) {
+                $problem = "the web server serves $to, which it must refuse as it refused $from: deny it (as you did the earlier directory), then reload. The private files stay in $from until then";
+                error_log('[spacepress] ' . $problem);
+                add_action('admin_notices', static fn () => current_user_can('manage_options') && printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('SpacePress: ' . $problem)));
+                throw new PrivateFilesHeld($problem);
+            }
+            // Only the deny rules written just now; the earlier directory has its own.
+            array_map('unlink', array_filter([$to . '/.htaccess', $to . '/index.php'], 'is_file'));
+            rmdir($to);
+            if (!rename($from, $to)) {
+                throw new \RuntimeException("Cannot move $from to $to");
+            }
+
+            return 1;
+        });
+    }
+
+    /** Private files held back by an earlier attempt: tried again on a later request, once an hour. */
+    private static function retryPrivateFiles(): void
+    {
+        $held = get_option(self::FILES_HELD);
+        if (!is_array($held) || count($held) !== 2 || get_transient('sp_brand_upgrade_files_retry') !== false) {
+            return;
+        }
+        set_transient('sp_brand_upgrade_files_retry', 1, HOUR_IN_SECONDS);
+        try {
+            self::movePrivateFiles((string) $held[0], (string) $held[1]);
+            delete_option(self::FILES_HELD);
+        } catch (PrivateFilesHeld) {
+        }
+    }
+
     /** A private-files directory holding only what the runtime writes into a new one. */
     private static function freshPrivateRoot(string $dir): bool
     {
@@ -552,15 +617,12 @@ final class BrandUpgrade
             + self::rename($db, $db->prefix() . 'sp_identity_tokens', 'client_id', self::GUEST_CLIENT, optional: true);
         $moved['plugins'] = self::activePlugins($plan['plugins']);
         if ($plan['private'] !== null) {
-            if (self::freshPrivateRoot($plan['private'][1])) {
-                // Only the deny rules a boot wrote just now; the site's own directory has them too.
-                array_map('unlink', array_filter([$plan['private'][1] . '/.htaccess', $plan['private'][1] . '/index.php'], 'is_file'));
-                rmdir($plan['private'][1]);
+            try {
+                $moved['files'] = self::movePrivateFiles(...$plan['private']);
+            } catch (PrivateFilesHeld) {
+                // Everything else is moved; the files wait for the server (see movePrivateFiles()).
+                update_option(self::FILES_HELD, $plan['private'], false);
             }
-            if (!rename($plan['private'][0], $plan['private'][1])) {
-                throw new \RuntimeException("Cannot move {$plan['private'][0]} to {$plan['private'][1]}");
-            }
-            $moved['files'] = 1;
         }
         // Objects already in S3 keep their keys: the prefix a site without `uploads.prefix` used.
         if (isset($plan['options']['tp_upload_namespace']) && get_option(self::UPLOAD_PREFIX) === false) {

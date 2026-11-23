@@ -89,4 +89,32 @@ check('a boot of a site with identity\'s storage under both names looks for the 
 check('… and reports the collision', str_contains((string) @file_get_contents("$dir/content/debug.log"), "Identity storage exists under both {$p}tp_identity_sessions and {$p}sp_identity_sessions"));
 eq('… without recording identity as settled', $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name = 'sp_identity_upgrade'"), '0');
 
+// An event already under the current hook at the same time and arguments, on another schedule, is
+// someone's: the move stops before anything changes. The same event under both hooks is one event.
+$wpdb->query("DROP TABLE `{$p}tp_identity_sessions`");
+$wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'tp_identity_schema_version'");
+$wpdb->query("UPDATE {$wpdb->options} SET option_name = 'tp_identity_schema_version' WHERE option_name = 'sp_identity_schema_version'");
+wp_cache_flush();
+$at = time() + 3600;
+$event = static fn (string $schedule, int $interval): array => [md5(serialize([])) => ['schedule' => $schedule, 'args' => [], 'interval' => $interval]];
+$cron = _get_cron_array();
+$cron[$at] = ['tp_identity_maintenance' => $event('tp_identity_minute', 60), 'sp_identity_maintenance' => $event('hourly', 3600)];
+_set_cron_array($cron);
+$cronBefore = _get_cron_array();
+$failure = null;
+try {
+    \SpacePress\Identity\Legacy::move($wpdb);
+} catch (\SpacePress\Identity\Failure $e) {
+    $failure = $e->getMessage();
+}
+wp_cache_flush();
+check('a current event at the same time and arguments on another schedule stops the move', str_contains((string) $failure, 'sp_identity_maintenance'));
+eq('… before anything changed', [_get_cron_array(), $wpdb->get_col("SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE '%identity\\_schema\\_version'")], [$cronBefore, ['tp_identity_schema_version']]);
+$cron = _get_cron_array();
+$cron[$at]['sp_identity_maintenance'] = $event('sp_identity_minute', 60);
+_set_cron_array($cron);
+\SpacePress\Identity\Legacy::move($wpdb);
+wp_cache_flush();
+eq('the same event under both hooks moves as one', [_get_cron_array()[$at] ?? null, get_option('sp_identity_schema_version') !== false], [['sp_identity_maintenance' => $event('sp_identity_minute', 60)], true]);
+
 finish('brand_upgrade_identity');

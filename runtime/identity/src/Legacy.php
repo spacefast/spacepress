@@ -110,6 +110,15 @@ final class Legacy
                     throw new Failure('storage_unavailable', "Identity's option exists under both " . self::SHORT . "$name and sp_identity_$name; keep the one this site uses and move the other aside, then reload. Nothing was changed.", 503);
                 }
             }
+            // An event under the current hook at the same time and arguments is the same one only when
+            // nothing else about it differs; otherwise moving would overwrite someone's schedule.
+            $cron = _get_cron_array();
+            foreach (self::events() as [$time, $hook, $key, $job]) {
+                $there = $cron[$time][$hook][$key] ?? null;
+                if ($there !== null && $there != $job) {
+                    throw new Failure('storage_unavailable', "Identity's event $hook at $time is scheduled under both " . self::SHORT . substr($hook, strlen('sp_identity_')) . " and $hook, differently; keep the one this site uses and unschedule the other, then reload. Nothing was changed.", 503);
+                }
+            }
             foreach (self::REGENERATED as $name) {
                 // Made by a boot that found nothing: the site's own value takes the name, that one is set aside.
                 if ($wp->get_var($wp->prepare("SELECT 1 FROM {$wp->options} WHERE option_name = %s", self::SHORT . $name)) !== null) {
@@ -176,23 +185,35 @@ final class Legacy
     private static function moveEvents(): void
     {
         $cron = _get_cron_array();
-        $moved = false;
-        foreach (is_array($cron) ? $cron : [] as $time => $hooks) {
-            foreach (self::EVENTS as $event) {
-                if (!isset($hooks[self::SHORT . $event])) {
-                    continue;
-                }
-                foreach ((array) $hooks[self::SHORT . $event] as $key => $job) {
-                    $job['schedule'] = ($job['schedule'] ?? null) === self::SCHEDULE ? 'sp_identity_minute' : ($job['schedule'] ?? false);
-                    $cron[$time]['sp_identity_' . $event][$key] = $job;
-                }
-                unset($cron[$time][self::SHORT . $event]);
-                $moved = true;
-            }
+        $events = self::events();
+        foreach ($events as [$time, $hook, $key, $job]) {
+            $cron[$time][$hook][$key] = $job;
+            unset($cron[$time][self::SHORT . substr($hook, strlen('sp_identity_'))]);
         }
-        if ($moved && _set_cron_array($cron, true) instanceof \WP_Error) {
+        if ($events !== [] && _set_cron_array($cron, true) instanceof \WP_Error) {
             throw new Failure('storage_unavailable', "Cannot move identity's scheduled events; reload to try again.", 503);
         }
+    }
+
+    /**
+     * Each event under an earlier hook as it moves: its time, current hook, argument key and job.
+     *
+     * @return list<array{int, string, string, array}>
+     */
+    private static function events(): array
+    {
+        $cron = _get_cron_array();
+        $events = [];
+        foreach (is_array($cron) ? $cron : [] as $time => $hooks) {
+            foreach (self::EVENTS as $event) {
+                foreach ((array) ($hooks[self::SHORT . $event] ?? []) as $key => $job) {
+                    $job['schedule'] = ($job['schedule'] ?? null) === self::SCHEDULE ? 'sp_identity_minute' : ($job['schedule'] ?? false);
+                    $events[] = [$time, 'sp_identity_' . $event, $key, $job];
+                }
+            }
+        }
+
+        return $events;
     }
 
     private static function table(\wpdb $wp, string $name): bool

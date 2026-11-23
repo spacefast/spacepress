@@ -916,13 +916,22 @@ const LEGACY_REVISIONS: &str = "tp__revisions";
 
 /// `ops.json` with the pre-release key of the revisions table read as [`REVISIONS`]: the table is
 /// the same one (the runtime renames it on the site), so a baseline from a site deployed before the
-/// rename plans nothing new for it. Every other key is the app's own and never carried the prefix.
-fn legacy_revisions(doc: &Json) -> Json {
+/// rename plans nothing new for it. A current app may name its own table `tp__revisions`
+/// (`storageName`): the key is the system table's only while the `createTable` that made it was the
+/// system one (`system: true`), which `system` carries from one migration to the next.
+fn legacy_revisions(doc: &Json, system: &mut bool) -> Json {
     let mut doc = doc.clone();
     for op in doc["ops"].as_array_mut().into_iter().flatten() {
-        if op["table"] == LEGACY_REVISIONS {
-            op["table"] = REVISIONS.into();
+        if op["table"] != LEGACY_REVISIONS {
+            continue;
         }
+        if op["op"] == "createTable" {
+            *system = op["def"]["system"].as_bool() == Some(true);
+        }
+        if !*system {
+            continue;
+        }
+        op["table"] = REVISIONS.into();
         if let Some(physical) = op["physicalTable"].as_str()
             && let Some(rest) = physical.strip_suffix(LEGACY_REVISIONS)
         {
@@ -939,9 +948,10 @@ pub fn fold(entries: &[(String, Json)]) -> Result<FoldedState, Diag> {
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
 
     // A site deployed by a pre-release compiler keys its revisions table as that compiler named it.
+    let mut system = false;
     let current: Vec<(String, Json)> = sorted
         .iter()
-        .map(|(id, doc)| (id.clone(), legacy_revisions(doc)))
+        .map(|(id, doc)| (id.clone(), legacy_revisions(doc, &mut system)))
         .collect();
     let sorted: Vec<&(String, Json)> = current.iter().collect();
 
@@ -1875,6 +1885,39 @@ mod tests {
         narrow_ty["tables"]["posts"]["columns"]["views"]["type"] = json!("boolean");
         let err = apply_step(&mut history, &narrow_ty).unwrap_err();
         assert!(err.message.contains("narrowing `posts.views`"), "{}", err.message);
+    }
+
+    #[test]
+    fn folds_the_pre_release_revisions_key_and_keeps_an_apps_own_table_of_that_name() {
+        let table = |cols: Json| json!({ "editor": false, "drafts": false, "columns": cols });
+        let v1 = snap(json!({ "items": table(json!({ "id": id(), "name": col("text") })) }));
+        let mut history = Vec::new();
+        apply_step(&mut history, &v1).unwrap().unwrap();
+        // A pre-release compiler keyed the system revisions table as `tp__revisions`.
+        let legacy: Vec<(String, Json)> = history
+            .iter()
+            .map(|(id, ops)| {
+                let text = ops.to_string().replace(REVISIONS, LEGACY_REVISIONS);
+                (id.clone(), serde_json::from_str(&text).unwrap())
+            })
+            .collect();
+        assert!(legacy[0].1.to_string().contains(LEGACY_REVISIONS));
+        let folded = fold(&legacy).unwrap();
+        assert!(folded.tables.contains_key(REVISIONS) && !folded.tables.contains_key(LEGACY_REVISIONS));
+        assert!(plan_forward_only(&folded, &v1, &[]).unwrap().is_none());
+
+        // A current app's own table under that name (`storageName: "tp__revisions"`) stays the app's.
+        let own = snap(json!({ "tp__revisions": table(json!({ "id": id(), "note": col("text") })) }));
+        let mut history = Vec::new();
+        apply_step(&mut history, &own).unwrap().unwrap();
+        let folded = fold(&history).unwrap();
+        assert!(folded.tables[LEGACY_REVISIONS]["system"].is_null());
+        assert_eq!(folded.tables[REVISIONS]["system"], true);
+        let mut next = own.clone();
+        next["tables"][LEGACY_REVISIONS]["columns"]["more"] = col("text");
+        let (entry, _) = apply_step(&mut history, &next).unwrap().unwrap();
+        assert_eq!(entry.ops["ops"][0]["table"], LEGACY_REVISIONS, "{}", entry.ops);
+        assert!(apply_step(&mut history, &next).unwrap().is_none());
     }
 
     #[test]

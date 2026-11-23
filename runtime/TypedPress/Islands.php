@@ -139,7 +139,7 @@ final class Islands
      * nonce. A signed-out render is cached, prebuilt and exported, so it carries no nonce and no
      * origin (`typedpress export --site` points `root` at the hosted site).
      *
-     * @return array{root: string, api: string, nonce?: string, nonceEndpoint?: string}
+     * @return array{root: string, api: string, nonce?: string, nonceEndpoint?: string, nonceSession?: string}
      */
     public static function clientData(array $data): array
     {
@@ -148,12 +148,37 @@ final class Islands
         $relative = ($parts['path'] ?? '/') . (isset($parts['query']) ? '?' . $parts['query'] : '');
         $data += ['root' => $relative, 'api' => '/' . Wp\Facade::apiNamespace()];
         if (is_user_logged_in()) {
-            // The nonce, and where a page left open past its lifetime gets a new one (core's own).
             $data['nonce'] = wp_create_nonce('wp_rest');
-            $data['nonceEndpoint'] = admin_url('admin-ajax.php?action=rest-nonce');
+            $session = self::clientNonceSession();
+            if ($session !== null) {
+                $data['nonceEndpoint'] = admin_url('admin-ajax.php?action=typedpress_rest_nonce');
+                $data['nonceSession'] = $session;
+            }
         }
 
         return $data;
+    }
+
+    /** The page can renew its nonce for the WordPress login session that rendered it. */
+    public static function renewClientNonce(): void
+    {
+        $session = self::clientNonceSession();
+        if ($session === null || !hash_equals($session, (string) ($_SERVER['HTTP_X_TYPEDPRESS_REST_SESSION'] ?? ''))
+            || wp_validate_auth_cookie('', 'logged_in') !== get_current_user_id()) {
+            wp_die('', '', ['response' => 409]);
+
+            return;
+        }
+
+        wp_die(wp_create_nonce('wp_rest'), '', ['response' => 200]);
+    }
+
+    private static function clientNonceSession(): ?string
+    {
+        $token = wp_get_session_token();
+        $user = get_current_user_id();
+
+        return $token === '' || $user === 0 ? null : wp_hash("typedpress_rest_nonce|$user|$token", 'nonce', 'sha256');
     }
 
     /** Whether a module this page enqueues imports the client (WordPress then prints its data itself). */

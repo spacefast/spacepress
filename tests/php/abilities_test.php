@@ -118,6 +118,58 @@ remove_filter('rest_request_before_callbacks', $probe, 5);
 eq('a nested REST request inside a run leaves the outer run its own state', $outerSeen, 'blog/published-count');
 eq('the run answers', $answer->get_status(), 200);
 eq('nothing of the run outlives it', $hidden->getValue(), null);
+// The same with a nested request core answers early (no such route): it never reaches its end, and
+// the outer run still gets its own state back before its permission check.
+$outerSeen = null;
+$shortRoute = '/wp-abilities/v1/abilities/acme/greet/run';
+$shortCircuit = static function (mixed $response, mixed $server, WP_REST_Request $request) use ($shortRoute): mixed {
+    return $request->get_route() === $shortRoute ? new WP_REST_Response(null, 204) : $response;
+};
+add_filter('rest_pre_dispatch', '__return_false', -2);
+add_filter('rest_pre_dispatch', $shortCircuit, 5, 3);
+$missing = static function (mixed $response, mixed $handler, mixed $request) use (&$outerSeen, $shortRoute) {
+    if ($request instanceof WP_REST_Request && str_contains((string) $request->get_route(), '/blog/published-count/run')) {
+        foreach ([
+            new WP_REST_Request('GET', '/tp-test/v1/nothing-here'),
+            new WP_REST_Request('TRACE', $request->get_route()),
+            new WP_REST_Request('GET', $shortRoute),
+        ] as $inner) {
+            $outerSeen[] = [rest_do_request($inner)->get_status(), \TypedPress\Wp\Abilities\Register::running()];
+        }
+    }
+    return $response;
+};
+$atCheck = null;
+$check = static function (mixed $result, mixed $request) use (&$atCheck) {
+    if ($request instanceof WP_REST_Request && str_contains((string) $request->get_route(), '/blog/published-count/run')) {
+        $atCheck = \TypedPress\Wp\Abilities\Register::running();
+    }
+    return $result;
+};
+add_filter('rest_request_before_callbacks', $missing, 5, 3);
+add_filter('rest_dispatch_request', $check, PHP_INT_MAX - 1, 2);
+$run = new WP_REST_Request('GET', '/wp-abilities/v1/abilities/blog/published-count/run');
+$run->set_query_params(['input' => '{}']);
+$answer = rest_do_request($run);
+remove_filter('rest_pre_dispatch', '__return_false', -2);
+remove_filter('rest_pre_dispatch', $shortCircuit, 5);
+remove_filter('rest_request_before_callbacks', $missing, 5);
+remove_filter('rest_dispatch_request', $check, PHP_INT_MAX - 1);
+eq('an early nested response leaves outer state intact after a route miss, method miss or short-circuit', $outerSeen,
+    [[404, 'blog/published-count'], [404, 'blog/published-count'], [204, 'blog/published-count']]);
+eq('an empty pre-dispatch result allows the outer run', [$atCheck, $answer->get_status()], ['blog/published-count', 200]);
+eq('and nothing of either outlives them', $hidden->getValue(), null);
+// Core runs the ability `name` names, and a `name` in the query wins over the path: a run whose two
+// names differ is refused, so nothing judged by the path applies to another ability.
+$mismatch = new WP_REST_Request('GET', '/wp-abilities/v1/abilities/blog/published-count/run');
+$mismatch->set_query_params(['input' => '{}', 'name' => 'acme/greet']);
+eq('a run whose name parameter differs from its path is refused', rest_do_request($mismatch)->get_status(), 404);
+$upper = new WP_REST_Request('GET', '/wp-abilities/v1/abilities/blog/published-count/RUN');
+$upper->set_query_params(['input' => '{}']);
+$upperAnswer = rest_do_request($upper);
+// rest_post_dispatch, as an HTTP request runs it after dispatch (rest_do_request doesn't).
+$upperAnswer = apply_filters('rest_post_dispatch', $upperAnswer, rest_get_server(), $upper);
+eq('the run route in another case is the same run route, and answers private', [$upperAnswer->get_status(), $upperAnswer->get_headers()['Cache-Control'] ?? null], [200, 'private, no-store']);
 // An operation a plugin adds through tp_ability_operations is not the app's own: hidden from agents,
 // it gets no run route (the mu-plugin above registers `blog/plugin-hidden`).
 eq('a plugin\'s hidden operation is not served at the run route', rest_do_request(new WP_REST_Request('GET', '/wp-abilities/v1/abilities/blog/plugin-hidden/run'))->get_status(), 404);
@@ -132,5 +184,49 @@ eq('identity cookie routes: the app API, an app operation\'s run route, nothing 
     apply_filters('tp_identity_rest_cookie_route', false, '/wp/v2/users/me'),
 ], [true, true, false, false, false]);
 $wp->actAs(null);
+
+// The AJAX round trip renews only the WordPress login session that supplied the page data.
+$wp->startServer();
+$loginCookie = static function (int $user): string {
+    $expires = time() + HOUR_IN_SECONDS;
+    $token = WP_Session_Tokens::get_instance($user)->create($expires);
+
+    return wp_generate_auth_cookie($user, $expires, 'logged_in', $token);
+};
+$editor = $wp->userId('editor');
+$cookie = $loginCookie($editor);
+$wp->actAs('editor');
+$_COOKIE[LOGGED_IN_COOKIE] = $cookie;
+$page = \TypedPress\Islands::clientData([]);
+
+$renew = static function (?string $cookie, string $session, ?string $adminCookie = null) use ($page): array {
+    $headers = ["X-TypedPress-Rest-Session: $session"];
+    $cookies = [];
+    if ($cookie !== null) {
+        $cookies[] = LOGGED_IN_COOKIE . '=' . rawurlencode($cookie);
+    }
+    if ($adminCookie !== null) {
+        $cookies[] = AUTH_COOKIE . '=' . rawurlencode($adminCookie);
+    }
+    if ($cookies !== []) {
+        $headers[] = 'Cookie: ' . implode('; ', $cookies);
+    }
+    $http = curl_init($page['nonceEndpoint']);
+    curl_setopt_array($http, [CURLOPT_HTTPHEADER => $headers, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10]);
+    $body = curl_exec($http);
+
+    return [curl_getinfo($http, CURLINFO_RESPONSE_CODE), $body];
+};
+[$status, $renewed] = $renew($cookie, $page['nonceSession']);
+eq('the original login session receives a valid REST nonce', [$status, (bool) wp_verify_nonce($renewed, 'wp_rest')], [200, true]);
+unset($_COOKIE[LOGGED_IN_COOKIE]);
+$wp->actAs(null);
+eq('a new login by the same user cannot renew an earlier page', $renew($loginCookie($editor), $page['nonceSession']), [409, '']);
+eq('another user cannot renew an earlier page', $renew($loginCookie($wp->userId('admin')), $page['nonceSession']), [409, '']);
+eq('a signed-out browser cannot renew an earlier page', $renew(null, $page['nonceSession']), [409, '']);
+$old = wp_parse_auth_cookie($cookie, 'logged_in');
+WP_Session_Tokens::get_instance($editor)->destroy($old['token']);
+$adminCookie = wp_generate_auth_cookie($editor, time() + HOUR_IN_SECONDS, 'auth');
+eq('an active admin cookie cannot renew a revoked login session', $renew($cookie, $page['nonceSession'], $adminCookie), [409, '']);
 
 finish('abilities');

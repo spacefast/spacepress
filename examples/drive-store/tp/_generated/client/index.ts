@@ -2,10 +2,12 @@
 // (interfaces) and `schema.ts` (the SCHEMA descriptor) in `tp/_generated/client/`. Do not edit the copy.
 //
 // No dependencies; `fetch`-based; erasable TypeScript only, so Node (type stripping), Bun, Deno and
-// bundlers run it as-is. Every kind, action, global, media and `me` call is one of the app's WordPress
-// Abilities, run through core's run route (`/wp-json/wp-abilities/v1/abilities/<app>/<name>/run`);
-// uploads, file streams, the subscription batch and sign-in use the app's own REST routes
-// (`/wp-json/typedpress/v1/…`). On a WordPress page `createClient()` reads the site's REST root, the
+// bundlers run it as-is. A kind's list, get, create, update, delete, paginate and staged steps, an
+// action and a global are the app's WordPress Abilities, run through core's run route
+// (`/wp-json/wp-abilities/v1/abilities/<app>/<name>/run`). The app's own REST routes
+// (`/wp-json/typedpress/v1/…`) carry the rest: `count()` and subscriptions (`_live`), media,
+// revisions, soft-delete restore and purge, `auth.me()`, uploads, file streams, sign-in, the schema,
+// and every call on a kind that has no abilities (a taxonomy). On a WordPress page `createClient()` reads the site's REST root, the
 // app API's namespace and, for a signed-in visitor, the REST nonce the page prints for it.
 
 import { SCHEMA } from "./schema.ts";
@@ -559,22 +561,41 @@ const DEFAULT_API = "/typedpress/v1";
  * namespace is that API on a custom REST prefix; any other URL is a site, whose root is `/wp-json`.
  */
 function endpoints(url: string): { root: string; api: string } {
-  const trimmed = url.replace(/\/+$/, "");
-  const query = trimmed.indexOf("rest_route=");
-  const prefix = /\/wp-json(?=\/|$)/.exec(trimmed);
-  const split = query >= 0 ? query + "rest_route=".length : prefix ? prefix.index + "/wp-json".length : -1;
-  if (split >= 0) {
-    const route = trimmed.slice(split).replace(/^\/*/, "/").replace(/\/+$/, "");
-    return { root: trimmed.slice(0, split), api: route === "" || route === "/" ? DEFAULT_API : route };
+  const [path, search = ""] = url.split(/\?(.*)/s, 2);
+  const trimmed = path.replace(/\/+$/, "");
+  const suffix = search ? `?${search}` : "";
+  const params = new URLSearchParams(search);
+  const restRoute = params.get("rest_route");
+  if (restRoute !== null) {
+    const route = restRoute.replace(/^\/*/, "/").replace(/\/+$/, "");
+    params.set("rest_route", "");
+    return { root: `${path}?${params}`, api: route || DEFAULT_API };
   }
-  if (trimmed.endsWith(DEFAULT_API)) return { root: trimmed.slice(0, -DEFAULT_API.length), api: DEFAULT_API };
-  return { root: `${trimmed}/wp-json`, api: DEFAULT_API };
+  const prefix = /\/wp-json(?=\/|$)/.exec(trimmed);
+  if (prefix) {
+    const split = prefix.index + "/wp-json".length;
+    const route = trimmed.slice(split).replace(/^\/*/, "/").replace(/\/+$/, "");
+    return { root: trimmed.slice(0, split) + suffix, api: route || DEFAULT_API };
+  }
+  if (trimmed.endsWith(DEFAULT_API)) return { root: trimmed.slice(0, -DEFAULT_API.length) + suffix, api: DEFAULT_API };
+  return { root: `${trimmed}/wp-json` + suffix, api: DEFAULT_API };
 }
 
-/** `root` + `/route?query`: under `?rest_route=` the route is part of the query, so the route's own query follows with `&`. */
+/**
+ * `root` + `/route?query`. Under `?rest_route=` the route is that parameter's value (after any prefix
+ * it already has), set by name so the root's other parameters (`&lang=de`) keep theirs, and the
+ * route's own query follows with `&`.
+ */
 function restUrl(root: string, route: string, query?: string): string {
-  if (root.includes("rest_route=")) return root + route + (query ? `&${query}` : "");
-  return root + route + (query ? `?${query}` : "");
+  const [path, search = ""] = root.split(/\?(.*)/s, 2);
+  const params = new URLSearchParams(search);
+  const restRoute = params.get("rest_route");
+  if (restRoute !== null) {
+    params.set("rest_route", restRoute.replace(/\/+$/, "") + route);
+    return `${path}?${params}${query ? `&${query}` : ""}`;
+  }
+  const suffix = [search, query].filter(Boolean).join("&");
+  return path.replace(/\/+$/, "") + route + (suffix ? `?${suffix}` : "");
 }
 
 /**
@@ -587,6 +608,8 @@ interface PageData {
   api?: string;
   nonce?: string;
   nonceEndpoint?: string;
+  /** Proof that the nonce belongs to the WordPress login session that rendered the page. */
+  nonceSession?: string;
 }
 function pageData(): PageData | null {
   // The script element WordPress prints, by tag and type as well as id: post content may carry an
@@ -685,8 +708,8 @@ export function createClient(options: ClientOptions = {}): Client {
   // Where the client calls: `url` when given; else, on a TypedPress page, the REST root and API
   // namespace the page prints for it (whatever credential the client brings: `auth`, `headers`).
   const site = options.wordpress === false || options.url !== undefined ? null : pageData();
-  const pageRoot = typeof site?.root === "string" && site.root !== "" ? site.root.replace(/\/+$/, "") : null;
-  const given = options.api !== undefined && options.url !== undefined ? { root: options.url.replace(/\/+$/, ""), api: "/" + options.api.replace(/^\/+|\/+$/g, "") } : null;
+  const pageRoot = typeof site?.root === "string" && site.root !== "" ? site.root : null;
+  const given = options.api !== undefined && options.url !== undefined ? { root: options.url, api: "/" + options.api.replace(/^\/+|\/+$/g, "") } : null;
   const resolved = given ?? endpoints(options.url ?? "/wp-json");
   const root = pageRoot ?? resolved.root;
   const API = options.api !== undefined ? "/" + options.api.replace(/^\/+|\/+$/g, "") : typeof site?.api === "string" && site.api.startsWith("/") ? site.api : resolved.api;
@@ -694,9 +717,7 @@ export function createClient(options: ClientOptions = {}): Client {
   // `wordpress: true` asks for it explicitly.
   const cookie = site !== null && (options.wordpress === true || (options.fetch === undefined && options.headers === undefined && options.nonce === undefined && options.auth === undefined));
   let nonce = options.nonce ?? (cookie ? site?.nonce : undefined);
-  // The page's own nonce (given or read): renewed from the page's endpoint when core sends a new one
-  // or refuses an expired one. A nonce of the caller's own is sent as given.
-  const pageNonce = cookie && (options.nonce === undefined || options.nonce === site?.nonce);
+  const pageNonce = cookie && options.nonce === undefined;
   // Session storage is keyed as before the client ran abilities: by `url`, else the default API URL.
   const base = (options.url ?? "/wp-json/typedpress/v1").replace(/\/+$/, "");
   const app: string = SCHEMA.app;
@@ -775,7 +796,9 @@ export function createClient(options: ClientOptions = {}): Client {
     const tokens = send.anonymous ? null : held();
     const started = currentSid();
     if (tokens) headers.authorization = `Bearer ${tokens.accessToken}`;
-    if (nonce !== undefined) headers["x-wp-nonce"] = nonce;
+    // A held Bearer authenticates on its own. An explicit nonce is sent as given.
+    const sendNonce = nonce !== undefined && (options.nonce !== undefined || !tokens);
+    if (sendNonce && nonce !== undefined) headers["x-wp-nonce"] = nonce;
     let body: string | FormData | undefined;
     if (send.form) body = send.form;
     else if (send.json !== undefined) {
@@ -785,25 +808,30 @@ export function createClient(options: ClientOptions = {}): Client {
     for (const [k, v] of Object.entries(options.headers ?? {})) headers[k.toLowerCase()] = v;
 
     const init: RequestInit = { method, headers, body };
-    if (nonce !== undefined) init.credentials = "same-origin";
-    const sentNonce = nonce;
-    const { res, parsed } = await call(restUrl(root, path, qs), init, `${method} ${path}`);
-    // Core sends a fresh nonce with every cookie-authenticated answer: keep it for the next request.
-    const renewed = pageNonce ? res.headers?.get("x-wp-nonce") : null;
-    if (renewed) nonce = renewed;
-    if (res.ok) return unwrapped<T>(parsed, send, `${method} ${path}`);
-    const error = toError(res, parsed);
-    // A signed-in page's nonce expired (a tab left open past its lifetime): ask WordPress for a
-    // new one, as its own api-fetch does, and send the request once more.
-    // Core's own answer on its routes; the app API's problem names core's reason in a header.
-    const expired = (isObject(parsed) && parsed.code === "rest_cookie_invalid_nonce") || res.headers?.get("typedpress-reason") === "rest_cookie_invalid_nonce";
-    if (expired && pageNonce && !retried && sentNonce !== undefined) {
+    if (sendNonce) init.credentials = "same-origin";
+    else if (tokens) init.credentials = "omit";
+    const sentPageNonce = pageNonce && sendNonce && headers["x-wp-nonce"] === nonce;
+    const address = restUrl(root, path, qs);
+    const label = `${method} ${path}`;
+    let { res, parsed } = await call(address, init, label);
+    // The app API puts WordPress's nonce error code in a header.
+    const expired = res.status === 403 && (
+      (isObject(parsed) && parsed.code === "rest_cookie_invalid_nonce") || res.headers?.get("typedpress-reason") === "rest_cookie_invalid_nonce"
+    );
+    if (expired && sentPageNonce && !retried && currentSid() === started) {
       const fresh = await freshNonce();
-      if (fresh !== null) {
+      if (fresh !== null && currentSid() === started) {
         nonce = fresh;
-        return request<T>(method, path, send, true);
+        headers["x-wp-nonce"] = fresh;
+        ({ res, parsed } = await call(address, init, label));
+        retried = true;
       }
     }
+    // Core sends a fresh nonce with every cookie-authenticated answer: keep it for the next request.
+    const renewed = sentPageNonce ? res.headers?.get("x-wp-nonce") : null;
+    if (renewed) nonce = renewed;
+    if (res.ok) return unwrapped<T>(parsed, send, label);
+    const error = toError(res, parsed);
     // `unauthenticated` from the app API; Identity's own `invalid_token` from any other REST route
     // (core's ability run route), for a Bearer that has expired.
     if (error.status === 401 && (error.code === "unauthenticated" || error.code === "invalid_token") && !send.anonymous && !retried) {
@@ -824,15 +852,23 @@ export function createClient(options: ClientOptions = {}): Client {
     throw error;
   }
 
-  /** A new REST nonce for this page's signed-in visitor, from the endpoint the page names, or null. */
+  /** The server issues a fresh nonce only while the page's WordPress login session is active. */
   async function freshNonce(): Promise<string | null> {
     const endpoint = site?.nonceEndpoint;
-    if (typeof endpoint !== "string") return null;
+    const session = site?.nonceSession;
+    if (typeof endpoint !== "string" || typeof session !== "string") return null;
     try {
-      const res = await doFetch(endpoint, { credentials: "same-origin" });
+      const res = await doFetch(endpoint, {
+        credentials: "same-origin",
+        mode: "same-origin",
+        cache: "no-store",
+        headers: { "x-typedpress-rest-session": session },
+      });
+      if (res.status === 409) throw authError(409, "session_changed", "The WordPress login session changed. Reload the page.");
       const text = res.ok ? (await res.text()).trim() : "";
       return /^[a-z0-9]{10}$/i.test(text) ? text : null;
-    } catch {
+    } catch (error) {
+      if (error instanceof TypedPressError) throw error;
       return null;
     }
   }

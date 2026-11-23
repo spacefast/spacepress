@@ -27,8 +27,9 @@ final class Sessions
             // TypedPress's API, the REST namespace typedpress/v1 (identity loads without TypedPress, so
             // the namespace is literal), and any route the app names as its own
             // (`tp_identity_rest_cookie_route`: the runtime adds its abilities' run routes).
-            $route = strtolower(untrailingslashit((string) ($GLOBALS["wp"]->query_vars["rest_route"] ?? "")));
-            $api = $route === "/typedpress/v1" || str_starts_with($route, "/typedpress/v1/");
+            $route = untrailingslashit((string) ($GLOBALS["wp"]->query_vars["rest_route"] ?? ""));
+            $path = strtolower($route);
+            $api = $path === "/typedpress/v1" || str_starts_with($path, "/typedpress/v1/");
             if (!(bool) apply_filters('tp_identity_rest_cookie_route', $api, $route)) { return $result; }
             // The cookie is ambient: it lends no identity to another origin's request (a sibling
             // host under the same site), a cross-site fetch, or a JSONP script include.

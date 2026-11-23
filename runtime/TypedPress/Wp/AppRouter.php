@@ -51,6 +51,8 @@ final class AppRouter
 
     public static function register(Plugin $plugin): void
     {
+        add_action('wp_ajax_typedpress_rest_nonce', [\TypedPress\Islands::class, 'renewClientNonce']);
+        add_action('wp_ajax_nopriv_typedpress_rest_nonce', [\TypedPress\Islands::class, 'renewClientNonce']);
         $app = $plugin->schema->app();
         if (!is_array($app) || self::$instance !== null) {
             return;

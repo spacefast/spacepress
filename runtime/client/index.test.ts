@@ -2192,8 +2192,8 @@ test("`url` may be the REST root, the app's API URL, a `?rest_route=` root or th
     `https://x.test/wp-json/${run}?${input}`, "https://x.test/wp-json/typedpress/v1",
     `https://x.test/wp-json/${run}?${input}`, "https://x.test/wp-json/typedpress/v1",
     `https://x.test/wp-json/${run}?${input}`, "https://x.test/wp-json/typedpress/v1",
-    `https://x.test/?rest_route=/${run}&${input}`, "https://x.test/?rest_route=/typedpress/v1",
-    `https://x.test/?rest_route=/${run}&${input}`, "https://x.test/?rest_route=/typedpress/v1",
+    `https://x.test/?rest_route=${encodeURIComponent("/" + run)}&${input}`, "https://x.test/?rest_route=%2Ftypedpress%2Fv1",
+    `https://x.test/?rest_route=${encodeURIComponent("/" + run)}&${input}`, "https://x.test/?rest_route=%2Ftypedpress%2Fv1",
   ]);
 });
 
@@ -2249,23 +2249,23 @@ test("a page's REST root and namespace are used as printed, whatever credential 
     assert.equal(last().headers["x-wp-nonce"], undefined, "a client with its own credential doesn't borrow the page's nonce");
     // An expired nonce: one renewal from the page's endpoint, then the same request again.
     seen = [];
-    let fresh = false;
     reply = (s) => {
-      if (s.path === "/rest-nonce") return { status: 200, type: "text/plain", body: "abcdef1234" };
+      if (s.path === "/rest-nonce") {
+        return { status: 200, type: "text/plain", body: "abcdef1234" };
+      }
       if (s.headers["x-wp-nonce"] === "abcdef1234") return ok(null)();
       return { status: 403, body: JSON.stringify({ code: "rest_cookie_invalid_nonce", message: "Cookie check failed", data: { status: 403 } }) };
     };
     const first = mod.createClient();
     assert.equal(await first.actions.publishedCount(), null);
-    fresh = true;
     assert.deepEqual(seen.map((s) => `${s.path} ${s.headers["x-wp-nonce"] ?? "-"}`), [
       "/sub/rest/wp-abilities/v1/abilities/blog/published-count/run old",
       "/rest-nonce -",
       "/sub/rest/wp-abilities/v1/abilities/blog/published-count/run abcdef1234",
     ]);
-    assert.ok(fresh);
+    assert.equal(seen[1].headers["x-typedpress-rest-session"], "page-session");
     assert.equal(calls.abilities.length, 0, "a readonly action isn't sent through core's bracketed query string");
-  }, ["blog/published-count"], { root: `${origin}/sub/rest/`, api: "/acme/v2", nonce: "old", nonceEndpoint: `${origin}/rest-nonce` });
+  }, ["blog/published-count"], { root: `${origin}/sub/rest/`, api: "/acme/v2", nonce: "old", nonceEndpoint: `${origin}/rest-nonce`, nonceSession: "page-session" });
 });
 
 test("a cursor that isn't the exact `{\"offset\":<n>}` token the server issues is refused", async () => {
@@ -2275,4 +2275,73 @@ test("a cursor that isn't the exact `{\"offset\":<n>}` token the server issues i
     const e = await first.posts.paginate({ cursor }).catch((x: unknown) => x);
     assert.deepEqual([e.status, e.code], [400, "invalid_query"], cursor);
   }
+});
+
+test("a `?rest_route=` root's other parameters stay as they are; the route is set by name", async () => {
+  const requested: string[] = [];
+  const recording = async (input: RequestInfo | URL) => (requested.push(String(input)), new Response('{"rows":[]}'));
+  await mod.createClient({ url: "https://x.test/site/index.php?rest_route=/&lang=de", fetch: recording }).posts.list({ limit: 1 });
+  const u = new URL(requested[0]);
+  assert.deepEqual([u.pathname, u.searchParams.get("rest_route"), u.searchParams.get("lang"), u.searchParams.get("input")],
+    ["/site/index.php", "/wp-abilities/v1/abilities/blog/posts-list/run", "de", JSON.stringify({ limit: 1 })]);
+
+  await mod.createClient({ url: "https://x.test/site/rest/typedpress/v1?lang=de", fetch: recording }).posts.list();
+  const pretty = new URL(requested[1]);
+  assert.deepEqual([pretty.pathname, pretty.searchParams.get("lang")],
+    ["/site/rest/wp-abilities/v1/abilities/blog/posts-list/run", "de"]);
+});
+
+test("a guest on a signed-in page sends only its Bearer credential", async () => {
+  await onWordPressPage(async () => {
+    seen = [];
+    reply = (s) => (s.path.endsWith("/auth/guest") ? tokens(1, guest) : ok(null)());
+    let credentials: RequestCredentials | undefined;
+    const page = mod.createClient({
+      wordpress: true,
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        credentials = init?.credentials;
+        return fetch(input, init);
+      },
+    });
+    await page.auth.guest();
+    assert.equal(last().headers["x-wp-nonce"], "n0nce");
+    await page.auth.me();
+    assert.deepEqual([last().headers.authorization, last().headers["x-wp-nonce"], credentials], ["Bearer za_1", undefined, "omit"]);
+  }, [], { root: `${origin}/wp-json/`, api: "/typedpress/v1", nonce: "n0nce" });
+});
+
+test("a write retries only when renewal succeeds for the original WordPress session", async () => {
+  for (const sameSession of [true, false]) {
+    await onWordPressPage(async () => {
+      seen = [];
+      reply = (s) => {
+        if (s.path === "/rest-nonce") {
+          return { status: sameSession ? 200 : 409, type: "text/plain", body: sameSession ? "abcdef1234" : "" };
+        }
+        if (s.headers["x-wp-nonce"] === "abcdef1234") return ok(5)();
+        return { status: 403, body: JSON.stringify({ code: "rest_cookie_invalid_nonce", message: "Cookie check failed", data: { status: 403 } }) };
+      };
+      const out = await mod.createClient().actions.approveComment({ id: 1 }).catch((e: unknown) => e);
+      const runs = seen.filter((s) => s.path.endsWith("/approve-comment/run")).length;
+      assert.equal(seen.find((s) => s.path === "/rest-nonce")?.headers["x-typedpress-rest-session"], "page-session");
+      if (sameSession) {
+        assert.deepEqual([out, runs], [5, 2]);
+      } else {
+        assert.ok(out instanceof mod.TypedPressError);
+        assert.deepEqual([out.status, out.code, runs], [409, "session_changed", 1]);
+      }
+    }, ["blog/approve-comment"], { root: `${origin}/wp-json/`, api: "/typedpress/v1", nonce: "old", nonceEndpoint: `${origin}/rest-nonce`, nonceSession: "page-session" });
+  }
+});
+
+test("a successful write that returns a nonce error code as data runs once", async () => {
+  await onWordPressPage(async () => {
+    seen = [];
+    const result = { code: "rest_cookie_invalid_nonce" };
+    reply = (s) => s.path === "/rest-nonce"
+      ? { status: 200, type: "text/plain", body: "abcdef1234" }
+      : { status: 200, body: JSON.stringify(result) };
+    assert.deepEqual(await mod.createClient().actions.approveComment({ id: 1 }), result);
+    assert.deepEqual(seen.map((s) => s.path), ["/wp-json/wp-abilities/v1/abilities/blog/approve-comment/run"]);
+  }, ["blog/approve-comment"], { root: `${origin}/wp-json/`, api: "/typedpress/v1", nonce: "old", nonceEndpoint: `${origin}/rest-nonce`, nonceSession: "page-session" });
 });

@@ -128,7 +128,7 @@ final class Register
     }
 
     /**
-     * rest_pre_dispatch (before {@see sanitizing()}): a GET or DELETE run of one of the app's
+     * rest_pre_dispatch (before {@see startSanitizing()}): a GET or DELETE run of one of the app's
      * abilities may carry its input as JSON, `?input={"limit":5,"where":{…}}` (what the typed client
      * sends), as well as in core's bracketed form (`input[limit]=5`, what `wp.url` builds).
      *
@@ -137,17 +137,19 @@ final class Register
      * same way. Any other ability (a readonly action, a revision read) takes its JSON as sent, as a
      * POSTed run does: its values keep their types and `{}` stays an object ({@see sentInput()}).
      */
-    public static function jsonInput(mixed $result, mixed $server, mixed $request): mixed
+    public static function jsonInput(mixed $result, mixed $server, \WP_REST_Request $request): mixed
     {
-        // A REST request inside another (rest_do_request from a callback) keeps the outer one's
-        // state: saved here, put back when this one ends ({@see restore()}).
-        if ($request instanceof \WP_REST_Request) {
-            self::$stack[] = [$request, self::state()];
+        if (!empty($result) || ($name = self::runNameForDispatch($request)) === null) {
+            return $result;
         }
+        $selected = $request->get_param('name');
+        if ($selected !== null && $selected !== $name) {
+            return self::wrongRunName();
+        }
+        self::$stack[] = [$request, self::state()];
         self::$typedQuery = false;
         self::$queried = null;
-        if ($result !== null || !$request instanceof \WP_REST_Request || !in_array($request->get_method(), ['GET', 'HEAD', 'DELETE'], true)
-            || ($name = self::runRoute($request)) === null) {
+        if (!in_array($request->get_method(), ['GET', 'HEAD', 'DELETE'], true)) {
             return $result;
         }
         $query = $request->get_query_params();
@@ -206,42 +208,43 @@ final class Register
     /** The ability name of a request to core's run route (`/wp-abilities/v1/abilities/<name>/run`), or null. */
     private static function runRoute(\WP_REST_Request $request): ?string
     {
-        return preg_match('#^/wp-abilities/v1/abilities/(.+)/run/?$#', (string) $request->get_route(), $m) ? urldecode($m[1]) : null;
+        return self::runName($request->get_route());
     }
 
-    /** rest_pre_dispatch … rest_request_before_callbacks brackets core's argument sanitizing. */
-    public static function sanitizing(bool $on): \Closure
+    private static function runName(string $route): ?string
     {
-        return static function (mixed $passthrough, mixed $server = null, mixed $request = null) use ($on): mixed {
-            self::$sanitizing = $on && $request instanceof \WP_REST_Request ? $request->get_method() : null;
-            if ($on) {
-                self::$method = self::$sanitizing;
-                self::$untyped = null;
-                self::$responded = [];
-                self::$headers = null;
-                // The ability core's run route serves in this request, if it is one of the app's
-                // ({@see running()}). The facade's internal dispatches name theirs themselves
-                // (Facade::running()), and skip rest_post_dispatch, which would forget it.
-                if ($request instanceof \WP_REST_Request && !\TypedPress\Wp\Facade::dispatching()) {
-                    $running = self::runRoute($request);
-                    self::$runRoute = $running !== null && self::clientOperation($running) ? $running : null;
-                }
-                if ($request instanceof \WP_REST_Request && preg_match('#^/wp-abilities/v1/abilities/(.+)/run$#', (string) $request->get_route(), $m)) {
-                    $headers = [];
-                    foreach ($request->get_headers() as $name => $values) {
-                        $headers[str_replace('_', '-', strtolower((string) $name))] = implode(', ', (array) $values);
-                    }
-                    self::$headers = [urldecode($m[1]), $headers];
-                }
-                // This request's input as sent: its POSTed body, or its query's JSON ({@see jsonInput()}).
-                // Each request sets it afresh, so an internal dispatch (which skips rest_post_dispatch)
-                // never runs on the input of the request before it.
-                self::$raw = ($request instanceof \WP_REST_Request ? self::rawInput($request) : null) ?? self::$queried;
-                self::$queried = null;
-            }
+        // Match core's case-insensitive route and keep the ability name as captured.
+        return preg_match('#^/wp-abilities/v1/abilities/([a-z0-9/-]+?)/run$#i', $route, $m) ? $m[1] : null;
+    }
 
+    private static function runNameForDispatch(\WP_REST_Request $request): ?string
+    {
+        // These are core's run handlers, including its fallback from HEAD to GET. A method
+        // miss returns before the cleanup hooks run, so only prepare requests core can match.
+        return in_array($request->get_method(), ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], true)
+            ? self::runRoute($request) : null;
+    }
+
+    /** rest_pre_dispatch starts the run before WordPress sanitizes its input. */
+    public static function startSanitizing(mixed $passthrough, mixed $server, \WP_REST_Request $request): mixed
+    {
+        if (!empty($passthrough) || ($name = self::runNameForDispatch($request)) === null) {
             return $passthrough;
-        };
+        }
+        self::$sanitizing = $request->get_method();
+        self::$method = self::$sanitizing;
+        self::$untyped = null;
+        self::$responded = [];
+        self::$runRoute = !\TypedPress\Wp\Facade::dispatching() && self::clientOperation($name) ? $name : null;
+        $headers = [];
+        foreach ($request->get_headers() as $key => $values) {
+            $headers[str_replace('_', '-', strtolower((string) $key))] = implode(', ', (array) $values);
+        }
+        self::$headers = [$name, $headers];
+        self::$raw = self::rawInput($request) ?? self::$queried;
+        self::$queried = null;
+
+        return $passthrough;
     }
 
     /**
@@ -251,7 +254,7 @@ final class Register
      */
     private static function rawInput(\WP_REST_Request $request): ?array
     {
-        if ($request->get_method() !== 'POST' || !preg_match('#^/wp-abilities/v1/abilities/(.+)/run$#', (string) $request->get_route(), $m)) {
+        if ($request->get_method() !== 'POST' || ($ran = self::runRoute($request)) === null) {
             return null;
         }
         try {
@@ -260,7 +263,7 @@ final class Register
             return null;
         }
 
-        return $body instanceof \TypedPress\JsObject && array_key_exists('input', $body->p) ? [urldecode($m[1]), $body->p['input']] : null;
+        return $body instanceof \TypedPress\JsObject && array_key_exists('input', $body->p) ? [$ran, $body->p['input']] : null;
     }
 
     /**
@@ -297,7 +300,7 @@ final class Register
 
     /** @var array{string, mixed}|null the facade's input as sent for one ability it runs ({@see withSentInput()}) */
     private static ?array $given = null;
-    /** @var array{string, mixed}|null a GET/DELETE run's JSON query input, for the request {@see sanitizing()} starts next */
+    /** @var array{string, mixed}|null a GET/DELETE run's JSON query input, for the request {@see startSanitizing()} starts next */
     private static ?array $queried = null;
 
     /** rest_post_dispatch: the request that carried the input is over; its operation's headers go out with it. */
@@ -335,11 +338,71 @@ final class Register
     }
 
     /**
-     * $request is over (its callbacks ran, or core answered it early): the request it interrupted, if
-     * any, gets its own state back; the outermost one leaves none behind. An internal dispatch skips
-     * rest_post_dispatch, so its callbacks' end ({@see answered()}) restores too; whichever comes first
-     * does it, once.
+     * An ordinary REST request gets its own state once its route matches. A route miss leaves
+     * the enclosing Ability run's state in place.
      */
+    public static function beginCallbacks(mixed $response, mixed $handler, \WP_REST_Request $request): mixed
+    {
+        if (self::runRoute($request) === null && self::$stack !== []) {
+            self::$stack[] = [$request, self::state()];
+            self::$method = self::$untyped = self::$runRoute = null;
+            self::$raw = self::$headers = self::$queried = null;
+            self::$responded = [];
+            self::$typedQuery = false;
+        }
+        self::$sanitizing = null;
+
+        return $response;
+    }
+
+    public static function discardShortCircuit(mixed $response, mixed $server, \WP_REST_Request $request): mixed
+    {
+        if (!empty($response)) {
+            self::restore($request);
+        }
+
+        return $response;
+    }
+
+    public static function beforePermission(mixed $response, mixed $handler, \WP_REST_Request $request): mixed
+    {
+        return self::beforeExecute($response, $request);
+    }
+
+    public static function beforeExecute(mixed $response, \WP_REST_Request $request): mixed
+    {
+        self::resume($request);
+        // The run controller reads the merged name. Route-scoped credentials and visibility use
+        // the path, so permission checks and execution must use the same name.
+        $name = self::runRoute($request);
+
+        return !is_wp_error($response) && $name !== null && $request->get_param('name') !== $name
+            ? self::wrongRunName() : $response;
+    }
+
+    private static function wrongRunName(): \WP_Error
+    {
+        return new \WP_Error('rest_ability_not_found', 'Ability not found.', ['status' => 404]);
+    }
+
+    /** Drop frames left by a nested dispatch that returned before its callbacks ran. */
+    private static function resume(\WP_REST_Request $request): void
+    {
+        $count = count(self::$stack);
+        for ($i = $count - 1; $i >= 0; $i--) {
+            if (self::$stack[$i][0] === $request) {
+                if ($i < $count - 1) {
+                    // The frame above holds this request's state as the first abandoned request saved it.
+                    [self::$sanitizing, self::$method, self::$untyped, self::$raw, self::$headers, self::$responded, self::$runRoute, self::$typedQuery, self::$queried] = self::$stack[$i + 1][1];
+                    array_splice(self::$stack, $i + 1);
+                }
+
+                return;
+            }
+        }
+    }
+
+    /** Restore the enclosing request's state when the current request finishes. */
     private static function restore(mixed $request): void
     {
         for ($i = count(self::$stack) - 1; $i >= 0; $i--) {
@@ -421,7 +484,7 @@ final class Register
     private static bool $typedQuery = false;
 
     /**
-     * One of the app's abilities core's run route is serving in this request, as {@see sanitizing()}
+     * One of the app's abilities core's run route is serving in this request, as {@see startSanitizing()}
      * recorded it: an operation of the app's own schema, which its typed client calls even when it is
      * `agents: false`. One a feature or plugin adds (`tp_ability_operations`: WooCommerce's stock and
      * order steps) is not: hidden from agents, it has no HTTP route either.
@@ -441,11 +504,11 @@ final class Register
     /** tp_identity_rest_cookie_route: core's run route of an operation the app's schema declares. */
     public static function cookieRoute(mixed $allowed, mixed $route): bool
     {
-        if ($allowed || !is_string($route) || !preg_match('#^/wp-abilities/v1/abilities/(.+)/run$#', $route, $m)) {
+        if ($allowed || !is_string($route) || ($name = self::runName($route)) === null) {
             return (bool) $allowed;
         }
 
-        return self::clientOperation(urldecode($m[1]));
+        return self::clientOperation($name);
     }
 
     /** @var array<string, true> the operations the app's schema declares, by ability name */

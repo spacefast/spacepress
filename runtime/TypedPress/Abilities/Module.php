@@ -48,8 +48,11 @@ final class Module
         add_filter('mcp_adapter_create_default_server', static fn (mixed $create): bool => (bool) $create && \TypedPress\Wp\Facade::path() === null);
         add_filter('wp_ability_validate_input', [Register::class, 'validate'], 10, 3);
         add_filter('rest_pre_dispatch', [Register::class, 'jsonInput'], -1, 3);
-        add_filter('rest_pre_dispatch', Register::sanitizing(true), 0, 3);
-        add_filter('rest_request_before_callbacks', Register::sanitizing(false), 0);
+        add_filter('rest_pre_dispatch', [Register::class, 'startSanitizing'], 0, 3);
+        add_filter('rest_pre_dispatch', [Register::class, 'discardShortCircuit'], PHP_INT_MAX, 3);
+        add_filter('rest_request_before_callbacks', [Register::class, 'beginCallbacks'], 0, 3);
+        add_filter('rest_request_before_callbacks', [Register::class, 'beforePermission'], PHP_INT_MAX, 3);
+        add_filter('rest_dispatch_request', [Register::class, 'beforeExecute'], PHP_INT_MAX, 2);
         add_filter('rest_post_dispatch', [Register::class, 'dispatched'], 0, 3);
         // An identity session cookie (where the host turns that on) signs in a run of the app's own
         // abilities, as it does on the app API: the typed client runs them there.

@@ -130,18 +130,35 @@ final class WpFiles implements FileStorage
         }
     }
 
-    /** Whether a directory holds only what protect() writes into a new one, byte for byte. */
-    public static function onlyProtection(string $dir): bool
+    /**
+     * Whether a directory holds only what the runtime writes into a new one: its `.htaccess` (the
+     * runtime's rules, or `$rules`), its `index.php`, and probe files a stopped probe() left (removed
+     * with `$clear`). A directory that can't be listed holds something unknown.
+     */
+    public static function onlyProtection(string $dir, ?string $rules = null, bool $clear = false): bool
     {
         if (is_link($dir) || !is_dir($dir)) {
             return false;
         }
-        foreach (array_diff(scandir($dir) ?: [], ['.', '..']) as $name) {
-            $want = ['.htaccess' => self::HTACCESS, 'index.php' => self::INDEX][$name] ?? null;
-            if ($want === null || is_link("$dir/$name") || @file_get_contents("$dir/$name") !== $want) {
+        $names = scandir($dir);
+        if ($names === false) {
+            return false;
+        }
+        $probes = [];
+        foreach (array_diff($names, ['.', '..']) as $name) {
+            if (is_link("$dir/$name") || !is_file("$dir/$name")) {
+                return false;
+            }
+            if (preg_match('/\Aprobe-[0-9a-f]{16}\.txt\z/', $name) === 1 && @file_get_contents("$dir/$name") === 'first') {
+                $probes[] = "$dir/$name";
+                continue;
+            }
+            $want = ['.htaccess' => [self::HTACCESS, $rules], 'index.php' => [self::INDEX]][$name] ?? [];
+            if (!in_array(@file_get_contents("$dir/$name"), array_filter($want, 'is_string'), true)) {
                 return false;
             }
         }
+        $clear && array_map('unlink', $probes);
 
         return true;
     }

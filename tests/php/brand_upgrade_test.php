@@ -33,7 +33,8 @@ $schema['collections']['replies'] = ['key' => 'replies', 'editor' => false, 'tab
 // The earlier harness gave the site its keys under the earlier name; the site keeps them.
 $site = json_decode((string) file_get_contents("{$before['dir']}/site.json"), true, 512, JSON_THROW_ON_ERROR);
 file_put_contents("{$before['dir']}/site.json", json_encode(['salts' => 'typedpress-test-'] + $site, JSON_THROW_ON_ERROR));
-$wp = WpSite::adopt($before['dir'], ['schema' => $schema, 'identity' => true, 'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php')],
+// A web server that answers the private-files probe: the files move only once it refuses them there.
+$wp = WpSite::adopt($before['dir'], ['schema' => $schema, 'identity' => true, 'server' => true, 'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php')],
     ['typedpress-app-blog', 'typedpress-identity', 'typedpress-runtime']);
 
 global $wpdb;
@@ -110,6 +111,7 @@ eq('the fallback theme\'s mods moved', [get_option('theme_mods_' . \SpacePress\W
 $ownerPage = (int) $wpdb->get_var("SELECT ID FROM {$wpdb->posts} WHERE post_name = 'typedpress-home-owner'");
 eq('another post\'s meta of the same spelling, with no SCF reference, is untouched', [get_post_meta($ownerPage, 'tp_seo_metaTitle', true), get_post_meta($ownerPage, 'sp_seo_metaTitle', true)], ['not the app\'s', '']);
 eq('… and so is its meta named like a top-level field of the app\'s posts', [get_post_meta($ownerPage, 'tp_body', true), get_post_meta($ownerPage, 'sp_body', true)], ['not the app\'s', '']);
+eq('… and a user\'s meta of that spelling: only the members\' fields are on users', [get_user_meta($wp->userId('editor'), 'tp_body', true), get_user_meta($wp->userId('editor'), 'sp_body', true)], ['not the app\'s', '']);
 eq('look-alike options of other plugins are untouched', [get_option('tp_prebuilt_other_plugin_setting'), get_option('tp_global_other_plugin')], ['not ours', 'not ours']);
 [$status, $comment] = $wp->call('GET', '/comments/' . $before['comment'], as: 'editor');
 eq('the custom-table row reads back', [$status, $comment['body'] ?? null], [200, 'First, edited']);
@@ -131,66 +133,70 @@ eq('… its row now holds the current digest', (int) $wp->scalar("SELECT COUNT(*
 // or a request that comes first): the earlier key is read, so it stays as narrow as it was.
 eq('a scope under the earlier key still narrows its password', \SpacePress\Wp\AgentScope::normalize(\SpacePress\Wp\BrandUpgrade::earlierScope(['tp_scope' => ['write' => false, 'personal' => false, 'abilities' => ['typedpress-identity/account', 'tp/deployments']]])),
     ['write' => false, 'personal' => false, 'abilities' => ['spacepress-identity/account', 'sp/deployments']]);
+// A stored null under the earlier key was the narrowest scope; it stays so.
+eq('… and a stored null under the earlier key stays the narrowest', \SpacePress\Wp\AgentScope::normalize(\SpacePress\Wp\BrandUpgrade::earlierScope(['tp_scope' => null])), ['write' => false, 'personal' => false, 'abilities' => []]);
+// On a network a site not yet moved may narrow the earlier key only: the narrower grant holds.
+eq('both keys on one entry: each grant holds only when both give it', \SpacePress\Wp\BrandUpgrade::narrower(['write' => true, 'personal' => true, 'abilities' => null], ['write' => false, 'personal' => true, 'abilities' => ['blog/posts-list']]),
+    ['write' => false, 'personal' => true, 'abilities' => ['blog/posts-list']]);
 
 eq('nothing written under a current name before the move was deleted: what was set aside is kept', array_values(array_filter(array_column($wp->sql("SELECT option_name AS n FROM `{$p}options` WHERE option_name LIKE '%\\_\\_superseded\\_%'"), 'n'), static fn (string $n): bool => !preg_match('/\\Asp_(runtime_secret|runtime_private_ok|runtime_private_checked|rewrite_rules|jobs_prepared|jobs_scheduled|search_shape|kind_urls|installed|identity_dummy_password_hash|identity_password_profiles|identity_password_inventory)__superseded_\\d+\\z/', $n))), []);
 
 // Private files held back: a server that serves the new directory keeps them where they were, and
-// so does every retry, whatever verdict the failed probe left behind.
+// so does every retry. Every move is probed, whichever site of a network reaches it and whatever
+// verdict an option holds, and the rules it was proven under stay in force across it.
 $move = (new ReflectionClass(\SpacePress\Wp\BrandUpgrade::class))->getMethod('movePrivateFiles');
 $held = WP_CONTENT_DIR . '/uploads/held-private-probe';
 $to = WP_CONTENT_DIR . '/uploads/spacepress-private';
 $kept = WP_CONTENT_DIR . '/uploads/spacepress-private-kept';
+$verdict = get_option(\SpacePress\Wp\WpFiles::OK);
 rename($to, $kept);
 mkdir($held);
 file_put_contents("$held/a.txt", 'secret');
+// The earlier directory's own rules, as an owner may have written them for their server.
+$rules = "# the owner's rules\nRequire all denied\n";
+file_put_contents("$held/.htaccess", $rules);
+$outcome = static function () use ($move, $held, $to): string {
+    try {
+        $move->invoke(null, $held, $to);
+
+        return 'moved';
+    } catch (\SpacePress\Wp\PrivateFilesHeld) {
+        return 'held';
+    } catch (\RuntimeException) {
+        return 'refused';
+    }
+};
 // The web server answers the probe of the new directory with the file: it serves it.
 $served = static fn ($pre, array $args, string $url) => str_contains($url, '/spacepress-private/probe-') ? ['headers' => [], 'body' => 'first', 'response' => ['code' => 200, 'message' => 'OK'], 'cookies' => []] : $pre;
 add_filter('pre_http_request', $served, PHP_INT_MAX, 3);
-$outcome = static function () use ($move, $held, $to): string {
-    try {
-        $move->invoke(null, $held, $to, true);
-
-        return 'moved';
-    } catch (\SpacePress\Wp\PrivateFilesHeld) {
-        return 'held';
-    }
-};
+update_option(\SpacePress\Wp\WpFiles::OK, '1');
 eq('a served destination holds the files back', [$outcome(), is_file("$held/a.txt"), get_option(\SpacePress\Wp\WpFiles::OK)], ['held', true, '0']);
-eq('… and a retry after that failed probe still probes, and still holds them', [$outcome(), is_file("$held/a.txt")], ['held', true]);
-// The verdict stays with the files, not in an option a failed probe overwrote or another site never had.
-$unrefused = (new ReflectionClass(\SpacePress\Wp\BrandUpgrade::class))->getMethod('movePrivateFiles');
-eq('… even a retry told the earlier directory was never refused', [(static function () use ($unrefused, $held, $to): string {
-    try {
-        $unrefused->invoke(null, $held, $to, false);
-
-        return 'moved';
-    } catch (\SpacePress\Wp\PrivateFilesHeld) {
-        return 'held';
-    }
-})(), is_file("$held/a.txt")], ['held', true]);
-// The destination holding a file the runtime didn't write (an owner's index.php) stops the move and keeps the file.
+eq('… and a retry still probes, and still holds them', [$outcome(), is_file("$held/a.txt")], ['held', true]);
+check('… leaving no directory there for a later recheck to open uploads in', !file_exists($to));
+// A probe a stopped request left in the new directory, beside the rules it was proven under, is the
+// runtime's own: it never stops a retry.
+mkdir($to);
+file_put_contents("$to/.htaccess", $rules);
+file_put_contents("$to/probe-0123456789abcdef.txt", 'first');
+eq('… nor does a probe file a stopped request left there', [$outcome(), is_file("$held/a.txt"), file_exists("$to/probe-0123456789abcdef.txt")], ['held', true, false]);
+// An owner's file in the new directory stops the move and stays.
 mkdir($to);
 file_put_contents("$to/index.php", "<?php // the owner's\n");
-eq('… and an owner\'s file in the new directory stops the move and stays', [(static function () use ($move, $held, $to): string {
-    try {
-        $move->invoke(null, $held, $to, true);
-
-        return 'moved';
-    } catch (\RuntimeException $e) {
-        return $e instanceof \SpacePress\Wp\PrivateFilesHeld ? 'held' : 'refused';
-    }
-})(), file_get_contents("$to/index.php")], ['refused', "<?php // the owner's\n"]);
+eq('… and an owner\'s file in the new directory stops the move and stays', [$outcome(), file_get_contents("$to/index.php")], ['refused', "<?php // the owner's\n"]);
 unlink("$to/index.php");
 rmdir($to);
-check('… leaving no directory there for a later recheck to open uploads in', !file_exists($to));
+// A server that refuses it: the files move, under the rules the probe was proven with.
 remove_filter('pre_http_request', $served, PHP_INT_MAX);
-array_map('unlink', array_filter(glob("$to/{,.}*", GLOB_BRACE) ?: [], 'is_file'));
-@rmdir($to);
-foreach (glob("$held/{,.}*", GLOB_BRACE) ?: [] as $f) {
+$refusing = static fn ($pre, array $args, string $url) => str_contains($url, '/spacepress-private/probe-') ? ['headers' => [], 'body' => '', 'response' => ['code' => 403, 'message' => 'Forbidden'], 'cookies' => []] : $pre;
+add_filter('pre_http_request', $refusing, PHP_INT_MAX, 3);
+eq('a refused destination takes the files, with the rules it was proven under', [$outcome(), is_file("$to/a.txt"), file_get_contents("$to/.htaccess"), file_exists($held)], ['moved', true, $rules, false]);
+remove_filter('pre_http_request', $refusing, PHP_INT_MAX);
+foreach (glob("$to/{,.}*", GLOB_BRACE) ?: [] as $f) {
     is_file($f) && unlink($f);
 }
-rmdir($held);
+rmdir($to);
 rename($kept, $to);
+update_option(\SpacePress\Wp\WpFiles::OK, $verdict);
 
 // A plugin's basename: the runtime's own move to the current name, an app renamed with the brand
 // takes the app's current name, and any other plugin keeps its own.
@@ -216,6 +222,8 @@ $wp->sql("DELETE FROM `{$p}sp__migrations` WHERE `app` IN (?, ?)", ["$legacy-sit
 foreach (["$legacy-site", 'spacepress-site'] as $app) {
     $wp->sql("INSERT INTO `{$p}sp__schema_versions` (`app`, `version`, `parent`, `format`, `build`, `actor`, `changes`, `hash`, `createdAt`) VALUES (?, 1, 0, 1, '', '{}', '[]', '', '2026-01-01T00:00:00.000Z')", [$app]);
 }
+eq('an S3 key option this move did not write stops it before any change', [update_option(\SpacePress\Wp\BrandUpgrade::UPLOAD_KEYS, ['prefix' => 'other'], true), array_values(array_intersect(\SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), ['options' => ['tp_upload_namespace' => 'sp_upload_namespace'], 'renamedApp' => []] + $empty), ['option sp_upload_keys'])), delete_option(\SpacePress\Wp\BrandUpgrade::UPLOAD_KEYS)],
+    [true, ['option sp_upload_keys'], true]);
 eq('… and so is a runtime schema version recorded under both', \SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), $empty), ["runtime schema version 1 recorded for both $legacy-site and spacepress-site"]);
 $wp->sql("DELETE FROM `{$p}sp__schema_versions` WHERE `app` IN (?, ?)", ["$legacy-site", 'spacepress-site']);
 

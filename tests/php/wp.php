@@ -214,6 +214,11 @@ final class WpSite
         $name = (string) ($fixture['schema']['name'] ?? 'app');
         $site->appPlugin($repo, $name, $fixture);
         $activate[] = "spacepress-app-$name";
+        // The web server first: the activation request may probe through it (the private files' move).
+        if ($fixture['server'] ?? false) {
+            $site->startServer();
+            $saved = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
+        }
         // Two requests, as from the Plugins screen: the earlier plugins are deactivated (their code
         // still runs in that request), then the new ones activated in a request that loads only them.
         foreach ([['activate' => [], 'deactivate' => $replaced], ['activate' => $activate, 'deactivate' => []]] as $step) {

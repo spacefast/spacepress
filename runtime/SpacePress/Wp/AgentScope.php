@@ -151,11 +151,11 @@ final class AgentScope
         if (!is_array($item)) {
             return null;
         }
-        if (array_key_exists(self::KEY, $item)) {
-            return self::normalize($item[self::KEY]);
-        }
-
         $earlier = BrandUpgrade::earlierScope($item);
+        if (array_key_exists(self::KEY, $item)) {
+            // Both keys on one entry (a network part way through its move): the narrower of the two.
+            return $earlier === null ? self::normalize($item[self::KEY]) : BrandUpgrade::narrower(self::normalize($item[self::KEY]), self::normalize($earlier));
+        }
 
         return $earlier === null ? null : self::normalize($earlier);
     }

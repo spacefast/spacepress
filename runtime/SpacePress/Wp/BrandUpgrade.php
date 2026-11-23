@@ -103,8 +103,6 @@ final class BrandUpgrade
     private const GUEST_CLIENT = ['app_typedpress_guest' => 'app_spacepress_guest'];
     private const TWO_FACTOR = ['TypedPress_Identity_TwoFactorProvider' => 'SpacePress_Identity_TwoFactorProvider'];
     private const PRIVATE_DIR = ['typedpress-private' => 'spacepress-private'];
-    /** Kept in the earlier private directory while its move waits on a probe: the server refused it there. */
-    private const REFUSED_MARK = '.spacepress-refused';
     /** The key of an application password's scope on its entry. */
     private const SCOPE_KEY = 'tp_scope';
 
@@ -261,20 +259,49 @@ final class BrandUpgrade
     /**
      * An application password entry given a new scope (or none), as a pre-release build reads it too.
      * On a network the entry is shared with sites that may not have moved yet and read only the
-     * earlier key, so an entry that has it keeps it, matching (ability names a pre-release build
-     * doesn't know grant nothing there). Elsewhere it is dropped.
+     * earlier key, so every scope written there is written under both keys (ability names under their
+     * earlier spelling), and none clears both. Elsewhere the earlier key is dropped.
      */
     public static function withEarlierScope(array $entry, ?array $scope): array
     {
-        if (!array_key_exists(self::SCOPE_KEY, $entry)) {
-            return $entry;
-        }
         unset($entry[self::SCOPE_KEY]);
         if ($scope !== null && is_multisite()) {
+            if (is_array($scope['abilities'] ?? null)) {
+                $scope['abilities'] = array_map(static fn ($name) => is_string($name) ? self::earlierAbilityName($name) : $name, $scope['abilities']);
+            }
             $entry[self::SCOPE_KEY] = $scope;
         }
 
         return $entry;
+    }
+
+    /**
+     * The narrower of a scope and the one under the earlier key on the same entry: on a network a site
+     * not yet moved may have narrowed the earlier one only. Each grant holds only when both give it.
+     *
+     * @param array{write: bool, personal: bool, abilities: ?list<string>} $current
+     * @param array{write: bool, personal: bool, abilities: ?list<string>} $earlier
+     * @return array{write: bool, personal: bool, abilities: ?list<string>}
+     */
+    public static function narrower(array $current, array $earlier): array
+    {
+        $abilities = match (true) {
+            $current['abilities'] === null => $earlier['abilities'],
+            $earlier['abilities'] === null => $current['abilities'],
+            default => array_values(array_intersect($current['abilities'], $earlier['abilities'])),
+        };
+
+        return ['write' => $current['write'] && $earlier['write'], 'personal' => $current['personal'] && $earlier['personal'], 'abilities' => $abilities];
+    }
+
+    /** A built-in ability's name as a pre-release build knew it (the inverse of abilityName()). */
+    private static function earlierAbilityName(string $name): string
+    {
+        return match (true) {
+            str_starts_with($name, 'spacepress-') || str_starts_with($name, 'spacepress/') => self::LEGACY . substr($name, strlen('spacepress')),
+            str_starts_with($name, 'sp/') => 'tp/' . substr($name, 3),
+            default => $name,
+        };
     }
 
     /** A built-in ability's current name: `typedpress-identity/account` is `spacepress-identity/account`, `tp/…` is `sp/…`. */
@@ -327,6 +354,13 @@ final class BrandUpgrade
         return is_array($kept) ? $kept : [];
     }
 
+    /** Whether a stored `sp_upload_keys` row is exactly what the move writes for these renamed apps, autoloaded. */
+    private static function uploadKeysAre(array $row, array $renamedApp): bool
+    {
+        return maybe_unserialize((string) $row['option_value']) === ['prefix' => self::LEGACY_UPLOAD_PREFIX, 'apps' => array_flip($renamedApp)]
+            && in_array($row['autoload'], ['on', 'yes', 'auto-on'], true);
+    }
+
     /** The app name its S3 keys are derived from: the earlier one, for an app the rename renamed. */
     public static function uploadApp(string $app): string
     {
@@ -367,12 +401,14 @@ final class BrandUpgrade
         $fieldKeys = [];
         $fieldKeyPrefixes = [];
         $apps[] = $schema->name();
-        foreach (self::appStorage($schema) as [$kind, $current]) {
+        foreach (self::appStorage($schema) as $entry) {
+            [$kind, $current] = $entry;
             match ($kind) {
                 'table' => $names[] = $old($current),
                 'postType' => $postTypes[$old($current)] = $current,
                 'taxonomy' => $taxonomies[$old($current)] = $current,
-                'field' => $fields[$old($current)] = $current,
+                // By owner: `$fields[table][object type ('' for users)][old] = new`.
+                'field' => $fields[$entry[2]][(string) $entry[3]][$old($current)] = $current,
                 'fieldKey' => $fieldKeys['field_tp_' . substr($current, 9)] = $current,
                 'fieldKeyPrefix' => $fieldKeyPrefixes[] = 'field_tp_' . substr($current, 9),
             };
@@ -464,12 +500,20 @@ final class BrandUpgrade
         foreach (self::META_KEYS as $key) {
             $metaKeys[$key] = str_starts_with($key, '_') ? '_sp_' . substr($key, 4) : 'sp_' . substr($key, 3);
         }
-        // The app's field values, and SCF's reference row beside each holding the field key: moved on
-        // the app's own objects only ({@see fieldScope()}), as another plugin may use the same key.
-        $fieldMeta = [];
-        foreach ($fields as $from => $to) {
-            $fieldMeta[$from] = $to;
-            $fieldMeta['_' . $from] = '_' . $to;
+        // The app's field values, and SCF's reference row beside each holding the field key: each moved
+        // on the objects of the kind that declares it only ({@see fieldScope()}), as another plugin (or
+        // another of the app's kinds) may use the same key.
+        $fieldsOn = [];
+        foreach ($fields as $table => $byType) {
+            foreach ($byType as $type => $map) {
+                $keys = [];
+                foreach ($map as $from => $to) {
+                    $keys[$from] = $to;
+                    $keys['_' . $from] = '_' . $to;
+                }
+                $keys = self::present($db, $wpdb->$table, 'meta_key', $keys, self::fieldScope($wpdb, $table, (string) $type));
+                $keys !== [] && $fieldsOn[] = [$table, (string) $type, $keys];
+            }
         }
         $meta = [];
         // Every SCF field key a reference row holds under the app's prefixes, nested ones included, on
@@ -489,7 +533,6 @@ final class BrandUpgrade
                 }
             }
             $meta[$table] = self::present($db, $wpdb->$table, 'meta_key', $found);
-            $fieldsOn[$table] = self::present($db, $wpdb->$table, 'meta_key', $fieldMeta, self::fieldScope($wpdb, $schema, $table));
         }
 
         $hooks = [];
@@ -515,36 +558,26 @@ final class BrandUpgrade
         $private = null;
         $from = WP_CONTENT_DIR . '/uploads/' . array_key_first(self::PRIVATE_DIR);
         if (is_dir($from) && !is_link($from)) {
-            // Whether the web server was proven to refuse the earlier directory, read now, from either
-            // name: the verdict moves with the options, and a probe of the new directory rewrites it.
-            $refused = in_array('1', array_map('strval', array_column($db->run("SELECT `option_value` AS v FROM `{$wpdb->options}` WHERE `option_name` IN ('tp_runtime_private_ok', ?)", [WpFiles::OK]), 'v')), true);
-            $private = [$from, WP_CONTENT_DIR . '/uploads/' . self::PRIVATE_DIR[array_key_first(self::PRIVATE_DIR)], $refused];
+            $private = [$from, WP_CONTENT_DIR . '/uploads/' . self::PRIVATE_DIR[array_key_first(self::PRIVATE_DIR)]];
         }
 
         return ['scfPrefixes' => [...$fieldKeyPrefixes, 'field_tp_member_'], 'kinds' => $kinds, 'renamedApp' => $renamedApp ?? [], 'globalRefs' => $globalRefs, 'tables' => $tables, 'owned' => $owned, 'options' => $options, 'sitemeta' => $sitemeta, 'meta' => $meta, 'fieldMeta' => $fieldsOn, 'metaValues' => $fieldKeys,
             'postTypes' => $postTypes, 'taxonomies' => $taxonomies, 'hooks' => $hooks, 'groups' => $groups, 'jobs' => $jobs,
-            'plugins' => $plugins, 'private' => $private, 'apps' => $apps, 'schema' => $schema];
+            'plugins' => $plugins, 'private' => $private, 'apps' => $apps];
     }
 
     /**
-     * The app's own objects in one meta table, as SQL on its object column: posts of the post types
-     * and terms of the taxonomies its kinds name (under either spelling, for a resumed move). Users
-     * carry the auth collection's fields, so user meta is the app's throughout (null).
+     * The objects of one of the app's kinds in a meta table, as SQL on its object column: posts of a
+     * post type, terms of a taxonomy (under either spelling, for a resumed move); users (null) for
+     * the auth collection's members.
      */
-    private static function fieldScope(\wpdb $wpdb, \SpacePress\Schema $schema, string $table): ?string
+    private static function fieldScope(\wpdb $wpdb, string $table, string $type): ?string
     {
         if ($table === 'usermeta') {
             return null;
         }
-        $names = [];
-        foreach ($schema->kinds() as $spec) {
-            $name = is_array($spec) ? ($spec['wp'][$table === 'postmeta' ? 'postType' : 'taxonomy'] ?? null) : null;
-            if (is_string($name)) {
-                $names[] = $name;
-                str_starts_with($name, 'sp_') && $names[] = 'tp_' . substr($name, 3);
-            }
-        }
-        $in = $names === [] ? "''" : implode(', ', array_map(static fn (string $n): string => "'" . esc_sql($n) . "'", array_unique($names)));
+        $names = array_unique([$type, str_starts_with($type, 'sp_') ? 'tp_' . substr($type, 3) : $type]);
+        $in = implode(', ', array_map(static fn (string $n): string => "'" . esc_sql($n) . "'", $names));
 
         return $table === 'postmeta'
             ? "`post_id` IN (SELECT `ID` FROM `{$wpdb->posts}` WHERE `post_type` IN ($in))"
@@ -555,7 +588,7 @@ final class BrandUpgrade
      * What the app's schema names in storage, by its current names: `[kind, name]` for its tables, post
      * types, taxonomies, field meta keys and SCF field keys.
      *
-     * @return list<array{string, string}>
+     * @return list<array{0: string, 1: string, 2?: string, 3?: ?string}>
      */
     private static function appStorage(\SpacePress\Schema $schema): array
     {
@@ -580,7 +613,9 @@ final class BrandUpgrade
             foreach ((array) ($spec['columns'] ?? $spec['fields'] ?? []) as $column => $def) {
                 // Post, term and user meta: `sp_<field>` (an auth collection's members keep theirs on the user).
                 if (($wp['metaPrefix'] ?? null) === 'sp_' || $member) {
-                    $out[] = ['field', 'sp_' . $column];
+                    // `[table, object type]`: the members' fields are on users, a kind's on its posts or terms.
+                    $owner = $member ? ['usermeta', null] : (is_string($wp['postType'] ?? null) ? ['postmeta', $wp['postType']] : (is_string($wp['taxonomy'] ?? null) ? ['termmeta', $wp['taxonomy']] : null));
+                    $owner !== null && $out[] = ['field', 'sp_' . $column, ...$owner];
                 }
                 if (is_string($wp['fieldKeyPrefix'] ?? null) && str_starts_with($wp['fieldKeyPrefix'], 'field_sp_')) {
                     $out[] = ['fieldKey', $wp['fieldKeyPrefix'] . $column];
@@ -625,25 +660,36 @@ final class BrandUpgrade
                 }
             }
         }
+        // Every row of the objects concerned, by object and key, in one read per batch of objects:
+        // a set, so each pair is checked and moved without a query of its own.
+        $have = [];
+        foreach (array_chunk(array_values(array_unique(array_map(static fn (array $r): int => (int) $r['o'], $refs))), 500) as $objects) {
+            $marks = implode(', ', array_fill(0, count($objects), '?'));
+            foreach ($db->run("SELECT `$object` AS o, `meta_key` AS k FROM `$table` WHERE `$object` IN ($marks) AND (`meta_key` LIKE 'tp\\_%' OR `meta_key` LIKE 'sp\\_%' OR `meta_key` LIKE '\\_tp\\_%' OR `meta_key` LIKE '\\_sp\\_%')", $objects) as $row) {
+                $have[(int) $row['o']][(string) $row['k']] = true;
+            }
+        }
         foreach ($refs as $row) {
-            $ref = (string) $row['k'];
-            $rest = substr($ref, 4);
+            $o = (int) $row['o'];
+            $rest = substr((string) $row['k'], 4);
             // The pair moves together, on that object only: its reference row and its value row.
             foreach (['_tp_' . $rest => '_sp_' . $rest, 'tp_' . $rest => 'sp_' . $rest] as $from => $to) {
-                if ($db->run("SELECT 1 AS x FROM `$table` WHERE `$object` = ? AND `meta_key` = ?", [(int) $row['o'], $from]) === []) {
+                if (!isset($have[$o][$from])) {
                     continue;
                 }
-                if ($db->run("SELECT 1 AS x FROM `$table` WHERE `$object` = ? AND `meta_key` = ?", [(int) $row['o'], $to]) !== []) {
+                if (isset($have[$o][$to])) {
                     if ($taken !== null) {
-                        $taken[] = "$table key $to on object {$row['o']} (and $from)";
+                        $taken[] = "$table key $to on object $o (and $from)";
                         continue;
                     }
-                    throw new \RuntimeException("$table: object {$row['o']} holds both $from and $to; keep the one it uses and remove the other, then reload.");
+                    throw new \RuntimeException("$table: object $o holds both $from and $to; keep the one it uses and remove the other, then reload.");
                 }
                 if ($taken !== null) {
                     continue;
                 }
-                $db->run("UPDATE `$table` SET `meta_key` = ? WHERE `$object` = ? AND `meta_key` = ?", [$to, (int) $row['o'], $from]);
+                $db->run("UPDATE `$table` SET `meta_key` = ? WHERE `$object` = ? AND `meta_key` = ?", [$to, $o, $from]);
+                unset($have[$o][$from]);
+                $have[$o][$to] = true;
                 $count++;
             }
         }
@@ -673,11 +719,13 @@ final class BrandUpgrade
                 $found[] = "$table key $key";
             }
         }
-        // A field moves on each of the app's objects: taken only where one object holds both spellings.
-        foreach ($plan['fieldMeta'] ?? [] as $table => $keys) {
+        // A field moves on each object of the kind that declares it: taken only where one of those
+        // objects holds both spellings (the same predicate as the move).
+        foreach ($plan['fieldMeta'] ?? [] as [$table, $type, $keys]) {
             $object = ['postmeta' => 'post_id', 'termmeta' => 'term_id', 'usermeta' => 'user_id'][$table];
+            $scope = self::fieldScope($wpdb, $table, $type);
             foreach ($keys as $from => $to) {
-                foreach ($db->run("SELECT DISTINCT a.`$object` AS o FROM `{$wpdb->$table}` a JOIN `{$wpdb->$table}` b ON b.`$object` = a.`$object` AND b.`meta_key` = ? WHERE a.`meta_key` = ?", [$to, $from]) as $row) {
+                foreach ($db->run("SELECT DISTINCT a.`$object` AS o FROM `{$wpdb->$table}` a JOIN `{$wpdb->$table}` b ON b.`$object` = a.`$object` AND b.`meta_key` = ? WHERE a.`meta_key` = ?" . ($scope === null ? '' : ' AND a.' . $scope), [$to, $from]) as $row) {
                     $found[] = "$table key $to on object {$row['o']} (and $from)";
                 }
             }
@@ -733,9 +781,16 @@ final class BrandUpgrade
             }
             if ($next !== []) {
                 $marks = implode(', ', array_fill(0, count($next), '?'));
-                foreach ($db->run("SELECT TABLE_NAME AS t, CONSTRAINT_NAME AS n FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_NAME IN ($marks)", array_keys($next)) as $row) {
+                foreach ($db->run("SELECT TABLE_NAME AS t, CONSTRAINT_NAME AS n FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'FOREIGN KEY' AND CONSTRAINT_NAME IN ($marks)", array_keys($next)) as $row) {
                     $found[] = "foreign key {$row['n']} on {$row['t']} (wanted by {$next[$row['n']]})";
                 }
+            }
+        }
+        // The S3 key names this move records: one already there must be exactly what it would write.
+        if (isset($plan['options']['tp_upload_namespace'])) {
+            $row = $wpdb->get_row($wpdb->prepare("SELECT option_value, autoload FROM {$wpdb->options} WHERE option_name = %s", self::UPLOAD_KEYS), ARRAY_A);
+            if ($row !== null && !self::uploadKeysAre($row, $plan['renamedApp'])) {
+                $found[] = 'option ' . self::UPLOAD_KEYS;
             }
         }
         // A renamed app reads its runtime schema versions under both names as one chain ({@see historyApp()}):
@@ -757,7 +812,7 @@ final class BrandUpgrade
                 }
             }
         }
-        if ($plan['private'] !== null && file_exists($plan['private'][1]) && !WpFiles::onlyProtection($plan['private'][1])) {
+        if ($plan['private'] !== null && file_exists($plan['private'][1]) && !WpFiles::onlyProtection($plan['private'][1], is_file($plan['private'][0] . '/.htaccess') ? (string) file_get_contents($plan['private'][0] . '/.htaccess') : null)) {
             $found[] = "directory {$plan['private'][1]}";
         }
         // A renamed app's own private files directory, under either root.
@@ -773,58 +828,57 @@ final class BrandUpgrade
     }
 
     /**
-     * The private files never move somewhere the web server serves when it refused them where they
-     * were. A server may deny the earlier path by its name rather than by `.htaccess`, so when the
-     * earlier directory was proven refused (its probe passed), the deny rules are written into the
-     * new one and probed through its URL first; only a refusal there lets the files move. Otherwise
-     * they stay where they are (their downloads fail, they are not exposed), uploads stay closed, an
-     * administrator sees why, and the next upgrade attempt tries again. A directory that was never
-     * proven refused is no safer where it is, so it moves. On a network the directory is shared, so
-     * it moves once, under a network-wide lock.
+     * The private files never move somewhere the web server serves. A server may deny the earlier
+     * path by its name rather than by `.htaccess`, and the directory is shared by a network's sites,
+     * any of which may reach it first, so every move is proven the same way: the deny rules the files
+     * will be served under (the earlier directory's own `.htaccess` when it has one, else the
+     * runtime's) are written into the new directory and a file there is fetched through its URL;
+     * only a refusal lets the files move, and the rules stay in force across the move (the earlier
+     * directory's `.htaccess`, when it has one, takes the new one's place). Otherwise they stay where
+     * they are (their downloads fail, they are not exposed), uploads stay closed, an administrator
+     * sees why, and a retry tries again. One move at a time, under a network-wide lock.
      */
-    private static function movePrivateFiles(string $from, string $to, bool $wasRefused): int
+    private static function movePrivateFiles(string $from, string $to): int
     {
         global $wpdb;
         // The directory is the network's, so the lock is too: the database and the network's base prefix.
         $lock = 'spacepress-private:' . substr(hash('sha256', DB_NAME . ':' . $wpdb->base_prefix), 0, 40);
 
-        return (int) (new Connection($wpdb))->locked($lock, 30, static function () use ($from, $to, $wasRefused): int {
+        return (int) (new Connection($wpdb))->locked($lock, 30, static function () use ($from, $to): int {
             if (!is_dir($from) || is_link($from)) {
                 return 0;
             }
-            if (file_exists($to) && !WpFiles::onlyProtection($to)) {
+            // The rules the files will be served under: the earlier directory's, or the runtime's.
+            $rules = is_file("$from/.htaccess") && !is_link("$from/.htaccess") ? (string) file_get_contents("$from/.htaccess") : null;
+            if (file_exists($to) && !WpFiles::onlyProtection($to, $rules, clear: true)) {
                 throw new \RuntimeException("Both $from and $to hold files; keep the one this site uses and move the other aside, then reload.");
             }
-            // The verdict that the server refused the earlier directory, kept with it before anything is
-            // probed: a request that stops after a failed probe (which stores a new verdict), and another
-            // site of a network that never saw the first verdict, still probe before moving.
-            $mark = $from . '/' . self::REFUSED_MARK;
-            if ($wasRefused && !is_file($mark) && @file_put_contents($mark, "refused\n") === false) {
-                throw new \RuntimeException("Cannot write $mark");
-            }
-            $wasRefused = $wasRefused || is_file($mark);
-            // The deny rules go into the new directory, and the probe asks the server for a file there
-            // (WpFiles::root() is the new directory): only a refusal of that URL lets the files move.
             WpFiles::protect();
-            if ($wasRefused && !WpFiles::probe()) {
-                // Only the deny rules written there (onlyProtection() checked every byte): gone again,
-                // so nothing (a later recheck) opens uploads there.
+            if (is_string($rules) && file_put_contents("$to/.htaccess", $rules) !== strlen($rules)) {
+                throw new \RuntimeException("Cannot write $to/.htaccess");
+            }
+            if (!WpFiles::probe()) {
+                // Only what was written there (onlyProtection() checked it): gone again, so nothing
+                // (a later recheck) opens uploads there.
                 array_map('unlink', array_filter([$to . '/.htaccess', $to . '/index.php'], 'is_file'));
                 @rmdir($to);
-                $problem = "the web server serves $to, which it must refuse as it refused $from: deny it (as you did the earlier directory), then reload. The private files stay in $from until then";
+                $problem = "the web server serves $to: deny it (as you did $from), then reload. The private files stay in $from until then";
                 error_log('[spacepress] ' . $problem);
                 add_action('admin_notices', static fn () => current_user_can('manage_options') && printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('SpacePress: ' . $problem)));
                 throw new PrivateFilesHeld($problem);
             }
-            // Only the deny rules written just now; the earlier directory has its own.
+            // The earlier directory arrives with its own `.htaccess` (the rules just proven) when it has
+            // one; without one, the runtime's proven rules go in with it before it takes the name.
+            if ($rules === null && file_put_contents("$from/.htaccess", (string) file_get_contents("$to/.htaccess")) === false) {
+                throw new \RuntimeException("Cannot write $from/.htaccess");
+            }
+            if (!is_file("$from/index.php")) {
+                copy("$to/index.php", "$from/index.php");
+            }
             array_map('unlink', array_filter([$to . '/.htaccess', $to . '/index.php'], 'is_file'));
             rmdir($to);
             if (!rename($from, $to)) {
                 throw new \RuntimeException("Cannot move $from to $to");
-            }
-            // The mark was this move's own; the deny rules the earlier directory had came along.
-            if (is_file($to . '/' . self::REFUSED_MARK)) {
-                unlink($to . '/' . self::REFUSED_MARK);
             }
 
             return 1;
@@ -840,12 +894,12 @@ final class BrandUpgrade
     public static function retryPrivateFiles(): void
     {
         $held = get_option(self::FILES_HELD);
-        if (!is_array($held) || count($held) !== 3 || get_transient('sp_brand_upgrade_files_retry') !== false) {
+        if (!is_array($held) || count($held) < 2 || get_transient('sp_brand_upgrade_files_retry') !== false) {
             return;
         }
         set_transient('sp_brand_upgrade_files_retry', 1, HOUR_IN_SECONDS);
         try {
-            self::movePrivateFiles((string) $held[0], (string) $held[1], (bool) $held[2]);
+            self::movePrivateFiles((string) $held[0], (string) $held[1]);
             delete_option(self::FILES_HELD);
         } catch (PrivateFilesHeld) {
         }
@@ -884,7 +938,7 @@ final class BrandUpgrade
             $row = $wpdb->get_row($wpdb->prepare("SELECT option_value, autoload FROM {$wpdb->options} WHERE option_name = %s", self::UPLOAD_KEYS), ARRAY_A);
             if ($row === null) {
                 $db->run("INSERT INTO `{$wpdb->options}` (`option_name`, `option_value`, `autoload`) VALUES (?, ?, 'on')", [self::UPLOAD_KEYS, serialize($keys)]);
-            } elseif (maybe_unserialize((string) $row['option_value']) !== $keys || !in_array($row['autoload'], ['on', 'yes', 'auto-on'], true)) {
+            } elseif (!self::uploadKeysAre($row, $plan['renamedApp'])) {
                 // A resumed move wrote it whole; anything else was not this move's.
                 throw new \RuntimeException('The option ' . self::UPLOAD_KEYS . ' holds something this move did not write; move it aside, then reload. The S3 keys of stored uploads depend on it.');
             }
@@ -926,8 +980,8 @@ final class BrandUpgrade
         foreach ($plan['meta'] as $table => $keys) {
             $moved['meta'] += self::rename($db, $wpdb->$table, 'meta_key', $keys);
         }
-        foreach ($plan['fieldMeta'] as $table => $keys) {
-            $moved['meta'] += self::renameWhere($db, $wpdb->$table, 'meta_key', $keys, self::fieldScope($wpdb, $plan['schema'], $table));
+        foreach ($plan['fieldMeta'] as [$table, $type, $keys]) {
+            $moved['meta'] += self::renameWhere($db, $wpdb->$table, 'meta_key', $keys, self::fieldScope($wpdb, $table, $type));
         }
         // SCF's reference rows only (`_sp_<field>` once their keys moved above): a value elsewhere
         // that happens to read `field_tp_…` is someone else's.
@@ -1389,8 +1443,9 @@ final class BrandUpgrade
                 $count++;
             }
         }
-        if ($count > 0) {
-            _set_cron_array($cron);
+        // Checked: the move is recorded done only once the events run under their current hooks.
+        if ($count > 0 && is_wp_error($saved = _set_cron_array($cron, true))) {
+            throw new \RuntimeException('Cannot save the scheduled events under their current hooks: ' . $saved->get_error_message());
         }
 
         return $count;

@@ -21,6 +21,7 @@ final class WpFiles implements FileStorage
     public const OK = 'sp_runtime_private_ok';
     public const CHECKED = 'sp_runtime_private_checked';
     private const DIR = 'spacepress-private';
+    private const INDEX = "<?php\n// Silence is golden.\n";
     private const HTACCESS = "# SpacePress private files: served only through signed download URLs.\n<IfModule mod_authz_core.c>\n\tRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n\tOrder deny,allow\n\tDeny from all\n</IfModule>\n";
 
     public function __construct(private readonly Connection $db, private readonly string $app)
@@ -125,8 +126,24 @@ final class WpFiles implements FileStorage
             file_put_contents("$root/.htaccess", self::HTACCESS);
         }
         if (!is_file("$root/index.php")) {
-            file_put_contents("$root/index.php", "<?php\n// Silence is golden.\n");
+            file_put_contents("$root/index.php", self::INDEX);
         }
+    }
+
+    /** Whether a directory holds only what protect() writes into a new one, byte for byte. */
+    public static function onlyProtection(string $dir): bool
+    {
+        if (is_link($dir) || !is_dir($dir)) {
+            return false;
+        }
+        foreach (array_diff(scandir($dir) ?: [], ['.', '..']) as $name) {
+            $want = ['.htaccess' => self::HTACCESS, 'index.php' => self::INDEX][$name] ?? null;
+            if ($want === null || is_link("$dir/$name") || @file_get_contents("$dir/$name") !== $want) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

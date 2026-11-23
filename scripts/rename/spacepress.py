@@ -87,6 +87,11 @@ def rewrite(data: bytes, kind: str, counts: Counter | None = None) -> bytes:
 # `tp/v1/actions/capacityReport` has none of these shapes.
 OPAQUE = re.compile(
     rb"\bsha(?:1|256|384|512)-[A-Za-z0-9+/]+={0,2}"
+    # Where encoded data sits, whatever its shape: a data URI's payload and a source map's mappings.
+    # (Unpadded base64 like `AAAA/tp/Z999` has a path's shape; only its place tells it apart.)
+    rb"|;base64,[A-Za-z0-9+/]+={0,2}"
+    rb'|"mappings"\s*:\s*"[^"]*"'
+    rb"|sourceMappingURL=\S+"
     rb"|(?<![A-Za-z0-9+/=_.-])[A-Za-z0-9+/]{4,}={1,2}(?![A-Za-z0-9+/=])"
     rb"|(?<![A-Za-z0-9+/=_.-])(?=[A-Za-z0-9+/]*[0-9+])(?![A-Za-z0-9]*(?:/[A-Za-z0-9]+)+(?![A-Za-z0-9+/]))[A-Za-z0-9+/]{24,}(?![A-Za-z0-9+/=_.-])"
     # Unpadded base64 with a `+` in it, 8+ characters long and a whole number of 4-character blocks:

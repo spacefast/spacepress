@@ -53,6 +53,8 @@ add_option('tp_global_other_plugin', 'not ours', '', false);
 $ownerPage = wp_insert_post(['post_type' => 'page', 'post_status' => 'draft', 'post_title' => 'Owner page', 'post_name' => 'typedpress-home-owner']);
 // Meta on the owner's own page that shares the spelling of an app field's nested row, with no SCF reference.
 add_post_meta($ownerPage, 'tp_seo_metaTitle', 'not the app\'s');
+// … and a top-level field's spelling: the app declares `body` on its posts, not on pages.
+add_post_meta($ownerPage, 'tp_body', 'not the app\'s');
 // A field the site added at runtime, through the earlier runtime's schema versions, with a value.
 $versions = \TypedPress\Wp\SchemaVersions::of($wp->plugin());
 $versions->apply(0, ['format' => 1, 'changes' => [['op' => 'addField', 'kind' => 'posts', 'field' => 'mood', 'definition' => ['type' => 'text']]]], ['user' => 1, 'login' => 'admin', 'via' => 'test']);

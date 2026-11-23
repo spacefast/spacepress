@@ -109,6 +109,7 @@ eq('… filed under the fallback theme by its current name, where the Site Edito
 eq('the fallback theme\'s mods moved', [get_option('theme_mods_' . \SpacePress\Wp\Hardening::THEME)['owner'] ?? null, get_option('theme_mods_typedpress-default')], ['kept', false]);
 $ownerPage = (int) $wpdb->get_var("SELECT ID FROM {$wpdb->posts} WHERE post_name = 'typedpress-home-owner'");
 eq('another post\'s meta of the same spelling, with no SCF reference, is untouched', [get_post_meta($ownerPage, 'tp_seo_metaTitle', true), get_post_meta($ownerPage, 'sp_seo_metaTitle', true)], ['not the app\'s', '']);
+eq('… and so is its meta named like a top-level field of the app\'s posts', [get_post_meta($ownerPage, 'tp_body', true), get_post_meta($ownerPage, 'sp_body', true)], ['not the app\'s', '']);
 eq('look-alike options of other plugins are untouched', [get_option('tp_prebuilt_other_plugin_setting'), get_option('tp_global_other_plugin')], ['not ours', 'not ours']);
 [$status, $comment] = $wp->call('GET', '/comments/' . $before['comment'], as: 'editor');
 eq('the custom-table row reads back', [$status, $comment['body'] ?? null], [200, 'First, edited']);
@@ -156,12 +157,37 @@ $outcome = static function () use ($move, $held, $to): string {
 };
 eq('a served destination holds the files back', [$outcome(), is_file("$held/a.txt"), get_option(\SpacePress\Wp\WpFiles::OK)], ['held', true, '0']);
 eq('… and a retry after that failed probe still probes, and still holds them', [$outcome(), is_file("$held/a.txt")], ['held', true]);
+// The verdict stays with the files, not in an option a failed probe overwrote or another site never had.
+$unrefused = (new ReflectionClass(\SpacePress\Wp\BrandUpgrade::class))->getMethod('movePrivateFiles');
+eq('… even a retry told the earlier directory was never refused', [(static function () use ($unrefused, $held, $to): string {
+    try {
+        $unrefused->invoke(null, $held, $to, false);
+
+        return 'moved';
+    } catch (\SpacePress\Wp\PrivateFilesHeld) {
+        return 'held';
+    }
+})(), is_file("$held/a.txt")], ['held', true]);
+// The destination holding a file the runtime didn't write (an owner's index.php) stops the move and keeps the file.
+mkdir($to);
+file_put_contents("$to/index.php", "<?php // the owner's\n");
+eq('… and an owner\'s file in the new directory stops the move and stays', [(static function () use ($move, $held, $to): string {
+    try {
+        $move->invoke(null, $held, $to, true);
+
+        return 'moved';
+    } catch (\RuntimeException $e) {
+        return $e instanceof \SpacePress\Wp\PrivateFilesHeld ? 'held' : 'refused';
+    }
+})(), file_get_contents("$to/index.php")], ['refused', "<?php // the owner's\n"]);
+unlink("$to/index.php");
+rmdir($to);
 check('… leaving no directory there for a later recheck to open uploads in', !file_exists($to));
 remove_filter('pre_http_request', $served, PHP_INT_MAX);
 array_map('unlink', array_filter(glob("$to/{,.}*", GLOB_BRACE) ?: [], 'is_file'));
 @rmdir($to);
-foreach (glob("$held/*") ?: [] as $f) {
-    unlink($f);
+foreach (glob("$held/{,.}*", GLOB_BRACE) ?: [] as $f) {
+    is_file($f) && unlink($f);
 }
 rmdir($held);
 rename($kept, $to);
@@ -187,6 +213,11 @@ foreach (["$legacy-site", 'spacepress-site'] as $app) {
 }
 eq('a migration recorded for an app under both names is a conflict', \SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), $empty), ["migration 20260101000000_aaaaaa_init recorded for both $legacy-site and spacepress-site"]);
 $wp->sql("DELETE FROM `{$p}sp__migrations` WHERE `app` IN (?, ?)", ["$legacy-site", 'spacepress-site']);
+foreach (["$legacy-site", 'spacepress-site'] as $app) {
+    $wp->sql("INSERT INTO `{$p}sp__schema_versions` (`app`, `version`, `parent`, `format`, `build`, `actor`, `changes`, `hash`, `createdAt`) VALUES (?, 1, 0, 1, '', '{}', '[]', '', '2026-01-01T00:00:00.000Z')", [$app]);
+}
+eq('… and so is a runtime schema version recorded under both', \SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), $empty), ["runtime schema version 1 recorded for both $legacy-site and spacepress-site"]);
+$wp->sql("DELETE FROM `{$p}sp__schema_versions` WHERE `app` IN (?, ?)", ["$legacy-site", 'spacepress-site']);
 
 function BrandUpgrade_done(): bool
 {

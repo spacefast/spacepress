@@ -683,7 +683,7 @@ final class AgentScope
         foreach ($passwords as $i => $item) {
             if (($item['uuid'] ?? null) === $uuid) {
                 // A new scope (or none) replaces the one a pre-release build stored there too.
-                $passwords[$i] = BrandUpgrade::withoutEarlierScope($passwords[$i]);
+                $passwords[$i] = BrandUpgrade::withEarlierScope($passwords[$i], $scope);
                 unset($passwords[$i][self::KEY]);
                 if ($scope !== null) {
                     $passwords[$i][self::KEY] = $scope;

@@ -188,12 +188,19 @@ test("list runs the kind's -list ability with where/orderBy/limit/offset/status/
   assert.deepEqual(queryInput(last()), { limit: 2, offset: 1 });
 });
 
-test("revisions.list runs the -revisions ability and returns every revision, newest first", async () => {
+test("revisions.list follows the cursor and returns every revision, newest first", async () => {
   seen = [];
-  reply = ok({ revisions: [{ id: 9 }, { id: 8 }, { id: 7 }] });
+  const pages: Record<string, { data: unknown[]; cursor: string | null }> = {
+    "": { data: [{ id: 9 }, { id: 8 }], cursor: "c1" },
+    c1: { data: [{ id: 7 }], cursor: null },
+  };
+  reply = (s) => ({ status: 200, body: JSON.stringify(pages[s.query.get("cursor") ?? ""]) });
   const first = mod.createClient({ url });
   assert.deepEqual(await first.posts.revisions.list(1), [{ id: 9 }, { id: 8 }, { id: 7 }]);
-  assert.deepEqual(seen.map((s) => [s.method, s.path, queryInput(s)]), [["GET", `${RUN}/posts-revisions/run`, { id: 1 }]]);
+  assert.deepEqual(seen.map((s) => [s.path, s.query.get("cursor"), s.query.get("limit")]), [
+    ["/wp-json/typedpress/v1/posts/1/revisions", null, "100"],
+    ["/wp-json/typedpress/v1/posts/1/revisions", "c1", "100"],
+  ]);
 });
 
 test("writes, revisions, globals, actions and auth run their abilities, with the method core's run route takes", async () => {
@@ -229,8 +236,8 @@ test("writes, revisions, globals, actions and auth run their abilities, with the
       'POST /posts-create/run {"title":"Hi"}',
       'POST /posts-update/run {"id":1,"patch":{"title":"Yo"}}',
       'POST /posts-delete/run {"id":1}',
-      'GET /posts-revision-get/run {"id":1,"revision":4}',
-      'POST /posts-revision-restore/run {"id":1,"revision":4}',
+      "GET /wp-json/typedpress/v1/posts/1/revisions/4 null",
+      "POST /wp-json/typedpress/v1/posts/1/revisions/4/restore null",
       'POST /posts-stage/run {"id":1,"patch":{"title":"Staged"}}',
       'GET /posts-staged-get/run {"id":1}',
       'GET /posts-staged-compare/run {"id":1}',
@@ -247,7 +254,7 @@ test("writes, revisions, globals, actions and auth run their abilities, with the
       'POST /global-settings-update/run {"tagline":"x"}',
       'POST /approve-comment/run {"id":3}',
       "GET /published-count/run null",
-      "GET /me/run null",
+      "GET /wp-json/typedpress/v1/me null",
       "GET /wp-json/typedpress/v1 null",
     ],
   );
@@ -352,20 +359,18 @@ test("media upload is multipart with `file` (+ filename, type) and `alt`", async
   const again = await new Response(last().body, { headers: { "content-type": last().headers["content-type"] ?? "" } }).formData();
   assert.deepEqual([(again.get("file") as File).name, again.has("alt")], ["own.png", false]);
 
-  reply = ok({ rows: [media] });
-  assert.deepEqual(await first.media.list({ where: { mime: { like: "image/%" } }, limit: 5 }), [media]);
-  assert.deepEqual([last().path, queryInput(last())], [`${RUN}/media-list/run`, { where: { mime: { like: "image/%" } }, limit: 5 }]);
-  reply = ok(media);
+  await first.media.list({ where: { mime: { like: "image/%" } }, limit: 5 });
+  assert.deepEqual([last().path, last().query.get("limit"), JSON.parse(last().query.get("where") ?? "")], ["/wp-json/typedpress/v1/media", "5", { mime: { like: "image/%" } }]);
   await first.media.delete(9);
-  assert.deepEqual([last().method, last().path, bodyInput(last())], ["POST", `${RUN}/media-delete/run`, { id: 9 }]);
+  assert.deepEqual([last().method, last().path], ["DELETE", "/wp-json/typedpress/v1/media/9"]);
 });
 
-test("media.update runs media-update with alt/focal as its patch", async () => {
+test("media.update is a JSON PATCH of alt/focal", async () => {
   reply = ok({ id: 9 });
   const first = mod.createClient({ url });
   await first.media.update(9, { focal: { x: 0.25, y: 1 }, alt: null });
-  assert.deepEqual([last().method, last().path, last().headers["content-type"], bodyInput(last())],
-    ["POST", `${RUN}/media-update/run`, "application/json", { id: 9, patch: { focal: { x: 0.25, y: 1 }, alt: null } }]);
+  assert.deepEqual([last().method, last().path, last().headers["content-type"], JSON.parse(last().body.toString())],
+    ["PATCH", "/wp-json/typedpress/v1/media/9", "application/json", { focal: { x: 0.25, y: 1 }, alt: null }]);
 });
 
 test("files.<bucket> upload/get/delete hit TypedPress's /files/<bucket> REST route", async () => {
@@ -385,7 +390,7 @@ test("default base URL is WordPress's REST root on the page's origin", async () 
   let requested = "";
   const first = mod.createClient({ fetch: async (input: RequestInfo | URL) => ((requested = String(input)), new Response('{"data":null}')) });
   await first.auth.me();
-  assert.equal(requested, "/wp-json/wp-abilities/v1/abilities/blog/me/run");
+  assert.equal(requested, "/wp-json/typedpress/v1/me");
 });
 
 test("a 401 unauthenticated refreshes once at the issuer and retries once; a refused refresh forgets the session and surfaces the 401", async () => {
@@ -833,7 +838,7 @@ test("handleCallback refuses a foreign state, exchanges the code with the verifi
       client_id: "app_blog",
       code_verifier: "v".repeat(86),
     });
-    assert.deepEqual([seen[1].path, seen[1].headers.authorization], ["/wp-json/wp-abilities/v1/abilities/blog/me/run", "Bearer at_1"]);
+    assert.deepEqual([seen[1].path, seen[1].headers.authorization], ["/wp-json/typedpress/v1/me", "Bearer at_1"]);
     assert.equal(browser.store.has("typedpress.auth.pkce"), false);
     const kept = JSON.parse(browser.store.get(`typedpress.auth:${base}`) ?? "{}");
     assert.deepEqual({ ...kept, expiresAt: typeof kept.expiresAt, sid: typeof kept.sid }, { accessToken: "at_1", refreshToken: "rt_1", expiresAt: "number", clientId: "app_blog", idToken: "h.p.s", sid: "string" });
@@ -2164,7 +2169,7 @@ test("a client with its own url, credential or session doesn't use the page's da
     const page = mod.createClient();
     await page.auth.guest();
     await page.auth.me();
-    assert.deepEqual([calls.abilities.length, last().path, last().headers.authorization], [0, "/wp-json/wp-abilities/v1/abilities/blog/me/run", "Bearer za_1"]);
+    assert.deepEqual([calls.abilities.length, last().path, last().headers.authorization], [0, "/wp-json/typedpress/v1/me", "Bearer za_1"]);
   }, ["blog/posts-list", "blog/me"], { root: `${origin}/wp-json/`, api: "/typedpress/v1", nonce: "n0nce" });
 });
 

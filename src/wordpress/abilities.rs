@@ -486,9 +486,6 @@ fn own(schema: &Schema) -> Own {
                 format!("{app}/{k}-revisions"),
                 (id(), opt(&[("revisions", Ty::Array(Box::new(revision)), false)])),
             ));
-            let one = || opt(&[("id", pk.clone(), false), ("revision", Ty::Num, false)]);
-            out.push((format!("{app}/{k}-revision-get"), (one(), row.clone())));
-            out.push((format!("{app}/{k}-revision-restore"), (one(), row.clone())));
         }
         // As Register::staged: one ability per step of a post kind's staged version.
         if c.editor && c.revisions && c.staged && c.api.update {
@@ -593,18 +590,7 @@ fn own(schema: &Schema) -> Own {
         (paging(&[]), opt(&[("rows", Ty::Array(Box::new(media.clone())), false)])),
     ));
     out.push((format!("{app}/media-get"), (media_id.clone(), media.clone())));
-    let focal = opt(&[("x", Ty::Num, false), ("y", Ty::Num, false)]).nullable();
-    let media_patch = opt(&[("alt", Ty::Str.nullable(), true), ("focal", focal, true)]);
-    out.push((
-        format!("{app}/media-update"),
-        (
-            opt(&[("id", Ty::Num, false), ("patch", media_patch, false)]),
-            media.clone(),
-        ),
-    ));
     out.push((format!("{app}/media-delete"), (media_id, media)));
-    // As Register::build: the signed-in user (an app's own `me` is refused at build).
-    out.push((format!("{app}/me"), (opt(&[]), Ty::Unknown)));
     for (name, j) in &schema.jobs {
         if j.agents {
             out.push((

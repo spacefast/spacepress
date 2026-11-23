@@ -354,6 +354,9 @@ export function createClient(options = {}) {
 	// `wordpress: true` asks for it explicitly.
 	const cookie = site !== null && (options.wordpress === true || options.fetch === undefined && options.headers === undefined && options.nonce === undefined && options.auth === undefined);
 	let nonce = options.nonce ?? (cookie ? site?.nonce : undefined);
+	// The page's own nonce (given or read): renewed from the page's endpoint when core sends a new one
+	// or refuses an expired one. A nonce of the caller's own is sent as given.
+	const pageNonce = cookie && (options.nonce === undefined || options.nonce === site?.nonce);
 	// Session storage is keyed as before the client ran abilities: by `url`, else the default API URL.
 	const base = (options.url ?? "/wp-json/typedpress/v1").replace(/\/+$/, "");
 	const app = SCHEMA.app;
@@ -454,13 +457,15 @@ export function createClient(options = {}) {
 		const sentNonce = nonce;
 		const { res, parsed } = await call(restUrl(root, path, qs), init, `${method} ${path}`);
 		// Core sends a fresh nonce with every cookie-authenticated answer: keep it for the next request.
-		const renewed = cookie && options.nonce === undefined ? res.headers?.get("x-wp-nonce") : null;
+		const renewed = pageNonce ? res.headers?.get("x-wp-nonce") : null;
 		if (renewed) nonce = renewed;
 		if (res.ok) return unwrapped(parsed, send, `${method} ${path}`);
 		const error = toError(res, parsed);
 		// A signed-in page's nonce expired (a tab left open past its lifetime): ask WordPress for a
 		// new one, as its own api-fetch does, and send the request once more.
-		if (isObject(parsed) && parsed.code === "rest_cookie_invalid_nonce" && cookie && options.nonce === undefined && !retried && sentNonce !== undefined) {
+		// Core's own answer on its routes; the app API's problem names core's reason in a header.
+		const expired = isObject(parsed) && parsed.code === "rest_cookie_invalid_nonce" || res.headers?.get("typedpress-reason") === "rest_cookie_invalid_nonce";
+		if (expired && pageNonce && !retried && sentNonce !== undefined) {
 			const fresh = await freshNonce();
 			if (fresh !== null) {
 				nonce = fresh;
@@ -724,7 +729,8 @@ export function createClient(options = {}) {
 		},
 		// An app built before `<app>/me` was the signed-in user may have its own `me` action; its
 		// `auth.me()` reads the app API's `/me` instead.
-		me: () => SCHEMA.actions.includes("me") ? request("GET", `${API}/me`) : ability("me", {}, readonly),
+		// The app API's `/me`: the user with their member row's fields on it, as before abilities.
+		me: () => request("GET", `${API}/me`),
 		async signOut(opts = {}) {
 			const current = held();
 			const from = currentSid();
@@ -1361,20 +1367,31 @@ export function createClient(options = {}) {
 			}, destructive), key),
 			restore: (id) => wrote(request("POST", `${one(id)}/restore`), key),
 			purge: (id) => wrote(request("DELETE", `${one(id)}/purge`), key),
+			// Revisions on the app API's routes, which page them, guard a restore against another editor's
+			// lock (`_rev`) and read each one as this viewer may.
 			revisions: {
-				list: async (id) => (await ability(op("revisions"), { id }, readonly)).revisions,
-				get: (id, rid) => ability(op("revision-get"), {
-					id,
-					revision: rid
-				}, readonly),
+				// Every revision, newest first: the API pages them ({ data, cursor }), this follows the cursor.
+				list: async (id) => {
+					const all = [];
+					let cursor = null;
+					do {
+						const query = new URLSearchParams({ limit: "100" });
+						if (cursor !== null) query.set("cursor", cursor);
+						const page = await request("GET", `${one(id)}/revisions`, {
+							query,
+							envelope: true
+						});
+						all.push(...page.rows);
+						cursor = page.cursor;
+					} while (cursor !== null);
+					return all;
+				},
+				get: (id, rid) => request("GET", `${one(id)}/revisions/${seg(rid)}`),
 				diff: (id, from, to) => request("GET", `${one(id)}/revisions/diff`, { query: new URLSearchParams({
 					from: String(from),
 					to: String(to)
 				}) }),
-				restore: (id, rid) => wrote(ability(op("revision-restore"), {
-					id,
-					revision: rid
-				}), key)
+				restore: (id, rid) => wrote(request("POST", `${one(id)}/revisions/${seg(rid)}/restore`), key)
 			},
 			stage: (id, patch) => ability(op("stage"), patchInput(id, patch)),
 			staged: (id) => ability(op("staged-get"), { id }, readonly),
@@ -1402,15 +1419,14 @@ export function createClient(options = {}) {
 		return request("POST", route, { form });
 	};
 	const client = {
+		// Media on the app API's routes, which read each item as WordPress lets this viewer see it
+		// (an attachment of a draft only for those who may read the draft).
 		media: {
-			list: async (q) => (await ability("media-list", liveArgs(q), readonly)).rows,
-			get: (id) => ability("media-get", { id }, readonly),
+			list: (q) => request("GET", `${API}/media`, { query: listParams(q) }),
+			get: (id) => request("GET", `${API}/media/${seg(id)}`),
 			upload: (file, opts = {}) => upload(`${API}/media`, file, opts.alt !== undefined ? { alt: opts.alt } : {}, opts.filename),
-			update: (id, patch) => ability("media-update", {
-				id,
-				patch: isObject(patch) ? patch : {}
-			}),
-			delete: (id) => ability("media-delete", { id }, destructive)
+			update: (id, patch) => request("PATCH", `${API}/media/${seg(id)}`, { json: patch }),
+			delete: (id) => request("DELETE", `${API}/media/${seg(id)}`)
 		},
 		files: Object.fromEntries(SCHEMA.buckets.map((bucket) => [bucket, {
 			upload: (file, opts = {}) => upload(`${API}/files/${seg(bucket)}`, file, {}, opts.filename),

@@ -4976,11 +4976,6 @@ fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span
         for op in ["list", "get", "create", "update", "delete", "revisions"] {
             add(format!("{}-{op}", kebab(&c.table)))?;
         }
-        if c.revisions {
-            for op in ["revision-get", "revision-restore"] {
-                add(format!("{}-{op}", kebab(&c.table)))?;
-            }
-        }
         if c.editor && c.revisions && c.staged && c.api.update {
             for op in [
                 "stage",
@@ -5010,13 +5005,9 @@ fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span
     for j in out.schema.jobs.keys() {
         add(format!("job-{}", kebab(j)))?;
     }
-    for op in ["list", "get", "update", "delete"] {
+    for op in ["list", "get", "delete"] {
         add(format!("media-{op}"))?;
     }
-    // The signed-in user, what the typed client's `auth.me()` runs.
-    add("me".into()).map_err(|e| {
-        e.help(format!("`{app}/me` is the signed-in user the typed client reads; rename the action, kind, global or job that becomes `me`"))
-    })?;
     Ok(())
 }
 

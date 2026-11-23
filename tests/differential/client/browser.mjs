@@ -190,7 +190,7 @@ try {
   const signed = {
     before: signedBefore,
     after: await signedIn.textContent("[data-wp-interactive='clients/LikeButton']"),
-    // The action's run and `me`, both with the nonce.
+    // The action's run, with the nonce (`me` reads the app API's `/me`).
     runs: signedRuns,
     me: await signedIn.evaluate(async () => (await (await import("@typedpress/client")).createClient().auth.me())?.name ?? null),
   };

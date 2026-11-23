@@ -48,9 +48,9 @@ static CONTENT: LazyLock<regex::Regex> = LazyLock::new(|| pattern(r#"(?i)\bconte
 static STYLE: LazyLock<regex::Regex> = LazyLock::new(|| pattern(r#"(?s)(<style[^>]*>)(.*?)(</style>)"#));
 static IMPORT_MAP: LazyLock<regex::Regex> =
     LazyLock::new(|| pattern(r#"(?s)(<script[^>]*type="importmap"[^>]*>)(.*?)(</script>)"#));
-static MODULE_DATA: LazyLock<regex::Regex> = LazyLock::new(|| {
-    pattern(r#"(?s)(<script id="wp-script-module-data-([^"]+)" type="application/json">)(.*?)(</script>)"#)
-});
+// A script module's data, whatever other attributes a plugin adds to the tag (`wp_inline_script_attributes`).
+static MODULE_DATA: LazyLock<regex::Regex> =
+    LazyLock::new(|| pattern(r#"(?s)(<script\b[^>]*\bid="wp-script-module-data-([^"]+)"[^>]*>)(.*?)(</script>)"#));
 static CSS_REFERENCE: LazyLock<regex::Regex> =
     LazyLock::new(|| pattern(r#"url\(\s*['"]?([^'")]+)['"]?\s*\)|@import\s+['"]([^'"]+)['"]"#));
 static NOINDEX: LazyLock<regex::Regex> =
@@ -850,6 +850,9 @@ impl<'a> Export<'a> {
     /// is refused.
     fn config(&self, html: &str, page: &str, refusals: &mut Vec<String>) -> String {
         MODULE_DATA.replace_all(html, |c: &regex::Captures| {
+            if !c[1].contains(r#"type="application/json""#) {
+                return c[0].to_string();
+            }
             // The typed client's data (`Islands::clientData`) names the site's REST API. Without
             // --site a static site has none (an action call is refused below), so it goes.
             if &c[2] == "@typedpress/client" && self.flags.site.is_none() {

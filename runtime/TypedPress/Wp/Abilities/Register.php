@@ -137,6 +137,11 @@ final class Register
      */
     public static function jsonInput(mixed $result, mixed $server, mixed $request): mixed
     {
+        // A REST request inside another (rest_do_request from a callback) keeps the outer one's
+        // state: saved here, put back when this one ends ({@see restore()}).
+        if ($request instanceof \WP_REST_Request) {
+            self::$stack[] = [$request, self::state()];
+        }
         self::$typedQuery = false;
         self::$queried = null;
         if ($result !== null || !$request instanceof \WP_REST_Request || !in_array($request->get_method(), ['GET', 'HEAD', 'DELETE'], true)
@@ -294,22 +299,46 @@ final class Register
     private static ?array $queried = null;
 
     /** rest_post_dispatch: the request that carried the input is over; its operation's headers go out with it. */
-    public static function dispatched(mixed $response): mixed
+    public static function dispatched(mixed $response, mixed $server = null, mixed $request = null): mixed
     {
-        self::$method = null;
-        self::$untyped = null;
-        self::$raw = null;
-        self::$headers = null;
-        self::$runRoute = null;
-        self::$typedQuery = false;
         if ($response instanceof \WP_REST_Response) {
             foreach (self::$responded as $name => $value) {
                 $response->header($name, $value);
             }
         }
-        self::$responded = [];
+        self::restore($request);
 
         return $response;
+    }
+
+    /**
+     * @var list<array{\WP_REST_Request, array}> the requests being dispatched, innermost last, each with
+     * the state of the request it interrupted
+     */
+    private static array $stack = [];
+
+    /** @return array this request's state, as {@see restore()} puts it back */
+    private static function state(): array
+    {
+        return [self::$sanitizing, self::$method, self::$untyped, self::$raw, self::$headers, self::$responded, self::$runRoute, self::$typedQuery, self::$queried];
+    }
+
+    /**
+     * $request is over (its callbacks ran, or core answered it early): the request it interrupted, if
+     * any, gets its own state back; the outermost one leaves none behind. An internal dispatch skips
+     * rest_post_dispatch, so its callbacks' end ({@see answered()}) restores too; whichever comes first
+     * does it, once.
+     */
+    private static function restore(mixed $request): void
+    {
+        for ($i = count(self::$stack) - 1; $i >= 0; $i--) {
+            if (self::$stack[$i][0] === $request) {
+                [self::$sanitizing, self::$method, self::$untyped, self::$raw, self::$headers, self::$responded, self::$runRoute, self::$typedQuery, self::$queried] = self::$stack[$i][1];
+                array_splice(self::$stack, $i);
+
+                return;
+            }
+        }
     }
 
     /**
@@ -320,10 +349,6 @@ final class Register
      */
     public static function answered(mixed $response, mixed $handler = null, mixed $request = null): mixed
     {
-        // An internal run (rest_do_request) skips rest_post_dispatch: the elevation ends with its callback.
-        if ($request instanceof \WP_REST_Request && self::runRoute($request) === self::$runRoute) {
-            self::$runRoute = null;
-        }
         // An ability that answers null (signed-out `me`, an action that returns nothing) is a 204:
         // core would send 200 with an empty body, which is not JSON to a client that parses it.
         if ($response instanceof \WP_REST_Response && $response->get_data() === null && $response->get_status() === 200
@@ -342,6 +367,8 @@ final class Register
             }
         }
         self::$responded = [];
+        // An internal dispatch skips rest_post_dispatch: its state ends with its callbacks.
+        self::restore($request);
 
         return $response;
     }
@@ -385,8 +412,8 @@ final class Register
     /**
      * One of the app's abilities core's run route is serving in this request, as {@see sanitizing()}
      * recorded it: an operation of the app's own schema, which its typed client calls even when it is
-     * `agents: false`. A feature's own operation (WooCommerce's stock and order steps) is not one:
-     * hidden from agents, it has no HTTP route either.
+     * `agents: false`. One a feature or plugin adds (`tp_ability_operations`: WooCommerce's stock and
+     * order steps) is not: hidden from agents, it has no HTTP route either.
      */
     public static function running(): ?string
     {
@@ -395,14 +422,23 @@ final class Register
 
     private static function clientOperation(string $name): bool
     {
-        foreach (self::operations() as $op) {
-            if ($op['name'] === $name) {
-                return !(($op['typedpress']['store'] ?? false) === true);
-            }
+        self::operations();
+
+        return isset(self::$client[$name]);
+    }
+
+    /** tp_identity_rest_cookie_route: core's run route of an operation the app's schema declares. */
+    public static function cookieRoute(mixed $allowed, mixed $route): bool
+    {
+        if ($allowed || !is_string($route) || !preg_match('#^/wp-abilities/v1/abilities/(.+)/run$#', $route, $m)) {
+            return (bool) $allowed;
         }
 
-        return false;
+        return self::clientOperation(urldecode($m[1]));
     }
+
+    /** @var array<string, true> the operations the app's schema declares, by ability name */
+    private static array $client = [];
 
     private static ?string $runRoute = null;
 
@@ -456,19 +492,8 @@ final class Register
             array_push($ops, ...self::global($app, $label, (string) $name, $global));
         }
         array_push($ops, ...self::media($app, $label));
-        // The signed-in user (null when signed out), what `client.auth.me()` reads. Only the app's own
-        // client calls it, so it stays out of core REST discovery and MCP. The build refuses an action,
-        // kind, global or job that would also become `<app>/me` (src/extract.rs); an app built before
-        // that keeps its own `me`, and its client's `auth.me()` reads the API's `/me` instead.
-        if (!in_array("$app/me", array_column($ops, 'name'), true)) {
-            $ops[] = [
-                'name' => "$app/me", 'op' => 'me', 'agents' => false, 'label' => 'Current user',
-                'description' => "The signed-in user of the $label app, with their member row when the app has one; null when signed out.",
-                'input' => JsonSchema::input([]), 'output' => [], 'annotations' => ['readonly' => true, 'idempotent' => true],
-                'rule' => [Access::DEFAULT_READ, 'read', 'read the current user'], 'typedpress' => [],
-                'call' => static fn (array $in): array => ['GET', '/me', [], null],
-            ];
-        }
+        // What the app's schema declares: the operations its typed client runs ({@see running()}).
+        self::$client = array_fill_keys(array_column($ops, 'name'), true);
         // Features add their own operations here (runtime schema changes: TypedPress\RuntimeSchema\Surfaces).
         $ops = apply_filters('tp_ability_operations', $ops, $app);
         if (($enqueue = Module::enqueuer()) !== null) {
@@ -598,21 +623,6 @@ final class Register
                 'annotations' => ['readonly' => true, 'idempotent' => true], 'rule' => [$rules['update'], 'update', "update $name rows"],
                 'call' => static fn (array $in): array => ['GET', $item('/revisions')($in), [], null],
                 'result' => static fn (array $revisions): array => ['revisions' => $revisions],
-            ];
-            $revision = static fn (array $in): string => '/' . (is_int($in['revision'] ?? null) ? $in['revision'] : throw HttpError::invalidInput('revision is required', '/revision'));
-            $ops[] = $base + [
-                'name' => "$app/$k-revision-get", 'op' => 'revision-get',
-                'label' => "One revision of $name", 'description' => "Read one saved revision of one $name row of the $appLabel app: the row as it was.",
-                'input' => JsonSchema::input(['id' => $pk, 'revision' => ['type' => 'integer']], ['id', 'revision']), 'output' => $row,
-                'annotations' => ['readonly' => true, 'idempotent' => true], 'rule' => [$rules['update'], 'update', "update $name rows"],
-                'call' => static fn (array $in): array => ['GET', $item('/revisions')($in) . $revision($in), [], null],
-            ];
-            $ops[] = $base + [
-                'name' => "$app/$k-revision-restore", 'op' => 'revision-restore',
-                'label' => "Restore a revision of $name", 'description' => "Make one saved revision of one $name row of the $appLabel app its current values, as an update.",
-                'input' => JsonSchema::input(['id' => $pk, 'revision' => ['type' => 'integer']], ['id', 'revision']), 'output' => $row,
-                'annotations' => [], 'rule' => [$rules['update'], 'update', "update $name rows"],
-                'call' => static fn (array $in): array => ['POST', $item('/revisions')($in) . $revision($in) . '/restore', [], null],
             ];
         }
         if (\TypedPress\Wp\Staged::enabled($spec) && ($api['update'] ?? true)) {
@@ -777,13 +787,6 @@ final class Register
                 'name' => "$app/media-get", 'op' => 'get', 'label' => 'Get media', 'description' => "Get one media item of the $appLabel app by id.",
                 'input' => JsonSchema::input($id, ['id']), 'output' => $row, 'annotations' => ['readonly' => true, 'idempotent' => true],
                 'rule' => [Access::MEDIA['read'], 'read', 'read media'], 'call' => static fn (array $in): array => ['GET', '/media/' . Invoke::id($in), [], null],
-            ],
-            $base + [
-                'name' => "$app/media-update", 'op' => 'update', 'label' => 'Update media', 'description' => "Change one media item of the $appLabel app: its alt text and focal point (0..1 from the top-left; a new one regenerates every cover size).",
-                'input' => JsonSchema::input($id + ['patch' => ['type' => 'object', 'properties' => ['alt' => ['type' => ['string', 'null']], 'focal' => ['type' => ['object', 'null'], 'properties' => ['x' => ['type' => 'number'], 'y' => ['type' => 'number']]]]]], ['id', 'patch']),
-                'output' => $row, 'annotations' => [],
-                'rule' => [Access::MEDIA['update'], 'update', 'update media'],
-                'call' => static fn (array $in): array => ['PATCH', '/media/' . Invoke::id($in), [], Invoke::object($in['patch'] ?? false) ?? throw HttpError::invalidInput('patch must be an object', '/patch')],
             ],
             $base + [
                 'name' => "$app/media-delete", 'op' => 'delete', 'label' => 'Delete media', 'description' => "Delete one media item of the $appLabel app and its files.",

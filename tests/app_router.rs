@@ -2032,7 +2032,7 @@ fn client_components_compile_to_interactivity_stores() {
     // Ability's run route. One built before (no `client`) keeps the API's action URL and a nonce.
     assert_eq!(islands["clients/LikeButton"]["client"], true, "{islands}");
     assert!(islands["clients/Effects"].get("client").is_none(), "{islands}");
-    let config = |compiled: &str| -> serde_json::Value {
+    let config = |compiled: &str, signed_in: bool| -> serde_json::Value {
         let out = Command::new("php")
             .args(["-d", "memory_limit=512M"])
             .arg(root().join("tests/php/wp.php"))
@@ -2040,11 +2040,13 @@ fn client_components_compile_to_interactivity_stores() {
             .arg(project.join("tp/dist/wp-content"))
             .arg(
                 r#"
+                if ($arg) { wp_set_current_user($wp->userId('admin')); }
                 \TypedPress\Islands::context('clients/LikeButton', []);
                 \TypedPress\Islands::enqueue();
                 echo json_encode(wp_interactivity_config('clients/LikeButton')), "\n";
                 "#,
             )
+            .arg(if signed_in { "true" } else { "false" })
             .output()
             .unwrap();
         assert!(
@@ -2055,7 +2057,7 @@ fn client_components_compile_to_interactivity_stores() {
         );
         serde_json::from_str(String::from_utf8_lossy(&out.stdout).lines().next_back().unwrap()).unwrap()
     };
-    let now = config("now");
+    let now = config("now", true);
     assert!(
         now["actions"]["like"]
             .as_str()
@@ -2068,7 +2070,8 @@ fn client_components_compile_to_interactivity_stores() {
     let schema_php = plugin.join("tp/app/schema.php");
     let text = std::fs::read_to_string(&schema_php).unwrap();
     std::fs::write(&schema_php, text.replace(", 'client' => true", "")).unwrap();
-    let old = config("before");
+    let old = config("before", true);
+    let old_visitor = config("before", false);
     std::fs::write(&schema_php, text).unwrap();
     assert!(
         old["actions"]["like"]
@@ -2078,6 +2081,8 @@ fn client_components_compile_to_interactivity_stores() {
         "{old}"
     );
     assert!(old["nonce"].is_string(), "{old}");
+    // A signed-out page is cached: it carries no nonce, which would expire there.
+    assert!(old_visitor.get("nonce").is_none(), "{old_visitor}");
     // `"use client"` after another directive (`"use strict"`) still makes a client component.
     assert!(islands["clients/Toggle"]["file"].is_string(), "{islands}");
     let drive = |namespace: &str, script: &str| -> serde_json::Value {
@@ -3656,7 +3661,6 @@ fn client_components_hydrate_in_the_browser() {
             "before": "♥ 1 like", "after": "♥ 141 likes", "me": "admin",
             "runs": [
                 "POST /wp-abilities/v1/abilities/clients/like/run nonce",
-                "GET /wp-abilities/v1/abilities/clients/me/run nonce",
             ],
         }),
         "{seen}"
@@ -3671,8 +3675,9 @@ fn client_components_hydrate_in_the_browser() {
 
 /// The generated client outside WordPress (tests/differential/client/outside.mjs): Node with an
 /// application password, and a visitor with no credential, against the site. Listing, paging and
-/// creating rows, running an action and reading `me` each go to core's ability run route
-/// (`/wp-json/wp-abilities/v1/abilities/<app>/…/run`) with the method the ability takes; a schema
+/// creating rows and running an action each go to core's ability run route
+/// (`/wp-json/wp-abilities/v1/abilities/<app>/…/run`) with the method the ability takes, `me` to the
+/// app API's `/me`; a schema
 /// refusal and a refused write come back as the client's typed error.
 #[test]
 fn the_client_outside_wordpress_runs_the_apps_abilities() {
@@ -3759,11 +3764,11 @@ fn the_client_outside_wordpress_runs_the_apps_abilities() {
             format!("GET {run}/guestbook-list/run"),
             format!("GET {run}/guestbook-list/run"),
             format!("POST {run}/like/run"),
-            format!("GET {run}/me/run"),
+            "GET /wp-json/typedpress/v1/me".to_string(),
             format!("POST {run}/like/run"),
             format!("GET {run}/guestbook-list/run"),
             format!("POST {run}/like/run"),
-            format!("GET {run}/me/run"),
+            "GET /wp-json/typedpress/v1/me".to_string(),
             format!("POST {run}/guestbook-update/run"),
         ]),
         "{seen}"

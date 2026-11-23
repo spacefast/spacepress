@@ -7,8 +7,16 @@
 // rebuild. An unchanged answer touches nothing.
 import { createClient, pageRead } from "@typedpress/client";
 
-// With the REST root and a signed-in visitor's nonce the page prints for the client.
-const client = createClient();
+// A signed-in visitor's nonce from the page's client data, given explicitly: a client an app built
+// before reading that data itself sends it too.
+const client = createClient((() => {
+  try {
+    const nonce = JSON.parse(document.getElementById("wp-script-module-data-@typedpress/client")?.textContent || "{}").nonce;
+    return typeof nonce === "string" ? { nonce, wordpress: true } : {};
+  } catch {
+    return {};
+  }
+})());
 
 const html = new Map(); // region id → the HTML now on the page
 

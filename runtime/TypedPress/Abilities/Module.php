@@ -50,7 +50,10 @@ final class Module
         add_filter('rest_pre_dispatch', [Register::class, 'jsonInput'], -1, 3);
         add_filter('rest_pre_dispatch', Register::sanitizing(true), 0, 3);
         add_filter('rest_request_before_callbacks', Register::sanitizing(false), 0);
-        add_filter('rest_post_dispatch', [Register::class, 'dispatched'], 0);
+        add_filter('rest_post_dispatch', [Register::class, 'dispatched'], 0, 3);
+        // An identity session cookie (where the host turns that on) signs in a run of the app's own
+        // abilities, as it does on the app API: the typed client runs them there.
+        add_filter('tp_identity_rest_cookie_route', [Register::class, 'cookieRoute'], 10, 2);
         // An internal dispatch (rest_do_request, the API's run of an action) skips rest_post_dispatch:
         // the operation's own headers go on the run response here.
         add_filter('rest_request_after_callbacks', [Register::class, 'answered'], 0, 3);

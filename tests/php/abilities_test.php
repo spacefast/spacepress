@@ -38,6 +38,13 @@ $wp = wpSite('abilities', [
                 'execute_callback' => static fn () => new WP_Error('acme_teapot', 'I am a teapot', ['status' => 418]),
             ]);
         });
+        // A plugin's own hidden operation beside the app's.
+        add_filter('tp_ability_operations', static function (array $ops, string $app): array {
+            $ops[] = ['name' => "$app/plugin-hidden", 'op' => 'action', 'agents' => false, 'typedpress' => [], 'label' => 'Hidden', 'description' => 'A plugin operation',
+                'input' => ['type' => 'object', 'default' => []], 'output' => [], 'annotations' => ['readonly' => true, 'idempotent' => true],
+                'rule' => [['role' => 'anyone'], 'read', 'x'], 'run' => static fn (): int => 1];
+            return $ops;
+        }, 10, 2);
         // Another plugin exposing every post type to core's content abilities (WordPress 7.2).
         add_filter('register_post_type_args', static fn (array $args): array => ['show_in_abilities' => true] + $args, 99);
         PHP],
@@ -88,5 +95,42 @@ if (wp_has_ability('core/content-query')) {
 } else {
     echo "  (WordPress " . get_bloginfo('version') . " has no core/content-query; checked the post type args only)\n";
 }
+
+// Core's run route serves an `agents: false` operation of the app's own schema (its typed client
+// runs it) only while that run is the request; a nested internal REST request keeps the outer one's
+// state, and nothing outlives it.
+$hidden = new ReflectionProperty(\TypedPress\Wp\Abilities\Register::class, 'runRoute');
+$wp->actAs('editor');
+$outerSeen = null;
+$probe = static function (mixed $response, mixed $handler, mixed $request) use (&$outerSeen) {
+    if ($request instanceof WP_REST_Request && str_contains((string) $request->get_route(), '/blog/published-count/run')) {
+        // A plugin's own REST read inside the outer run's callbacks.
+        rest_do_request(new WP_REST_Request('GET', '/wp/v2/types'));
+        $outerSeen = \TypedPress\Wp\Abilities\Register::running();
+    }
+    return $response;
+};
+add_filter('rest_request_before_callbacks', $probe, 5, 3);
+$run = new WP_REST_Request('GET', '/wp-abilities/v1/abilities/blog/published-count/run');
+$run->set_query_params(['input' => '{}']);
+$answer = rest_do_request($run);
+remove_filter('rest_request_before_callbacks', $probe, 5);
+eq('a nested REST request inside a run leaves the outer run its own state', $outerSeen, 'blog/published-count');
+eq('the run answers', $answer->get_status(), 200);
+eq('nothing of the run outlives it', $hidden->getValue(), null);
+// An operation a plugin adds through tp_ability_operations is not the app's own: hidden from agents,
+// it gets no run route (the mu-plugin above registers `blog/plugin-hidden`).
+eq('a plugin\'s hidden operation is not served at the run route', rest_do_request(new WP_REST_Request('GET', '/wp-abilities/v1/abilities/blog/plugin-hidden/run'))->get_status(), 404);
+eq('it is registered all the same', wp_has_ability('blog/plugin-hidden'), true);
+// An Identity session cookie (where the host turns it on) signs in a run of the app's own operations,
+// as on the app API; another plugin's run route, or a feature's hidden operation, stays out.
+eq('identity cookie routes: the app API, an app operation\'s run route, nothing else', [
+    apply_filters('tp_identity_rest_cookie_route', true, '/typedpress/v1/me'),
+    apply_filters('tp_identity_rest_cookie_route', false, '/wp-abilities/v1/abilities/blog/published-count/run'),
+    apply_filters('tp_identity_rest_cookie_route', false, '/wp-abilities/v1/abilities/blog/plugin-hidden/run'),
+    apply_filters('tp_identity_rest_cookie_route', false, '/wp-abilities/v1/abilities/acme/greet/run'),
+    apply_filters('tp_identity_rest_cookie_route', false, '/wp/v2/users/me'),
+], [true, true, false, false, false]);
+$wp->actAs(null);
 
 finish('abilities');

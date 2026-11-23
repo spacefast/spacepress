@@ -7,7 +7,18 @@
 import { createClient } from "@typedpress/client";
 
 let client;
-const page = () => (client ??= createClient());
+// A signed-in visitor's nonce from the page's client data, given explicitly: a client an app built
+// before reading that data itself sends it too.
+const page = () => (client ??= createClient(pageNonce()));
+
+function pageNonce() {
+  try {
+    const nonce = JSON.parse(document.getElementById("wp-script-module-data-@typedpress/client")?.textContent || "{}").nonce;
+    return typeof nonce === "string" ? { nonce, wordpress: true } : {};
+  } catch {
+    return {};
+  }
+}
 
 export function live(context, field) {
   const value = context[field];

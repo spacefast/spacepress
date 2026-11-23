@@ -190,7 +190,7 @@ final class Islands
             return $done = false;
         }
         wp_register_script_module(self::LIVE, plugins_url('tp/Render/client/live.js', Wp\Runtime::file()), [self::CLIENT], self::runtimeVersion());
-        // The live reads go as the visitor through wp.apiFetch, which carries the REST nonce.
+        // The live reads go as the visitor, with the nonce the page prints for a signed-in one.
         self::useClient();
 
         return $done = true;
@@ -269,9 +269,9 @@ final class Islands
                         : Wp\Facade::url('/actions/' . rawurlencode((string) $action));
                 }
                 $config['actions'] = (object) $actions;
-                // A prebuilt page is the same file for days, past a nonce's lifetime, and only signed-out
-                // visitors get it: they need no nonce, and an expired one would refuse their calls.
-                if (!$viaClient && !\TypedPress\Render\Prebuilt::prerendering()) {
+                // Only a signed-in visitor needs one: a signed-out page is cached and prebuilt, past a
+                // nonce's lifetime, and an expired one would refuse its calls.
+                if (!$viaClient && is_user_logged_in()) {
                     $config['nonce'] = wp_create_nonce('wp_rest');
                 }
             }

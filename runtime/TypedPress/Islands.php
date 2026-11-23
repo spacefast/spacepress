@@ -99,9 +99,60 @@ final class Islands
         }
         // The file has a fixed name: its version is a digest of its bytes, written by `typedpress build`.
         $version = is_file($plugin->dir . '/tp/app/client-version.php') ? (string) require $plugin->dir . '/tp/app/client-version.php' : null;
-        wp_register_script_module(self::CLIENT, $plugin->url('tp/app/client/typedpress-client.js'), [], $version);
+        // On a WordPress page the client runs each operation as an Ability through WordPress's own
+        // clients: `@wordpress/abilities` (executeAbility) once `@wordpress/core-abilities` has loaded
+        // the server's abilities, and `wp.apiFetch`. Both modules are dynamic imports of the client,
+        // so a page loads them only when it calls something.
+        wp_register_script_module(self::CLIENT, $plugin->url('tp/app/client/typedpress-client.js'), [
+            ['id' => '@wordpress/abilities', 'import' => 'dynamic'],
+            ['id' => '@wordpress/core-abilities', 'import' => 'dynamic'],
+        ], $version);
 
         return true;
+    }
+
+    /** Whether a module this page enqueues runs the client: the page loads what it runs on. */
+    private static bool $clientUsed = false;
+
+    /**
+     * A module this page enqueues imports the client: load the classic scripts it and WordPress's
+     * modules read from `window.wp` (core-abilities: wp-api-fetch, wp-url; abilities: wp-data,
+     * wp-i18n), which a script module can't declare. Core's own pages enqueue them beside the
+     * module, and so does this. `wp-api-fetch` carries the REST root and, for a signed-in visitor,
+     * the REST nonce.
+     */
+    public static function useClient(): void
+    {
+        if (self::$clientUsed) {
+            return;
+        }
+        self::$clientUsed = true;
+        if (did_action('wp_enqueue_scripts')) {
+            self::clientScripts();
+        } else {
+            add_action('wp_enqueue_scripts', [self::class, 'clientScripts'], 20);
+        }
+    }
+
+    /** The classic scripts {@see useClient()} names, printed in the head so `wp.apiFetch` exists before any module runs. */
+    public static function clientScripts(): void
+    {
+        // `@wordpress/abilities` (wp-data, wp-i18n) runs only for a signed-in visitor, whom core
+        // lists abilities to; a visitor's page needs api-fetch alone.
+        foreach (is_user_logged_in() ? ['wp-api-fetch', 'wp-url', 'wp-data', 'wp-i18n'] : ['wp-api-fetch', 'wp-url'] as $handle) {
+            wp_enqueue_script($handle);
+        }
+        // A signed-out render is cached and prebuilt, and the nonce core prints beside api-fetch would
+        // outlive its lifetime there: a stale one is refused (`rest_cookie_invalid_nonce`). A visitor
+        // with no session needs none, so core's nonce middleware is left out of the page. No
+        // `wp.apiFetch.nonceMiddleware` is also how the client knows it is a visitor's page (core lists
+        // abilities only to a signed-in user), so it runs each ability at its run route.
+        if (!is_user_logged_in()) {
+            $after = wp_scripts()->get_data('wp-api-fetch', 'after');
+            if (is_array($after)) {
+                wp_scripts()->add_data('wp-api-fetch', 'after', array_values(array_filter($after, static fn (mixed $script): bool => !is_string($script) || !str_contains($script, 'createNonceMiddleware'))));
+            }
+        }
     }
 
     /**
@@ -128,9 +179,9 @@ final class Islands
         if (!self::registerClient()) {
             return $done = false;
         }
-        wp_register_script_module(self::LIVE, plugins_url('tp/Render/client/live.js', Wp\Runtime::file()), [self::CLIENT, '@wordpress/interactivity'], self::runtimeVersion());
-        // The live reads go as the visitor: a signed-in visitor's cookie needs the REST nonce.
-        wp_interactivity_config('tp/live', ['nonce' => is_user_logged_in() ? wp_create_nonce('wp_rest') : '']);
+        wp_register_script_module(self::LIVE, plugins_url('tp/Render/client/live.js', Wp\Runtime::file()), [self::CLIENT], self::runtimeVersion());
+        // The live reads go as the visitor through wp.apiFetch, which carries the REST nonce.
+        self::useClient();
 
         return $done = true;
     }
@@ -164,7 +215,7 @@ final class Islands
         return new JsObject(['data' => Js::decodeJson((string) ($result['json'] ?? 'null')), 'error' => JsUndefined::Value, 'loading' => false, '$live' => $live]);
     }
 
-    /** Registers and enqueues each rendered component's store, with its action endpoints and a REST nonce. */
+    /** Registers and enqueues each rendered component's store, and the typed client a store that calls an action runs. */
     public static function enqueue(): void
     {
         $plugin = Wp\Runtime::plugin();
@@ -182,18 +233,18 @@ final class Islands
             if (($island['live'] ?? false) === true && self::registerLive()) {
                 $deps[] = self::LIVE;
             }
+            // A store that calls a server action imports the typed client, which runs it as the
+            // action's Ability (`client.actions.<name>()`); WordPress's api-fetch carries the nonce.
+            if (($island['actions'] ?? []) !== [] && self::registerClient()) {
+                $deps[] = self::CLIENT;
+                self::useClient();
+            }
             wp_register_script_module($handle, $plugin->url('tp/app/client/' . $island['file']), $deps, null);
             wp_enqueue_script_module($handle);
             // A <Link> that swaps the router region onto this page loads the store then
             // (core marks the tag `data-wp-router-options`), and merges this page's config.
             wp_interactivity()->add_client_navigation_support_to_script_module($handle);
-            $actions = [];
-            foreach ($island['actions'] as $action) {
-                $actions[$action] = Wp\Facade::url('/actions/' . rawurlencode((string) $action));
-            }
-            // A prebuilt page is the same file for days, past a nonce's lifetime, and only signed-out
-            // visitors get it: they need no nonce, and an expired one would refuse their calls.
-            $config = ['actions' => (object) $actions];
+            $config = [];
             if (is_array($island['assets'] ?? null) && $island['assets'] !== []) {
                 $assets = [];
                 foreach ($island['assets'] as $name => $entry) {
@@ -210,10 +261,9 @@ final class Islands
                 }
                 $config['assets'] = (object) $assets;
             }
-            if (!\TypedPress\Render\Prebuilt::prerendering()) {
-                $config['nonce'] = wp_create_nonce('wp_rest');
+            if ($config !== []) {
+                wp_interactivity_config($namespace, $config);
             }
-            wp_interactivity_config($namespace, $config);
         }
     }
 }

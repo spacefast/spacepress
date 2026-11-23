@@ -3,6 +3,33 @@
 
 export const SCHEMA = {
   "name": "drive-locker",
+  "app": "drive-locker",
+  "abilities": {
+    "actions": {
+      "logHealth": {
+        "ability": "log-health"
+      },
+      "whereIs": {
+        "ability": "where-is",
+        "readonly": true,
+        "idempotent": true
+      },
+      "capacityReport": {
+        "ability": "capacity-report",
+        "readonly": true,
+        "idempotent": true
+      },
+      "warrantyExpiring": {
+        "ability": "warranty-expiring",
+        "readonly": true,
+        "idempotent": true
+      },
+      "retire": {
+        "ability": "retire"
+      }
+    },
+    "globals": {}
+  },
   "collections": {
     "places": {
       "path": "places",
@@ -20,7 +47,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "places"
     },
     "drives": {
       "path": "drives",
@@ -48,7 +76,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "drives"
     },
     "healthReadings": {
       "path": "health_readings",
@@ -66,7 +95,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "health-readings"
     },
     "contents": {
       "path": "contents",
@@ -84,7 +114,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "contents"
     },
     "members": {
       "path": "members",
@@ -96,7 +127,8 @@ export const SCHEMA = {
       "relations": {},
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "members"
     }
   },
   "globals": [],

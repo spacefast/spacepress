@@ -16,13 +16,18 @@ import { createHash } from "node:crypto";
 const SCHEMA_TS = `export const SCHEMA = {
   name: "blog",
   collections: {
-    posts: { path: "posts", primaryKey: "id", drafts: true, revisions: true,
+    posts: { path: "posts", ability: "posts", primaryKey: "id", drafts: true, revisions: true,
       relations: { author: { kind: "one", collection: "authors", optional: true } }, media: ["cover"], mediaList: [], files: ["deck"] },
-    authors: { path: "authors", primaryKey: "id", drafts: true, revisions: true,
+    authors: { path: "authors", ability: "authors", primaryKey: "id", drafts: true, revisions: true,
       relations: { posts: { kind: "many", collection: "posts", optional: false } }, media: [], mediaList: [], files: [] },
-    shoppingList: { path: "shopping_list", primaryKey: "id", drafts: false, revisions: false, relations: {}, media: [], mediaList: [], files: [] },
-    comments: { path: "comments", primaryKey: "id", drafts: false, revisions: false,
+    shoppingList: { path: "shopping_list", ability: "shopping-list", primaryKey: "id", drafts: false, revisions: false, relations: {}, media: [], mediaList: [], files: [] },
+    comments: { path: "comments", ability: "comments", primaryKey: "id", drafts: false, revisions: false,
       relations: { post: { kind: "one", collection: "posts", optional: false } }, media: [], mediaList: [], files: [] },
+  },
+  app: "blog",
+  abilities: {
+    actions: { approveComment: { ability: "approve-comment" }, publishedCount: { ability: "published-count", readonly: true, idempotent: true } },
+    globals: { settings: "settings" },
   },
   globals: ["settings"],
   actions: ["approveComment", "publishedCount"],
@@ -63,11 +68,21 @@ before(async () => {
     const s: Seen = { method: req.method ?? "", path: u.pathname, query: u.searchParams, headers: req.headers, body: Buffer.concat(chunks) };
     seen.push(s);
     const r = reply(s);
-    res.writeHead(r.status, { "content-type": r.type ?? "application/json" }).end(r.body);
+    // An ability's run route answers the ability's output as is: a `{ data }` reply is unwrapped.
+    let body = r.body;
+    if (s.path.startsWith("/wp-json/wp-abilities/") && r.status < 300) {
+      try {
+        const parsed = JSON.parse(r.body);
+        if (parsed && typeof parsed === "object" && "data" in parsed) body = JSON.stringify(parsed.data);
+      } catch {
+        // not JSON: sent as it is
+      }
+    }
+    res.writeHead(r.status, { "content-type": r.type ?? "application/json" }).end(body);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  url = `${origin}/wp-json/typedpress/v1`;
+  url = `${origin}/wp-json`;
 });
 
 after(() => {
@@ -120,9 +135,15 @@ function stubBrowser(search = "") {
 
 const sha256url = (v: string) => createHash("sha256").update(v).digest("base64url");
 
-test("list encodes where/orderBy/limit/offset/status/locale; with is a comma list or JSON", async () => {
+const RUN = "/wp-json/wp-abilities/v1/abilities/blog";
+/** The ability input a GET or DELETE run carried in its query (`?input=<JSON>`). */
+const queryInput = (s: Seen) => (s.query.get("input") === null ? undefined : JSON.parse(s.query.get("input") ?? ""));
+/** The ability input a POST run carried in its body (`{ input }`). */
+const bodyInput = (s: Seen) => JSON.parse(s.body.toString()).input;
+
+test("list runs the kind's -list ability with where/orderBy/limit/offset/status/locale/with as its input", async () => {
   seen = [];
-  reply = ok([{ id: 1 }]);
+  reply = ok({ rows: [{ id: 1 }] });
   const first = mod.createClient({ url: url + "/" });
   const rows = await first.posts.list({
     where: { tags: { has: "news" }, OR: [{ title: { like: "%a&b%" } }] },
@@ -134,57 +155,54 @@ test("list encodes where/orderBy/limit/offset/status/locale; with is a comma lis
     with: { author: true, cover: true },
   });
   assert.deepEqual(rows, [{ id: 1 }]);
-  assert.equal(last().query.get("locale"), "de");
-  const q = last().query;
-  assert.equal(last().method, "GET");
-  assert.equal(last().path, "/wp-json/typedpress/v1/posts");
-  assert.deepEqual(JSON.parse(q.get("where") ?? ""), { tags: { has: "news" }, OR: [{ title: { like: "%a&b%" } }] });
-  assert.deepEqual([q.get("orderBy"), q.get("limit"), q.get("offset"), q.get("status"), q.get("with")], ["-createdAt,title", "10", "20", "draft", "author,cover"]);
+  assert.deepEqual([last().method, last().path], ["GET", `${RUN}/posts-list/run`]);
+  assert.deepEqual(queryInput(last()), {
+    where: { AND: [{ tags: { has: "news" }, OR: [{ title: { like: "%a&b%" } }] }, { status: "draft" }] },
+    orderBy: { createdAt: "desc", title: "asc" },
+    limit: 10,
+    offset: 20,
+    locale: "de",
+    with: { author: true, cover: true },
+  });
 
-  // Any entry with options switches `with` to JSON; nested orderBy strings travel as objects.
+  // `get` is the -get ability; nested orderBy strings travel as objects.
+  reply = ok({ id: 7 });
   await first.posts.get(7, { with: { author: { with: { posts: true }, orderBy: "-id", limit: 2 } }, locale: "*" });
-  assert.equal(last().path, "/wp-json/typedpress/v1/posts/7");
-  assert.equal(last().query.get("locale"), "*");
-  assert.deepEqual(JSON.parse(last().query.get("with") ?? ""), { author: { with: { posts: true }, orderBy: { id: "desc" }, limit: 2 } });
+  assert.equal(last().path, `${RUN}/posts-get/run`);
+  assert.deepEqual(queryInput(last()), { id: 7, locale: "*", with: { author: { with: { posts: true }, orderBy: { id: "desc" }, limit: 2 } } });
 
-  // The collection key is not the path: shoppingList lives at /shopping_list.
+  // The collection key is not the ability: shoppingList is `blog/shopping-list-list`.
+  reply = ok({ rows: [] });
   await first.shoppingList.list();
-  assert.equal(last().path, "/wp-json/typedpress/v1/shopping_list");
-  assert.equal(last().query.toString(), "");
+  assert.equal(last().path, `${RUN}/shopping-list-list/run`);
+  assert.equal(queryInput(last()), undefined);
 
-  // paginate: the envelope's cursor, passed back as `cursor`.
-  reply = () => ({ status: 200, body: JSON.stringify({ data: [{ id: 2 }], cursor: "c2" }) });
-  assert.deepEqual(await first.posts.paginate({ limit: 1 }), { rows: [{ id: 2 }], cursor: "c2" });
-  reply = () => ({ status: 200, body: JSON.stringify({ data: [{ id: 3 }], cursor: null }) });
-  assert.deepEqual(await first.posts.paginate({ limit: 1, cursor: "c2" }), { rows: [{ id: 3 }], cursor: null });
-  assert.deepEqual([last().query.get("cursor"), last().query.get("limit")], ["c2", "1"]);
+  // paginate: one row more than asked tells whether another page follows; the cursor is opaque.
+  reply = ok({ rows: [{ id: 2 }, { id: 3 }] });
+  const page = await first.posts.paginate({ limit: 1 });
+  assert.deepEqual(page.rows, [{ id: 2 }]);
+  assert.equal(typeof page.cursor, "string");
+  assert.deepEqual(queryInput(last()), { limit: 2, offset: 0 });
+  reply = ok({ rows: [{ id: 3 }] });
+  assert.deepEqual(await first.posts.paginate({ limit: 1, cursor: page.cursor }), { rows: [{ id: 3 }], cursor: null });
+  assert.deepEqual(queryInput(last()), { limit: 2, offset: 1 });
 });
 
-test("revisions.list follows the cursor and returns every revision, newest first", async () => {
+test("revisions.list runs the -revisions ability and returns every revision, newest first", async () => {
   seen = [];
-  const pages: Record<string, { data: unknown[]; cursor: string | null }> = {
-    "": { data: [{ id: 9 }, { id: 8 }], cursor: "c1" },
-    c1: { data: [{ id: 7 }], cursor: null },
-  };
-  reply = (s) => ({ status: 200, body: JSON.stringify(pages[s.query.get("cursor") ?? ""]) });
+  reply = ok({ revisions: [{ id: 9 }, { id: 8 }, { id: 7 }] });
   const first = mod.createClient({ url });
   assert.deepEqual(await first.posts.revisions.list(1), [{ id: 9 }, { id: 8 }, { id: 7 }]);
-  assert.deepEqual(seen.map((s) => [s.path, s.query.get("cursor"), s.query.get("limit")]), [
-    ["/wp-json/typedpress/v1/posts/1/revisions", null, "100"],
-    ["/wp-json/typedpress/v1/posts/1/revisions", "c1", "100"],
-  ]);
+  assert.deepEqual(seen.map((s) => [s.method, s.path, queryInput(s)]), [["GET", `${RUN}/posts-revisions/run`, { id: 1 }]]);
 });
 
-test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSON bodies", async () => {
+test("writes, revisions, globals, actions and auth run their abilities, with the method core's run route takes", async () => {
   seen = [];
   reply = ok({ id: 1 });
   const first = mod.createClient({ url });
   await first.posts.create({ title: "Hi" });
   await first.posts.update(1, { title: "Yo" });
   await first.posts.delete(1);
-  reply = () => ({ status: 200, body: JSON.stringify({ data: [], cursor: null }) });
-  await first.posts.revisions.list(1);
-  reply = ok({ id: 1 });
   await first.posts.revisions.get(1, 4);
   await first.posts.revisions.restore(1, 4);
   await first.posts.stage(1, { title: "Staged" });
@@ -206,32 +224,31 @@ test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSO
   await first.auth.me();
   await first.schema();
   assert.deepEqual(
-    seen.map((s) => `${s.method} ${s.path}${s.query.size ? `?${s.query}` : ""} ${s.body.toString()}`),
+    seen.map((s) => `${s.method} ${s.path.replace(RUN, "")} ${JSON.stringify(s.method === "POST" && s.path.startsWith(RUN) ? bodyInput(s) : queryInput(s) ?? null)}`),
     [
-      'POST /wp-json/typedpress/v1/posts {"title":"Hi"}',
-      'PATCH /wp-json/typedpress/v1/posts/1 {"title":"Yo"}',
-      "DELETE /wp-json/typedpress/v1/posts/1 ",
-      "GET /wp-json/typedpress/v1/posts/1/revisions?limit=100 ",
-      "GET /wp-json/typedpress/v1/posts/1/revisions/4 ",
-      "POST /wp-json/typedpress/v1/posts/1/revisions/4/restore ",
-      'PATCH /wp-json/typedpress/v1/posts/1/staged {"title":"Staged"}',
-      "GET /wp-json/typedpress/v1/posts/1/staged ",
-      "GET /wp-json/typedpress/v1/posts/1/staged/compare ",
-      'POST /wp-json/typedpress/v1/posts/1/staged/promote {"at":"2030-01-01T00:00:00Z"}',
-      'POST /wp-json/typedpress/v1/posts/1/staged/promote {"at":null}',
-      "POST /wp-json/typedpress/v1/posts/1/staged/promote {}",
-      "DELETE /wp-json/typedpress/v1/posts/1/staged ",
-      'PATCH /wp-json/typedpress/v1/posts/1 {"title":"Yo","_rev":"r1","takeover":true}',
-      "DELETE /wp-json/typedpress/v1/posts/1?_rev=r2&takeover=1 ",
-      'POST /wp-json/typedpress/v1/posts/1/staged/promote {"_rev":"r3"}',
-      "DELETE /wp-json/typedpress/v1/posts/1/staged?_rev=r4 ",
-      'POST /wp-json/typedpress/v1/posts/1/staged/preview {"ttl":600}',
-      "GET /wp-json/typedpress/v1/settings ",
-      'PATCH /wp-json/typedpress/v1/settings {"tagline":"x"}',
-      'POST /wp-json/typedpress/v1/actions/approveComment {"id":3}',
-      "POST /wp-json/typedpress/v1/actions/publishedCount {}",
-      "GET /wp-json/typedpress/v1/me ",
-      "GET /wp-json/typedpress/v1 ",
+      'POST /posts-create/run {"title":"Hi"}',
+      'POST /posts-update/run {"id":1,"patch":{"title":"Yo"}}',
+      'POST /posts-delete/run {"id":1}',
+      'GET /posts-revision-get/run {"id":1,"revision":4}',
+      'POST /posts-revision-restore/run {"id":1,"revision":4}',
+      'POST /posts-stage/run {"id":1,"patch":{"title":"Staged"}}',
+      'GET /posts-staged-get/run {"id":1}',
+      'GET /posts-staged-compare/run {"id":1}',
+      'POST /posts-staged-promote/run {"id":1,"at":"2030-01-01T00:00:00Z"}',
+      'POST /posts-staged-promote/run {"id":1,"at":null}',
+      'POST /posts-staged-promote/run {"id":1}',
+      'POST /posts-staged-discard/run {"id":1}',
+      'POST /posts-update/run {"id":1,"patch":{"title":"Yo"},"_rev":"r1","takeover":true}',
+      'POST /posts-delete/run {"id":1,"_rev":"r2","takeover":true}',
+      'POST /posts-staged-promote/run {"id":1,"_rev":"r3"}',
+      'POST /posts-staged-discard/run {"id":1,"_rev":"r4"}',
+      'POST /posts-staged-preview/run {"id":1,"ttl":600}',
+      "GET /global-settings-get/run null",
+      'POST /global-settings-update/run {"tagline":"x"}',
+      'POST /approve-comment/run {"id":3}',
+      "GET /published-count/run null",
+      "GET /me/run null",
+      "GET /wp-json/typedpress/v1 null",
     ],
   );
   assert.equal(seen[0].headers["content-type"], "application/json");
@@ -288,16 +305,29 @@ test("problem documents become TypedPressError with every field; non-problem fai
   const forbidden = await first.actions.approveComment({ id: 1 }).catch((e: unknown) => e);
   assert.deepEqual([forbidden.status, forbidden.code, forbidden.pointer], [403, "forbidden", undefined]);
 
-  // A WordPress core error body (before TypedPress's route runs) maps onto the same shape.
-  reply = () => ({ status: 401, body: JSON.stringify({ code: "rest_cookie_invalid_nonce", message: "Cookie check failed", data: { status: 403 } }) });
+  // A WordPress core error body maps onto the client's own codes: a stale cookie nonce is forbidden.
+  reply = () => ({ status: 403, body: JSON.stringify({ code: "rest_cookie_invalid_nonce", message: "Cookie check failed", data: { status: 403 } }) });
   const wpErr = await first.auth.me().catch((e: unknown) => e);
-  assert.deepEqual([wpErr.status, wpErr.code, wpErr.detail], [401, "rest_cookie_invalid_nonce", "Cookie check failed"]);
+  assert.deepEqual([wpErr.status, wpErr.code, wpErr.detail], [403, "forbidden", "Cookie check failed"]);
+
+  // An ability's own errors, as core's run route answers them: TypedPress's code under `tp_`, the
+  // pointer in `data`, and core's schema refusal as invalid_input with its reason.
+  reply = () => ({ status: 422, body: JSON.stringify({ code: "tp_invalid_input", message: "Too long", data: { status: 422, pointer: "/title" } }) });
+  const tpErr = await first.posts.create({ title: "x" }).catch((e: unknown) => e);
+  assert.deepEqual([tpErr.status, tpErr.code, tpErr.detail, tpErr.pointer], [422, "invalid_input", "Too long", "/title"]);
+  reply = () => ({ status: 400, body: JSON.stringify({ code: "ability_invalid_input", message: "Ability \"blog/approve-comment\" has invalid input. Reason: input[id] is not of type integer.", data: { status: 400 } }) });
+  const schemaErr = await first.actions.approveComment({ id: 1 }).catch((e: unknown) => e);
+  assert.deepEqual([schemaErr.status, schemaErr.code], [422, "invalid_input"]);
+  assert.match(schemaErr.detail, /is not of type integer/);
+  reply = () => ({ status: 401, body: JSON.stringify({ code: "rest_ability_cannot_execute", message: "Sorry, you are not allowed to execute this ability.", data: { status: 401 } }) });
+  const denied = await first.actions.approveComment({ id: 1 }).catch((e: unknown) => e);
+  assert.deepEqual([denied.status, denied.code], [401, "unauthenticated"]);
 
   // HTML from a proxy, and an unreachable server: status 0, code "network".
   reply = () => ({ status: 502, type: "text/html", body: "<h1>Bad gateway</h1>" });
   const html = await first.posts.list().catch((e: unknown) => e);
   assert.deepEqual([html.status, html.code], [0, "network"]);
-  const down = await mod.createClient({ url: "http://127.0.0.1:1/wp-json/typedpress/v1" }).posts.list().catch((e: unknown) => e);
+  const down = await mod.createClient({ url: "http://127.0.0.1:1/wp-json" }).posts.list().catch((e: unknown) => e);
   assert.deepEqual([down instanceof mod.TypedPressError, down.status, down.code], [true, 0, "network"]);
 });
 
@@ -322,21 +352,23 @@ test("media upload is multipart with `file` (+ filename, type) and `alt`", async
   const again = await new Response(last().body, { headers: { "content-type": last().headers["content-type"] ?? "" } }).formData();
   assert.deepEqual([(again.get("file") as File).name, again.has("alt")], ["own.png", false]);
 
-  await first.media.list({ where: { mime: { like: "image/%" } }, limit: 5 });
-  assert.deepEqual([last().path, last().query.get("limit"), JSON.parse(last().query.get("where") ?? "")], ["/wp-json/typedpress/v1/media", "5", { mime: { like: "image/%" } }]);
+  reply = ok({ rows: [media] });
+  assert.deepEqual(await first.media.list({ where: { mime: { like: "image/%" } }, limit: 5 }), [media]);
+  assert.deepEqual([last().path, queryInput(last())], [`${RUN}/media-list/run`, { where: { mime: { like: "image/%" } }, limit: 5 }]);
+  reply = ok(media);
   await first.media.delete(9);
-  assert.deepEqual([last().method, last().path], ["DELETE", "/wp-json/typedpress/v1/media/9"]);
+  assert.deepEqual([last().method, last().path, bodyInput(last())], ["POST", `${RUN}/media-delete/run`, { id: 9 }]);
 });
 
-test("media.update is a JSON PATCH of alt/focal", async () => {
+test("media.update runs media-update with alt/focal as its patch", async () => {
   reply = ok({ id: 9 });
   const first = mod.createClient({ url });
   await first.media.update(9, { focal: { x: 0.25, y: 1 }, alt: null });
-  assert.deepEqual([last().method, last().path, last().headers["content-type"], JSON.parse(last().body.toString())],
-    ["PATCH", "/wp-json/typedpress/v1/media/9", "application/json", { focal: { x: 0.25, y: 1 }, alt: null }]);
+  assert.deepEqual([last().method, last().path, last().headers["content-type"], bodyInput(last())],
+    ["POST", `${RUN}/media-update/run`, "application/json", { id: 9, patch: { focal: { x: 0.25, y: 1 }, alt: null } }]);
 });
 
-test("files.<bucket> upload/get/delete hit /files/<bucket>", async () => {
+test("files.<bucket> upload/get/delete hit TypedPress's /files/<bucket> REST route", async () => {
   const row = { id: 4, bucket: "decks", url: "/wp-json/typedpress/v1/files/decks/4/download?exp=1&sig=ab" };
   reply = ok(row);
   const first = mod.createClient({ url });
@@ -349,11 +381,11 @@ test("files.<bucket> upload/get/delete hit /files/<bucket>", async () => {
   assert.deepEqual([last().method, last().path], ["DELETE", "/wp-json/typedpress/v1/files/decks/4"]);
 });
 
-test("default base URL is the REST prefix on the page's origin", async () => {
+test("default base URL is WordPress's REST root on the page's origin", async () => {
   let requested = "";
   const first = mod.createClient({ fetch: async (input: RequestInfo | URL) => ((requested = String(input)), new Response('{"data":null}')) });
   await first.auth.me();
-  assert.equal(requested, "/wp-json/typedpress/v1/me");
+  assert.equal(requested, "/wp-json/wp-abilities/v1/abilities/blog/me/run");
 });
 
 test("a 401 unauthenticated refreshes once at the issuer and retries once; a refused refresh forgets the session and surfaces the 401", async () => {
@@ -363,14 +395,14 @@ test("a 401 unauthenticated refreshes once at the issuer and retries once; a ref
 
   // za_1 has expired: the server takes only za_2, which the rotated refresh hands out.
   seen = [];
-  reply = (s) => (s.path === "/identity/token" ? rotated(2) : s.headers.authorization === "Bearer za_2" ? ok([{ id: 1 }])() : problem(401, "unauthenticated"));
+  reply = (s) => (s.path === "/identity/token" ? rotated(2) : s.headers.authorization === "Bearer za_2" ? ok({ rows: [{ id: 1 }] })() : problem(401, "unauthenticated"));
   assert.deepEqual(await first.posts.list(), [{ id: 1 }]);
   await first.posts.list();
   assert.deepEqual(lines(), [
-    "GET /wp-json/typedpress/v1/posts Bearer za_1",
+    "GET /wp-json/wp-abilities/v1/abilities/blog/posts-list/run Bearer za_1",
     "POST /identity/token - grant_type=refresh_token&refresh_token=zr_1&client_id=",
-    "GET /wp-json/typedpress/v1/posts Bearer za_2",
-    "GET /wp-json/typedpress/v1/posts Bearer za_2",
+    "GET /wp-json/wp-abilities/v1/abilities/blog/posts-list/run Bearer za_2",
+    "GET /wp-json/wp-abilities/v1/abilities/blog/posts-list/run Bearer za_2",
   ]);
   assert.equal(first.auth.session()?.refreshToken, "zr_2");
 
@@ -385,10 +417,10 @@ test("a 401 unauthenticated refreshes once at the issuer and retries once; a ref
     assert.deepEqual([err instanceof mod.TypedPressError, err.status, err.code], [true, 401, "unauthenticated"]);
   }
   assert.deepEqual(lines(), [
-    'POST /wp-json/typedpress/v1/posts Bearer za_2 {"title":"x"}',
+    'POST /wp-json/wp-abilities/v1/abilities/blog/posts-create/run Bearer za_2 {"input":{"title":"x"}}',
     "POST /identity/token - grant_type=refresh_token&refresh_token=zr_2&client_id=",
-    'POST /wp-json/typedpress/v1/posts Bearer za_3 {"title":"x"}',
-    'POST /wp-json/typedpress/v1/posts Bearer za_3 {"title":"y"}',
+    'POST /wp-json/wp-abilities/v1/abilities/blog/posts-create/run Bearer za_3 {"input":{"title":"x"}}',
+    'POST /wp-json/wp-abilities/v1/abilities/blog/posts-create/run Bearer za_3 {"input":{"title":"y"}}',
     "POST /identity/token - grant_type=refresh_token&refresh_token=zr_3&client_id=",
   ]);
   assert.equal(first.auth.session(), null);
@@ -406,11 +438,11 @@ test("guests: the first unauthenticated write starts a guest session and retries
   assert.deepEqual(await first.posts.create({ title: "Hi" }), { id: 1 });
   await first.posts.create({ title: "Again" });
   assert.deepEqual(lines(), [
-    "GET /wp-json/typedpress/v1/posts -",
-    'POST /wp-json/typedpress/v1/posts - {"title":"Hi"}',
+    "GET /wp-json/wp-abilities/v1/abilities/blog/posts-list/run -",
+    'POST /wp-json/wp-abilities/v1/abilities/blog/posts-create/run - {"input":{"title":"Hi"}}',
     "POST /wp-json/typedpress/v1/auth/guest - {}",
-    'POST /wp-json/typedpress/v1/posts Bearer za_1 {"title":"Hi"}',
-    'POST /wp-json/typedpress/v1/posts Bearer za_1 {"title":"Again"}',
+    'POST /wp-json/wp-abilities/v1/abilities/blog/posts-create/run Bearer za_1 {"input":{"title":"Hi"}}',
+    'POST /wp-json/wp-abilities/v1/abilities/blog/posts-create/run Bearer za_1 {"input":{"title":"Again"}}',
   ]);
 
   // Without `guests`, the same write just fails.
@@ -423,7 +455,7 @@ test("guests: two first writes in flight share one guest, even when one 401 land
   // A fetch stub with manual control: each request waits until the test releases it.
   const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
   const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
-  const first = mod.createClient({ url: "http://x/wp-json/typedpress/v1", fetch, auth: { guests: true } });
+  const first = mod.createClient({ url: "http://x/wp-json", fetch, auth: { guests: true } });
   // Microtask turns only (no timers); a bounded count so a regression fails instead of hanging.
   const until = async (n: number) => {
     for (let turn = 0; pending.length < n; turn++) {
@@ -444,9 +476,9 @@ test("guests: two first writes in flight share one guest, even when one 401 land
   await until(4);                                      // a retries with the guest
   pending[1].release(denied());                        // b's 401 arrives after the guest exists
   await until(5);
-  assert.equal(pending[4].url, "http://x/wp-json/typedpress/v1/posts", "b retries with the existing guest instead of starting another");
-  pending[3].release(json(201, { data: { id: 1 } }));
-  pending[4].release(json(201, { data: { id: 2 } }));
+  assert.equal(pending[4].url, "http://x/wp-json/wp-abilities/v1/abilities/blog/posts-create/run", "b retries with the existing guest instead of starting another");
+  pending[3].release(json(200, { id: 1 }));
+  pending[4].release(json(200, { id: 2 }));
   assert.deepEqual([await a, await b], [{ id: 1 }, { id: 2 }]);
   assert.equal(pending.filter((p) => p.url.endsWith("/auth/guest")).length, 1, "one guest");
   assert.deepEqual([pending[3], pending[4]].map((p) => (p.init.headers as Record<string, string>).authorization), ["Bearer za_g", "Bearer za_g"]);
@@ -455,7 +487,7 @@ test("guests: two first writes in flight share one guest, even when one 401 land
 test("a 401 or refresh that outlives a sign-in never acts as the new user", async () => {
   const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
   const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
-  const first = mod.createClient({ url: "http://x/wp-json/typedpress/v1", fetch, auth: { issuer: "http://x/identity" } });
+  const first = mod.createClient({ url: "http://x/wp-json", fetch, auth: { issuer: "http://x/identity" } });
   const until = async (n: number) => {
     for (let turn = 0; pending.length < n; turn++) {
       if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
@@ -508,7 +540,7 @@ test("two clients sharing sessionStorage: one's late 401, guest or sign-out neve
   try {
     const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
     const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
-    const opts = { url: "http://x/wp-json/typedpress/v1", fetch, auth: { storage: "session" as const, guests: true, issuer: "http://x/identity" } };
+    const opts = { url: "http://x/wp-json", fetch, auth: { storage: "session" as const, guests: true, issuer: "http://x/identity" } };
     const a = mod.createClient(opts);
     const b = mod.createClient(opts);
     const until = async (n: number) => {
@@ -586,8 +618,8 @@ test("two clients sharing sessionStorage: one's late 401, guest or sign-out neve
     const retries = pending.slice(n + 3, n + 5).map((p) => (p.init.headers as Record<string, string>).authorization);
     assert.deepEqual(retries, ["Bearer za_dave2", "Bearer za_dave2"], "both retried with the one rotated pair");
     assert.equal(pending.slice(n).filter((p) => p.url.endsWith("/identity/token")).length, 1, "exactly one refresh for the shared session");
-    pending[n + 3].release(json(201, { data: { id: 1 } }));
-    pending[n + 4].release(json(201, { data: { id: 2 } }));
+    pending[n + 3].release(json(200, { id: 1 }));
+    pending[n + 4].release(json(200, { id: 2 }));
     await Promise.all([fromA, fromB]);
 
     // A guest started while signed out doesn't come back after a later sign-in and sign-out.
@@ -618,7 +650,7 @@ test("two clients sharing sessionStorage: one's late 401, guest or sign-out neve
 test("a refresh still in flight for an earlier sign-in never stands in for the current session's", async () => {
   const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
   const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
-  const first = mod.createClient({ url: "http://x/wp-json/typedpress/v1", fetch, auth: { issuer: "http://x/identity" } });
+  const first = mod.createClient({ url: "http://x/wp-json", fetch, auth: { issuer: "http://x/identity" } });
   const until = async (n: number) => {
     for (let turn = 0; pending.length < n; turn++) {
       if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
@@ -651,7 +683,7 @@ test("a refresh still in flight for an earlier sign-in never stands in for the c
   pending[5].release(oidc("b2"));
   await until(7);
   assert.equal((pending[6].init.headers as Record<string, string>).authorization, "Bearer za_b2");
-  pending[6].release(json(201, { data: { id: 2 } }));
+  pending[6].release(json(200, { id: 2 }));
   assert.deepEqual(await wb, { id: 2 });
   pending[2].release(oidc("a2"));                           // A's late refresh: dropped
   await wa.catch(() => undefined);
@@ -661,7 +693,7 @@ test("a refresh still in flight for an earlier sign-in never stands in for the c
 test("guest(), signOut(), guest(): the second call starts its own guest", async () => {
   const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
   const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
-  const first = mod.createClient({ url: "http://x/wp-json/typedpress/v1", fetch });
+  const first = mod.createClient({ url: "http://x/wp-json", fetch });
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   const issued = (n: string) => json(200, { data: { accessToken: `za_${n}`, refreshToken: `zr_${n}`, expiresIn: 300, user: { id: 1, name: n, role: "guest" } } });
   const g1 = first.auth.guest();
@@ -679,7 +711,7 @@ test("guest(), signOut(), guest(): the second call starts its own guest", async 
 test("signing out while anonymous still ends pending sign-ins; an old anonymous write never borrows a newer guest", async () => {
   const pending: { url: string; init: RequestInit; release: (r: Response) => void }[] = [];
   const fetch = (url: string, init: RequestInit) => new Promise<Response>((release) => pending.push({ url, init, release }));
-  const first = mod.createClient({ url: "http://x/wp-json/typedpress/v1", fetch, auth: { guests: true, issuer: "http://x/identity" } });
+  const first = mod.createClient({ url: "http://x/wp-json", fetch, auth: { guests: true, issuer: "http://x/identity" } });
   const until = async (n: number) => {
     for (let turn = 0; pending.length < n; turn++) {
       if (turn > 10_000) throw new Error(`expected ${n} requests, saw ${pending.map((p) => p.url).join(", ")}`);
@@ -731,7 +763,7 @@ test("signIn redirects to <issuer>/authorize with PKCE S256, state and nonce kep
   try {
     seen = [];
     reply = (s) => (s.path === "/wp-json/typedpress/v1/auth/config" ? ok({ issuer: `${origin}/identity`, guests: true })() : problem(404, "not_found"));
-    const first = mod.createClient({ url: `${origin}/wp-json/typedpress/v1`, auth: { clientId: "app_blog", redirectUri: "https://blog.test/callback" } });
+    const first = mod.createClient({ url: `${origin}/wp-json`, auth: { clientId: "app_blog", redirectUri: "https://blog.test/callback" } });
     void first.auth.signIn({ returnTo: "/drafts" });
     const to = new URL(await browser.navigated);
 
@@ -766,7 +798,7 @@ test("signIn redirects to <issuer>/authorize with PKCE S256, state and nonce kep
 test("handleCallback refuses a foreign state, exchanges the code with the verifier, and signOut revokes then logs out", async () => {
   const issuer = `${origin}/identity`;
   const auth = { issuer, clientId: "app_blog", redirectUri: "https://blog.test/callback", storage: "session" };
-  const base = `${origin}/wp-json/typedpress/v1`;
+  const base = `${origin}/wp-json`;
   const pkce = JSON.stringify({ verifier: "v".repeat(86), state: "s".repeat(43), nonce: "n".repeat(43), returnTo: "/drafts" });
   const member = { id: 3, name: "ann", role: "subscriber", member: { id: 3, email: "ann@x.test" } };
   reply = (s) => {
@@ -801,16 +833,16 @@ test("handleCallback refuses a foreign state, exchanges the code with the verifi
       client_id: "app_blog",
       code_verifier: "v".repeat(86),
     });
-    assert.deepEqual([seen[1].path, seen[1].headers.authorization], ["/wp-json/typedpress/v1/me", "Bearer at_1"]);
+    assert.deepEqual([seen[1].path, seen[1].headers.authorization], ["/wp-json/wp-abilities/v1/abilities/blog/me/run", "Bearer at_1"]);
     assert.equal(browser.store.has("typedpress.auth.pkce"), false);
-    const kept = JSON.parse(browser.store.get(`typedpress.auth:${base}`) ?? "{}");
+    const kept = JSON.parse(browser.store.get(`typedpress.auth:${base}/typedpress/v1`) ?? "{}");
     assert.deepEqual({ ...kept, expiresAt: typeof kept.expiresAt, sid: typeof kept.sid }, { accessToken: "at_1", refreshToken: "rt_1", expiresAt: "number", clientId: "app_blog", idToken: "h.p.s", sid: "string" });
 
     seen = [];
     await first.auth.signOut({ returnTo: "https://blog.test/" });
     assert.deepEqual([seen.length, seen[0].path, form(seen[0])], [1, "/identity/revoke", { token: "rt_1", client_id: "app_blog" }]);
     // Signed out, the record keeps only the session generation (no tokens).
-    assert.deepEqual(Object.keys(JSON.parse(browser.store.get(`typedpress.auth:${base}`) ?? "{}")), ["sid"]);
+    assert.deepEqual(Object.keys(JSON.parse(browser.store.get(`typedpress.auth:${base}/typedpress/v1`) ?? "{}")), ["sid"]);
     const logout = new URL(browser.visits.at(-1) ?? "");
     assert.deepEqual(
       [`${logout.origin}${logout.pathname}`, Object.fromEntries(logout.searchParams)],
@@ -823,7 +855,7 @@ test("handleCallback refuses a foreign state, exchanges the code with the verifi
 
 test("handleCallback returns only to its own origin, and only when tokens survive the page load", async () => {
   const issuer = `${origin}/identity`;
-  const base = `${origin}/wp-json/typedpress/v1`;
+  const base = `${origin}/wp-json`;
   const member = { id: 3, name: "ann", role: "subscriber" };
   reply = (s) => (s.path === "/identity/token"
     ? { status: 200, body: JSON.stringify({ access_token: "at_1", refresh_token: "rt_1", expires_in: 3600, token_type: "Bearer" }) }
@@ -862,7 +894,7 @@ test("guests refresh at <issuer>/token with the clientId they were issued, and u
     await first.posts.create({ title: "Hi" });
     assert.deepEqual(
       seen.map((s) => [s.path, s.headers.authorization ?? "-"]),
-      [["/wp-json/typedpress/v1/posts", "Bearer za_1"], ["/identity/token", "-"], ["/wp-json/typedpress/v1/posts", "Bearer at_2"]],
+      [["/wp-json/wp-abilities/v1/abilities/blog/posts-create/run", "Bearer za_1"], ["/identity/token", "-"], ["/wp-json/wp-abilities/v1/abilities/blog/posts-create/run", "Bearer at_2"]],
     );
     assert.deepEqual(form(seen[1]), { grant_type: "refresh_token", refresh_token: "zr_1", client_id: "app_typedpress_guest" });
 
@@ -902,7 +934,13 @@ const notice = (collection: string, ids: number[] | null = [1]) => ({ id: "n", a
 function liveServer(rows: (query: any) => unknown, poll = { minMs: 2000, maxMs: 30000 }) {
   const state = { requests: [] as any[][], fail: null as null | ReturnType<typeof problem>, errors: new Map<string, ReturnType<typeof problem>>() };
   reply = (s) => {
-    if (s.path !== "/wp-json/typedpress/v1/_live") return ok(rows({ kind: s.path.split("/").pop(), op: "http", method: s.method }))();
+    if (s.path !== "/wp-json/typedpress/v1/_live") {
+      // A kind's ability (`…/<kind>-list/run`): a list answers `{ rows }`, as the ability does.
+      const ability = s.path.split("/").at(-2) ?? "";
+      const kind = ability.replace(/-(list|get|create|update|delete)$/, "");
+      const data = rows({ kind, op: "http", method: s.method });
+      return ok(ability.endsWith("-list") ? { rows: data } : data)();
+    }
     if (state.fail) return state.fail;
     const queries = JSON.parse(s.body.toString()).queries as any[];
     state.requests.push(queries);
@@ -1007,7 +1045,7 @@ test("awaiting a read is one plain request; nothing is sent until it is awaited 
   await tick();
   assert.equal(seen.length, 0, "creating a read sends nothing");
   assert.deepEqual(await read, [{ id: 1 }]);
-  assert.deepEqual([last().method, last().path, last().query.get("limit")], ["GET", "/wp-json/typedpress/v1/posts", "1"]);
+  assert.deepEqual([last().method, last().path, last().query.get("input")], ["GET", "/wp-json/wp-abilities/v1/abilities/blog/posts-list/run", JSON.stringify({ limit: 1 })]);
   assert.deepEqual(await read, [{ id: 1 }]);
   assert.equal(seen.length, 1, "awaited twice, sent once");
   assert.equal(await first.posts.count({ where: { title: "x" } }), 4);
@@ -2014,4 +2052,134 @@ test("pageRead: an answer `pending` (over the server's per-request cap of page r
   assert.deepEqual(state.requests.map((q) => q.length), [5, 1], "the pending read is asked again at once, alone");
   assert.deepEqual([...got.keys()].sort(), ["a", "b", "c", "d", "e"], "every region is filled");
   for (const stop of stops) stop();
+});
+
+/**
+ * A WordPress page: `window.wp.apiFetch` and the `@wordpress/abilities` modules, as a page that
+ * enqueues the client has them. The module specifiers resolve through a loader hook to stubs that
+ * record each call; `getAbility` knows only the abilities core-abilities would have registered.
+ */
+async function onWordPressPage(run: (calls: { abilities: unknown[][]; apiFetch: unknown[] }) => Promise<void>, registered: string[], signedIn = true) {
+  const dir = mkdtempSync(join(tmpdir(), "typedpress-wp-"));
+  dirs.push(dir);
+  const calls = { abilities: [] as unknown[][], apiFetch: [] as unknown[] };
+  (globalThis as any).__wpCalls = calls;
+  (globalThis as any).__wpRegistered = new Set(registered);
+  writeFileSync(join(dir, "abilities.mjs"), `
+    export async function executeAbility(name, input) {
+      globalThis.__wpCalls.abilities.push([name, input]);
+      if (name.endsWith("/approve-comment") && input.id === 0) {
+        throw Object.assign(new Error('Ability "' + name + '" has invalid input. Reason: input[id] must be greater than 0'), { code: "ability_invalid_input" });
+      }
+      if (name.endsWith("/publish")) throw Object.assign(new Error("Permission denied for ability: " + name), { code: "ability_permission_denied" });
+      return name.endsWith("-list") ? { rows: [{ id: 1 }] } : { ok: name };
+    }
+    export const getAbility = (name) => (globalThis.__wpRegistered.has(name) ? { name } : undefined);
+  `);
+  writeFileSync(join(dir, "core-abilities.mjs"), "export const ready = Promise.resolve();");
+  const { register } = await import("node:module");
+  register(`data:text/javascript,${encodeURIComponent(`
+    export async function resolve(specifier, context, next) {
+      if (specifier === "@wordpress/abilities") return { url: ${JSON.stringify(pathToFileURL(join(dir, "abilities.mjs")).href)}, shortCircuit: true };
+      if (specifier === "@wordpress/core-abilities") return { url: ${JSON.stringify(pathToFileURL(join(dir, "core-abilities.mjs")).href)}, shortCircuit: true };
+      return next(specifier, context);
+    }`)}`);
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "wp");
+  const apiFetch = Object.assign(async (options: any) => {
+        calls.apiFetch.push(options);
+        if (options.path.startsWith("/wp-abilities/")) return { ran: options.path, data: options.data ?? null };
+        if (options.path === "/typedpress/v1/_live") return { data: { results: JSON.parse(JSON.stringify(options.data)).queries.map(() => ({ changed: true, token: "t", data: [] })) } };
+        if (options.path === "/typedpress/v1") return { data: { name: "blog" } };
+        throw { code: "rest_forbidden", message: "Sorry, you are not allowed to do that.", data: { status: 403 } };
+  }, { nonceMiddleware: signedIn ? () => undefined : null });
+  Object.defineProperty(globalThis, "wp", { configurable: true, value: { apiFetch } });
+  try {
+    await run(calls);
+  } finally {
+    saved ? Object.defineProperty(globalThis, "wp", saved) : Reflect.deleteProperty(globalThis, "wp");
+  }
+}
+
+test("on a WordPress page, operations run through @wordpress/abilities and REST through wp.apiFetch", async () => {
+  await onWordPressPage(async (calls) => {
+    seen = [];
+    const first = mod.createClient();
+    assert.deepEqual(await first.posts.list({ limit: 2 }), [{ id: 1 }]);
+    assert.deepEqual(await first.actions.approveComment({ id: 3 }), { ok: "blog/approve-comment" });
+    assert.deepEqual(calls.abilities, [["blog/posts-list", { limit: 2 }], ["blog/approve-comment", { id: 3 }]]);
+    // An `agents: false` operation, not listed to core-abilities, runs at core's run route through apiFetch.
+    await first.actions.publishedCount();
+    assert.deepEqual(calls.apiFetch.at(-1), { path: "/wp-abilities/v1/abilities/blog/published-count/run", method: "GET" });
+    // TypedPress's own REST routes (the description, the subscription batch) go through apiFetch too.
+    await first.schema();
+    assert.equal((calls.apiFetch.at(-1) as any).path, "/typedpress/v1");
+    await first.posts.count();
+    assert.deepEqual([(calls.apiFetch.at(-1) as any).path, (calls.apiFetch.at(-1) as any).method], ["/typedpress/v1/_live", "POST"]);
+    assert.equal(seen.length, 0, "nothing goes around WordPress's clients");
+
+    // WordPress's errors reach the caller as the client's typed error.
+    const invalid = await first.actions.approveComment({ id: 0 }).catch((e: unknown) => e);
+    assert.ok(invalid instanceof mod.TypedPressError);
+    assert.deepEqual([invalid.status, invalid.code], [422, "invalid_input"]);
+    assert.match(invalid.detail, /must be greater than 0/);
+    const refused = await first.files.decks.get(1).catch((e: unknown) => e);
+    assert.deepEqual([refused instanceof mod.TypedPressError, refused.status, refused.code], [true, 403, "forbidden"]);
+  }, ["blog/posts-list", "blog/approve-comment", "blog/publish"]);
+});
+
+test("a visitor's page (no REST nonce) runs abilities at their run route through wp.apiFetch, not core-abilities", async () => {
+  await onWordPressPage(async (calls) => {
+    seen = [];
+    const first = mod.createClient();
+    await first.actions.approveComment({ id: 3 });
+    assert.deepEqual(calls.abilities, [], "core lists abilities only to a signed-in user");
+    assert.deepEqual(calls.apiFetch.at(-1), { path: "/wp-abilities/v1/abilities/blog/approve-comment/run", method: "POST", data: { input: { id: 3 } } });
+    assert.equal(seen.length, 0);
+  }, ["blog/approve-comment"], false);
+});
+
+test("off a WordPress page the client never loads WordPress's modules, and `wordpress: false` opts out on one", async () => {
+  await onWordPressPage(async (calls) => {
+    seen = [];
+    reply = ok({ rows: [] });
+    // A url (another site) means fetch, even where wp.apiFetch exists.
+    await mod.createClient({ url }).posts.list();
+    await mod.createClient({ wordpress: false, url }).posts.list();
+    assert.deepEqual([calls.abilities.length, calls.apiFetch.length, seen.length], [0, 0, 2]);
+  }, ["blog/posts-list"]);
+});
+
+test("`url` may be the REST root, the app's API URL, a `?rest_route=` root or the site; each reaches the same routes", async () => {
+  const requested: string[] = [];
+  const recording = async (input: RequestInfo | URL) => (requested.push(String(input)), new Response('{"rows":[]}'));
+  for (const at of ["https://x.test/wp-json", "https://x.test/wp-json/typedpress/v1/", "https://x.test", "https://x.test/?rest_route=", "https://x.test/?rest_route=/typedpress/v1"]) {
+    await mod.createClient({ url: at, fetch: recording }).posts.list({ limit: 1 });
+    await mod.createClient({ url: at, fetch: async (input: RequestInfo | URL) => (requested.push(String(input)), new Response('{"data":{}}')) }).schema();
+  }
+  const run = "wp-abilities/v1/abilities/blog/posts-list/run";
+  const input = `input=${encodeURIComponent(JSON.stringify({ limit: 1 }))}`;
+  assert.deepEqual(requested, [
+    `https://x.test/wp-json/${run}?${input}`, "https://x.test/wp-json/typedpress/v1",
+    `https://x.test/wp-json/${run}?${input}`, "https://x.test/wp-json/typedpress/v1",
+    `https://x.test/wp-json/${run}?${input}`, "https://x.test/wp-json/typedpress/v1",
+    `https://x.test/?rest_route=/${run}&${input}`, "https://x.test/?rest_route=/typedpress/v1",
+    `https://x.test/?rest_route=/${run}&${input}`, "https://x.test/?rest_route=/typedpress/v1",
+  ]);
+});
+
+test("an action runs with the method its annotations give core's run route; an application password goes on every run", async () => {
+  seen = [];
+  reply = ok(3);
+  const basic = "Basic " + Buffer.from("agent:app pass").toString("base64");
+  const first = mod.createClient({ url, headers: { Authorization: basic } });
+  assert.equal(await first.actions.publishedCount(), 3);
+  await first.actions.approveComment({ id: 3 });
+  assert.deepEqual(seen.map((s) => [s.method, s.path, s.headers.authorization, s.headers["x-wp-nonce"]]), [
+    ["GET", `${RUN}/published-count/run`, basic, undefined],
+    ["POST", `${RUN}/approve-comment/run`, basic, undefined],
+  ]);
+  // A cookie caller off WordPress's api-fetch sends its nonce and the cookie.
+  seen = [];
+  await mod.createClient({ url, nonce: "n0nce" }).actions.approveComment({ id: 1 });
+  assert.equal(last().headers["x-wp-nonce"], "n0nce");
 });

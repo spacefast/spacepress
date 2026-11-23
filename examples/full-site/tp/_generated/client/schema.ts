@@ -3,6 +3,15 @@
 
 export const SCHEMA = {
   "name": "fullsite",
+  "app": "fullsite",
+  "abilities": {
+    "actions": {
+      "cheer": {
+        "ability": "cheer"
+      }
+    },
+    "globals": {}
+  },
   "collections": {
     "notes": {
       "path": "notes",
@@ -20,7 +29,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "notes"
     },
     "cheers": {
       "path": "cheers",
@@ -38,7 +48,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "cheers"
     }
   },
   "globals": [],

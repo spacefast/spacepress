@@ -790,11 +790,15 @@ final class Facade
      * REST (at `init`; while plugins load under Polylang), so without application passwords, and its
      * REST server drops that visitor. Left alone, the next resolve is core's cookie check at priority
      * 100, after the outcome was read, and a refused password (wrong, suspended, out of scope) would
-     * go on as a visitor instead of answering its error. Other REST routes keep core's order.
+     * go on as a visitor instead of answering its error. The same holds on core's ability run route
+     * (`/wp-abilities/v1/abilities/<name>/run`), where the typed client runs the app's operations.
+     * Other REST routes keep core's order.
      */
     public static function authenticate(mixed $result): mixed
     {
-        if (self::path() !== null && isset($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'])) {
+        $route = $GLOBALS['wp']->query_vars['rest_route'] ?? null;
+        $runs = is_string($route) && defined('REST_REQUEST') && REST_REQUEST && preg_match('#^/wp-abilities/v1/abilities/.+/run/?$#', $route) === 1;
+        if ((self::path() !== null || $runs) && isset($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'])) {
             wp_get_current_user(); // a no-op when the request's user is already resolved
         }
 

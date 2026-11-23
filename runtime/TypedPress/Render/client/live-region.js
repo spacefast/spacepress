@@ -6,9 +6,9 @@
 // so client components and form inputs in the page keep their state: the router diffs, it doesn't
 // rebuild. An unchanged answer touches nothing.
 import { createClient, pageRead } from "@typedpress/client";
-import { getConfig } from "@wordpress/interactivity";
 
-const client = createClient({ nonce: getConfig("tp/live").nonce || undefined });
+// On WordPress's api-fetch, which carries a signed-in visitor's REST nonce.
+const client = createClient();
 
 const html = new Map(); // region id → the HTML now on the page
 

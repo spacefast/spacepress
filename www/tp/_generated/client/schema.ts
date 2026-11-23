@@ -3,6 +3,18 @@
 
 export const SCHEMA = {
   "name": "typedpress-site",
+  "app": "typedpress-site",
+  "abilities": {
+    "actions": {
+      "share": {
+        "ability": "share"
+      },
+      "refreshStarsNow": {
+        "ability": "refresh-stars-now"
+      }
+    },
+    "globals": {}
+  },
   "collections": {
     "docs": {
       "path": "docs",
@@ -25,7 +37,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "docs"
     },
     "posts": {
       "path": "posts",
@@ -37,7 +50,8 @@ export const SCHEMA = {
       "relations": {},
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "posts"
     },
     "shares": {
       "path": "shares",
@@ -49,7 +63,8 @@ export const SCHEMA = {
       "relations": {},
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "shares"
     },
     "examples": {
       "path": "examples",
@@ -61,7 +76,8 @@ export const SCHEMA = {
       "relations": {},
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "examples"
     }
   },
   "globals": [],

@@ -3,6 +3,15 @@
 
 export const SCHEMA = {
   "name": "reading-list",
+  "app": "reading-list",
+  "abilities": {
+    "actions": {
+      "logRead": {
+        "ability": "log-read"
+      }
+    },
+    "globals": {}
+  },
   "collections": {
     "books": {
       "path": "books",
@@ -20,7 +29,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "books"
     },
     "reads": {
       "path": "reads",
@@ -38,7 +48,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "reads"
     }
   },
   "globals": [],

@@ -2007,7 +2007,7 @@ fn frontend_modes_on_wordpress() {
 /// Generator B (docs/decisions/2026-11-08-tsx-to-php.md): each `"use client"` component compiles
 /// to a store module that runs in the browser without a bundler. Driven here under Node against a
 /// stand-in `@wordpress/interactivity` (tests/differential/client): state getters recompute from
-/// context, an async handler awaits a server action through `fetch` with the REST nonce, setters
+/// context, an async handler awaits a server action through the typed client (its Ability), setters
 /// with an updater, effects, mount, window events, `withSyncEvent` for `preventDefault`, and
 /// shared state.
 #[test]
@@ -2036,6 +2036,7 @@ fn client_components_compile_to_interactivity_stores() {
             .arg(root().join("tests/differential/client/drive.mjs"))
             .arg(plugin.join("tp/app/client").join(file))
             .arg(root().join("tests/differential/client").join(script))
+            .arg(plugin.join("tp/app/client/typedpress-client.js"))
             .output()
             .unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -2051,7 +2052,7 @@ fn client_components_compile_to_interactivity_stores() {
     assert_eq!(like["label2"], "142 likes");
     assert_eq!(
         like["calls"],
-        serde_json::json!([{ "url": "/wp-json/typedpress/v1/actions/like", "method": "POST", "nonce": "n0nce", "body": { "postId": 42 } }])
+        serde_json::json!([{ "url": "/wp-json/wp-abilities/v1/abilities/clients/like/run", "method": "POST", "body": { "input": { "postId": 42 } } }])
     );
     let effects = drive("clients/Effects", "effects.mjs");
     assert_eq!(
@@ -3578,13 +3579,144 @@ fn client_components_hydrate_in_the_browser() {
     // write reaches the page by the typed client's poll, with no reload.
     assert_eq!(
         seen["live"],
-        serde_json::json!({ "before": ["Ada"], "loading": "no", "write": 201, "after": ["Ada", "Grace"], "polled": true }),
+        serde_json::json!({ "before": ["Ada"], "loading": "no", "write": 200, "after": ["Ada", "Grace"], "polled": true }),
+        "{seen}"
+    );
+    // A visitor's page runs the component's action as its Ability at core's run route, through
+    // WordPress's api-fetch with no nonce (a signed-out page carries none, and stays cacheable); a
+    // schema refusal is the client's typed error.
+    assert_eq!(
+        seen["abilityRuns"],
+        serde_json::json!([
+            "POST /wp-abilities/v1/abilities/clients/like/run no nonce",
+            "POST /wp-abilities/v1/abilities/clients/like/run no nonce",
+        ]),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["refused"],
+        serde_json::json!({ "typed": true, "status": 422, "code": "invalid_input" }),
+        "{seen}"
+    );
+    // Signed in, the page runs it through `@wordpress/abilities`: core-abilities lists the
+    // abilities, then executeAbility's server callback runs it, both with the REST nonce.
+    assert_eq!(
+        seen["signed"],
+        serde_json::json!({
+            "before": "♥ 1 like", "after": "♥ 141 likes", "me": "admin",
+            "runs": [
+                "GET /wp-abilities/v1/abilities nonce",
+                "POST /wp-abilities/v1/abilities/clients/like/run nonce",
+                "GET /wp-abilities/v1/abilities/clients/me/run nonce",
+            ],
+        }),
         "{seen}"
     );
     // The typed client is served from the app plugin as a module the browser imports as is.
     assert_eq!(
         seen["client"],
         serde_json::json!([200, "text/javascript; charset=utf-8", "function", "function"]),
+        "{seen}"
+    );
+}
+
+/// The generated client outside WordPress (tests/differential/client/outside.mjs): Node with an
+/// application password, and a visitor with no credential, against the site. Listing, paging and
+/// creating rows, running an action and reading `me` each go to core's ability run route
+/// (`/wp-json/wp-abilities/v1/abilities/<app>/…/run`) with the method the ability takes; a schema
+/// refusal and a refused write come back as the client's typed error.
+#[test]
+fn the_client_outside_wordpress_runs_the_apps_abilities() {
+    let project = fixture("client-components", "outside");
+    build(&project);
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("serve")
+        .arg(project.join("tp/dist/wp-content"))
+        .arg("root=admin")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let served: serde_json::Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("serve: {line}"));
+    let url = served["url"].as_str().unwrap().to_string();
+    // `user:password`, as `Authorization: Basic` carries it.
+    let password = served["users"]["root"]["appPassword"].as_str().unwrap().to_string();
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/outside.mjs"))
+        .arg(&url)
+        .arg(&password)
+        .arg(project.join("tp/_generated/client"))
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        (&seen["before"], &seen["made"], &seen["after"], &seen["liked"]),
+        (
+            &serde_json::json!([]),
+            &serde_json::json!("From Node"),
+            &serde_json::json!(["From Node"]),
+            &serde_json::json!(141)
+        ),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["page"],
+        serde_json::json!({ "rows": ["From Node"], "cursor": null }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["me"],
+        serde_json::json!({ "name": "root", "role": "admin" }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["refused"],
+        serde_json::json!({ "typed": true, "status": 422, "code": "invalid_input" }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["visitor"],
+        serde_json::json!({
+            "read": ["From Node"], "liked": 101, "me": null,
+            "update": { "typed": true, "status": 401, "code": "unauthenticated" },
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["wrong"],
+        serde_json::json!({ "typed": true, "status": 401, "code": "incorrect_password" }),
+        "{seen}"
+    );
+    // Every request, by path: the abilities' run route, with the method each ability takes.
+    let run = "/wp-json/wp-abilities/v1/abilities/clients";
+    assert_eq!(
+        seen["paths"],
+        serde_json::json!([
+            format!("GET {run}/guestbook-list/run"),
+            format!("GET {run}/guestbook-list/run"),
+            format!("POST {run}/guestbook-create/run"),
+            format!("GET {run}/guestbook-list/run"),
+            format!("GET {run}/guestbook-list/run"),
+            format!("POST {run}/like/run"),
+            format!("GET {run}/me/run"),
+            format!("POST {run}/like/run"),
+            format!("GET {run}/guestbook-list/run"),
+            format!("POST {run}/like/run"),
+            format!("GET {run}/me/run"),
+            format!("POST {run}/guestbook-update/run"),
+        ]),
         "{seen}"
     );
 }

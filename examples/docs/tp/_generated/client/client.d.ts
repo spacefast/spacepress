@@ -342,6 +342,11 @@ export interface Globals {}
 export interface Actions {}
 export declare const SCHEMA: {
 	readonly name: "docs";
+	readonly app: "docs";
+	readonly abilities: {
+		readonly actions: {};
+		readonly globals: {};
+	};
 	readonly collections: {
 		readonly docs: {
 			readonly path: "docs";
@@ -365,6 +370,7 @@ export declare const SCHEMA: {
 			readonly media: readonly [];
 			readonly mediaList: readonly [];
 			readonly files: readonly [];
+			readonly ability: "docs";
 		};
 	};
 	readonly globals: readonly [];
@@ -651,7 +657,7 @@ export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
 	readonly actions: ActionsClient;
 	readonly globals: GlobalsClient;
 	readonly auth: AuthClient;
-	/** `GET /wp-json/typedpress/v1`: the app's schema (kinds, fields, globals, actions), as `typedpress pull` reads it. */
+	/** `GET /wp-json/typedpress/v1`: the app's description (kinds, fields, globals, actions), as `typedpress pull` reads it. */
 	schema(): Promise<unknown>;
 };
 /** One committed transaction's changes, as the runtime's `tp_realtime_changes` hook sends them. */
@@ -695,9 +701,21 @@ export interface RealtimeOptions {
 /** For host scripts: every client on this page, created before or after, uses this transport by default. */
 export declare function registerRealtimeTransport(transport: RealtimeTransport): void;
 export interface ClientOptions {
-	/** Base URL including the API prefix: "https://x.test/wp-json/typedpress/v1". Default: `/wp-json/typedpress/v1` on the page's origin. */
+	/**
+	* The site's REST root: "https://x.test/wp-json" (or "https://x.test/?rest_route=" without pretty
+	* permalinks; WordPress names it in the `Link: <…>; rel="https://api.w.org/"` header of every page).
+	* The app's API URL ("https://x.test/wp-json/typedpress/v1") is accepted too, and a site URL without
+	* either is taken as its `/wp-json`. Default: `wpApiSettings.root` on a WordPress page, else
+	* `/wp-json` on the page's origin.
+	*/
 	url?: string;
-	/** WordPress cookie auth: the REST nonce; sent as `X-WP-Nonce` with `credentials: "same-origin"`. */
+	/**
+	* Run on WordPress's own clients (`@wordpress/abilities`, `wp.apiFetch`): the page's REST root,
+	* nonce, middleware and errors are WordPress's. Default: true when `window.wp.apiFetch` exists and
+	* none of `url`, `fetch`, `headers`, `nonce` or `auth` names another site or credential.
+	*/
+	wordpress?: boolean;
+	/** WordPress cookie auth without `wp.apiFetch`: the REST nonce, sent as `X-WP-Nonce` with `credentials: "same-origin"`. */
 	nonce?: string;
 	fetch?: typeof fetch;
 	/** Extra headers on every request (e.g. `Authorization: Basic ...` for application passwords). They win over the above. */

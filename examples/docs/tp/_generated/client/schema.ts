@@ -3,6 +3,11 @@
 
 export const SCHEMA = {
   "name": "docs",
+  "app": "docs",
+  "abilities": {
+    "actions": {},
+    "globals": {}
+  },
   "collections": {
     "docs": {
       "path": "docs",
@@ -25,7 +30,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "docs"
     }
   },
   "globals": [],

@@ -47,6 +47,7 @@ final class Module
         // server is served there, so none is built (building one builds every ability of the site).
         add_filter('mcp_adapter_create_default_server', static fn (mixed $create): bool => (bool) $create && \TypedPress\Wp\Facade::path() === null);
         add_filter('wp_ability_validate_input', [Register::class, 'validate'], 10, 3);
+        add_filter('rest_pre_dispatch', [Register::class, 'jsonInput'], -1, 3);
         add_filter('rest_pre_dispatch', Register::sanitizing(true), 0, 3);
         add_filter('rest_request_before_callbacks', Register::sanitizing(false), 0);
         add_filter('rest_post_dispatch', [Register::class, 'dispatched'], 0);

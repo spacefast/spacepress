@@ -1,12 +1,12 @@
-// The LikeButton store: an async handler is a generator, `busy` is set around the action call,
-// and the call is a fetch to the action's endpoint with the REST nonce from getConfig().
+// The LikeButton store: an async handler is a generator, `busy` is set around the action call, and
+// the call is the app's typed client running the `like` action as its Ability: off WordPress (no
+// `wp.apiFetch` here) a POST to core's run route with `{ input }`.
 export default async function (fake) {
   const calls = [];
   globalThis.fetch = async (url, init) => {
-    calls.push({ url, method: init.method, nonce: init.headers["x-wp-nonce"], body: JSON.parse(init.body) });
-    return { ok: true, json: async () => ({ data: 142 }) };
+    calls.push({ url: String(url), method: init.method, body: JSON.parse(init.body) });
+    return { ok: true, status: 200, text: async () => "142" };
   };
-  fake.setConfig("clients/LikeButton", { actions: { like: "/wp-json/typedpress/v1/actions/like" }, nonce: "n0nce" });
   const s = fake.stores.get("clients/LikeButton");
   const context = { count: 1, busy: false, postId: 42 };
   const label1 = await fake.within(context, () => s.state.label);

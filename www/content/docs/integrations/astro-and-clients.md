@@ -10,7 +10,7 @@ publishedAt: 2026-11-21T09:12:00.000Z
 
 Every build emits a typed client to `tp/_generated/client/`:
 
-- `index.ts` — `createClient({ baseUrl })` for CRUD queries, pagination, live subscriptions, and typed server actions.
+- `index.ts` — `createClient({ url })` for CRUD queries, pagination, live subscriptions, and typed server actions. Each call runs the app's WordPress Ability at core's run route; `url` is the site's REST root (`https://example.test/wp-json`). On a WordPress page `createClient()` uses WordPress's own `@wordpress/abilities` and `wp.apiFetch`; elsewhere it sends an application password, a TypedPress Identity Bearer token, or the cookie nonce you give it.
 - `react.ts` — `createHooks(React)` returning `useQuery()` and `useMutation()` (with `optimistic` updates and rollback) for React 18+ or Preact without bundling React into SpacePress.
 
 ## `@typedpress/astro`

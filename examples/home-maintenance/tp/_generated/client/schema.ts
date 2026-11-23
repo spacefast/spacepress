@@ -3,6 +3,26 @@
 
 export const SCHEMA = {
   "name": "home-maintenance",
+  "app": "home-maintenance",
+  "abilities": {
+    "actions": {
+      "dueNext": {
+        "ability": "due-next",
+        "readonly": true,
+        "idempotent": true
+      },
+      "markDone": {
+        "ability": "mark-done",
+        "idempotent": true
+      },
+      "yearCost": {
+        "ability": "year-cost",
+        "readonly": true,
+        "idempotent": true
+      }
+    },
+    "globals": {}
+  },
   "collections": {
     "systems": {
       "path": "systems",
@@ -27,7 +47,8 @@ export const SCHEMA = {
       "mediaList": [],
       "files": [
         "manual"
-      ]
+      ],
+      "ability": "systems"
     },
     "tasks": {
       "path": "tasks",
@@ -50,7 +71,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "tasks"
     },
     "doneLogs": {
       "path": "done_logs",
@@ -75,7 +97,8 @@ export const SCHEMA = {
         "photo"
       ],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "done-logs"
     }
   },
   "globals": [],

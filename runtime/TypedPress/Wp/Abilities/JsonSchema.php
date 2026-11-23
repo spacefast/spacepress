@@ -26,7 +26,8 @@ final class JsonSchema
     {
         $type = $col['type'];
         $s = match ($type) {
-            'integer' => ['type' => 'integer'],
+            // A `ref()` column: `with` loads the related row in its place.
+            'integer' => $output && isset($col['references']) ? ['type' => ['integer', 'string', 'object']] : ['type' => 'integer'],
             'real' => ['type' => 'number'],
             'text', 'richText' => ['type' => 'string'],
             // Input carries no `format`: core's run endpoint sanitizes by format (sanitize_url on

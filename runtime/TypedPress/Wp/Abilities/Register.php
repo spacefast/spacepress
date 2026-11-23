@@ -125,6 +125,56 @@ final class Register
         return self::$untyped;
     }
 
+    /**
+     * rest_pre_dispatch (before {@see sanitizing()}): a GET or DELETE run of one of the app's
+     * abilities may carry its input as JSON, `?input={"limit":5,"where":{…}}` (what the typed client
+     * sends), as well as in core's bracketed form (`input[limit]=5`, what `wp.url` builds). JSON keeps
+     * types a bracketed query string can't; it is decoded into the bracketed form's shape, with
+     * `where`, `with` and `orderBy` as the strings the list query takes, so core and the pipeline
+     * read both the same way.
+     */
+    public static function jsonInput(mixed $result, mixed $server, mixed $request): mixed
+    {
+        if ($result !== null || !$request instanceof \WP_REST_Request || !in_array($request->get_method(), ['GET', 'HEAD', 'DELETE'], true)
+            || ($name = self::runRoute($request)) === null) {
+            return $result;
+        }
+        $query = $request->get_query_params();
+        if (!is_string($query['input'] ?? null) || !str_starts_with(ltrim($query['input']), '{')) {
+            return $result;
+        }
+        self::operations();
+        if (!isset(self::$names[$name])) {
+            return $result;
+        }
+        $input = json_decode($query['input'], true);
+        if (!is_array($input)) {
+            return $result;
+        }
+        foreach (['where', 'with'] as $key) {
+            if (is_array($input[$key] ?? null)) {
+                $input[$key] = (string) json_encode($input[$key] === [] ? new \stdClass() : $input[$key], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            }
+        }
+        if (is_array($input['orderBy'] ?? null)) {
+            $input['orderBy'] = implode(',', array_map(static fn ($col, $dir): string => ($dir === 'desc' ? '-' : '') . $col, array_keys($input['orderBy']), $input['orderBy']));
+        }
+        // Scalars as a query string carries them: core types them by the ability's schema.
+        array_walk_recursive($input, static function (mixed &$v): void {
+            $v = is_bool($v) ? ($v ? 'true' : 'false') : (is_scalar($v) ? (string) $v : $v);
+        });
+        $query['input'] = $input;
+        $request->set_query_params($query);
+
+        return $result;
+    }
+
+    /** The ability name of a request to core's run route (`/wp-abilities/v1/abilities/<name>/run`), or null. */
+    private static function runRoute(\WP_REST_Request $request): ?string
+    {
+        return preg_match('#^/wp-abilities/v1/abilities/(.+)/run/?$#', (string) $request->get_route(), $m) ? urldecode($m[1]) : null;
+    }
+
     /** rest_pre_dispatch … rest_request_before_callbacks brackets core's argument sanitizing. */
     public static function sanitizing(bool $on): \Closure
     {
@@ -135,6 +185,14 @@ final class Register
                 self::$untyped = null;
                 self::$responded = [];
                 self::$headers = null;
+                // The ability core's run route serves in this request, if it is one of the app's
+                // ({@see running()}). The facade's internal dispatches name theirs themselves
+                // (Facade::running()), and skip rest_post_dispatch, which would forget it.
+                if ($request instanceof \WP_REST_Request && !\TypedPress\Wp\Facade::dispatching()) {
+                    $running = self::runRoute($request);
+                    self::operations();
+                    self::$runRoute = $running !== null && isset(self::$names[$running]) ? $running : null;
+                }
                 if ($request instanceof \WP_REST_Request && preg_match('#^/wp-abilities/v1/abilities/(.+)/run$#', (string) $request->get_route(), $m)) {
                     $headers = [];
                     foreach ($request->get_headers() as $name => $values) {
@@ -202,6 +260,7 @@ final class Register
         self::$untyped = null;
         self::$raw = null;
         self::$headers = null;
+        self::$runRoute = null;
         if ($response instanceof \WP_REST_Response) {
             foreach (self::$responded as $name => $value) {
                 $response->header($name, $value);
@@ -212,9 +271,20 @@ final class Register
         return $response;
     }
 
-    /** rest_request_after_callbacks: the operation's own headers (`Idempotent-Replayed`) on its response. */
+    /**
+     * rest_request_after_callbacks: the operation's own headers (`Idempotent-Replayed`) on its
+     * response. Core's run route stamps 401/403 over any error a permission check returns; one of
+     * TypedPress's own (`tp_*`: 503 while storage is behind, a scope refusal) keeps the status and
+     * pointer it was made with.
+     */
     public static function answered(mixed $response): mixed
     {
+        if ($response instanceof \WP_Error && str_starts_with((string) $response->get_error_code(), 'tp_')) {
+            $data = $response->get_all_error_data();
+            if (count($data) > 1 && is_array($data[0]) && isset($data[0]['status'])) {
+                $response->add_data($data[0]);
+            }
+        }
         if ($response instanceof \WP_REST_Response) {
             foreach (self::$responded as $name => $value) {
                 $response->header($name, $value);
@@ -254,6 +324,14 @@ final class Register
     {
         return in_array(self::$method, ['GET', 'DELETE'], true);
     }
+
+    /** One of the app's abilities core's run route is serving in this request, as {@see sanitizing()} recorded it. */
+    public static function running(): ?string
+    {
+        return self::$runRoute;
+    }
+
+    private static ?string $runRoute = null;
 
     /** Public view of one descriptor: what core receives, minus callbacks. */
     public static function describe(array $op): array
@@ -305,6 +383,17 @@ final class Register
             array_push($ops, ...self::global($app, $label, (string) $name, $global));
         }
         array_push($ops, ...self::media($app, $label));
+        // The signed-in user (null when signed out), what `client.auth.me()` reads. Only the app's own
+        // client calls it, so it stays out of core REST discovery and MCP; an app's own `me` action wins.
+        if (!isset($schema->actions()['me'])) {
+            $ops[] = [
+                'name' => "$app/me", 'op' => 'me', 'agents' => false, 'label' => 'Current user',
+                'description' => "The signed-in user of the $label app, with their member row when the app has one; null when signed out.",
+                'input' => JsonSchema::input([]), 'output' => [], 'annotations' => ['readonly' => true, 'idempotent' => true],
+                'rule' => [Access::DEFAULT_READ, 'read', 'read the current user'], 'typedpress' => [],
+                'call' => static fn (array $in): array => ['GET', '/me', [], null],
+            ];
+        }
         // Features add their own operations here (runtime schema changes: TypedPress\RuntimeSchema\Surfaces).
         $ops = apply_filters('tp_ability_operations', $ops, $app);
         if (($enqueue = Module::enqueuer()) !== null) {
@@ -335,7 +424,7 @@ final class Register
             } else {
                 $op['shape'] = [];
             }
-            $op['bodyShape'] = $op['op'] === 'update' && isset($first['collection']) ? $op['shape']['patch'] : $op['shape'];
+            $op['bodyShape'] = $op['op'] === 'update' && isset($first['collection']) ? ($op['shape']['patch'] ?? []) : $op['shape'];
         }
         unset($op);
 
@@ -433,6 +522,21 @@ final class Register
                 'annotations' => ['readonly' => true, 'idempotent' => true], 'rule' => [$rules['update'], 'update', "update $name rows"],
                 'call' => static fn (array $in): array => ['GET', $item('/revisions')($in), [], null],
                 'result' => static fn (array $revisions): array => ['revisions' => $revisions],
+            ];
+            $revision = static fn (array $in): string => '/' . (is_int($in['revision'] ?? null) ? $in['revision'] : throw HttpError::invalidInput('revision is required', '/revision'));
+            $ops[] = $base + [
+                'name' => "$app/$k-revision-get", 'op' => 'revision-get',
+                'label' => "One revision of $name", 'description' => "Read one saved revision of one $name row of the $appLabel app: the row as it was.",
+                'input' => JsonSchema::input(['id' => $pk, 'revision' => ['type' => 'integer']], ['id', 'revision']), 'output' => $row,
+                'annotations' => ['readonly' => true, 'idempotent' => true], 'rule' => [$rules['update'], 'update', "update $name rows"],
+                'call' => static fn (array $in): array => ['GET', $item('/revisions')($in) . $revision($in), [], null],
+            ];
+            $ops[] = $base + [
+                'name' => "$app/$k-revision-restore", 'op' => 'revision-restore',
+                'label' => "Restore a revision of $name", 'description' => "Make one saved revision of one $name row of the $appLabel app its current values, as an update.",
+                'input' => JsonSchema::input(['id' => $pk, 'revision' => ['type' => 'integer']], ['id', 'revision']), 'output' => $row,
+                'annotations' => [], 'rule' => [$rules['update'], 'update', "update $name rows"],
+                'call' => static fn (array $in): array => ['POST', $item('/revisions')($in) . $revision($in) . '/restore', [], null],
             ];
         }
         if (\TypedPress\Wp\Staged::enabled($spec) && ($api['update'] ?? true)) {
@@ -597,6 +701,13 @@ final class Register
                 'name' => "$app/media-get", 'op' => 'get', 'label' => 'Get media', 'description' => "Get one media item of the $appLabel app by id.",
                 'input' => JsonSchema::input($id, ['id']), 'output' => $row, 'annotations' => ['readonly' => true, 'idempotent' => true],
                 'rule' => [Access::MEDIA['read'], 'read', 'read media'], 'call' => static fn (array $in): array => ['GET', '/media/' . Invoke::id($in), [], null],
+            ],
+            $base + [
+                'name' => "$app/media-update", 'op' => 'update', 'label' => 'Update media', 'description' => "Change one media item of the $appLabel app: its alt text and focal point (0..1 from the top-left; a new one regenerates every cover size).",
+                'input' => JsonSchema::input($id + ['patch' => ['type' => 'object', 'properties' => ['alt' => ['type' => ['string', 'null']], 'focal' => ['type' => ['object', 'null'], 'properties' => ['x' => ['type' => 'number'], 'y' => ['type' => 'number']]]]]], ['id', 'patch']),
+                'output' => $row, 'annotations' => [],
+                'rule' => [Access::MEDIA['update'], 'update', 'update media'],
+                'call' => static fn (array $in): array => ['PATCH', '/media/' . Invoke::id($in), [], Invoke::object($in['patch'] ?? false) ?? throw HttpError::invalidInput('patch must be an object', '/patch')],
             ],
             $base + [
                 'name' => "$app/media-delete", 'op' => 'delete', 'label' => 'Delete media', 'description' => "Delete one media item of the $appLabel app and its files.",

@@ -138,6 +138,7 @@ final class Register
     public static function jsonInput(mixed $result, mixed $server, mixed $request): mixed
     {
         self::$typedQuery = false;
+        self::$queried = null;
         if ($result !== null || !$request instanceof \WP_REST_Request || !in_array($request->get_method(), ['GET', 'HEAD', 'DELETE'], true)
             || ($name = self::runRoute($request)) === null) {
             return $result;
@@ -164,15 +165,22 @@ final class Register
                 return $result;
             }
             self::$typedQuery = true;
-            self::$raw = [$name, $sent];
+            self::$queried = [$name, $sent];
             $query['input'] = $input;
             $request->set_query_params($query);
 
             return $result;
         }
+        // `where` and `with` as the JSON strings the list query takes, from the input as sent, so an
+        // empty object operand (`{ meta: { eq: {} } }`) stays `{}` and doesn't become `[]`.
+        try {
+            $sent = \TypedPress\Js::decodeJson($query['input']);
+        } catch (\JsonException) {
+            return $result;
+        }
         foreach (['where', 'with'] as $key) {
-            if (is_array($input[$key] ?? null)) {
-                $input[$key] = (string) json_encode($input[$key] === [] ? new \stdClass() : $input[$key], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if (is_array($input[$key] ?? null) && $sent instanceof \TypedPress\JsObject && array_key_exists($key, $sent->p)) {
+                $input[$key] = (string) \TypedPress\Js::jsonStringify($sent->p[$key]);
             }
         }
         if (is_array($input['orderBy'] ?? null)) {
@@ -219,8 +227,11 @@ final class Register
                     }
                     self::$headers = [urldecode($m[1]), $headers];
                 }
-                // The run body's own input, or (for the facade's GET/DELETE runs) what withSentInput set.
-                self::$raw = ($request instanceof \WP_REST_Request ? self::rawInput($request) : null) ?? self::$raw;
+                // This request's input as sent: its POSTed body, or its query's JSON ({@see jsonInput()}).
+                // Each request sets it afresh, so an internal dispatch (which skips rest_post_dispatch)
+                // never runs on the input of the request before it.
+                self::$raw = ($request instanceof \WP_REST_Request ? self::rawInput($request) : null) ?? self::$queried;
+                self::$queried = null;
             }
 
             return $passthrough;
@@ -252,25 +263,36 @@ final class Register
      */
     public static function withSentInput(string $name, string $json, callable $fn): mixed
     {
-        $previous = self::$raw;
+        $previous = self::$given;
         try {
             $decoded = trim($json) === '' ? new \TypedPress\JsObject() : \TypedPress\Js::decodeJson($json);
         } catch (\JsonException) {
             $decoded = null;
         }
-        self::$raw = $decoded === null ? null : [$name, $decoded];
+        self::$given = $decoded === null ? null : [$name, $decoded];
         try {
             return $fn();
         } finally {
-            self::$raw = $previous;
+            self::$given = $previous;
         }
     }
 
-    /** The executing ability's input as sent, when the REST run endpoint carried it. */
+    /** The executing ability's input as sent: the facade's own ({@see withSentInput()}), else the run request's. */
     public static function sentInput(string $name, mixed $input): mixed
     {
-        return self::$raw !== null && self::$raw[0] === $name ? self::$raw[1] : $input;
+        foreach ([self::$given, self::$raw] as $sent) {
+            if ($sent !== null && $sent[0] === $name) {
+                return $sent[1];
+            }
+        }
+
+        return $input;
     }
+
+    /** @var array{string, mixed}|null the facade's input as sent for one ability it runs ({@see withSentInput()}) */
+    private static ?array $given = null;
+    /** @var array{string, mixed}|null a GET/DELETE run's JSON query input, for the request {@see sanitizing()} starts next */
+    private static ?array $queried = null;
 
     /** rest_post_dispatch: the request that carried the input is over; its operation's headers go out with it. */
     public static function dispatched(mixed $response): mixed
@@ -417,14 +439,17 @@ final class Register
         array_push($ops, ...self::media($app, $label));
         // The signed-in user (null when signed out), what `client.auth.me()` reads. Only the app's own
         // client calls it, so it stays out of core REST discovery and MCP. The build refuses an action,
-        // kind, global or job that would also become `<app>/me` (src/extract.rs).
-        $ops[] = [
-            'name' => "$app/me", 'op' => 'me', 'agents' => false, 'label' => 'Current user',
-            'description' => "The signed-in user of the $label app, with their member row when the app has one; null when signed out.",
-            'input' => JsonSchema::input([]), 'output' => [], 'annotations' => ['readonly' => true, 'idempotent' => true],
-            'rule' => [Access::DEFAULT_READ, 'read', 'read the current user'], 'typedpress' => [],
-            'call' => static fn (array $in): array => ['GET', '/me', [], null],
-        ];
+        // kind, global or job that would also become `<app>/me` (src/extract.rs); an app built before
+        // that keeps its own `me`, and its client's `auth.me()` reads the API's `/me` instead.
+        if (!in_array("$app/me", array_column($ops, 'name'), true)) {
+            $ops[] = [
+                'name' => "$app/me", 'op' => 'me', 'agents' => false, 'label' => 'Current user',
+                'description' => "The signed-in user of the $label app, with their member row when the app has one; null when signed out.",
+                'input' => JsonSchema::input([]), 'output' => [], 'annotations' => ['readonly' => true, 'idempotent' => true],
+                'rule' => [Access::DEFAULT_READ, 'read', 'read the current user'], 'typedpress' => [],
+                'call' => static fn (array $in): array => ['GET', '/me', [], null],
+            ];
+        }
         // Features add their own operations here (runtime schema changes: TypedPress\RuntimeSchema\Surfaces).
         $ops = apply_filters('tp_ability_operations', $ops, $app);
         if (($enqueue = Module::enqueuer()) !== null) {

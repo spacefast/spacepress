@@ -79,17 +79,21 @@ React. See `docs/realtime.md`.
 
 ## On a WordPress page
 
-On a page WordPress serves (`window.wp.apiFetch` is there), `createClient()` with no options runs on
-WordPress's own clients. For a signed-in visitor each call goes through `@wordpress/abilities`
-(`executeAbility`, once `@wordpress/core-abilities` has loaded the server's abilities), so the
-ability's input schema, permission check and errors are WordPress's. Core lists abilities only to a
-signed-in user, so for a visitor the client runs each one at its run route through `wp.apiFetch`,
-where the same checks run on the server. `wp.apiFetch` carries the REST root, a signed-in visitor's
-nonce and any middleware a plugin added. `wordpress: true` or `false` decides it yourself.
+On a page TypedPress renders, `createClient()` with no options reads what the page prints for it
+(`<script id="wp-script-module-data-@typedpress/client">`): the site's REST root, the app API's
+namespace and, for a signed-in visitor, the REST nonce. Every call is a plain `fetch` to those routes.
+For a signed-in visitor, each ability that core lists goes through `@wordpress/abilities`
+(`executeAbility`, once `@wordpress/core-abilities` has loaded the server's abilities), so its input
+schema, permission check and errors are WordPress's. A visitor's page carries no nonce and stays
+cacheable; core lists abilities only to a signed-in user, so the client runs each one at its run
+route, where the same checks run on the server. `wordpress: false` ignores the page's data, and
+`wordpress: true` uses its nonce even with other options set. Neither path goes through
+`wp.apiFetch`, so api-fetch middleware a plugin adds doesn't see these requests.
 
 A WordPress error (`ability_invalid_input`, `ability_permission_denied`, `rest_forbidden`,
 `rest_cookie_invalid_nonce`, …) reaches you as the same `TypedPressError` as anywhere else:
-`invalid_input` 422 with the schema's reason, `unauthenticated` 401, `forbidden` 403.
+`invalid_input` 422 with the schema's reason, `unauthenticated` 401, `forbidden` 403. A nonce that
+expired while the page was open is renewed once and the request retried.
 
 ## Other origins, Node, mobile
 

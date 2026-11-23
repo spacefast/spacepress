@@ -528,8 +528,11 @@ function encodeCursor(offset: number): string {
 
 function decodeCursor(cursor: string): number {
   try {
-    const v: unknown = JSON.parse(atob(cursor.replace(/-/g, "+").replace(/_/g, "/")));
-    if (isObject(v) && typeof v.offset === "number" && Number.isInteger(v.offset) && v.offset > 0) return v.offset;
+    // Only the token the server issues: `{"offset":<digits>}`. `1e2` or `1.0` decode to integers in
+    // JavaScript, but the server refuses them, so the client does too.
+    const text = atob(cursor.replace(/-/g, "+").replace(/_/g, "/"));
+    const m = /^\{"offset":([1-9][0-9]{0,14})\}$/.exec(text);
+    if (m) return Number(m[1]);
   } catch {
     // refused below
   }
@@ -578,6 +581,7 @@ interface PageData {
   root?: string;
   api?: string;
   nonce?: string;
+  nonceEndpoint?: string;
 }
 function pageData(): PageData | null {
   const doc = (globalThis as { document?: { getElementById(id: string): { textContent: string | null } | null } }).document;
@@ -692,15 +696,19 @@ function authError(status: number, code: string, detail: string): TypedPressErro
 const refreshes = new Map<string, Promise<boolean>>();
 
 export function createClient(options: ClientOptions = {}): Client {
-  // On a TypedPress page with nothing pointing elsewhere: the page's REST root, API and nonce.
-  const ownSite = options.url === undefined && options.fetch === undefined && options.headers === undefined && options.nonce === undefined && options.auth === undefined;
-  const onPage = options.wordpress ?? ownSite ? pageData() : null;
-  const resolved = endpoints(options.url ?? onPage?.root ?? "/wp-json");
-  const root = resolved.root;
-  const API = options.url === undefined && typeof onPage?.api === "string" && onPage.api.startsWith("/") ? onPage.api : resolved.api;
-  const nonce = options.nonce ?? onPage?.nonce;
-  // Session storage is keyed by the app's API URL, as it was before the client ran abilities.
-  const base = restUrl(root, API);
+  // Where the client calls: `url` when given; else, on a TypedPress page, the REST root and API
+  // namespace the page prints for it (whatever credential the client brings: `auth`, `headers`).
+  const site = options.wordpress === false || options.url !== undefined ? null : pageData();
+  const pageRoot = typeof site?.root === "string" && site.root !== "" ? site.root.replace(/\/+$/, "") : null;
+  const resolved = endpoints(options.url ?? "/wp-json");
+  const root = pageRoot ?? resolved.root;
+  const API = typeof site?.api === "string" && site.api.startsWith("/") ? site.api : resolved.api;
+  // The page's own REST nonce and `@wordpress/abilities` only for a client that brings no
+  // credential of its own; `wordpress: true` asks for them explicitly.
+  const cookie = site !== null && (options.wordpress === true || (options.fetch === undefined && options.headers === undefined && options.nonce === undefined && options.auth === undefined));
+  let nonce = options.nonce ?? (cookie ? site?.nonce : undefined);
+  // Session storage is keyed as before the client ran abilities: by `url`, else the default API URL.
+  const base = (options.url ?? "/wp-json/typedpress/v1").replace(/\/+$/, "");
   const app: string = SCHEMA.app;
   const authOpts = options.auth ?? {};
   const doFetch = (input: string, init: RequestInit) => (options.fetch ?? globalThis.fetch)(input, init);
@@ -788,9 +796,22 @@ export function createClient(options: ClientOptions = {}): Client {
 
     const init: RequestInit = { method, headers, body };
     if (nonce !== undefined) init.credentials = "same-origin";
+    const sentNonce = nonce;
     const { res, parsed } = await call(restUrl(root, path, qs), init, `${method} ${path}`);
+    // Core sends a fresh nonce with every cookie-authenticated answer: keep it for the next request.
+    const renewed = cookie && options.nonce === undefined ? res.headers?.get("x-wp-nonce") : null;
+    if (renewed) nonce = renewed;
     if (res.ok) return unwrapped<T>(parsed, send, `${method} ${path}`);
     const error = toError(res, parsed);
+    // A signed-in page's nonce expired (a tab left open past its lifetime): ask WordPress for a
+    // new one, as its own api-fetch does, and send the request once more.
+    if (isObject(parsed) && parsed.code === "rest_cookie_invalid_nonce" && cookie && options.nonce === undefined && !retried && sentNonce !== undefined) {
+      const fresh = await freshNonce();
+      if (fresh !== null) {
+        nonce = fresh;
+        return request<T>(method, path, send, true);
+      }
+    }
     // `unauthenticated` from the app API; Identity's own `invalid_token` from any other REST route
     // (core's ability run route), for a Bearer that has expired.
     if (error.status === 401 && (error.code === "unauthenticated" || error.code === "invalid_token") && !send.anonymous && !retried) {
@@ -811,6 +832,19 @@ export function createClient(options: ClientOptions = {}): Client {
     throw error;
   }
 
+  /** A new REST nonce for this page's signed-in visitor, from the endpoint the page names, or null. */
+  async function freshNonce(): Promise<string | null> {
+    const endpoint = site?.nonceEndpoint;
+    if (typeof endpoint !== "string") return null;
+    try {
+      const res = await doFetch(endpoint, { credentials: "same-origin" });
+      const text = res.ok ? (await res.text()).trim() : "";
+      return /^[a-z0-9]{10}$/i.test(text) ? text : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** A route's answer: an ability's own output, or TypedPress's `{ data }` envelope. */
   function unwrapped<T>(parsed: unknown, send: Send, label: string): T {
     if (send.raw) return (parsed === undefined ? null : parsed) as T;
@@ -826,8 +860,12 @@ export function createClient(options: ClientOptions = {}): Client {
    */
   async function ability<T>(name: string, input: Json, annotations: Annotations = {}, query = false): Promise<T> {
     const full = `${app}/${name}`;
-    // Core lists abilities (what `@wordpress/core-abilities` loads) only to a signed-in user.
-    if (onPage?.nonce !== undefined && options.nonce === undefined && held() === null) {
+    // Core lists abilities (what `@wordpress/core-abilities` loads) only to a signed-in user. Its
+    // callback sends a GET or DELETE run's input as a bracketed query string, which turns `false`
+    // and numbers into strings and drops `{}`: only a POST run, or a kind read whose input the
+    // server types itself, goes through it.
+    const bracketed = annotations.readonly || (annotations.destructive && annotations.idempotent);
+    if (cookie && site?.nonce !== undefined && held() === null && (query || !bracketed)) {
       let abilities: AbilitiesModule | null = null;
       try {
         abilities = await wordpressAbilities();
@@ -1049,7 +1087,9 @@ export function createClient(options: ClientOptions = {}): Client {
       const { handoff } = await issuerPost<{ handoff: string }>("/handoff", {}, current.accessToken);
       return redirectToIssuer(undefined, { handoff });
     },
-    me: () => ability<User | null>("me", {}, readonly),
+    // An app built before `<app>/me` was the signed-in user may have its own `me` action; its
+    // `auth.me()` reads the app API's `/me` instead.
+    me: () => (SCHEMA.actions.includes("me") ? request<User | null>("GET", `${API}/me`) : ability<User | null>("me", {}, readonly)),
     async signOut(opts = {}) {
       const current = held();
       const from = currentSid();

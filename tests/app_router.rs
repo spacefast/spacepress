@@ -2028,6 +2028,56 @@ fn client_components_compile_to_interactivity_stores() {
         "{islands}"
     );
     assert_eq!(islands["clients/Effects"]["actions"], serde_json::json!([]));
+    // A store that calls an action runs it through the typed client: the runtime gives it the
+    // Ability's run route. One built before (no `client`) keeps the API's action URL and a nonce.
+    assert_eq!(islands["clients/LikeButton"]["client"], true, "{islands}");
+    assert!(islands["clients/Effects"].get("client").is_none(), "{islands}");
+    let config = |compiled: &str| -> serde_json::Value {
+        let out = Command::new("php")
+            .args(["-d", "memory_limit=512M"])
+            .arg(root().join("tests/php/wp.php"))
+            .arg("eval")
+            .arg(project.join("tp/dist/wp-content"))
+            .arg(
+                r#"
+                \TypedPress\Islands::context('clients/LikeButton', []);
+                \TypedPress\Islands::enqueue();
+                echo json_encode(wp_interactivity_config('clients/LikeButton')), "\n";
+                "#,
+            )
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{compiled}: {}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_str(String::from_utf8_lossy(&out.stdout).lines().next_back().unwrap()).unwrap()
+    };
+    let now = config("now");
+    assert!(
+        now["actions"]["like"]
+            .as_str()
+            .unwrap()
+            .ends_with("/wp-json/wp-abilities/v1/abilities/clients/like/run"),
+        "{now}"
+    );
+    assert!(now.get("nonce").is_none(), "{now}");
+    // The same store as a build before this one wrote it: its schema.php entry has no `client`.
+    let schema_php = plugin.join("tp/app/schema.php");
+    let text = std::fs::read_to_string(&schema_php).unwrap();
+    std::fs::write(&schema_php, text.replace(", 'client' => true", "")).unwrap();
+    let old = config("before");
+    std::fs::write(&schema_php, text).unwrap();
+    assert!(
+        old["actions"]["like"]
+            .as_str()
+            .unwrap()
+            .ends_with("/wp-json/typedpress/v1/actions/like"),
+        "{old}"
+    );
+    assert!(old["nonce"].is_string(), "{old}");
     // `"use client"` after another directive (`"use strict"`) still makes a client component.
     assert!(islands["clients/Toggle"]["file"].is_string(), "{islands}");
     let drive = |namespace: &str, script: &str| -> serde_json::Value {

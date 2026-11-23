@@ -70,7 +70,7 @@ before(async () => {
     const r = reply(s);
     // An ability's run route answers the ability's output as is: a `{ data }` reply is unwrapped.
     let body = r.body;
-    if (s.path.startsWith("/wp-json/wp-abilities/") && r.status < 300) {
+    if (s.path.includes("/wp-abilities/") && r.status < 300) {
       try {
         const parsed = JSON.parse(r.body);
         if (parsed && typeof parsed === "object" && "data" in parsed) body = JSON.stringify(parsed.data);
@@ -835,14 +835,14 @@ test("handleCallback refuses a foreign state, exchanges the code with the verifi
     });
     assert.deepEqual([seen[1].path, seen[1].headers.authorization], ["/wp-json/wp-abilities/v1/abilities/blog/me/run", "Bearer at_1"]);
     assert.equal(browser.store.has("typedpress.auth.pkce"), false);
-    const kept = JSON.parse(browser.store.get(`typedpress.auth:${base}/typedpress/v1`) ?? "{}");
+    const kept = JSON.parse(browser.store.get(`typedpress.auth:${base}`) ?? "{}");
     assert.deepEqual({ ...kept, expiresAt: typeof kept.expiresAt, sid: typeof kept.sid }, { accessToken: "at_1", refreshToken: "rt_1", expiresAt: "number", clientId: "app_blog", idToken: "h.p.s", sid: "string" });
 
     seen = [];
     await first.auth.signOut({ returnTo: "https://blog.test/" });
     assert.deepEqual([seen.length, seen[0].path, form(seen[0])], [1, "/identity/revoke", { token: "rt_1", client_id: "app_blog" }]);
     // Signed out, the record keeps only the session generation (no tokens).
-    assert.deepEqual(Object.keys(JSON.parse(browser.store.get(`typedpress.auth:${base}/typedpress/v1`) ?? "{}")), ["sid"]);
+    assert.deepEqual(Object.keys(JSON.parse(browser.store.get(`typedpress.auth:${base}`) ?? "{}")), ["sid"]);
     const logout = new URL(browser.visits.at(-1) ?? "");
     assert.deepEqual(
       [`${logout.origin}${logout.pathname}`, Object.fromEntries(logout.searchParams)],
@@ -2209,4 +2209,42 @@ test("paginate refuses a limit or offset the app API refuses, and a cursor it di
     assert.deepEqual([e.status, e.code, e.pointer], [400, "invalid_query", pointer], JSON.stringify(q));
   }
   assert.equal(seen.length, 0);
+});
+
+test("a page's REST root and namespace are used as printed, whatever credential the client brings; a stale nonce is renewed once", async () => {
+  await onWordPressPage(async (calls) => {
+    seen = [];
+    reply = ok({ name: "blog" });
+    // A custom REST prefix: the printed root is used as is, not taken for a site URL.
+    await mod.createClient({ auth: { storage: "session" } }).schema();
+    assert.equal(last().path, "/sub/rest/acme/v2");
+    assert.equal(last().headers["x-wp-nonce"], undefined, "a client with its own credential doesn't borrow the page's nonce");
+    // An expired nonce: one renewal from the page's endpoint, then the same request again.
+    seen = [];
+    let fresh = false;
+    reply = (s) => {
+      if (s.path === "/rest-nonce") return { status: 200, type: "text/plain", body: "abcdef1234" };
+      if (s.headers["x-wp-nonce"] === "abcdef1234") return ok(null)();
+      return { status: 403, body: JSON.stringify({ code: "rest_cookie_invalid_nonce", message: "Cookie check failed", data: { status: 403 } }) };
+    };
+    const first = mod.createClient();
+    assert.equal(await first.actions.publishedCount(), null);
+    fresh = true;
+    assert.deepEqual(seen.map((s) => `${s.path} ${s.headers["x-wp-nonce"] ?? "-"}`), [
+      "/sub/rest/wp-abilities/v1/abilities/blog/published-count/run old",
+      "/rest-nonce -",
+      "/sub/rest/wp-abilities/v1/abilities/blog/published-count/run abcdef1234",
+    ]);
+    assert.ok(fresh);
+    assert.equal(calls.abilities.length, 0, "a readonly action isn't sent through core's bracketed query string");
+  }, ["blog/published-count"], { root: `${origin}/sub/rest/`, api: "/acme/v2", nonce: "old", nonceEndpoint: `${origin}/rest-nonce` });
+});
+
+test("a cursor that isn't the exact `{\"offset\":<n>}` token the server issues is refused", async () => {
+  const first = mod.createClient({ url });
+  const token = (text: string) => Buffer.from(text).toString("base64url");
+  for (const cursor of [token('{"offset":1e2}'), token('{"offset":1.0}'), token('{"offset":0}'), token('{"offset":"5"}')]) {
+    const e = await first.posts.paginate({ cursor }).catch((x: unknown) => x);
+    assert.deepEqual([e.status, e.code], [400, "invalid_query"], cursor);
+  }
 });

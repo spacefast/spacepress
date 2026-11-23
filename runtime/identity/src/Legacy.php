@@ -113,7 +113,7 @@ final class Legacy
                         $pdo->commit();
                     } catch (\Throwable $e) {
                         $pdo->rollBack();
-                        throw $e;
+                        throw new Failure('storage_unavailable', 'Cannot move identity\'s tables: ' . $e->getMessage(), 503);
                     }
                 } elseif ($wp->query('RENAME TABLE ' . implode(', ', array_map(static fn ($from, $to) => "`$from` TO `$to`", array_keys($tables), $tables))) === false) {
                     throw new Failure('storage_unavailable', 'Cannot move identity\'s tables: ' . $wp->last_error, 503);
@@ -145,22 +145,30 @@ final class Legacy
         }
     }
 
-    /** Identity's wp-cron events under their current hooks, with the same times, arguments and schedule. */
+    /**
+     * Identity's wp-cron events under their current hooks, with the same times, arguments and schedule.
+     * A save that fails throws: the schema version moves after this, and once it has, nothing retries.
+     */
     private static function moveEvents(): void
     {
-            $cron = _get_cron_array();
-            if (is_array($cron)) {
-                foreach ($cron as $time => $hooks) {
-                    foreach (self::EVENTS as $event) {
-                        foreach ((array) ($hooks[self::SHORT . $event] ?? []) as $key => $job) {
-                            $job['schedule'] = ($job['schedule'] ?? null) === self::SCHEDULE ? 'sp_identity_minute' : ($job['schedule'] ?? false);
-                            $cron[$time]['sp_identity_' . $event][$key] = $job;
-                        }
-                        unset($cron[$time][self::SHORT . $event]);
-                    }
+        $cron = _get_cron_array();
+        $moved = false;
+        foreach (is_array($cron) ? $cron : [] as $time => $hooks) {
+            foreach (self::EVENTS as $event) {
+                if (!isset($hooks[self::SHORT . $event])) {
+                    continue;
                 }
-                _set_cron_array($cron);
+                foreach ((array) $hooks[self::SHORT . $event] as $key => $job) {
+                    $job['schedule'] = ($job['schedule'] ?? null) === self::SCHEDULE ? 'sp_identity_minute' : ($job['schedule'] ?? false);
+                    $cron[$time]['sp_identity_' . $event][$key] = $job;
+                }
+                unset($cron[$time][self::SHORT . $event]);
+                $moved = true;
             }
+        }
+        if ($moved && _set_cron_array($cron, true) instanceof \WP_Error) {
+            throw new Failure('storage_unavailable', "Cannot move identity's scheduled events; reload to try again.", 503);
+        }
     }
 
     private static function table(\wpdb $wp, string $name): bool

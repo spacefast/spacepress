@@ -13,7 +13,16 @@ require __DIR__ . '/harness.php';
 
 const LEGACY_COMMIT = '45d81e72857beb2d2f6b6c15bc3d749ead96baf2';
 
-// The child: one boot of the moved site, printing every query it sent.
+// The children. `settled`: one boot of the moved site, printing every query it sent. `cronfail`: one
+// boot whose save of the cron events fails, printing the identity options it left.
+if (($argv[1] ?? '') === 'cronfail') {
+    $site = json_decode((string) file_get_contents("{$argv[2]}/site.json"), true, 512, JSON_THROW_ON_ERROR);
+    wpDefine($argv[2], $site['url']);
+    $GLOBALS['wp_filter']['pre_update_option_cron'][10]['fail'] = ['accepted_args' => 2, 'function' => static fn ($new, $old) => $old];
+    require_once ABSPATH . 'wp-settings.php';
+    echo json_encode($GLOBALS['wpdb']->get_col("SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE '%identity\\_schema\\_version'")), "\n";
+    exit(0);
+}
 if (($argv[1] ?? '') === 'settled') {
     $site = json_decode((string) file_get_contents("{$argv[2]}/site.json"), true, 512, JSON_THROW_ON_ERROR);
     wpDefine($argv[2], $site['url']);
@@ -38,6 +47,10 @@ file_put_contents("$dir/site.json", json_encode(['activate' => ['spacepress-iden
 exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=512M ' . escapeshellarg(__DIR__ . '/wp.php') . ' activate ' . escapeshellarg($dir) . ' 2>&1', $out, $code);
 $code === 0 || throw new RuntimeException("switching to identity alone failed:\n" . implode("\n", $out));
 file_put_contents("$dir/site.json", json_encode($site, JSON_THROW_ON_ERROR));
+// A boot that cannot save the moved cron events leaves the move unfinished, for the next boot.
+$out = [];
+exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=512M ' . escapeshellarg(__FILE__) . ' cronfail ' . escapeshellarg($dir) . ' 2>&1', $out, $code);
+eq('a failed cron save keeps the schema version under the earlier name', [$code, json_decode((string) end($out), true)], [0, ['tp_identity_schema_version']]);
 
 wpDefine($dir, $site['url']);
 require_once ABSPATH . 'wp-settings.php';
@@ -58,6 +71,7 @@ $once = $snapshot();
 \SpacePress\Identity\Legacy::move($wpdb);
 eq('a second move changes nothing', $snapshot(), $once);
 // A settled site pays nothing for the move: no boot asks for the earlier name again.
+$out = [];
 exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=512M ' . escapeshellarg(__FILE__) . ' settled ' . escapeshellarg($dir) . ' 2>&1', $out, $code);
 $sent = json_decode((string) end($out), true);
 check('a settled boot sends queries', $code === 0 && is_array($sent) && $sent !== []);

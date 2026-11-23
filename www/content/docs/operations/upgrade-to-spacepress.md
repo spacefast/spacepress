@@ -24,7 +24,7 @@ The script rewrites the tracked files and their paths to the current names:
 - imports become `"spacepress"`, `"spacepress/app"` and `"spacepress:db"`
 - the CLI dev dependency becomes `spacepress`
 
-It refuses to run when a renamed path already exists. Review the staged diff, run `npm install` and `spacepress build`, and commit. Your committed migrations under `sp/_generated/migrations/` keep their IDs and contents. Don't regenerate them: the site's ledger records their hashes.
+It refuses to run when a renamed path already exists. Review the staged diff, run `npm install` and `spacepress build`, and commit. Your committed migrations under `sp/_generated/migrations/` keep their IDs, and the table names inside them change to match the site's renamed tables. Don't regenerate or renumber them. The site's ledger keeps the hash each one had when it was applied, and it already counts them as applied.
 
 ## 2. Upgrade the site
 

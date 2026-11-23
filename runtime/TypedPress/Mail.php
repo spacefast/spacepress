@@ -39,10 +39,16 @@ final class Mail
         ];
     }
 
-    /** @return JsObject `{ id }` of the queued delivery */
+    /**
+     * @return JsObject `{ id }` of the queued delivery; `''` while a preview seeds, which checks the
+     * message and queues nothing ({@see Preview::quiet()})
+     */
     public static function send(mixed $message): JsObject
     {
         $payload = self::payload(Seam::toPhp($message));
+        if (Preview::quiet()) {
+            return new JsObject(['id' => '']);
+        }
         $job = Jobs::enqueue(self::JOB, ['message' => $payload]);
 
         return new JsObject(['id' => $job['id']]);

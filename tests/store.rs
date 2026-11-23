@@ -358,6 +358,60 @@ fn manifests_with_and_without_the_deployment_fields_load() {
     );
 }
 
+/// A host marks a preview binding with `preview: true` in `Loader::load`; the runtime sees it before
+/// the app mounts, and a build loaded without it is not a preview. Anything but a bool is refused.
+#[test]
+fn the_loader_tells_the_runtime_about_a_preview_binding() {
+    let work = tempfile::tempdir().unwrap();
+    let root = work.path().join("store");
+    let one = capture(work.path(), "one");
+    let built = typedpress::host::compile_to_store(&one, &root, &one, None).unwrap();
+    let loader = root
+        .join("runtime")
+        .join(&built.runtime_revision)
+        .join("typedpress-loader.php");
+    // Before WordPress initializes: the loader only registers its mount for plugins_loaded.
+    let load = |options: &str| {
+        let code = format!(
+            "define('ABSPATH', '/');
+             function did_action($h) {{ return 0; }} function doing_action($h) {{ return false; }}
+             function add_action(...$a) {{ return true; }} function add_filter(...$a) {{ return true; }}
+             require $argv[1];
+             try {{ TypedPress\\Loader\\Loader::load($argv[2], $argv[3], {options}); }}
+             catch (InvalidArgumentException $e) {{ echo json_encode(['refused' => $e->getMessage()]); return; }}
+             echo json_encode(['preview' => TypedPress\\Preview::on(), 'loaded' => TypedPress\\Loader\\Loader::loaded()['preview']]);"
+        );
+        let out = std::process::Command::new("php")
+            .args(["-r", &code])
+            .arg(&loader)
+            .arg(&root)
+            .arg(&built.build_id)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap_or_else(|_| {
+            panic!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            )
+        })
+    };
+    assert_eq!(load("[]"), serde_json::json!({ "preview": false, "loaded": false }));
+    assert_eq!(
+        load("['preview' => true]"),
+        serde_json::json!({ "preview": true, "loaded": true })
+    );
+    assert_eq!(
+        load("['preview' => 'yes']"),
+        serde_json::json!({ "refused": "preview must be true or false" })
+    );
+    assert_eq!(
+        load("['preview' => null]"),
+        serde_json::json!({ "refused": "preview must be true or false" })
+    );
+}
+
 /// The TypedPress plugin publishes an uploaded tree only under the name its contents hash to
 /// (runtime/typedpress-plugin/src/Trees.php). That hash must be the compiler's, or no upload would ever
 /// be accepted: both are computed here over the same two stored trees.

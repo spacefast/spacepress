@@ -134,7 +134,7 @@ pub const JOBS_COMMAND: &str = "wp typedpress jobs tick [--limit=<1..100>] [--bu
 pub const MOUNT: &[(&str, &str)] = &[
     (
         "TypedPress\\Loader\\Loader::load($root, $build, $options)",
-        "before WordPress initializes, with the build the host selected for this request",
+        "before WordPress initializes, with the build the host selected for this request. `preview: true` marks a preview binding, one that runs on a database of its own and seeds it again for each version: the seed's writes queue no webhook deliveries and no `mail.send` mail (`mail.send` checks the message and resolves to `{ id: \"\" }`); after the seed a preview sends webhooks and mail like any site. Off by default, which is production",
     ),
     (
         "TypedPress\\Loader\\Loader::initialize($root, $build)",

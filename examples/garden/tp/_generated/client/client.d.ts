@@ -682,17 +682,18 @@ export interface ClientOptions {
 	* The site's REST root: "https://x.test/wp-json" (or "https://x.test/?rest_route=" without pretty
 	* permalinks; WordPress names it in the `Link: <…>; rel="https://api.w.org/"` header of every page).
 	* The app's API URL ("https://x.test/wp-json/typedpress/v1") is accepted too, and a site URL without
-	* either is taken as its `/wp-json`. Default: `wpApiSettings.root` on a WordPress page, else
+	* either is taken as its `/wp-json`. Default: the root a TypedPress page names for the client, else
 	* `/wp-json` on the page's origin.
 	*/
 	url?: string;
 	/**
-	* Run on WordPress's own clients (`@wordpress/abilities`, `wp.apiFetch`): the page's REST root,
-	* nonce, middleware and errors are WordPress's. Default: true when `window.wp.apiFetch` exists and
-	* none of `url`, `fetch`, `headers`, `nonce` or `auth` names another site or credential.
+	* Use what a WordPress page prints for the client (`wp-script-module-data-@typedpress/client`): its
+	* REST root, the app API's namespace, a signed-in visitor's REST nonce, and `@wordpress/abilities`
+	* for that visitor's calls. Default: true when the page has it and none of `url`, `fetch`, `headers`,
+	* `nonce` or `auth` names another site or credential.
 	*/
 	wordpress?: boolean;
-	/** WordPress cookie auth without `wp.apiFetch`: the REST nonce, sent as `X-WP-Nonce` with `credentials: "same-origin"`. */
+	/** WordPress cookie auth: the REST nonce; sent as `X-WP-Nonce` with `credentials: "same-origin"`. */
 	nonce?: string;
 	fetch?: typeof fetch;
 	/** Extra headers on every request (e.g. `Authorization: Basic ...` for application passwords). They win over the above. */

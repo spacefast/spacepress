@@ -170,13 +170,17 @@ function decodeCursor(cursor) {
 		const v = JSON.parse(atob(cursor.replace(/-/g, "+").replace(/_/g, "/")));
 		if (isObject(v) && typeof v.offset === "number" && Number.isInteger(v.offset) && v.offset > 0) return v.offset;
 	} catch {}
-	throw new TypedPressError({
+	throw invalidQuery("cursor is not one paginate() returned", "/cursor");
+}
+/** A page argument refused before anything is sent, as the app API refuses it. */
+function invalidQuery(detail, pointer) {
+	return new TypedPressError({
 		type: "about:blank",
-		title: "Invalid input",
-		status: 422,
-		code: "invalid_input",
-		detail: "cursor is not one paginate() returned",
-		pointer: "/cursor"
+		title: "Invalid query",
+		status: 400,
+		code: "invalid_query",
+		detail,
+		pointer
 	});
 }
 /** The app's API namespace under the REST root when `url` names none (a host may serve it elsewhere: `sp_api_namespace`). */
@@ -213,7 +217,17 @@ function restUrl(root, route, query) {
 	if (root.includes("rest_route=")) return root + route + (query ? `&${query}` : "");
 	return root + route + (query ? `?${query}` : "");
 }
-const wordpress = () => globalThis;
+function pageData() {
+	const doc = globalThis.document;
+	const text = doc?.getElementById("wp-script-module-data-@typedpress/client")?.textContent;
+	if (!text) return null;
+	try {
+		const v = JSON.parse(text);
+		return isObject(v) ? v : null;
+	} catch {
+		return null;
+	}
+}
 let abilitiesModule = null;
 function wordpressAbilities() {
 	// Specifiers in variables: bundlers and Node leave them alone, and only a WordPress page, whose
@@ -254,12 +268,13 @@ function authError(status, code, detail) {
 /** In-flight refreshes of sessionStorage-backed sessions, by storage key (shared by clients in this tab). */
 const refreshes = new Map();
 export function createClient(options = {}) {
-	const host = wordpress();
-	// On a WordPress page with nothing pointing elsewhere: WordPress's own clients. Decided at each
-	// call, since a module can run before the page's classic scripts (wp.apiFetch) have.
+	// On a TypedPress page with nothing pointing elsewhere: the page's REST root, API and nonce.
 	const ownSite = options.url === undefined && options.fetch === undefined && options.headers === undefined && options.nonce === undefined && options.auth === undefined;
-	const onWordPress = () => typeof host.wp?.apiFetch === "function" && (options.wordpress ?? ownSite);
-	const { root, api: API } = endpoints(options.url ?? host.wpApiSettings?.root ?? "/wp-json");
+	const onPage = options.wordpress ?? ownSite ? pageData() : null;
+	const resolved = endpoints(options.url ?? onPage?.root ?? "/wp-json");
+	const root = resolved.root;
+	const API = options.url === undefined && typeof onPage?.api === "string" && onPage.api.startsWith("/") ? onPage.api : resolved.api;
+	const nonce = options.nonce ?? onPage?.nonce;
 	// Session storage is keyed by the app's API URL, as it was before the client ran abilities.
 	const base = restUrl(root, API);
 	const app = SCHEMA.app;
@@ -339,12 +354,11 @@ export function createClient(options = {}) {
 	/** One REST request: `route` below the REST root (`/typedpress/v1/me`, `/wp-abilities/v1/…`). */
 	async function request(method, path, send = {}, retried = false) {
 		const qs = send.query?.toString();
-		if (onWordPress()) return viaApiFetch(method, path, qs, send);
 		const headers = { accept: "application/json" };
 		const tokens = send.anonymous ? null : held();
 		const started = currentSid();
 		if (tokens) headers.authorization = `Bearer ${tokens.accessToken}`;
-		if (options.nonce !== undefined) headers["x-wp-nonce"] = options.nonce;
+		if (nonce !== undefined) headers["x-wp-nonce"] = nonce;
 		let body;
 		if (send.form) body = send.form;
 		else if (send.json !== undefined) {
@@ -357,11 +371,13 @@ export function createClient(options = {}) {
 			headers,
 			body
 		};
-		if (options.nonce !== undefined) init.credentials = "same-origin";
+		if (nonce !== undefined) init.credentials = "same-origin";
 		const { res, parsed } = await call(restUrl(root, path, qs), init, `${method} ${path}`);
 		if (res.ok) return unwrapped(parsed, send, `${method} ${path}`);
 		const error = toError(res, parsed);
-		if (error.status === 401 && error.code === "unauthenticated" && !send.anonymous && !retried) {
+		// `unauthenticated` from the app API; Identity's own `invalid_token` from any other REST route
+		// (core's ability run route), for a Bearer that has expired.
+		if (error.status === 401 && (error.code === "unauthenticated" || error.code === "invalid_token") && !send.anonymous && !retried) {
 			// Only a 401 for the Bearer this client holds is ours to repair, and only for the identity
 			// that sent it: after a sign-in or sign-out in between, the request fails as it was sent.
 			if (tokens && headers.authorization === `Bearer ${tokens.accessToken}`) {
@@ -387,33 +403,16 @@ export function createClient(options = {}) {
 			cursor: parsed.cursor ?? null
 		} : parsed.data;
 	}
-	/** The same request through `wp.apiFetch`: the page's REST root, nonce, middleware and error handling. */
-	async function viaApiFetch(method, path, qs, send) {
-		const label = `${method} ${path}`;
-		const apiFetch = host.wp?.apiFetch;
-		if (typeof apiFetch !== "function") throw networkError(`${label}: wp.apiFetch is not on this page`);
-		let parsed;
-		try {
-			parsed = await apiFetch({
-				path: path + (qs ? `?${qs}` : ""),
-				method,
-				...send.form ? { body: send.form } : send.json !== undefined ? { data: send.json } : {}
-			});
-		} catch (e) {
-			throw fromWordPress(e, label);
-		}
-		return unwrapped(parsed, send, label);
-	}
 	/**
-	* Runs the app's ability `<app>/<name>` with `input`. On a signed-in WordPress page through
-	* `@wordpress/abilities` (its input schema, permission check and errors are WordPress's); otherwise
-	* at core's run route, with the method its annotations ask for, through `wp.apiFetch` or `fetch`.
+	* Runs the app's ability `<app>/<name>` with `input`. A signed-in visitor of a TypedPress page (the
+	* page printed a nonce, and the client holds no session of its own) runs it through
+	* `@wordpress/abilities`: its input schema, permission check and errors are WordPress's. Otherwise
+	* it runs at core's run route, with the method its annotations ask for.
 	*/
-	async function ability(name, input, annotations = {}) {
+	async function ability(name, input, annotations = {}, query = false) {
 		const full = `${app}/${name}`;
-		// Core lists abilities (what `@wordpress/core-abilities` loads) only to a signed-in user: a
-		// visitor's page runs the ability at its run route through api-fetch instead.
-		if (onWordPress() && host.wp?.apiFetch?.nonceMiddleware) {
+		// Core lists abilities (what `@wordpress/core-abilities` loads) only to a signed-in user.
+		if (onPage?.nonce !== undefined && options.nonce === undefined && held() === null) {
 			let abilities = null;
 			try {
 				abilities = await wordpressAbilities();
@@ -422,7 +421,9 @@ export function createClient(options = {}) {
 			// app's own client, so it runs there.
 			if (abilities?.getAbility(full)) {
 				try {
-					return await abilities.executeAbility(full, input);
+					// A read's `where` and `with` as the JSON strings their schemas take: core's callback sends
+					// a GET's input as a bracketed query string, which can't carry them typed.
+					return await abilities.executeAbility(full, query ? queryStrings(input) : input);
 				} catch (e) {
 					throw fromWordPress(e, full);
 				}
@@ -438,6 +439,12 @@ export function createClient(options = {}) {
 			query: inputQuery(input),
 			raw: true
 		});
+	}
+	/** A kind read's input with `where` and `with` as JSON strings, which their schemas accept. */
+	function queryStrings(input) {
+		const out = { ...input };
+		for (const key of ["where", "with"]) if (isObject(out[key])) out[key] = JSON.stringify(out[key]);
+		return out;
 	}
 	// One refresh at a time across every client on the same storage: refresh tokens rotate, and
 	// presenting a used one revokes the whole family. sessionStorage belongs to one tab, so clients
@@ -1180,7 +1187,7 @@ export function createClient(options = {}) {
 		const op = (suffix) => `${kind}-${suffix}`;
 		const reads = (q) => dependencies(key, q?.with, q?.where);
 		// A read's input is the subscription's: `status` folded into `where`, `orderBy` as an object (liveArgs).
-		const rows = async (q) => (await ability(op("list"), liveArgs(q), readonly)).rows;
+		const rows = async (q) => (await ability(op("list"), liveArgs(q), readonly, true)).rows;
 		const list = (q) => query({
 			kind: key,
 			op: "list",
@@ -1197,6 +1204,9 @@ export function createClient(options = {}) {
 					});
 				}
 				// One row past the page says whether another follows; the cursor is the next page's offset.
+				// A page's arguments are refused as the app API refuses them: 400 invalid_query.
+				if (q?.limit !== undefined && !(Number.isInteger(q.limit) && q.limit >= 1)) throw invalidQuery("limit must be a positive integer", "/limit");
+				if (q?.offset !== undefined && !(Number.isInteger(q.offset) && q.offset >= 0)) throw invalidQuery("offset must be a non-negative integer", "/offset");
 				const limit = Math.min(typeof q?.limit === "number" ? q.limit : 50, 100);
 				const offset = typeof q?.cursor === "string" ? decodeCursor(q.cursor) : typeof q?.offset === "number" ? q.offset : 0;
 				const page = await rows({
@@ -1229,7 +1239,7 @@ export function createClient(options = {}) {
 				with: q.with,
 				locale: q.locale
 			} : undefined)
-		}, readonly);
+		}, readonly, true);
 		return {
 			list,
 			paginate,
@@ -1305,7 +1315,7 @@ export function createClient(options = {}) {
 	};
 	const client = {
 		media: {
-			list: async (q) => (await ability("media-list", liveArgs(q), readonly)).rows,
+			list: async (q) => (await ability("media-list", liveArgs(q), readonly, true)).rows,
 			get: (id) => ability("media-get", { id }, readonly),
 			upload: (file, opts = {}) => upload(`${API}/media`, file, opts.alt !== undefined ? { alt: opts.alt } : {}, opts.filename),
 			update: (id, patch) => ability("media-update", {

@@ -3583,7 +3583,7 @@ fn client_components_hydrate_in_the_browser() {
         "{seen}"
     );
     // A visitor's page runs the component's action as its Ability at core's run route, through
-    // WordPress's api-fetch with no nonce (a signed-out page carries none, and stays cacheable); a
+    // the client with no nonce (a signed-out page carries none, and stays cacheable); a
     // schema refusal is the client's typed error.
     assert_eq!(
         seen["abilityRuns"],

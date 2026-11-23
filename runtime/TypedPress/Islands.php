@@ -99,31 +99,69 @@ final class Islands
         }
         // The file has a fixed name: its version is a digest of its bytes, written by `typedpress build`.
         $version = is_file($plugin->dir . '/tp/app/client-version.php') ? (string) require $plugin->dir . '/tp/app/client-version.php' : null;
-        // On a WordPress page the client runs each operation as an Ability through WordPress's own
-        // clients: `@wordpress/abilities` (executeAbility) once `@wordpress/core-abilities` has loaded
-        // the server's abilities, and `wp.apiFetch`. Both modules are dynamic imports of the client,
-        // so a page loads them only when it calls something.
+        // On a WordPress page the client runs each operation as an Ability. For a signed-in visitor it
+        // goes through WordPress's own `@wordpress/abilities` (executeAbility, once
+        // `@wordpress/core-abilities` has loaded the server's abilities): both are dynamic imports of
+        // the client, so a page loads them only when it calls something.
         wp_register_script_module(self::CLIENT, $plugin->url('tp/app/client/typedpress-client.js'), [
             ['id' => '@wordpress/abilities', 'import' => 'dynamic'],
             ['id' => '@wordpress/core-abilities', 'import' => 'dynamic'],
         ], $version);
+        // On every page the client is registered for, not only the ones that import it: the
+        // Interactivity router swaps a later page in without its head, so the first page's data is
+        // what a client created after a client-side navigation reads.
+        static $printing = false;
+        if (!$printing) {
+            $printing = true;
+            add_action('wp_footer', [self::class, 'printClientData'], 1);
+        }
 
         return true;
     }
 
-    /** Whether a module this page enqueues runs the client: the page loads what it runs on. */
+    /** {@see clientData()} as the script module data WordPress prints (`wp-script-module-data-<id>`). */
+    public static function printClientData(): void
+    {
+        wp_print_inline_script_tag(
+            (string) wp_json_encode(self::clientData([]), JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES),
+            ['type' => 'application/json', 'id' => 'wp-script-module-data-' . self::CLIENT],
+        );
+    }
+
+    /**
+     * What `createClient()` reads on the page (`wp-script-module-data-@typedpress/client`): the REST
+     * root as a path on this site, the app API's namespace, and for a signed-in visitor the REST
+     * nonce. A signed-out render is cached, prebuilt and exported, so it carries no nonce and no
+     * origin (`typedpress export --site` points `root` at the hosted site).
+     *
+     * @return array{root: string, api: string, nonce?: string}
+     */
+    public static function clientData(array $data): array
+    {
+        $root = rest_url();
+        $parts = wp_parse_url($root);
+        $relative = ($parts['path'] ?? '/') . (isset($parts['query']) ? '?' . $parts['query'] : '');
+        $data += ['root' => $relative, 'api' => '/' . Wp\Facade::apiNamespace()];
+        if (is_user_logged_in()) {
+            $data['nonce'] = wp_create_nonce('wp_rest');
+        }
+
+        return $data;
+    }
+
+    /** Whether this page's client scripts are enqueued already. */
     private static bool $clientUsed = false;
 
     /**
-     * A module this page enqueues imports the client: load the classic scripts it and WordPress's
-     * modules read from `window.wp` (core-abilities: wp-api-fetch, wp-url; abilities: wp-data,
-     * wp-i18n), which a script module can't declare. Core's own pages enqueue them beside the
-     * module, and so does this. `wp-api-fetch` carries the REST root and, for a signed-in visitor,
-     * the REST nonce.
+     * A module this page enqueues imports the client. A signed-in visitor's page also loads the
+     * classic scripts `@wordpress/abilities` and `@wordpress/core-abilities` read from `window.wp`
+     * (wp-api-fetch, wp-url, wp-data, wp-i18n), which a script module can't declare: core's own pages
+     * enqueue them beside the module, and so does this. A visitor's page needs none of them (core
+     * lists abilities only to a signed-in user, so the client runs each one at its run route itself).
      */
     public static function useClient(): void
     {
-        if (self::$clientUsed) {
+        if (self::$clientUsed || !is_user_logged_in()) {
             return;
         }
         self::$clientUsed = true;
@@ -137,21 +175,8 @@ final class Islands
     /** The classic scripts {@see useClient()} names, printed in the head so `wp.apiFetch` exists before any module runs. */
     public static function clientScripts(): void
     {
-        // `@wordpress/abilities` (wp-data, wp-i18n) runs only for a signed-in visitor, whom core
-        // lists abilities to; a visitor's page needs api-fetch alone.
-        foreach (is_user_logged_in() ? ['wp-api-fetch', 'wp-url', 'wp-data', 'wp-i18n'] : ['wp-api-fetch', 'wp-url'] as $handle) {
+        foreach (['wp-api-fetch', 'wp-url', 'wp-data', 'wp-i18n'] as $handle) {
             wp_enqueue_script($handle);
-        }
-        // A signed-out render is cached and prebuilt, and the nonce core prints beside api-fetch would
-        // outlive its lifetime there: a stale one is refused (`rest_cookie_invalid_nonce`). A visitor
-        // with no session needs none, so core's nonce middleware is left out of the page. No
-        // `wp.apiFetch.nonceMiddleware` is also how the client knows it is a visitor's page (core lists
-        // abilities only to a signed-in user), so it runs each ability at its run route.
-        if (!is_user_logged_in()) {
-            $after = wp_scripts()->get_data('wp-api-fetch', 'after');
-            if (is_array($after)) {
-                wp_scripts()->add_data('wp-api-fetch', 'after', array_values(array_filter($after, static fn (mixed $script): bool => !is_string($script) || !str_contains($script, 'createNonceMiddleware'))));
-            }
         }
     }
 
@@ -244,7 +269,17 @@ final class Islands
             // A <Link> that swaps the router region onto this page loads the store then
             // (core marks the tag `data-wp-router-options`), and merges this page's config.
             wp_interactivity()->add_client_navigation_support_to_script_module($handle);
+            // Each action the store calls, by name, with its Ability's run route. The store runs them
+            // through the typed client; `typedpress export` reads this to refuse or keep them on --site.
             $config = [];
+            if (($island['actions'] ?? []) !== []) {
+                $app = Wp\Abilities\Register::kebab($plugin->schema->name());
+                $actions = [];
+                foreach ($island['actions'] as $action) {
+                    $actions[$action] = rest_url('wp-abilities/v1/abilities/' . $app . '/' . Wp\Abilities\Register::kebab((string) $action) . '/run');
+                }
+                $config['actions'] = (object) $actions;
+            }
             if (is_array($island['assets'] ?? null) && $island['assets'] !== []) {
                 $assets = [];
                 foreach ($island['assets'] as $name => $entry) {

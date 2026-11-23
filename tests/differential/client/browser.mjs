@@ -66,8 +66,8 @@ try {
   const responses = [];
   const requests = [];
   page.on("request", (r) => requests.push(r.url()));
-  // The component's action runs as its WordPress Ability, at core's run route through wp.apiFetch
-  // (pretty `/wp-json/…` or `?rest_route=…`, as the site's REST root is).
+  // The component's action runs as its WordPress Ability, at core's run route (pretty `/wp-json/…`
+  // or `?rest_route=…`, as the site's REST root is).
   const ran = (u) => decodeURIComponent(u).includes("/wp-abilities/v1/abilities/");
   const abilityRuns = [];
   page.on("request", (r) => {
@@ -168,7 +168,7 @@ try {
     .catch((e) => { throw new Error(`${e.message}\nwarnings: ${JSON.stringify(warnings)}`); });
   const liveAfter = await guests();
   // Signed in, the same page runs the action through `@wordpress/abilities` (core lists abilities
-  // to a signed-in user): its run route carries the REST nonce api-fetch holds.
+  // to a signed-in user): its run route carries the REST nonce the page printed for the client.
   const signedIn = await browser.newPage();
   const signedRuns = [];
   signedIn.on("pageerror", (e) => warnings.push(String(e)));

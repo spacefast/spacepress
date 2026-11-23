@@ -861,6 +861,16 @@ impl<'a> Export<'a> {
                 data["state"]["core/router"]["url"] = Value::String(format!("{served}{path}{suffix}"));
                 changed = true;
             }
+            // The typed client's data (`Islands::clientData`): its REST root is the hosted site with
+            // --site, where the page's actions run. Without --site an action is refused below, and
+            // the root stays a path the static host doesn't serve.
+            if &c[2] == "@typedpress/client"
+                && let (Some(site), Some(root)) = (&self.flags.site, data.get("root").and_then(Value::as_str))
+                && let Some(local) = self.local_path(root)
+            {
+                data["root"] = Value::String(format!("{}{local}", site.trim_end_matches('/')));
+                changed = true;
+            }
             if let Some(namespaces) = data.get_mut("config").and_then(Value::as_object_mut) {
                 for (namespace, config) in namespaces.iter_mut() {
                     let Some(actions) = config["actions"].as_object_mut() else { continue };

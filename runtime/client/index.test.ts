@@ -2055,98 +2055,100 @@ test("pageRead: an answer `pending` (over the server's per-request cap of page r
 });
 
 /**
- * A WordPress page: `window.wp.apiFetch` and the `@wordpress/abilities` modules, as a page that
- * enqueues the client has them. The module specifiers resolve through a loader hook to stubs that
- * record each call; `getAbility` knows only the abilities core-abilities would have registered.
+ * A TypedPress page: the client's module data (`wp-script-module-data-@typedpress/client`, what
+ * `Islands::clientData` prints) and the `@wordpress/abilities` modules, as a signed-in page has them.
+ * The module specifiers resolve through a loader hook to stubs that record each call; `getAbility`
+ * knows only the abilities core-abilities would have registered.
  */
-async function onWordPressPage(run: (calls: { abilities: unknown[][]; apiFetch: unknown[] }) => Promise<void>, registered: string[], signedIn = true) {
-  const dir = mkdtempSync(join(tmpdir(), "typedpress-wp-"));
-  dirs.push(dir);
-  const calls = { abilities: [] as unknown[][], apiFetch: [] as unknown[] };
+let abilitiesStubbed = false;
+async function onWordPressPage(run: (calls: { abilities: unknown[][] }) => Promise<void>, registered: string[], data: Record<string, unknown>) {
+  const calls = { abilities: [] as unknown[][] };
   (globalThis as any).__wpCalls = calls;
   (globalThis as any).__wpRegistered = new Set(registered);
-  writeFileSync(join(dir, "abilities.mjs"), `
-    export async function executeAbility(name, input) {
-      globalThis.__wpCalls.abilities.push([name, input]);
-      if (name.endsWith("/approve-comment") && input.id === 0) {
-        throw Object.assign(new Error('Ability "' + name + '" has invalid input. Reason: input[id] must be greater than 0'), { code: "ability_invalid_input" });
+  if (!abilitiesStubbed) {
+    abilitiesStubbed = true;
+    const dir = mkdtempSync(join(tmpdir(), "typedpress-wp-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "abilities.mjs"), `
+      export async function executeAbility(name, input) {
+        globalThis.__wpCalls.abilities.push([name, input]);
+        if (name.endsWith("/approve-comment") && input.id === 0) {
+          throw Object.assign(new Error('Ability "' + name + '" has invalid input. Reason: input[id] must be greater than 0'), { code: "ability_invalid_input" });
+        }
+        if (name.endsWith("/publish")) throw Object.assign(new Error("Permission denied for ability: " + name), { code: "ability_permission_denied" });
+        return name.endsWith("-list") ? { rows: [{ id: 1 }] } : { ok: name };
       }
-      if (name.endsWith("/publish")) throw Object.assign(new Error("Permission denied for ability: " + name), { code: "ability_permission_denied" });
-      return name.endsWith("-list") ? { rows: [{ id: 1 }] } : { ok: name };
-    }
-    export const getAbility = (name) => (globalThis.__wpRegistered.has(name) ? { name } : undefined);
-  `);
-  writeFileSync(join(dir, "core-abilities.mjs"), "export const ready = Promise.resolve();");
-  const { register } = await import("node:module");
-  register(`data:text/javascript,${encodeURIComponent(`
-    export async function resolve(specifier, context, next) {
-      if (specifier === "@wordpress/abilities") return { url: ${JSON.stringify(pathToFileURL(join(dir, "abilities.mjs")).href)}, shortCircuit: true };
-      if (specifier === "@wordpress/core-abilities") return { url: ${JSON.stringify(pathToFileURL(join(dir, "core-abilities.mjs")).href)}, shortCircuit: true };
-      return next(specifier, context);
-    }`)}`);
-  const saved = Object.getOwnPropertyDescriptor(globalThis, "wp");
-  const apiFetch = Object.assign(async (options: any) => {
-        calls.apiFetch.push(options);
-        if (options.path.startsWith("/wp-abilities/")) return { ran: options.path, data: options.data ?? null };
-        if (options.path === "/typedpress/v1/_live") return { data: { results: JSON.parse(JSON.stringify(options.data)).queries.map(() => ({ changed: true, token: "t", data: [] })) } };
-        if (options.path === "/typedpress/v1") return { data: { name: "blog" } };
-        throw { code: "rest_forbidden", message: "Sorry, you are not allowed to do that.", data: { status: 403 } };
-  }, { nonceMiddleware: signedIn ? () => undefined : null });
-  Object.defineProperty(globalThis, "wp", { configurable: true, value: { apiFetch } });
+      export const getAbility = (name) => (globalThis.__wpRegistered.has(name) ? { name } : undefined);
+    `);
+    writeFileSync(join(dir, "core-abilities.mjs"), "export const ready = Promise.resolve();");
+    const { register } = await import("node:module");
+    register(`data:text/javascript,${encodeURIComponent(`
+      export async function resolve(specifier, context, next) {
+        if (specifier === "@wordpress/abilities") return { url: ${JSON.stringify(pathToFileURL(join(dir, "abilities.mjs")).href)}, shortCircuit: true };
+        if (specifier === "@wordpress/core-abilities") return { url: ${JSON.stringify(pathToFileURL(join(dir, "core-abilities.mjs")).href)}, shortCircuit: true };
+        return next(specifier, context);
+      }`)}`);
+  }
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const text = JSON.stringify(data);
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { getElementById: (id: string) => (id === "wp-script-module-data-@typedpress/client" ? { textContent: text } : null) } });
   try {
     await run(calls);
   } finally {
-    saved ? Object.defineProperty(globalThis, "wp", saved) : Reflect.deleteProperty(globalThis, "wp");
+    saved ? Object.defineProperty(globalThis, "document", saved) : Reflect.deleteProperty(globalThis, "document");
   }
 }
 
-test("on a WordPress page, operations run through @wordpress/abilities and REST through wp.apiFetch", async () => {
+test("a signed-in page runs abilities through @wordpress/abilities, with reads' where and with as JSON strings", async () => {
   await onWordPressPage(async (calls) => {
     seen = [];
+    reply = ok({ name: "blog" });
     const first = mod.createClient();
-    assert.deepEqual(await first.posts.list({ limit: 2 }), [{ id: 1 }]);
+    assert.deepEqual(await first.posts.list({ limit: 2, where: { title: "x" } }), [{ id: 1 }]);
     assert.deepEqual(await first.actions.approveComment({ id: 3 }), { ok: "blog/approve-comment" });
-    assert.deepEqual(calls.abilities, [["blog/posts-list", { limit: 2 }], ["blog/approve-comment", { id: 3 }]]);
-    // An `agents: false` operation, not listed to core-abilities, runs at core's run route through apiFetch.
+    assert.deepEqual(calls.abilities, [["blog/posts-list", { limit: 2, where: JSON.stringify({ title: "x" }) }], ["blog/approve-comment", { id: 3 }]]);
+    // An `agents: false` operation, not listed to core-abilities, runs at its run route with the nonce;
+    // the app's own REST routes go to the page's root and API namespace.
+    reply = ok(5);
     await first.actions.publishedCount();
-    assert.deepEqual(calls.apiFetch.at(-1), { path: "/wp-abilities/v1/abilities/blog/published-count/run", method: "GET" });
-    // TypedPress's own REST routes (the description, the subscription batch) go through apiFetch too.
+    assert.deepEqual([last().method, last().path, last().headers["x-wp-nonce"]], ["GET", "/sub/wp-json/wp-abilities/v1/abilities/blog/published-count/run", "n0nce"]);
+    reply = ok({ name: "blog" });
     await first.schema();
-    assert.equal((calls.apiFetch.at(-1) as any).path, "/typedpress/v1");
-    await first.posts.count();
-    assert.deepEqual([(calls.apiFetch.at(-1) as any).path, (calls.apiFetch.at(-1) as any).method], ["/typedpress/v1/_live", "POST"]);
-    assert.equal(seen.length, 0, "nothing goes around WordPress's clients");
+    assert.deepEqual([last().path, last().headers["x-wp-nonce"]], ["/sub/wp-json/acme/v2", "n0nce"]);
 
     // WordPress's errors reach the caller as the client's typed error.
     const invalid = await first.actions.approveComment({ id: 0 }).catch((e: unknown) => e);
     assert.ok(invalid instanceof mod.TypedPressError);
     assert.deepEqual([invalid.status, invalid.code], [422, "invalid_input"]);
     assert.match(invalid.detail, /must be greater than 0/);
-    const refused = await first.files.decks.get(1).catch((e: unknown) => e);
-    assert.deepEqual([refused instanceof mod.TypedPressError, refused.status, refused.code], [true, 403, "forbidden"]);
-  }, ["blog/posts-list", "blog/approve-comment", "blog/publish"]);
+  }, ["blog/posts-list", "blog/approve-comment"], { root: `${origin}/sub/wp-json/`, api: "/acme/v2", nonce: "n0nce" });
 });
 
-test("a visitor's page (no REST nonce) runs abilities at their run route through wp.apiFetch, not core-abilities", async () => {
+test("a visitor's page (no nonce in its data) runs every ability at its run route, sending no nonce", async () => {
   await onWordPressPage(async (calls) => {
     seen = [];
-    const first = mod.createClient();
-    await first.actions.approveComment({ id: 3 });
+    reply = ok(141);
+    await mod.createClient().actions.approveComment({ id: 3 });
     assert.deepEqual(calls.abilities, [], "core lists abilities only to a signed-in user");
-    assert.deepEqual(calls.apiFetch.at(-1), { path: "/wp-abilities/v1/abilities/blog/approve-comment/run", method: "POST", data: { input: { id: 3 } } });
-    assert.equal(seen.length, 0);
-  }, ["blog/approve-comment"], false);
+    assert.deepEqual([last().method, last().path, last().headers["x-wp-nonce"], bodyInput(last())], ["POST", "/wp-json/wp-abilities/v1/abilities/blog/approve-comment/run", undefined, { id: 3 }]);
+  }, ["blog/approve-comment"], { root: `${origin}/wp-json/`, api: "/typedpress/v1" });
 });
 
-test("off a WordPress page the client never loads WordPress's modules, and `wordpress: false` opts out on one", async () => {
+test("a client with its own url, credential or session doesn't use the page's data", async () => {
   await onWordPressPage(async (calls) => {
     seen = [];
     reply = ok({ rows: [] });
-    // A url (another site) means fetch, even where wp.apiFetch exists.
     await mod.createClient({ url }).posts.list();
     await mod.createClient({ wordpress: false, url }).posts.list();
-    assert.deepEqual([calls.abilities.length, calls.apiFetch.length, seen.length], [0, 0, 2]);
-  }, ["blog/posts-list"]);
+    assert.deepEqual([calls.abilities.length, seen.length, seen.map((s) => s.headers["x-wp-nonce"])], [0, 2, [undefined, undefined]]);
+    // A guest's session on the page: its Bearer, not the page's nonce or core-abilities.
+    seen = [];
+    reply = (s) => (s.path.endsWith("/auth/guest") ? tokens(1, guest) : ok(null)());
+    const page = mod.createClient();
+    await page.auth.guest();
+    await page.auth.me();
+    assert.deepEqual([calls.abilities.length, last().path, last().headers.authorization], [0, "/wp-json/wp-abilities/v1/abilities/blog/me/run", "Bearer za_1"]);
+  }, ["blog/posts-list", "blog/me"], { root: `${origin}/wp-json/`, api: "/typedpress/v1", nonce: "n0nce" });
 });
 
 test("`url` may be the REST root, the app's API URL, a `?rest_route=` root or the site; each reaches the same routes", async () => {
@@ -2182,4 +2184,29 @@ test("an action runs with the method its annotations give core's run route; an a
   seen = [];
   await mod.createClient({ url, nonce: "n0nce" }).actions.approveComment({ id: 1 });
   assert.equal(last().headers["x-wp-nonce"], "n0nce");
+});
+
+test("an expired Bearer that core's run route answers as Identity's `invalid_token` is refreshed once and retried", async () => {
+  const first = mod.createClient({ url, auth: { issuer: `${origin}/identity` } });
+  reply = (s) => (s.path.endsWith("/auth/guest") ? tokens(1, guest) : ok(null)());
+  await first.auth.guest();
+  seen = [];
+  const invalid = { status: 401, body: JSON.stringify({ code: "invalid_token", message: "The access token is invalid, expired or revoked.", data: { status: 401 } }) };
+  reply = (s) => (s.path === "/identity/token" ? rotated(2) : s.headers.authorization === "Bearer za_2" ? ok({ rows: [{ id: 1 }] })() : invalid);
+  assert.deepEqual(await first.posts.list(), [{ id: 1 }]);
+  assert.deepEqual(seen.map((s) => `${s.path} ${s.headers.authorization ?? "-"}`), [
+    "/wp-json/wp-abilities/v1/abilities/blog/posts-list/run Bearer za_1",
+    "/identity/token -",
+    "/wp-json/wp-abilities/v1/abilities/blog/posts-list/run Bearer za_2",
+  ]);
+});
+
+test("paginate refuses a limit or offset the app API refuses, and a cursor it didn't issue, before sending anything", async () => {
+  seen = [];
+  const first = mod.createClient({ url });
+  for (const [q, pointer] of [[{ limit: 0 }, "/limit"], [{ limit: 1.5 }, "/limit"], [{ offset: -1 }, "/offset"], [{ cursor: "nope" }, "/cursor"]] as const) {
+    const e = await first.posts.paginate(q).catch((x: unknown) => x);
+    assert.deepEqual([e.status, e.code, e.pointer], [400, "invalid_query", pointer], JSON.stringify(q));
+  }
+  assert.equal(seen.length, 0);
 });

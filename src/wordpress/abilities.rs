@@ -603,10 +603,8 @@ fn own(schema: &Schema) -> Own {
         ),
     ));
     out.push((format!("{app}/media-delete"), (media_id, media)));
-    // As Register::build: the signed-in user, unless the app has its own `me` action.
-    if !schema.actions.contains_key("me") {
-        out.push((format!("{app}/me"), (opt(&[]), Ty::Unknown)));
-    }
+    // As Register::build: the signed-in user (an app's own `me` is refused at build).
+    out.push((format!("{app}/me"), (opt(&[]), Ty::Unknown)));
     for (name, j) in &schema.jobs {
         if j.agents {
             out.push((

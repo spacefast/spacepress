@@ -53,7 +53,7 @@ final class Module
         add_filter('rest_post_dispatch', [Register::class, 'dispatched'], 0);
         // An internal dispatch (rest_do_request, the API's run of an action) skips rest_post_dispatch:
         // the operation's own headers go on the run response here.
-        add_filter('rest_request_after_callbacks', [Register::class, 'answered'], 0);
+        add_filter('rest_request_after_callbacks', [Register::class, 'answered'], 0, 3);
         Extensions::cli('abilities', static fn (): array => array_map(Register::describe(...), Register::operations()));
         Extensions::cli('run', self::run(...));
     }

@@ -101,14 +101,14 @@ final class Register
             return $valid;
         }
 
-        if (in_array(self::$sanitizing, ['GET', 'DELETE'], true)) {
+        if (in_array(self::$sanitizing, ['GET', 'DELETE'], true) && !self::$typedQuery) {
             // Core sanitizes (types) a query string only when all of it validates; remember which.
             self::$untyped = $valid === true ? null : ($valid instanceof \WP_Error ? $valid->get_error_message() : 'Invalid input');
         }
 
-        return match (self::$sanitizing) {
-            null => true,
-            'GET', 'DELETE' => $valid,
+        return match (true) {
+            self::$sanitizing === null => true,
+            in_array(self::$sanitizing, ['GET', 'DELETE'], true) && !self::$typedQuery => $valid,
             default => new \WP_Error('tp_raw_input', 'TypedPress validates JSON input itself'),
         };
     }
@@ -128,13 +128,16 @@ final class Register
     /**
      * rest_pre_dispatch (before {@see sanitizing()}): a GET or DELETE run of one of the app's
      * abilities may carry its input as JSON, `?input={"limit":5,"where":{…}}` (what the typed client
-     * sends), as well as in core's bracketed form (`input[limit]=5`, what `wp.url` builds). JSON keeps
-     * types a bracketed query string can't; it is decoded into the bracketed form's shape, with
-     * `where`, `with` and `orderBy` as the strings the list query takes, so core and the pipeline
-     * read both the same way.
+     * sends), as well as in core's bracketed form (`input[limit]=5`, what `wp.url` builds).
+     *
+     * A kind's read (`-list`, `-get`) is decoded into the bracketed form's shape, with `where`, `with`
+     * and `orderBy` as the strings the list query takes, so core and the pipeline read both forms the
+     * same way. Any other ability (a readonly action, a revision read) takes its JSON as sent, as a
+     * POSTed run does: its values keep their types and `{}` stays an object ({@see sentInput()}).
      */
     public static function jsonInput(mixed $result, mixed $server, mixed $request): mixed
     {
+        self::$typedQuery = false;
         if ($result !== null || !$request instanceof \WP_REST_Request || !in_array($request->get_method(), ['GET', 'HEAD', 'DELETE'], true)
             || ($name = self::runRoute($request)) === null) {
             return $result;
@@ -143,12 +146,28 @@ final class Register
         if (!is_string($query['input'] ?? null) || !str_starts_with(ltrim($query['input']), '{')) {
             return $result;
         }
-        self::operations();
-        if (!isset(self::$names[$name])) {
-            return $result;
+        $op = null;
+        foreach (self::operations() as $candidate) {
+            if ($candidate['name'] === $name) {
+                $op = $candidate;
+                break;
+            }
         }
         $input = json_decode($query['input'], true);
-        if (!is_array($input)) {
+        if ($op === null || !is_array($input)) {
+            return $result;
+        }
+        if (($op['shape']['type'] ?? null) !== 'query') {
+            try {
+                $sent = \TypedPress\Js::decodeJson($query['input']);
+            } catch (\JsonException) {
+                return $result;
+            }
+            self::$typedQuery = true;
+            self::$raw = [$name, $sent];
+            $query['input'] = $input;
+            $request->set_query_params($query);
+
             return $result;
         }
         foreach (['where', 'with'] as $key) {
@@ -261,6 +280,7 @@ final class Register
         self::$raw = null;
         self::$headers = null;
         self::$runRoute = null;
+        self::$typedQuery = false;
         if ($response instanceof \WP_REST_Response) {
             foreach (self::$responded as $name => $value) {
                 $response->header($name, $value);
@@ -277,8 +297,14 @@ final class Register
      * TypedPress's own (`tp_*`: 503 while storage is behind, a scope refusal) keeps the status and
      * pointer it was made with.
      */
-    public static function answered(mixed $response): mixed
+    public static function answered(mixed $response, mixed $handler = null, mixed $request = null): mixed
     {
+        // An ability that answers null (signed-out `me`, an action that returns nothing) is a 204:
+        // core would send 200 with an empty body, which is not JSON to a client that parses it.
+        if ($response instanceof \WP_REST_Response && $response->get_data() === null && $response->get_status() === 200
+            && $request instanceof \WP_REST_Request && ($name = self::runRoute($request)) !== null && isset(self::$names[$name])) {
+            $response->set_status(204);
+        }
         if ($response instanceof \WP_Error && str_starts_with((string) $response->get_error_code(), 'tp_')) {
             $data = $response->get_all_error_data();
             if (count($data) > 1 && is_array($data[0]) && isset($data[0]['status'])) {
@@ -319,11 +345,17 @@ final class Register
         self::$responded = array_filter($headers, static fn ($v, $k): bool => is_string($v) && strcasecmp((string) $k, 'Content-Type') !== 0, ARRAY_FILTER_USE_BOTH);
     }
 
-    /** Whether the executing ability's input arrived as a query string (core's GET/DELETE run). */
+    /**
+     * Whether the executing ability's input arrived as a query string (core's GET/DELETE run), whose
+     * values core types. JSON input in the query of a non-query ability is read as sent instead.
+     */
     public static function queryString(): bool
     {
-        return in_array(self::$method, ['GET', 'DELETE'], true);
+        return in_array(self::$method, ['GET', 'DELETE'], true) && !self::$typedQuery;
     }
+
+    /** This run's query carries an ability's JSON input as sent ({@see jsonInput()}). */
+    private static bool $typedQuery = false;
 
     /** One of the app's abilities core's run route is serving in this request, as {@see sanitizing()} recorded it. */
     public static function running(): ?string
@@ -384,16 +416,15 @@ final class Register
         }
         array_push($ops, ...self::media($app, $label));
         // The signed-in user (null when signed out), what `client.auth.me()` reads. Only the app's own
-        // client calls it, so it stays out of core REST discovery and MCP; an app's own `me` action wins.
-        if (!isset($schema->actions()['me'])) {
-            $ops[] = [
-                'name' => "$app/me", 'op' => 'me', 'agents' => false, 'label' => 'Current user',
-                'description' => "The signed-in user of the $label app, with their member row when the app has one; null when signed out.",
-                'input' => JsonSchema::input([]), 'output' => [], 'annotations' => ['readonly' => true, 'idempotent' => true],
-                'rule' => [Access::DEFAULT_READ, 'read', 'read the current user'], 'typedpress' => [],
-                'call' => static fn (array $in): array => ['GET', '/me', [], null],
-            ];
-        }
+        // client calls it, so it stays out of core REST discovery and MCP. The build refuses an action,
+        // kind, global or job that would also become `<app>/me` (src/extract.rs).
+        $ops[] = [
+            'name' => "$app/me", 'op' => 'me', 'agents' => false, 'label' => 'Current user',
+            'description' => "The signed-in user of the $label app, with their member row when the app has one; null when signed out.",
+            'input' => JsonSchema::input([]), 'output' => [], 'annotations' => ['readonly' => true, 'idempotent' => true],
+            'rule' => [Access::DEFAULT_READ, 'read', 'read the current user'], 'typedpress' => [],
+            'call' => static fn (array $in): array => ['GET', '/me', [], null],
+        ];
         // Features add their own operations here (runtime schema changes: TypedPress\RuntimeSchema\Surfaces).
         $ops = apply_filters('tp_ability_operations', $ops, $app);
         if (($enqueue = Module::enqueuer()) !== null) {
@@ -441,7 +472,8 @@ final class Register
         $row = JsonSchema::row($spec);
         $pk = $spec['columns'][$spec['primaryKey']]['type'] === 'integer' ? ['type' => 'integer'] : ['type' => 'string'];
         $localized = (bool) ($spec['localized'] ?? false);
-        $locale = $localized ? ['locale' => ['type' => 'string', 'enum' => $locales]] : [];
+        // A read's `locale`: one of the app's, or `*` for every row.
+        $locale = $localized ? ['locale' => ['type' => 'string', 'enum' => [...$locales, '*']]] : [];
         // Virtual create inputs other features consume before column validation (§6.2, §7.3).
         $virtual = ($localized ? ['translationOf' => $pk] : []) + (($spec['auth'] ?? false) ? ['password' => ['type' => 'string']] : []);
         $with = ($spec['relations'] ?? []) !== [] || self::hasMedia($spec) ? ['with' => JsonSchema::with($spec)] : [];

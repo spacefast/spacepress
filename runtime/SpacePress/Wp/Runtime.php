@@ -5,14 +5,14 @@ namespace SpacePress\Wp;
 /** The single runtime and app registry; optional features attach to existing seams. */
 final class Runtime {
 
-	public const SERIES             = \SpacePress\Schema::SERIES;
-	public const VERSION            = '0.3.0';
-	private static ?Plugin $plugin  = null;
+	public const SERIES              = \SpacePress\Schema::SERIES;
+	public const VERSION             = '0.3.0';
+	private static ?Plugin $plugin   = null;
 	private static ?string $app_file = null;
-	private static bool $booted     = false;
+	private static bool $booted      = false;
 	/** The runtime plugin's main file, for URLs of the runtime's own browser modules. */
 	private static ?string $runtime_file = null;
-	private static bool $managed        = false;
+	private static bool $managed         = false;
 	/** @var array<string, callable> `wp spacepress` commands other SpacePress plugins register (identity) */
 	private static array $commands = array();
 	/** Why the shared system tables are behind this runtime (failed or contended upgrade), else null. */
@@ -26,7 +26,7 @@ final class Runtime {
 			self::notice( 'WordPress ' . Platform::WORDPRESS . '+ and PHP ' . Platform::PHP . '+ are required' );
 			return;
 		}
-		self::$booted      = true;
+		self::$booted       = true;
 		self::$runtime_file = $runtimeFile;
 		RouteRequest::register();
 		AgentScope::trackCookie();

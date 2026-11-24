@@ -124,6 +124,7 @@ final class JsClass {
 	 * method on the class chain decides, called with C as its receiver; otherwise the
 	 * ordinary prototype-chain walk.
 	 */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function instanceOf( mixed $value, self $constructor ): bool {
 		$slot = $constructor->symbolSlot( JsSymbol::wellKnown( 'hasInstance' ), true );
 		if ( null !== $slot ) {
@@ -155,6 +156,7 @@ final class JsClass {
 	}
 
 	/** `Function.prototype[key]`: only Symbol.hasInstance is modeled. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function functionPrototypeGet( mixed $key ): mixed {
 		if ( $key === JsSymbol::wellKnown( 'hasInstance' ) ) {
 			return self::ordinaryHasInstanceFunction(); }
@@ -230,6 +232,7 @@ final class JsClass {
 	}
 
 	/** Error.captureStackTrace(target): defines an own non-enumerable stack; SpacePress records no frames. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function captureStackTrace( mixed $target ): JsUndefined {
 		if ( ! $target instanceof JsObject ) {
 			throw new JsError( 'Invalid argument', 'TypeError' ); }

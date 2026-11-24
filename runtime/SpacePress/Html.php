@@ -578,6 +578,7 @@ final class Html {
 	 *
 	 * @param list<string> $names
 	 */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function styleOf( mixed $style, array $names ): mixed {
 		// The compiler admits only objects; anything else (a string from data) renders nothing.
 		if ( ! $style instanceof JsObject ) {

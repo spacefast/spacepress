@@ -8,8 +8,8 @@ namespace SpacePress;
  */
 final class JsSymbol {
 
-	private const WELL_KNOWN        = array( 'asyncIterator', 'hasInstance', 'iterator', 'toStringTag' );
-	private static array $registry  = array();
+	private const WELL_KNOWN         = array( 'asyncIterator', 'hasInstance', 'iterator', 'toStringTag' );
+	private static array $registry   = array();
 	private static array $well_known = array();
 
 	private function __construct( public readonly string|JsUndefined $description, public readonly ?string $registryKey = null, public readonly bool $isWellKnown = false ) {}
@@ -32,6 +32,7 @@ final class JsSymbol {
 		return $symbol->registryKey ?? JsUndefined::Value;
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function wellKnown( string $name ): self {
 		if ( ! in_array( $name, self::WELL_KNOWN, true ) ) {
 			throw new JsError( 'Unsupported well-known symbol Symbol.' . $name, 'TypeError' ); }

@@ -29,7 +29,7 @@ final class Files {
 		'delete' => array( 'owner' => true ),
 	);
 
-	private static ?FileStorage $storage       = null;
+	private static ?FileStorage $storage        = null;
 	private static ?\SpacePress\Db $storage_for = null;
 
 	public static function register(): void {
@@ -63,7 +63,7 @@ final class Files {
 	/** The active app's private-file storage. */
 	public static function storage(): FileStorage {
 		if ( null === self::$storage || self::$storage_for !== db() ) {
-			self::$storage    = new \SpacePress\Wp\WpFiles( \SpacePress\Wp\Runtime::plugin()?->connection() ?? throw new \LogicException( 'No SpacePress app is active' ), db()->schema()->name() );
+			self::$storage     = new \SpacePress\Wp\WpFiles( \SpacePress\Wp\Runtime::plugin()?->connection() ?? throw new \LogicException( 'No SpacePress app is active' ), db()->schema()->name() );
 			self::$storage_for = db();
 		}
 
@@ -154,6 +154,7 @@ final class Files {
 	public const MAX_READ_BYTES = 16_777_216;
 
 	/** Trusted server metadata read (+ signed url) as a JsObject, or null when missing / wrong bucket. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function getOrNull( string $name, int $id ): ?\SpacePress\JsObject {
 		self::bucket( $name );
 		$row = self::storage()->getMany( array( $id ) )[ $id ] ?? null;
@@ -187,6 +188,7 @@ final class Files {
 	}
 
 	/** Trusted server read of a private file as validated UTF-8 text. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function readText( string $name, int $id ): string {
 		$bytes = self::readBytes( $name, $id );
 		if ( ! mb_check_encoding( $bytes, 'UTF-8' ) ) {
@@ -197,6 +199,7 @@ final class Files {
 	}
 
 	/** Trusted server read of a private file as standard base64. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function readBase64( string $name, int $id ): string {
 		return base64_encode( self::readBytes( $name, $id ) );
 	}

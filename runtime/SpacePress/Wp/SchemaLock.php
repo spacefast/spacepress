@@ -58,7 +58,7 @@ final class SchemaLock {
 	private static array $options = array();
 	/** Set while an SCF ability runs: a refusal from its save becomes the ability's own error. */
 	private static ?string $ability_refused = null;
-	private static int $abilities          = 0;
+	private static int $abilities           = 0;
 
 	public static function apply( Schema $schema ): void {
 		foreach ( $schema->collections() as $spec ) {
@@ -223,8 +223,8 @@ final class SchemaLock {
 		if ( ! is_string( $name ) || ! str_starts_with( $name, 'scf/' ) ) {
 			return $result;
 		}
-		self::$abilities      = max( 0, self::$abilities - 1 );
-		$refused              = self::$ability_refused;
+		self::$abilities       = max( 0, self::$abilities - 1 );
+		$refused               = self::$ability_refused;
 		self::$ability_refused = null;
 
 		return null === $refused ? $result : self::error( $refused );

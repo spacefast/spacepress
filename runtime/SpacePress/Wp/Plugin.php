@@ -21,7 +21,7 @@ final class Plugin {
 	public const UNAVAILABLE = 'Storage is being upgraded; try again shortly';
 	public const MIN_SCF     = Platform::PLUGINS['secure-custom-fields']['version'];
 
-	private static ?self $instance  = null;
+	private static ?self $instance   = null;
 	private static ?bool $has_ledger = null;
 
 	private ?App $app = null;

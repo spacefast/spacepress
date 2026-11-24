@@ -34,6 +34,7 @@ final class Islands {
 	 * `data-wp-each-child="<namespace>::<path>"`, so the Interactivity runtime takes the elements
 	 * over as the template's children instead of rendering a second copy (WordPress 6.9 +).
 	 */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function eachChild( mixed $rendered, string $source ): Html {
 		$html = Html::child( $rendered );
 		if ( '' === $html || ! class_exists( \WP_HTML_Tag_Processor::class ) ) {

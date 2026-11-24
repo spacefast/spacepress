@@ -12,8 +12,8 @@ final class CartHandoff {
 
 	private const LINK = '_spacepress_token_cart';
 
-	private static bool $requested           = false;
-	private static ?string $source           = null;
+	private static bool $requested            = false;
+	private static ?string $source            = null;
 	private static ?\WC_Order $checkout_order = null;
 
 	public static function register( Plugin $plugin ): void {

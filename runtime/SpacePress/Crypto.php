@@ -35,6 +35,7 @@ final class Crypto {
 	}
 
 	/** `createHmac(algorithm, process.env.NAME)...`: the variable is read trimmed and must be set. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function hmacEnv( string $algorithm, string $name, array $parts, string $encoding ): string {
 		$value  = Env::get( $name );
 		$secret = null === $value ? '' : self::trim( $value );
@@ -49,6 +50,7 @@ final class Crypto {
 	 * `timingSafeEqual(Buffer.from(a), Buffer.from(b))`: constant time over the UTF-8 bytes; inputs of
 	 * different byte lengths throw, as Node does.
 	 */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function timingSafeEqual( mixed $a, mixed $b ): bool {
 		$a = self::bounded( $a, 'timingSafeEqual' );
 		$b = self::bounded( $b, 'timingSafeEqual' );
@@ -60,6 +62,7 @@ final class Crypto {
 	}
 
 	/** `randomBytes(n).toString(encoding)`, n from 0 to 1024. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function randomBytes( mixed $bytes, string $encoding ): string {
 		if ( ! is_int( $bytes ) && ! ( is_float( $bytes ) && floor( $bytes ) === $bytes ) ) {
 			throw new JsError( 'The "size" argument must be a whole number', 'RangeError' );
@@ -78,6 +81,7 @@ final class Crypto {
 	 * data is an ArrayBuffer, a typed array or a DataView. As in Web Crypto, a bad algorithm or
 	 * data rejects the promise rather than throwing.
 	 */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function subtleDigest( mixed $algorithm, mixed $data ): JsPromise {
 		try {
 			$name = $algorithm instanceof JsObject ? ( $algorithm->p['name'] ?? null ) : $algorithm;
@@ -99,6 +103,7 @@ final class Crypto {
 	}
 
 	/** A random RFC 4122 version 4 UUID, as `crypto.randomUUID()` returns. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function randomUUID(): string {
 		$b    = random_bytes( 16 );
 		$b[6] = chr( ( ord( $b[6] ) & 0x0f ) | 0x40 );

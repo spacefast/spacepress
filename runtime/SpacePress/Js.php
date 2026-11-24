@@ -86,6 +86,7 @@ final class Js {
 		);
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function numStr( int|float $n ): string {
 		if ( is_int( $n ) ) {
 			return (string) $n;
@@ -146,6 +147,7 @@ final class Js {
 		return $v instanceof JsBigInt ? $v->toNumber() : self::toNumber( $v );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function toNumber( mixed $v ): int|float {
 		if ( $v instanceof JsDate ) {
 			return $v->milliseconds; }
@@ -197,6 +199,7 @@ final class Js {
 		};
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function parseInt( string $s, int|float|null $radix = null ): int|float {
 		$s    = self::trimStart( $s );
 		$sign = 1;
@@ -235,6 +238,7 @@ final class Js {
 		return self::num( (float) $value );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function parseFloat( string $s ): int|float {
 		$s = self::trimStart( $s );
 		if ( ! preg_match( '/^[+-]?(?:Infinity|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/', $s, $m ) ) {
@@ -366,6 +370,7 @@ final class Js {
 		return $x = self::add( $x, $step );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function mathTranscendental( string $method, int|float $x ): int|float {
 		if ( is_nan( $x ) ) {
 			return NAN; }
@@ -485,6 +490,7 @@ final class Js {
 	}
 
 	/** Compiled `~a`: ToInt32, then the complement, a signed 32-bit result. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function bitNot( mixed $a ): int|JsBigInt {
 		$a = self::dynamicPrimitive( $a, 'number' );
 		if ( $a instanceof JsBigInt ) {
@@ -547,6 +553,7 @@ final class Js {
 		};
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function typeOf( mixed $v ): string {
 		return match ( true ) {
 			JsUndefined::Value === $v => 'undefined',
@@ -561,10 +568,12 @@ final class Js {
 	}
 
 	/** Explicit `String(value)`: unlike implicit conversion, a symbol has a string form. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function stringOf( mixed $v ): string {
 		return $v instanceof JsSymbol ? $v->descriptiveString() : self::str( $v );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function strictEq( mixed $a, mixed $b ): bool {
 		if ( ( is_int( $a ) || is_float( $a ) ) && ( is_int( $b ) || is_float( $b ) ) ) {
 			return is_int( $a ) && is_int( $b ) ? $a === $b : (float) $a == (float) $b;
@@ -584,27 +593,32 @@ final class Js {
 		return self::strictEq( $a, $b );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function isInteger( mixed $v = null ): bool {
 		return is_int( $v ) || ( is_float( $v ) && is_finite( $v ) && floor( $v ) === $v );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function isFinite( mixed $v = null ): bool {
 		return is_int( $v ) || ( is_float( $v ) && is_finite( $v ) );
 	}
 
 	/** The global `Boolean` as a value: ToBoolean of the first argument, one shared closure. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function booleanFunction(): \Closure {
 		static $function;
 
 		return $function ??= static fn ( mixed $value = false ): bool => self::truthy( $value );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function numberIsFiniteFunction(): \Closure {
 		static $function;
 
 		return $function ??= static fn ( mixed $value = null ): bool => self::isFinite( $value );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function toFixed( int|float $n, mixed $digits = 0 ): string {
 		$digits = self::toInteger( self::toNumber( $digits ) );
 		if ( $digits < 0 || $digits > 100 ) {
@@ -820,6 +834,7 @@ final class Js {
 	}
 
 	/** `s.at(i)` and `s[i]`: one code unit, relative indexes allowed. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function strAt( string $s, mixed $i = 0 ): string|JsUndefined {
 		$i   = self::toNumber( $i );
 		$u   = self::units( $s );
@@ -834,6 +849,7 @@ final class Js {
 	}
 
 	/** Numeric bracket access names a property, so only nonnegative integer indexes exist. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function strIndex( string $s, int|float $i ): string|JsUndefined {
 		if ( ! is_finite( $i ) || $i < 0 || floor( $i ) !== (float) $i ) {
 			return JsUndefined::Value;
@@ -1150,6 +1166,7 @@ final class Js {
 	}
 
 	/** JavaScript string ordering compares UTF-16 code units. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function stringCompare( string $a, string $b ): int {
 		return strcmp( mb_convert_encoding( $a, 'UTF-16BE', 'UTF-8' ), mb_convert_encoding( $b, 'UTF-16BE', 'UTF-8' ) ) <=> 0;
 	}
@@ -1193,6 +1210,7 @@ final class Js {
 		return self::isInteger( $i ) && $i >= 0 && $i <= 4294967294 ? (int) $i : null;
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function nativeArrayReceiver( JsArray $receiver, string $method ): JsArray {
 		if ( array_key_exists( $method, $receiver->p ) ) {
 			throw new JsError( 'Own array method overrides are not supported by typed calls', 'TypeError' );
@@ -1208,6 +1226,7 @@ final class Js {
 		return null === $index ? null : ( $a->a[ $index ] ?? null );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function setAt( JsArray|JsUndefined|null $a, int|float $i, mixed $value ): mixed {
 		if ( self::isNullish( $a ) ) {
 			throw new JsError( 'Cannot set properties of null or undefined', 'TypeError' );
@@ -1311,6 +1330,7 @@ final class Js {
 		return JsClass::absent();
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function hasProperty( mixed $key, mixed $object ): bool {
 		if ( ! is_object( $object ) || $object instanceof JsUndefined ) {
 			$search = is_object( $key ) ? '[object Object]' : self::str( $key );
@@ -1477,6 +1497,7 @@ final class Js {
 	 * where an escape is invalid, with a `raw` property holding the source text of each part.
 	 * One array per call site (`$site` names it), so repeated calls see the same array.
 	 */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function templateStrings( string $site, array $cooked, array $raw ): JsArray {
 		static $sites = array();
 		if ( ! isset( $sites[ $site ] ) ) {
@@ -1491,6 +1512,7 @@ final class Js {
 	}
 
 	/** `strings.raw` on a TemplateStringsArray; any other string array has no `raw`. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function templateRaw( JsArray $strings ): JsArray {
 		$raw = $strings->p['raw'] ?? null;
 		if ( ! $raw instanceof JsArray ) {
@@ -1502,6 +1524,7 @@ final class Js {
 	 * `String.raw(template, ...substitutions)`: the template's `raw` strings interleaved with the
 	 * substitutions converted to strings; only as many substitutions as there are gaps are read.
 	 */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function stringRaw( mixed $template, mixed ...$substitutions ): string {
 		$raw    = self::dynamicGet( self::requirePresent( $template ), 'raw' );
 		$length = self::toLength( self::dynamicGet( self::requirePresent( $raw ), 'length' ) );
@@ -1600,6 +1623,7 @@ final class Js {
 		return $out;
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function forEach( JsArray $a, \Closure $f ): JsUndefined {
 		for ( $i = 0, $len = count( $a->a ); $i < $len; $i++ ) {
 			$value = self::element( $a, $i );
@@ -1642,6 +1666,7 @@ final class Js {
 			$stack->offsetUnset( $a ); }
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function arrSlice( JsArray $a, int|float $start = 0, int|float|null $end = null ): JsArray {
 		$len  = count( $a->a );
 		$from = self::relIndex( $start, $len );
@@ -1649,6 +1674,7 @@ final class Js {
 		return new JsArray( array_slice( $a->a, $from, max( 0, $to - $from ) ) );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function arrAt( JsArray $a, mixed $i = 0 ): mixed {
 		$len = count( $a->a );
 		$i   = self::toInteger( self::toNumber( $i ) );
@@ -1751,6 +1777,7 @@ final class Js {
 	 * Marks a compiled comparator that is a numeric difference of the two parameters or of the
 	 * same property path on each, so sorting can read each key once instead of calling it.
 	 */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function sortComparator( \Closure $callback, array $keys, bool $descending ): \Closure {
 		self::$sortComparators            ??= new \WeakMap();
 		self::$sortComparators[ $callback ] = array( $keys, $descending );
@@ -1872,6 +1899,7 @@ final class Js {
 		return $out;
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function flatMap( JsArray $a, \Closure $f ): JsArray {
 		$out = new JsArray();
 		for ( $i = 0, $len = count( $a->a ); $i < $len; $i++ ) {
@@ -1943,6 +1971,7 @@ final class Js {
 	// ---------------------------------------------------------------- objects
 
 	/** `{ __proto__: null, ... }`: the fresh literal inherits nothing from Object.prototype. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function nullPrototype( JsObject $object ): JsObject {
 		$object->nullPrototype = true;
 		return $object;
@@ -1970,6 +1999,7 @@ final class Js {
 		return new JsArray( array_map( static fn ( $key ) => new JsArray( array( (string) $key, $o->p[ $key ] ) ), self::ownKeys( $o->p ) ) );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function fromEntries( mixed $entries ): JsObject {
 		$out = new JsObject();
 		foreach ( self::dynamicIterator( $entries ) as $entry ) {
@@ -2457,17 +2487,20 @@ final class Js {
 		return self::dynamicConstruct( 'Set', new JsArray( JsUndefined::Value === $values ? array() : array( $values ) ) );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function clearCollection( JsMap|JsSet $collection ): JsUndefined {
 		$collection->clear();
 		return JsUndefined::Value;
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function collectionForEach( JsMap|JsSet $collection, \Closure $callback ): JsUndefined {
 		$collection->forEach( $callback );
 		return JsUndefined::Value;
 	}
 
 	/** A checked-JavaScript timer callback: Node throws ERR_INVALID_ARG_TYPE for non-functions. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function timerCallback( mixed $callback ): \Closure {
 		if ( ! $callback instanceof \Closure ) {
 			throw new JsError( 'The "callback" argument must be of type function', 'TypeError' ); }
@@ -2482,6 +2515,7 @@ final class Js {
 	}
 
 	/** Typed spread / Array.from of a Map, Set or iterator. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function iterArray( mixed $value, ?\Closure $mapper = null ): JsArray {
 		$out = new JsArray();
 		$i   = 0;
@@ -2593,6 +2627,7 @@ final class Js {
 		return array( $yoe + $era * 400 + ( $m <= 2 ? 1 : 0 ), $m, $d );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function dateJSON( int|float $ms ): ?string {
 		return is_finite( (float) $ms ) ? self::iso( $ms ) : null;
 	}

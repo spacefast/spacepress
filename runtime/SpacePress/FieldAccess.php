@@ -52,7 +52,7 @@ final class FieldAccess {
 	 * @param ?callable(): HttpError $refusal
 	 */
 	public static function withhold( callable $fn, ?callable $refusal = null ): void {
-		self::$withheld        = $fn( ... );
+		self::$withheld         = $fn( ... );
 		self::$withheld_refusal = null === $refusal ? null : $refusal( ... );
 	}
 

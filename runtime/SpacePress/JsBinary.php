@@ -96,6 +96,7 @@ final class JsBinary {
 		return self::$methods[ $method ];
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function instanceOf( mixed $value, string $name ): bool {
 		return match ( $name ) {
 			'ArrayBuffer' => $value instanceof JsArrayBuffer,

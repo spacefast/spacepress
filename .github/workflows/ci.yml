@@ -495,7 +495,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lanes: [schema, store]
+        lanes: [schema, store, upgrade-mariadb, upgrade-mysql, upgrade-push]
     env:
       SP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.sp/cache/plugins
     steps:
@@ -537,11 +537,19 @@ jobs:
       - name: Opinionated WordPress hardening, and stock WordPress without an app
         if: matrix.lanes == 'schema'
         run: SP_WP_PROJECT=spacepress-wp-hardening SP_WP_PORT=8896 tests/wp/hardening/run.sh
-      - name: A site deployed before the rename keeps its data on MariaDB
-        if: matrix.lanes == 'schema'
+      - name: Fetch the compiler used by the deployed site
+        if: startsWith(matrix.lanes, 'upgrade-')
         run: |
           git fetch --no-tags --depth=1 origin "$(sed -n "s/^const LEGACY_COMMIT = '\([0-9a-f]*\)';/\1/p" tests/php/brand_upgrade_test.php)"
-          SP_WP_PROJECT=spacepress-wp-brand-upgrade SP_WP_PORT=8911 tests/wp/brand-upgrade-run.sh target/debug/spacepress
+      - name: Upgrade a site on MariaDB
+        if: matrix.lanes == 'upgrade-mariadb'
+        run: tests/wp/brand-upgrade-run.sh target/debug/spacepress
+      - name: Upgrade a site on MySQL
+        if: matrix.lanes == 'upgrade-mysql'
+        run: SP_WP_DB=mysql:8.4 tests/wp/brand-upgrade-run.sh target/debug/spacepress
+      - name: Upgrade a push-deployed site
+        if: matrix.lanes == 'upgrade-push'
+        run: tests/wp/plugin/brand-upgrade-run.sh target/debug/spacepress
       - name: Sealed mode on its own stack
         if: matrix.lanes == 'store'
         run: SP_WP_PROJECT=spacepress-wp-sealed SP_WP_PORT=8895 tests/wp/hardening/sealed-run.sh

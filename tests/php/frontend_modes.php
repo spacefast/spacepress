@@ -14,244 +14,412 @@ declare(strict_types=1);
 require __DIR__ . '/wp.php';
 
 // A must-use plugin stands in for the host's purge listener.
-$site = wpSite('modes', ['wpContent' => $argv[1], 'muPlugins' => ['host' => <<<'PHP'
-    <?php
-    add_action('sp_purge_urls', static function (array $paths): void {
-        update_option('test_purges', [...get_option('test_purges', []), ...$paths], false);
-    });
-    PHP]]);
-wp_set_current_user(1);
+$site = wpSite(
+	'modes',
+	array(
+		'wpContent' => $argv[1],
+		'muPlugins' => array(
+			'host' => <<<'PHP'
+<?php
+add_action('sp_purge_urls', static function (array $paths): void {
+    update_option('test_purges', [...get_option('test_purges', []), ...$paths], false);
+});
+PHP,
+		),
+	)
+);
+wp_set_current_user( 1 );
 // WordPress's own sample post, so "a post the theme renders" exists in every mode.
-$hello = get_post(1);
-$note = \SpacePress\db()->insert('notes', ['title' => 'Hello note', 'slug' => 'hello-note', 'body' => '<!-- wp:paragraph --><p>Body text.</p><!-- /wp:paragraph -->', 'status' => 'published'])[0] ?? null;
-$draft = \SpacePress\db()->insert('notes', ['title' => 'Draft note', 'slug' => 'draft-note', 'status' => 'draft']);
-$entry = \SpacePress\db()->insert('journal', ['title' => 'Day one', 'slug' => 'day-one', 'status' => 'published', 'publishedAt' => '2026-03-04T10:00:00.000Z']);
-$noteId = (int) (\SpacePress\db()->findFirst('notes', ['where' => ['slug' => 'hello-note']])['id']);
+$hello  = get_post( 1 );
+$note   = \SpacePress\db()->insert(
+	'notes',
+	array(
+		'title'  => 'Hello note',
+		'slug'   => 'hello-note',
+		'body'   => '<!-- wp:paragraph --><p>Body text.</p><!-- /wp:paragraph -->',
+		'status' => 'published',
+	)
+)[0] ?? null;
+$draft  = \SpacePress\db()->insert(
+	'notes',
+	array(
+		'title'  => 'Draft note',
+		'slug'   => 'draft-note',
+		'status' => 'draft',
+	)
+);
+$entry  = \SpacePress\db()->insert(
+	'journal',
+	array(
+		'title'       => 'Day one',
+		'slug'        => 'day-one',
+		'status'      => 'published',
+		'publishedAt' => '2026-03-04T10:00:00.000Z',
+	)
+);
+$noteId = (int) ( \SpacePress\db()->findFirst( 'notes', array( 'where' => array( 'slug' => 'hello-note' ) ) )['id'] );
 // For the sitemap: rows a visitor may not read, in every way a rule can say so.
-\SpacePress\db()->insert('drafts', ['title' => 'Desk only', 'slug' => 'desk-only', 'status' => 'published']);
-\SpacePress\db()->insert('briefs', ['title' => 'Open brief', 'slug' => 'open-brief', 'status' => 'published']);
-\SpacePress\db()->insert('briefs', ['title' => 'Embargoed brief', 'slug' => 'embargoed-brief', 'embargoed' => true, 'status' => 'published']);
-\SpacePress\db()->insert('briefs', ['title' => 'Draft brief', 'slug' => 'draft-brief', 'status' => 'draft']);
-\SpacePress\db()->insert('memos', ['title' => 'A memo', 'status' => 'published']);
-\SpacePress\db()->insert('cases', ['title' => 'Confidential case', 'slug' => 'confidential-case', 'status' => 'published']);
-\SpacePress\db()->insert('vault', ['title' => 'Vault item', 'slug' => 'vault-item', 'status' => 'published']);
-\SpacePress\db()->insert('notes', ['title' => 'Locked note', 'slug' => 'locked-note', 'status' => 'published']);
-wp_update_post(['ID' => (int) \SpacePress\db()->findFirst('notes', ['where' => ['slug' => 'locked-note']])['id'], 'post_password' => 'secret']);
-wp_insert_post(['post_type' => 'post', 'post_status' => 'draft', 'post_title' => 'Core draft', 'post_name' => 'core-draft']);
-wp_insert_post(['post_type' => 'post', 'post_status' => 'private', 'post_title' => 'Core private', 'post_name' => 'core-private']);
-wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Core locked', 'post_name' => 'core-locked', 'post_password' => 'secret']);
+\SpacePress\db()->insert(
+	'drafts',
+	array(
+		'title'  => 'Desk only',
+		'slug'   => 'desk-only',
+		'status' => 'published',
+	)
+);
+\SpacePress\db()->insert(
+	'briefs',
+	array(
+		'title'  => 'Open brief',
+		'slug'   => 'open-brief',
+		'status' => 'published',
+	)
+);
+\SpacePress\db()->insert(
+	'briefs',
+	array(
+		'title'     => 'Embargoed brief',
+		'slug'      => 'embargoed-brief',
+		'embargoed' => true,
+		'status'    => 'published',
+	)
+);
+\SpacePress\db()->insert(
+	'briefs',
+	array(
+		'title'  => 'Draft brief',
+		'slug'   => 'draft-brief',
+		'status' => 'draft',
+	)
+);
+\SpacePress\db()->insert(
+	'memos',
+	array(
+		'title'  => 'A memo',
+		'status' => 'published',
+	)
+);
+\SpacePress\db()->insert(
+	'cases',
+	array(
+		'title'  => 'Confidential case',
+		'slug'   => 'confidential-case',
+		'status' => 'published',
+	)
+);
+\SpacePress\db()->insert(
+	'vault',
+	array(
+		'title'  => 'Vault item',
+		'slug'   => 'vault-item',
+		'status' => 'published',
+	)
+);
+\SpacePress\db()->insert(
+	'notes',
+	array(
+		'title'  => 'Locked note',
+		'slug'   => 'locked-note',
+		'status' => 'published',
+	)
+);
+wp_update_post(
+	array(
+		'ID'            => (int) \SpacePress\db()->findFirst( 'notes', array( 'where' => array( 'slug' => 'locked-note' ) ) )['id'],
+		'post_password' => 'secret',
+	)
+);
+wp_insert_post(
+	array(
+		'post_type'   => 'post',
+		'post_status' => 'draft',
+		'post_title'  => 'Core draft',
+		'post_name'   => 'core-draft',
+	)
+);
+wp_insert_post(
+	array(
+		'post_type'   => 'post',
+		'post_status' => 'private',
+		'post_title'  => 'Core private',
+		'post_name'   => 'core-private',
+	)
+);
+wp_insert_post(
+	array(
+		'post_type'     => 'post',
+		'post_status'   => 'publish',
+		'post_title'    => 'Core locked',
+		'post_name'     => 'core-locked',
+		'post_password' => 'secret',
+	)
+);
 // Two authors with a published post each; only the editor's user row is a visitor's to read.
-wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'By the editor', 'post_name' => 'by-the-editor', 'post_author' => $site->userId('editor')]);
-\SpacePress\db()->update('members', ['listed' => true], ['id' => $site->userId('editor')]);
+wp_insert_post(
+	array(
+		'post_type'   => 'post',
+		'post_status' => 'publish',
+		'post_title'  => 'By the editor',
+		'post_name'   => 'by-the-editor',
+		'post_author' => $site->userId( 'editor' ),
+	)
+);
+\SpacePress\db()->update( 'members', array( 'listed' => true ), array( 'id' => $site->userId( 'editor' ) ) );
 // Those core writes ran outside a transaction, so their purge waits for the end of the request;
 // this process is many requests long, so end that one here.
 \SpacePress\Wp\Purges::flush();
-$site->actAs(null);
-$testBrowser = getenv('SP_TEST_BROWSER') === '1';
+$site->actAs( null );
+$testBrowser = getenv( 'SP_TEST_BROWSER' ) === '1';
 // Chromium requests several WordPress scripts at once. Give its fixture parallel HTTP workers.
-$site->startServer($testBrowser ? 4 : 1);
+$site->startServer( $testBrowser ? 4 : 1 );
 $url = $site->url();
 
-function fetch(string $url, string $method = 'GET'): array
-{
-    $ch = curl_init($url);
-    $out = [];
-    curl_setopt_array($ch, [
-        CURLOPT_CUSTOMREQUEST => $method, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30,
-        CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$out): int {
-            if (str_contains($line, ':')) {
-                [$name, $value] = explode(':', $line, 2);
-                $out[strtolower(trim($name))][] = trim($value);
-            }
-            return strlen($line);
-        },
-    ]);
-    $body = (string) curl_exec($ch);
-    return ['status' => (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), 'location' => $out['location'][0] ?? null, 'body' => $body];
+function fetch( string $url, string $method = 'GET' ): array {
+	$ch  = curl_init( $url );
+	$out = array();
+	curl_setopt_array(
+		$ch,
+		array(
+			CURLOPT_CUSTOMREQUEST  => $method,
+			CURLOPT_RETURNTRANSFER => true,
+			CURLOPT_TIMEOUT        => 30,
+			CURLOPT_HEADERFUNCTION => static function ( $ch, string $line ) use ( &$out ): int {
+				if ( str_contains( $line, ':' ) ) {
+					[$name, $value]                       = explode( ':', $line, 2 );
+					$out[ strtolower( trim( $name ) ) ][] = trim( $value );
+				}
+				return strlen( $line );
+			},
+		)
+	);
+	$body = (string) curl_exec( $ch );
+	return array(
+		'status'   => (int) curl_getinfo( $ch, CURLINFO_RESPONSE_CODE ),
+		'location' => $out['location'][0] ?? null,
+		'body'     => $body,
+	);
 }
 
-$strip = static fn (?string $u): ?string => $u === null ? null : str_replace($url, '', $u);
-$got = static fn (string $path) => fetch($url . $path);
-$note1 = $got('/notes/hello-note/');
+$strip = static fn ( ?string $u ): ?string => null === $u ? null : str_replace( $url, '', $u );
+$got   = static fn ( string $path ) => fetch( $url . $path );
+$note1 = $got( '/notes/hello-note/' );
 // Who rendered a page: the block theme's template (SpacePress's default theme, `spacepress-default`), or the
 // app router (its router region and module).
-$rendered = static function (array $r): array {
-    return [
-        'status' => $r['status'],
-        'theme' => str_contains($r['body'], 'wp-theme-spacepress-default') && str_contains($r['body'], 'wp-block-template-part'),
-        'router' => str_contains($r['body'], 'data-wp-router-region') || str_contains($r['body'], 'sp/Render/client/router.js'),
-    ];
+$rendered = static function ( array $r ): array {
+	return array(
+		'status' => $r['status'],
+		'theme'  => str_contains( $r['body'], 'wp-theme-spacepress-default' ) && str_contains( $r['body'], 'wp-block-template-part' ),
+		'router' => str_contains( $r['body'], 'data-wp-router-region' ) || str_contains( $r['body'], 'sp/Render/client/router.js' ),
+	);
 };
-$hello = $got('/hello-world/');
-$out = [
-    'home rendered' => $rendered($got('/')),
-    'note rendered' => $rendered($note1),
-    'post rendered' => $rendered($hello),
-    'post body' => str_contains($hello['body'], 'Welcome to WordPress'),
-    'missing rendered' => $rendered($got('/no-such-page/')),
-    'missing by wordpress' => str_contains($got('/no-such-page/')['body'], 'class="error404'),
-    // A page with parameters and no metadata: a 200 with the site's name, not WordPress's 404.
-    'dynamic' => (static function (array $r): array {
-        preg_match('#<title>(.*?)</title>#s', $r['body'], $t);
-        preg_match('#<body class="([^"]*)"#', $r['body'], $b);
-        return ['status' => $r['status'], 'title' => html_entity_decode($t[1] ?? '', ENT_QUOTES), 'error404' => str_contains(' ' . ($b[1] ?? '') . ' ', ' error404 '), 'page' => str_contains($r['body'], 'Thing 42')];
-    })($got('/things/42/')),
-    'site name' => get_bloginfo('name'),
-    // WordPress's own title on its 404, whoever rendered it.
-    'missing title' => preg_match('#<title>(.*?)</title>#s', $got('/no-such-page/')['body'], $t) === 1 ? html_entity_decode($t[1], ENT_QUOTES) : null,
-    'note status' => $note1['status'],
-    'note by theme' => str_contains($note1['body'], 'wp-block-post-title') || str_contains($note1['body'], 'Hello note'),
-    'note by app' => str_contains($note1['body'], 'class="app-note"'),
-    'note body' => str_contains($note1['body'], 'Body text.</p>'),
-    'draft' => $got('/notes/draft-note/')['status'],
-    'missing note' => $got('/notes/nope/')['status'],
-    'journal' => $got('/journal/2026/day-one/')['status'],
-    'journal wrong year' => [$got('/journal/2025/day-one/')['status'], $strip($got('/journal/2025/day-one/')['location'])],
-    'permalink' => $strip(get_permalink($noteId)),
-    'about' => [$got('/about/')['status'], str_contains($got('/about/')['body'], 'class="app-about"')],
-    'post' => [$got('/?p=1')['status'], $strip($got('/?p=1')['location'])],
-    'home' => $got('/')['status'],
-    'rest' => $got('/wp-json/')['status'],
-    'rest note' => $got('/wp-json/wp/v2/sp_notes/' . $noteId)['status'],
-    'feed' => $got('/feed/')['status'],
-];
+$hello    = $got( '/hello-world/' );
+$out      = array(
+	'home rendered'        => $rendered( $got( '/' ) ),
+	'note rendered'        => $rendered( $note1 ),
+	'post rendered'        => $rendered( $hello ),
+	'post body'            => str_contains( $hello['body'], 'Welcome to WordPress' ),
+	'missing rendered'     => $rendered( $got( '/no-such-page/' ) ),
+	'missing by wordpress' => str_contains( $got( '/no-such-page/' )['body'], 'class="error404' ),
+	// A page with parameters and no metadata: a 200 with the site's name, not WordPress's 404.
+	'dynamic'              => ( static function ( array $r ): array {
+		preg_match( '#<title>(.*?)</title>#s', $r['body'], $t );
+		preg_match( '#<body class="([^"]*)"#', $r['body'], $b );
+		return array(
+			'status'   => $r['status'],
+			'title'    => html_entity_decode( $t[1] ?? '', ENT_QUOTES ),
+			'error404' => str_contains( ' ' . ( $b[1] ?? '' ) . ' ', ' error404 ' ),
+			'page'     => str_contains( $r['body'], 'Thing 42' ),
+		);
+	} )( $got( '/things/42/' ) ),
+	'site name'            => get_bloginfo( 'name' ),
+	// WordPress's own title on its 404, whoever rendered it.
+	'missing title'        => preg_match( '#<title>(.*?)</title>#s', $got( '/no-such-page/' )['body'], $t ) === 1 ? html_entity_decode( $t[1], ENT_QUOTES ) : null,
+	'note status'          => $note1['status'],
+	'note by theme'        => str_contains( $note1['body'], 'wp-block-post-title' ) || str_contains( $note1['body'], 'Hello note' ),
+	'note by app'          => str_contains( $note1['body'], 'class="app-note"' ),
+	'note body'            => str_contains( $note1['body'], 'Body text.</p>' ),
+	'draft'                => $got( '/notes/draft-note/' )['status'],
+	'missing note'         => $got( '/notes/nope/' )['status'],
+	'journal'              => $got( '/journal/2026/day-one/' )['status'],
+	'journal wrong year'   => array( $got( '/journal/2025/day-one/' )['status'], $strip( $got( '/journal/2025/day-one/' )['location'] ) ),
+	'permalink'            => $strip( get_permalink( $noteId ) ),
+	'about'                => array( $got( '/about/' )['status'], str_contains( $got( '/about/' )['body'], 'class="app-about"' ) ),
+	'post'                 => array( $got( '/?p=1' )['status'], $strip( $got( '/?p=1' )['location'] ) ),
+	'home'                 => $got( '/' )['status'],
+	'rest'                 => $got( '/wp-json/' )['status'],
+	'rest note'            => $got( '/wp-json/wp/v2/sp_notes/' . $noteId )['status'],
+	'feed'                 => $got( '/feed/' )['status'],
+);
 // Authors: the users kind's read rule shows a visitor the editor's row only, so the editor is a public
 // author (archive, `?author=<id>`, oEmbed) and the admin, who also has a published post, is not.
-$editorId = $site->userId('editor');
-$embed = static function (string $path) use ($got, $url, $strip): array {
-    $data = (array) json_decode($got('/wp-json/oembed/1.0/embed?url=' . rawurlencode($url . $path))['body'], true);
-    return [($data['author_name'] ?? null) === get_bloginfo('name'), $strip($data['author_url'] ?? null)];
+$editorId       = $site->userId( 'editor' );
+$embed          = static function ( string $path ) use ( $got, $url, $strip ): array {
+	$data = (array) json_decode( $got( '/wp-json/oembed/1.0/embed?url=' . rawurlencode( $url . $path ) )['body'], true );
+	return array( ( $data['author_name'] ?? null ) === get_bloginfo( 'name' ), $strip( $data['author_url'] ?? null ) );
 };
-$byId = $got('/?author=' . $editorId);
-$out['authors'] = [
-    'listed' => $got('/author/editor/')['status'],
-    'unlisted' => $got('/author/admin/')['status'],
-    'unknown' => $got('/author/nobody/')['status'],
-    'listed by id' => [$byId['status'], $strip($byId['location'])],
-    'unlisted by id' => $got('/?author=1')['status'],
-    'both ids' => $got('/?author=1,' . $editorId)['status'],
-    'listed embed' => $embed('/by-the-editor/'),
-    'unlisted embed' => $embed('/hello-world/'),
-    'core route' => [$got('/wp-json/wp/v2/users/' . $editorId)['status'], $got('/wp-json/wp/v2/users')['status']],
-    // SpacePress's API serves the kind by its rule: a visitor lists and reads the listed user only.
-    'api list' => array_column((array) (json_decode($got('/wp-json/spacepress/v1/members')['body'], true)['data'] ?? []), 'id') === [$editorId],
-    'api listed' => $got('/wp-json/spacepress/v1/members/' . $editorId)['status'],
-    'api unlisted' => $got('/wp-json/spacepress/v1/members/1')['status'],
-    'api missing' => $got('/wp-json/spacepress/v1/members/99999999')['status'],
-];
+$byId           = $got( '/?author=' . $editorId );
+$out['authors'] = array(
+	'listed'         => $got( '/author/editor/' )['status'],
+	'unlisted'       => $got( '/author/admin/' )['status'],
+	'unknown'        => $got( '/author/nobody/' )['status'],
+	'listed by id'   => array( $byId['status'], $strip( $byId['location'] ) ),
+	'unlisted by id' => $got( '/?author=1' )['status'],
+	'both ids'       => $got( '/?author=1,' . $editorId )['status'],
+	'listed embed'   => $embed( '/by-the-editor/' ),
+	'unlisted embed' => $embed( '/hello-world/' ),
+	'core route'     => array( $got( '/wp-json/wp/v2/users/' . $editorId )['status'], $got( '/wp-json/wp/v2/users' )['status'] ),
+	// SpacePress's API serves the kind by its rule: a visitor lists and reads the listed user only.
+	'api list'       => array_column( (array) ( json_decode( $got( '/wp-json/spacepress/v1/members' )['body'], true )['data'] ?? array() ), 'id' ) === array( $editorId ),
+	'api listed'     => $got( '/wp-json/spacepress/v1/members/' . $editorId )['status'],
+	'api unlisted'   => $got( '/wp-json/spacepress/v1/members/1' )['status'],
+	'api missing'    => $got( '/wp-json/spacepress/v1/members/99999999' )['status'],
+);
 // A write to a user's row purges their archive: whether it answers depends on that row.
-delete_option('test_purges');
-wp_set_current_user(1);
-\SpacePress\db()->update('members', ['listed' => false], ['id' => $editorId]);
-$site->actAs(null);
-wp_cache_delete('test_purges', 'options');
-$out['authors']['purged'] = in_array('/author/editor/', get_option('test_purges', []), true);
-$out['authors']['unlisted after'] = $got('/author/editor/')['status'];
-wp_set_current_user(1);
-\SpacePress\db()->update('members', ['listed' => true], ['id' => $editorId]);
-$site->actAs(null);
+delete_option( 'test_purges' );
+wp_set_current_user( 1 );
+\SpacePress\db()->update( 'members', array( 'listed' => false ), array( 'id' => $editorId ) );
+$site->actAs( null );
+wp_cache_delete( 'test_purges', 'options' );
+$out['authors']['purged']         = in_array( '/author/editor/', get_option( 'test_purges', array() ), true );
+$out['authors']['unlisted after'] = $got( '/author/editor/' )['status'];
+wp_set_current_user( 1 );
+\SpacePress\db()->update( 'members', array( 'listed' => true ), array( 'id' => $editorId ) );
+$site->actAs( null );
 // A slug change: the old URL 301s to the new one, and both URLs (with twins) are purged.
-delete_option('test_purges');
-wp_set_current_user(1);
-\SpacePress\db()->update('notes', ['slug' => 'renamed-note'], ['id' => $noteId]);
-$site->actAs(null);
-$old = $got('/notes/hello-note/');
-$out['renamed'] = [$old['status'], $strip($old['location'])];
-wp_cache_delete('test_purges', 'options');
-$purged = get_option('test_purges', []);
-$out['renamed purges'] = array_values(array_intersect(['/notes/hello-note/', '/notes/hello-note.md', '/notes/renamed-note/', '/notes/renamed-note.md'], $purged));
-$out['new url'] = $got('/notes/renamed-note/')['status'];
+delete_option( 'test_purges' );
+wp_set_current_user( 1 );
+\SpacePress\db()->update( 'notes', array( 'slug' => 'renamed-note' ), array( 'id' => $noteId ) );
+$site->actAs( null );
+$old            = $got( '/notes/hello-note/' );
+$out['renamed'] = array( $old['status'], $strip( $old['location'] ) );
+wp_cache_delete( 'test_purges', 'options' );
+$purged                = get_option( 'test_purges', array() );
+$out['renamed purges'] = array_values( array_intersect( array( '/notes/hello-note/', '/notes/hello-note.md', '/notes/renamed-note/', '/notes/renamed-note.md' ), $purged ) );
+$out['new url']        = $got( '/notes/renamed-note/' )['status'];
 // The sitemap, as a crawler reads it: the index, then every file it names. Core renders the XML.
-$locs = static function (string $xml): array {
-    $doc = @simplexml_load_string($xml);
-    $out = [];
-    foreach ($doc === false ? [] : $doc->children() as $entry) {
-        $out[] = (string) $entry->loc;
-    }
-    return $out;
+$locs   = static function ( string $xml ): array {
+	$doc = @simplexml_load_string( $xml );
+	$out = array();
+	foreach ( false === $doc ? array() : $doc->children() as $entry ) {
+		$out[] = (string) $entry->loc;
+	}
+	return $out;
 };
-$index = $got('/wp-sitemap.xml');
-$files = $locs($index['body']);
-$listed = [];
-foreach ($files as $file) {
-    $listed[$strip($file)] = array_map($strip, $locs(fetch($file)['body']));
+$index  = $got( '/wp-sitemap.xml' );
+$files  = $locs( $index['body'] );
+$listed = array();
+foreach ( $files as $file ) {
+	$listed[ $strip( $file ) ] = array_map( $strip, $locs( fetch( $file )['body'] ) );
 }
-$out['sitemap'] = [
-    'status' => $index['status'],
-    'files' => array_map($strip, $files),
-    'urls' => $listed,
-    'robots' => (bool) preg_match('#^Sitemap: .*/wp-sitemap\.xml$#m', $got('/robots.txt')['body']),
-    'unknown kind' => $got('/wp-sitemap-spacepress-memos-1.xml')['status'],
-    'past the end' => $got('/wp-sitemap-spacepress-notes-2.xml')['status'],
-    // An editor's own request lists what a visitor sees: the sitemap is one document for everyone.
-    'as editor' => (static function () use ($site, $url, $locs, $strip): array {
-        $id = $site->userId('editor');
-        $expires = time() + 3600;
-        $cookie = wp_generate_auth_cookie($id, $expires, 'logged_in', WP_Session_Tokens::get_instance($id)->create($expires));
-        $ch = curl_init("$url/wp-sitemap-spacepress-briefs-1.xml");
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_HTTPHEADER => ['Cookie: ' . LOGGED_IN_COOKIE . '=' . rawurlencode($cookie)]]);
-        return array_map($strip, $locs((string) curl_exec($ch)));
-    })(),
-    // A visitor who has entered a post's password still gets the document everyone gets.
-    'with a post password' => (static function () use ($url, $locs, $strip): array {
-        require_once ABSPATH . WPINC . '/class-phpass.php';
-        $cookie = 'Cookie: wp-postpass_' . COOKIEHASH . '=' . rawurlencode((new PasswordHash(8, true))->HashPassword('secret'));
-        $out = [];
-        foreach (['/wp-sitemap-spacepress-notes-1.xml', '/wp-sitemap-posts-post-1.xml'] as $file) {
-            $ch = curl_init($url . $file);
-            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_HTTPHEADER => [$cookie]]);
-            $out[$file] = array_map($strip, $locs((string) curl_exec($ch)));
-        }
-        return $out;
-    })(),
-];
+$out['sitemap'] = array(
+	'status'               => $index['status'],
+	'files'                => array_map( $strip, $files ),
+	'urls'                 => $listed,
+	'robots'               => (bool) preg_match( '#^Sitemap: .*/wp-sitemap\.xml$#m', $got( '/robots.txt' )['body'] ),
+	'unknown kind'         => $got( '/wp-sitemap-spacepress-memos-1.xml' )['status'],
+	'past the end'         => $got( '/wp-sitemap-spacepress-notes-2.xml' )['status'],
+	// An editor's own request lists what a visitor sees: the sitemap is one document for everyone.
+	'as editor'            => ( static function () use ( $site, $url, $locs, $strip ): array {
+		$id      = $site->userId( 'editor' );
+		$expires = time() + 3600;
+		$cookie  = wp_generate_auth_cookie( $id, $expires, 'logged_in', WP_Session_Tokens::get_instance( $id )->create( $expires ) );
+		$ch      = curl_init( "$url/wp-sitemap-spacepress-briefs-1.xml" );
+		curl_setopt_array(
+			$ch,
+			array(
+				CURLOPT_RETURNTRANSFER => true,
+				CURLOPT_TIMEOUT        => 30,
+				CURLOPT_HTTPHEADER     => array( 'Cookie: ' . LOGGED_IN_COOKIE . '=' . rawurlencode( $cookie ) ),
+			)
+		);
+		return array_map( $strip, $locs( (string) curl_exec( $ch ) ) );
+	} )(),
+	// A visitor who has entered a post's password still gets the document everyone gets.
+	'with a post password' => ( static function () use ( $url, $locs, $strip ): array {
+		require_once ABSPATH . WPINC . '/class-phpass.php';
+		$cookie = 'Cookie: wp-postpass_' . COOKIEHASH . '=' . rawurlencode( ( new PasswordHash( 8, true ) )->HashPassword( 'secret' ) );
+		$out    = array();
+		foreach ( array( '/wp-sitemap-spacepress-notes-1.xml', '/wp-sitemap-posts-post-1.xml' ) as $file ) {
+			$ch = curl_init( $url . $file );
+			curl_setopt_array(
+				$ch,
+				array(
+					CURLOPT_RETURNTRANSFER => true,
+					CURLOPT_TIMEOUT        => 30,
+					CURLOPT_HTTPHEADER     => array( $cookie ),
+				)
+			);
+			$out[ $file ] = array_map( $strip, $locs( (string) curl_exec( $ch ) ) );
+		}
+		return $out;
+	} )(),
+);
 // Core's home entry is dated from the newest post the sitemap lists, not from a protected one: make
 // the protected post the newest change on the site.
 global $wpdb;
-$wpdb->update($wpdb->posts, ['post_modified_gmt' => gmdate('Y-m-d H:i:s', time() + 86400), 'post_modified' => gmdate('Y-m-d H:i:s', time() + 86400)], ['post_name' => 'core-locked']);
-clean_post_cache((int) $wpdb->get_var("SELECT ID FROM {$wpdb->posts} WHERE post_name = 'core-locked'"));
-$out['sitemap']['home lastmod'] = (static function () use ($got): ?string {
-    $doc = @simplexml_load_string($got('/wp-sitemap-posts-page-1.xml')['body']);
-    foreach ($doc === false ? [] : $doc->children() as $entry) {
-        if (str_ends_with((string) $entry->loc, '/') && substr_count(parse_url((string) $entry->loc, PHP_URL_PATH) ?? '/', '/') === 1) {
-            return (string) $entry->lastmod;
-        }
-    }
-    return null;
-})();
-$out['sitemap']['newest public post'] = (string) wp_date(DATE_W3C, (int) strtotime(get_posts(['post_status' => 'publish', 'has_password' => false, 'numberposts' => 1, 'orderby' => 'modified'])[0]->post_modified_gmt . ' UTC'));
+$wpdb->update(
+	$wpdb->posts,
+	array(
+		'post_modified_gmt' => gmdate( 'Y-m-d H:i:s', time() + 86400 ),
+		'post_modified'     => gmdate( 'Y-m-d H:i:s', time() + 86400 ),
+	),
+	array( 'post_name' => 'core-locked' )
+);
+clean_post_cache( (int) $wpdb->get_var( "SELECT ID FROM {$wpdb->posts} WHERE post_name = 'core-locked'" ) );
+$out['sitemap']['home lastmod']       = ( static function () use ( $got ): ?string {
+	$doc = @simplexml_load_string( $got( '/wp-sitemap-posts-page-1.xml' )['body'] );
+	foreach ( false === $doc ? array() : $doc->children() as $entry ) {
+		if ( str_ends_with( (string) $entry->loc, '/' ) && substr_count( parse_url( (string) $entry->loc, PHP_URL_PATH ) ?? '/', '/' ) === 1 ) {
+			return (string) $entry->lastmod;
+		}
+	}
+	return null;
+} )();
+$out['sitemap']['newest public post'] = (string) wp_date(
+	DATE_W3C,
+	(int) strtotime(
+		get_posts(
+			array(
+				'post_status'  => 'publish',
+				'has_password' => false,
+				'numberposts'  => 1,
+				'orderby'      => 'modified',
+			)
+		)[0]->post_modified_gmt . ' UTC'
+	)
+);
 // A write purges the sitemap files that list the item, with its other URLs.
-delete_option('test_purges');
-wp_set_current_user(1);
-\SpacePress\db()->update('briefs', ['title' => 'Open brief, revised'], ['slug' => 'open-brief']);
-$site->actAs(null);
-wp_cache_delete('test_purges', 'options');
-$out['sitemap']['purged'] = array_values(array_filter(get_option('test_purges', []), static fn (string $p): bool => str_contains($p, 'wp-sitemap')));
+delete_option( 'test_purges' );
+wp_set_current_user( 1 );
+\SpacePress\db()->update( 'briefs', array( 'title' => 'Open brief, revised' ), array( 'slug' => 'open-brief' ) );
+$site->actAs( null );
+wp_cache_delete( 'test_purges', 'options' );
+$out['sitemap']['purged'] = array_values( array_filter( get_option( 'test_purges', array() ), static fn ( string $p ): bool => str_contains( $p, 'wp-sitemap' ) ) );
 // A write that only changes who may read a row (the field the rule filters on) purges the kind's
 // files too, and the next sitemap no longer lists the row.
-delete_option('test_purges');
-wp_set_current_user(1);
-\SpacePress\db()->update('briefs', ['embargoed' => true], ['slug' => 'open-brief']);
-$site->actAs(null);
-wp_cache_delete('test_purges', 'options');
-$out['sitemap']['purged by a field'] = array_values(array_filter(get_option('test_purges', []), static fn (string $p): bool => str_contains($p, 'wp-sitemap')));
-$out['sitemap']['briefs after'] = array_map($strip, $locs(fetch("$url/wp-sitemap-spacepress-briefs-1.xml")['body']));
-$out['sitemap']['briefs status after'] = fetch("$url/wp-sitemap-spacepress-briefs-1.xml")['status'];
+delete_option( 'test_purges' );
+wp_set_current_user( 1 );
+\SpacePress\db()->update( 'briefs', array( 'embargoed' => true ), array( 'slug' => 'open-brief' ) );
+$site->actAs( null );
+wp_cache_delete( 'test_purges', 'options' );
+$out['sitemap']['purged by a field']   = array_values( array_filter( get_option( 'test_purges', array() ), static fn ( string $p ): bool => str_contains( $p, 'wp-sitemap' ) ) );
+$out['sitemap']['briefs after']        = array_map( $strip, $locs( fetch( "$url/wp-sitemap-spacepress-briefs-1.xml" )['body'] ) );
+$out['sitemap']['briefs status after'] = fetch( "$url/wp-sitemap-spacepress-briefs-1.xml" )['status'];
 // `publicAuthors: true` with a users kind: every author is in the sitemap, as WordPress ships it.
 $schemaFile = \SpacePress\Wp\Runtime::plugin()->dir . '/sp/app/schema.php';
-$schemaPhp = (string) file_get_contents($schemaFile);
+$schemaPhp  = (string) file_get_contents( $schemaFile );
 // Inserted after the `'admin'` line, whatever its value (#377 turned SpacePress Admin on by default).
-file_put_contents($schemaFile, preg_replace("/^    'admin' => (true|false),\n/m", "\$0    'publicAuthors' => true,\n", $schemaPhp, 1));
-$everyone = array_map($strip, $locs(fetch("$url/wp-sitemap-users-1.xml")['body']));
-sort($everyone);
+file_put_contents( $schemaFile, preg_replace( "/^    'admin' => (true|false),\n/m", "\$0    'publicAuthors' => true,\n", $schemaPhp, 1 ) );
+$everyone = array_map( $strip, $locs( fetch( "$url/wp-sitemap-users-1.xml" )['body'] ) );
+sort( $everyone );
 $out['authors']['public sitemap'] = $everyone;
-file_put_contents($schemaFile, $schemaPhp);
+file_put_contents( $schemaFile, $schemaPhp );
 // wp-admin and sign-in in a browser, in this mode (SP_TEST_BROWSER=1; the Rust test sets it
 // when the browser test's packages are installed).
-if ($testBrowser) {
-    $script = dirname(__DIR__) . '/differential/client/admin-login.mjs';
-    $browser = shell_exec('node ' . escapeshellarg($script) . ' ' . escapeshellarg($url) . ' 2>&1');
-    $out['admin'] = json_decode((string) $browser, true) ?? ['raw' => $browser];
+if ( $testBrowser ) {
+	$script       = dirname( __DIR__ ) . '/differential/client/admin-login.mjs';
+	$browser      = shell_exec( 'node ' . escapeshellarg( $script ) . ' ' . escapeshellarg( $url ) . ' 2>&1' );
+	$out['admin'] = json_decode( (string) $browser, true ) ?? array( 'raw' => $browser );
 }
-echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
+echo json_encode( $out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT ), "\n";
 $site->destroy();

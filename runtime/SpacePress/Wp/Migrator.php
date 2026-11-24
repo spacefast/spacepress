@@ -24,670 +24,677 @@ namespace SpacePress\Wp;
  * replaced), so what ran can be compared with a build's files later. Rows written before the column
  * existed, and step rows, have none: they count by id only.
  */
-final class Migrator
-{
-    /** @var array<string, MigrationProvider> */
-    private static array $providers = [];
+final class Migrator {
 
-    /** Register an opt-in migration provider (e.g., `spacepress/danger`). */
-    public static function registerProvider(MigrationProvider $provider): void
-    {
-        self::$providers[$provider->id()] = $provider;
-    }
+	/** @var array<string, MigrationProvider> */
+	private static array $providers = array();
 
-    /** @return array<string, MigrationProvider> */
-    public static function providers(): array
-    {
-        return self::$providers;
-    }
+	/** Register an opt-in migration provider (e.g., `spacepress/danger`). */
+	public static function registerProvider( MigrationProvider $provider ): void {
+		self::$providers[ $provider->id() ] = $provider;
+	}
 
-    /** Clear registered providers (for tests). */
-    public static function resetProviders(): void
-    {
-        self::$providers = [];
-    }
+	/** @return array<string, MigrationProvider> */
+	public static function providers(): array {
+		return self::$providers;
+	}
 
-    /**
-     * Asserts that a core forward-only schema statement contains no destructive DDL.
-     * Strips comments, single-quoted string literals, and backtick identifiers before checking
-     * verbs so string defaults (e.g. `DEFAULT 'Drop table'`) never trigger false positives.
-     * Destructive operations must go through an explicit CLI-only MigrationProvider.
-     */
-    public static function assertForwardOnly(string $statement, string $migrationId = ''): void
-    {
-        $sql = SchemaCheck::sql($statement);
-        $clean = self::stripSqlLiteralsAndComments($sql);
-        if ($clean === '') {
-            return;
-        }
-        if (preg_match('/\b(DROP\s+TABLE|DROP\s+COLUMN|TRUNCATE\s+(?:TABLE\s+)?|RENAME\s+TABLE|RENAME\s+COLUMN|CHANGE\s+COLUMN)\b/i', $clean, $m)) {
-            $verb = trim($m[1]);
-            $ctx = $migrationId !== '' ? " in migration $migrationId" : '';
-            throw new \RuntimeException(
-                "Refusing destructive DDL ($verb)$ctx: core SpacePress migrations are strictly forward-only. Opt into `spacepress/danger` and run `wp spacepress danger` via CLI for explicit destructive cleanup."
-            );
-        }
-    }
+	/** Clear registered providers (for tests). */
+	public static function resetProviders(): void {
+		self::$providers = array();
+	}
 
-    /** Strip `--` comments, `/* ... *\/` comments, single-quoted strings, and backtick identifiers. */
-    private static function stripSqlLiteralsAndComments(string $sql): string
-    {
-        $out = '';
-        $len = strlen($sql);
-        $i = 0;
-        while ($i < $len) {
-            $ch = $sql[$i];
-            if ($ch === '-' && $i + 1 < $len && $sql[$i + 1] === '-') {
-                $nl = strpos($sql, "\n", $i);
-                $i = $nl === false ? $len : $nl + 1;
-                $out .= ' ';
-                continue;
-            }
-            if ($ch === '/' && $i + 1 < $len && $sql[$i + 1] === '*') {
-                $end = strpos($sql, '*/', $i + 2);
-                $i = $end === false ? $len : $end + 2;
-                $out .= ' ';
-                continue;
-            }
-            if ($ch === '\'' || $ch === '"') {
-                $quote = $ch;
-                $i++;
-                while ($i < $len) {
-                    if ($sql[$i] === '\\' && $i + 1 < $len) {
-                        $i += 2;
-                        continue;
-                    }
-                    if ($sql[$i] === $quote) {
-                        if ($i + 1 < $len && $sql[$i + 1] === $quote) {
-                            $i += 2;
-                            continue;
-                        }
-                        $i++;
-                        break;
-                    }
-                    $i++;
-                }
-                $out .= " '' ";
-                continue;
-            }
-            if ($ch === '`') {
-                $i++;
-                while ($i < $len) {
-                    if ($sql[$i] === '`') {
-                        if ($i + 1 < $len && $sql[$i + 1] === '`') {
-                            $i += 2;
-                            continue;
-                        }
-                        $i++;
-                        break;
-                    }
-                    $i++;
-                }
-                $out .= ' `` ';
-                continue;
-            }
-            $out .= $ch;
-            $i++;
-        }
+	/**
+	 * Asserts that a core forward-only schema statement contains no destructive DDL.
+	 * Strips comments, single-quoted string literals, and backtick identifiers before checking
+	 * verbs so string defaults (e.g. `DEFAULT 'Drop table'`) never trigger false positives.
+	 * Destructive operations must go through an explicit CLI-only MigrationProvider.
+	 */
+	public static function assertForwardOnly( string $statement, string $migrationId = '' ): void {
+		$sql   = SchemaCheck::sql( $statement );
+		$clean = self::strip_sql_literals_and_comments( $sql );
+		if ( '' === $clean ) {
+			return;
+		}
+		if ( preg_match( '/\b(DROP\s+TABLE|DROP\s+COLUMN|TRUNCATE\s+(?:TABLE\s+)?|RENAME\s+TABLE|RENAME\s+COLUMN|CHANGE\s+COLUMN)\b/i', $clean, $m ) ) {
+			$verb = trim( $m[1] );
+			$ctx  = '' !== $migrationId ? " in migration $migrationId" : '';
+			throw new \RuntimeException(
+				"Refusing destructive DDL ($verb)$ctx: core SpacePress migrations are strictly forward-only. Opt into `spacepress/danger` and run `wp spacepress danger` via CLI for explicit destructive cleanup."
+			);
+		}
+	}
 
-        return trim($out);
-    }
+	/** Strip `--` comments, `/* ... *\/` comments, single-quoted strings, and backtick identifiers. */
+	private static function strip_sql_literals_and_comments( string $sql ): string {
+		$out = '';
+		$len = strlen( $sql );
+		$i   = 0;
+		while ( $i < $len ) {
+			$ch = $sql[ $i ];
+			if ( '-' === $ch && $i + 1 < $len && '-' === $sql[ $i + 1 ] ) {
+				$nl   = strpos( $sql, "\n", $i );
+				$i    = false === $nl ? $len : $nl + 1;
+				$out .= ' ';
+				continue;
+			}
+			if ( '/' === $ch && $i + 1 < $len && '*' === $sql[ $i + 1 ] ) {
+				$end  = strpos( $sql, '*/', $i + 2 );
+				$i    = false === $end ? $len : $end + 2;
+				$out .= ' ';
+				continue;
+			}
+			if ( '\'' === $ch || '"' === $ch ) {
+				$quote = $ch;
+				++$i;
+				while ( $i < $len ) {
+					if ( '\\' === $sql[ $i ] && $i + 1 < $len ) {
+						$i += 2;
+						continue;
+					}
+					if ( $sql[ $i ] === $quote ) {
+						if ( $i + 1 < $len && $sql[ $i + 1 ] === $quote ) {
+							$i += 2;
+							continue;
+						}
+						++$i;
+						break;
+					}
+					++$i;
+				}
+				$out .= " '' ";
+				continue;
+			}
+			if ( '`' === $ch ) {
+				++$i;
+				while ( $i < $len ) {
+					if ( '`' === $sql[ $i ] ) {
+						if ( $i + 1 < $len && '`' === $sql[ $i + 1 ] ) {
+							$i += 2;
+							continue;
+						}
+						++$i;
+						break;
+					}
+					++$i;
+				}
+				$out .= ' `` ';
+				continue;
+			}
+			$out .= $ch;
+			++$i;
+		}
 
-    /** @param array<string, int> $drops `--drop` confirmations for the schema check (SchemaCheck::drops) */
-    public function __construct(
-        private readonly Connection $db,
-        private readonly string $dir,
-        private readonly \SpacePress\Schema $schema,
-        private readonly array $drops = [],
-    ) {
-    }
+		return trim( $out );
+	}
 
-    /** Lists `<id>/migration.sql` folders under `$this->dir`, returning sorted `id => path`. */
-    private function migrationFiles(): array
-    {
-        $found = [];
-        foreach (glob($this->dir . '/*/migration.sql') ?: [] as $file) {
-            $id = basename(dirname($file));
-            if ($id !== '' && $id !== '.' && $id !== '..') {
-                $found[$id] = $file;
-            }
-        }
-        ksort($found, SORT_STRING);
+	/** @param array<string, int> $drops `--drop` confirmations for the schema check (SchemaCheck::drops) */
+	public function __construct(
+		private readonly Connection $db,
+		private readonly string $dir,
+		private readonly \SpacePress\Schema $schema,
+		private readonly array $drops = array(),
+	) {
+	}
 
-        return $found;
-    }
+	/** Lists `<id>/migration.sql` folders under `$this->dir`, returning sorted `id => path`. */
+	private function migration_files(): array {
+		$found = array();
+		foreach ( glob( $this->dir . '/*/migration.sql' ) ?: array() as $file ) {
+			$id = basename( dirname( $file ) );
+			if ( '' !== $id && '.' !== $id && '..' !== $id ) {
+				$found[ $id ] = $file;
+			}
+		}
+		ksort( $found, SORT_STRING );
 
-    /** The statements of a migration file: split on standalone `--> statement-breakpoint` lines. */
-    public static function statements(string $sql): array
-    {
-        $parts = preg_split('/(?:^|\R)[ \t]*-->[ \t]*statement-breakpoint[ \t]*(?:\R|$)/', $sql) ?: [];
+		return $found;
+	}
 
-        return array_values(array_filter(array_map('trim', $parts), static function (string $s): bool {
-            if ($s === '') {
-                return false;
-            }
-            // Skip pure comment-only blocks (e.g., metadata-only retire migrations).
-            $nonComment = array_filter(
-                explode("\n", $s),
-                static fn (string $line): bool => trim($line) !== '' && !str_starts_with(ltrim($line), '--'),
-            );
+	/** The statements of a migration file: split on standalone `--> statement-breakpoint` lines. */
+	public static function statements( string $sql ): array {
+		$parts = preg_split( '/(?:^|\R)[ \t]*-->[ \t]*statement-breakpoint[ \t]*(?:\R|$)/', $sql ) ?: array();
 
-            return $nonComment !== [];
-        }));
-    }
+		return array_values(
+			array_filter(
+				array_map( 'trim', $parts ),
+				static function ( string $s ): bool {
+					if ( '' === $s ) {
+						return false;
+					}
+					// Skip pure comment-only blocks (e.g., metadata-only retire migrations).
+					$non_comment = array_filter(
+						explode( "\n", $s ),
+						static fn ( string $line ): bool => trim( $line ) !== '' && ! str_starts_with( ltrim( $line ), '--' ),
+					);
 
-    /**
-     * Records `<id>:<n>` (statement n of migration id) as applied without running it, for a statement
-     * whose effect is already in the database. Only the next pending statement can be marked.
-     */
-    public function markApplied(string $step): void
-    {
-        if (!preg_match('/^(.+):([1-9]\\d*)$/', $step, $m)) {
-            throw \SpacePress\HttpError::invalidInput('--mark-applied takes <migration id>:<statement number>, e.g. 20261121180000_7k9m2x_init:1', '/mark-applied');
-        }
-        [, $id, $n] = $m;
-        $this->guardBindings();
-        ['migrations' => $migrations, 'done' => $done] = $this->read();
-        $this->guardAdoptions($migrations, $done);
-        $files = $this->migrationFiles();
-        if (!isset($files[$id])) {
-            throw new \SpacePress\HttpError(409, 'not_pending', "$id is not a pending migration of this app");
-        }
-        $file = $files[$id];
-        $ledger = $this->ledger();
-        $done = array_flip($this->done());
-        if (!is_file($file) || isset($done[$id])) {
-            throw new \SpacePress\HttpError(409, 'not_pending', "$id is not a pending migration of this app");
-        }
-        $count = count(self::statements((string) file_get_contents($file)));
-        $next = 1;
-        while (isset($done["$id:$next"])) {
-            $next++;
-        }
-        if ((int) $n !== $next || $next > $count) {
-            throw new \SpacePress\HttpError(409, 'not_pending', "the next pending statement of $id is $next of $count; only that one can be marked");
-        }
-        $this->db->run("INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`) VALUES (?, ?, 'schema', ?)", [$this->schema->name(), $step, gmdate('Y-m-d\\TH:i:s.000\\Z')]);
-    }
+					return array() !== $non_comment;
+				}
+			)
+		);
+	}
 
-    /**
-     * What {@see migrate()} would run, after the same schema check, without changing anything: no
-     * DDL and no ledger row. Per pending migration its
-     * id, the hash recorded once it applies, and the statements still to run (numbered from 1 in the
-     * file). Throws SchemaRefused exactly when migrate() would.
-     *
-     * @return list<array{id: string, sql: string, statements: list<int>}>
-     * @throws SchemaRefused
-     */
-    public function plan(): array
-    {
-        $this->guardBindings();
-        ['migrations' => $migrations, 'hashes' => $hashes, 'done' => $done] = $this->read();
-        // A site a pre-release runtime installed keeps its ledger under the earlier name until the
-        // install this plans moves it: what it records there has run.
-        $done += array_flip(Legacy::applied($this->db, $this->schema->name()));
-        $this->check($migrations, $done);
-        try {
-            $this->preflightAdoptions($migrations, $done);
-        } catch (DbError $e) {
-            throw new SchemaRefused([['code' => 'adoption_mismatch', 'name' => 'existingTable', 'rows' => 0, 'message' => $e->getMessage(),
-                'fix' => "Make the existing table match the declaration's columns, indexes, keys and integer types, or change the declaration; nothing was changed."]]);
-        }
-        $plan = [];
-        foreach ($migrations as $id => $statements) {
-            if (isset($done[$id])) {
-                continue;
-            }
-            $left = array_values(array_filter(array_keys($statements), static fn (int $i): bool => !isset($done[$id . ':' . ($i + 1)])));
-            $plan[] = ['id' => (string) $id, 'sql' => $hashes[$id], 'statements' => array_map(static fn (int $i): int => $i + 1, $left)];
-        }
+	/**
+	 * Records `<id>:<n>` (statement n of migration id) as applied without running it, for a statement
+	 * whose effect is already in the database. Only the next pending statement can be marked.
+	 */
+	public function markApplied( string $step ): void {
+		if ( ! preg_match( '/^(.+):([1-9]\\d*)$/', $step, $m ) ) {
+			throw \SpacePress\HttpError::invalidInput( '--mark-applied takes <migration id>:<statement number>, e.g. 20261121180000_7k9m2x_init:1', '/mark-applied' );
+		}
+		[, $id, $n] = $m;
+		$this->guard_bindings();
+		['migrations' => $migrations, 'done' => $done] = $this->read();
+		$this->guard_adoptions( $migrations, $done );
+		$files = $this->migration_files();
+		if ( ! isset( $files[ $id ] ) ) {
+			throw new \SpacePress\HttpError( 409, 'not_pending', "$id is not a pending migration of this app" );
+		}
+		$file   = $files[ $id ];
+		$ledger = $this->ledger();
+		$done   = array_flip( $this->done() );
+		if ( ! is_file( $file ) || isset( $done[ $id ] ) ) {
+			throw new \SpacePress\HttpError( 409, 'not_pending', "$id is not a pending migration of this app" );
+		}
+		$count = count( self::statements( (string) file_get_contents( $file ) ) );
+		$next  = 1;
+		while ( isset( $done[ "$id:$next" ] ) ) {
+			++$next;
+		}
+		if ( (int) $n !== $next || $next > $count ) {
+			throw new \SpacePress\HttpError( 409, 'not_pending', "the next pending statement of $id is $next of $count; only that one can be marked" );
+		}
+		$this->db->run( "INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`) VALUES (?, ?, 'schema', ?)", array( $this->schema->name(), $step, gmdate( 'Y-m-d\\TH:i:s.000\\Z' ) ) );
+	}
 
-        return $plan;
-    }
+	/**
+	 * What {@see migrate()} would run, after the same schema check, without changing anything: no
+	 * DDL and no ledger row. Per pending migration its
+	 * id, the hash recorded once it applies, and the statements still to run (numbered from 1 in the
+	 * file). Throws SchemaRefused exactly when migrate() would.
+	 *
+	 * @return list<array{id: string, sql: string, statements: list<int>}>
+	 * @throws SchemaRefused
+	 */
+	public function plan(): array {
+		$this->guard_bindings();
+		['migrations' => $migrations, 'hashes' => $hashes, 'done' => $done] = $this->read();
+		// A site a pre-release runtime installed keeps its ledger under the earlier name until the
+		// install this plans moves it: what it records there has run.
+		$done += array_flip( Legacy::applied( $this->db, $this->schema->name() ) );
+		$this->check( $migrations, $done );
+		try {
+			$this->preflight_adoptions( $migrations, $done );
+		} catch ( DbError $e ) {
+			throw new SchemaRefused(
+				array(
+					array(
+						'code'    => 'adoption_mismatch',
+						'name'    => 'existingTable',
+						'rows'    => 0,
+						'message' => $e->getMessage(),
+						'fix'     => "Make the existing table match the declaration's columns, indexes, keys and integer types, or change the declaration; nothing was changed.",
+					),
+				)
+			);
+		}
+		$plan = array();
+		foreach ( $migrations as $id => $statements ) {
+			if ( isset( $done[ $id ] ) ) {
+				continue;
+			}
+			$left   = array_values( array_filter( array_keys( $statements ), static fn ( int $i ): bool => ! isset( $done[ $id . ':' . ( $i + 1 ) ] ) ) );
+			$plan[] = array(
+				'id'         => (string) $id,
+				'sql'        => $hashes[ $id ],
+				'statements' => array_map( static fn ( int $i ): int => $i + 1, $left ),
+			);
+		}
 
-    /**
-     * This app's migration files (id => statements, `{prefix}` replaced; id => hash of the file) and
-     * what the ledger records as done, read without changing anything.
-     *
-     * @return array{migrations: array<string, list<string>>, hashes: array<string, string>, done: array<string, int>}
-     */
-    private function read(): array
-    {
-        $migrations = [];
-        $hashes = [];
-        foreach ($this->migrationFiles() as $id => $file) {
-            $raw = (string) file_get_contents($file);
-            $hashes[$id] = hash('sha256', $raw);
-            $prefix = $this->db->prefix();
-            $migrations[$id] = array_map(
-                static fn (string $statement): string => str_replace('{prefix}', $prefix, Legacy::migrationStatement($statement)),
-                self::statements($raw),
-            );
-        }
+		return $plan;
+	}
 
-        return ['migrations' => $migrations, 'hashes' => $hashes, 'done' => array_flip($this->hasLedger() ? $this->done() : [])];
-    }
+	/**
+	 * This app's migration files (id => statements, `{prefix}` replaced; id => hash of the file) and
+	 * what the ledger records as done, read without changing anything.
+	 *
+	 * @return array{migrations: array<string, list<string>>, hashes: array<string, string>, done: array<string, int>}
+	 */
+	private function read(): array {
+		$migrations = array();
+		$hashes     = array();
+		foreach ( $this->migration_files() as $id => $file ) {
+			$raw               = (string) file_get_contents( $file );
+			$hashes[ $id ]     = hash( 'sha256', $raw );
+			$prefix            = $this->db->prefix();
+			$migrations[ $id ] = array_map(
+				static fn ( string $statement ): string => str_replace( '{prefix}', $prefix, Legacy::migrationStatement( $statement ) ),
+				self::statements( $raw ),
+			);
+		}
 
-    /**
-     * The deploy-time schema check (spec §2.9): every pending statement that could lose rows or leave
-     * them without a required value is measured first, across all pending files, so a refusal leaves
-     * the tables, the rows and the ledger untouched. A file that stopped part way has steps that
-     * already ran: their renames are replayed (not measured), so the checks after them find the
-     * tables and columns under their new names.
-     *
-     * @param array<string, list<string>> $migrations
-     * @param array<string, int> $done
-     */
-    private function check(array $migrations, array $done): void
-    {
-        $pending = [];
-        $applied = [];
-        foreach ($migrations as $id => $statements) {
-            foreach (isset($done[$id]) ? [] : $statements as $i => $statement) {
-                if (isset($done[$id . ':' . ($i + 1)])) {
-                    $applied[] = $statement;
-                } else {
-                    self::assertForwardOnly($statement, (string) $id);
-                    $pending[$id][] = $statement;
-                }
-            }
-        }
-        $this->guardAdoptions($migrations, $done);
-        (new SchemaCheck($this->db, $this->drops))->check($pending, $applied);
-    }
+		return array(
+			'migrations' => $migrations,
+			'hashes'     => $hashes,
+			'done'       => array_flip( $this->hasLedger() ? $this->done() : array() ),
+		);
+	}
 
-    /** @return list<string> ids applied by this call */
-    public function migrate(): array
-    {
-        $this->guardBindings();
-        $this->requireCompatibleTables();
-        $app = $this->schema->name();
-        ['migrations' => $migrations, 'hashes' => $hashes, 'done' => $done] = $this->read();
-        // The ledger is only converted below, once the check has passed.
-        $this->check($migrations, $done);
-        try {
-            $this->preflightAdoptions($migrations, $done);
-        } catch (DbError $e) {
-            throw new \RuntimeException($e->getMessage(), 0, $e);
-        }
-        $ledger = $this->ledger();
-        $done = array_flip($this->done());
-        $applied = [];
-        foreach ($migrations as $id => $statements) {
-            if (isset($done[$id])) {
-                continue;
-            }
-            foreach ($statements as $i => $statement) {
-                $step = $id . ':' . ($i + 1);
-                if (isset($done[$step])) {
-                    continue;
-                }
-                try {
-                    self::assertForwardOnly($statement, (string) $id);
-                    $this->execute($statement);
-                } catch (DbError $e) {
-                    throw new \RuntimeException("Migration $id failed at statement " . ($i + 1) . ': ' . $e->getMessage(), 0, $e);
-                }
-                $this->db->run("INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`) VALUES (?, ?, 'schema', ?)", [$app, $step, gmdate('Y-m-d\TH:i:s.000\Z')]);
-            }
-            $this->db->run("INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`, `sql`) VALUES (?, ?, 'schema', ?, ?)", [$app, $id, gmdate('Y-m-d\TH:i:s.000\Z'), $hashes[$id]]);
-            $this->db->run("DELETE FROM `$ledger` WHERE `app` = ? AND `id` LIKE ?", [$app, $this->db->wpdb()->esc_like($id . ':') . '%']);
-            $applied[] = $id;
-        }
+	/**
+	 * The deploy-time schema check (spec §2.9): every pending statement that could lose rows or leave
+	 * them without a required value is measured first, across all pending files, so a refusal leaves
+	 * the tables, the rows and the ledger untouched. A file that stopped part way has steps that
+	 * already ran: their renames are replayed (not measured), so the checks after them find the
+	 * tables and columns under their new names.
+	 *
+	 * @param array<string, list<string>> $migrations
+	 * @param array<string, int> $done
+	 */
+	private function check( array $migrations, array $done ): void {
+		$pending = array();
+		$applied = array();
+		foreach ( $migrations as $id => $statements ) {
+			foreach ( isset( $done[ $id ] ) ? array() : $statements as $i => $statement ) {
+				if ( isset( $done[ $id . ':' . ( $i + 1 ) ] ) ) {
+					$applied[] = $statement;
+				} else {
+					self::assertForwardOnly( $statement, (string) $id );
+					$pending[ $id ][] = $statement;
+				}
+			}
+		}
+		$this->guard_adoptions( $migrations, $done );
+		( new SchemaCheck( $this->db, $this->drops ) )->check( $pending, $applied );
+	}
 
-        $this->requireCompatibleTables();
-        return $applied;
-    }
+	/** @return list<string> ids applied by this call */
+	public function migrate(): array {
+		$this->guard_bindings();
+		$this->require_compatible_tables();
+		$app = $this->schema->name();
+		['migrations' => $migrations, 'hashes' => $hashes, 'done' => $done] = $this->read();
+		// The ledger is only converted below, once the check has passed.
+		$this->check( $migrations, $done );
+		try {
+			$this->preflight_adoptions( $migrations, $done );
+		} catch ( DbError $e ) {
+			throw new \RuntimeException( $e->getMessage(), 0, $e );
+		}
+		$ledger  = $this->ledger();
+		$done    = array_flip( $this->done() );
+		$applied = array();
+		foreach ( $migrations as $id => $statements ) {
+			if ( isset( $done[ $id ] ) ) {
+				continue;
+			}
+			foreach ( $statements as $i => $statement ) {
+				$step = $id . ':' . ( $i + 1 );
+				if ( isset( $done[ $step ] ) ) {
+					continue;
+				}
+				try {
+					self::assertForwardOnly( $statement, (string) $id );
+					$this->execute( $statement );
+				} catch ( DbError $e ) {
+					throw new \RuntimeException( "Migration $id failed at statement " . ( $i + 1 ) . ': ' . $e->getMessage(), 0, $e );
+				}
+				$this->db->run( "INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`) VALUES (?, ?, 'schema', ?)", array( $app, $step, gmdate( 'Y-m-d\TH:i:s.000\Z' ) ) );
+			}
+			$this->db->run( "INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`, `sql`) VALUES (?, ?, 'schema', ?, ?)", array( $app, $id, gmdate( 'Y-m-d\TH:i:s.000\Z' ), $hashes[ $id ] ) );
+			$this->db->run( "DELETE FROM `$ledger` WHERE `app` = ? AND `id` LIKE ?", array( $app, $this->db->wpdb()->esc_like( $id . ':' ) . '%' ) );
+			$applied[] = $id;
+		}
 
-    /**
-     * Runs one migration statement. On the SQLite Database Integration driver, renames take another
-     * route: it has no RENAME TABLE (the table is copied under its new name, rows and auto-increment
-     * included, and the old one dropped, in one transaction), and its RENAME COLUMN loses the values
-     * (it runs as CHANGE COLUMN with the definition the compiler recorded).
-     */
-    private function execute(string $statement): void
-    {
-        $sql = self::scopeForeignKeys(SchemaCheck::sql($statement), $this->db->prefix());
-        $check = SchemaCheck::parse($statement);
-        if (!$this->db->sqlite() || ($check['check'] ?? null) !== 'rename') {
-            $this->db->run($sql);
+		$this->require_compatible_tables();
+		return $applied;
+	}
 
-            return;
-        }
-        if (isset($check['column'])) {
-            // The statement names the table as it is when it runs (an earlier rename may have moved it);
-            // the check names it as it was before the plan.
-            preg_match('/^ALTER TABLE (`(?:[^`]|``)+`)/', $sql, $m);
-            $this->db->run("ALTER TABLE {$m[1]} CHANGE COLUMN `" . str_replace('`', '``', (string) $check['column']) . '` ' . $check['definition']);
+	/**
+	 * Runs one migration statement. On the SQLite Database Integration driver, renames take another
+	 * route: it has no RENAME TABLE (the table is copied under its new name, rows and auto-increment
+	 * included, and the old one dropped, in one transaction), and its RENAME COLUMN loses the values
+	 * (it runs as CHANGE COLUMN with the definition the compiler recorded).
+	 */
+	private function execute( string $statement ): void {
+		$sql   = self::scope_foreign_keys( SchemaCheck::sql( $statement ), $this->db->prefix() );
+		$check = SchemaCheck::parse( $statement );
+		if ( ! $this->db->sqlite() || ( $check['check'] ?? null ) !== 'rename' ) {
+			$this->db->run( $sql );
 
-            return;
-        }
-        $from = '`' . str_replace('`', '``', (string) $check['table']) . '`';
-        $to = '`' . str_replace('`', '``', (string) $check['to']) . '`';
-        $create = array_values($this->db->run("SHOW CREATE TABLE $from")[0])[1];
-        $dbh = $this->db->wpdb()->dbh;
-        $dbh->query('START TRANSACTION');
-        try {
-            $dbh->query((string) preg_replace('/^CREATE TABLE `(?:[^`]|``)+`/', "CREATE TABLE $to", $create));
-            $dbh->query("INSERT INTO $to SELECT * FROM $from");
-            $dbh->query("DROP TABLE $from");
-            $dbh->query('COMMIT');
-        } catch (\Throwable $e) {
-            $dbh->query('ROLLBACK');
-            throw new DbError($e->getMessage() . " [$sql]", 0);
-        }
-    }
+			return;
+		}
+		if ( isset( $check['column'] ) ) {
+			// The statement names the table as it is when it runs (an earlier rename may have moved it);
+			// the check names it as it was before the plan.
+			preg_match( '/^ALTER TABLE (`(?:[^`]|``)+`)/', $sql, $m );
+			$this->db->run( "ALTER TABLE {$m[1]} CHANGE COLUMN `" . str_replace( '`', '``', (string) $check['column'] ) . '` ' . $check['definition'] );
 
-    /**
-     * On WordPress multisite (or non-default table prefixes), scope InnoDB FK constraint names
-     * with a bounded prefix hash so blogs sharing one database never collide on FK symbols.
-     */
-    private static function scopeForeignKeys(string $sql, string $prefix): string
-    {
-        if ($prefix === '' || $prefix === 'wp_') {
-            return $sql;
-        }
-        $tag = 'm' . substr(hash('sha256', $prefix), 0, 7) . '_';
+			return;
+		}
+		$from   = '`' . str_replace( '`', '``', (string) $check['table'] ) . '`';
+		$to     = '`' . str_replace( '`', '``', (string) $check['to'] ) . '`';
+		$create = array_values( $this->db->run( "SHOW CREATE TABLE $from" )[0] )[1];
+		$dbh    = $this->db->wpdb()->dbh;
+		$dbh->query( 'START TRANSACTION' );
+		try {
+			$dbh->query( (string) preg_replace( '/^CREATE TABLE `(?:[^`]|``)+`/', "CREATE TABLE $to", $create ) );
+			$dbh->query( "INSERT INTO $to SELECT * FROM $from" );
+			$dbh->query( "DROP TABLE $from" );
+			$dbh->query( 'COMMIT' );
+		} catch ( \Throwable $e ) {
+			$dbh->query( 'ROLLBACK' );
+			throw new DbError( $e->getMessage() . " [$sql]", 0 );
+		}
+	}
 
-        return (string) preg_replace_callback(
-            '/\b(CONSTRAINT|DROP\s+FOREIGN\s+KEY)\s+`(sp_[^`]+)`/i',
-            static function (array $m) use ($tag): string {
-                $scoped = substr($tag . $m[2], 0, 64);
+	/**
+	 * On WordPress multisite (or non-default table prefixes), scope InnoDB FK constraint names
+	 * with a bounded prefix hash so blogs sharing one database never collide on FK symbols.
+	 */
+	private static function scope_foreign_keys( string $sql, string $prefix ): string {
+		if ( '' === $prefix || 'wp_' === $prefix ) {
+			return $sql;
+		}
+		$tag = 'm' . substr( hash( 'sha256', $prefix ), 0, 7 ) . '_';
 
-                return $m[1] . ' `' . $scoped . '`';
-            },
-            $sql,
-        );
-    }
+		return (string) preg_replace_callback(
+			'/\b(CONSTRAINT|DROP\s+FOREIGN\s+KEY)\s+`(sp_[^`]+)`/i',
+			static function ( array $m ) use ( $tag ): string {
+				$scoped = substr( $tag . $m[2], 0, 64 );
 
-    /** Ensure `{prefix}sp__migrations` exists in the unified ledger format. */
-    public static function ensureLedger(Connection $db, \SpacePress\Schema $schema): string
-    {
-        return (new self($db, '', $schema))->ledger();
-    }
+				return $m[1] . ' `' . $scoped . '`';
+			},
+			$sql,
+		);
+	}
 
-    private function requireCompatibleTables(): void
-    {
-        $bad = $this->nonInnoDb();
-        if ($bad !== []) {
-            throw new \RuntimeException('SpacePress needs InnoDB tables with utf8mb4; these are incompatible: ' . implode(', ', $bad));
-        }
-    }
+	/** Ensure `{prefix}sp__migrations` exists in the unified ledger format. */
+	public static function ensureLedger( Connection $db, \SpacePress\Schema $schema ): string {
+		return ( new self( $db, '', $schema ) )->ledger();
+	}
 
-    /** A table the app binds but didn't create must be this site's, before anything reads it. */
-    private function guardBindings(): void
-    {
-        foreach ($this->schema->collections() as $collection => $spec) {
-            if (isset($spec['existingTable'])) {
-                Guard::table((string) $spec['existingTable'], $this->db->prefix());
-            }
-        }
-    }
+	private function require_compatible_tables(): void {
+		$bad = $this->nonInnoDb();
+		if ( array() !== $bad ) {
+			throw new \RuntimeException( 'SpacePress needs InnoDB tables with utf8mb4; these are incompatible: ' . implode( ', ', $bad ) );
+		}
+	}
 
-    /**
-     * Every pending adoption against the live table (declared indexes, foreign keys, integer types and
-     * a `SELECT <columns> LIMIT 0` probe), before any DDL or ledger write, even across tables and
-     * files. Reads only, so plan() runs it too.
-     *
-     * @param array<string, list<string>> $migrations
-     * @param array<string, int> $done
-     * @throws DbError naming the migration and statement
-     */
-    private function preflightAdoptions(array $migrations, array $done): void
-    {
-        foreach ($migrations as $id => $statements) {
-            foreach (isset($done[$id]) ? [] : $statements as $i => $statement) {
-                if (!str_starts_with($statement, '-- spacepress-adopt ') || isset($done[$id . ':' . ($i + 1)])) {
-                    continue;
-                }
-                try {
-                    $this->validateAdoption($statement);
-                    $this->db->run($statement);
-                } catch (DbError $e) {
-                    throw new DbError("Migration $id failed at statement " . ($i + 1) . ': ' . $e->getMessage(), 0);
-                }
-            }
-        }
-    }
+	/** A table the app binds but didn't create must be this site's, before anything reads it. */
+	private function guard_bindings(): void {
+		foreach ( $this->schema->collections() as $collection => $spec ) {
+			if ( isset( $spec['existingTable'] ) ) {
+				Guard::table( (string) $spec['existingTable'], $this->db->prefix() );
+			}
+		}
+	}
 
-    /**
-     * Guards (guardAdoption) every adoption record a pending step relies on: one still pending, and
-     * one already applied whose table a pending statement names, so a table adopted by an earlier
-     * runtime is checked again before a later statement alters or drops it, even once no collection
-     * binds it. Generated statements quote every table name.
-     *
-     * @param array<string, list<string>> $migrations
-     * @param array<string, int> $done
-     */
-    private function guardAdoptions(array $migrations, array $done): void
-    {
-        $pending = [];
-        foreach ($migrations as $id => $statements) {
-            foreach (isset($done[$id]) ? [] : $statements as $i => $statement) {
-                if (!isset($done[$id . ':' . ($i + 1)])) {
-                    $pending[] = $statement;
-                }
-            }
-        }
-        foreach ($migrations as $id => $statements) {
-            foreach ($statements as $i => $statement) {
-                if (!str_starts_with($statement, '-- spacepress-adopt ')) {
-                    continue;
-                }
-                $applied = isset($done[$id]) || isset($done[$id . ':' . ($i + 1)]);
-                $quoted = '`' . str_replace('`', '``', (string) self::adoption($statement)['table']) . '`';
-                $touched = static fn (): bool => array_filter($pending, static fn (string $s): bool => $s !== $statement && str_contains($s, $quoted)) !== [];
-                if (!$applied || $touched()) {
-                    $this->guardAdoption($statement);
-                }
-            }
-        }
-    }
+	/**
+	 * Every pending adoption against the live table (declared indexes, foreign keys, integer types and
+	 * a `SELECT <columns> LIMIT 0` probe), before any DDL or ledger write, even across tables and
+	 * files. Reads only, so plan() runs it too.
+	 *
+	 * @param array<string, list<string>> $migrations
+	 * @param array<string, int> $done
+	 * @throws DbError naming the migration and statement
+	 */
+	private function preflight_adoptions( array $migrations, array $done ): void {
+		foreach ( $migrations as $id => $statements ) {
+			foreach ( isset( $done[ $id ] ) ? array() : $statements as $i => $statement ) {
+				if ( ! str_starts_with( $statement, '-- spacepress-adopt ' ) || isset( $done[ $id . ':' . ( $i + 1 ) ] ) ) {
+					continue;
+				}
+				try {
+					$this->validate_adoption( $statement );
+					$this->db->run( $statement );
+				} catch ( DbError $e ) {
+					throw new DbError( "Migration $id failed at statement " . ( $i + 1 ) . ': ' . $e->getMessage(), 0 );
+				}
+			}
+		}
+	}
 
-    /** The JSON of a `-- spacepress-adopt` line. */
-    private static function adoption(string $statement): array
-    {
-        return json_decode(explode("\n", substr($statement, strlen('-- spacepress-adopt ')), 2)[0], true, flags: JSON_THROW_ON_ERROR);
-    }
+	/**
+	 * Guards (guardAdoption) every adoption record a pending step relies on: one still pending, and
+	 * one already applied whose table a pending statement names, so a table adopted by an earlier
+	 * runtime is checked again before a later statement alters or drops it, even once no collection
+	 * binds it. Generated statements quote every table name.
+	 *
+	 * @param array<string, list<string>> $migrations
+	 * @param array<string, int> $done
+	 */
+	private function guard_adoptions( array $migrations, array $done ): void {
+		$pending = array();
+		foreach ( $migrations as $id => $statements ) {
+			foreach ( isset( $done[ $id ] ) ? array() : $statements as $i => $statement ) {
+				if ( ! isset( $done[ $id . ':' . ( $i + 1 ) ] ) ) {
+					$pending[] = $statement;
+				}
+			}
+		}
+		foreach ( $migrations as $id => $statements ) {
+			foreach ( $statements as $i => $statement ) {
+				if ( ! str_starts_with( $statement, '-- spacepress-adopt ' ) ) {
+					continue;
+				}
+				$applied = isset( $done[ $id ] ) || isset( $done[ $id . ':' . ( $i + 1 ) ] );
+				$quoted  = '`' . str_replace( '`', '``', (string) self::adoption( $statement )['table'] ) . '`';
+				$touched = static fn (): bool => array_filter( $pending, static fn ( string $s ): bool => $s !== $statement && str_contains( $s, $quoted ) ) !== array();
+				if ( ! $applied || $touched() ) {
+					$this->guard_adoption( $statement );
+				}
+			}
+		}
+	}
 
-    /** An adoption record may bind only a table owned by this site. */
-    private function guardAdoption(string $statement): void
-    {
-        Guard::table(self::adoption($statement)['table'], $this->db->prefix());
-    }
+	/** The JSON of a `-- spacepress-adopt` line. */
+	private static function adoption( string $statement ): array {
+		return json_decode( explode( "\n", substr( $statement, strlen( '-- spacepress-adopt ' ) ), 2 )[0], true, flags: JSON_THROW_ON_ERROR );
+	}
 
-    /** Adoption records compiler names in the snapshot; verify those names before recording the step. */
-    private function validateAdoption(string $statement): void
-    {
-        $expected = self::adoption($statement);
-        $table = $expected['table'];
-        $indexes = [];
-        foreach ($this->db->run('SELECT INDEX_NAME AS n, NON_UNIQUE AS u, COLUMN_NAME AS c, SUB_PART AS p FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY INDEX_NAME, SEQ_IN_INDEX', [$table]) as $row) {
-            $indexes[$row['n']][] = $row;
-        }
-        foreach ($expected['indexes'] as $index) {
-            $actual = $indexes[$index['name']] ?? [];
-            if (array_column($actual, 'c') !== $index['columns']
-                || array_filter($actual, static fn (array $r): bool => (int) $r['u'] !== (int) !$index['unique'] || $r['p'] !== null) !== []) {
-                throw new DbError("Cannot adopt $table: index {$index['name']} must already have the declared columns and uniqueness, without prefix lengths");
-            }
-        }
-        // Later foreign keys use the schema's BIGINT signedness; never guess the adopted key's type.
-        $columns = array_column($this->db->run('SELECT COLUMN_NAME AS n, DATA_TYPE AS t, COLUMN_TYPE AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$table]), null, 'n');
-        foreach ($expected['integerColumns'] ?? [] as $column) {
-            $actual = $columns[$column['name']] ?? null;
-            $type = $column['unsigned'] ? 'BIGINT UNSIGNED' : 'BIGINT';
-            if ($actual === null || strtolower($actual['t']) !== 'bigint'
-                || str_contains(strtolower($actual['c']), 'unsigned') !== $column['unsigned']) {
-                throw new DbError("Cannot adopt $table: column {$column['name']} must use $type");
-            }
-        }
-        foreach ($expected['foreignKeys'] as $key) {
-            $actual = $this->db->run('SELECT k.COLUMN_NAME AS c, k.REFERENCED_TABLE_NAME AS t, k.REFERENCED_COLUMN_NAME AS r, r.DELETE_RULE AS d, r.UPDATE_RULE AS u FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.TABLE_NAME = k.TABLE_NAME AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME WHERE k.CONSTRAINT_SCHEMA = DATABASE() AND k.REFERENCED_TABLE_SCHEMA = DATABASE() AND k.TABLE_NAME = ? AND k.CONSTRAINT_NAME = ? ORDER BY k.ORDINAL_POSITION', [$table, $key['name']]);
-            $rule = static fn (string $value): string => $value === 'NO ACTION' ? 'RESTRICT' : $value;
-            if (count($actual) !== 1 || $actual[0]['c'] !== $key['column'] || $actual[0]['t'] !== $key['table'] || $actual[0]['r'] !== $key['target']
-                || $rule($actual[0]['d']) !== $rule($key['onDelete']) || $rule($actual[0]['u']) !== $rule($key['onUpdate'])) {
-                throw new DbError("Cannot adopt $table: foreign key {$key['name']} must already have the declared target and actions");
-            }
-        }
-    }
+	/** An adoption record may bind only a table owned by this site. */
+	private function guard_adoption( string $statement ): void {
+		Guard::table( self::adoption( $statement )['table'], $this->db->prefix() );
+	}
 
-    /**
-     * Runs $fn holding a MySQL named lock scoped to this site's database and table prefix, so every
-     * writer (first request, activation, `wp spacepress migrate`) applies a given migration once. Waits up
-     * to 30 seconds for another holder, then throws rather than letting the caller run on a schema
-     * that is still changing.
-     */
-    public static function locked(Connection $db, string $name, callable $fn, int $seconds = 30): mixed
-    {
-        return $db->locked('spacepress:' . substr(hash('sha256', DB_NAME . ':' . $db->prefix() . ':' . $name), 0, 40), $seconds, $fn);
-    }
+	/** Adoption records compiler names in the snapshot; verify those names before recording the step. */
+	private function validate_adoption( string $statement ): void {
+		$expected = self::adoption( $statement );
+		$table    = $expected['table'];
+		$indexes  = array();
+		foreach ( $this->db->run( 'SELECT INDEX_NAME AS n, NON_UNIQUE AS u, COLUMN_NAME AS c, SUB_PART AS p FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY INDEX_NAME, SEQ_IN_INDEX', array( $table ) ) as $row ) {
+			$indexes[ $row['n'] ][] = $row;
+		}
+		foreach ( $expected['indexes'] as $index ) {
+			$actual = $indexes[ $index['name'] ] ?? array();
+			if ( array_column( $actual, 'c' ) !== $index['columns']
+				|| array_filter( $actual, static fn ( array $r ): bool => (int) $r['u'] !== (int) ! $index['unique'] || null !== $r['p'] ) !== array() ) {
+				throw new DbError( "Cannot adopt $table: index {$index['name']} must already have the declared columns and uniqueness, without prefix lengths" );
+			}
+		}
+		// Later foreign keys use the schema's BIGINT signedness; never guess the adopted key's type.
+		$columns = array_column( $this->db->run( 'SELECT COLUMN_NAME AS n, DATA_TYPE AS t, COLUMN_TYPE AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', array( $table ) ), null, 'n' );
+		foreach ( $expected['integerColumns'] ?? array() as $column ) {
+			$actual = $columns[ $column['name'] ] ?? null;
+			$type   = $column['unsigned'] ? 'BIGINT UNSIGNED' : 'BIGINT';
+			if ( null === $actual || strtolower( $actual['t'] ) !== 'bigint'
+				|| str_contains( strtolower( $actual['c'] ), 'unsigned' ) !== $column['unsigned'] ) {
+				throw new DbError( "Cannot adopt $table: column {$column['name']} must use $type" );
+			}
+		}
+		foreach ( $expected['foreignKeys'] as $key ) {
+			$actual = $this->db->run( 'SELECT k.COLUMN_NAME AS c, k.REFERENCED_TABLE_NAME AS t, k.REFERENCED_COLUMN_NAME AS r, r.DELETE_RULE AS d, r.UPDATE_RULE AS u FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.TABLE_NAME = k.TABLE_NAME AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME WHERE k.CONSTRAINT_SCHEMA = DATABASE() AND k.REFERENCED_TABLE_SCHEMA = DATABASE() AND k.TABLE_NAME = ? AND k.CONSTRAINT_NAME = ? ORDER BY k.ORDINAL_POSITION', array( $table, $key['name'] ) );
+			$rule   = static fn ( string $value ): string => 'NO ACTION' === $value ? 'RESTRICT' : $value;
+			if ( count( $actual ) !== 1 || $actual[0]['c'] !== $key['column'] || $actual[0]['t'] !== $key['table'] || $actual[0]['r'] !== $key['target']
+				|| $rule( $actual[0]['d'] ) !== $rule( $key['onDelete'] ) || $rule( $actual[0]['u'] ) !== $rule( $key['onUpdate'] ) ) {
+				throw new DbError( "Cannot adopt $table: foreign key {$key['name']} must already have the declared target and actions" );
+			}
+		}
+	}
 
-    /**
-     * Brings storage up to date on a request that found it stale: runs $fn under the lock unless
-     * $current() turns true once the lock is held (another request finished first). Returns null
-     * when storage is current, or the problem when it isn't: the caller keeps WordPress serving,
-     * refuses SpacePress operations, logs, and tells administrators; the next request retries.
-     *
-     * @param callable(): bool $current
-     */
-    public static function upgrade(Connection $db, string $name, callable $current, callable $fn): ?string
-    {
-        try {
-            self::locked($db, $name, static function () use ($current, $fn): void {
-                if (!$current()) {
-                    $fn();
-                }
-            });
+	/**
+	 * Runs $fn holding a MySQL named lock scoped to this site's database and table prefix, so every
+	 * writer (first request, activation, `wp spacepress migrate`) applies a given migration once. Waits up
+	 * to 30 seconds for another holder, then throws rather than letting the caller run on a schema
+	 * that is still changing.
+	 */
+	public static function locked( Connection $db, string $name, callable $fn, int $seconds = 30 ): mixed {
+		return $db->locked( 'spacepress:' . substr( hash( 'sha256', DB_NAME . ':' . $db->prefix() . ':' . $name ), 0, 40 ), $seconds, $fn );
+	}
 
-            return null;
-        } catch (\Throwable $e) {
-            $problem = $e->getMessage();
-            error_log('[spacepress] ' . $problem);
-            add_action('admin_notices', static function () use ($problem): void {
-                if (current_user_can('manage_options')) {
-                    printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('SpacePress: ' . $problem));
-                }
-            });
+	/**
+	 * Brings storage up to date on a request that found it stale: runs $fn under the lock unless
+	 * $current() turns true once the lock is held (another request finished first). Returns null
+	 * when storage is current, or the problem when it isn't: the caller keeps WordPress serving,
+	 * refuses SpacePress operations, logs, and tells administrators; the next request retries.
+	 *
+	 * @param callable(): bool $current
+	 */
+	public static function upgrade( Connection $db, string $name, callable $current, callable $fn ): ?string {
+		try {
+			self::locked(
+				$db,
+				$name,
+				static function () use ( $current, $fn ): void {
+					if ( ! $current() ) {
+						$fn();
+					}
+				}
+			);
 
-            return $problem;
-        }
-    }
+			return null;
+		} catch ( \Throwable $e ) {
+			$problem = $e->getMessage();
+			error_log( '[spacepress] ' . $problem );
+			add_action(
+				'admin_notices',
+				static function () use ( $problem ): void {
+					if ( current_user_can( 'manage_options' ) ) {
+						printf( '<div class="notice notice-error"><p>%s</p></div>', esc_html( 'SpacePress: ' . $problem ) );
+					}
+				}
+			);
 
-    /** The per-app ledger table, created on first use under a site-wide lock. */
-    public function ledger(): string
-    {
-        $ledger = $this->table('sp__migrations');
-        if (!$this->hasLedger()) {
-            self::locked($this->db, 'sp__migrations', function () use ($ledger): void {
-                $this->db->run("CREATE TABLE IF NOT EXISTS `$ledger` (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `kind` VARCHAR(16) NOT NULL DEFAULT 'schema', `applied_at` CHAR(24) NOT NULL, `sql` CHAR(64) NULL, `actor` VARCHAR(191) NULL, `reason` TEXT NULL, `rows_affected` BIGINT NULL, PRIMARY KEY (`app`, `id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-            });
-        }
-        return $ledger;
-    }
+			return $problem;
+		}
+	}
 
-    /** Records an audit row (for data or destructive CLI migrations) in the unified ledger. */
-    public function recordAudit(
-        string $id,
-        string $kind,
-        ?string $sqlHash = null,
-        ?string $actor = null,
-        ?string $reason = null,
-        ?int $rowsAffected = null,
-    ): void {
-        if (!in_array($kind, ['schema', 'data', 'destructive'], true)) {
-            throw new \InvalidArgumentException("Invalid migration kind: $kind");
-        }
-        $ledger = $this->ledger();
-        $this->db->run(
-            "INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`, `sql`, `actor`, `reason`, `rows_affected`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [$this->schema->name(), $id, $kind, gmdate('Y-m-d\\TH:i:s.000\\Z'), $sqlHash, $actor, $reason, $rowsAffected],
-        );
-    }
+	/** The per-app ledger table, created on first use under a site-wide lock. */
+	public function ledger(): string {
+		$ledger = $this->table( 'sp__migrations' );
+		if ( ! $this->hasLedger() ) {
+			self::locked(
+				$this->db,
+				'sp__migrations',
+				function () use ( $ledger ): void {
+					$this->db->run( "CREATE TABLE IF NOT EXISTS `$ledger` (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `kind` VARCHAR(16) NOT NULL DEFAULT 'schema', `applied_at` CHAR(24) NOT NULL, `sql` CHAR(64) NULL, `actor` VARCHAR(191) NULL, `reason` TEXT NULL, `rows_affected` BIGINT NULL, PRIMARY KEY (`app`, `id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" );
+				}
+			);
+		}
+		return $ledger;
+	}
 
-    /** This app's recorded migration IDs and their SQL hashes (null for step rows).
-     *
-     * @return list<array{id: string, sql: ?string}>
-     */
-    public function history(): array
-    {
-        if (!$this->hasLedger()) {
-            return [];
-        }
-        $rows = $this->db->run('SELECT `id`, `sql` FROM `' . $this->table('sp__migrations') . '` WHERE `app` = ? ORDER BY `id`', [$this->schema->name()]);
+	/** Records an audit row (for data or destructive CLI migrations) in the unified ledger. */
+	public function recordAudit(
+		string $id,
+		string $kind,
+		?string $sqlHash = null,
+		?string $actor = null,
+		?string $reason = null,
+		?int $rowsAffected = null,
+	): void {
+		if ( ! in_array( $kind, array( 'schema', 'data', 'destructive' ), true ) ) {
+			throw new \InvalidArgumentException( "Invalid migration kind: $kind" );
+		}
+		$ledger = $this->ledger();
+		$this->db->run(
+			"INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`, `sql`, `actor`, `reason`, `rows_affected`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			array( $this->schema->name(), $id, $kind, gmdate( 'Y-m-d\\TH:i:s.000\\Z' ), $sqlHash, $actor, $reason, $rowsAffected ),
+		);
+	}
 
-        return array_map(static fn (array $r): array => ['id' => (string) $r['id'], 'sql' => $r['sql'] === null ? null : (string) $r['sql']], $rows);
-    }
+	/** This app's recorded migration IDs and their SQL hashes (null for step rows).
+	 *
+	 * @return list<array{id: string, sql: ?string}>
+	 */
+	public function history(): array {
+		if ( ! $this->hasLedger() ) {
+			return array();
+		}
+		$rows = $this->db->run( 'SELECT `id`, `sql` FROM `' . $this->table( 'sp__migrations' ) . '` WHERE `app` = ? ORDER BY `id`', array( $this->schema->name() ) );
 
-    /** Whether the ledger exists. */
-    public function hasLedger(): bool
-    {
-        $rows = $this->db->run('SELECT COLUMN_NAME AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$this->table('sp__migrations')]);
-        if ($rows === []) {
-            return false;
-        }
-        if (array_diff(['app', 'id', 'kind', 'applied_at', 'sql', 'actor', 'reason', 'rows_affected'], array_column($rows, 'n')) !== []) {
-            throw new \RuntimeException('Unsupported SpacePress migration ledger layout');
-        }
+		return array_map(
+			static fn ( array $r ): array => array(
+				'id'  => (string) $r['id'],
+				'sql' => null === $r['sql'] ? null : (string) $r['sql'],
+			),
+			$rows
+		);
+	}
 
-        return true;
-    }
+	/** Whether the ledger exists. */
+	public function hasLedger(): bool {
+		$rows = $this->db->run( 'SELECT COLUMN_NAME AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', array( $this->table( 'sp__migrations' ) ) );
+		if ( array() === $rows ) {
+			return false;
+		}
+		if ( array_diff( array( 'app', 'id', 'kind', 'applied_at', 'sql', 'actor', 'reason', 'rows_affected' ), array_column( $rows, 'n' ) ) !== array() ) {
+			throw new \RuntimeException( 'Unsupported SpacePress migration ledger layout' );
+		}
 
-    /** @return list<string> this app's recorded ids, sorted (for comparing ledger states) */
-    public function applied(): array
-    {
-        $done = $this->done();
-        sort($done, SORT_STRING);
+		return true;
+	}
 
-        return $done;
-    }
+	/** @return list<string> this app's recorded ids, sorted (for comparing ledger states) */
+	public function applied(): array {
+		$done = $this->done();
+		sort( $done, SORT_STRING );
 
-    /** @return list<string> this app's recorded ids (files and in-progress `<id>:<n>` steps) */
-    private function done(): array
-    {
-        return array_column($this->db->run('SELECT `id` FROM `' . $this->table('sp__migrations') . '` WHERE `app` = ?', [$this->schema->name()]), 'id');
-    }
+		return $done;
+	}
 
-    public function pending(): array
-    {
-        $done = $this->hasLedger() ? $this->done() : [];
-        $ids = array_keys($this->migrationFiles());
+	/** @return list<string> this app's recorded ids (files and in-progress `<id>:<n>` steps) */
+	private function done(): array {
+		return array_column( $this->db->run( 'SELECT `id` FROM `' . $this->table( 'sp__migrations' ) . '` WHERE `app` = ?', array( $this->schema->name() ) ), 'id' );
+	}
 
-        return array_values(array_diff($ids, $done));
-    }
+	public function pending(): array {
+		$done = $this->hasLedger() ? $this->done() : array();
+		$ids  = array_keys( $this->migration_files() );
 
-    /**
-     * Tables that must be InnoDB but aren't: core posts/postmeta and every `{prefix}sp_*` table.
-     *
-     * @return list<string>
-     */
-    public function nonInnoDb(): array
-    {
-        $wpdb = $this->db->wpdb();
-        // Users join SpacePress's transactions too (auth collections and guests, §6.2): check them always.
-        $names = [$wpdb->posts, $wpdb->postmeta, $wpdb->users, $wpdb->usermeta];
-        foreach ($this->schema->collections() as $spec) {
-            if (isset($spec['existingTable'])) {
-                $names[] = $spec['existingTable'];
-            }
-        }
-        $placeholders = implode(', ', array_fill(0, count($names), '?'));
-        $rows = $this->db->run(
-            'SELECT TABLE_NAME AS t, ENGINE AS e, TABLE_COLLATION AS c FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND (TABLE_NAME IN (' . $placeholders . ') OR TABLE_NAME LIKE ?)',
-            [...$names, $wpdb->esc_like($this->db->prefix() . 'sp_') . '%'],
-        );
-        $bad = [];
-        foreach ($rows as $r) {
-            if (strcasecmp((string) $r['e'], 'InnoDB') !== 0 || !str_starts_with(strtolower((string) $r['c']), 'utf8mb4_')) {
-                $bad[] = (string) $r['t'];
-            }
-        }
+		return array_values( array_diff( $ids, $done ) );
+	}
 
-        return $bad;
-    }
+	/**
+	 * Tables that must be InnoDB but aren't: core posts/postmeta and every `{prefix}sp_*` table.
+	 *
+	 * @return list<string>
+	 */
+	public function nonInnoDb(): array {
+		$wpdb = $this->db->wpdb();
+		// Users join SpacePress's transactions too (auth collections and guests, §6.2): check them always.
+		$names = array( $wpdb->posts, $wpdb->postmeta, $wpdb->users, $wpdb->usermeta );
+		foreach ( $this->schema->collections() as $spec ) {
+			if ( isset( $spec['existingTable'] ) ) {
+				$names[] = $spec['existingTable'];
+			}
+		}
+		$placeholders = implode( ', ', array_fill( 0, count( $names ), '?' ) );
+		$rows         = $this->db->run(
+			'SELECT TABLE_NAME AS t, ENGINE AS e, TABLE_COLLATION AS c FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND (TABLE_NAME IN (' . $placeholders . ') OR TABLE_NAME LIKE ?)',
+			array( ...$names, $wpdb->esc_like( $this->db->prefix() . 'sp_' ) . '%' ),
+		);
+		$bad          = array();
+		foreach ( $rows as $r ) {
+			if ( strcasecmp( (string) $r['e'], 'InnoDB' ) !== 0 || ! str_starts_with( strtolower( (string) $r['c'] ), 'utf8mb4_' ) ) {
+				$bad[] = (string) $r['t'];
+			}
+		}
 
-    private function table(string $name): string
-    {
-        return $this->db->prefix() . $name;
-    }
+		return $bad;
+	}
+
+	private function table( string $name ): string {
+		return $this->db->prefix() . $name;
+	}
 }

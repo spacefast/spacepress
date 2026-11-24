@@ -19,224 +19,264 @@ namespace SpacePress\RuntimeSchema;
  * runtime collection (`runtime_kind_differs`); and one that declares a runtime collection without
  * the body the site stored for it (`runtime_body_dropped`).
  */
-final class Deploy
-{
-    /**
-     * @return array{kept: list<string>, changed: list<string>, refusals: list<array{code: string, name: string, message: string, fix: string}>}
-     */
-    public static function check(array $compiled, array $state): array
-    {
-        $kept = $changed = $refusals = [];
-        $compare = static function (string $name, array $site, array $built) use (&$changed, &$refusals): void {
-            $why = self::stored($site, $built);
-            if ($why !== null) {
-                $refusals[] = ['code' => 'runtime_type_differs', 'name' => $name,
-                    'message' => "$name is stored on this site as " . self::describe($site) . " (a runtime schema change) and declared in this build as " . self::describe($built) . ": $why.",
-                    'fix' => "Declare $name as the site stores it (run `spacepress pull` to take the site's definition), or give the build's field another name."];
-            } elseif (self::rules($site) !== self::rules($built)) {
-                $changed[] = $name;
-            }
-        };
-        // Every runtime field the site serves after this deploy, by storage: [kind, field, definition].
-        $runtime = ['collections' => [], 'globals' => []];
-        foreach (['collections' => 'columns', 'globals' => 'fields'] as $section => $inner) {
-            foreach ($state[$section] ?? [] as $kind => $entry) {
-                foreach ($entry[$inner] ?? [] as $field => $definition) {
-                    $built = $compiled[$section][$kind][$inner][$field] ?? null;
-                    $built === null ? $kept[] = "$kind.$field" : $compare("$kind.$field", $definition, $built);
-                    $built ?? $runtime[$section][] = [(string) $kind, (string) $field, $definition];
-                }
-            }
-            foreach ($state['added'][$section] ?? [] as $kind => $stored) {
-                $kind = (string) $kind;
-                $other = self::otherThing($compiled, $section, $kind);
-                if ($other !== null) {
-                    $refusals[] = ['code' => 'runtime_kind_differs', 'name' => $kind,
-                        'message' => "$kind is a " . ($section === 'globals' ? 'global' : 'collection') . " on this site (a runtime schema change), and this build declares $other of that name: the site's items can't be read through it.",
-                        'fix' => "Declare $kind as the site stores it (run `spacepress pull`), or give the build's one another name."];
-                    continue;
-                }
-                $built = $compiled[$section][$kind] ?? null;
-                if ($built === null) {
-                    $kept[] = $kind;
-                    continue;
-                }
-                if ($section === 'collections' && isset($stored['fields']['content']) && ($built['content'] ?? null) === null) {
-                    $refusals[] = ['code' => 'runtime_body_dropped', 'name' => $kind,
-                        'message' => "$kind has a body on this site (its `content`, a runtime schema change), and this build declares $kind without one: the body would no longer be read.",
-                        'fix' => "Declare $kind's body in the build (run `spacepress pull` to take the site's definition)."];
-                }
-                foreach ($stored['fields'] as $field => $definition) {
-                    if ($section === 'collections' && ($field === 'title' || $field === 'content')) {
-                        continue; // the post's own columns, which the build names as it chooses
-                    }
-                    if (isset($built[$inner][$field])) {
-                        $compare("$kind.$field", $definition, $built[$inner][$field]);
-                    } else {
-                        $kept[] = "$kind.$field";
-                        $runtime[$section][] = [$kind, (string) $field, $definition];
-                    }
-                }
-            }
-            // A removed name keeps its values; a build that declares it again must read them as they were stored.
-            foreach ($state['removed'][$section] ?? [] as $kind => $removed) {
-                foreach ($removed['fields'] ?? [] as $field => $type) {
-                    $built = $compiled[$section][$kind][$inner][$field] ?? null;
-                    if ($built !== null && $built['type'] !== $type) {
-                        $compare("$kind.$field", ['type' => $type], $built);
-                    }
-                }
-            }
-        }
-        foreach (self::sharedKeys($compiled, $runtime) as [$name, $key, $other]) {
-            $refusals[] = ['code' => 'runtime_key_shared', 'name' => $name,
-                'message' => "$name is stored under $key, which $other (a runtime schema change) already uses on this site: the two would write one value.",
-                'fix' => "Give $name another name, or declare $other in the build as the site stores it (run `spacepress pull`)."];
-        }
+final class Deploy {
 
-        return ['kept' => $kept, 'changed' => $changed, 'refusals' => $refusals];
-    }
+	/**
+	 * @return array{kept: list<string>, changed: list<string>, refusals: list<array{code: string, name: string, message: string, fix: string}>}
+	 */
+	public static function check( array $compiled, array $state ): array {
+		$kept    = $changed = $refusals = array();
+		$compare = static function ( string $name, array $site, array $built ) use ( &$changed, &$refusals ): void {
+			$why = self::stored( $site, $built );
+			if ( null !== $why ) {
+				$refusals[] = array(
+					'code'    => 'runtime_type_differs',
+					'name'    => $name,
+					'message' => "$name is stored on this site as " . self::describe( $site ) . ' (a runtime schema change) and declared in this build as ' . self::describe( $built ) . ": $why.",
+					'fix'     => "Declare $name as the site stores it (run `spacepress pull` to take the site's definition), or give the build's field another name.",
+				);
+			} elseif ( self::rules( $site ) !== self::rules( $built ) ) {
+				$changed[] = $name;
+			}
+		};
+		// Every runtime field the site serves after this deploy, by storage: [kind, field, definition].
+		$runtime = array(
+			'collections' => array(),
+			'globals'     => array(),
+		);
+		foreach ( array(
+			'collections' => 'columns',
+			'globals'     => 'fields',
+		) as $section => $inner ) {
+			foreach ( $state[ $section ] ?? array() as $kind => $entry ) {
+				foreach ( $entry[ $inner ] ?? array() as $field => $definition ) {
+					$built                           = $compiled[ $section ][ $kind ][ $inner ][ $field ] ?? null;
+					null === $built ? $kept[]        = "$kind.$field" : $compare( "$kind.$field", $definition, $built );
+					$built ?? $runtime[ $section ][] = array( (string) $kind, (string) $field, $definition );
+				}
+			}
+			foreach ( $state['added'][ $section ] ?? array() as $kind => $stored ) {
+				$kind  = (string) $kind;
+				$other = self::other_thing( $compiled, $section, $kind );
+				if ( null !== $other ) {
+					$refusals[] = array(
+						'code'    => 'runtime_kind_differs',
+						'name'    => $kind,
+						'message' => "$kind is a " . ( 'globals' === $section ? 'global' : 'collection' ) . " on this site (a runtime schema change), and this build declares $other of that name: the site's items can't be read through it.",
+						'fix'     => "Declare $kind as the site stores it (run `spacepress pull`), or give the build's one another name.",
+					);
+					continue;
+				}
+				$built = $compiled[ $section ][ $kind ] ?? null;
+				if ( null === $built ) {
+					$kept[] = $kind;
+					continue;
+				}
+				if ( 'collections' === $section && isset( $stored['fields']['content'] ) && ( $built['content'] ?? null ) === null ) {
+					$refusals[] = array(
+						'code'    => 'runtime_body_dropped',
+						'name'    => $kind,
+						'message' => "$kind has a body on this site (its `content`, a runtime schema change), and this build declares $kind without one: the body would no longer be read.",
+						'fix'     => "Declare $kind's body in the build (run `spacepress pull` to take the site's definition).",
+					);
+				}
+				foreach ( $stored['fields'] as $field => $definition ) {
+					if ( 'collections' === $section && ( 'title' === $field || 'content' === $field ) ) {
+						continue; // the post's own columns, which the build names as it chooses
+					}
+					if ( isset( $built[ $inner ][ $field ] ) ) {
+						$compare( "$kind.$field", $definition, $built[ $inner ][ $field ] );
+					} else {
+						$kept[]                = "$kind.$field";
+						$runtime[ $section ][] = array( $kind, (string) $field, $definition );
+					}
+				}
+			}
+			// A removed name keeps its values; a build that declares it again must read them as they were stored.
+			foreach ( $state['removed'][ $section ] ?? array() as $kind => $removed ) {
+				foreach ( $removed['fields'] ?? array() as $field => $type ) {
+					$built = $compiled[ $section ][ $kind ][ $inner ][ $field ] ?? null;
+					if ( null !== $built && $built['type'] !== $type ) {
+						$compare( "$kind.$field", array( 'type' => $type ), $built );
+					}
+				}
+			}
+		}
+		foreach ( self::shared_keys( $compiled, $runtime ) as [$name, $key, $other] ) {
+			$refusals[] = array(
+				'code'    => 'runtime_key_shared',
+				'name'    => $name,
+				'message' => "$name is stored under $key, which $other (a runtime schema change) already uses on this site: the two would write one value.",
+				'fix'     => "Give $name another name, or declare $other in the build as the site stores it (run `spacepress pull`).",
+			);
+		}
 
-    /** What else the build declares under a runtime kind's name: a table(), a global, an action or a job. */
-    private static function otherThing(array $compiled, string $section, string $kind): ?string
-    {
-        if ($section === 'collections' && isset($compiled['collections'][$kind]) && !isset($compiled['collections'][$kind]['wp']['postType'])) {
-            return 'a table()';
-        }
-        $others = ['collections' => 'a collection', 'globals' => 'a global', 'actions' => 'an action', 'jobs' => 'a job'];
-        unset($others[$section]);
-        foreach ($others as $other => $what) {
-            if (isset($compiled[$other][$kind])) {
-                return $what;
-            }
-        }
+		return array(
+			'kept'     => $kept,
+			'changed'  => $changed,
+			'refusals' => $refusals,
+		);
+	}
 
-        return null;
-    }
+	/** What else the build declares under a runtime kind's name: a table(), a global, an action or a job. */
+	private static function other_thing( array $compiled, string $section, string $kind ): ?string {
+		if ( 'collections' === $section && isset( $compiled['collections'][ $kind ] ) && ! isset( $compiled['collections'][ $kind ]['wp']['postType'] ) ) {
+			return 'a table()';
+		}
+		$others = array(
+			'collections' => 'a collection',
+			'globals'     => 'a global',
+			'actions'     => 'an action',
+			'jobs'        => 'a job',
+		);
+		unset( $others[ $section ] );
+		foreach ( $others as $other => $what ) {
+			if ( isset( $compiled[ $other ][ $kind ] ) ) {
+				return $what;
+			}
+		}
 
-    /**
-     * Build fields stored under a key a runtime field the build doesn't declare also uses:
-     * `[build field, key, runtime field]`. A collection's fields share its posts' meta and every
-     * global's options share one name space, as for a runtime change ({@see StorageKeys}).
-     *
-     * @param array{collections: list<array{string, string, array}>, globals: list<array{string, string, array}>} $runtime
-     */
-    private static function sharedKeys(array $compiled, array $runtime): array
-    {
-        $out = [];
-        foreach ($runtime['collections'] as [$kind, $field, $definition]) {
-            $spec = $compiled['collections'][$kind] ?? null;
-            if (!isset($spec['wp']['postType'])) {
-                continue;
-            }
-            $keys = StorageKeys::of($field, $definition);
-            foreach ($spec['columns'] as $name => $column) {
-                $name = (string) $name;
-                if (in_array($name, [$spec['primaryKey'] ?? 'id', $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null, $spec['excerpt'] ?? null], true) || ($column['system'] ?? false)) {
-                    continue;
-                }
-                $key = StorageKeys::shared(StorageKeys::of($name, $column), $keys);
-                if ($key !== null) {
-                    $out[] = ["$kind.$name", "the post meta key sp_$key", "$kind.$field"];
-                }
-            }
-        }
-        foreach ($runtime['globals'] as [$kind, $field, $definition]) {
-            $keys = self::prefixed("{$kind}_", StorageKeys::of($field, $definition));
-            foreach ($compiled['globals'] ?? [] as $global => $spec) {
-                foreach ($spec['fields'] as $name => $column) {
-                    $key = StorageKeys::shared(self::prefixed("{$global}_", StorageKeys::of((string) $name, $column)), $keys);
-                    if ($key !== null) {
-                        $out[] = ["$global.$name", "the option sp_global_$key", "$kind.$field"];
-                    }
-                }
-            }
-        }
+		return null;
+	}
 
-        return $out;
-    }
+	/**
+	 * Build fields stored under a key a runtime field the build doesn't declare also uses:
+	 * `[build field, key, runtime field]`. A collection's fields share its posts' meta and every
+	 * global's options share one name space, as for a runtime change ({@see StorageKeys}).
+	 *
+	 * @param array{collections: list<array{string, string, array}>, globals: list<array{string, string, array}>} $runtime
+	 */
+	private static function shared_keys( array $compiled, array $runtime ): array {
+		$out = array();
+		foreach ( $runtime['collections'] as [$kind, $field, $definition] ) {
+			$spec = $compiled['collections'][ $kind ] ?? null;
+			if ( ! isset( $spec['wp']['postType'] ) ) {
+				continue;
+			}
+			$keys = StorageKeys::of( $field, $definition );
+			foreach ( $spec['columns'] as $name => $column ) {
+				$name = (string) $name;
+				if ( in_array( $name, array( $spec['primaryKey'] ?? 'id', $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null, $spec['excerpt'] ?? null ), true ) || ( $column['system'] ?? false ) ) {
+					continue;
+				}
+				$key = StorageKeys::shared( StorageKeys::of( $name, $column ), $keys );
+				if ( null !== $key ) {
+					$out[] = array( "$kind.$name", "the post meta key sp_$key", "$kind.$field" );
+				}
+			}
+		}
+		foreach ( $runtime['globals'] as [$kind, $field, $definition] ) {
+			$keys = self::prefixed( "{$kind}_", StorageKeys::of( $field, $definition ) );
+			foreach ( $compiled['globals'] ?? array() as $global => $spec ) {
+				foreach ( $spec['fields'] as $name => $column ) {
+					$key = StorageKeys::shared( self::prefixed( "{$global}_", StorageKeys::of( (string) $name, $column ) ), $keys );
+					if ( null !== $key ) {
+						$out[] = array( "$global.$name", "the option sp_global_$key", "$kind.$field" );
+					}
+				}
+			}
+		}
 
-    /** @param list<list<?string>> $keys */
-    private static function prefixed(string $prefix, array $keys): array
-    {
-        return array_map(static fn (array $key): array => is_string($key[0]) ? [$prefix . $key[0], ...array_slice($key, 1)] : [$prefix, ...$key], $keys);
-    }
+		return $out;
+	}
 
-    /** Why two definitions read stored values differently, or null when they read them the same. */
-    private static function stored(array $site, array $built): ?string
-    {
-        if ($site['type'] !== $built['type']) {
-            return 'another type';
-        }
-        if (self::sorted($site['enum'] ?? null) !== self::sorted($built['enum'] ?? null)) {
-            return 'other options';
-        }
-        if (($site['accept'] ?? 'any') !== ($built['accept'] ?? 'any')) {
-            return 'another kind of media';
-        }
-        foreach (['fields' => 'sub-fields', 'layouts' => 'layouts'] as $key => $what) {
-            $a = $site[$key] ?? [];
-            $b = $built[$key] ?? [];
-            if ($key === 'layouts') {
-                if (self::sorted(array_keys($a)) !== self::sorted(array_keys($b))) {
-                    return "other $what";
-                }
-                foreach ($a as $layout => $fields) {
-                    $why = self::stored(['type' => 'group', 'fields' => $fields], ['type' => 'group', 'fields' => $b[$layout]]);
-                    if ($why !== null) {
-                        return "layout $layout has $why";
-                    }
-                }
-                continue;
-            }
-            if (self::sorted(array_keys($a)) !== self::sorted(array_keys($b))) {
-                return "other $what";
-            }
-            foreach ($a as $sub => $definition) {
-                $why = self::stored($definition, $b[$sub]);
-                if ($why !== null) {
-                    return "sub-field $sub has $why";
-                }
-            }
-        }
+	/** @param list<list<?string>> $keys */
+	private static function prefixed( string $prefix, array $keys ): array {
+		return array_map( static fn ( array $key ): array => is_string( $key[0] ) ? array( $prefix . $key[0], ...array_slice( $key, 1 ) ) : array( $prefix, ...$key ), $keys );
+	}
 
-        return null;
-    }
+	/** Why two definitions read stored values differently, or null when they read them the same. */
+	private static function stored( array $site, array $built ): ?string {
+		if ( $site['type'] !== $built['type'] ) {
+			return 'another type';
+		}
+		if ( self::sorted( $site['enum'] ?? null ) !== self::sorted( $built['enum'] ?? null ) ) {
+			return 'other options';
+		}
+		if ( ( $site['accept'] ?? 'any' ) !== ( $built['accept'] ?? 'any' ) ) {
+			return 'another kind of media';
+		}
+		foreach ( array(
+			'fields'  => 'sub-fields',
+			'layouts' => 'layouts',
+		) as $key => $what ) {
+			$a = $site[ $key ] ?? array();
+			$b = $built[ $key ] ?? array();
+			if ( 'layouts' === $key ) {
+				if ( self::sorted( array_keys( $a ) ) !== self::sorted( array_keys( $b ) ) ) {
+					return "other $what";
+				}
+				foreach ( $a as $layout => $fields ) {
+					$why = self::stored(
+						array(
+							'type'   => 'group',
+							'fields' => $fields,
+						),
+						array(
+							'type'   => 'group',
+							'fields' => $b[ $layout ],
+						)
+					);
+					if ( null !== $why ) {
+						return "layout $layout has $why";
+					}
+				}
+				continue;
+			}
+			if ( self::sorted( array_keys( $a ) ) !== self::sorted( array_keys( $b ) ) ) {
+				return "other $what";
+			}
+			foreach ( $a as $sub => $definition ) {
+				$why = self::stored( $definition, $b[ $sub ] );
+				if ( null !== $why ) {
+					return "sub-field $sub has $why";
+				}
+			}
+		}
 
-    /** A list in one order, so two that hold the same values compare equal: order changes no stored value. */
-    private static function sorted(?array $list): ?array
-    {
-        if ($list !== null) {
-            sort($list);
-        }
+		return null;
+	}
 
-        return $list;
-    }
+	/** A list in one order, so two that hold the same values compare equal: order changes no stored value. */
+	private static function sorted( ?array $list ): ?array {
+		if ( null !== $list ) {
+			sort( $list );
+		}
 
-    /** What, beside the stored shape, a definition says: rules, a default, whether it is required, presentation. */
-    private static function rules(array $definition): array
-    {
-        $out = array_intersect_key($definition, ['notNull' => 1, 'default' => 1, 'rules' => 1, 'ui' => 1, 'multiline' => 1]);
-        foreach (['fields', 'layouts'] as $key) {
-            foreach ($definition[$key] ?? [] as $name => $sub) {
-                $out[$key][$name] = $key === 'layouts' ? array_map(self::rules(...), $sub) : self::rules($sub);
-            }
-        }
-        ksort($out);
+		return $list;
+	}
 
-        return $out;
-    }
+	/** What, beside the stored shape, a definition says: rules, a default, whether it is required, presentation. */
+	private static function rules( array $definition ): array {
+		$out = array_intersect_key(
+			$definition,
+			array(
+				'notNull'   => 1,
+				'default'   => 1,
+				'rules'     => 1,
+				'ui'        => 1,
+				'multiline' => 1,
+			)
+		);
+		foreach ( array( 'fields', 'layouts' ) as $key ) {
+			foreach ( $definition[ $key ] ?? array() as $name => $sub ) {
+				$out[ $key ][ $name ] = 'layouts' === $key ? array_map( self::rules( ... ), $sub ) : self::rules( $sub );
+			}
+		}
+		ksort( $out );
 
-    private static function describe(array $definition): string
-    {
-        $type = $definition['type'];
-        if (isset($definition['enum'])) {
-            return "$type (" . implode(', ', $definition['enum']) . ')';
-        }
-        if (isset($definition['fields'])) {
-            return "$type of " . implode(', ', array_keys($definition['fields']));
-        }
+		return $out;
+	}
 
-        return $type;
-    }
+	private static function describe( array $definition ): string {
+		$type = $definition['type'];
+		if ( isset( $definition['enum'] ) ) {
+			return "$type (" . implode( ', ', $definition['enum'] ) . ')';
+		}
+		if ( isset( $definition['fields'] ) ) {
+			return "$type of " . implode( ', ', array_keys( $definition['fields'] ) );
+		}
+
+		return $type;
+	}
 }

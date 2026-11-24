@@ -145,8 +145,8 @@ add_filter(
 		$layout = array();
 		$order  = 0;
 
-		$readable = function_exists( 'sp_admin_navigation' ) ? sp_admin_navigation() : array();
-		$plugin   = class_exists( '\\SpacePress\\Wp\\Runtime' ) ? \SpacePress\Wp\Runtime::plugin() : null;
+		$readable             = function_exists( 'sp_admin_navigation' ) ? sp_admin_navigation() : array();
+		$plugin               = class_exists( '\\SpacePress\\Wp\\Runtime' ) ? \SpacePress\Wp\Runtime::plugin() : null;
 		$has_post_collections = false;
 		if ( $plugin ) {
 			foreach ( $readable as $name ) {

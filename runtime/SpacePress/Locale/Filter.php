@@ -10,12 +10,12 @@ namespace SpacePress\Locale;
  * has no row in $locale the viewer may read. $groupOf limits the read to the translation group of
  * one row (item reads with an explicit locale).
  */
-final class Filter
-{
-    public function __construct(
-        public readonly string $locale,
-        public readonly ?string $fallback,
-        public readonly int|string|null $groupOf = null,
-    ) {
-    }
+final class Filter {
+
+	public function __construct(
+		public readonly string $locale,
+		public readonly ?string $fallback,
+		public readonly int|string|null $groupOf = null,
+	) {
+	}
 }

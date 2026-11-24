@@ -15,8 +15,8 @@ namespace SpacePress\Realtime;
  * `ids` is null when a collection changed too many rows to list. A notice never carries row
  * values. Keep `publish` fast and bounded: it runs on the request that wrote.
  */
-interface Publisher
-{
-    /** @param array{id: string, at: string, changes: list<array{collection: string, ops: list<string>, ids: ?list<int|string>}>} $notice */
-    public function publish(array $notice): void;
+interface Publisher {
+
+	/** @param array{id: string, at: string, changes: list<array{collection: string, ops: list<string>, ids: ?list<int|string>}>} $notice */
+	public function publish( array $notice ): void;
 }

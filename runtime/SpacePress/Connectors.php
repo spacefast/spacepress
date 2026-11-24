@@ -26,142 +26,160 @@ use SpacePress\Jobs\Jobs;
  *
  * Credentials and authorization stay owned by the host; compiled app code never handles raw tokens.
  */
-final class Connectors
-{
-    public const JOB = 'spacepress.connector';
-    private const RETRIES = 8;
+final class Connectors {
 
-    /**
-     * Invoke a host connector tool for a bound role.
-     *
-     * @param string $role Connector role name declared by the app / Space (e.g. "slack", "github").
-     * @param string $tool Tool or operation name on that connector.
-     * @param mixed $args Optional JSON-compatible arguments object passed to the connector.
-     */
-    public static function call(string $role, string $tool, mixed $args = null): mixed
-    {
-        [$role, $tool, $payload] = self::request($role, $tool, $args);
-        $result = self::invoke($role, $tool, $payload, ['mode' => 'call']);
-        if ($result instanceof \WP_Error) {
-            $data = $result->get_error_data();
-            $status = is_array($data) && is_int($data['status'] ?? null) ? $data['status'] : 502;
-            $code = (string) ($result->get_error_code() ?: 'connector_error');
-            throw new HttpError($status, $code, $result->get_error_message() ?: 'Connector call failed.');
-        }
+	public const JOB      = 'spacepress.connector';
+	private const RETRIES = 8;
 
-        return Seam::toJs($result, ['type' => 'json']);
-    }
+	/**
+	 * Invoke a host connector tool for a bound role.
+	 *
+	 * @param string $role Connector role name declared by the app / Space (e.g. "slack", "github").
+	 * @param string $tool Tool or operation name on that connector.
+	 * @param mixed $args Optional JSON-compatible arguments object passed to the connector.
+	 */
+	public static function call( string $role, string $tool, mixed $args = null ): mixed {
+		[$role, $tool, $payload] = self::request( $role, $tool, $args );
+		$result                  = self::invoke( $role, $tool, $payload, array( 'mode' => 'call' ) );
+		if ( $result instanceof \WP_Error ) {
+			$data   = $result->get_error_data();
+			$status = is_array( $data ) && is_int( $data['status'] ?? null ) ? $data['status'] : 502;
+			$code   = (string) ( $result->get_error_code() ?: 'connector_error' );
+			throw new HttpError( $status, $code, $result->get_error_message() ?: 'Connector call failed.' );
+		}
 
-    /**
-     * Queue a connector call in the caller's transaction; it runs after commit.
-     *
-     * @param array{key?: string, delay?: int|float}|JsObject|null $opts
-     * @return JsObject `{ id }` of the queued job
-     */
-    public static function enqueue(string $role, string $tool, mixed $args = null, array|JsObject|null $opts = null): JsObject
-    {
-        [$role, $tool, $payload] = self::request($role, $tool, $args);
-        $opts = $opts === null ? [] : Seam::toPhp($opts);
-        if (!is_array($opts)) {
-            throw HttpError::invalidInput('Connector options must be an object.', '/opts');
-        }
-        foreach (array_keys($opts) as $name) {
-            if (!in_array($name, ['key', 'delay'], true)) {
-                throw HttpError::invalidInput("Unknown connector option $name.", '/opts/' . $name);
-            }
-        }
-        // `{ key: undefined }` is an option left out.
-        $opts = array_filter($opts, static fn (mixed $value): bool => $value !== null && $value !== JsUndefined::Value);
-        $job = Jobs::enqueue(self::JOB, ['role' => $role, 'tool' => $tool, 'args' => $payload], $opts);
+		return Seam::toJs( $result, array( 'type' => 'json' ) );
+	}
 
-        return new JsObject(['id' => $job['id']]);
-    }
+	/**
+	 * Queue a connector call in the caller's transaction; it runs after commit.
+	 *
+	 * @param array{key?: string, delay?: int|float}|JsObject|null $opts
+	 * @return JsObject `{ id }` of the queued job
+	 */
+	public static function enqueue( string $role, string $tool, mixed $args = null, array|JsObject|null $opts = null ): JsObject {
+		[$role, $tool, $payload] = self::request( $role, $tool, $args );
+		$opts                    = null === $opts ? array() : Seam::toPhp( $opts );
+		if ( ! is_array( $opts ) ) {
+			throw HttpError::invalidInput( 'Connector options must be an object.', '/opts' );
+		}
+		foreach ( array_keys( $opts ) as $name ) {
+			if ( ! in_array( $name, array( 'key', 'delay' ), true ) ) {
+				throw HttpError::invalidInput( "Unknown connector option $name.", '/opts/' . $name );
+			}
+		}
+		// `{ key: undefined }` is an option left out.
+		$opts = array_filter( $opts, static fn ( mixed $value ): bool => null !== $value && JsUndefined::Value !== $value );
+		$job  = Jobs::enqueue(
+			self::JOB,
+			array(
+				'role' => $role,
+				'tool' => $tool,
+				'args' => $payload,
+			),
+			$opts
+		);
 
-    public static function spec(): array
-    {
-        return [
-            'input' => [
-                'role' => ['type' => 'text', 'notNull' => true],
-                'tool' => ['type' => 'text', 'notNull' => true],
-                'args' => ['type' => 'json', 'notNull' => true],
-            ],
-            'handler' => self::deliver(...),
-            'retries' => self::RETRIES,
-            'agents' => false,
-        ];
-    }
+		return new JsObject( array( 'id' => $job['id'] ) );
+	}
 
-    /** The job handler: one call; a failure throws so the runner backs off and retries. */
-    public static function deliver(array $input, array $ctx): void
-    {
-        // json() job input arrives with JavaScript object semantics; the host reads plain arrays.
-        $args = json_decode((string) Js::jsonStringify($input['args'] ?? null), true);
-        $role = $input['role'] ?? null;
-        $tool = $input['tool'] ?? null;
-        if (!is_string($role) || !is_string($tool) || !is_array($args)) {
-            throw new \RuntimeException('Queued connector call is missing');
-        }
-        $result = self::invoke($role, $tool, $args, ['mode' => 'queued', 'jobId' => $ctx['jobId'] ?? null, 'attempt' => $ctx['attempt'] ?? null]);
-        // A filter that passes the null through handled nothing: retry rather than mark the call done.
-        if ($result === null) {
-            throw new \RuntimeException('No connector answered ' . $role . ':' . $tool . ' (sp_connectors_call returned null)');
-        }
-        if ($result instanceof \WP_Error) {
-            throw new \RuntimeException('Connector ' . $role . ':' . $tool . ' failed: ' . ($result->get_error_message() ?: $result->get_error_code()));
-        }
-    }
+	public static function spec(): array {
+		return array(
+			'input'   => array(
+				'role' => array(
+					'type'    => 'text',
+					'notNull' => true,
+				),
+				'tool' => array(
+					'type'    => 'text',
+					'notNull' => true,
+				),
+				'args' => array(
+					'type'    => 'json',
+					'notNull' => true,
+				),
+			),
+			'handler' => self::deliver( ... ),
+			'retries' => self::RETRIES,
+			'agents'  => false,
+		);
+	}
 
-    /** @return array{string, string, array} the trimmed role and tool, and the arguments as a PHP array */
-    private static function request(string $role, string $tool, mixed $args): array
-    {
-        $role = trim($role);
-        $tool = trim($tool);
-        if ($role === '') {
-            throw HttpError::invalidInput('Connector role must be a non-empty string.', '/role');
-        }
-        if ($tool === '') {
-            throw HttpError::invalidInput('Connector tool must be a non-empty string.', '/tool');
-        }
-        if (!self::connected()) {
-            throw new HttpError(503, 'connectors_unavailable', 'This host has not connected a connectors transport (sp_connectors_call).');
-        }
-        $payload = [];
-        if ($args !== null && $args !== JsUndefined::Value) {
-            $converted = Seam::toPhp($args);
-            if (!is_array($converted)) {
-                throw HttpError::invalidInput('Connector arguments must be an object.', '/args');
-            }
-            $payload = self::withoutUndefined($converted);
-        }
+	/** The job handler: one call; a failure throws so the runner backs off and retries. */
+	public static function deliver( array $input, array $ctx ): void {
+		// json() job input arrives with JavaScript object semantics; the host reads plain arrays.
+		$args = json_decode( (string) Js::jsonStringify( $input['args'] ?? null ), true );
+		$role = $input['role'] ?? null;
+		$tool = $input['tool'] ?? null;
+		if ( ! is_string( $role ) || ! is_string( $tool ) || ! is_array( $args ) ) {
+			throw new \RuntimeException( 'Queued connector call is missing' );
+		}
+		$result = self::invoke(
+			$role,
+			$tool,
+			$args,
+			array(
+				'mode'    => 'queued',
+				'jobId'   => $ctx['jobId'] ?? null,
+				'attempt' => $ctx['attempt'] ?? null,
+			)
+		);
+		// A filter that passes the null through handled nothing: retry rather than mark the call done.
+		if ( null === $result ) {
+			throw new \RuntimeException( 'No connector answered ' . $role . ':' . $tool . ' (sp_connectors_call returned null)' );
+		}
+		if ( $result instanceof \WP_Error ) {
+			throw new \RuntimeException( 'Connector ' . $role . ':' . $tool . ' failed: ' . ( $result->get_error_message() ?: $result->get_error_code() ) );
+		}
+	}
 
-        return [$role, $tool, $payload];
-    }
+	/** @return array{string, string, array} the trimmed role and tool, and the arguments as a PHP array */
+	private static function request( string $role, string $tool, mixed $args ): array {
+		$role = trim( $role );
+		$tool = trim( $tool );
+		if ( '' === $role ) {
+			throw HttpError::invalidInput( 'Connector role must be a non-empty string.', '/role' );
+		}
+		if ( '' === $tool ) {
+			throw HttpError::invalidInput( 'Connector tool must be a non-empty string.', '/tool' );
+		}
+		if ( ! self::connected() ) {
+			throw new HttpError( 503, 'connectors_unavailable', 'This host has not connected a connectors transport (sp_connectors_call).' );
+		}
+		$payload = array();
+		if ( null !== $args && JsUndefined::Value !== $args ) {
+			$converted = Seam::toPhp( $args );
+			if ( ! is_array( $converted ) ) {
+				throw HttpError::invalidInput( 'Connector arguments must be an object.', '/args' );
+			}
+			$payload = self::without_undefined( $converted );
+		}
 
-    private static function invoke(string $role, string $tool, array $args, array $context): mixed
-    {
-        if (!self::connected()) {
-            throw new HttpError(503, 'connectors_unavailable', 'This host has not connected a connectors transport (sp_connectors_call).');
-        }
+		return array( $role, $tool, $payload );
+	}
 
-        return apply_filters('sp_connectors_call', null, $role, $tool, $args, $context);
-    }
+	private static function invoke( string $role, string $tool, array $args, array $context ): mixed {
+		if ( ! self::connected() ) {
+			throw new HttpError( 503, 'connectors_unavailable', 'This host has not connected a connectors transport (sp_connectors_call).' );
+		}
 
-    /** A value with every field that holds JavaScript's undefined removed, at any depth (as JSON would). */
-    private static function withoutUndefined(array $value): array
-    {
-        $out = [];
-        foreach ($value as $key => $item) {
-            if ($item === JsUndefined::Value) {
-                continue;
-            }
-            $out[$key] = is_array($item) ? self::withoutUndefined($item) : $item;
-        }
+		return apply_filters( 'sp_connectors_call', null, $role, $tool, $args, $context );
+	}
 
-        return array_is_list($value) ? array_values($out) : $out;
-    }
+	/** A value with every field that holds JavaScript's undefined removed, at any depth (as JSON would). */
+	private static function without_undefined( array $value ): array {
+		$out = array();
+		foreach ( $value as $key => $item ) {
+			if ( JsUndefined::Value === $item ) {
+				continue;
+			}
+			$out[ $key ] = is_array( $item ) ? self::without_undefined( $item ) : $item;
+		}
 
-    private static function connected(): bool
-    {
-        return function_exists('has_filter') && has_filter('sp_connectors_call') !== false;
-    }
+		return array_is_list( $value ) ? array_values( $out ) : $out;
+	}
+
+	private static function connected(): bool {
+		return function_exists( 'has_filter' ) && has_filter( 'sp_connectors_call' ) !== false;
+	}
 }

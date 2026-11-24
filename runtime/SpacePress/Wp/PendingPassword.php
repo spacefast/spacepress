@@ -9,27 +9,25 @@ namespace SpacePress\Wp;
  * an opaque marker in `passwordHash`; the plaintext stays here, in memory, for one request, and
  * never reaches a row, a hook argument that persists, or a response.
  */
-final class PendingPassword
-{
-    /** @var array<string, string> marker → plaintext */
-    private static array $pending = [];
+final class PendingPassword {
 
-    public static function put(string $password): string
-    {
-        $marker = 'spacepress-pending:' . bin2hex(random_bytes(16));
-        self::$pending[$marker] = $password;
+	/** @var array<string, string> marker → plaintext */
+	private static array $pending = array();
 
-        return $marker;
-    }
+	public static function put( string $password ): string {
+		$marker                   = 'spacepress-pending:' . bin2hex( random_bytes( 16 ) );
+		self::$pending[ $marker ] = $password;
 
-    public static function take(mixed $marker): ?string
-    {
-        if (!is_string($marker) || !isset(self::$pending[$marker])) {
-            return null;
-        }
-        $password = self::$pending[$marker];
-        unset(self::$pending[$marker]);
+		return $marker;
+	}
 
-        return $password;
-    }
+	public static function take( mixed $marker ): ?string {
+		if ( ! is_string( $marker ) || ! isset( self::$pending[ $marker ] ) ) {
+			return null;
+		}
+		$password = self::$pending[ $marker ];
+		unset( self::$pending[ $marker ] );
+
+		return $password;
+	}
 }

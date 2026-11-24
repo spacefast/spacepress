@@ -108,13 +108,20 @@ function sp_admin_compose_core_view_config( $config, $kind, $name ) {
 	foreach ( (array) ( $config['tabs'] ?? array() ) as $tab ) {
 		// The tab's other keys (a `default_view`, say) ride along and come back unchanged.
 		$tabs[] = array(
-			'slug'  => $tab['slug'] ?? '',
-			'title' => $tab['label'] ?? ( $tab['slug'] ?? '' ),
-			'view'  => array( 'filters' => $tab['filters'] ?? array() ),
-			'spacepress' => array_diff_key( (array) $tab, array( 'slug' => 1, 'label' => 1, 'filters' => 1 ) ),
+			'slug'       => $tab['slug'] ?? '',
+			'title'      => $tab['label'] ?? ( $tab['slug'] ?? '' ),
+			'view'       => array( 'filters' => $tab['filters'] ?? array() ),
+			'spacepress' => array_diff_key(
+				(array) $tab,
+				array(
+					'slug'    => 1,
+					'label'   => 1,
+					'filters' => 1,
+				)
+			),
 		);
 	}
-	$data = new WP_View_Config_Data(
+	$data                      = new WP_View_Config_Data(
 		array(
 			'default_view'    => (array) ( $config['default_view'] ?? array() ),
 			'default_layouts' => (array) ( $config['default_layouts'] ?? array() ),
@@ -122,8 +129,8 @@ function sp_admin_compose_core_view_config( $config, $kind, $name ) {
 			'form'            => (array) ( $config['edit_form'] ?? array() ),
 		)
 	);
-	$core = $data->apply_filters( $kind, $name );
-	$back = static fn ( $value ) => is_array( $value ) && array() === $value ? null : $value;
+	$core                      = $data->apply_filters( $kind, $name );
+	$back                      = static fn ( $value ) => is_array( $value ) && array() === $value ? null : $value;
 	$config['default_view']    = $back( $core['default_view'] ?? array() );
 	$config['default_layouts'] = $back( $core['default_layouts'] ?? array() );
 	$config['edit_form']       = $back( $core['form'] ?? array() );

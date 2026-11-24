@@ -27,7 +27,7 @@ add_filter(
 	function ( $response, $post_type ) {
 		// The registered post type, as sp_admin_register_default_view_arg_for_post_type() reads its
 		// arguments: its built capabilities stand in for the `capabilities` argument registration drops.
-		$args = sp_admin_register_default_view_arg_for_post_type(
+		$args                              = sp_admin_register_default_view_arg_for_post_type(
 			array( 'capabilities' => (array) $post_type->cap ) + get_object_vars( $post_type ),
 			$post_type->name
 		);

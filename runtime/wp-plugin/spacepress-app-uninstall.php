@@ -12,40 +12,50 @@
  * tool. (The jobs tables are shared and record no owning app, so uninstall can't safely pick rows.)
  */
 declare(strict_types=1);
-defined('WP_UNINSTALL_PLUGIN') || exit;
+defined( 'WP_UNINSTALL_PLUGIN' ) || exit;
 
 $schema = require __DIR__ . '/sp/app/schema.php';
-$app = (string) ($schema['name'] ?? '');
-if ($app === '') {
-    return;
+$app    = (string) ( $schema['name'] ?? '' );
+if ( '' === $app ) {
+	return;
 }
 
-delete_option('sp_' . $app . '_schema');
-delete_option('sp_' . $app . '_post_types');
-delete_option('sp_' . $app . '_refused');
-delete_option('sp_' . $app . '_seed_refused');
-delete_option('sp_rewrite_rules');
+delete_option( 'sp_' . $app . '_schema' );
+delete_option( 'sp_' . $app . '_post_types' );
+delete_option( 'sp_' . $app . '_refused' );
+delete_option( 'sp_' . $app . '_seed_refused' );
+delete_option( 'sp_rewrite_rules' );
 
 // Exactly the capability names WordPress derives from this app's `capability_type` ([<type>_item,
 // <type>]): the meta caps on the singular and the primitive caps on the plural. Matched whole, so
 // another plugin's `edit_acme_sp_posts` is never touched, whoever granted what.
-$caps = [];
-foreach ((array) ($schema['collections'] ?? []) as $collection) {
-    if (($collection['editor'] ?? true) && isset($collection['wp']['postType'])) {
-        $type = (string) $collection['wp']['postType'];
-        foreach (['edit_%s', 'read_%s', 'delete_%s'] as $meta) {
-            $caps[] = sprintf($meta, $type . '_item');
-        }
-        foreach (['edit_%s', 'edit_others_%s', 'edit_private_%s', 'edit_published_%s', 'publish_%s', 'read_private_%s',
-            'delete_%s', 'delete_private_%s', 'delete_published_%s', 'delete_others_%s'] as $primitive) {
-            $caps[] = sprintf($primitive, $type);
-        }
-    }
+$caps = array();
+foreach ( (array) ( $schema['collections'] ?? array() ) as $collection ) {
+	if ( ( $collection['editor'] ?? true ) && isset( $collection['wp']['postType'] ) ) {
+		$type = (string) $collection['wp']['postType'];
+		foreach ( array( 'edit_%s', 'read_%s', 'delete_%s' ) as $meta ) {
+			$caps[] = sprintf( $meta, $type . '_item' );
+		}
+		foreach ( array(
+			'edit_%s',
+			'edit_others_%s',
+			'edit_private_%s',
+			'edit_published_%s',
+			'publish_%s',
+			'read_private_%s',
+			'delete_%s',
+			'delete_private_%s',
+			'delete_published_%s',
+			'delete_others_%s',
+		) as $primitive ) {
+			$caps[] = sprintf( $primitive, $type );
+		}
+	}
 }
-foreach (wp_roles()->role_objects as $role) {
-    foreach ($caps as $cap) {
-        if (isset($role->capabilities[$cap])) {
-            $role->remove_cap($cap);
-        }
-    }
+foreach ( wp_roles()->role_objects as $role ) {
+	foreach ( $caps as $cap ) {
+		if ( isset( $role->capabilities[ $cap ] ) ) {
+			$role->remove_cap( $cap );
+		}
+	}
 }

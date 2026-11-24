@@ -19,129 +19,125 @@ use function SpacePress\db;
  * row's own locale (Db::attach, with the same per-group fallback), and follows an explicit query locale
  * under a non-localized parent.
  */
-final class Read
-{
-    public static function query(string $collection, array &$opts, ?Viewer $viewer, string $ptr): void
-    {
-        $schema = db()->schema();
-        if ($schema->locales() === null || !$schema->hasCollection($collection)) {
-            return; // nothing is localized here: a `locale` option stays unknown and Db rejects it
-        }
-        $has = array_key_exists('locale', $opts);
-        $locale = $opts['locale'] ?? null;
-        unset($opts['locale']);
-        $localized = Module::localized($collection);
-        if ($has && !$localized) {
-            throw HttpError::invalidQuery("$collection is not localized", $ptr . '/locale');
-        }
-        $locales = $schema->locales();
-        if ($has && $locale !== '*' && !(is_string($locale) && in_array($locale, $locales['all'], true))) {
-            throw HttpError::invalidQuery('locale must be one of ' . implode(', ', $locales['all']) . ' or *', $ptr . '/locale');
-        }
-        $spec = $schema->collection($collection);
-        if (is_array($opts['with'] ?? null)) {
-            foreach ($opts['with'] as $name => &$nested) {
-                $rel = $spec['relations'][$name] ?? null;
-                if ($rel === null || !Module::localized($rel['collection']) || ($nested !== true && !is_array($nested))
-                    || (is_array($nested) && array_key_exists('locale', $nested))) {
-                    continue;
-                }
-                // `one` stores a specific row's id. Under a localized parent, `many` children are read
-                // in each parent row's own locale by Db::attach (a page may mix locales through
-                // fallback); under a non-localized parent they follow an explicit query locale.
-                if ($rel['kind'] === 'many' && $localized) {
-                    continue;
-                }
-                $follow = $rel['kind'] === 'many' && $has;
-                $nested = ($nested === true ? [] : $nested) + ['locale' => $follow ? $locale : '*'];
-            }
-            unset($nested);
-        }
-        if (!$localized) {
-            return;
-        }
-        $pinned = self::pinned($opts['where'] ?? null, $spec['primaryKey']);
-        if (!$has) {
-            if ($viewer === null || $pinned !== null) {
-                return;
-            }
-            $locale = $locales['default'];
-        }
-        if ($locale === '*') {
-            return;
-        }
-        $filter = new Filter($locale, ($locales['fallback'] ?? true) ? $locales['default'] : null, $pinned);
-        $opts['where'] = $pinned !== null || !isset($opts['where']) ? ['locale' => $filter] : ['AND' => [$opts['where'], ['locale' => $filter]]];
-    }
+final class Read {
 
-    /** `translations` (locale => id, a JSON object) in locales.all order; API viewers never see the hidden `translationGroup`. */
-    public static function read(array $rows, string $collection, ?Viewer $viewer): array
-    {
-        if ($rows === [] || !Module::localized($collection)) {
-            return $rows;
-        }
-        $order = array_flip(db()->schema()->locales()['all']);
-        $pk = db()->schema()->collection($collection)['primaryKey'];
-        $current = Module::polylang($collection) ? null : self::groups($collection, $rows, $pk);
-        foreach ($rows as &$row) {
-            if (!array_key_exists('locale', $row)) {
-                continue;
-            }
-            // Current membership for every row, revision snapshots included (§7.3: one query per page),
-            // resolved through the row's primary key, so a snapshot taken before its row had a group counts.
-            $members = $current === null ? Module::members($row, $pk) : ($current[Js::str($row[$pk])] ?? [$row['locale'] => $row[$pk]]);
-            uksort($members, static fn ($a, $b) => ($order[$a] ?? PHP_INT_MAX) <=> ($order[$b] ?? PHP_INT_MAX));
-            $row['translations'] = $members;
-            if ($viewer !== null) {
-                unset($row['translationGroup']);
-            }
-        }
-        unset($row);
+	public static function query( string $collection, array &$opts, ?Viewer $viewer, string $ptr ): void {
+		$schema = db()->schema();
+		if ( $schema->locales() === null || ! $schema->hasCollection( $collection ) ) {
+			return; // nothing is localized here: a `locale` option stays unknown and Db rejects it
+		}
+		$has    = array_key_exists( 'locale', $opts );
+		$locale = $opts['locale'] ?? null;
+		unset( $opts['locale'] );
+		$localized = Module::localized( $collection );
+		if ( $has && ! $localized ) {
+			throw HttpError::invalidQuery( "$collection is not localized", $ptr . '/locale' );
+		}
+		$locales = $schema->locales();
+		if ( $has && '*' !== $locale && ! ( is_string( $locale ) && in_array( $locale, $locales['all'], true ) ) ) {
+			throw HttpError::invalidQuery( 'locale must be one of ' . implode( ', ', $locales['all'] ) . ' or *', $ptr . '/locale' );
+		}
+		$spec = $schema->collection( $collection );
+		if ( is_array( $opts['with'] ?? null ) ) {
+			foreach ( $opts['with'] as $name => &$nested ) {
+				$rel = $spec['relations'][ $name ] ?? null;
+				if ( null === $rel || ! Module::localized( $rel['collection'] ) || ( true !== $nested && ! is_array( $nested ) )
+					|| ( is_array( $nested ) && array_key_exists( 'locale', $nested ) ) ) {
+					continue;
+				}
+				// `one` stores a specific row's id. Under a localized parent, `many` children are read
+				// in each parent row's own locale by Db::attach (a page may mix locales through
+				// fallback); under a non-localized parent they follow an explicit query locale.
+				if ( 'many' === $rel['kind'] && $localized ) {
+					continue;
+				}
+				$follow = 'many' === $rel['kind'] && $has;
+				$nested = ( true === $nested ? array() : $nested ) + array( 'locale' => $follow ? $locale : '*' );
+			}
+			unset( $nested );
+		}
+		if ( ! $localized ) {
+			return;
+		}
+		$pinned = self::pinned( $opts['where'] ?? null, $spec['primaryKey'] );
+		if ( ! $has ) {
+			if ( null === $viewer || null !== $pinned ) {
+				return;
+			}
+			$locale = $locales['default'];
+		}
+		if ( '*' === $locale ) {
+			return;
+		}
+		$filter        = new Filter( $locale, ( $locales['fallback'] ?? true ) ? $locales['default'] : null, $pinned );
+		$opts['where'] = null !== $pinned || ! isset( $opts['where'] ) ? array( 'locale' => $filter ) : array( 'AND' => array( $opts['where'], array( 'locale' => $filter ) ) );
+	}
 
-        return $rows;
-    }
+	/** `translations` (locale => id, a JSON object) in locales.all order; API viewers never see the hidden `translationGroup`. */
+	public static function read( array $rows, string $collection, ?Viewer $viewer ): array {
+		if ( array() === $rows || ! Module::localized( $collection ) ) {
+			return $rows;
+		}
+		$order   = array_flip( db()->schema()->locales()['all'] );
+		$pk      = db()->schema()->collection( $collection )['primaryKey'];
+		$current = Module::polylang( $collection ) ? null : self::groups( $collection, $rows, $pk );
+		foreach ( $rows as &$row ) {
+			if ( ! array_key_exists( 'locale', $row ) ) {
+				continue;
+			}
+			// Current membership for every row, revision snapshots included (§7.3: one query per page),
+			// resolved through the row's primary key, so a snapshot taken before its row had a group counts.
+			$members = null === $current ? Module::members( $row, $pk ) : ( $current[ Js::str( $row[ $pk ] ) ] ?? array( $row['locale'] => $row[ $pk ] ) );
+			uksort( $members, static fn ( $a, $b ) => ( $order[ $a ] ?? PHP_INT_MAX ) <=> ( $order[ $b ] ?? PHP_INT_MAX ) );
+			$row['translations'] = $members;
+			if ( null !== $viewer ) {
+				unset( $row['translationGroup'] );
+			}
+		}
+		unset( $row );
 
-    /**
-     * pk => [locale => pk] of each row's current group (the row's stored group, not a snapshot's),
-     * from two queries on the store.
-     *
-     * @return array<string, array<string, int|string>>
-     */
-    private static function groups(string $collection, array $rows, string $pk): array
-    {
-        $ids = array_values(array_unique(array_column($rows, $pk)));
-        if ($ids === []) {
-            return [];
-        }
-        $select = static fn (array $where) => db()->store()->select($collection, \SpacePress\Sql::select(db()->schema(), db()->store(), $collection, ['where' => $where]));
-        $pkCol = db()->schema()->collection($collection)['columns'][$pk];
-        $key = static fn (mixed $v) => \SpacePress\Schema::decode($pkCol, $v); // the column's own type: text ids stay text
-        $groupOf = [];
-        foreach ($select([$pk => ['in' => $ids]]) as $raw) {
-            $groupOf[Js::str($key($raw[$pk]))] = $raw['translationGroup'];
-        }
-        $byGroup = [];
-        $groups = array_values(array_unique(array_filter($groupOf, static fn ($g) => $g !== null)));
-        foreach ($groups === [] ? [] : $select(['translationGroup' => ['in' => $groups]]) as $raw) {
-            $byGroup[(string) $raw['translationGroup']][(string) $raw['locale']] = $key($raw[$pk]);
-        }
-        $out = [];
-        foreach ($groupOf as $id => $group) {
-            if ($group !== null && isset($byGroup[$group])) {
-                $out[$id] = $byGroup[$group];
-            }
-        }
+		return $rows;
+	}
 
-        return $out;
-    }
+	/**
+	 * pk => [locale => pk] of each row's current group (the row's stored group, not a snapshot's),
+	 * from two queries on the store.
+	 *
+	 * @return array<string, array<string, int|string>>
+	 */
+	private static function groups( string $collection, array $rows, string $pk ): array {
+		$ids = array_values( array_unique( array_column( $rows, $pk ) ) );
+		if ( array() === $ids ) {
+			return array();
+		}
+		$select   = static fn ( array $where ) => db()->store()->select( $collection, \SpacePress\Sql::select( db()->schema(), db()->store(), $collection, array( 'where' => $where ) ) );
+		$pk_col   = db()->schema()->collection( $collection )['columns'][ $pk ];
+		$key      = static fn ( mixed $v ) => \SpacePress\Schema::decode( $pk_col, $v ); // the column's own type: text ids stay text
+		$group_of = array();
+		foreach ( $select( array( $pk => array( 'in' => $ids ) ) ) as $raw ) {
+			$group_of[ Js::str( $key( $raw[ $pk ] ) ) ] = $raw['translationGroup'];
+		}
+		$by_group = array();
+		$groups   = array_values( array_unique( array_filter( $group_of, static fn ( $g ) => null !== $g ) ) );
+		foreach ( array() === $groups ? array() : $select( array( 'translationGroup' => array( 'in' => $groups ) ) ) as $raw ) {
+			$by_group[ (string) $raw['translationGroup'] ][ (string) $raw['locale'] ] = $key( $raw[ $pk ] );
+		}
+		$out = array();
+		foreach ( $group_of as $id => $group ) {
+			if ( null !== $group && isset( $by_group[ $group ] ) ) {
+				$out[ $id ] = $by_group[ $group ];
+			}
+		}
 
-    private static function pinned(mixed $where, string $pk): int|string|null
-    {
-        if (!is_array($where) || array_keys($where) !== [$pk]) {
-            return null;
-        }
-        $v = $where[$pk];
+		return $out;
+	}
 
-        return is_int($v) || is_string($v) ? $v : null;
-    }
+	private static function pinned( mixed $where, string $pk ): int|string|null {
+		if ( ! is_array( $where ) || array_keys( $where ) !== array( $pk ) ) {
+			return null;
+		}
+		$v = $where[ $pk ];
+
+		return is_int( $v ) || is_string( $v ) ? $v : null;
+	}
 }

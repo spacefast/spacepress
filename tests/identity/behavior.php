@@ -4,119 +4,273 @@ declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
 use SpacePress\Identity\{Plugin, Security, OAuth, Keys};
 
-$db = Plugin::$db;
+$db       = Plugin::$db;
 $accounts = Plugin::$accounts;
 $sessions = Plugin::$sessions;
 $security = Plugin::$security;
-$tag = bin2hex(random_bytes(5));
-$uid = wp_insert_user(['user_login' => 'test_' . $tag, 'user_pass' => Security::token(), 'user_email' => $tag . '@example.test', 'role' => 'editor']);
-$accounts->ensure($uid);
-$post = wp_insert_post(['post_title' => 'Identity preservation ' . $tag, 'post_status' => 'draft', 'post_author' => $uid]);
-$id = $db->transaction(fn () => $accounts->claim($uid, $tag . '@example.test', 'test'));
-$second = $db->transaction(fn () => $accounts->claim($uid, 'second_' . $tag . '@example.test', 'test'));
-$accounts->primary($uid, $second);
-check(get_post($post)->post_author === (string) $uid && get_userdata($uid)->roles === ['editor'], 'primary preserves authorship and roles');
-check($accounts->owner(strtoupper('second_' . $tag . '@example.test')) === $uid, 'normalized secondary login resolves same account');
-rejects(fn () => $accounts->removeEmail($uid, $second), 'primary_email_required');
-$accounts->removeEmail($uid, $id);
-$other = $accounts->emailLogin('other_' . $tag . '@example.test');
-rejects(fn () => $db->transaction(fn () => $accounts->claim($other, 'second_' . $tag . '@example.test', 'test')), 'email_in_use');
-rejects(fn () => $accounts->provider('https://issuer.test', 'unlinked-' . $tag, 'second_' . $tag . '@example.test', 'User'), 'link_required');
-$created = $sessions->create($uid);
+$tag      = bin2hex( random_bytes( 5 ) );
+$uid      = wp_insert_user(
+	array(
+		'user_login' => 'test_' . $tag,
+		'user_pass'  => Security::token(),
+		'user_email' => $tag . '@example.test',
+		'role'       => 'editor',
+	)
+);
+$accounts->ensure( $uid );
+$post   = wp_insert_post(
+	array(
+		'post_title'  => 'Identity preservation ' . $tag,
+		'post_status' => 'draft',
+		'post_author' => $uid,
+	)
+);
+$id     = $db->transaction( fn () => $accounts->claim( $uid, $tag . '@example.test', 'test' ) );
+$second = $db->transaction( fn () => $accounts->claim( $uid, 'second_' . $tag . '@example.test', 'test' ) );
+$accounts->primary( $uid, $second );
+check( get_post( $post )->post_author === (string) $uid && get_userdata( $uid )->roles === array( 'editor' ), 'primary preserves authorship and roles' );
+check( $accounts->owner( strtoupper( 'second_' . $tag . '@example.test' ) ) === $uid, 'normalized secondary login resolves same account' );
+rejects( fn () => $accounts->removeEmail( $uid, $second ), 'primary_email_required' );
+$accounts->removeEmail( $uid, $id );
+$other = $accounts->emailLogin( 'other_' . $tag . '@example.test' );
+rejects( fn () => $db->transaction( fn () => $accounts->claim( $other, 'second_' . $tag . '@example.test', 'test' ) ), 'email_in_use' );
+rejects( fn () => $accounts->provider( 'https://issuer.test', 'unlinked-' . $tag, 'second_' . $tag . '@example.test', 'User' ), 'link_required' );
+$created = $sessions->create( $uid );
 $session = $created['session'];
-check($accounts->provider('https://issuer.test', 'linked-' . $tag, null, '', $uid, $session['id']) === $uid, 'explicit provider linking');
-check($accounts->provider('https://issuer.test', 'linked-' . $tag, 'changed@example.test', '') === $uid, 'provider identity survives email changes');
-$otherSession = $sessions->create($other)['session'];
-rejects(fn () => $accounts->provider('https://issuer.test', 'linked-' . $tag, null, '', $other, $otherSession['id']), 'provider_in_use');
-$sessions->revoke($uid, $session['id']);
-check($sessions->find($created['secret']) === null, 'live session revocation');
-rejects(fn () => $accounts->provider('https://issuer.test', 'revoked-' . $tag, null, '', $uid, $session['id']), 'link_session_invalid');
-$c = $security->challenge('test', $uid, '', ['hello' => 'world'], '123456', 60);
-rejects(fn () => $security->consume($c, 'test', 'wrong'), 'invalid_challenge', 'wrong challenge secret rejected');
-check($security->consume($c, 'test', '123456')['payload']['hello'] === 'world', 'one-use challenge valid');
-rejects(fn () => $security->consume($c, 'test', '123456'), 'invalid_challenge', 'used challenge rejected');
-$c = $security->challenge('test', $uid, '', [], '123456', -1);
-rejects(fn () => $security->consume($c, 'test', '123456'), 'invalid_challenge', 'expired challenge rejected');
+check( $accounts->provider( 'https://issuer.test', 'linked-' . $tag, null, '', $uid, $session['id'] ) === $uid, 'explicit provider linking' );
+check( $accounts->provider( 'https://issuer.test', 'linked-' . $tag, 'changed@example.test', '' ) === $uid, 'provider identity survives email changes' );
+$otherSession = $sessions->create( $other )['session'];
+rejects( fn () => $accounts->provider( 'https://issuer.test', 'linked-' . $tag, null, '', $other, $otherSession['id'] ), 'provider_in_use' );
+$sessions->revoke( $uid, $session['id'] );
+check( $sessions->find( $created['secret'] ) === null, 'live session revocation' );
+rejects( fn () => $accounts->provider( 'https://issuer.test', 'revoked-' . $tag, null, '', $uid, $session['id'] ), 'link_session_invalid' );
+$c = $security->challenge( 'test', $uid, '', array( 'hello' => 'world' ), '123456', 60 );
+rejects( fn () => $security->consume( $c, 'test', 'wrong' ), 'invalid_challenge', 'wrong challenge secret rejected' );
+check( 'world' === $security->consume( $c, 'test', '123456' )['payload']['hello'], 'one-use challenge valid' );
+rejects( fn () => $security->consume( $c, 'test', '123456' ), 'invalid_challenge', 'used challenge rejected' );
+$c = $security->challenge( 'test', $uid, '', array(), '123456', -1 );
+rejects( fn () => $security->consume( $c, 'test', '123456' ), 'invalid_challenge', 'expired challenge rejected' );
 
 // Revocation serializes before a concurrent provider link that already read the session.
-$session = $sessions->create($uid)['session'];
-$db->run('START TRANSACTION');
-$db->lock($uid);
-$db->run("UPDATE {$db->prefix}sessions SET revoked_at=%d WHERE id=%s", time(), $session['id']);
-$link = worker('link-worker.php', ['uid' => $uid, 'session' => $session['id'], 'subject' => 'race-' . $tag]);
-check(trim(fgets($link[1][1])) === 'READY', 'concurrent link worker reached transaction boundary');
-$db->run('COMMIT');
-[$output, , $exit] = finish_worker($link);
-check($exit === 0 && $output === 'link_session_invalid', 'revocation serializes before concurrent provider link');
-check(!$db->row("SELECT id FROM {$db->prefix}providers WHERE subject=%s", 'race-' . $tag), 'revoked race creates no permanent link');
+$session = $sessions->create( $uid )['session'];
+$db->run( 'START TRANSACTION' );
+$db->lock( $uid );
+$db->run( "UPDATE {$db->prefix}sessions SET revoked_at=%d WHERE id=%s", time(), $session['id'] );
+$link = worker(
+	'link-worker.php',
+	array(
+		'uid'     => $uid,
+		'session' => $session['id'],
+		'subject' => 'race-' . $tag,
+	)
+);
+check( trim( fgets( $link[1][1] ) ) === 'READY', 'concurrent link worker reached transaction boundary' );
+$db->run( 'COMMIT' );
+[$output, , $exit] = finish_worker( $link );
+check( 0 === $exit && 'link_session_invalid' === $output, 'revocation serializes before concurrent provider link' );
+check( ! $db->row( "SELECT id FROM {$db->prefix}providers WHERE subject=%s", 'race-' . $tag ), 'revoked race creates no permanent link' );
 
 // Authorization code + PKCE, refresh rotation, revocation and UserInfo.
 $client = 'app_test_' . $tag;
-$db->insert('applications', ['id' => $client, 'name' => 'Test app', 'redirects' => json_encode(['http://127.0.0.1:18181/callback']), 'origins' => json_encode(['http://127.0.0.1:18181'])]);
-$verifier = Security::token(48);
-$query = ['response_type' => 'code', 'client_id' => $client, 'redirect_uri' => 'http://127.0.0.1:18181/callback', 'scope' => 'openid email profile',
-    'state' => Security::token(), 'nonce' => Security::token(), 'code_challenge_method' => 'S256', 'code_challenge' => rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=')];
-$oauth = new OAuth($db, $accounts);
-rejects(fn () => $oauth->authorize(['redirect_uri' => 'http://127.0.0.1:18181/other'] + $query, $sessions->create($uid)['session']), 'invalid_client', 'unregistered redirect never receives a code');
-rejects(fn () => $oauth->authorize(['code_challenge_method' => 'plain'] + $query, $sessions->create($uid)['session']), 'invalid_authorization_request', 'plain PKCE rejected');
-$session = $sessions->create($uid)['session'];
-parse_str(parse_url($oauth->authorize($query, $session), PHP_URL_QUERY), $result);
-check($result['state'] === $query['state'], 'authorization state round trip');
-$body = ['grant_type' => 'authorization_code', 'client_id' => $client, 'redirect_uri' => $query['redirect_uri'], 'code' => $result['code'], 'code_verifier' => $verifier];
-rejects(fn () => $oauth->token([...$body, 'code_verifier' => Security::token(48)]), 'invalid_grant', 'wrong PKCE verifier rejected');
-$db->insert('applications', ['id' => $client . '_other', 'name' => 'Other app', 'redirects' => json_encode([$query['redirect_uri']]), 'origins' => '[]']);
-rejects(fn () => $oauth->token([...$body, 'client_id' => $client . '_other']), 'invalid_grant', 'another client cannot redeem the code');
-$tokens = $oauth->token($body);
-check(isset($tokens['access_token']), 'requests without the code bindings leave the legitimate grant usable');
-$info = $oauth->userinfo($tokens['access_token']);
-check($info['sub'] === (string) $uid && $info['email'] === 'second_' . $tag . '@example.test', 'PKCE token and live UserInfo');
-check($tokens['expires_in'] === 300 && preg_match('/^zr_[A-Za-z0-9_-]{43}$/D', $tokens['refresh_token']) === 1 && isset($tokens['id_token']), 'token response: 300 s JWT access, zr_ refresh, id_token');
-$idToken = Keys::verify($tokens['id_token']);
-check($idToken['nonce'] === $query['nonce'] && $idToken['aud'] === $client && $idToken['sid'] === $session['id'], 'ID token binds nonce, audience and session');
-rejects(fn () => $oauth->token([...$body, 'client_id' => $client . '_other']), 'invalid_grant', 'a redeemed code replayed by another client is refused');
-check($oauth->userinfo($tokens['access_token'])['sub'] === (string) $uid, "and cannot revoke the legitimate client's tokens");
-rejects(fn () => $oauth->token($body), 'invalid_grant', 'authorization code replay rejected');
-rejects(fn () => $oauth->userinfo($tokens['access_token']), 'invalid_token', 'code replay revokes the tokens it minted');
+$db->insert(
+	'applications',
+	array(
+		'id'        => $client,
+		'name'      => 'Test app',
+		'redirects' => json_encode( array( 'http://127.0.0.1:18181/callback' ) ),
+		'origins'   => json_encode( array( 'http://127.0.0.1:18181' ) ),
+	)
+);
+$verifier = Security::token( 48 );
+$query    = array(
+	'response_type'         => 'code',
+	'client_id'             => $client,
+	'redirect_uri'          => 'http://127.0.0.1:18181/callback',
+	'scope'                 => 'openid email profile',
+	'state'                 => Security::token(),
+	'nonce'                 => Security::token(),
+	'code_challenge_method' => 'S256',
+	'code_challenge'        => rtrim( strtr( base64_encode( hash( 'sha256', $verifier, true ) ), '+/', '-_' ), '=' ),
+);
+$oauth    = new OAuth( $db, $accounts );
+rejects( fn () => $oauth->authorize( array( 'redirect_uri' => 'http://127.0.0.1:18181/other' ) + $query, $sessions->create( $uid )['session'] ), 'invalid_client', 'unregistered redirect never receives a code' );
+rejects( fn () => $oauth->authorize( array( 'code_challenge_method' => 'plain' ) + $query, $sessions->create( $uid )['session'] ), 'invalid_authorization_request', 'plain PKCE rejected' );
+$session = $sessions->create( $uid )['session'];
+parse_str( parse_url( $oauth->authorize( $query, $session ), PHP_URL_QUERY ), $result );
+check( $result['state'] === $query['state'], 'authorization state round trip' );
+$body = array(
+	'grant_type'    => 'authorization_code',
+	'client_id'     => $client,
+	'redirect_uri'  => $query['redirect_uri'],
+	'code'          => $result['code'],
+	'code_verifier' => $verifier,
+);
+rejects(
+	fn () => $oauth->token(
+		array(
+			...$body,
+			'code_verifier' => Security::token( 48 ),
+		)
+	),
+	'invalid_grant',
+	'wrong PKCE verifier rejected'
+);
+$db->insert(
+	'applications',
+	array(
+		'id'        => $client . '_other',
+		'name'      => 'Other app',
+		'redirects' => json_encode( array( $query['redirect_uri'] ) ),
+		'origins'   => '[]',
+	)
+);
+rejects(
+	fn () => $oauth->token(
+		array(
+			...$body,
+			'client_id' => $client . '_other',
+		)
+	),
+	'invalid_grant',
+	'another client cannot redeem the code'
+);
+$tokens = $oauth->token( $body );
+check( isset( $tokens['access_token'] ), 'requests without the code bindings leave the legitimate grant usable' );
+$info = $oauth->userinfo( $tokens['access_token'] );
+check( $info['sub'] === (string) $uid && $info['email'] === 'second_' . $tag . '@example.test', 'PKCE token and live UserInfo' );
+check( 300 === $tokens['expires_in'] && preg_match( '/^zr_[A-Za-z0-9_-]{43}$/D', $tokens['refresh_token'] ) === 1 && isset( $tokens['id_token'] ), 'token response: 300 s JWT access, zr_ refresh, id_token' );
+$idToken = Keys::verify( $tokens['id_token'] );
+check( $idToken['nonce'] === $query['nonce'] && $idToken['aud'] === $client && $idToken['sid'] === $session['id'], 'ID token binds nonce, audience and session' );
+rejects(
+	fn () => $oauth->token(
+		array(
+			...$body,
+			'client_id' => $client . '_other',
+		)
+	),
+	'invalid_grant',
+	'a redeemed code replayed by another client is refused'
+);
+check( $oauth->userinfo( $tokens['access_token'] )['sub'] === (string) $uid, "and cannot revoke the legitimate client's tokens" );
+rejects( fn () => $oauth->token( $body ), 'invalid_grant', 'authorization code replay rejected' );
+rejects( fn () => $oauth->userinfo( $tokens['access_token'] ), 'invalid_token', 'code replay revokes the tokens it minted' );
 
-parse_str(parse_url($oauth->authorize($query, $session), PHP_URL_QUERY), $result);
-$tokens = $oauth->token(['code' => $result['code']] + $body);
-$rotated = $oauth->token(['grant_type' => 'refresh_token', 'client_id' => $client, 'refresh_token' => $tokens['refresh_token']]);
-check($rotated['refresh_token'] !== $tokens['refresh_token'] && $oauth->userinfo($rotated['access_token'])['sub'] === (string) $uid, 'refresh rotates and the new access token works');
-check($db->row("SELECT replaced_by FROM {$db->prefix}tokens WHERE id=%s", hash('sha256', $tokens['refresh_token']))['replaced_by'] === hash('sha256', $rotated['refresh_token']), 'the used refresh token records its replacement');
-rejects(fn () => $oauth->token(['grant_type' => 'refresh_token', 'client_id' => $client, 'refresh_token' => $rotated['refresh_token'] . 'x']), 'invalid_grant', 'malformed refresh token rejected');
-rejects(fn () => $oauth->token(['grant_type' => 'refresh_token', 'client_id' => 'app_other', 'refresh_token' => $rotated['refresh_token']]), 'invalid_client', 'unknown client rejected');
-rejects(fn () => $oauth->token(['grant_type' => 'refresh_token', 'client_id' => $client, 'refresh_token' => $tokens['refresh_token']]), 'invalid_grant', 'reusing a rotated refresh token fails');
-rejects(fn () => $oauth->userinfo($rotated['access_token']), 'invalid_token', 'refresh reuse revokes the whole family');
-rejects(fn () => $oauth->token(['grant_type' => 'refresh_token', 'client_id' => $client, 'refresh_token' => $rotated['refresh_token']]), 'invalid_grant', 'refresh reuse revokes the newest refresh token too');
+parse_str( parse_url( $oauth->authorize( $query, $session ), PHP_URL_QUERY ), $result );
+$tokens  = $oauth->token( array( 'code' => $result['code'] ) + $body );
+$rotated = $oauth->token(
+	array(
+		'grant_type'    => 'refresh_token',
+		'client_id'     => $client,
+		'refresh_token' => $tokens['refresh_token'],
+	)
+);
+check( $rotated['refresh_token'] !== $tokens['refresh_token'] && $oauth->userinfo( $rotated['access_token'] )['sub'] === (string) $uid, 'refresh rotates and the new access token works' );
+check( $db->row( "SELECT replaced_by FROM {$db->prefix}tokens WHERE id=%s", hash( 'sha256', $tokens['refresh_token'] ) )['replaced_by'] === hash( 'sha256', $rotated['refresh_token'] ), 'the used refresh token records its replacement' );
+rejects(
+	fn () => $oauth->token(
+		array(
+			'grant_type'    => 'refresh_token',
+			'client_id'     => $client,
+			'refresh_token' => $rotated['refresh_token'] . 'x',
+		)
+	),
+	'invalid_grant',
+	'malformed refresh token rejected'
+);
+rejects(
+	fn () => $oauth->token(
+		array(
+			'grant_type'    => 'refresh_token',
+			'client_id'     => 'app_other',
+			'refresh_token' => $rotated['refresh_token'],
+		)
+	),
+	'invalid_client',
+	'unknown client rejected'
+);
+rejects(
+	fn () => $oauth->token(
+		array(
+			'grant_type'    => 'refresh_token',
+			'client_id'     => $client,
+			'refresh_token' => $tokens['refresh_token'],
+		)
+	),
+	'invalid_grant',
+	'reusing a rotated refresh token fails'
+);
+rejects( fn () => $oauth->userinfo( $rotated['access_token'] ), 'invalid_token', 'refresh reuse revokes the whole family' );
+rejects(
+	fn () => $oauth->token(
+		array(
+			'grant_type'    => 'refresh_token',
+			'client_id'     => $client,
+			'refresh_token' => $rotated['refresh_token'],
+		)
+	),
+	'invalid_grant',
+	'refresh reuse revokes the newest refresh token too'
+);
 
-parse_str(parse_url($oauth->authorize($query, $session), PHP_URL_QUERY), $result);
-$tokens = $oauth->token(['code' => $result['code']] + $body);
-$oauth->revoke($tokens['access_token'], $client);
-rejects(fn () => $oauth->userinfo($tokens['access_token']), 'invalid_token', 'revoking an access token ends that jti');
-$fresh = $oauth->token(['grant_type' => 'refresh_token', 'client_id' => $client, 'refresh_token' => $tokens['refresh_token']]);
-check($oauth->userinfo($fresh['access_token'])['sub'] === (string) $uid, 'access revocation leaves the refresh family usable');
-$oauth->revoke($fresh['refresh_token'], 'app_someone_else');
-check($oauth->userinfo($fresh['access_token'])['sub'] === (string) $uid, "another client cannot revoke this client's tokens");
-$oauth->revoke($fresh['refresh_token'], $client);
-rejects(fn () => $oauth->userinfo($fresh['access_token']), 'invalid_token', 'revoking a refresh token ends its family');
+parse_str( parse_url( $oauth->authorize( $query, $session ), PHP_URL_QUERY ), $result );
+$tokens = $oauth->token( array( 'code' => $result['code'] ) + $body );
+$oauth->revoke( $tokens['access_token'], $client );
+rejects( fn () => $oauth->userinfo( $tokens['access_token'] ), 'invalid_token', 'revoking an access token ends that jti' );
+$fresh = $oauth->token(
+	array(
+		'grant_type'    => 'refresh_token',
+		'client_id'     => $client,
+		'refresh_token' => $tokens['refresh_token'],
+	)
+);
+check( $oauth->userinfo( $fresh['access_token'] )['sub'] === (string) $uid, 'access revocation leaves the refresh family usable' );
+$oauth->revoke( $fresh['refresh_token'], 'app_someone_else' );
+check( $oauth->userinfo( $fresh['access_token'] )['sub'] === (string) $uid, "another client cannot revoke this client's tokens" );
+$oauth->revoke( $fresh['refresh_token'], $client );
+rejects( fn () => $oauth->userinfo( $fresh['access_token'] ), 'invalid_token', 'revoking a refresh token ends its family' );
 
-parse_str(parse_url($oauth->authorize($query, $session), PHP_URL_QUERY), $result);
-$tokens = $oauth->token(['code' => $result['code']] + $body);
+parse_str( parse_url( $oauth->authorize( $query, $session ), PHP_URL_QUERY ), $result );
+$tokens = $oauth->token( array( 'code' => $result['code'] ) + $body );
 Keys::rotate();
-check($oauth->userinfo($tokens['access_token'])['sub'] === (string) $uid, 'key rotation overlap');
-$db->run("UPDATE {$db->prefix}applications SET enabled=0 WHERE id=%s", $client);
-rejects(fn () => $oauth->userinfo($tokens['access_token']), 'invalid_token', 'disabled application ends its tokens');
-$db->run("UPDATE {$db->prefix}applications SET enabled=1 WHERE id=%s", $client);
-$request = $oauth->logoutRequest(['id_token_hint' => $tokens['id_token'], 'post_logout_redirect_uri' => 'http://127.0.0.1:18181/bye', 'state' => 'abc']);
-check($request['target'] === 'http://127.0.0.1:18181/bye?state=abc', 'logout returns to a registered origin with state');
-check($oauth->userinfo($tokens['access_token'])['sub'] === (string) $uid, 'checking a logout request revokes nothing');
-$oauth->endLogout($request['claims']);
-rejects(fn () => $oauth->userinfo($tokens['access_token']), 'invalid_token', 'logout revokes the identity session and its tokens');
-rejects(fn () => $oauth->logoutRequest(['id_token_hint' => $tokens['id_token'], 'post_logout_redirect_uri' => 'https://evil.example/']), 'invalid_request', 'logout refuses an unregistered redirect');
-$session = $sessions->create($uid)['session'];
-parse_str(parse_url($oauth->authorize($query, $session), PHP_URL_QUERY), $result);
-$tokens = $oauth->token(['code' => $result['code']] + $body);
-$sessions->revoke($uid);
-rejects(fn () => $oauth->userinfo($tokens['access_token']), 'invalid_token', 'global session revocation ends access');
-rejects(fn () => $oauth->token(['grant_type' => 'refresh_token', 'client_id' => $client, 'refresh_token' => $tokens['refresh_token']]), 'invalid_grant', 'global session revocation ends refresh');
+check( $oauth->userinfo( $tokens['access_token'] )['sub'] === (string) $uid, 'key rotation overlap' );
+$db->run( "UPDATE {$db->prefix}applications SET enabled=0 WHERE id=%s", $client );
+rejects( fn () => $oauth->userinfo( $tokens['access_token'] ), 'invalid_token', 'disabled application ends its tokens' );
+$db->run( "UPDATE {$db->prefix}applications SET enabled=1 WHERE id=%s", $client );
+$request = $oauth->logoutRequest(
+	array(
+		'id_token_hint'            => $tokens['id_token'],
+		'post_logout_redirect_uri' => 'http://127.0.0.1:18181/bye',
+		'state'                    => 'abc',
+	)
+);
+check( 'http://127.0.0.1:18181/bye?state=abc' === $request['target'], 'logout returns to a registered origin with state' );
+check( $oauth->userinfo( $tokens['access_token'] )['sub'] === (string) $uid, 'checking a logout request revokes nothing' );
+$oauth->endLogout( $request['claims'] );
+rejects( fn () => $oauth->userinfo( $tokens['access_token'] ), 'invalid_token', 'logout revokes the identity session and its tokens' );
+rejects(
+	fn () => $oauth->logoutRequest(
+		array(
+			'id_token_hint'            => $tokens['id_token'],
+			'post_logout_redirect_uri' => 'https://evil.example/',
+		)
+	),
+	'invalid_request',
+	'logout refuses an unregistered redirect'
+);
+$session = $sessions->create( $uid )['session'];
+parse_str( parse_url( $oauth->authorize( $query, $session ), PHP_URL_QUERY ), $result );
+$tokens = $oauth->token( array( 'code' => $result['code'] ) + $body );
+$sessions->revoke( $uid );
+rejects( fn () => $oauth->userinfo( $tokens['access_token'] ), 'invalid_token', 'global session revocation ends access' );
+rejects(
+	fn () => $oauth->token(
+		array(
+			'grant_type'    => 'refresh_token',
+			'client_id'     => $client,
+			'refresh_token' => $tokens['refresh_token'],
+		)
+	),
+	'invalid_grant',
+	'global session revocation ends refresh'
+);
 echo "All behavior checks passed.\n";

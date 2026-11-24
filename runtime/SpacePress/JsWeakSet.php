@@ -3,28 +3,28 @@ declare(strict_types=1);
 namespace SpacePress;
 
 /** WeakSet on PHP's native WeakMap: object and unregistered-symbol values only. */
-final class JsWeakSet
-{
-    private \WeakMap $values;
+final class JsWeakSet {
 
-    public function __construct() { $this->values = new \WeakMap(); }
+	private \WeakMap $values;
 
-    public function add(mixed $value): self
-    {
-        if (!JsWeakMap::canBeHeldWeakly($value)) { throw new JsError('Invalid value used in weak set', 'TypeError'); }
-        $this->values[$value] = true;
-        return $this;
-    }
+	public function __construct() {
+		$this->values = new \WeakMap(); }
 
-    public function has(mixed $value): bool
-    {
-        return JsWeakMap::canBeHeldWeakly($value) && $this->values->offsetExists($value);
-    }
+	public function add( mixed $value ): self {
+		if ( ! JsWeakMap::canBeHeldWeakly( $value ) ) {
+			throw new JsError( 'Invalid value used in weak set', 'TypeError' ); }
+		$this->values[ $value ] = true;
+		return $this;
+	}
 
-    public function delete(mixed $value): bool
-    {
-        if (!$this->has($value)) { return false; }
-        unset($this->values[$value]);
-        return true;
-    }
+	public function has( mixed $value ): bool {
+		return JsWeakMap::canBeHeldWeakly( $value ) && $this->values->offsetExists( $value );
+	}
+
+	public function delete( mixed $value ): bool {
+		if ( ! $this->has( $value ) ) {
+			return false; }
+		unset( $this->values[ $value ] );
+		return true;
+	}
 }

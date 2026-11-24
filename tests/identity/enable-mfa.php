@@ -5,10 +5,10 @@ require __DIR__ . '/bootstrap.php';
 use SpacePress\Identity\{Plugin, Mfa};
 
 ob_start();
-$uid = Plugin::$accounts->owner(trim(stream_get_contents(STDIN)));
-$mfa = new Mfa(Plugin::$db, Plugin::$security);
-$setup = $mfa->setup($uid, 'Flow');
-$mfa->verify($uid, \SpacePress\Identity\Vendor\OTPHP\TOTP::createFromSecret($setup['secret'])->now(), true);
-$codes = $mfa->recoveryCodes($uid);
+$uid   = Plugin::$accounts->owner( trim( stream_get_contents( STDIN ) ) );
+$mfa   = new Mfa( Plugin::$db, Plugin::$security );
+$setup = $mfa->setup( $uid, 'Flow' );
+$mfa->verify( $uid, \SpacePress\Identity\Vendor\OTPHP\TOTP::createFromSecret( $setup['secret'] )->now(), true );
+$codes = $mfa->recoveryCodes( $uid );
 ob_end_clean();
 echo $codes[0];

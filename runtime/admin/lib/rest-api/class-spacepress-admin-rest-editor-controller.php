@@ -391,15 +391,15 @@ class SpacePress_Admin_REST_Editor_Controller extends WP_REST_Controller {
 	}
 
 	/** Resolve registered relative paths against WordPress's installation URL. */
-    private function asset_url( $src, $base_url ) {
-        if ( ! $src ) {
-            return '';
-        }
-        if ( preg_match( '|^(https?:)?//|', $src ) ) {
-            return $src;
-        }
-        return rtrim( $base_url, '/' ) . '/' . ltrim( $src, '/' );
-    }
+	private function asset_url( $src, $base_url ) {
+		if ( ! $src ) {
+			return '';
+		}
+		if ( preg_match( '|^(https?:)?//|', $src ) ) {
+			return $src;
+		}
+		return rtrim( $base_url, '/' ) . '/' . ltrim( $src, '/' );
+	}
 
 	/**
 	 * Get all dependencies recursively (works for both scripts and styles).

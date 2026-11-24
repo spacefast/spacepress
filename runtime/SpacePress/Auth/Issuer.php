@@ -9,17 +9,17 @@ namespace SpacePress\Auth;
  * `['accessToken', 'refreshToken', 'expiresIn', 'user' => User, 'clientId']`; sign-in, refresh and
  * guest upgrades happen on the issuer's own endpoints and screens.
  */
-interface Issuer
-{
-    /** `GET /auth/config`. */
-    public function config(bool $guests): array;
+interface Issuer {
 
-    /** A new guest user (role `guest`) signed in. */
-    public function guest(): array;
+	/** `GET /auth/config`. */
+	public function config( bool $guests ): array;
 
-    /** End the current session's sign-in. */
-    public function signOut(array $user): void;
+	/** A new guest user (role `guest`) signed in. */
+	public function guest(): array;
 
-    /** True where emails are verified by the issuer (then members can't set their own directly). */
-    public function verifiesEmail(): bool;
+	/** End the current session's sign-in. */
+	public function signOut( array $user ): void;
+
+	/** True where emails are verified by the issuer (then members can't set their own directly). */
+	public function verifiesEmail(): bool;
 }

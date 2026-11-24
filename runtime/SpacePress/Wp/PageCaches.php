@@ -33,121 +33,117 @@ namespace SpacePress\Wp;
  * Nothing listens when none of them is loaded, so on a site without a page cache SpacePress records and
  * announces nothing (`has_action('sp_purge_urls')` stays false).
  */
-final class PageCaches
-{
-    /** VIP queues at most this many URL purges per request (WPCOM_VIP_Cache_Manager::MAX_PURGE_URLS). */
-    public const VIP_URLS = 100;
+final class PageCaches {
 
-    public static function register(): void
-    {
-        add_action('set_current_user', [self::class, 'private'], 0, 0);
-        // A plugin that loaded first may have signed the request in already (the deploy plugin does).
-        if (did_action('set_current_user') > 0) {
-            self::private();
-        }
-        // After every plugin (Batcache, Jetpack Boost) and mu-plugin (VIP) has defined its functions,
-        // and again after `init`, where the WP Cloud platform adds its purge actions; at once when the
-        // runtime is mounted later than that.
-        $listen = static function (): void {
-            if (self::present() !== [] && !has_action('sp_purge_urls', [self::class, 'purge'])) {
-                add_action('sp_purge_urls', [self::class, 'purge']);
-            }
-        };
-        foreach (['plugins_loaded', 'init'] as $hook) {
-            if (did_action($hook) > 0 && !doing_action($hook)) {
-                $listen();
-            } else {
-                add_action($hook, $listen, PHP_INT_MAX);
-            }
-        }
-    }
+	/** VIP queues at most this many URL purges per request (WPCOM_VIP_Cache_Manager::MAX_PURGE_URLS). */
+	public const VIP_URLS = 100;
 
-    /** set_current_user: a response this request makes as a signed-in user is never Batcache's to keep. */
-    public static function private(): void
-    {
-        // Read without resolving the user: this can run while plugins load, before every sign-in
-        // check is registered (the deploy plugin unsets the user for exactly that reason).
-        $user = $GLOBALS['current_user'] ?? null;
-        if ($user instanceof \WP_User && $user->ID > 0 && function_exists('batcache_cancel')) {
-            batcache_cancel();
-        }
-    }
+	public static function register(): void {
+		add_action( 'set_current_user', array( self::class, 'private' ), 0, 0 );
+		// A plugin that loaded first may have signed the request in already (the deploy plugin does).
+		if ( did_action( 'set_current_user' ) > 0 ) {
+			self::private();
+		}
+		// After every plugin (Batcache, Jetpack Boost) and mu-plugin (VIP) has defined its functions,
+		// and again after `init`, where the WP Cloud platform adds its purge actions; at once when the
+		// runtime is mounted later than that.
+		$listen = static function (): void {
+			if ( self::present() !== array() && ! has_action( 'sp_purge_urls', array( self::class, 'purge' ) ) ) {
+				add_action( 'sp_purge_urls', array( self::class, 'purge' ) );
+			}
+		};
+		foreach ( array( 'plugins_loaded', 'init' ) as $hook ) {
+			if ( did_action( $hook ) > 0 && ! doing_action( $hook ) ) {
+				$listen();
+			} else {
+				add_action( $hook, $listen, PHP_INT_MAX );
+			}
+		}
+	}
 
-    /** @return list<string> the page caches loaded on this site */
-    private static function present(): array
-    {
-        return array_keys(array_filter([
-            'batcache' => self::batcache(),
-            'vip' => function_exists('wpvip_purge_edge_cache_for_url') || function_exists('wpcom_vip_purge_edge_cache_for_url'),
-            'jetpack-boost' => has_action('jetpack_boost_clear_page_cache_url') !== false,
-            'wpcloud-edge' => has_action('edge_cache_purge_uris') !== false,
-        ]));
-    }
+	/** set_current_user: a response this request makes as a signed-in user is never Batcache's to keep. */
+	public static function private(): void {
+		// Read without resolving the user: this can run while plugins load, before every sign-in
+		// check is registered (the deploy plugin unsets the user for exactly that reason).
+		$user = $GLOBALS['current_user'] ?? null;
+		if ( $user instanceof \WP_User && $user->ID > 0 && function_exists( 'batcache_cancel' ) ) {
+			batcache_cancel();
+		}
+	}
 
-    /** @param list<string>|null $urls absolute URLs for the WP Cloud edge, or null for the whole domain */
-    private static function purgeEdge(?array $urls): void
-    {
-        $urls === null ? do_action('edge_cache_purge_domain') : do_action('edge_cache_purge_uris', $urls);
-    }
+	/** @return list<string> the page caches loaded on this site */
+	private static function present(): array {
+		return array_keys(
+			array_filter(
+				array(
+					'batcache'      => self::batcache(),
+					'vip'           => function_exists( 'wpvip_purge_edge_cache_for_url' ) || function_exists( 'wpcom_vip_purge_edge_cache_for_url' ),
+					'jetpack-boost' => has_action( 'jetpack_boost_clear_page_cache_url' ) !== false,
+					'wpcloud-edge'  => has_action( 'edge_cache_purge_uris' ) !== false,
+				)
+			)
+		);
+	}
 
-    /** @param list<string> $paths root-relative paths with their query, as `sp_purge_urls` gives them */
-    public static function purge(array $paths): void
-    {
-        $origin = self::origin();
-        $home = (string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?: '/');
-        $vipSite = function_exists('wpvip_purge_edge_cache_for_site') && (in_array('/*', $paths, true) || count($paths) > self::VIP_URLS);
-        if ($vipSite) {
-            wpvip_purge_edge_cache_for_site();
-        }
-        $edge = [];
-        foreach ($paths as $path) {
-            if ($path === '/*') {
-                do_action('jetpack_boost_clear_page_cache_all');
-                self::purgeEdge(null);
-                continue;
-            }
-            $url = $origin . $path;
-            if (self::batcache()) {
-                batcache_clear_url(self::batcacheUrl($url));
-            }
-            if (!$vipSite && function_exists('wpvip_purge_edge_cache_for_url')) {
-                wpvip_purge_edge_cache_for_url($url);
-            } elseif (!$vipSite && function_exists('wpcom_vip_purge_edge_cache_for_url')) {
-                wpcom_vip_purge_edge_cache_for_url($url);
-            }
-            if ($path === $home) {
-                do_action('jetpack_boost_clear_page_cache_home');
-            } else {
-                do_action('jetpack_boost_clear_page_cache_url', $url);
-            }
-            $edge[] = $url;
-        }
-        // One call for every URL: the platform sends them to the edge in one purge request.
-        if ($edge !== [] && !in_array('/*', $paths, true)) {
-            self::purgeEdge($edge);
-        }
-    }
+	/** @param list<string>|null $urls absolute URLs for the WP Cloud edge, or null for the whole domain */
+	private static function purge_edge( ?array $urls ): void {
+		null === $urls ? do_action( 'edge_cache_purge_domain' ) : do_action( 'edge_cache_purge_uris', $urls );
+	}
 
-    private static function batcache(): bool
-    {
-        return function_exists('batcache_clear_url') && isset($GLOBALS['batcache']) && is_object($GLOBALS['batcache']);
-    }
+	/** @param list<string> $paths root-relative paths with their query, as `sp_purge_urls` gives them */
+	public static function purge( array $paths ): void {
+		$origin  = self::origin();
+		$home    = (string) ( wp_parse_url( home_url( '/' ), PHP_URL_PATH ) ?: '/' );
+		$vipSite = function_exists( 'wpvip_purge_edge_cache_for_site' ) && ( in_array( '/*', $paths, true ) || count( $paths ) > self::VIP_URLS );
+		if ( $vipSite ) {
+			wpvip_purge_edge_cache_for_site();
+		}
+		$edge = array();
+		foreach ( $paths as $path ) {
+			if ( '/*' === $path ) {
+				do_action( 'jetpack_boost_clear_page_cache_all' );
+				self::purge_edge( null );
+				continue;
+			}
+			$url = $origin . $path;
+			if ( self::batcache() ) {
+				batcache_clear_url( self::batcache_url( $url ) );
+			}
+			if ( ! $vipSite && function_exists( 'wpvip_purge_edge_cache_for_url' ) ) {
+				wpvip_purge_edge_cache_for_url( $url );
+			} elseif ( ! $vipSite && function_exists( 'wpcom_vip_purge_edge_cache_for_url' ) ) {
+				wpcom_vip_purge_edge_cache_for_url( $url );
+			}
+			if ( $path === $home ) {
+				do_action( 'jetpack_boost_clear_page_cache_home' );
+			} else {
+				do_action( 'jetpack_boost_clear_page_cache_url', $url );
+			}
+			$edge[] = $url;
+		}
+		// One call for every URL: the platform sends them to the edge in one purge request.
+		if ( array() !== $edge && ! in_array( '/*', $paths, true ) ) {
+			self::purge_edge( $edge );
+		}
+	}
 
-    /** `https://example.com` (with its port): what a root-relative path is joined to. */
-    private static function origin(): string
-    {
-        $home = (array) wp_parse_url(home_url('/'));
-        $port = isset($home['port']) ? ':' . $home['port'] : '';
+	private static function batcache(): bool {
+		return function_exists( 'batcache_clear_url' ) && isset( $GLOBALS['batcache'] ) && is_object( $GLOBALS['batcache'] );
+	}
 
-        return ($home['scheme'] ?? 'http') . '://' . ($home['host'] ?? '') . $port;
-    }
+	/** `https://example.com` (with its port): what a root-relative path is joined to. */
+	private static function origin(): string {
+		$home = (array) wp_parse_url( home_url( '/' ) );
+		$port = isset( $home['port'] ) ? ':' . $home['port'] : '';
 
-    /** The URL as Batcache keys it: its query string goes, except a `?p=<id>` permalink. */
-    private static function batcacheUrl(string $url): string
-    {
-        [$bare, $query] = array_pad(explode('?', $url, 2), 2, '');
-        parse_str($query, $args);
+		return ( $home['scheme'] ?? 'http' ) . '://' . ( $home['host'] ?? '' ) . $port;
+	}
 
-        return $bare . (isset($args['p']) && is_scalar($args['p']) ? '?p=' . $args['p'] : '');
-    }
+	/** The URL as Batcache keys it: its query string goes, except a `?p=<id>` permalink. */
+	private static function batcache_url( string $url ): string {
+		[$bare, $query] = array_pad( explode( '?', $url, 2 ), 2, '' );
+		parse_str( $query, $args );
+
+		return $bare . ( isset( $args['p'] ) && is_scalar( $args['p'] ) ? '?p=' . $args['p'] : '' );
+	}
 }

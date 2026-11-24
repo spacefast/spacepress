@@ -22,379 +22,413 @@ namespace SpacePress\Wp;
  * Every refusal is collected before anything runs, so one deploy reports them all. Additive
  * changes carry no check and apply without one.
  */
-final class SchemaCheck
-{
-    public const MARK = '-- spacepress-check ';
+final class SchemaCheck {
 
-    /** @var array<string, string> physical table => its name before any pending statement ran */
-    private array $tables = [];
-    /** @var array<string, array<string, string>> live table => [planned column => live column] */
-    private array $columns = [];
-    /** @var array<string, true> tables a pending statement creates */
-    private array $created = [];
+	public const MARK = '-- spacepress-check ';
 
-    /** @param array<string, int> $drops name => the row count the deploy confirmed */
-    public function __construct(private readonly Connection $db, private readonly array $drops = [])
-    {
-    }
+	/** @var array<string, string> physical table => its name before any pending statement ran */
+	private array $tables = array();
+	/** @var array<string, array<string, string>> live table => [planned column => live column] */
+	private array $columns = array();
+	/** @var array<string, true> tables a pending statement creates */
+	private array $created = array();
 
-    /**
-     * `--drop` values: `name=N` (a kind, or `kind.field`), comma-separated or repeated. A host may
-     * pass `['likes' => 1204]` instead; counts given as digit strings are accepted too.
-     *
-     * @param list<mixed>|array<string, mixed> $values
-     * @return array<string, int>
-     */
-    public static function drops(array $values): array
-    {
-        $drops = [];
-        if (!array_is_list($values)) {
-            $values = array_map(static fn ($name, $rows): mixed => is_string($name) && (is_int($rows) || is_string($rows)) ? "$name=$rows" : null, array_keys($values), $values);
-        }
-        foreach ($values as $value) {
-            if (!is_string($value)) {
-                // `--drop likes=1204` (a space, not `=`) reaches WP-CLI as a bare `--drop` and a stray argument.
-                throw new \SpacePress\HttpError(422, 'invalid_drop', '--drop takes name=rows after an equals sign: --drop=likes=1204', '/drop');
-            }
-            foreach (explode(',', $value) as $item) {
-                $item = trim($item);
-                if ($item === '') {
-                    continue;
-                }
-                if (!preg_match('/^([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)=(0|[1-9][0-9]*)$/', $item, $m)) {
-                    throw new \SpacePress\HttpError(422, 'invalid_drop', "--drop takes name=rows, e.g. --drop=likes=1204 or --drop=likes.note=12; got \"$item\"", '/drop');
-                }
-                $drops[$m[1]] = (int) $m[2];
-            }
-        }
+	/** @param array<string, int> $drops name => the row count the deploy confirmed */
+	public function __construct( private readonly Connection $db, private readonly array $drops = array() ) {
+	}
 
-        return $drops;
-    }
+	/**
+	 * `--drop` values: `name=N` (a kind, or `kind.field`), comma-separated or repeated. A host may
+	 * pass `['likes' => 1204]` instead; counts given as digit strings are accepted too.
+	 *
+	 * @param list<mixed>|array<string, mixed> $values
+	 * @return array<string, int>
+	 */
+	public static function drops( array $values ): array {
+		$drops = array();
+		if ( ! array_is_list( $values ) ) {
+			$values = array_map( static fn ( $name, $rows ): mixed => is_string( $name ) && ( is_int( $rows ) || is_string( $rows ) ) ? "$name=$rows" : null, array_keys( $values ), $values );
+		}
+		foreach ( $values as $value ) {
+			if ( ! is_string( $value ) ) {
+				// `--drop likes=1204` (a space, not `=`) reaches WP-CLI as a bare `--drop` and a stray argument.
+				throw new \SpacePress\HttpError( 422, 'invalid_drop', '--drop takes name=rows after an equals sign: --drop=likes=1204', '/drop' );
+			}
+			foreach ( explode( ',', $value ) as $item ) {
+				$item = trim( $item );
+				if ( '' === $item ) {
+					continue;
+				}
+				if ( ! preg_match( '/^([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)=(0|[1-9][0-9]*)$/', $item, $m ) ) {
+					throw new \SpacePress\HttpError( 422, 'invalid_drop', "--drop takes name=rows, e.g. --drop=likes=1204 or --drop=likes.note=12; got \"$item\"", '/drop' );
+				}
+				$drops[ $m[1] ] = (int) $m[2];
+			}
+		}
 
-    /** The statement's check, or null when it carries none. */
-    public static function parse(string $statement): ?array
-    {
-        if (!str_starts_with($statement, self::MARK)) {
-            return null;
-        }
+		return $drops;
+	}
 
-        return json_decode(substr(explode("\n", $statement, 2)[0], strlen(self::MARK)), true, flags: JSON_THROW_ON_ERROR);
-    }
+	/** The statement's check, or null when it carries none. */
+	public static function parse( string $statement ): ?array {
+		if ( ! str_starts_with( $statement, self::MARK ) ) {
+			return null;
+		}
 
-    /** The statement without its check line: what the database runs. */
-    public static function sql(string $statement): string
-    {
-        return str_starts_with($statement, self::MARK) ? (explode("\n", $statement, 2)[1] ?? '') : $statement;
-    }
+		return json_decode( substr( explode( "\n", $statement, 2 )[0], strlen( self::MARK ) ), true, flags: JSON_THROW_ON_ERROR );
+	}
 
-    /**
-     * Refuses the pending statements when live rows don't allow them.
-     *
-     * `$applied` are the statements of partly applied files that already ran: they aren't measured,
-     * but their renames are replayed, so a check written against the name a table had before the
-     * plan finds the name it has now (a migration that failed after a rename resumes).
-     *
-     * @param array<string, list<string>> $pending migration id => its statements not yet applied
-     * @param list<string> $applied statements already applied, in order
-     * @throws SchemaRefused
-     */
-    public function check(array $pending, array $applied = []): void
-    {
-        foreach ($applied as $statement) {
-            $done = self::parse($statement);
-            if (($done['check'] ?? null) === 'rename') {
-                $done['table'] = str_replace('{prefix}', $this->db->prefix(), (string) $done['table']);
-                $this->moved($done);
-            }
-        }
-        $refusals = [];
-        foreach ($pending as $id => $statements) {
-            foreach ($statements as $statement) {
-                if (!str_starts_with($statement, self::MARK)) {
-                    $this->follow($statement);
-                    continue;
-                }
-                $check = json_decode(substr(explode("\n", $statement, 2)[0], strlen(self::MARK)), true, flags: JSON_THROW_ON_ERROR);
-                $check['table'] = str_replace('{prefix}', $this->db->prefix(), (string) $check['table']);
-                $refusal = match ($check['check']) {
-                    'drop' => $this->drop($check),
-                    'required' => $this->required($check, (string) $id),
-                    'narrow' => $this->narrow($check, (string) $id),
-                    'rename', 'alter' => $this->adoptedChange($check),
-                    default => throw new \RuntimeException('unknown schema check ' . $check['check']),
-                };
-                if ($refusal !== null) {
-                    $refusals[] = ['migration' => (string) $id] + $refusal;
-                }
-                // Later checks see this statement's effect on names.
-                if ($check['check'] === 'rename') {
-                    $this->renamed($check);
-                }
-                $this->follow(explode("\n", $statement, 2)[1] ?? '');
-            }
-        }
-        if ($refusals !== []) {
-            throw new SchemaRefused($refusals);
-        }
-    }
+	/** The statement without its check line: what the database runs. */
+	public static function sql( string $statement ): string {
+		return str_starts_with( $statement, self::MARK ) ? ( explode( "\n", $statement, 2 )[1] ?? '' ) : $statement;
+	}
 
-    private function drop(array $check): ?array
-    {
-        $name = (string) $check['name'];
-        $column = $check['column'] ?? null;
-        $rows = $this->count($check, $column === null ? null : '{col} IS NOT NULL');
-        if ($rows === null) {
-            return $this->missing($check);
-        }
-        $adopted = ($check['adopted'] ?? false) === true;
-        $confirmed = $this->drops[$name] ?? null;
-        $what = $column === null ? "the kind $name" : "the field $name";
-        $holds = $column === null ? "$rows rows" : "$rows rows with a value";
-        if ($confirmed === $rows || ($rows === 0 && !$adopted)) {
-            return null;
-        }
-        $refusal = ['name' => $name, 'table' => $check['table'], 'rows' => $rows, 'drop' => "$name=$rows"];
-        if ($column !== null) {
-            $refusal['column'] = $column;
-        }
-        if ($confirmed !== null) {
-            return $refusal + [
-                'code' => 'drop_count_mismatch',
-                'message' => "--drop=$name=$confirmed doesn't match the live data: $what holds $holds now.",
-                'fix' => "Check what changed, then deploy with --drop=$name=$rows to delete them, or keep $name in the schema.",
-            ];
-        }
-        if ($adopted) {
-            return $refusal + [
-                'code' => 'drop_adopted_table',
-                'message' => "Dropping $what would " . ($column === null ? 'drop' : 'alter') . " {$check['table']}, a table SpacePress didn't create ($holds).",
-                'fix' => "Keep $name in the schema, or deploy with --drop=$name=$rows to delete it.",
-            ];
-        }
+	/**
+	 * Refuses the pending statements when live rows don't allow them.
+	 *
+	 * `$applied` are the statements of partly applied files that already ran: they aren't measured,
+	 * but their renames are replayed, so a check written against the name a table had before the
+	 * plan finds the name it has now (a migration that failed after a rename resumes).
+	 *
+	 * @param array<string, list<string>> $pending migration id => its statements not yet applied
+	 * @param list<string> $applied statements already applied, in order
+	 * @throws SchemaRefused
+	 */
+	public function check( array $pending, array $applied = array() ): void {
+		foreach ( $applied as $statement ) {
+			$done = self::parse( $statement );
+			if ( ( $done['check'] ?? null ) === 'rename' ) {
+				$done['table'] = str_replace( '{prefix}', $this->db->prefix(), (string) $done['table'] );
+				$this->moved( $done );
+			}
+		}
+		$refusals = array();
+		foreach ( $pending as $id => $statements ) {
+			foreach ( $statements as $statement ) {
+				if ( ! str_starts_with( $statement, self::MARK ) ) {
+					$this->follow( $statement );
+					continue;
+				}
+				$check          = json_decode( substr( explode( "\n", $statement, 2 )[0], strlen( self::MARK ) ), true, flags: JSON_THROW_ON_ERROR );
+				$check['table'] = str_replace( '{prefix}', $this->db->prefix(), (string) $check['table'] );
+				$refusal        = match ( $check['check'] ) {
+					'drop' => $this->drop( $check ),
+					'required' => $this->required( $check, (string) $id ),
+					'narrow' => $this->narrow( $check, (string) $id ),
+					'rename', 'alter' => $this->adopted_change( $check ),
+					default => throw new \RuntimeException( 'unknown schema check ' . $check['check'] ),
+				};
+				if ( null !== $refusal ) {
+					$refusals[] = array( 'migration' => (string) $id ) + $refusal;
+				}
+				// Later checks see this statement's effect on names.
+				if ( 'rename' === $check['check'] ) {
+					$this->renamed( $check );
+				}
+				$this->follow( explode( "\n", $statement, 2 )[1] ?? '' );
+			}
+		}
+		if ( array() !== $refusals ) {
+			throw new SchemaRefused( $refusals );
+		}
+	}
 
-        return $refusal + [
-            'code' => 'drop_has_rows',
-            'message' => "Dropping $what would delete $holds.",
-            'fix' => "Keep $name in the schema, rename it with .was() if it moved, or deploy with --drop=$name=$rows to delete them.",
-        ];
-    }
+	private function drop( array $check ): ?array {
+		$name   = (string) $check['name'];
+		$column = $check['column'] ?? null;
+		$rows   = $this->count( $check, null === $column ? null : '{col} IS NOT NULL' );
+		if ( null === $rows ) {
+			return $this->missing( $check );
+		}
+		$adopted   = ( $check['adopted'] ?? false ) === true;
+		$confirmed = $this->drops[ $name ] ?? null;
+		$what      = null === $column ? "the kind $name" : "the field $name";
+		$holds     = null === $column ? "$rows rows" : "$rows rows with a value";
+		if ( $confirmed === $rows || ( 0 === $rows && ! $adopted ) ) {
+			return null;
+		}
+		$refusal = array(
+			'name'  => $name,
+			'table' => $check['table'],
+			'rows'  => $rows,
+			'drop'  => "$name=$rows",
+		);
+		if ( null !== $column ) {
+			$refusal['column'] = $column;
+		}
+		if ( null !== $confirmed ) {
+			return $refusal + array(
+				'code'    => 'drop_count_mismatch',
+				'message' => "--drop=$name=$confirmed doesn't match the live data: $what holds $holds now.",
+				'fix'     => "Check what changed, then deploy with --drop=$name=$rows to delete them, or keep $name in the schema.",
+			);
+		}
+		if ( $adopted ) {
+			return $refusal + array(
+				'code'    => 'drop_adopted_table',
+				'message' => "Dropping $what would " . ( null === $column ? 'drop' : 'alter' ) . " {$check['table']}, a table SpacePress didn't create ($holds).",
+				'fix'     => "Keep $name in the schema, or deploy with --drop=$name=$rows to delete it.",
+			);
+		}
 
-    private function required(array $check, string $migration): ?array
-    {
-        $column = $check['column'] ?? null;
-        $name = (string) $check['name'];
-        // A field that becomes required may narrow in the same change: the values it has must fit too,
-        // or MySQL truncates them. Each kind of row is refused with its own code and count.
-        if ($column !== null && isset($check['fits'])) {
-            $narrow = $this->narrow($check, $migration);
-            if ($narrow !== null) {
-                return $narrow;
-            }
-        }
-        // A new column has no values yet: every row lacks it.
-        $rows = $this->count($check, $column === null ? null : '{col} IS NULL');
-        if ($rows === null) {
-            return $this->missing($check);
-        }
-        if ($rows === 0) {
-            return null;
-        }
-        $field = substr($name, strrpos($name, '.') + 1);
-        $keep = "give $field a default with .default(value), which existing rows get, or keep it optional: "
-            . "delete the unapplied sp/_generated/migrations/$migration.sql, restore snapshot.json to the last deployed build, and build again.";
-        // The site keeps refusing until a migration runs again; filling the rows alone doesn't retry it.
-        $fix = $column === null ? ucfirst($keep) : "Fill those rows, then run `wp spacepress migrate` (or deploy again); or $keep";
+		return $refusal + array(
+			'code'    => 'drop_has_rows',
+			'message' => "Dropping $what would delete $holds.",
+			'fix'     => "Keep $name in the schema, rename it with .was() if it moved, or deploy with --drop=$name=$rows to delete them.",
+		);
+	}
 
-        return ['code' => 'required_field_missing', 'name' => $name, 'table' => $check['table'], 'rows' => $rows,
-            'message' => "$name is required, and $rows rows have no value for it.", 'fix' => $fix];
-    }
+	private function required( array $check, string $migration ): ?array {
+		$column = $check['column'] ?? null;
+		$name   = (string) $check['name'];
+		// A field that becomes required may narrow in the same change: the values it has must fit too,
+		// or MySQL truncates them. Each kind of row is refused with its own code and count.
+		if ( null !== $column && isset( $check['fits'] ) ) {
+			$narrow = $this->narrow( $check, $migration );
+			if ( null !== $narrow ) {
+				return $narrow;
+			}
+		}
+		// A new column has no values yet: every row lacks it.
+		$rows = $this->count( $check, null === $column ? null : '{col} IS NULL' );
+		if ( null === $rows ) {
+			return $this->missing( $check );
+		}
+		if ( 0 === $rows ) {
+			return null;
+		}
+		$field = substr( $name, strrpos( $name, '.' ) + 1 );
+		$keep  = "give $field a default with .default(value), which existing rows get, or keep it optional: "
+			. "delete the unapplied sp/_generated/migrations/$migration.sql, restore snapshot.json to the last deployed build, and build again.";
+		// The site keeps refusing until a migration runs again; filling the rows alone doesn't retry it.
+		$fix = null === $column ? ucfirst( $keep ) : "Fill those rows, then run `wp spacepress migrate` (or deploy again); or $keep";
 
-    /** A table a pending statement creates: checks of it run against no rows. */
-    private function follow(string $statement): void
-    {
-        if (preg_match('/^CREATE TABLE `((?:[^`]|``)+)`/', $statement, $m)) {
-            $this->created[str_replace('``', '`', $m[1])] = true;
-        } elseif (preg_match('/^ALTER TABLE `((?:[^`]|``)+)` ADD COLUMN `((?:[^`]|``)+)`/', $statement, $m)) {
-            $this->adds[str_replace('``', '`', $m[1])][str_replace('``', '`', $m[2])] = true;
-        }
-    }
+		return array(
+			'code'    => 'required_field_missing',
+			'name'    => $name,
+			'table'   => $check['table'],
+			'rows'    => $rows,
+			'message' => "$name is required, and $rows rows have no value for it.",
+			'fix'     => $fix,
+		);
+	}
 
-    /** A pending rename: later checks name the new table or column; it still holds the old one's rows. */
-    private function renamed(array $check): void
-    {
-        $to = (string) $check['to'];
-        if (isset($check['column'])) {
-            $live = $this->live($check['table']);
-            $this->columns[$live][$to] = $this->columns[$live][(string) $check['column']] ?? (string) $check['column'];
-            unset($this->columns[$live][(string) $check['column']]);
+	/** A table a pending statement creates: checks of it run against no rows. */
+	private function follow( string $statement ): void {
+		if ( preg_match( '/^CREATE TABLE `((?:[^`]|``)+)`/', $statement, $m ) ) {
+			$this->created[ str_replace( '``', '`', $m[1] ) ] = true;
+		} elseif ( preg_match( '/^ALTER TABLE `((?:[^`]|``)+)` ADD COLUMN `((?:[^`]|``)+)`/', $statement, $m ) ) {
+			$this->adds[ str_replace( '``', '`', $m[1] ) ][ str_replace( '``', '`', $m[2] ) ] = true;
+		}
+	}
 
-            return;
-        }
-        $to = str_replace('{prefix}', $this->db->prefix(), $to);
-        $this->tables[$to] = $this->live($check['table']);
-        unset($this->tables[$check['table']]);
-        if (isset($this->created[$check['table']])) {
-            $this->created[$to] = true;
-        }
-    }
+	/** A pending rename: later checks name the new table or column; it still holds the old one's rows. */
+	private function renamed( array $check ): void {
+		$to = (string) $check['to'];
+		if ( isset( $check['column'] ) ) {
+			$live                          = $this->live( $check['table'] );
+			$this->columns[ $live ][ $to ] = $this->columns[ $live ][ (string) $check['column'] ] ?? (string) $check['column'];
+			unset( $this->columns[ $live ][ (string) $check['column'] ] );
 
-    /**
-     * A rename that already ran: the name a check uses (the one before the plan) now lives under
-     * the new name. The opposite of renamed(), which keeps a pending rename's new name on the old.
-     */
-    private function moved(array $check): void
-    {
-        $to = (string) $check['to'];
-        if (isset($check['column'])) {
-            $live = $this->live($check['table']);
-            $this->columns[$live][(string) $check['column']] = $to;
+			return;
+		}
+		$to                  = str_replace( '{prefix}', $this->db->prefix(), $to );
+		$this->tables[ $to ] = $this->live( $check['table'] );
+		unset( $this->tables[ $check['table'] ] );
+		if ( isset( $this->created[ $check['table'] ] ) ) {
+			$this->created[ $to ] = true;
+		}
+	}
 
-            return;
-        }
-        $to = str_replace('{prefix}', $this->db->prefix(), $to);
-        $from = (string) $check['table'];
-        // Column renames recorded under the old table follow it.
-        if (isset($this->columns[$from])) {
-            $this->columns[$to] = $this->columns[$from];
-            unset($this->columns[$from]);
-        }
-        foreach ($this->tables as $planned => $live) {
-            if ($live === $from) {
-                $this->tables[$planned] = $to;
-            }
-        }
-        $this->tables[$from] = $to;
-    }
+	/**
+	 * A rename that already ran: the name a check uses (the one before the plan) now lives under
+	 * the new name. The opposite of renamed(), which keeps a pending rename's new name on the old.
+	 */
+	private function moved( array $check ): void {
+		$to = (string) $check['to'];
+		if ( isset( $check['column'] ) ) {
+			$live = $this->live( $check['table'] );
+			$this->columns[ $live ][ (string) $check['column'] ] = $to;
 
-    /** The table as it is now, before any pending statement runs. */
-    private function live(string $table): string
-    {
-        return $this->tables[$table] ?? $table;
-    }
+			return;
+		}
+		$to   = str_replace( '{prefix}', $this->db->prefix(), $to );
+		$from = (string) $check['table'];
+		// Column renames recorded under the old table follow it.
+		if ( isset( $this->columns[ $from ] ) ) {
+			$this->columns[ $to ] = $this->columns[ $from ];
+			unset( $this->columns[ $from ] );
+		}
+		foreach ( $this->tables as $planned => $live ) {
+			if ( $live === $from ) {
+				$this->tables[ $planned ] = $to;
+			}
+		}
+		$this->tables[ $from ] = $to;
+	}
 
-    private function narrow(array $check, string $migration): ?array
-    {
-        $name = (string) $check['name'];
-        $fits = (string) $check['fits'];
-        $adopted = ($check['adopted'] ?? false) === true;
-        $rows = $this->count($check, $fits === 'false' ? '{col} IS NOT NULL' : "{col} IS NOT NULL AND NOT ($fits)");
-        if ($rows === null) {
-            return $this->missing($check);
-        }
-        $confirmed = $this->drops[$name] ?? null;
-        if ($confirmed === $rows || ($rows === 0 && !$adopted)) {
-            return null;
-        }
-        $refusal = ['name' => $name, 'table' => $check['table'], 'column' => $check['column'], 'rows' => $rows, 'drop' => "$name=$rows"];
-        if ($confirmed !== null) {
-            return $refusal + ['code' => 'drop_count_mismatch',
-                'message' => "--drop=$name=$confirmed doesn't match the live data: $rows values of $name don't fit its new type now.",
-                'fix' => "Check what changed, then deploy with --drop=$name=$rows to change them, or keep $name's type."];
-        }
-        if ($adopted && $rows === 0) {
-            return $refusal + ['code' => 'drop_adopted_table',
-                'message' => "Changing $name's type would alter {$check['table']}, a table SpacePress didn't create.",
-                'fix' => "Keep $name's type, or deploy with --drop=$name=0 to change it."];
-        }
+	/** The table as it is now, before any pending statement runs. */
+	private function live( string $table ): string {
+		return $this->tables[ $table ] ?? $table;
+	}
 
-        return $refusal + ['code' => 'value_does_not_fit',
-            'message' => "$name's new type or length doesn't fit $rows existing values; MySQL would truncate or convert them.",
-            'fix' => "Fix those values first, or keep $name's type: delete the unapplied sp/_generated/migrations/$migration.sql, restore snapshot.json to the last deployed build, and build again. To change them anyway, deploy with --drop=$name=$rows."];
-    }
+	private function narrow( array $check, string $migration ): ?array {
+		$name    = (string) $check['name'];
+		$fits    = (string) $check['fits'];
+		$adopted = ( $check['adopted'] ?? false ) === true;
+		$rows    = $this->count( $check, 'false' === $fits ? '{col} IS NOT NULL' : "{col} IS NOT NULL AND NOT ($fits)" );
+		if ( null === $rows ) {
+			return $this->missing( $check );
+		}
+		$confirmed = $this->drops[ $name ] ?? null;
+		if ( $confirmed === $rows || ( 0 === $rows && ! $adopted ) ) {
+			return null;
+		}
+		$refusal = array(
+			'name'   => $name,
+			'table'  => $check['table'],
+			'column' => $check['column'],
+			'rows'   => $rows,
+			'drop'   => "$name=$rows",
+		);
+		if ( null !== $confirmed ) {
+			return $refusal + array(
+				'code'    => 'drop_count_mismatch',
+				'message' => "--drop=$name=$confirmed doesn't match the live data: $rows values of $name don't fit its new type now.",
+				'fix'     => "Check what changed, then deploy with --drop=$name=$rows to change them, or keep $name's type.",
+			);
+		}
+		if ( $adopted && 0 === $rows ) {
+			return $refusal + array(
+				'code'    => 'drop_adopted_table',
+				'message' => "Changing $name's type would alter {$check['table']}, a table SpacePress didn't create.",
+				'fix'     => "Keep $name's type, or deploy with --drop=$name=0 to change it.",
+			);
+		}
 
-    /** A rename or retype of a column of a table SpacePress didn't create: only with --drop naming it. */
-    private function adoptedChange(array $check): ?array
-    {
-        if (($check['adopted'] ?? false) !== true) {
-            return null;
-        }
-        $name = (string) $check['name'];
-        $rows = $this->count($check, '{col} IS NOT NULL');
-        if ($rows === null) {
-            return $this->missing($check);
-        }
-        if (($this->drops[$name] ?? null) === $rows) {
-            return null;
-        }
-        $what = $check['check'] === 'rename' ? "Renaming $name" : "Changing $name's type";
+		return $refusal + array(
+			'code'    => 'value_does_not_fit',
+			'message' => "$name's new type or length doesn't fit $rows existing values; MySQL would truncate or convert them.",
+			'fix'     => "Fix those values first, or keep $name's type: delete the unapplied sp/_generated/migrations/$migration.sql, restore snapshot.json to the last deployed build, and build again. To change them anyway, deploy with --drop=$name=$rows.",
+		);
+	}
 
-        return ['code' => isset($this->drops[$name]) ? 'drop_count_mismatch' : 'drop_adopted_table', 'name' => $name,
-            'table' => $check['table'], 'column' => $check['column'], 'rows' => $rows, 'drop' => "$name=$rows",
-            'message' => "$what would alter {$check['table']}, a table SpacePress didn't create ($rows rows with a value).",
-            'fix' => "Keep $name as it is, or deploy with --drop=$name=$rows to change it."];
-    }
+	/** A rename or retype of a column of a table SpacePress didn't create: only with --drop naming it. */
+	private function adopted_change( array $check ): ?array {
+		if ( ( $check['adopted'] ?? false ) !== true ) {
+			return null;
+		}
+		$name = (string) $check['name'];
+		$rows = $this->count( $check, '{col} IS NOT NULL' );
+		if ( null === $rows ) {
+			return $this->missing( $check );
+		}
+		if ( ( $this->drops[ $name ] ?? null ) === $rows ) {
+			return null;
+		}
+		$what = 'rename' === $check['check'] ? "Renaming $name" : "Changing $name's type";
 
-    private function missing(array $check): array
-    {
-        $what = isset($check['column']) ? "column {$check['column']} of {$check['table']}" : "table {$check['table']}";
+		return array(
+			'code'    => isset( $this->drops[ $name ] ) ? 'drop_count_mismatch' : 'drop_adopted_table',
+			'name'    => $name,
+			'table'   => $check['table'],
+			'column'  => $check['column'],
+			'rows'    => $rows,
+			'drop'    => "$name=$rows",
+			'message' => "$what would alter {$check['table']}, a table SpacePress didn't create ($rows rows with a value).",
+			'fix'     => "Keep $name as it is, or deploy with --drop=$name=$rows to change it.",
+		);
+	}
 
-        return ['code' => 'schema_out_of_step', 'name' => (string) ($check['name'] ?? $check['table']), 'table' => $check['table'], 'rows' => 0,
-            'message' => "The database has no $what, which this build's migrations expect to find.",
-            'fix' => 'Check the database against sp/_generated/migrations/ (a statement may have been applied by hand, or the ledger edited) and fix whichever is wrong; nothing was changed.'];
-    }
+	private function missing( array $check ): array {
+		$what = isset( $check['column'] ) ? "column {$check['column']} of {$check['table']}" : "table {$check['table']}";
 
-    /** The live column a check names, after pending renames; null when its table or column doesn't exist. */
-    private function column(array $check): ?string
-    {
-        $table = $this->live($check['table']);
-        $column = (string) $check['column'];
-        $live = $this->columns[$table][$column] ?? $column;
-        if (isset($this->created[$check['table']]) && !$this->exists($table)) {
-            return $live;
-        }
+		return array(
+			'code'    => 'schema_out_of_step',
+			'name'    => (string) ( $check['name'] ?? $check['table'] ),
+			'table'   => $check['table'],
+			'rows'    => 0,
+			'message' => "The database has no $what, which this build's migrations expect to find.",
+			'fix'     => 'Check the database against sp/_generated/migrations/ (a statement may have been applied by hand, or the ledger edited) and fix whichever is wrong; nothing was changed.',
+		);
+	}
 
-        return $this->exists($table, $live) ? $live : null;
-    }
+	/** The live column a check names, after pending renames; null when its table or column doesn't exist. */
+	private function column( array $check ): ?string {
+		$table  = $this->live( $check['table'] );
+		$column = (string) $check['column'];
+		$live   = $this->columns[ $table ][ $column ] ?? $column;
+		if ( isset( $this->created[ $check['table'] ] ) && ! $this->exists( $table ) ) {
+			return $live;
+		}
 
-    private function exists(string $table, ?string $column = null): bool
-    {
-        return $column === null
-            ? $this->db->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$table]) !== []
-            : $this->db->run('SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$table, $column]) !== [];
-    }
+		return $this->exists( $table, $live ) ? $live : null;
+	}
 
-    /**
-     * Rows of the check's table, where `$where` holds for its column (`{col}` names it); 0 for a table
-     * a pending statement creates; null when the table or column isn't there to count.
-     */
-    private function count(array $check, ?string $where): ?int
-    {
-        $table = $this->live($check['table']);
-        if (!$this->exists($table)) {
-            return isset($this->created[$check['table']]) ? 0 : null;
-        }
-        $sql = 'SELECT COUNT(*) AS n FROM `' . str_replace('`', '``', $table) . '`';
-        if (isset($check['column']) && $where !== null) {
-            $column = $this->column($check);
-            if ($column === null) {
-                // A column a pending statement adds holds nothing yet.
-                return $this->added($check) ? 0 : null;
-            }
-            $sql .= ' WHERE ' . str_replace('{col}', '`' . str_replace('`', '``', $column) . '`', $where);
-        }
-        // A count that can't be taken (the condition overflowed on some row, say) is never a zero:
-        // that would let the change through unmeasured.
-        try {
-            $n = $this->db->run($sql)[0]['n'] ?? null;
-        } catch (DbError $e) {
-            throw new SchemaRefused([['code' => 'check_failed', 'name' => (string) ($check['name'] ?? $table), 'table' => $table, 'rows' => 0,
-                'message' => "Couldn't count the rows {$check['name']} would change: " . $e->getMessage(),
-                'fix' => 'Nothing was changed. Report this with the message; the values in that column need a look before the change can run.']]);
-        }
-        if (!is_numeric($n)) {
-            throw new SchemaRefused([['code' => 'check_failed', 'name' => (string) ($check['name'] ?? $table), 'table' => $table, 'rows' => 0,
-                'message' => "Couldn't count the rows {$check['name']} would change: the count returned no row.",
-                'fix' => 'Nothing was changed. Report this; the change can\'t run until it can be measured.']]);
-        }
+	private function exists( string $table, ?string $column = null ): bool {
+		return null === $column
+			? $this->db->run( 'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', array( $table ) ) !== array()
+			: $this->db->run( 'SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', array( $table, $column ) ) !== array();
+	}
 
-        return (int) $n;
-    }
+	/**
+	 * Rows of the check's table, where `$where` holds for its column (`{col}` names it); 0 for a table
+	 * a pending statement creates; null when the table or column isn't there to count.
+	 */
+	private function count( array $check, ?string $where ): ?int {
+		$table = $this->live( $check['table'] );
+		if ( ! $this->exists( $table ) ) {
+			return isset( $this->created[ $check['table'] ] ) ? 0 : null;
+		}
+		$sql = 'SELECT COUNT(*) AS n FROM `' . str_replace( '`', '``', $table ) . '`';
+		if ( isset( $check['column'] ) && null !== $where ) {
+			$column = $this->column( $check );
+			if ( null === $column ) {
+				// A column a pending statement adds holds nothing yet.
+				return $this->added( $check ) ? 0 : null;
+			}
+			$sql .= ' WHERE ' . str_replace( '{col}', '`' . str_replace( '`', '``', $column ) . '`', $where );
+		}
+		// A count that can't be taken (the condition overflowed on some row, say) is never a zero:
+		// that would let the change through unmeasured.
+		try {
+			$n = $this->db->run( $sql )[0]['n'] ?? null;
+		} catch ( DbError $e ) {
+			throw new SchemaRefused(
+				array(
+					array(
+						'code'    => 'check_failed',
+						'name'    => (string) ( $check['name'] ?? $table ),
+						'table'   => $table,
+						'rows'    => 0,
+						'message' => "Couldn't count the rows {$check['name']} would change: " . $e->getMessage(),
+						'fix'     => 'Nothing was changed. Report this with the message; the values in that column need a look before the change can run.',
+					),
+				)
+			);
+		}
+		if ( ! is_numeric( $n ) ) {
+			throw new SchemaRefused(
+				array(
+					array(
+						'code'    => 'check_failed',
+						'name'    => (string) ( $check['name'] ?? $table ),
+						'table'   => $table,
+						'rows'    => 0,
+						'message' => "Couldn't count the rows {$check['name']} would change: the count returned no row.",
+						'fix'     => 'Nothing was changed. Report this; the change can\'t run until it can be measured.',
+					),
+				)
+			);
+		}
 
-    /** @var array<string, array<string, true>> table => columns pending statements add */
-    private array $adds = [];
+		return (int) $n;
+	}
 
-    private function added(array $check): bool
-    {
-        return isset($this->adds[$check['table']][(string) $check['column']]);
-    }
+	/** @var array<string, array<string, true>> table => columns pending statements add */
+	private array $adds = array();
+
+	private function added( array $check ): bool {
+		return isset( $this->adds[ $check['table'] ][ (string) $check['column'] ] );
+	}
 }

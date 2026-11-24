@@ -8,34 +8,34 @@ namespace SpacePress\Media;
  * Private-file metadata and byte persistence. Files owns the rules; WordPress stores rows
  * in `{prefix}sp__files` and bytes in the app's configured upload backend.
  */
-interface FileStorage
-{
-    public function secret(): string;
+interface FileStorage {
 
-    /** Null when uploads are safe; otherwise why not (answered as 503 files_unavailable). */
-    public function unavailable(): ?string;
+	public function secret(): string;
 
-    /** Persist $tmpPath under private identity $rel (removed again if the transaction rolls back). */
-    public function store(string $tmpPath, string $rel): void;
+	/** Null when uploads are safe; otherwise why not (answered as 503 files_unavailable). */
+	public function unavailable(): ?string;
 
-    /** @param array{bucket: string, filename: string, mime: string, size: int, path: string, ownerId: ?int, createdAt: string} $row */
-    public function insert(array $row): int;
+	/** Persist $tmpPath under private identity $rel (removed again if the transaction rolls back). */
+	public function store( string $tmpPath, string $rel ): void;
 
-    /**
-     * @param list<int> $ids
-     * @return array<int, array{id: int, bucket: string, filename: string, mime: string, size: int, path: string, ownerId: ?int, createdAt: string}>
-     */
-    public function getMany(array $ids): array;
+	/** @param array{bucket: string, filename: string, mime: string, size: int, path: string, ownerId: ?int, createdAt: string} $row */
+	public function insert( array $row ): int;
 
-    /** Delete the row now and its bytes once the transaction commits. */
-    public function delete(array $row): void;
+	/**
+	 * @param list<int> $ids
+	 * @return array<int, array{id: int, bucket: string, filename: string, mime: string, size: int, path: string, ownerId: ?int, createdAt: string}>
+	 */
+	public function getMany( array $ids ): array;
 
-    /** Prepare a bounded download; provider failures must occur before response headers. */
-    public function stream(string $rel): \Closure;
+	/** Delete the row now and its bytes once the transaction commits. */
+	public function delete( array $row ): void;
 
-    /** Absolute or root-relative URL of an API route ('/files/decks/1/download'). */
-    public function apiUrl(string $route): string;
+	/** Prepare a bounded download; provider failures must occur before response headers. */
+	public function stream( string $rel ): \Closure;
 
-    /** `GET /_schema` `runtime.privateFiles`. */
-    public function describe(): array;
+	/** Absolute or root-relative URL of an API route ('/files/decks/1/download'). */
+	public function apiUrl( string $route ): string;
+
+	/** `GET /_schema` `runtime.privateFiles`. */
+	public function describe(): array;
 }

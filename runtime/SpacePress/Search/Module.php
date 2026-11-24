@@ -24,84 +24,96 @@ use function SpacePress\db;
  * The site-wide endpoint lists, per kind with searchable fields, the rows that match as the
  * caller reads them: a kind the caller may not read is left out, without saying it exists.
  */
-final class Module
-{
-    /** Rows per kind the site-wide endpoint returns. */
-    public const LIMIT = 10;
+final class Module {
 
-    private static bool $registered = false;
+	/** Rows per kind the site-wide endpoint returns. */
+	public const LIMIT = 10;
 
-    public static function register(): void
-    {
-        if (self::$registered) {
-            return;
-        }
-        self::$registered = true;
-        Index::register();
-        Extensions::route('search', self::route(...));
-    }
+	private static bool $registered = false;
 
-    /**
-     * The condition `search` adds to a read of $collection for $viewer; a search with no word, or
-     * on no field the viewer may read, matches nothing.
-     *
-     * @return list<array|\SpacePress\SqlPredicate>
-     */
-    public static function guard(string $collection, string $search, ?Viewer $viewer, ?array $only = null): array
-    {
-        $predicate = Index::predicate($collection, $search, $viewer, $only);
+	public static function register(): void {
+		if ( self::$registered ) {
+			return;
+		}
+		self::$registered = true;
+		Index::register();
+		Extensions::route( 'search', self::route( ... ) );
+	}
 
-        return [$predicate ?? new \SpacePress\SqlPredicate('1 = 0')];
-    }
+	/**
+	 * The condition `search` adds to a read of $collection for $viewer; a search with no word, or
+	 * on no field the viewer may read, matches nothing.
+	 *
+	 * @return list<array|\SpacePress\SqlPredicate>
+	 */
+	public static function guard( string $collection, string $search, ?Viewer $viewer, ?array $only = null ): array {
+		$predicate = Index::predicate( $collection, $search, $viewer, $only );
 
-    /** `GET /search?q=…[&kinds=a,b][&limit=n]`: the matching rows of each kind, as the caller reads them. */
-    public static function route(string $method, array $segments, array $query, string $body, Viewer $viewer): array
-    {
-        if (count($segments) !== 1) {
-            throw HttpError::notFound('No such search route');
-        }
-        App::allow($method, ['GET', 'HEAD']);
-        $q = $query['q'] ?? null;
-        if (!is_string($q) || Index::terms($q) === []) {
-            throw HttpError::invalidQuery('q must hold at least one word', '/q');
-        }
-        $limit = self::LIMIT;
-        if (isset($query['limit'])) {
-            if (!is_string($query['limit']) || !preg_match('/^\d{1,3}$/D', $query['limit']) || (int) $query['limit'] < 1) {
-                throw HttpError::invalidQuery('limit must be a positive integer', '/limit');
-            }
-            $limit = min((int) $query['limit'], 50);
-        }
-        $kinds = Index::kinds();
-        if (isset($query['kinds'])) {
-            if (!is_string($query['kinds'])) {
-                throw HttpError::invalidQuery('kinds is a comma-separated list', '/kinds');
-            }
-            $asked = array_values(array_filter(array_map('trim', explode(',', $query['kinds'])), static fn (string $k): bool => $k !== ''));
-            // A kind that isn't searchable, or doesn't exist, is simply not searched: nothing tells the
-            // caller which of the two it is.
-            $kinds = array_values(array_intersect($kinds, $asked));
-        }
-        $results = [];
-        foreach ($kinds as $kind) {
-            try {
-                $rows = db()->findMany($kind, ['search' => $q, 'limit' => $limit] + self::everyLocale($kind), $viewer);
-            } catch (HttpError $e) {
-                if (in_array($e->status, [401, 403], true)) {
-                    continue; // the caller may not read this kind: leave it out
-                }
-                throw $e;
-            }
-            if ($rows !== []) {
-                $results[] = ['kind' => $kind, 'rows' => array_map(static fn (array $row) => \SpacePress\Wp\PostMeta::values($kind, $row, array_map('strval', array_keys($row))), $rows)];
-            }
-        }
+		return array( $predicate ?? new \SpacePress\SqlPredicate( '1 = 0' ) );
+	}
 
-        return [200, ['q' => $q, 'results' => $results]];
-    }
+	/** `GET /search?q=…[&kinds=a,b][&limit=n]`: the matching rows of each kind, as the caller reads them. */
+	public static function route( string $method, array $segments, array $query, string $body, Viewer $viewer ): array {
+		if ( count( $segments ) !== 1 ) {
+			throw HttpError::notFound( 'No such search route' );
+		}
+		App::allow( $method, array( 'GET', 'HEAD' ) );
+		$q = $query['q'] ?? null;
+		if ( ! is_string( $q ) || Index::terms( $q ) === array() ) {
+			throw HttpError::invalidQuery( 'q must hold at least one word', '/q' );
+		}
+		$limit = self::LIMIT;
+		if ( isset( $query['limit'] ) ) {
+			if ( ! is_string( $query['limit'] ) || ! preg_match( '/^\d{1,3}$/D', $query['limit'] ) || (int) $query['limit'] < 1 ) {
+				throw HttpError::invalidQuery( 'limit must be a positive integer', '/limit' );
+			}
+			$limit = min( (int) $query['limit'], 50 );
+		}
+		$kinds = Index::kinds();
+		if ( isset( $query['kinds'] ) ) {
+			if ( ! is_string( $query['kinds'] ) ) {
+				throw HttpError::invalidQuery( 'kinds is a comma-separated list', '/kinds' );
+			}
+			$asked = array_values( array_filter( array_map( 'trim', explode( ',', $query['kinds'] ) ), static fn ( string $k ): bool => '' !== $k ) );
+			// A kind that isn't searchable, or doesn't exist, is simply not searched: nothing tells the
+			// caller which of the two it is.
+			$kinds = array_values( array_intersect( $kinds, $asked ) );
+		}
+		$results = array();
+		foreach ( $kinds as $kind ) {
+			try {
+				$rows = db()->findMany(
+					$kind,
+					array(
+						'search' => $q,
+						'limit'  => $limit,
+					) + self::every_locale( $kind ),
+					$viewer
+				);
+			} catch ( HttpError $e ) {
+				if ( in_array( $e->status, array( 401, 403 ), true ) ) {
+					continue; // the caller may not read this kind: leave it out
+				}
+				throw $e;
+			}
+			if ( array() !== $rows ) {
+				$results[] = array(
+					'kind' => $kind,
+					'rows' => array_map( static fn ( array $row ) => \SpacePress\Wp\PostMeta::values( $kind, $row, array_map( 'strval', array_keys( $row ) ) ), $rows ),
+				);
+			}
+		}
 
-    private static function everyLocale(string $kind): array
-    {
-        return \SpacePress\Locale\Module::localized($kind) ? ['locale' => '*'] : [];
-    }
+		return array(
+			200,
+			array(
+				'q'       => $q,
+				'results' => $results,
+			),
+		);
+	}
+
+	private static function every_locale( string $kind ): array {
+		return \SpacePress\Locale\Module::localized( $kind ) ? array( 'locale' => '*' ) : array();
+	}
 }

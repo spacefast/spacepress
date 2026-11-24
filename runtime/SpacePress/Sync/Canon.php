@@ -12,38 +12,35 @@ use SpacePress\Js;
  * (integral floats without `.0`). src/sync/canon.rs implements the same bytes; the shared golden in
  * tests/fixtures/canon pins both.
  */
-final class Canon
-{
-    private const FLAGS = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS | JSON_THROW_ON_ERROR;
+final class Canon {
 
-    public static function json(mixed $value): string
-    {
-        return match (true) {
-            $value === null || is_bool($value) || is_int($value) || is_string($value) => \SpacePress\Json::encode($value, self::FLAGS),
-            is_float($value) => is_finite($value) ? Js::numStr($value) : throw new \InvalidArgumentException('Non-finite numbers have no JSON form'),
-            $value instanceof \SpacePress\JsObject => self::object($value->p),
-            $value instanceof \SpacePress\JsArray => '[' . implode(',', array_map(self::json(...), $value->a)) . ']',
-            $value instanceof \stdClass => self::object(get_object_vars($value)),
-            is_array($value) && array_is_list($value) => '[' . implode(',', array_map(self::json(...), $value)) . ']',
-            is_array($value) => self::object($value),
-            default => throw new \InvalidArgumentException('Only JSON values have a canonical form'),
-        };
-    }
+	private const FLAGS = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS | JSON_THROW_ON_ERROR;
 
-    public static function digest(mixed $value): string
-    {
-        return 'sha256:' . hash('sha256', self::json($value));
-    }
+	public static function json( mixed $value ): string {
+		return match ( true ) {
+			null === $value || is_bool( $value ) || is_int( $value ) || is_string( $value ) => \SpacePress\Json::encode( $value, self::FLAGS ),
+			is_float( $value ) => is_finite( $value ) ? Js::numStr( $value ) : throw new \InvalidArgumentException( 'Non-finite numbers have no JSON form' ),
+			$value instanceof \SpacePress\JsObject => self::object( $value->p ),
+			$value instanceof \SpacePress\JsArray => '[' . implode( ',', array_map( self::json( ... ), $value->a ) ) . ']',
+			$value instanceof \stdClass => self::object( get_object_vars( $value ) ),
+			is_array( $value ) && array_is_list( $value ) => '[' . implode( ',', array_map( self::json( ... ), $value ) ) . ']',
+			is_array( $value ) => self::object( $value ),
+			default => throw new \InvalidArgumentException( 'Only JSON values have a canonical form' ),
+		};
+	}
 
-    private static function object(array $members): string
-    {
-        $keys = array_map('strval', array_keys($members));
-        sort($keys, SORT_STRING);
-        $out = [];
-        foreach ($keys as $key) {
-            $out[] = \SpacePress\Json::encode($key, self::FLAGS) . ':' . self::json($members[$key]);
-        }
+	public static function digest( mixed $value ): string {
+		return 'sha256:' . hash( 'sha256', self::json( $value ) );
+	}
 
-        return '{' . implode(',', $out) . '}';
-    }
+	private static function object( array $members ): string {
+		$keys = array_map( 'strval', array_keys( $members ) );
+		sort( $keys, SORT_STRING );
+		$out = array();
+		foreach ( $keys as $key ) {
+			$out[] = \SpacePress\Json::encode( $key, self::FLAGS ) . ':' . self::json( $members[ $key ] );
+		}
+
+		return '{' . implode( ',', $out ) . '}';
+	}
 }

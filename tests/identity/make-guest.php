@@ -5,9 +5,15 @@ require __DIR__ . '/bootstrap.php';
 use SpacePress\Identity\{Plugin, Security};
 
 ob_start();
-add_role('sp_guest', 'Guest', ['read' => true]);
-$guest = wp_insert_user(['user_login' => 'zf_' . bin2hex(random_bytes(4)), 'user_pass' => Security::token(), 'role' => 'sp_guest']);
-do_action('sp_runtime_loaded');
-$tokens = Plugin::$accounts->issueForUser($guest, 'app_identity_flow');
+add_role( 'sp_guest', 'Guest', array( 'read' => true ) );
+$guest = wp_insert_user(
+	array(
+		'user_login' => 'zf_' . bin2hex( random_bytes( 4 ) ),
+		'user_pass'  => Security::token(),
+		'role'       => 'sp_guest',
+	)
+);
+do_action( 'sp_runtime_loaded' );
+$tokens = Plugin::$accounts->issueForUser( $guest, 'app_identity_flow' );
 ob_end_clean();
-echo json_encode($tokens + ['uid' => $guest]);
+echo json_encode( $tokens + array( 'uid' => $guest ) );

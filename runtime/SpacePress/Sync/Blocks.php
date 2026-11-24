@@ -8,47 +8,43 @@ namespace SpacePress\Sync;
  * Block markup parsing and serialization through WordPress core (parse_blocks, serialize_blocks), so sync
  * reads and writes delimiters exactly as the editor does.
  */
-final class Blocks
-{
-    public static function boot(): void
-    {
-        if (!function_exists('parse_blocks')) {
-            throw new \LogicException('SpacePress\\Sync\\Blocks needs WordPress loaded (parse_blocks)');
-        }
-    }
+final class Blocks {
 
-    /** @return list<array{blockName: ?string, attrs: array, innerBlocks: list<array>, innerHTML: string, innerContent: list<?string>}> */
-    public static function parse(string $markup): array
-    {
-        self::boot();
+	public static function boot(): void {
+		if ( ! function_exists( 'parse_blocks' ) ) {
+			throw new \LogicException( 'SpacePress\\Sync\\Blocks needs WordPress loaded (parse_blocks)' );
+		}
+	}
 
-        return parse_blocks($markup);
-    }
+	/** @return list<array{blockName: ?string, attrs: array, innerBlocks: list<array>, innerHTML: string, innerContent: list<?string>}> */
+	public static function parse( string $markup ): array {
+		self::boot();
 
-    /** @param list<array> $blocks */
-    public static function serialize(array $blocks): string
-    {
-        self::boot();
+		return parse_blocks( $markup );
+	}
 
-        return serialize_blocks($blocks);
-    }
+	/** @param list<array> $blocks */
+	public static function serialize( array $blocks ): string {
+		self::boot();
 
-    /**
-     * A block's own HTML with the delimiters dropped: innerContent interleaves its markup with a null
-     * for each inner block.
-     */
-    public static function innerHtml(array $block): string
-    {
-        $html = '';
-        $index = 0;
-        foreach ($block['innerContent'] ?? [] as $chunk) {
-            if (is_string($chunk)) {
-                $html .= $chunk;
-            } elseif (is_array($child = $block['innerBlocks'][$index++] ?? null)) {
-                $html .= self::innerHtml($child);
-            }
-        }
+		return serialize_blocks( $blocks );
+	}
 
-        return $html;
-    }
+	/**
+	 * A block's own HTML with the delimiters dropped: innerContent interleaves its markup with a null
+	 * for each inner block.
+	 */
+	public static function innerHtml( array $block ): string {
+		$html  = '';
+		$index = 0;
+		foreach ( $block['innerContent'] ?? array() as $chunk ) {
+			if ( is_string( $chunk ) ) {
+				$html .= $chunk;
+			} elseif ( is_array( $child = $block['innerBlocks'][ $index++ ] ?? null ) ) {
+				$html .= self::innerHtml( $child );
+			}
+		}
+
+		return $html;
+	}
 }

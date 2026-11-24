@@ -24,81 +24,134 @@ use SpacePress\Wp\Comments;
  *   a signed-in render already is `private, no-store`, and a signed-out one shows only approved
  *   comments, the same for everyone.
  */
-final class CommentsView
-{
-    public static function render(string $collection, mixed $item, ?string $class): Html
-    {
-        $id = (int) ($item instanceof JsObject ? ($item->p['id'] ?? 0) : (is_array($item) ? ($item['id'] ?? 0) : 0));
-        $viewer = \SpacePress\Wp\CoreAccess::viewer();
-        if ($id <= 0 || $viewer === null || !\SpacePress\Wp\CoreAccess::covers($collection, 'read', $id, $viewer)) {
-            return Html::raw('');
-        }
-        $userId = (int) ($viewer->user['id'] ?? 0);
-        // The thread is core's comment query, which no SpacePress counter follows: a live region around
-        // it is rendered and compared on every poll, so a new approved comment shows on the next one.
-        Live::unseen();
-        // A live region around the thread asks again when a comment's approval changes (Comments::seen).
-        Live::reads(\SpacePress\Wp\Comments::NOTICE);
-        $rows = Comments::thread($id, $userId);
-        $depth = Comments::policy($collection)['threaded'];
-        $byParent = [];
-        foreach ($rows as $row) {
-            $byParent[(int) ($row['parent'] ?? 0)][] = $row;
-        }
-        $state = Forms::state('comments');
-        $error = $state->p['error'] instanceof JsObject ? (string) $state->p['error']->p['message'] : null;
-        $posted = $state->p['result'] instanceof JsObject ? (string) ($state->p['result']->p['status'] ?? '') : null;
-        $count = count(array_filter($rows, static fn (array $r): bool => $r['status'] === 'approved'));
+final class CommentsView {
 
-        return Html::element('section', ['className' => trim('spacepress-comments ' . ($class ?? '')), 'aria-label' => __('Comments')],
-            Html::element('h2', [], sprintf(_n('%d comment', '%d comments', $count), $count)),
-            $error !== null ? Html::element('p', ['className' => 'spacepress-comments-error', 'role' => 'alert'], $error) : null,
-            $posted === 'pending' ? Html::element('p', ['className' => 'spacepress-comments-held', 'role' => 'status'], __('Your comment is awaiting moderation.')) : null,
-            self::list($byParent, 0, 1, $depth, $id, $userId),
-            $userId > 0
-                ? self::form($id, 0, __('Add a comment'))
-                : Html::element('p', ['className' => 'spacepress-comments-sign-in'], Html::element('a', ['href' => wp_login_url((string) ($_SERVER['REQUEST_URI'] ?? '/'))], __('Sign in to comment'))),
-        );
-    }
+	public static function render( string $collection, mixed $item, ?string $class ): Html {
+		$id     = (int) ( $item instanceof JsObject ? ( $item->p['id'] ?? 0 ) : ( is_array( $item ) ? ( $item['id'] ?? 0 ) : 0 ) );
+		$viewer = \SpacePress\Wp\CoreAccess::viewer();
+		if ( $id <= 0 || null === $viewer || ! \SpacePress\Wp\CoreAccess::covers( $collection, 'read', $id, $viewer ) ) {
+			return Html::raw( '' );
+		}
+		$user_id = (int) ( $viewer->user['id'] ?? 0 );
+		// The thread is core's comment query, which no SpacePress counter follows: a live region around
+		// it is rendered and compared on every poll, so a new approved comment shows on the next one.
+		Live::unseen();
+		// A live region around the thread asks again when a comment's approval changes (Comments::seen).
+		Live::reads( \SpacePress\Wp\Comments::NOTICE );
+		$rows      = Comments::thread( $id, $user_id );
+		$depth     = Comments::policy( $collection )['threaded'];
+		$by_parent = array();
+		foreach ( $rows as $row ) {
+			$by_parent[ (int) ( $row['parent'] ?? 0 ) ][] = $row;
+		}
+		$state  = Forms::state( 'comments' );
+		$error  = $state->p['error'] instanceof JsObject ? (string) $state->p['error']->p['message'] : null;
+		$posted = $state->p['result'] instanceof JsObject ? (string) ( $state->p['result']->p['status'] ?? '' ) : null;
+		$count  = count( array_filter( $rows, static fn ( array $r ): bool => 'approved' === $r['status'] ) );
 
-    /** @param array<int, list<array<string, mixed>>> $byParent */
-    private static function list(array $byParent, int $parent, int $level, int $depth, int $postId, int $userId): ?Html
-    {
-        $rows = $byParent[$parent] ?? [];
-        if ($rows === []) {
-            return null;
-        }
-        $items = [];
-        foreach ($rows as $row) {
-            $held = $row['status'] !== 'approved';
-            $items[] = Html::element('li', ['id' => 'comment-' . $row['id'], 'className' => $held ? 'spacepress-comment spacepress-comment-held' : 'spacepress-comment'],
-                Html::element('p', ['className' => 'spacepress-comment-meta'],
-                    Html::element('strong', [], (string) $row['authorName']), ' ',
-                    Html::element('time', ['dateTime' => (string) $row['createdAt']], wp_date(get_option('date_format') ?: 'Y-m-d', (int) strtotime((string) $row['createdAt']))),
-                    $held ? Html::children(' ', Html::element('em', [], __('Awaiting moderation'))) : null,
-                ),
-                Html::element('div', ['className' => 'spacepress-comment-body'], Markup::kses(wpautop(esc_html((string) $row['content'])))),
-                // A reply goes one level down: offered only where the policy has room, and not on a held comment.
-                $userId > 0 && !$held && $level < $depth ? self::form($postId, (int) $row['id'], __('Reply')) : null,
-                self::list($byParent, (int) $row['id'], $level + 1, $depth, $postId, $userId),
-            );
-        }
+		return Html::element(
+			'section',
+			array(
+				'className'  => trim( 'spacepress-comments ' . ( $class ?? '' ) ),
+				'aria-label' => __( 'Comments' ),
+			),
+			/* translators: %d: Number of comments. */
+			Html::element( 'h2', array(), sprintf( _n( '%d comment', '%d comments', $count ), $count ) ),
+			null !== $error ? Html::element(
+				'p',
+				array(
+					'className' => 'spacepress-comments-error',
+					'role'      => 'alert',
+				),
+				$error
+			) : null,
+			'pending' === $posted ? Html::element(
+				'p',
+				array(
+					'className' => 'spacepress-comments-held',
+					'role'      => 'status',
+				),
+				__( 'Your comment is awaiting moderation.' )
+			) : null,
+			self::list( $by_parent, 0, 1, $depth, $id, $user_id ),
+			$user_id > 0
+				? self::form( $id, 0, __( 'Add a comment' ) )
+				: Html::element( 'p', array( 'className' => 'spacepress-comments-sign-in' ), Html::element( 'a', array( 'href' => wp_login_url( (string) ( $_SERVER['REQUEST_URI'] ?? '/' ) ) ), __( 'Sign in to comment' ) ) ),
+		);
+	}
 
-        return Html::element($parent === 0 ? 'ol' : 'ol', ['className' => $parent === 0 ? 'spacepress-comments-list' : 'spacepress-comments-replies'], ...$items);
-    }
+	/** @param array<int, list<array<string, mixed>>> $byParent */
+	private static function list( array $by_parent, int $parent, int $level, int $depth, int $post_id, int $user_id ): ?Html {
+		$rows = $by_parent[ $parent ] ?? array();
+		if ( array() === $rows ) {
+			return null;
+		}
+		$items = array();
+		foreach ( $rows as $row ) {
+			$held    = 'approved' !== $row['status'];
+			$items[] = Html::element(
+				'li',
+				array(
+					'id'        => 'comment-' . $row['id'],
+					'className' => $held ? 'spacepress-comment spacepress-comment-held' : 'spacepress-comment',
+				),
+				Html::element(
+					'p',
+					array( 'className' => 'spacepress-comment-meta' ),
+					Html::element( 'strong', array(), (string) $row['authorName'] ),
+					' ',
+					Html::element( 'time', array( 'dateTime' => (string) $row['createdAt'] ), wp_date( get_option( 'date_format' ) ?: 'Y-m-d', (int) strtotime( (string) $row['createdAt'] ) ) ),
+					$held ? Html::children( ' ', Html::element( 'em', array(), __( 'Awaiting moderation' ) ) ) : null,
+				),
+				Html::element( 'div', array( 'className' => 'spacepress-comment-body' ), Markup::kses( wpautop( esc_html( (string) $row['content'] ) ) ) ),
+				// A reply goes one level down: offered only where the policy has room, and not on a held comment.
+				$user_id > 0 && ! $held && $level < $depth ? self::form( $post_id, (int) $row['id'], __( 'Reply' ) ) : null,
+				self::list( $by_parent, (int) $row['id'], $level + 1, $depth, $post_id, $user_id ),
+			);
+		}
 
-    private static function form(int $postId, int $parent, string $label): Html
-    {
-        $field = 'spacepress-comment-' . $postId . '-' . $parent;
-        $form = Html::element('form', ['method' => 'post', 'action' => \SpacePress\Wp\Facade::url('/comments'), 'className' => $parent === 0 ? 'spacepress-comments-form' : 'spacepress-comments-reply'] + Forms::enhanced(),
-            Html::element('input', ['type' => 'hidden', 'name' => 'on', 'value' => (string) $postId]),
-            $parent > 0 ? Html::element('input', ['type' => 'hidden', 'name' => 'parent', 'value' => (string) $parent]) : null,
-            Html::element('label', ['htmlFor' => $field], $label),
-            Html::element('textarea', ['id' => $field, 'name' => 'content', 'required' => true, 'rows' => $parent === 0 ? 4 : 2]),
-            Html::element('button', ['type' => 'submit'], $parent === 0 ? __('Post comment') : __('Post reply')),
-            Forms::fields('comments'),
-        );
+		return Html::element( 0 === $parent ? 'ol' : 'ol', array( 'className' => 0 === $parent ? 'spacepress-comments-list' : 'spacepress-comments-replies' ), ...$items );
+	}
 
-        return $parent === 0 ? $form : Html::element('details', [], Html::element('summary', [], $label), $form);
-    }
+	private static function form( int $post_id, int $parent, string $label ): Html {
+		$field = 'spacepress-comment-' . $post_id . '-' . $parent;
+		$form  = Html::element(
+			'form',
+			array(
+				'method'    => 'post',
+				'action'    => \SpacePress\Wp\Facade::url( '/comments' ),
+				'className' => 0 === $parent ? 'spacepress-comments-form' : 'spacepress-comments-reply',
+			) + Forms::enhanced(),
+			Html::element(
+				'input',
+				array(
+					'type'  => 'hidden',
+					'name'  => 'on',
+					'value' => (string) $post_id,
+				)
+			),
+			$parent > 0 ? Html::element(
+				'input',
+				array(
+					'type'  => 'hidden',
+					'name'  => 'parent',
+					'value' => (string) $parent,
+				)
+			) : null,
+			Html::element( 'label', array( 'htmlFor' => $field ), $label ),
+			Html::element(
+				'textarea',
+				array(
+					'id'       => $field,
+					'name'     => 'content',
+					'required' => true,
+					'rows'     => 0 === $parent ? 4 : 2,
+				)
+			),
+			Html::element( 'button', array( 'type' => 'submit' ), 0 === $parent ? __( 'Post comment' ) : __( 'Post reply' ) ),
+			Forms::fields( 'comments' ),
+		);
+
+		return 0 === $parent ? $form : Html::element( 'details', array(), Html::element( 'summary', array(), $label ), $form );
+	}
 }

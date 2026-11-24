@@ -9,14 +9,14 @@ namespace SpacePress\Wp;
  * into {@see Migrator}. Core schema migrations remain strictly forward-only; providers that execute
  * destructive operations must declare `cliOnly() === true` so they never run on HTTP boot.
  */
-interface MigrationProvider
-{
-    /** Stable identifier for this provider (e.g. "destructive-migrations"). */
-    public function id(): string;
+interface MigrationProvider {
 
-    /** When true, Migrator refuses to invoke this provider during HTTP or activation requests. */
-    public function cliOnly(): bool;
+	/** Stable identifier for this provider (e.g. "destructive-migrations"). */
+	public function id(): string;
 
-    /** Human-readable description of what this provider enables. */
-    public function describe(): string;
+	/** When true, Migrator refuses to invoke this provider during HTTP or activation requests. */
+	public function cliOnly(): bool;
+
+	/** Human-readable description of what this provider enables. */
+	public function describe(): string;
 }

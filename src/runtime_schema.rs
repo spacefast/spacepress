@@ -1151,13 +1151,14 @@ mod tests {
     fn the_runtimes_copy_of_the_reserved_global_names_is_the_compilers() {
         let php = include_str!("../runtime/SpacePress/RuntimeSchema/ReservedNames.php");
         let listed: Vec<&str> = php
-            .split_once("CLIENT_TYPES = [")
-            .and_then(|(_, rest)| rest.split_once("];"))
+            .split_once("const CLIENT_TYPES")
+            .and_then(|(_, rest)| rest.split_once('='))
+            .and_then(|(_, rest)| rest.split_once(';'))
             .expect("the CLIENT_TYPES list")
             .0
-            .split(',')
-            .map(|name| name.trim().trim_matches('\''))
-            .filter(|name| !name.is_empty())
+            .split('\'')
+            .skip(1)
+            .step_by(2)
             .collect();
         assert_eq!(listed, crate::client::RESERVED_TYPE_NAMES);
     }

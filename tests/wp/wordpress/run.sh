@@ -44,7 +44,7 @@ SP_APP_PASSWORD="admin:$password" "$first" doctor "$work/app" --out "$work/next"
 grep -q '✓ locked abilities: all present and unchanged' "$work/doctor.txt" || { cat "$work/doctor.txt" >&2; exit 1; }
 post=$("$wp/harness.sh" wp post create --post_title='Hooked' --post_content='Lane body' --post_status=publish --porcelain)
 SP_WP_HARNESS="$work/harness.json" SP_HOOKS_POST="$post" node --test "$here/wordpress.test.ts"
-"$wp/harness.sh" compose exec -T wordpress sed -i "s/'letters'\]/'letters', 'bytes']/" /var/www/html/wp-content/mu-plugins/spacepress-abilities-lane.php
+"$wp/harness.sh" compose exec -T wordpress sed -i "/'enum'[[:space:]]*=>/s/'letters'/'letters', 'bytes'/" /var/www/html/wp-content/mu-plugins/spacepress-abilities-lane.php
 SP_APP_PASSWORD="admin:$password" "$first" doctor "$work/app" --out "$work/next" --site "$url" > "$work/doctor.txt" || true
 grep -q '✗ locked abilities: acme/word-count: schema changed since the pull' "$work/doctor.txt" || { cat "$work/doctor.txt" >&2; exit 1; }
 echo "wordpress lane: ok"

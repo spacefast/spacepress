@@ -218,7 +218,7 @@ ok "a second push applies only the new migration and keeps content"
 # ---- push keeps the site's plugin and the build's plugins current --------------------------------
 # A live SpacePress app turns off plugin installs in wp-admin, so the command line does both. The site's
 # plugin is made another one here by changing the hash it reports; push replaces it with its own.
-"$harness" compose exec -T wordpress sed -i "s/define('SP_PLUGIN_HASH', '[0-9a-f]*')/define('SP_PLUGIN_HASH', '$(printf '0%.0s' {1..64})')/" /var/www/html/wp-content/plugins/spacepress/spacepress.php
+"$harness" compose exec -T wordpress sed -i -E "s/(define[[:space:]]*\([[:space:]]*'SP_PLUGIN_HASH'[[:space:]]*,[[:space:]]*')[0-9a-f]+/\1$(printf '0%.0s' {1..64})/" /var/www/html/wp-content/plugins/spacepress/spacepress.php
 [[ $(curl -s -u "$admin" "$api/site" | json pluginHash) == 0000* ]] || fail "the site reports the changed plugin"
 # The dry run plans new code (the sealed step) against the plugin the site has. None of the live
 # app's own code runs on the receiver's requests: its hook would write the option again.
@@ -231,7 +231,7 @@ step additive
 [[ -z $(option pluginlane_hook_ran) ]] || fail "a dry run runs none of the live app's WordPress hooks"
 [[ -z $("$harness" sql "SELECT option_name FROM wp_options WHERE option_name LIKE 'sp\_prebuilt\_%'" | tail -n +2) ]] || fail "a dry run records and schedules no prebuilt pages"
 # A plugin from before dry runs kept uploads private says nothing about it, and a dry run sends it nothing.
-"$harness" compose exec -T wordpress sed -i "/'dryRun' => true,/d" /var/www/html/wp-content/plugins/spacepress/src/Receiver.php
+"$harness" compose exec -T wordpress sed -i "/'dryRun'[[:space:]]*=>[[:space:]]*true,/d" /var/www/html/wp-content/plugins/spacepress/src/Receiver.php
 [[ $(curl -s -u "$admin" "$api/site" | json dryRun 2>/dev/null || true) != true ]] || fail "the older plugin doesn't say it takes dry runs"
 step sealed
 out=$(push --dry-run) || fail "a dry run to a site with an older SpacePress plugin: $out"

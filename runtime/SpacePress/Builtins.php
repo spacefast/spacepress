@@ -1,6 +1,6 @@
 <?php
 
-declare(strict_types=1);
+declare( strict_types=1 );
 
 namespace SpacePress;
 
@@ -443,16 +443,19 @@ final class Builtins {
 	public static function has( string $surface, string $name ): bool {
 		$key = $surface . '.' . $name;
 		if ( ! array_key_exists( $key, self::ARITIES ) ) {
-			return false; }
+			return false;
+		}
 		if ( null === self::ARITIES[ $key ] ) {
-			throw new JsError( 'Unsupported built-in ' . $key, 'TypeError' ); }
+			throw new JsError( 'Unsupported built-in ' . $key, 'TypeError' );
+		}
 		return true;
 	}
 
 	public static function check( string $surface, string $name, int $count ): void {
 		$key = $surface . '.' . $name;
 		if ( ! array_key_exists( $key, self::ARITIES ) ) {
-			return; }
+			return;
+		}
 		$arity = self::ARITIES[ $key ];
 		if ( null === $arity || $count < $arity[0] || $count > $arity[1] ) {
 			throw new JsError( 'Unsupported overload of ' . $key . ' (' . $count . ' arguments)', 'TypeError' );

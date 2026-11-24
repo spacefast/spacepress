@@ -808,16 +808,16 @@ mod tests {
     #[test]
     fn runtime_contract_is_current() {
         let mut php = String::from(
-            "<?php\n\ndeclare(strict_types=1);\n\nnamespace SpacePress;\n\n// Generated from src/builtins.rs; UPDATE_BUILTINS=1 cargo test --lib builtins::tests\nfinal class Builtins\n{\n",
+            "<?php\n\ndeclare(strict_types=1);\n\nnamespace SpacePress;\n\n// Generated from src/builtins.rs; UPDATE_BUILTINS=1 cargo test --lib builtins::tests\nfinal class Builtins {\n\n",
         );
         let quoted: Vec<String> = ERROR_CONSTRUCTORS.iter().map(|name| format!("'{name}'")).collect();
         writeln!(
             php,
-            "    /** The built-in Error constructors (src/builtins.rs ERROR_CONSTRUCTORS). */\n    public const ERROR_CONSTRUCTORS = [{}];\n",
+            "\t/** The built-in Error constructors (src/builtins.rs ERROR_CONSTRUCTORS). */\n\tpublic const ERROR_CONSTRUCTORS = [{}];\n",
             quoted.join(", ")
         )
         .unwrap();
-        php.push_str("    private const ARITIES = [\n");
+        php.push_str("\tprivate const ARITIES = [\n");
         let mut keys = std::collections::HashSet::new();
         for (surface, names, c) in CONTRACTS {
             assert!(!c.overload.is_empty());
@@ -835,10 +835,11 @@ mod tests {
                         }
                     )
                 });
-                writeln!(php, "        '{key}' => {bounds},").unwrap();
+                writeln!(php, "\t\t'{key}' => {bounds},").unwrap();
             }
         }
-        php.push_str("    ];\n\n    public static function has(string $surface, string $name): bool\n    {\n        $key = $surface . '.' . $name;\n        if (!array_key_exists($key, self::ARITIES)) { return false; }\n        if (self::ARITIES[$key] === null) { throw new JsError('Unsupported built-in ' . $key, 'TypeError'); }\n        return true;\n    }\n\n    public static function check(string $surface, string $name, int $count): void\n    {\n        $key = $surface . '.' . $name;\n        if (!array_key_exists($key, self::ARITIES)) { return; }\n        $arity = self::ARITIES[$key];\n        if ($arity === null || $count < $arity[0] || $count > $arity[1]) {\n            throw new JsError('Unsupported overload of ' . $key . ' (' . $count . ' arguments)', 'TypeError');\n        }\n    }\n}\n");
+        php.push_str("\t];\n\n\tpublic static function has(string $surface, string $name): bool {\n\t\t$key = $surface . '.' . $name;\n\t\tif (!array_key_exists($key, self::ARITIES)) {\n\t\t\treturn false;\n\t\t}\n\t\tif (null === self::ARITIES[$key]) {\n\t\t\tthrow new JsError('Unsupported built-in ' . $key, 'TypeError');\n\t\t}\n\t\treturn true;\n\t}\n\n\tpublic static function check(string $surface, string $name, int $count): void {\n\t\t$key = $surface . '.' . $name;\n\t\tif (!array_key_exists($key, self::ARITIES)) {\n\t\t\treturn;\n\t\t}\n\t\t$arity = self::ARITIES[$key];\n\t\tif (null === $arity || $count < $arity[0] || $count > $arity[1]) {\n\t\t\tthrow new JsError('Unsupported overload of ' . $key . ' (' . $count . ' arguments)', 'TypeError');\n\t\t}\n\t}\n}\n");
+        let php = crate::php_layout::format(&php);
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("runtime/SpacePress/Builtins.php");
         if std::env::var_os("UPDATE_BUILTINS").is_some() {
             std::fs::write(&path, &php).unwrap();

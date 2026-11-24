@@ -24,7 +24,7 @@ final class JsMap {
 			JsUndefined::Value === $key => 'u',
 			is_bool( $key ) => $key ? 't' : 'f',
 			is_int( $key ) => 'd' . $key,
-			is_float( $key ) => is_nan( $key ) ? 'N' : ( 0 == $key ? 'd0' : ( floor( $key ) === $key && abs( $key ) < 9.2e18 ? 'd' . (int) $key : 'd' . sprintf( '%.17g', $key ) ) ),
+			is_float( $key ) => is_nan( $key ) ? 'N' : ( 0.0 === $key ? 'd0' : ( floor( $key ) === $key && abs( $key ) < 9.2e18 ? 'd' . (int) $key : 'd' . sprintf( '%.17g', $key ) ) ),
 			is_string( $key ) => 's' . $key,
 			is_object( $key ) => 'o' . spl_object_id( $key ),
 			default => throw new JsError( 'Unsupported Map key', 'TypeError' ),
@@ -32,7 +32,7 @@ final class JsMap {
 	}
 
 	public static function normalize( mixed $key ): mixed {
-		return is_float( $key ) && 0 == $key ? 0 : $key;
+		return is_float( $key ) && 0.0 === $key ? 0 : $key;
 	}
 
 	public function set( mixed $key, mixed $value ): self {

@@ -127,6 +127,7 @@ final class Loader {
 
 	/** Whether a stored state may be served: the empty state, or one apply sealed. */
 	public static function sealedBy( array $state ): bool {
+		// phpcs:ignore Universal.Operators.StrictComparisons.LooseEqual -- Serialized object keys may arrive in any order.
 		if ( array_diff_key( $state, array( 'seal' => 1 ) ) == self::EMPTY && ! isset( $state['seal'] ) ) {
 			return true;
 		}

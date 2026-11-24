@@ -200,7 +200,7 @@ final class JsBinary {
 		$out = new \stdClass();
 		if ( $value instanceof JsTypedArray ) {
 			foreach ( $value->values() as $i => $item ) {
-				$out->{ (string) $i} = is_float( $item ) && ! is_finite( $item ) ? null : ( 0 == $item ? 0 : $item );
+				$out->{ (string) $i} = is_float( $item ) && ! is_finite( $item ) ? null : ( 0.0 === (float) $item ? 0 : $item );
 			}
 		}
 		return $out;

@@ -97,7 +97,7 @@ final class Js {
 		if ( is_infinite( $n ) ) {
 			return $n > 0 ? 'Infinity' : '-Infinity';
 		}
-		if ( 0.0 == $n ) {
+		if ( 0.0 === $n ) {
 			return '0';
 		}
 		$sign             = $n < 0 ? '-' : '';
@@ -232,7 +232,7 @@ final class Js {
 			$value = (float) substr( $s, 0, $used ); // correctly rounded, like V8
 		}
 		if ( $sign < 0 ) {
-			return 0 == $value ? -0.0 : self::num( - (float) $value );
+			return 0.0 === (float) $value ? -0.0 : self::num( - (float) $value );
 		}
 
 		return self::num( (float) $value );
@@ -377,14 +377,14 @@ final class Js {
 		if ( 'log' === $method ) {
 			if ( $x < 0 ) {
 				return NAN; }
-			if ( 0 == $x ) {
+			if ( 0.0 === (float) $x ) {
 				return -INF; }
-			if ( 1 == $x ) {
+			if ( 1.0 === (float) $x ) {
 				return 0; }
 			if ( INF === $x ) {
 				return INF; }
 		} elseif ( 'exp' === $method ) {
-			if ( 0 == $x ) {
+			if ( 0.0 === (float) $x ) {
 				return 1; }
 			if ( $x === -INF ) {
 				return 0; }
@@ -399,12 +399,12 @@ final class Js {
 		if ( $a instanceof JsBigInt || $b instanceof JsBigInt ) {
 			return self::dynamicBinary( '**', $a, $b ); }
 		[$a, $b] = array( (float) self::n( $a ), (float) self::n( $b ) );
-		if ( 0 == $b ) {
+		if ( 0.0 === $b ) {
 			return 1; }
-		if ( is_nan( $a ) || is_nan( $b ) || ( abs( $a ) == 1 && is_infinite( $b ) ) ) {
+		if ( is_nan( $a ) || is_nan( $b ) || ( 1.0 === abs( $a ) && is_infinite( $b ) ) ) {
 			return NAN; }
-		$odd = is_finite( $b ) && floor( $b ) == $b && fmod( abs( $b ), 2.0 ) == 1;
-		if ( 0 == $a ) {
+		$odd = is_finite( $b ) && floor( $b ) === $b && 1.0 === fmod( abs( $b ), 2.0 );
+		if ( 0.0 === $a ) {
 			$negative = fdiv( 1.0, $a ) < 0 && $odd;
 			return $b < 0 ? ( $negative ? -INF : INF ) : ( $negative ? -0.0 : 0 );
 		}
@@ -414,21 +414,21 @@ final class Js {
 		}
 		if ( is_infinite( $b ) ) {
 			return ( abs( $a ) > 1 ) === ( $b > 0 ) ? INF : 0; }
-		if ( $a < 0 && floor( $b ) != $b ) {
+		if ( $a < 0 && floor( $b ) !== $b ) {
 			return NAN; }
-		if ( 1 == $b ) {
+		if ( 1.0 === $b ) {
 			return self::num( $a ); }
-		if ( 2 == $b ) {
+		if ( 2.0 === $b ) {
 			return self::num( $a * $a ); }
-		if ( 0.5 == $b ) {
+		if ( 0.5 === $b ) {
 			return self::num( sqrt( $a ) ); }
 		$binary      = unpack( 'Nhi/Nlo', pack( 'E', abs( $a ) ) );
 		$exponent    = ( $binary['hi'] >> 20 ) & 2047;
 		$fraction    = ( ( $binary['hi'] & 0xfffff ) << 32 ) | $binary['lo'];
 		$binary_base = 0 === $exponent ? $fraction > 0 && ( $fraction & ( $fraction - 1 ) ) === 0 : 0 === $fraction;
-		if ( $binary_base && floor( $b ) == $b ) {
+		if ( $binary_base && floor( $b ) === $b ) {
 			return self::num( $a ** $b ); }
-		if ( floor( $a ) == $a && floor( $b ) == $b && $b >= 0 && $b <= 53 ) {
+		if ( floor( $a ) === $a && floor( $b ) === $b && $b >= 0 && $b <= 53 ) {
 			$result = 1.0;
 			for ( $i = 0; $i < $b; $i++ ) {
 				$result *= $a;
@@ -547,7 +547,7 @@ final class Js {
 	public static function truthy( mixed $v ): bool {
 		return match ( true ) {
 			JsUndefined::Value === $v, null === $v, false === $v, '' === $v, 0 === $v => false,
-			is_float( $v ) => ! ( 0.0 == $v || is_nan( $v ) ),
+			is_float( $v ) => ! ( 0.0 === $v || is_nan( $v ) ),
 			$v instanceof JsBigInt => ! $v->isZero(),
 			default => true,
 		};
@@ -576,7 +576,7 @@ final class Js {
 	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function strictEq( mixed $a, mixed $b ): bool {
 		if ( ( is_int( $a ) || is_float( $a ) ) && ( is_int( $b ) || is_float( $b ) ) ) {
-			return is_int( $a ) && is_int( $b ) ? $a === $b : (float) $a == (float) $b;
+			return is_int( $a ) && is_int( $b ) ? $a === $b : (float) $a === (float) $b;
 		}
 		if ( $a instanceof JsBigInt || $b instanceof JsBigInt ) {
 			return $a instanceof JsBigInt && $b instanceof JsBigInt && $a->equals( $b );
@@ -1172,11 +1172,11 @@ final class Js {
 	}
 
 	public static function sign( int|float $value ): int|float {
-		return is_nan( (float) $value ) || 0 == $value ? $value : ( $value < 0 ? -1 : 1 );
+		return is_nan( (float) $value ) || 0.0 === (float) $value ? $value : ( $value < 0 ? -1 : 1 );
 	}
 
 	public static function round( int|float $value ): int|float {
-		if ( ! is_finite( (float) $value ) || 0 == $value ) {
+		if ( ! is_finite( (float) $value ) || 0.0 === (float) $value ) {
 			return $value; }
 		if ( $value < 0 && $value >= -0.5 ) {
 			return -0.0; }
@@ -1930,7 +1930,7 @@ final class Js {
 			if ( is_nan( (float) $x ) ) {
 				return NAN;
 			}
-			if ( $x > $best || ( 0 == $x && 0 == $best && ! self::isNegZero( $x ) ) ) {
+			if ( $x > $best || ( 0.0 === (float) $x && 0.0 === (float) $best && ! self::isNegZero( $x ) ) ) {
 				$best = $x;
 			}
 		}
@@ -1944,7 +1944,7 @@ final class Js {
 			if ( is_nan( (float) $x ) ) {
 				return NAN;
 			}
-			if ( $x < $best || ( 0 == $x && 0 == $best && self::isNegZero( $x ) ) ) {
+			if ( $x < $best || ( 0.0 === (float) $x && 0.0 === (float) $best && self::isNegZero( $x ) ) ) {
 				$best = $x;
 			}
 		}
@@ -2169,7 +2169,7 @@ final class Js {
 		if ( $value instanceof JsSymbol ) {
 			return null; }
 		if ( is_float( $value ) ) {
-			return ! is_finite( $value ) ? null : ( 0.0 == $value ? 0 : $value ); }
+			return ! is_finite( $value ) ? null : ( 0.0 === $value ? 0 : $value ); }
 		if ( $value instanceof \Closure ) {
 			return null; }
 		if ( $value instanceof RegExp ) {

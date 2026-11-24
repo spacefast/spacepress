@@ -614,7 +614,7 @@ final class Html {
 			$css = self::escape( strtolower( (string) preg_replace( '/([A-Z])/', '-$1', $name ) ) );
 			$css = (string) preg_replace( '/^ms-/', '-ms-', $css );
 			if ( is_int( $value ) || is_float( $value ) ) {
-				$text = ( 0 == $value || isset( self::UNITLESS[ $name ] ) ) ? Js::str( $value ) : Js::str( $value ) . 'px';
+				$text = ( 0.0 === (float) $value || isset( self::UNITLESS[ $name ] ) ) ? Js::str( $value ) : Js::str( $value ) . 'px';
 			} else {
 				$raw = trim( Js::str( $value ) );
 				// A value can't add declarations or leave the attribute: the compiler fixes the

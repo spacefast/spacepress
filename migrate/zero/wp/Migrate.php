@@ -217,7 +217,7 @@ final class Migrate {
 		}
 		$types = array_map( static fn ( string $t ) => str_starts_with( $t, 'attachment:' ) ? 'attachment' : $t, (array) $object->object_type );
 
-		return array_filter( $types, 'post_type_exists' ) == $types ? 'post' : 'generic';
+		return array_filter( $types, 'post_type_exists' ) === $types ? 'post' : 'generic';
 	}
 
 	/**

@@ -1598,6 +1598,245 @@ export default defineConfig({ name: "access-grants" });
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
+/// `"use client"` islands can upload browser File/Blob objects to a registered `files()` bucket
+/// via `uploadFile("bucket", file, opts?)`, reusing `@typedpress/client` and validating bucket names.
+#[test]
+fn client_island_upload_file_emits_typed_client_upload_and_checks_bucket() {
+    let tmp = std::env::temp_dir().join(format!("typedpress-island-upload-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(tmp.join("tp/app")).unwrap();
+    std::fs::create_dir_all(tmp.join("tp/components")).unwrap();
+    std::fs::write(
+        tmp.join("typedpress.config.ts"),
+        r#"import { defineConfig, files } from "typedpress";
+
+export const inboxFiles = files({
+  accept: ["text/csv", "application/pdf"],
+  maxBytes: 10_000_000,
+  access: { read: "owner", create: "authenticated", delete: "owner" },
+});
+
+export default defineConfig({ name: "island-upload" });
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.join("tp/components/Dropzone.tsx"),
+        r#""use client";
+import { useState, uploadFile } from "typedpress/client";
+
+export function Dropzone() {
+  const [name, setName] = useState("");
+  const onDrop = async (event: DragEvent) => {
+    event.preventDefault();
+    const file = event.dataTransfer?.files?.[0];
+    if (!file) return;
+    const upload = await uploadFile("inboxFiles", file, { filename: file.name });
+    setName(upload.filename);
+  };
+  return <div onDrop={onDrop}>{name}</div>;
+}
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.join("tp/app/page.tsx"),
+        r#"import { Dropzone } from "../components/Dropzone";
+export default function Page() {
+  return <main><Dropzone /></main>;
+}
+"#,
+    )
+    .unwrap();
+
+    let built = first().arg("build").arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+
+    let plugin = tmp.join("tp/dist/wp-content/plugins/typedpress-app-island-upload");
+    let schema_php = std::fs::read_to_string(plugin.join("tp/app/schema.php")).unwrap();
+    assert!(
+        schema_php.contains("'client' => true"),
+        "island using uploadFile must mark client => true:\n{schema_php}"
+    );
+    let client_dir = plugin.join("tp/app/client");
+    let island_js = std::fs::read_dir(&client_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .find(|e| e.file_name().to_string_lossy().starts_with("dropzone."))
+        .expect("compiled dropzone island module");
+    let js = std::fs::read_to_string(island_js.path()).unwrap();
+    assert!(js.contains("@typedpress/client"), "missing client import:\n{js}");
+    assert!(js.contains(".files["), "missing files[bucket].upload helper:\n{js}");
+    assert!(
+        js.contains("withSyncEvent"),
+        "onDrop using dataTransfer must use withSyncEvent:\n{js}"
+    );
+    assert!(js.contains("inboxFiles"), "missing bucket argument:\n{js}");
+    assert!(js.contains("__tpUpload("), "missing upload helper call:\n{js}");
+
+    // Unknown bucket name fails build with suggestion.
+    std::fs::write(
+        tmp.join("tp/components/Dropzone.tsx"),
+        r#""use client";
+import { uploadFile } from "typedpress/client";
+export function Dropzone() {
+  const onChange = async (event: Event) => {
+    await uploadFile("inboxFile", (event.target as HTMLInputElement).files![0]);
+  };
+  return <input type="file" onChange={onChange} />;
+}
+"#,
+    )
+    .unwrap();
+    let bad = first().arg("check").arg(&tmp).output().unwrap();
+    let stderr = String::from_utf8_lossy(&bad.stderr);
+    assert_eq!(bad.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("unknown file bucket `inboxFile`"), "{stderr}");
+    assert!(stderr.contains("did you mean `inboxFiles`?"), "{stderr}");
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// Server handlers (`query`, `mutation`, `job`) can read private file metadata, UTF-8 text, and
+/// base64 bytes via `bucket.get/readText/readBase64`, and background jobs get relaxed `Fetch` limits.
+#[test]
+fn file_bucket_server_reads_and_job_fetch_limits() {
+    let tmp = std::env::temp_dir().join(format!("typedpress-file-reads-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(
+        tmp.join("typedpress.config.ts"),
+        r#"import { defineConfig, files, query } from "typedpress";
+
+export const inbox = files({
+  accept: ["text/plain", "application/octet-stream"],
+  maxBytes: 10_000_000,
+  access: { read: "owner", create: "authenticated", delete: "owner" },
+});
+
+export const inspectFile = query({ access: "authenticated" }, async ({ id }: { id: number }) => {
+  const meta = await inbox.get(id);
+  if (!meta) return { found: false, filename: null, text: null, b64: null };
+  const b64 = await inbox.readBase64(id);
+  const text = meta.mime === "text/plain" ? await inbox.readText(id) : null;
+  return { found: true, filename: meta.filename, text, b64 };
+});
+
+export default defineConfig({ name: "file-reads" });
+"#,
+    )
+    .unwrap();
+
+    let built = first().arg("build").arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+
+    let got = wp_eval_json(
+        &tmp.join("tp/dist/wp-content"),
+        r#"
+        update_option(\TypedPress\Wp\WpFiles::OK, '1', false);
+        $uid = wp_insert_user(['user_login' => 'alice', 'user_pass' => 'pass', 'role' => 'subscriber']);
+        $viewer = new \TypedPress\Viewer(['id' => $uid, 'name' => 'alice', 'role' => 'subscriber']);
+
+        $csvTmp = tempnam(sys_get_temp_dir(), 'tpcsv');
+        file_put_contents($csvTmp, "date,amount\n2026-11-24,-1250\n");
+        $csv = \TypedPress\Media\Files::upload('inbox', $csvTmp, 'bunq.csv', $viewer);
+
+        $binTmp = tempnam(sys_get_temp_dir(), 'tpbin');
+        $binBytes = "\x00\xff\xfe\x01PDF";
+        file_put_contents($binTmp, $binBytes);
+        $bin = \TypedPress\Media\Files::upload('inbox', $binTmp, 'raw.bin', $viewer);
+
+        [$sCsv, $csvRes] = $wp->call('POST', '/actions/inspectFile', ['id' => $csv['id']], $uid);
+        [$sBin, $binRes] = $wp->call('POST', '/actions/inspectFile', ['id' => $bin['id']], $uid);
+        [$sMissing, $missingRes] = $wp->call('POST', '/actions/inspectFile', ['id' => 99999], $uid);
+
+        $invalidUtf8Status = 0;
+        try {
+            \TypedPress\Media\Files::readText('inbox', $bin['id']);
+        } catch (\TypedPress\HttpError $e) {
+            $invalidUtf8Status = $e->status;
+        }
+
+        // Verify Fetch limits outside vs inside Fetch::inJob() (including restoration on throw).
+        $httpTimeout = \TypedPress\Fetch::timeout();
+        $httpMax = \TypedPress\Fetch::maxBody();
+        $jobLimits = \TypedPress\Fetch::inJob(static fn () => [\TypedPress\Fetch::timeout(), \TypedPress\Fetch::maxBody()]);
+        try {
+            \TypedPress\Fetch::inJob(static function (): void {
+                throw new \RuntimeException('boom');
+            });
+        } catch (\RuntimeException) {}
+        $afterThrowTimeout = \TypedPress\Fetch::timeout();
+
+        echo json_encode([
+            'sCsv' => $sCsv,
+            'csvRes' => $csvRes,
+            'sBin' => $sBin,
+            'binRes' => $binRes,
+            'sMissing' => $sMissing,
+            'missingRes' => $missingRes,
+            'invalidUtf8Status' => $invalidUtf8Status,
+            'httpTimeout' => $httpTimeout,
+            'httpMax' => $httpMax,
+            'jobTimeout' => $jobLimits[0],
+            'jobMax' => $jobLimits[1],
+            'afterThrowTimeout' => $afterThrowTimeout,
+        ]);
+        "#,
+        &serde_json::json!({}),
+    );
+
+    assert_eq!(
+        got,
+        serde_json::json!({
+            "sCsv": 200,
+            "csvRes": {
+                "found": true,
+                "filename": "bunq.csv",
+                "text": "date,amount\n2026-11-24,-1250\n",
+                "b64": "ZGF0ZSxhbW91bnQKMjAyNi0xMS0yNCwtMTI1MAo=",
+            },
+            "sBin": 200,
+            "binRes": {
+                "found": true,
+                "filename": "raw.bin",
+                "text": null,
+                "b64": "AP/+AVBERg==",
+            },
+            "sMissing": 200,
+            "missingRes": {
+                "found": false,
+                "filename": null,
+                "text": null,
+                "b64": null,
+            },
+            "invalidUtf8Status": 422,
+            "httpTimeout": 10,
+            "httpMax": 1048576,
+            "jobTimeout": 60,
+            "jobMax": 16777216,
+            "afterThrowTimeout": 10,
+        })
+    );
+
+    // Access rules still cannot read private file contents.
+    std::fs::write(
+        tmp.join("typedpress.config.ts"),
+        r#"import { defineConfig, files, table, text } from "typedpress";
+export const inbox = files({ accept: ["text/plain"], maxBytes: 1000 });
+export const docs = table({ name: text() }, {
+  access: { read: async () => (await inbox.readText(1)).length > 0 },
+});
+export default defineConfig({ name: "file-reads" });
+"#,
+    )
+    .unwrap();
+    let bad = first().arg("check").arg(&tmp).output().unwrap();
+    let stderr = String::from_utf8_lossy(&bad.stderr);
+    assert_eq!(bad.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("access rules can't read private files"), "{stderr}");
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
 /// A fresh WordPress on SQLite with a built `wp-content` installed, served by `php -S`
 /// (`php tests/php/wp.php serve`): the site a client and `typedpress sync` talk to.
 struct Server {

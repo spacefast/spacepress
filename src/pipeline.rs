@@ -352,6 +352,7 @@ pub fn build(
                 source,
                 shipped,
                 actions: analysis.server_actions.iter().cloned().collect(),
+                uploads: analysis.file_uploads.iter().cloned().collect(),
                 assets: analysis.assets.clone(),
                 live: !analysis.live.is_empty(),
             },

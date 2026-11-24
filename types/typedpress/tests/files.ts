@@ -1,5 +1,5 @@
 // Feature 6 config surface (phase 2 §7.2): media sizes and private file buckets. Compiles only.
-import { collection, defineConfig, file, files, text, env } from "typedpress";
+import { collection, defineConfig, file, files, text, env, type PrivateFileInfo } from "typedpress";
 
 export const decks = files({ accept: ["application/pdf", "image/*"], maxBytes: 20_000_000, access: { read: "owner", create: "author", delete: (ctx) => ctx.user?.role === "admin" } });
 export const shared = files({ accept: ["text/plain"], maxBytes: 1_000 });
@@ -27,3 +27,11 @@ void deckId, noDeck;
 // @ts-expect-error credentials must be runtime environment references
 defineConfig({ name: "x", uploads: { backend: "s3", bucket: "files", credentials: { accessKeyId: "literal", secretAccessKey: env("SECRET") } } });
 defineConfig({ name: "local", uploads: { backend: "local" } });
+
+async function checkReads(id: number) {
+  const info: PrivateFileInfo | null = await decks.get(id);
+  const body: string = await decks.readText(id);
+  const b64: string = await decks.readBase64(id);
+  void info, body, b64;
+}
+void checkReads;

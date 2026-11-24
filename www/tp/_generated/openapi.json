@@ -5817,7 +5817,7 @@
           "description": { "type": ["string", "null"] },
           "parent": {
             "anyOf": [
-              { "type": ["integer", "null"] },
+              { "type": ["integer", "string", "object", "null"] },
               {
                 "anyOf": [
                   { "$ref": "#/components/schemas/Doc" },

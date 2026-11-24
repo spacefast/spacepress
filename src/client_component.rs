@@ -693,6 +693,11 @@ impl Analysis {
         if !self.live.is_empty() {
             out.push_str("import { live } from \"@typedpress/live\";\n");
         }
+        // A server action runs through the app's typed client as its WordPress Ability, at core's run
+        // route with the REST root and nonce the page prints for the client.
+        if !self.server_actions.is_empty() {
+            out.push_str("import { createClient } from \"@typedpress/client\";\n");
+        }
         let _ = writeln!(out, "const ns = {};", js_str(&self.namespace));
         if !self.refs.is_empty() {
             // `ref={name}` rendered `data-tp-ref="name"`. The running directive's element is in
@@ -700,7 +705,11 @@ impl Analysis {
             // nested client component (its own root) is never this component's ref.
             out.push_str("const attached = (name) => {\n  const root = getElement().ref?.closest(\"[data-wp-interactive]\");\n  if (!root) return null;\n  const selector = `[data-tp-ref=\"${name}\"]`;\n  if (root.matches(selector)) return root;\n  for (const element of root.querySelectorAll(selector)) {\n    if (element.closest(\"[data-wp-interactive]\") === root) return element;\n  }\n  return null;\n};\n");
         }
-        out.push_str("const call = async (name, input) => {\n  const config = getConfig(ns);\n  const response = await fetch(config.actions[name], { method: \"POST\", credentials: \"same-origin\", headers: config.nonce ? { \"content-type\": \"application/json\", \"x-wp-nonce\": config.nonce } : { \"content-type\": \"application/json\" }, body: JSON.stringify(input ?? {}) });\n  const result = await response.json();\n  if (!response.ok) throw new Error(result?.detail ?? result?.error?.message ?? `action ${name} failed`);\n  return result.data;\n};\n\n");
+        if !self.server_actions.is_empty() {
+            out.push_str(
+                "let client;\nconst call = (name, input) => (client ??= createClient()).actions[name](input);\n\n",
+            );
+        }
         let _ = writeln!(out, "const {{ state, actions }} = store(ns, {{");
         out.push_str("  state: {\n");
         for (name, init) in &self.shared {

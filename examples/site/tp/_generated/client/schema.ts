@@ -3,6 +3,28 @@
 
 export const SCHEMA = {
   "name": "site",
+  "app": "site",
+  "abilities": {
+    "actions": {
+      "subscribeNewsletter": {
+        "ability": "subscribe-newsletter"
+      },
+      "removePost": {
+        "ability": "remove-post"
+      },
+      "moderateComment": {
+        "ability": "moderate-comment"
+      },
+      "frontPage": {
+        "ability": "front-page",
+        "readonly": true,
+        "idempotent": true
+      }
+    },
+    "globals": {
+      "settings": "settings"
+    }
+  },
   "collections": {
     "authors": {
       "path": "authors",
@@ -22,7 +44,8 @@ export const SCHEMA = {
         "avatar"
       ],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "authors"
     },
     "posts": {
       "path": "posts",
@@ -60,6 +83,7 @@ export const SCHEMA = {
       "files": [
         "manuscript"
       ],
+      "ability": "posts",
       "showIf": {
         "seo": {
           "fields": {
@@ -88,7 +112,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "comments"
     },
     "subscribers": {
       "path": "subscribers",
@@ -106,7 +131,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "subscribers"
     },
     "announcements": {
       "path": "announcements",
@@ -124,7 +150,8 @@ export const SCHEMA = {
       },
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "announcements"
     },
     "members": {
       "path": "members",
@@ -136,7 +163,8 @@ export const SCHEMA = {
       "relations": {},
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "members"
     }
   },
   "globals": [

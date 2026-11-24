@@ -6114,7 +6114,7 @@
           "kind": { "type": "string", "enum": ["hvac", "plumbing", "electrical", "appliance", "safety"] },
           "make": { "type": ["string", "null"], "maxLength": 120 },
           "model": { "type": ["string", "null"], "maxLength": 120 },
-          "installedOn": { "type": ["string", "null"], "format": "date" },
+          "installedOn": { "type": ["string", "null"] },
           "manual": { "type": ["integer", "object", "null"] },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "null"], "format": "date-time" },
@@ -6285,7 +6285,7 @@
           },
           "systemId": {
             "anyOf": [
-              { "type": "integer" },
+              { "type": ["integer", "string", "object"] },
               {
                 "anyOf": [
                   { "$ref": "#/components/schemas/System" },
@@ -6295,8 +6295,8 @@
             ]
           },
           "everyDays": { "type": "integer", "minimum": 1, "maximum": 36500 },
-          "lastDoneOn": { "type": ["string", "null"], "format": "date" },
-          "nextDueOn": { "type": "string", "format": "date" },
+          "lastDoneOn": { "type": ["string", "null"] },
+          "nextDueOn": { "type": "string" },
           "instructions": { "type": ["string", "null"] },
           "overdueAt": {
             "type": ["string", "null"],
@@ -6402,7 +6402,7 @@
           },
           "taskId": {
             "anyOf": [
-              { "type": "integer" },
+              { "type": ["integer", "string", "object"] },
               {
                 "anyOf": [
                   { "$ref": "#/components/schemas/Task" },
@@ -6414,7 +6414,7 @@
           "systemId": {
             "anyOf": [
               {
-                "type": "integer",
+                "type": ["integer", "string", "object"],
                 "x-typedpress-access": { "create": false, "update": false }
               },
               {
@@ -6425,7 +6425,7 @@
               }
             ]
           },
-          "doneOn": { "type": "string", "format": "date" },
+          "doneOn": { "type": "string" },
           "notes": { "type": ["string", "null"], "maxLength": 10000 },
           "costCents": { "type": "integer", "minimum": 0, "maximum": 100000000 },
           "photo": { "type": ["integer", "object", "null"] },

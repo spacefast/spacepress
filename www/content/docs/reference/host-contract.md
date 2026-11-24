@@ -50,7 +50,7 @@ Host contract version: **2** (`hostContract` in the manifest).
 | `/wp-json/typedpress-identity/v1/*` | TypedPress Identity's REST API |
 | `/wp-admin/new/*` | TypedPress Admin, unless the app sets `admin: false`: served by wp-admin's `admin.php?page=typedpress-admin`. Apache applies the plugin's `.htaccess` rule; any other server must send a path that is not a file to WordPress's `index.php`, which redirects it to `admin.php?page=typedpress-admin&p=<route>` |
 
-The app API is `/wp-json/typedpress/v1`; actions are `POST /wp-json/typedpress/v1/actions/<name>`. The generated client is a file of the compiled tree (`client/client.js`); the host chooses the URL it serves it at.
+The app API is `/wp-json/typedpress/v1`; actions are `POST /wp-json/typedpress/v1/actions/<name>`. The generated client runs each kind, action and global operation as the app's WordPress Ability at core's run route, `/wp-json/wp-abilities/v1/abilities/<app>/<name>/run`, and uses the app API for media, revisions, `me`, uploads, file streams, live subscriptions and sign-in: route `/wp-json/*` to WordPress and never cache it. The client is a file of the compiled tree (`client/client.js`); the host chooses the URL it serves it at.
 
 ### Mount and lifecycle
 

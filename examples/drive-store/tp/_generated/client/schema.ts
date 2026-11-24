@@ -3,6 +3,27 @@
 
 export const SCHEMA = {
   "name": "drive-store",
+  "app": "drive-store",
+  "abilities": {
+    "actions": {
+      "restock": {
+        "ability": "restock",
+        "idempotent": true
+      },
+      "markShipped": {
+        "ability": "mark-shipped",
+        "idempotent": true
+      },
+      "pendingOrders": {
+        "ability": "pending-orders",
+        "readonly": true,
+        "idempotent": true
+      }
+    },
+    "globals": {
+      "settings": "settings"
+    }
+  },
   "collections": {
     "stockMovements": {
       "path": "stock_movements",
@@ -14,7 +35,8 @@ export const SCHEMA = {
       "relations": {},
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "stock-movements"
     },
     "drives": {
       "path": "drives",
@@ -41,7 +63,8 @@ export const SCHEMA = {
       "mediaList": [
         "images"
       ],
-      "files": []
+      "files": [],
+      "ability": "drives"
     },
     "categories": {
       "path": "categories",
@@ -89,7 +112,8 @@ export const SCHEMA = {
       "relations": {},
       "media": [],
       "mediaList": [],
-      "files": []
+      "files": [],
+      "ability": "orders"
     }
   },
   "globals": [

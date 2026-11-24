@@ -1416,6 +1416,28 @@ export interface Actions {
 }
 export declare const SCHEMA: {
 	readonly name: "site";
+	readonly app: "site";
+	readonly abilities: {
+		readonly actions: {
+			readonly subscribeNewsletter: {
+				readonly ability: "subscribe-newsletter";
+			};
+			readonly removePost: {
+				readonly ability: "remove-post";
+			};
+			readonly moderateComment: {
+				readonly ability: "moderate-comment";
+			};
+			readonly frontPage: {
+				readonly ability: "front-page";
+				readonly readonly: true;
+				readonly idempotent: true;
+			};
+		};
+		readonly globals: {
+			readonly settings: "settings";
+		};
+	};
 	readonly collections: {
 		readonly authors: {
 			readonly path: "authors";
@@ -1434,6 +1456,7 @@ export declare const SCHEMA: {
 			readonly media: readonly ["avatar"];
 			readonly mediaList: readonly [];
 			readonly files: readonly [];
+			readonly ability: "authors";
 		};
 		readonly posts: {
 			readonly path: "posts";
@@ -1467,6 +1490,7 @@ export declare const SCHEMA: {
 			readonly media: readonly ["cover"];
 			readonly mediaList: readonly [];
 			readonly files: readonly ["manuscript"];
+			readonly ability: "posts";
 			readonly showIf: {
 				readonly seo: {
 					readonly fields: {
@@ -1496,6 +1520,7 @@ export declare const SCHEMA: {
 			readonly media: readonly [];
 			readonly mediaList: readonly [];
 			readonly files: readonly [];
+			readonly ability: "comments";
 		};
 		readonly subscribers: {
 			readonly path: "subscribers";
@@ -1514,6 +1539,7 @@ export declare const SCHEMA: {
 			readonly media: readonly [];
 			readonly mediaList: readonly [];
 			readonly files: readonly [];
+			readonly ability: "subscribers";
 		};
 		readonly announcements: {
 			readonly path: "announcements";
@@ -1532,6 +1558,7 @@ export declare const SCHEMA: {
 			readonly media: readonly [];
 			readonly mediaList: readonly [];
 			readonly files: readonly [];
+			readonly ability: "announcements";
 		};
 		readonly members: {
 			readonly path: "members";
@@ -1544,6 +1571,7 @@ export declare const SCHEMA: {
 			readonly media: readonly [];
 			readonly mediaList: readonly [];
 			readonly files: readonly [];
+			readonly ability: "members";
 		};
 	};
 	readonly globals: readonly ["settings"];
@@ -1830,7 +1858,7 @@ export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
 	readonly actions: ActionsClient;
 	readonly globals: GlobalsClient;
 	readonly auth: AuthClient;
-	/** `GET /wp-json/typedpress/v1`: the app's schema (kinds, fields, globals, actions), as `typedpress pull` reads it. */
+	/** `GET /wp-json/typedpress/v1`: the app's description (kinds, fields, globals, actions), as `typedpress pull` reads it. */
 	schema(): Promise<unknown>;
 };
 /** One committed transaction's changes, as the runtime's `tp_realtime_changes` hook sends them. */
@@ -1874,8 +1902,27 @@ export interface RealtimeOptions {
 /** For host scripts: every client on this page, created before or after, uses this transport by default. */
 export declare function registerRealtimeTransport(transport: RealtimeTransport): void;
 export interface ClientOptions {
-	/** Base URL including the API prefix: "https://x.test/wp-json/typedpress/v1". Default: `/wp-json/typedpress/v1` on the page's origin. */
+	/**
+	* The site's REST root: "https://x.test/wp-json" (or "https://x.test/?rest_route=" without pretty
+	* permalinks; WordPress names it in the `Link: <…>; rel="https://api.w.org/"` header of every page).
+	* The app's API URL ("https://x.test/wp-json/typedpress/v1") is accepted too, and a site URL without
+	* either is taken as its `/wp-json`. Default: the root a TypedPress page names for the client, else
+	* `/wp-json` on the page's origin.
+	*/
 	url?: string;
+	/**
+	* The app API's route below the REST root, when the site serves it somewhere other than
+	* `/typedpress/v1` (`sp_api_namespace`). With it, `url` is taken as the REST root as given, so a
+	* site with another REST prefix (`https://x.test/api`) works too. A TypedPress page names both.
+	*/
+	api?: string;
+	/**
+	* Use what a WordPress page prints for the client (`wp-script-module-data-@typedpress/client`): its
+	* REST root and the app API's namespace (unless `url` is given), and a signed-in visitor's REST
+	* nonce (unless `fetch`, `headers`, `nonce` or `auth` brings another credential; `true` uses it
+	* anyway). Default: on; `false` ignores the page.
+	*/
+	wordpress?: boolean;
 	/** WordPress cookie auth: the REST nonce; sent as `X-WP-Nonce` with `credentials: "same-origin"`. */
 	nonce?: string;
 	fetch?: typeof fetch;

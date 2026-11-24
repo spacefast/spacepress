@@ -1,7 +1,7 @@
 // Usage: node export-site.mjs <static site url>
 // Reads a `typedpress export --site` output (tests/fixtures/app-export-site) in Chromium: the home page
-// lists the hosted site's published notes, a note page's client component calls the hosted site's
-// public action across origins and shows the stored count, and the sign-in link goes to the hosted
+// lists the hosted site's published notes, a note page's client component runs the hosted site's
+// public action (its Ability) across origins and shows the stored count, and the sign-in link goes to the hosted
 // site. Prints JSON.
 import { createRequire } from "node:module";
 import { chromiumPath } from "./chromium.mjs";
@@ -14,7 +14,7 @@ try {
   page.on("pageerror", (e) => out.errors.push(String(e)));
   page.on("response", (r) => {
     if (r.status() >= 400) out.errors.push(`${r.status()} ${r.url()}`);
-    if (r.url().includes("/actions/")) out.actions.push([r.request().method(), new URL(r.url()).origin, r.status()]);
+    if (r.url().includes("/wp-abilities/v1/abilities/")) out.actions.push([r.request().method(), new URL(r.url()).origin, r.status()]);
   });
   const site = process.argv[2];
   await page.goto(`${site}/`, { waitUntil: "networkidle" });

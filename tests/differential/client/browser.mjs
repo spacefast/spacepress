@@ -15,9 +15,12 @@ const browser = await chromium.launch({ executablePath });
 try {
   const page = await browser.newPage();
   const warnings = [];
-  page.on("console", (m) => { if (m.type() === "warning" || m.type() === "error") warnings.push(m.text()); });
+  // The schema refusal below is a 422 on purpose: it is the answer that check asks for.
+  const refusal = (u) => u.includes("/clients/like/run");
+  let expectRefusal = false;
+  page.on("console", (m) => { if ((m.type() === "warning" || m.type() === "error") && !(expectRefusal && m.text().includes("422"))) warnings.push(m.text()); });
   page.on("pageerror", (e) => warnings.push(String(e)));
-  page.on("response", (r) => { if (r.status() >= 400) warnings.push(`${r.status()} ${r.url()}`); });
+  page.on("response", (r) => { if (r.status() >= 400 && !(r.status() === 422 && refusal(decodeURIComponent(r.url())))) warnings.push(`${r.status()} ${r.url()}`); });
   await page.addInitScript(() => {
     window.__mutations = [];
     window.__moved = [];
@@ -63,10 +66,18 @@ try {
   const responses = [];
   const requests = [];
   page.on("request", (r) => requests.push(r.url()));
-  page.on("response", async (r) => { if (r.url().includes("/actions/")) responses.push([r.status(), await r.text().catch(() => "")]); });
-  // One guest before the page renders, so the server's answer has a row in it.
-  const seeded = await fetch(new URL("wp-json/typedpress/v1/guestbook", url), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Ada" }) });
-  if (seeded.status !== 201) throw new Error(`seed: ${seeded.status} ${await seeded.text()}`);
+  // The component's action runs as its WordPress Ability, at core's run route (pretty `/wp-json/…`
+  // or `?rest_route=…`, as the site's REST root is).
+  const ran = (u) => decodeURIComponent(u).includes("/wp-abilities/v1/abilities/");
+  const abilityRuns = [];
+  page.on("request", (r) => {
+    if (!ran(r.url())) return;
+    abilityRuns.push(`${r.method()} ${decodeURIComponent(r.url()).replace(/^.*?(\/wp-abilities\/)/, "$1").replace(/[?&].*$/, "")} ${r.headers()["x-wp-nonce"] ? "nonce" : "no nonce"}`);
+  });
+  page.on("response", async (r) => { if (ran(r.url()) && r.request().method() === "POST") responses.push([r.status(), await r.text().catch(() => "")]); });
+  // One guest before the page renders, so the server's answer has a row in it: as a visitor, at the run route.
+  const seeded = await fetch(new URL("wp-json/wp-abilities/v1/abilities/clients/guestbook-create/run", url), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ input: { name: "Ada" } }) });
+  if (seeded.status !== 200) throw new Error(`seed: ${seeded.status} ${await seeded.text()}`);
   await page.goto(url, { waitUntil: "networkidle" });
   // The stores are loaded and hydrated once a click changes the DOM.
   const before = await page.textContent("[data-wp-interactive='clients/LikeButton']");
@@ -79,6 +90,15 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-wp-interactive='clients/LikeButton']").textContent.includes("141"), null, { timeout: 15000 })
     .catch((e) => { throw new Error(`${e.message}\nresponses: ${JSON.stringify(responses)}\nwarnings: ${JSON.stringify(warnings)}`); });
   const after = await page.textContent("[data-wp-interactive='clients/LikeButton']");
+  // The page's own client, called with input the ability's schema refuses: core's run route answers
+  // 422 and the error is the client's own type.
+  expectRefusal = true;
+  const refused = await page.evaluate(async () => {
+    const { createClient, TypedPressError } = await import("@typedpress/client");
+    const error = await createClient().actions.like({ postId: "not a number" }).catch((e) => e);
+    return { typed: error instanceof TypedPressError, status: error.status, code: error.code };
+  });
+  expectRefusal = false;
   await page.click("text=add");
   await page.click("text=add");
   // The effect (`data-wp-watch`) runs after the state change that triggers it, not with it.
@@ -136,19 +156,47 @@ try {
     const url = new URL("wp-content/plugins/typedpress-app-clients/tp/app/client/typedpress-client.js", document.baseURI.replace(/[^/]*$/, ""));
     const response = await fetch(url);
     const m = await import(url.href);
-    return [response.status, response.headers.get("content-type"), typeof m.createClient, typeof m.createClient({ url: location.origin + "/wp-json/typedpress/v1" }).actions.like];
+    return [response.status, response.headers.get("content-type"), typeof m.createClient, typeof m.createClient({ url: location.origin + "/wp-json" }).actions.like];
   });
   // `useLive`: the server answered the guestbook read in the first render; another visitor's
   // write (straight to the API, no cookies) shows on this page with no reload, by the client's poll.
   const guests = () => page.$$eval("[data-wp-interactive='clients/Guestbook'] li.guest", (li) => li.map((x) => x.textContent));
   const liveBefore = await guests();
   const loadingAttr = await page.getAttribute("[data-wp-interactive='clients/Guestbook']", "data-loading");
-  const write = await fetch(new URL("wp-json/typedpress/v1/guestbook", url), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Grace" }) });
+  const write = await fetch(new URL("wp-json/wp-abilities/v1/abilities/clients/guestbook-create/run", url), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ input: { name: "Grace" } }) });
   await page.waitForFunction(() => [...document.querySelectorAll("[data-wp-interactive='clients/Guestbook'] li.guest")].some((li) => li.textContent === "Grace"), null, { timeout: 45000 })
     .catch((e) => { throw new Error(`${e.message}\nwarnings: ${JSON.stringify(warnings)}`); });
   const liveAfter = await guests();
-  const liveRequests = requests.filter((r) => r.endsWith("/_live")).length;
-  process.stdout.write(JSON.stringify({ live: { before: liveBefore, loading: loadingAttr, write: write.status, after: liveAfter, polled: liveRequests > 0 }, client, before, after, hydration, output, items, seen, ref, toggleBefore, toggleAfter, shelfSteps, kept, warnings, responses }));
+  // Signed in, the same page runs the action at its run route with the REST nonce the page prints (core lists abilities
+  // to a signed-in user): its run route carries the REST nonce the page printed for the client.
+  const signedIn = await browser.newPage();
+  const signedRuns = [];
+  signedIn.on("pageerror", (e) => warnings.push(String(e)));
+  signedIn.on("request", (r) => {
+    const u = decodeURIComponent(r.url());
+    if (u.includes("/wp-abilities/v1/abilities")) signedRuns.push(`${r.method()} ${u.replace(/^.*?(\/wp-abilities\/)/, "$1").replace(/[?&].*$/, "")} ${r.headers()["x-wp-nonce"] ? "nonce" : "no nonce"}`);
+  });
+  await signedIn.goto(`${url}wp-login.php?redirect_to=${encodeURIComponent(url)}`);
+  // wp-login.php focuses and selects its username field 200 ms after it loads; fill after that.
+  await signedIn.waitForTimeout(300);
+  await signedIn.fill("#user_login", "admin");
+  await signedIn.fill("#user_pass", "typedpress-test-admin");
+  await Promise.all([signedIn.waitForNavigation(), signedIn.click("#wp-submit")]);
+  if (new URL(signedIn.url()).pathname !== new URL(url).pathname) await signedIn.goto(url, { waitUntil: "networkidle" });
+  const signedBefore = await signedIn.textContent("[data-wp-interactive='clients/LikeButton']");
+  await signedIn.click("[data-wp-interactive='clients/LikeButton']");
+  await signedIn.waitForFunction(() => document.querySelector("[data-wp-interactive='clients/LikeButton']").textContent.includes("141"), null, { timeout: 15000 })
+    .catch((e) => { throw new Error(`${e.message}\nsigned in: ${JSON.stringify(signedRuns)}\nwarnings: ${JSON.stringify(warnings)}`); });
+  const signed = {
+    before: signedBefore,
+    after: await signedIn.textContent("[data-wp-interactive='clients/LikeButton']"),
+    // The action's run, with the nonce (`me` reads the app API's `/me`).
+    runs: signedRuns,
+    me: await signedIn.evaluate(async () => (await (await import("@typedpress/client")).createClient().auth.me())?.name ?? null),
+  };
+  await signedIn.close();
+  const liveRequests = requests.filter((r) => decodeURIComponent(r).replace(/[?&].*$/, "").endsWith("/_live") || decodeURIComponent(r).includes("rest_route=/typedpress/v1/_live")).length;
+  process.stdout.write(JSON.stringify({ abilityRuns, refused, signed, live: { before: liveBefore, loading: loadingAttr, write: write.status, after: liveAfter, polled: liveRequests > 0 }, client, before, after, hydration, output, items, seen, ref, toggleBefore, toggleAfter, shelfSteps, kept, warnings, responses }));
 } finally {
   await browser.close();
 }

@@ -95,7 +95,7 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
     const errors = [];
     tab.on('pageerror', (error) => errors.push(error.message));
     const actionCalls = [];
-    tab.on('request', (request) => { if (request.url().includes('/actions/cheer')) actionCalls.push(request.method()); });
+    tab.on('request', (request) => { if (new URL(request.url()).pathname.endsWith('/wp-abilities/v1/abilities/fullsite/cheer/run')) actionCalls.push(request.method()); });
     await tab.goto(`${base}/notes/hosted-light/`);
     const button = 'button.cheer';
     assert.equal(await tab.textContent(button), '0 cheers');
@@ -123,7 +123,7 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
     const errors = [];
     tab.on('pageerror', (error) => errors.push(error.message));
     const actionCalls = [];
-    tab.on('request', (request) => { if (request.url().includes('/actions/cheer')) actionCalls.push(request.method()); });
+    tab.on('request', (request) => { if (new URL(request.url()).pathname.endsWith('/wp-abilities/v1/abilities/fullsite/cheer/run')) actionCalls.push(request.method()); });
     await tab.goto(`${base}/applause/`);
     const button = 'button.cheer';
     assert.equal(await tab.textContent(button), '2 cheers', 'the server rendered the stored count');

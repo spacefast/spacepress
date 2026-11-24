@@ -3991,7 +3991,7 @@
         "properties": {
           "id": { "type": "integer" },
           "title": { "type": "string", "maxLength": 160 },
-          "slug": { "type": ["string", "null"], "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "slug": { "type": ["string", "null"], "maxLength": 200 },
           "review": { "type": ["string", "null"] },
           "minutesRead": {
             "type": "integer",

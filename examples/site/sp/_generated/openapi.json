@@ -6646,7 +6646,7 @@
         "properties": {
           "id": { "type": "integer" },
           "title": { "type": "string", "minLength": 1, "maxLength": 120 },
-          "slug": { "type": ["string", "null"], "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "slug": { "type": ["string", "null"], "maxLength": 200 },
           "body": { "type": ["string", "null"] },
           "dek": { "type": ["string", "null"], "maxLength": 240 },
           "cover": { "type": ["integer", "object", "null"] },

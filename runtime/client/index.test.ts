@@ -319,9 +319,9 @@ test("problem documents become SpacePressError with every field; non-problem fai
 
   // An ability's own errors, as core's run route answers them: SpacePress's code under `sp_`, the
   // pointer in `data`, and core's schema refusal as invalid_input with its reason.
-  reply = () => ({ status: 422, body: JSON.stringify({ code: "sp_invalid_input", message: "Too long", data: { status: 422, pointer: "/title" } }) });
+  reply = () => ({ status: 422, body: JSON.stringify({ code: "sp_invalid_input", message: "Too long", data: { status: 422, title: "Invalid input", pointer: "/title" } }) });
   const spErr = await first.posts.create({ title: "x" }).catch((e: unknown) => e);
-  assert.deepEqual([spErr.status, spErr.code, spErr.detail, spErr.pointer], [422, "invalid_input", "Too long", "/title"]);
+  assert.deepEqual([spErr.status, spErr.code, spErr.title, spErr.detail, spErr.pointer], [422, "invalid_input", "Invalid input", "Too long", "/title"]);
   reply = () => ({ status: 400, body: JSON.stringify({ code: "ability_invalid_input", message: "Ability \"blog/approve-comment\" has invalid input. Reason: input[id] is not of type integer.", data: { status: 400 } }) });
   const schemaErr = await first.actions.approveComment({ id: 1 }).catch((e: unknown) => e);
   assert.deepEqual([schemaErr.status, schemaErr.code], [422, "invalid_input"]);

@@ -81,6 +81,10 @@ final class JsonSchema
         foreach ($spec['columns'] as $name => $col) {
             if (!($col['hidden'] ?? false)) {
                 $props[(string) $name] = self::column($col, true);
+                if (!empty($spec['editor']) && ($spec['slug'] ?? null) === $name) {
+                    // WordPress stores its own post name, including an empty slug on drafts.
+                    unset($props[(string) $name]['pattern'], $props[(string) $name]['minLength']);
+                }
             }
         }
 

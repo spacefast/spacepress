@@ -214,11 +214,14 @@ test("ability-only input keys are validated: the update patch and list sort dire
   assert.deepEqual([badOrder.status, badOrder.json.data?.pointer], [400, "/orderBy/title"]);
 });
 
-test("agents: false hides an ability from core REST and MCP while wp spacepress run still executes it", async () => {
+test("agents: false hides discovery and MCP while a named run still checks permissions", async () => {
   const note = first("abilities").find((a: any) => a.name === "blog/agent-note");
   assert.deepEqual([note.meta.show_in_rest, note.meta.mcp.public], [false, false]);
   assert.equal((await http("GET", `${abilities}/abilities/blog/agent-note`, { as: "admin" })).status, 404);
-  assert.equal((await runAbility("blog/agent-note", { note: "x" }, "admin")).status, 404);
+  const input = { note: `hidden ${run}` };
+  const direct = await runAbility("blog/agent-note", input, "editor");
+  assert.deepEqual([direct.status, direct.json], [200, { ...input, seen: 0 }]);
+  assert.deepEqual(outcome(await runAbility("blog/agent-note", input, "subscriber")), { status: 403, code: "forbidden" });
 
   const ran = JSON.parse(wp("spacepress", "run", "blog/agent-note", `--input=${JSON.stringify({ note: `hidden ${run}` })}`, "--user=editor")).data;
   assert.deepEqual(ran, { note: `hidden ${run}`, seen: 0 });

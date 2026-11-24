@@ -31,7 +31,7 @@ export const refsEcho = mutation({ access: (ctx) => { refsSaved.f = refsHelper; 
   return input.info ? { meta: input.meta, info: input.info } : { meta: input.meta };
 });
 
-/** Kept from agents (§7.1): an ability for PHP and `wp spacepress run`, absent from core REST and MCP. */
+/** Kept from discovery and MCP (§7.1). A named run still checks editor access. */
 export const agentNote = mutation({ access: "editor", agents: false }, async ({ note }: { note: string }) => {
   if (note.length > 200) throw new HttpError(422, "invalid_input", "note must be at most 200 characters", "/note");
   const rows = await db.query.comments.findMany({ where: { body: note }, columns: { id: true } });

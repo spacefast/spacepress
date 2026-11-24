@@ -171,7 +171,7 @@ final class Invoke
     public static function error(\Throwable $e): \WP_Error
     {
         $problem = App::problem($e);
-        $data = ['status' => $problem['status']];
+        $data = ['status' => $problem['status'], 'title' => $problem['title']];
         if (isset($problem['pointer'])) {
             $data['pointer'] = $problem['pointer'];
         }

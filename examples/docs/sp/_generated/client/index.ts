@@ -1862,7 +1862,7 @@ function wordPressError(wpCode: string, message: string, givenStatus: number, bo
   const pointer = typeof data.pointer === "string" ? data.pointer : typeof body.pointer === "string" ? body.pointer : undefined;
   return new SpacePressError({
     type: typeof body.type === "string" ? body.type : "about:blank",
-    title: typeof body.title === "string" ? body.title : code,
+    title: typeof body.title === "string" ? body.title : typeof data.title === "string" ? data.title : code,
     status: status || 500,
     code,
     detail: message,

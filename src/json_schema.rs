@@ -116,7 +116,16 @@ pub fn row(c: &Collection) -> Value {
         .columns
         .values()
         .filter(|col| !col.hidden)
-        .map(|col| (col.name.clone(), column(col, true)))
+        .map(|col| {
+            let mut schema = column(col, true);
+            if c.editor && c.slug.as_deref() == Some(col.name.as_str()) {
+                // A native post name follows WordPress's rules, including empty draft slugs.
+                let fields = schema.as_object_mut().expect("column returns a schema object");
+                fields.remove("pattern");
+                fields.remove("minLength");
+            }
+            (col.name.clone(), schema)
+        })
         .collect();
     let mut row = json!({ "type": "object", "properties": props });
     // A kind with `_rev` optimistic concurrency (post kinds with staged versions, or SQL tables with

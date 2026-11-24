@@ -198,7 +198,7 @@ test("suspension blocks every channel: Bearer, application password and cookie +
   const write = await fetch(`${api}/reviews`, { method: "POST", headers: { ...basic, "content-type": "application/json" }, body: JSON.stringify({ body: "as suspended" }) });
   assert.equal(write.status, 403, "a suspended account can't write");
   const viaAbility = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/guestbook-create/run`, { method: "POST", headers: { ...basic, "content-type": "application/json" }, body: JSON.stringify({ input: { message: "x" } }) });
-  assert.equal(viaAbility.status, 401, "abilities refuse a suspended account too");
+  assert.deepEqual([viaAbility.status, (await viaAbility.json()).code], [403, "account_unavailable"]);
   // A session WordPress resolved some other way (a cookie issued before suspension, a plugin) still
   // meets WpAuth's own suspension check on every SpacePress channel.
   const viaRuntime = wp("eval", `wp_set_current_user(${bo.id}); try { \\SpacePress\\Wp\\WpAuth::current(); echo 'allowed'; } catch (\\SpacePress\\HttpError $e) { echo $e->errorCode; }`);

@@ -10105,7 +10105,6 @@
                   "string",
                   "null"
                 ],
-                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
                 "maxLength": 200
               },
               "body": {
@@ -10143,6 +10142,8 @@
               "authorId": {
                 "type": [
                   "integer",
+                  "string",
+                  "object",
                   "null"
                 ]
               },
@@ -10402,7 +10403,6 @@
             "string",
             "null"
           ],
-          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
           "maxLength": 200
         },
         "body": {
@@ -10440,6 +10440,8 @@
         "authorId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
@@ -10834,7 +10836,6 @@
             "string",
             "null"
           ],
-          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
           "maxLength": 200
         },
         "body": {
@@ -10872,6 +10873,8 @@
         "authorId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
@@ -11278,7 +11281,6 @@
             "string",
             "null"
           ],
-          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
           "maxLength": 200
         },
         "body": {
@@ -11316,6 +11318,8 @@
         "authorId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
@@ -11528,7 +11532,6 @@
             "string",
             "null"
           ],
-          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
           "maxLength": 200
         },
         "body": {
@@ -11566,6 +11569,8 @@
         "authorId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
@@ -12073,7 +12078,6 @@
                 "string",
                 "null"
               ],
-              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
               "maxLength": 200
             },
             "body": {
@@ -12111,6 +12115,8 @@
             "authorId": {
               "type": [
                 "integer",
+                "string",
+                "object",
                 "null"
               ]
             },
@@ -12364,7 +12370,6 @@
                 "string",
                 "null"
               ],
-              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
               "maxLength": 200
             },
             "body": {
@@ -12402,6 +12407,8 @@
             "authorId": {
               "type": [
                 "integer",
+                "string",
+                "object",
                 "null"
               ]
             },
@@ -17589,8 +17596,7 @@
                 "type": [
                   "string",
                   "null"
-                ],
-                "format": "date"
+                ]
               },
               "startsAt": {
                 "type": [
@@ -17614,6 +17620,8 @@
               "postId": {
                 "type": [
                   "integer",
+                  "string",
+                  "object",
                   "null"
                 ]
               },
@@ -17756,8 +17764,7 @@
           "type": [
             "string",
             "null"
-          ],
-          "format": "date"
+          ]
         },
         "startsAt": {
           "type": [
@@ -17781,6 +17788,8 @@
         "postId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
@@ -17975,8 +17984,7 @@
           "type": [
             "string",
             "null"
-          ],
-          "format": "date"
+          ]
         },
         "startsAt": {
           "type": [
@@ -18000,6 +18008,8 @@
         "postId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
@@ -18206,8 +18216,7 @@
           "type": [
             "string",
             "null"
-          ],
-          "format": "date"
+          ]
         },
         "startsAt": {
           "type": [
@@ -18231,6 +18240,8 @@
         "postId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
@@ -18356,8 +18367,7 @@
           "type": [
             "string",
             "null"
-          ],
-          "format": "date"
+          ]
         },
         "startsAt": {
           "type": [
@@ -18381,6 +18391,8 @@
         "postId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
@@ -18688,8 +18700,7 @@
               "type": [
                 "string",
                 "null"
-              ],
-              "format": "date"
+              ]
             },
             "startsAt": {
               "type": [
@@ -18713,6 +18724,8 @@
             "postId": {
               "type": [
                 "integer",
+                "string",
+                "object",
                 "null"
               ]
             },
@@ -18879,8 +18892,7 @@
               "type": [
                 "string",
                 "null"
-              ],
-              "format": "date"
+              ]
             },
             "startsAt": {
               "type": [
@@ -18904,6 +18916,8 @@
             "postId": {
               "type": [
                 "integer",
+                "string",
+                "object",
                 "null"
               ]
             },
@@ -22242,7 +22256,11 @@
                 "type": "integer"
               },
               "postId": {
-                "type": "integer"
+                "type": [
+                  "integer",
+                  "string",
+                  "object"
+                ]
               },
               "name": {
                 "type": "string",
@@ -22348,7 +22366,11 @@
           "type": "integer"
         },
         "postId": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "string",
+            "object"
+          ]
         },
         "name": {
           "type": "string",
@@ -22454,7 +22476,11 @@
           "type": "integer"
         },
         "postId": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "string",
+            "object"
+          ]
         },
         "name": {
           "type": "string",
@@ -22567,7 +22593,11 @@
           "type": "integer"
         },
         "postId": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "string",
+            "object"
+          ]
         },
         "name": {
           "type": "string",
@@ -22653,7 +22683,11 @@
           "type": "integer"
         },
         "postId": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "string",
+            "object"
+          ]
         },
         "name": {
           "type": "string",
@@ -25575,12 +25609,16 @@
               "postId": {
                 "type": [
                   "integer",
+                  "string",
+                  "object",
                   "null"
                 ]
               },
               "teamId": {
                 "type": [
                   "integer",
+                  "string",
+                  "object",
                   "null"
                 ]
               },
@@ -25688,12 +25726,16 @@
         "postId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
         "teamId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
@@ -25788,12 +25830,16 @@
         "postId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
         "teamId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
@@ -25897,12 +25943,16 @@
         "postId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
         "teamId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
@@ -25984,12 +26034,16 @@
         "postId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },
         "teamId": {
           "type": [
             "integer",
+            "string",
+            "object",
             "null"
           ]
         },

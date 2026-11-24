@@ -11681,7 +11681,7 @@
         "properties": {
           "id": { "type": "integer" },
           "title": { "type": "string", "minLength": 1, "maxLength": 120 },
-          "slug": { "type": ["string", "null"], "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "slug": { "type": ["string", "null"], "maxLength": 200 },
           "description": { "type": ["string", "null"] },
           "startsOn": { "type": "string" },
           "venue": { "type": "string" },
@@ -12092,7 +12092,7 @@
         "properties": {
           "id": { "type": "integer" },
           "title": { "type": "string" },
-          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "slug": { "type": "string", "maxLength": 200 },
           "content": { "type": ["string", "null"] },
           "excerpt": { "type": ["string", "null"] },
           "minutes": { "type": ["integer", "null"], "minimum": 1 },
@@ -12177,7 +12177,7 @@
         "properties": {
           "id": { "type": "integer" },
           "title": { "type": "string" },
-          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "slug": { "type": "string", "maxLength": 200 },
           "content": { "type": ["string", "null"] },
           "excerpt": { "type": ["string", "null"] },
           "servings": { "type": "integer", "minimum": 1 },
@@ -12286,7 +12286,7 @@
         "properties": {
           "id": { "type": "integer" },
           "title": { "type": "string" },
-          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "slug": { "type": "string", "maxLength": 200 },
           "content": { "type": ["string", "null"] },
           "parent": {
             "anyOf": [

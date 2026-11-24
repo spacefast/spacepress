@@ -7604,13 +7604,10 @@ fn fixed_script_modules_carry_a_build_version() {
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let plugins = content.join("plugins");
     let runtime = std::fs::read_to_string(plugins.join("spacepress-runtime/spacepress-runtime.php")).unwrap();
-    let runtime_hash = runtime
-        .split("define('SP_RUNTIME_HASH', '")
-        .nth(1)
+    let runtime_hash = regex::Regex::new(r"define\s*\(\s*'SP_RUNTIME_HASH'\s*,\s*'([0-9a-f]+)'")
         .unwrap()
-        .split('\'')
-        .next()
-        .unwrap()
+        .captures(&runtime)
+        .expect("the runtime plugin declares its build hash")[1]
         .to_string();
     let client = std::fs::read(plugins.join("spacepress-app-clients/sp/app/client/spacepress-client.js")).unwrap();
     let client_hash: String = {

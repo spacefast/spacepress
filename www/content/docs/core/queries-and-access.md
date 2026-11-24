@@ -62,5 +62,5 @@ Access still applies to every search. A reader matches only the rows their read 
 The role ladder is ordered: `guest < subscriber < author < editor < admin`. Naming a role admits that role and every higher role.
 
 - Shorthands: `"anyone"`, `"authenticated"`, `"self"`, role name, or boolean.
-- Functions: `(ctx) => boolean | AccessFilter` — returning a filter restricts `read`, `update`, and `delete` queries to matching rows (non-matching rows return `404`).
+- Functions: `(ctx) => boolean | AccessFilter` (sync or `async`) — returning a filter restricts `read`, `update`, and `delete` queries to matching rows (non-matching rows return `404`). Collection, table, global, action, route, and file-bucket access functions may run read-only trusted queries (`db.query.<kind>`, `db.globals.<name>.get`, `<kind>.system` reads) to check memberships or grants; writes, viewer-scoped kind reads, `fetch`, mail, jobs, and field-access queries are refused. Results for rules evaluated without `data` are memoized per request and invalidated on any database write or rollback.
 - Field masks: `.access({ read, create, update })` on any column strips or refuses unauthorized fields across REST, pages, and client queries.

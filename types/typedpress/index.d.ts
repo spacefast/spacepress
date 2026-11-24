@@ -1261,12 +1261,12 @@ export type AccessShorthand = boolean | "anyone" | "authenticated" | "self" | "s
  */
 export type AccessRule<T extends AnyCollection = AnyCollection> =
   | AccessShorthand
-  | ((ctx: AccessCtx<Partial<Insert<T>>>) => boolean | AccessFilter<T>);
+  | ((ctx: AccessCtx<Partial<Insert<T>>>) => Awaitable<boolean | AccessFilter<T>>);
 
 /** Create rules decide on the incoming row: a boolean, never a filter. */
 export type CreateAccessRule<T extends AnyCollection = AnyCollection> =
   | AccessShorthand
-  | ((ctx: AccessCtx<Partial<Insert<T>>>) => boolean);
+  | ((ctx: AccessCtx<Partial<Insert<T>>>) => Awaitable<boolean>);
 
 /** Defaults: `read: "anyone"`, writes `"editor"`, `restore` inherits `delete`, `purge: "system"`. Readers below editor only see published rows unless `read` is a function. */
 export interface AccessConfig<T extends AnyCollection = AnyCollection> {
@@ -1279,7 +1279,7 @@ export interface AccessConfig<T extends AnyCollection = AnyCollection> {
 }
 
 /** Actions and globals have no rows to filter: a shorthand or a boolean function. */
-export type GateRule<TData = Record<string, unknown>> = AccessShorthand | ((ctx: AccessCtx<TData>) => boolean);
+export type GateRule<TData = Record<string, unknown>> = AccessShorthand | ((ctx: AccessCtx<TData>) => Awaitable<boolean>);
 
 // ---------------------------------------------------------------------------
 // 10. Hooks, actions, globals, config
@@ -1828,7 +1828,7 @@ export interface EnvValue { readonly [envBrand]: true }
 export declare function env(name: string): EnvValue;
 export interface Webhook { url: EnvValue | string; secret: EnvValue; events: WebhookEvent[] }
 export type WebhookEvent = `${string}.created` | `${string}.updated` | `${string}.deleted` | "*";
-export type FileRule = AccessShorthand | "owner" | ((ctx: AccessCtx) => boolean);
+export type FileRule = AccessShorthand | "owner" | ((ctx: AccessCtx) => Awaitable<boolean>);
 export interface FileBucket { readonly [fileBucketBrand]: true }
 export type AnyFileBucket = FileBucket;
 /** A private file bucket, named by its export: `export const decks = files({ accept, maxBytes })`. */

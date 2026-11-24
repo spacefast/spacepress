@@ -1312,7 +1312,8 @@ fn a_string_from_input_is_never_called_as_a_php_function() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
-/// §1.6: access rules are compiled like hooks, but return a boolean or a filter on the collection.
+/// §1.6: access rules are compiled like hooks, may run read-only `db.query` / `db.globals.*.get`
+/// lookups, and return a boolean or a filter on the collection.
 #[test]
 fn rejects_access_rules_that_cant_hold() {
     rejects(
@@ -1322,14 +1323,279 @@ fn rejects_access_rules_that_cant_hold() {
     );
     rejects(
         "reject-access-query",
-        "access rules can't query; put that in a hook",
-        "typedpress.config.ts:3:41",
+        "access rules can't write to the database; put that in a hook or action",
+        "typedpress.config.ts:3:39",
     );
     rejects(
         "reject-access-filter-column",
         "\"posts\" has no column or relation `ownr`",
         "typedpress.config.ts:3:39",
     );
+
+    // Additional read-only enforcement checks: global writes and viewer-scoped kind reads are refused.
+    for (name, body, needle) in [
+        (
+            "global-write",
+            r#"import { table, global, text, defineConfig, db } from "typedpress";
+export const settings = global({ mode: text().default("open") });
+export const items = table({ title: text() }, {
+  access: { read: async () => { await db.globals.settings.update({ mode: "closed" }); return true; } },
+});
+export default defineConfig({});"#,
+            "access rules can't write to the database",
+        ),
+        (
+            "viewer-read",
+            r#"import { table, text, defineConfig } from "typedpress";
+export const items = table({ title: text() }, {
+  access: { read: async () => (await items.list()).length >= 0 },
+});
+export default defineConfig({});"#,
+            "access rules can't call viewer-scoped reads",
+        ),
+        (
+            "system-write",
+            r#"import { table, text, defineConfig } from "typedpress";
+export const items = table({ title: text() }, {
+  access: { read: async () => { await items.system.create({ title: "x" }); return true; } },
+});
+export default defineConfig({});"#,
+            "access rules can't write to the database",
+        ),
+        (
+            "system-restore",
+            r#"import { table, text, defineConfig } from "typedpress";
+export const items = table({ title: text() }, {
+  softDelete: true,
+  access: { read: async () => { await items.system.restore(1); return true; } },
+});
+export default defineConfig({});"#,
+            "access rules can't write to the database",
+        ),
+        (
+            "system-purge",
+            r#"import { table, text, defineConfig } from "typedpress";
+export const items = table({ title: text() }, {
+  softDelete: true,
+  access: { read: async () => { await items.system.purge(1); return true; } },
+});
+export default defineConfig({});"#,
+            "access rules can't write to the database",
+        ),
+    ] {
+        let tmp = std::env::temp_dir().join(format!("typedpress-access-ro-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("typedpress.config.ts"), body).unwrap();
+        let out = first().arg("check").arg(&tmp).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{name}: expected failure, got:\n{stderr}");
+        assert!(stderr.contains(needle), "{name}: expected `{needle}` in:\n{stderr}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+}
+
+/// Collection/table and action access rules can run read-only `db.query.*` and `db.globals.*.get()`
+/// lookups (e.g. checking a `grants` table), memoize per-request, and invalidate on writes.
+#[test]
+fn access_rules_can_run_readonly_db_queries_and_memoize_per_request() {
+    let tmp = std::env::temp_dir().join(format!("typedpress-access-grants-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(
+        tmp.join("typedpress.config.ts"),
+        r#"import { table, global, text, integer, select, ref, mutation, defineConfig, db } from "typedpress";
+
+export const settings = global({
+  allowExport: select(["yes", "no"]).default("no"),
+}, { access: { read: "anyone", update: "admin" } });
+
+export const entities = table({
+  ownerId: integer(),
+  name: text(),
+}, { access: { read: "authenticated", create: "authenticated", update: "admin", delete: "admin" } });
+
+export const grants = table({
+  userId: integer(),
+  entityId: ref(entities).onDelete("cascade"),
+  role: select(["viewer", "editor"]),
+}, { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
+
+async function grantedEntities(userId: number, editorOnly: boolean): Promise<number[]> {
+  const rows = editorOnly
+    ? await db.query.grants.findMany({ where: { userId, role: "editor" } })
+    : await db.query.grants.findMany({ where: { userId } });
+  return rows.map((r) => r.entityId);
+}
+
+export const entries = table({
+  ownerId: integer(),
+  entityId: ref(entities).onDelete("cascade"),
+  label: text(),
+}, {
+  access: {
+    async read({ user }) {
+      if (!user) return false;
+      const ids = await grantedEntities(user.id, false);
+      if (ids.length === 0) return { ownerId: user.id };
+      return { OR: [{ ownerId: user.id }, { entityId: { in: ids } }] };
+    },
+    async create({ user, data }) {
+      if (!user) return false;
+      if (data?.ownerId === user.id) return true;
+      const entityId = data?.entityId;
+      if (entityId === undefined) return false;
+      const grant = await db.query.grants.findFirst({
+        where: { userId: user.id, entityId, role: "editor" },
+      });
+      return grant !== null;
+    },
+    async update({ user }) {
+      if (!user) return false;
+      const ids = await grantedEntities(user.id, true);
+      if (ids.length === 0) return { ownerId: user.id };
+      return { OR: [{ ownerId: user.id }, { entityId: { in: ids } }] };
+    },
+    delete: ({ user }) => (user ? { ownerId: user.id } : false),
+  },
+});
+
+export const exportData = mutation({
+  async access({ user }) {
+    if (!user) return false;
+    const cfg = await db.globals.settings.get();
+    return cfg.allowExport === "yes";
+  },
+}, async () => ({ exported: true }));
+
+export default defineConfig({ name: "access-grants" });
+"#,
+    )
+    .unwrap();
+
+    let built = first().arg("build").arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+
+    let got = wp_eval_json(
+        &tmp.join("tp/dist/wp-content"),
+        r#"
+        $ownerId = wp_insert_user(['user_login' => 'owner', 'user_pass' => 'pass', 'role' => 'administrator']);
+        $viewerId = wp_insert_user(['user_login' => 'viewer', 'user_pass' => 'pass', 'role' => 'subscriber']);
+        $editorId = wp_insert_user(['user_login' => 'ed', 'user_pass' => 'pass', 'role' => 'subscriber']);
+        $strangerId = wp_insert_user(['user_login' => 'stranger', 'user_pass' => 'pass', 'role' => 'subscriber']);
+
+        $db = \TypedPress\db();
+        $e1 = $db->insert('entities', ['ownerId' => $ownerId, 'name' => 'NL BV'], true)[0]['id'];
+        $e2 = $db->insert('entities', ['ownerId' => $ownerId, 'name' => 'Personal'], true)[0]['id'];
+        $row1 = $db->insert('entries', ['ownerId' => $ownerId, 'entityId' => $e1, 'label' => 'BV Invoice'], true)[0]['id'];
+        $row2 = $db->insert('entries', ['ownerId' => $ownerId, 'entityId' => $e2, 'label' => 'Personal Coffee'], true)[0]['id'];
+
+        $db->insert('grants', ['userId' => $viewerId, 'entityId' => $e1, 'role' => 'viewer']);
+        $db->insert('grants', ['userId' => $editorId, 'entityId' => $e1, 'role' => 'editor']);
+
+        $viewer = new \TypedPress\Viewer(['id' => $viewerId, 'name' => 'viewer', 'role' => 'subscriber']);
+        $editor = new \TypedPress\Viewer(['id' => $editorId, 'name' => 'ed', 'role' => 'subscriber']);
+        $stranger = new \TypedPress\Viewer(['id' => $strangerId, 'name' => 'stranger', 'role' => 'subscriber']);
+
+        // 1. Read: viewer sees ONLY e1 (NL BV), stranger sees nothing.
+        $viewerLabels = array_column($db->findMany('entries', [], $viewer), 'label');
+        $strangerLabels = array_column($db->findMany('entries', [], $stranger), 'label');
+
+        // 2. Create: editor can create in e1 (granted) but NOT e2; viewer cannot create in e1.
+        $editorCreateOk = false;
+        try {
+            $db->insert('entries', ['ownerId' => $ownerId, 'entityId' => $e1, 'label' => 'Editor Added'], false, $editor);
+            $editorCreateOk = true;
+        } catch (\TypedPress\HttpError $e) {}
+
+        $editorCreateDenied = false;
+        try {
+            $db->insert('entries', ['ownerId' => $ownerId, 'entityId' => $e2, 'label' => 'Nope'], false, $editor);
+        } catch (\TypedPress\HttpError $e) {
+            $editorCreateDenied = $e->status === 403;
+        }
+
+        $viewerCreateDenied = false;
+        try {
+            $db->insert('entries', ['ownerId' => $ownerId, 'entityId' => $e1, 'label' => 'Viewer Nope'], false, $viewer);
+        } catch (\TypedPress\HttpError $e) {
+            $viewerCreateDenied = $e->status === 403;
+        }
+
+        // 3. Update: viewer cannot update row1; editor CAN update row1.
+        $viewerUpdateCount = count($db->update('entries', ['label' => 'Hack'], ['id' => $row1], true, $viewer));
+        $editorUpdateCount = count($db->update('entries', ['label' => 'BV Invoice Edited'], ['id' => $row1], true, $editor));
+
+        // 4. Memoization + same-request cache invalidation:
+        // Read populates Access::$cache; inserting a grant clears it so the next read sees e2 immediately.
+        $cacheProp = new \ReflectionProperty(\TypedPress\Access::class, 'cache');
+        $db->findMany('entries', [], $stranger);
+        $cachedBeforeWrite = count($cacheProp->getValue()) > 0;
+        $db->insert('grants', ['userId' => $strangerId, 'entityId' => $e2, 'role' => 'viewer']);
+        $clearedAfterWrite = count($cacheProp->getValue()) === 0;
+        $strangerLabelsAfterGrant = array_column($db->findMany('entries', [], $stranger), 'label');
+
+        // 5. Global read inside action access rule + invalidation after globalUpdate,
+        //    plus render dependency replay on memoized cache hits and trusted reads under Seam::asViewer.
+        [$exportBefore, $_] = $wp->call('POST', '/actions/exportData', '{}', $viewerId);
+        $db->globalUpdate('settings', ['allowExport' => 'yes']);
+        [$exportAfter, $_] = $wp->call('POST', '/actions/exportData', '{}', $viewerId);
+
+        // First call populates Access::$cache outside a render; second call inside Reads::during
+        // hits the cache and must still record `global:settings` and `grants` dependencies.
+        $depReads = [];
+        $depAlso = [];
+        $actionRule = $db->schema()->action('exportData')['access'];
+        \TypedPress\Access::evaluate($actionRule, $viewer, 'create');
+        \TypedPress\Render\Reads::during(static function () use ($actionRule, $viewer, $db): void {
+            \TypedPress\Access::evaluate($actionRule, $viewer, 'create');
+            \TypedPress\Seam::asViewer($viewer, static function () use ($db, $viewer): void {
+                $db->findMany('entries', [], $viewer);
+            });
+        }, $depReads, $depAlso);
+        $memoizedReplayedGlobal = in_array('global:settings', $depAlso, true);
+        $memoizedReplayedGrants = isset($depReads['grants']);
+
+        echo json_encode([
+            'viewerLabels' => $viewerLabels,
+            'strangerLabels' => $strangerLabels,
+            'editorCreateOk' => $editorCreateOk,
+            'editorCreateDenied' => $editorCreateDenied,
+            'viewerCreateDenied' => $viewerCreateDenied,
+            'viewerUpdateCount' => $viewerUpdateCount,
+            'editorUpdateCount' => $editorUpdateCount,
+            'cachedBeforeWrite' => $cachedBeforeWrite,
+            'clearedAfterWrite' => $clearedAfterWrite,
+            'strangerLabelsAfterGrant' => $strangerLabelsAfterGrant,
+            'exportBefore' => $exportBefore,
+            'exportAfter' => $exportAfter,
+            'memoizedReplayedGlobal' => $memoizedReplayedGlobal,
+            'memoizedReplayedGrants' => $memoizedReplayedGrants,
+        ]);
+        "#,
+        &serde_json::json!({}),
+    );
+
+    assert_eq!(
+        got,
+        serde_json::json!({
+            "viewerLabels": ["BV Invoice"],
+            "strangerLabels": [],
+            "editorCreateOk": true,
+            "editorCreateDenied": true,
+            "viewerCreateDenied": true,
+            "viewerUpdateCount": 0,
+            "editorUpdateCount": 1,
+            "cachedBeforeWrite": true,
+            "clearedAfterWrite": true,
+            "strangerLabelsAfterGrant": ["Personal Coffee"],
+            "exportBefore": 403,
+            "exportAfter": 200,
+            "memoizedReplayedGlobal": true,
+            "memoizedReplayedGrants": true,
+        })
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
 }
 
 /// A fresh WordPress on SQLite with a built `wp-content` installed, served by `php -S`

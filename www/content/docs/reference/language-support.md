@@ -347,7 +347,7 @@ Evidence: `tests/fixtures/reject-build-time-clock`
 
 Status: **refused**. Diagnostic: `F4101`.
 
-Return a row filter; put database effects in a hook or action.
+Access rules may run read-only `db.query.*` and `db.globals.*.get()` lookups, but writes belong in a hook or action.
 
 Evidence: `tests/fixtures/reject-access-query`
 

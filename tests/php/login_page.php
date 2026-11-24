@@ -141,7 +141,7 @@ final class Browser {
 /** What a sign-in page shows: whose page it is, its form, its notices. */
 function view( array $r ): array {
 	$doc = new DOMDocument();
-	@$doc->loadHTML( '<?xml encoding="utf-8"?>' . $r['body'] );
+	$doc->loadHTML( '<?xml encoding="utf-8"?>' . $r['body'], LIBXML_NOERROR | LIBXML_NOWARNING );
 	$x      = new DOMXPath( $doc );
 	$texts  = static fn ( string $q ): array => array_map( static fn ( $n ) => trim( preg_replace( '/\s+/', ' ', $n->textContent ) ), iterator_to_array( $x->query( $q ) ) );
 	$form   = $x->query( "//form[@id='loginform']" )->item( 0 );

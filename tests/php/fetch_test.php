@@ -286,6 +286,7 @@ $attempt              = static function ( ?callable $setopt, string $host = 'loc
 };
 $accepted             = static function () use ( $server ): int {
 	$n = 0;
+	// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- An empty nonblocking accept ends the drain loop.
 	while ( ( $peer = @stream_socket_accept( $server, 0 ) ) !== false ) {
 		++$n;
 		fclose( $peer );

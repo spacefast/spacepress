@@ -476,6 +476,7 @@ final class Local {
 			Files::require( $zip->close(), 'archive_failed', 'Could not finalize backup.' );
 			chmod( $archive, 0600 );
 			// Hard-link publication is atomic and refuses a racing existing destination.
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- A concurrent publisher can claim the destination. The false result is handled here.
 			Files::require( @link( $archive, $output ), 'destination_exists', 'Backup destination appeared during publication; it was preserved.' );
 			$digest = hash_file( 'sha256', $output );
 			self::complete( $root, $operation );

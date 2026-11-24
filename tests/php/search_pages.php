@@ -98,7 +98,7 @@ function fetch( string $url, array $headers = array() ): array {
 
 function x( string $html ): DOMXPath {
 	$doc = new DOMDocument();
-	@$doc->loadHTML( '<?xml encoding="utf-8"?>' . $html );
+	$doc->loadHTML( '<?xml encoding="utf-8"?>' . $html, LIBXML_NOERROR | LIBXML_NOWARNING );
 	return new DOMXPath( $doc );
 }
 

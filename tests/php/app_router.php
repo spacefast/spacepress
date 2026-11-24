@@ -154,7 +154,7 @@ foreach ( array(
 	$headers = null === $user ? array() : array( $cookie( $user ) );
 	$listing = fetch( "$url/directory/all/", headers: $headers );
 	$doc     = new DOMDocument();
-	@$doc->loadHTML( $listing['body'] );
+	$doc->loadHTML( $listing['body'], LIBXML_NOERROR | LIBXML_NOWARNING );
 	foreach ( ( new DOMXPath( $doc ) )->query( '//main//a' ) as $a ) {
 		$access['links'][ $viewer ][ trim( $a->textContent ) ] = array(
 			$a->getAttribute( 'href' ),
@@ -275,7 +275,7 @@ $out  = array(
 	// `<Pagination>` on page 6 of 12, reached from a URL with another argument and a flash marker.
 	'pagination'          => ( static function () use ( $url ): array {
 		$doc = new DOMDocument();
-		@$doc->loadHTML( (string) fetch( "$url/notes/?q=tea&page=6&_flash=abcdefabcdef" )['body'] );
+		$doc->loadHTML( (string) fetch( "$url/notes/?q=tea&page=6&_flash=abcdefabcdef" )['body'], LIBXML_NOERROR | LIBXML_NOWARNING );
 		$x   = new DOMXPath( $doc );
 		$nav = $x->query( '//nav[@class="spacepress-pagination"]' )->item( 0 );
 		$out = array(
@@ -291,7 +291,7 @@ $out  = array(
 	} )(),
 	'pagination first'    => ( static function () use ( $url ): array {
 		$doc = new DOMDocument();
-		@$doc->loadHTML( (string) fetch( "$url/notes/" )['body'] );
+		$doc->loadHTML( (string) fetch( "$url/notes/" )['body'], LIBXML_NOERROR | LIBXML_NOWARNING );
 		$x = new DOMXPath( $doc );
 		return array_map( static fn ( $li ) => trim( $li->textContent ), iterator_to_array( $x->query( '//nav[@class="spacepress-pagination"]//li' ) ) );
 	} )(),

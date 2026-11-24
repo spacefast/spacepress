@@ -79,7 +79,7 @@ function fetch( string $url, string $method = 'GET', array $headers = array(), ?
 /** What a page shows: the theme's parts, the app's markup, the head. */
 function shape( array $r ): array {
 	$doc = new DOMDocument();
-	@$doc->loadHTML( '<?xml encoding="utf-8"?>' . $r['body'] );
+	$doc->loadHTML( '<?xml encoding="utf-8"?>' . $r['body'], LIBXML_NOERROR | LIBXML_NOWARNING );
 	$x     = new DOMXPath( $doc );
 	$count = static fn ( string $q ): int => $x->query( $q )->length;
 	$text  = static fn ( string $q ): ?string => ( $n = $x->query( $q )->item( 0 ) ) ? trim( preg_replace( '/\s+/', ' ', $n->textContent ) ) : null;

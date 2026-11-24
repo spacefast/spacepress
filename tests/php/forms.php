@@ -58,7 +58,7 @@ function fetch( string $url, string $method = 'GET', array $headers = array(), ?
 /** The form with class $class on $html: its action, method and fields (hidden ones with values). */
 function form( string $html, string $class ): array {
 	$doc = new DOMDocument();
-	@$doc->loadHTML( $html );
+	$doc->loadHTML( $html, LIBXML_NOERROR | LIBXML_NOWARNING );
 	foreach ( $doc->getElementsByTagName( 'form' ) as $form ) {
 		if ( $form->getAttribute( 'class' ) !== $class ) {
 			continue;
@@ -79,7 +79,7 @@ function form( string $html, string $class ): array {
 /** The text of the first element with class $class, or null. */
 function text( string $html, string $class ): ?string {
 	$doc = new DOMDocument();
-	@$doc->loadHTML( $html );
+	$doc->loadHTML( $html, LIBXML_NOERROR | LIBXML_NOWARNING );
 	foreach ( ( new DOMXPath( $doc ) )->query( "//*[@class='$class']" ) as $node ) {
 		return trim( $node->textContent );
 	}
@@ -199,7 +199,7 @@ $out['invalid'] = array(
 // how its last submit went. After a success the form starts over.
 $state              = static function ( array $back ): array {
 	$doc = new DOMDocument();
-	@$doc->loadHTML( $back['body'] );
+	$doc->loadHTML( $back['body'], LIBXML_NOERROR | LIBXML_NOWARNING );
 	$xpath = new DOMXPath( $doc );
 	$form  = $xpath->query( "//form[@class='subscribe']" )->item( 0 );
 	$attr  = static fn ( string $name, string $attribute ): ?string => ( $n = $xpath->query( ".//*[@name='$name']", $form )->item( 0 ) ) !== null && $n->hasAttribute( $attribute ) ? $n->getAttribute( $attribute ) : null;
@@ -354,7 +354,7 @@ foreach ( array( 'Ann', 'Bo', 'Cy' ) as $n ) {
 $rows     = fetch( "$url/rows/" );
 $rowState = static function ( string $html ): array {
 	$doc = new DOMDocument();
-	@$doc->loadHTML( $html );
+	$doc->loadHTML( $html, LIBXML_NOERROR | LIBXML_NOWARNING );
 	$xpath = new DOMXPath( $doc );
 	$out   = array();
 	foreach ( $xpath->query( "//form[starts-with(@class, 'row ')]" ) as $form ) {
@@ -373,7 +373,7 @@ $rowState = static function ( string $html ): array {
 };
 $second   = ( static function ( string $html ): array {
 	$doc = new DOMDocument();
-	@$doc->loadHTML( $html );
+	$doc->loadHTML( $html, LIBXML_NOERROR | LIBXML_NOWARNING );
 	$xpath  = new DOMXPath( $doc );
 	$form   = $xpath->query( "//form[starts-with(@class, 'row ')]" )->item( 1 );
 	$fields = array();

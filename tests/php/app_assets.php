@@ -59,7 +59,7 @@ $out = array();
 foreach ( array( 'about', 'plain', 'colophon' ) as $path ) {
 	$page = get( "$url/$path/" );
 	$html = new DOMDocument();
-	@$html->loadHTML( $page['body'] );
+	$html->loadHTML( $page['body'], LIBXML_NOERROR | LIBXML_NOWARNING );
 	$xpath      = new DOMXPath( $html );
 	$styleOrder = array();
 	foreach ( $xpath->query( '//style[@id="global-styles-inline-css" or @id="late-theme-inline-css" or @id="owner-override-inline-css"] | //link[@rel="stylesheet"][starts-with(@id, "spacepress-app-")] | //style[starts-with(@id, "spacepress-app-")]' ) as $style ) {

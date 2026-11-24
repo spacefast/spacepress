@@ -432,6 +432,7 @@ final class Receiver {
 			);
 		}
 		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Hosts can enforce their own execution limit.
 			@set_time_limit( 300 );
 		}
 		$zip = "$parts/tree.zip";
@@ -496,6 +497,7 @@ final class Receiver {
 		self::mounted( $request['id'], $deployment, 'activate' );
 		Site::checkCommerce( $deployment['manifest'] );
 		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Hosts can enforce their own execution limit.
 			@set_time_limit( 300 );
 		}
 		$root  = Site::store();

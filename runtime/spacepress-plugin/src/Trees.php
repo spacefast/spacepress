@@ -74,9 +74,11 @@ final class Trees {
 		}
 		$rules = "# SpacePress's build store: code and data, never served.\nRequire all denied\n";
 		if ( @file_get_contents( $root . '/.htaccess' ) !== $rules ) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- These files supplement the host configuration on hosts that support them.
 			@file_put_contents( $root . '/.htaccess', $rules );
 		}
 		if ( ! is_file( $root . '/index.php' ) ) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- These files supplement the host configuration on hosts that support them.
 			@file_put_contents( $root . '/index.php', "<?php\n// Silence is golden.\n" );
 		}
 	}
@@ -114,6 +116,7 @@ final class Trees {
 			. "  </IfModule>\n"
 			. "</FilesMatch>\n";
 		if ( @file_get_contents( "$public/.htaccess" ) !== $rules ) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- These files supplement the host configuration on hosts that support them.
 			@file_put_contents( "$public/.htaccess", $rules );
 		}
 		$staged = "$public/.tmp/" . bin2hex( random_bytes( 8 ) );

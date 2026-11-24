@@ -60,7 +60,7 @@ $get        = static function ( string $path ) use ( $url ): array {
 };
 $renderLink = static function ( array $props ): DOMElement {
 	$html = new DOMDocument();
-	@$html->loadHTML( \SpacePress\Render\Markup::link( $props, 'Link' )->html() );
+	$html->loadHTML( \SpacePress\Render\Markup::link( $props, 'Link' )->html(), LIBXML_NOERROR | LIBXML_NOWARNING );
 	return $html->getElementsByTagName( 'a' )->item( 0 );
 };
 $links      = array();
@@ -120,7 +120,7 @@ $site->actAs( null );
 $trailing                                    = $GLOBALS['wp_rewrite']->use_trailing_slashes;
 $GLOBALS['wp_rewrite']->use_trailing_slashes = false;
 $html                                        = new DOMDocument();
-@$html->loadHTML( \SpacePress\Render\Markup::link( array( 'href' => '/notes/dawn-on-the-ridge/?q=tea#body' ), 'Link' )->html() );
+$html->loadHTML( \SpacePress\Render\Markup::link( array( 'href' => '/notes/dawn-on-the-ridge/?q=tea#body' ), 'Link' )->html(), LIBXML_NOERROR | LIBXML_NOWARNING );
 $links['without slash']                      = $html->getElementsByTagName( 'a' )->item( 0 )->getAttribute( 'href' );
 $GLOBALS['wp_rewrite']->use_trailing_slashes = $trailing;
 echo json_encode(

@@ -298,7 +298,7 @@ $out['renamed purges'] = array_values( array_intersect( array( '/notes/hello-not
 $out['new url']        = $got( '/notes/renamed-note/' )['status'];
 // The sitemap, as a crawler reads it: the index, then every file it names. Core renders the XML.
 $locs   = static function ( string $xml ): array {
-	$doc = @simplexml_load_string( $xml );
+	$doc = simplexml_load_string( $xml, 'SimpleXMLElement', LIBXML_NOERROR | LIBXML_NOWARNING );
 	$out = array();
 	foreach ( false === $doc ? array() : $doc->children() as $entry ) {
 		$out[] = (string) $entry->loc;
@@ -367,7 +367,7 @@ $wpdb->update(
 );
 clean_post_cache( (int) $wpdb->get_var( "SELECT ID FROM {$wpdb->posts} WHERE post_name = 'core-locked'" ) );
 $out['sitemap']['home lastmod']       = ( static function () use ( $got ): ?string {
-	$doc = @simplexml_load_string( $got( '/wp-sitemap-posts-page-1.xml' )['body'] );
+	$doc = simplexml_load_string( $got( '/wp-sitemap-posts-page-1.xml' )['body'], 'SimpleXMLElement', LIBXML_NOERROR | LIBXML_NOWARNING );
 	foreach ( false === $doc ? array() : $doc->children() as $entry ) {
 		if ( str_ends_with( (string) $entry->loc, '/' ) && substr_count( parse_url( (string) $entry->loc, PHP_URL_PATH ) ?? '/', '/' ) === 1 ) {
 			return (string) $entry->lastmod;

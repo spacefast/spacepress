@@ -39,7 +39,7 @@ $url = $site->url();
 
 $html = (string) file_get_contents( "$url/links/" );
 $doc  = new DOMDocument();
-@$doc->loadHTML( $html );
+$doc->loadHTML( $html, LIBXML_NOERROR | LIBXML_NOWARNING );
 $links = array();
 foreach ( ( new DOMXPath( $doc ) )->query( '//main//a' ) as $link ) {
 	$links[ trim( $link->textContent ) ] = array(

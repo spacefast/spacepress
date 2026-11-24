@@ -27,7 +27,7 @@ function page( string $url ): array {
 	$body   = (string) curl_exec( $ch );
 	$status = (int) curl_getinfo( $ch, CURLINFO_RESPONSE_CODE );
 	$html   = new DOMDocument();
-	@$html->loadHTML( '<?xml encoding="utf-8"?>' . $body );
+	$html->loadHTML( '<?xml encoding="utf-8"?>' . $body, LIBXML_NOERROR | LIBXML_NOWARNING );
 	return array( $status, new DOMXPath( $html ) );
 }
 $texts = static fn ( DOMXPath $x, string $q ): array => array_map( static fn ( DOMNode $n ): string => trim( preg_replace( '/\s+/', ' ', $n->textContent ) ), iterator_to_array( $x->query( $q ) ) );

@@ -316,7 +316,9 @@ final class Connection {
 		// PHP 8.4 moved the SQLite extensions onto Pdo\Sqlite, and 8.5 deprecates them on PDO; the plugin
 		// still constructs a plain PDO, whose only way to add functions is the deprecated pair (silenced).
 		$native    = $pdo instanceof \Pdo\Sqlite;
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Preserve registration through the deprecated API for legacy PDO connections.
 		$function  = static fn ( string $name, callable $fn, int $args ): bool => $native ? $pdo->createFunction( $name, $fn, $args ) : @$pdo->sqliteCreateFunction( $name, $fn, $args );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Preserve registration through the deprecated API for legacy PDO connections.
 		$aggregate = static fn ( string $name, callable $step, callable $final, int $args ): bool => $native ? $pdo->createAggregate( $name, $step, $final, $args ) : @$pdo->sqliteCreateAggregate( $name, $step, $final, $args );
 		// JSON_CONTAINS(doc, candidate): a list contains the candidate as one element; a scalar equals it.
 		$function(

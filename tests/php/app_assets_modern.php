@@ -34,7 +34,7 @@ function fetchUrl( string $url ): array {
 
 $page = fetchUrl( "$url/" );
 $html = new DOMDocument();
-@$html->loadHTML( $page['body'] );
+$html->loadHTML( $page['body'], LIBXML_NOERROR | LIBXML_NOWARNING );
 $xpath = new DOMXPath( $html );
 
 $inlineStyles = array();

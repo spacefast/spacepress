@@ -13,8 +13,8 @@ final class Plugin {
 	 * meta writes unslash what they store. Here, not on the provider, so reading it never loads a
 	 * class that extends Two Factor's (a site without Two Factor has none).
 	 */
-	public const TWO_FACTOR_KEY                    = 'SpacePress_Identity_TwoFactorProvider';
-	public const VERSION                           = '0.3.0';
+	public const TWO_FACTOR_KEY                     = 'SpacePress_Identity_TwoFactorProvider';
+	public const VERSION                            = '0.3.0';
 	private static ?\WP_Error $authentication_error = null;
 	public static DB $db;
 	public static Accounts $accounts;

@@ -277,9 +277,11 @@ final class Seam {
 		}
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function findMany( string $collection, mixed $opts = array() ): JsArray {
 		return new JsArray( array_map( static fn ( $row ) => self::rowToJs( $collection, $row ), Db::instance()->findMany( $collection, $opts, self::$viewer ) ) );
 	}
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function findFirst( string $collection, mixed $opts = array() ): ?JsObject {
 		$row = Db::instance()->findFirst( $collection, $opts, self::$viewer );
 		return null === $row ? null : self::rowToJs( $collection, $row );
@@ -322,6 +324,7 @@ final class Seam {
 		}
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function kindList( string $collection, mixed $opts, bool $trusted ): JsArray {
 		$viewer = self::as( $trusted );
 		$opts   = self::query( $collection, $opts );
@@ -330,6 +333,7 @@ final class Seam {
 	}
 
 	/** `{ rows, cursor }`: `limit` rows (20 by default, at most 100) after `cursor`; `cursor` is null on the last page. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function kindPaginate( string $collection, mixed $opts, bool $trusted ): JsObject {
 		$viewer = self::as( $trusted );
 		$opts   = self::query( $collection, $opts );
@@ -367,6 +371,7 @@ final class Seam {
 		);
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function kindCount( string $collection, mixed $opts, bool $trusted ): int {
 		$viewer = self::as( $trusted );
 		$opts   = self::query( $collection, $opts );
@@ -389,6 +394,7 @@ final class Seam {
 	 * One row by id or by a filter (`{ slug: "hello" }`); null when no row the visitor may read matches.
 	 * A kind the visitor may not read at all is the API's 401/403, as on every list.
 	 */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function kindGet( string $collection, array $selector, mixed $opts, bool $trusted ): ?JsObject {
 		$db    = Db::instance();
 		$where = array_key_exists( 'id', $selector )
@@ -399,11 +405,13 @@ final class Seam {
 		return null === $row ? null : self::rowToJs( $collection, $row );
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function kindCreate( string $collection, mixed $values, bool $trusted ): JsObject {
 		return self::rowToJs( $collection, Db::instance()->insert( $collection, $values, true, self::as( $trusted ) )[0] );
 	}
 
 	/** The updated row; a 404 when no row has that id or the visitor's update rule doesn't cover it. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function kindUpdate( string $collection, mixed $id, mixed $patch, bool $trusted ): JsObject {
 		$db  = Db::instance();
 		$pk  = $db->schema()->collection( $collection )['primaryKey'];
@@ -413,6 +421,7 @@ final class Seam {
 	}
 
 	/** The deleted row; a 404 when no row has that id or the visitor's delete rule doesn't cover it. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function kindDelete( string $collection, mixed $id, bool $trusted ): JsObject {
 		$db  = Db::instance();
 		$pk  = $db->schema()->collection( $collection )['primaryKey'];
@@ -422,6 +431,7 @@ final class Seam {
 	}
 
 	/** Restores a soft-deleted row (and any cascade-deleted children sharing its deletedGroup). */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function kindRestore( string $collection, mixed $id, bool $trusted ): JsObject {
 		$db  = Db::instance();
 		$pk  = $db->schema()->collection( $collection )['primaryKey'];
@@ -431,6 +441,7 @@ final class Seam {
 	}
 
 	/** Permanently deletes a row (active or soft-deleted). Default access is "system". */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function kindPurge( string $collection, mixed $id, bool $trusted ): JsObject {
 		$db  = Db::instance();
 		$pk  = $db->schema()->collection( $collection )['primaryKey'];
@@ -440,6 +451,7 @@ final class Seam {
 	}
 
 	/** Lists saved revisions of a row, newest first. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function kindRevisionsList( string $collection, mixed $id, bool $trusted ): JsArray {
 		$db   = Db::instance();
 		$revs = $db->revisions( $collection, self::toPhp( $id ), self::as( $trusted ) );
@@ -478,6 +490,7 @@ final class Seam {
 	}
 
 	/** Reads a single revision snapshot by version number. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function kindRevisionsGet( string $collection, mixed $id, mixed $version, bool $trusted ): JsObject {
 		$ver = is_int( $version ) || is_float( $version ) ? (int) $version : throw HttpError::invalidInput( 'version must be an integer' );
 
@@ -485,6 +498,7 @@ final class Seam {
 	}
 
 	/** Diffs two revisions of a row by version number. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function kindRevisionsDiff( string $collection, mixed $id, mixed $fromVersion, mixed $toVersion, bool $trusted ): JsObject {
 		$from = is_int( $fromVersion ) || is_float( $fromVersion ) ? (int) $fromVersion : throw HttpError::invalidInput( 'fromVersion must be an integer' );
 		$to   = is_int( $toVersion ) || is_float( $toVersion ) ? (int) $toVersion : throw HttpError::invalidInput( 'toVersion must be an integer' );
@@ -511,6 +525,7 @@ final class Seam {
 	}
 
 	/** Restores a row to a prior revision by version number. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function kindRevisionsRestore( string $collection, mixed $id, mixed $version, bool $trusted ): JsObject {
 		$ver = is_int( $version ) || is_float( $version ) ? (int) $version : throw HttpError::invalidInput( 'version must be an integer' );
 
@@ -527,10 +542,12 @@ final class Seam {
 		return $value;
 	}
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function globalGet( string $name ): JsObject {
 		$db = Db::instance();
 		return self::toJs( $db->globalGet( $name, self::$viewer ), $db->schema()->global( $name )['fields'] );
 	}
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function globalUpdate( string $name, mixed $patch ): JsObject {
 		$db = Db::instance();
 		return self::toJs( $db->globalUpdate( $name, $patch ), $db->schema()->global( $name )['fields'] );

@@ -426,7 +426,7 @@ final class Uploads {
 
 	/** Whether this request's upload failed because the storage was unavailable; reading it resets it. */
 	public static function storageFailed(): bool {
-		$failed              = self::$storage_failed;
+		$failed               = self::$storage_failed;
 		self::$storage_failed = false;
 
 		return $failed;

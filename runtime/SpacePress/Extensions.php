@@ -12,7 +12,7 @@ final class Extensions {
 	/** @var array<string, callable> */
 	private static array $routes = array();
 	/** @var array<string, callable> */
-	private static array $commands         = array();
+	private static array $commands           = array();
 	private static bool $unproven_read_scope = false;
 	/** Whether every read extension says which columns it reads (so `columns` can narrow the SELECT). */
 	private static bool $reads_all = false;
@@ -24,7 +24,7 @@ final class Extensions {
 	 * @param bool $constraintSafe true only when row membership and constraint columns are preserved except for schema access rules
 	 */
 	public static function beforeRead( callable $fn, bool $constraintSafe = false ): void {
-		self::$hooks['query'][]  = $fn;
+		self::$hooks['query'][]    = $fn;
 		self::$unproven_read_scope = self::$unproven_read_scope || ! $constraintSafe;
 	}
 
@@ -36,7 +36,7 @@ final class Extensions {
 	 *   read selects every column.
 	 */
 	public static function onRead( callable $fn, bool $constraintSafe = false, ?\Closure $reads = null ): void {
-		self::$hooks['read'][]   = $fn;
+		self::$hooks['read'][]     = $fn;
 		self::$unproven_read_scope = self::$unproven_read_scope || ! $constraintSafe;
 		if ( null === $reads ) {
 			self::$reads_all = true;

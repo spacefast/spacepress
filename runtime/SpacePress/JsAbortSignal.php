@@ -180,7 +180,7 @@ final class JsAbortSignal {
 	/** An event handler attribute keeps the listener slot of its first non-null assignment. */
 	public function setOnabort( mixed $handler ): void {
 		self::$handler_marker ??= static function (): void {};
-		$handler               = $handler instanceof \Closure ? $handler : null;
+		$handler                = $handler instanceof \Closure ? $handler : null;
 		if ( null !== $handler && null === $this->onabort ) {
 			$this->listeners[] = array( self::$handler_marker, false ); }
 		if ( null === $handler ) {

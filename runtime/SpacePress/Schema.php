@@ -315,6 +315,7 @@ final class Schema {
 	 *
 	 * @return ?array{guests: bool, moderation: string, threaded: int, closeAfterDays: ?int, types: list<string>}
 	 */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public function commentPolicy( string $collection ): ?array {
 		$spec = $this->collection( $collection );
 		if ( ( $spec['comments'] ?? false ) !== true ) {

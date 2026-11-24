@@ -151,9 +151,9 @@ final class Register {
 		if ( null !== $selected && $selected !== $name ) {
 			return self::wrong_run_name();
 		}
-		self::$stack[]    = array( $request, self::state() );
+		self::$stack[]     = array( $request, self::state() );
 		self::$typed_query = false;
-		self::$queried    = null;
+		self::$queried     = null;
 		if ( ! in_array( $request->get_method(), array( 'GET', 'HEAD', 'DELETE' ), true ) ) {
 			return $result;
 		}
@@ -179,8 +179,8 @@ final class Register {
 				return $result;
 			}
 			self::$typed_query = true;
-			self::$queried    = array( $name, $sent );
-			$query['input']   = $input;
+			self::$queried     = array( $name, $sent );
+			$query['input']    = $input;
 			$request->set_query_params( $query );
 
 			return $result;
@@ -239,7 +239,7 @@ final class Register {
 		self::$method     = self::$sanitizing;
 		self::$untyped    = null;
 		self::$responded  = array();
-		self::$run_route   = ! \SpacePress\Wp\Facade::dispatching() && self::client_operation( $name ) ? $name : null;
+		self::$run_route  = ! \SpacePress\Wp\Facade::dispatching() && self::client_operation( $name ) ? $name : null;
 		$headers          = array();
 		foreach ( $request->get_headers() as $key => $values ) {
 			$headers[ str_replace( '_', '-', strtolower( (string) $key ) ) ] = implode( ', ', (array) $values );
@@ -342,10 +342,10 @@ final class Register {
 	 */
 	public static function beginCallbacks( mixed $response, mixed $handler, \WP_REST_Request $request ): mixed {
 		if ( self::runRoute( $request ) === null && array() !== self::$stack ) {
-			self::$stack[]    = array( $request, self::state() );
-			self::$method     = self::$untyped = self::$run_route = null;
-			self::$raw        = self::$headers = self::$queried = null;
-			self::$responded  = array();
+			self::$stack[]     = array( $request, self::state() );
+			self::$method      = self::$untyped = self::$run_route = null;
+			self::$raw         = self::$headers = self::$queried = null;
+			self::$responded   = array();
 			self::$typed_query = false;
 		}
 		self::$sanitizing = null;

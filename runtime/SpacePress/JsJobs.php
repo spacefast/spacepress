@@ -81,6 +81,7 @@ final class JsJobs {
 	}
 
 	/** An async function value: each call starts a new body. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function asyncFunction( \Closure $body ): \Closure {
 		return static fn ( mixed ...$args ): JsPromise => self::async( $body, $args );
 	}

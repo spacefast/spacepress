@@ -204,6 +204,7 @@ final class JsPromise {
 
 	// ---------------------------------------------------------------- statics
 
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function staticCall( string $method, array $args ): mixed {
 		$first = array_key_exists( 0, $args ) ? $args[0] : JsUndefined::Value;
 		return match ( $method ) {

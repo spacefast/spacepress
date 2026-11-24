@@ -183,6 +183,7 @@ final class JsIter {
 	}
 
 	/** `yield* iterable` in an async generator. */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function asyncDelegate( mixed $iterable ): \Generator {
 		return self::delegation( $iterable, true );
 	}

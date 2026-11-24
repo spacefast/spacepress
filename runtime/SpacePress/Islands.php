@@ -117,7 +117,7 @@ final class Islands {
 	 * WordPress's own copy.
 	 */
 	public static function printClientData(): void {
-		if ( self::$clientUsed || ! Render\Navigation::active() ) {
+		if ( self::$client_used || ! Render\Navigation::active() ) {
 			return;
 		}
 		$data = self::clientData( array() );
@@ -179,11 +179,11 @@ final class Islands {
 	}
 
 	/** Whether a module this page enqueues imports the client (WordPress then prints its data itself). */
-	private static bool $clientUsed = false;
+	private static bool $client_used = false;
 
 	/** A module this page enqueues imports the client. */
 	public static function useClient(): void {
-		self::$clientUsed = true;
+		self::$client_used = true;
 	}
 
 	/**

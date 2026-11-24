@@ -62,7 +62,7 @@ final class Authors {
 			: array_values( array_filter( $classes, static fn ( mixed $class ): bool => ! is_string( $class ) || ! str_starts_with( $class, 'comment-author-' ) ) ),
 			PHP_INT_MAX
 		);
-		add_filter( 'author_link', static fn ( mixed $link, mixed $author = 0 ): mixed => self::$archiveUrl || is_admin() || self::visible( $schema, (int) $author ) ? $link : home_url( '/' ), PHP_INT_MAX, 2 );
+		add_filter( 'author_link', static fn ( mixed $link, mixed $author = 0 ): mixed => self::$archive_url || is_admin() || self::visible( $schema, (int) $author ) ? $link : home_url( '/' ), PHP_INT_MAX, 2 );
 		// Whether a user's archive answers depends on their row: a write to it purges the archive.
 		\SpacePress\Extensions::onWritten(
 			static function ( string $op, string $collection, array $row, ?array $previous = null ) use ( $schema ): void {
@@ -82,16 +82,16 @@ final class Authors {
 	 * from when the user was visible, or holds its 404.
 	 */
 	public static function archiveUrl( int $user ): string {
-		self::$archiveUrl = true;
+		self::$archive_url = true;
 		try {
 			return get_author_posts_url( $user );
 		} finally {
-			self::$archiveUrl = false;
+			self::$archive_url = false;
 		}
 	}
 
 	/** True while {@see archiveUrl()} asks for the real URL. */
-	private static bool $archiveUrl = false;
+	private static bool $archive_url = false;
 	/** @var array<int, bool> {@see visible()} by user id, for this request */
 	private static array $seen = array();
 

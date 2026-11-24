@@ -8,4 +8,13 @@
         <exclude-pattern>*/runtime/identity/src/*</exclude-pattern>
         <exclude-pattern>*/runtime/spacepress-plugin/src/*</exclude-pattern>
     </rule>
+    <!-- PHP extension properties keep the names exposed by DOMNode and ZipArchive. -->
+    <rule ref="WordPress.NamingConventions.ValidVariableName">
+        <properties>
+            <property name="allowed_custom_properties" type="array">
+                <element value="textContent"/>
+                <element value="numFiles"/>
+            </property>
+        </properties>
+    </rule>
 </ruleset>

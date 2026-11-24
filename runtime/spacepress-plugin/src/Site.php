@@ -386,7 +386,7 @@ final class Site {
 		return is_array( $granted ) && ! empty( $granted['install_plugins'] );
 	}
 
-	private static ?bool $fileMods = null;
+	private static ?bool $file_mods = null;
 
 	/**
 	 * Whether the site itself lets code be installed: WordPress's file-modification policy, which is
@@ -397,7 +397,7 @@ final class Site {
 	 * plugins have loaded is not seen.
 	 */
 	public static function fileMods(): bool {
-		return self::$fileMods ??= wp_is_file_mod_allowed( 'capability_update_core' );
+		return self::$file_mods ??= wp_is_file_mod_allowed( 'capability_update_core' );
 	}
 
 	/** Why this site takes no deployments at all, or null. A host that manages its own code says so. */

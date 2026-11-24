@@ -17,20 +17,20 @@ namespace SpacePress\Wp;
 final class RouteRequest {
 
 	/** Whether core accepted an application password on this request (`application_password_did_authenticate`). */
-	private static bool $applicationPassword = false;
+	private static bool $application_password = false;
 
 	/** Core's own application-password actions, registered as the runtime loads (before any user is resolved). */
 	public static function register(): void {
 		add_action(
 			'application_password_did_authenticate',
 			static function (): void {
-				self::$applicationPassword = true;
+				self::$application_password = true;
 			}
 		);
 		add_action(
 			'application_password_failed_authentication',
 			static function (): void {
-				self::$applicationPassword = false;
+				self::$application_password = false;
 			}
 		);
 	}
@@ -50,7 +50,7 @@ final class RouteRequest {
 			return $user;
 		}
 		// An application password core accepted is never a route credential.
-		if ( self::$applicationPassword ) {
+		if ( self::$application_password ) {
 			return null;
 		}
 		// The remaining channel is the cookie: unsafe methods need the REST nonce.

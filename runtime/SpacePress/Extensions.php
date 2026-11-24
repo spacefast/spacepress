@@ -13,11 +13,11 @@ final class Extensions {
 	private static array $routes = array();
 	/** @var array<string, callable> */
 	private static array $commands         = array();
-	private static bool $unprovenReadScope = false;
+	private static bool $unproven_read_scope = false;
 	/** Whether every read extension says which columns it reads (so `columns` can narrow the SELECT). */
-	private static bool $readsAll = false;
+	private static bool $reads_all = false;
 	/** @var list<\Closure(string $collection, ?Viewer $viewer): list<string>> the columns each read extension reads */
-	private static array $readColumns = array();
+	private static array $read_columns = array();
 
 	/**
 	 * @param callable(string $collection, array &$opts, ?Viewer $viewer, string $pointer): void $fn before option validation and SQL
@@ -25,7 +25,7 @@ final class Extensions {
 	 */
 	public static function beforeRead( callable $fn, bool $constraintSafe = false ): void {
 		self::$hooks['query'][]  = $fn;
-		self::$unprovenReadScope = self::$unprovenReadScope || ! $constraintSafe;
+		self::$unproven_read_scope = self::$unproven_read_scope || ! $constraintSafe;
 	}
 
 	/**
@@ -37,11 +37,11 @@ final class Extensions {
 	 */
 	public static function onRead( callable $fn, bool $constraintSafe = false, ?\Closure $reads = null ): void {
 		self::$hooks['read'][]   = $fn;
-		self::$unprovenReadScope = self::$unprovenReadScope || ! $constraintSafe;
+		self::$unproven_read_scope = self::$unproven_read_scope || ! $constraintSafe;
 		if ( null === $reads ) {
-			self::$readsAll = true;
+			self::$reads_all = true;
 		} else {
-			self::$readColumns[] = $reads;
+			self::$read_columns[] = $reads;
 		}
 	}
 
@@ -52,11 +52,11 @@ final class Extensions {
 	 * @return ?list<string>
 	 */
 	public static function readColumns( string $collection, ?Viewer $viewer ): ?array {
-		if ( self::$readsAll ) {
+		if ( self::$reads_all ) {
 			return null;
 		}
 		$out = array();
-		foreach ( self::$readColumns as $fn ) {
+		foreach ( self::$read_columns as $fn ) {
 			array_push( $out, ...$fn( $collection, $viewer ) );
 		}
 
@@ -65,7 +65,7 @@ final class Extensions {
 
 	/** Custom read callbacks may hide arbitrary rows/values unless their policy is already guarded. */
 	public static function constraintReadsSafe(): bool {
-		return ! self::$unprovenReadScope;
+		return ! self::$unproven_read_scope;
 	}
 
 	/** @param callable(string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void $fn */

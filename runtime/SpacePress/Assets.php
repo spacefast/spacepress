@@ -23,7 +23,7 @@ final class Assets {
 	/** @var list<array{href: string, as: string, type?: string, crossorigin?: bool, fetchpriority?: string, imagesrcset?: string, imagesizes?: string}> */
 	private static array $preloads = array();
 
-	private static bool $preloadHooked = false;
+	private static bool $preload_hooked = false;
 
 	/** An imported file's URL: `import logo from "./compass.svg"` reads this. */
 	public static function url( string $file ): string {
@@ -166,10 +166,10 @@ final class Assets {
 	}
 
 	private static function hook_preloads(): void {
-		if ( self::$preloadHooked || ! function_exists( 'add_action' ) ) {
+		if ( self::$preload_hooked || ! function_exists( 'add_action' ) ) {
 			return;
 		}
-		self::$preloadHooked = true;
+		self::$preload_hooked = true;
 		add_action(
 			'wp_head',
 			static function (): void {

@@ -22,7 +22,7 @@ final class Plugin {
 	public const MIN_SCF     = Platform::PLUGINS['secure-custom-fields']['version'];
 
 	private static ?self $instance  = null;
-	private static ?bool $hasLedger = null;
+	private static ?bool $has_ledger = null;
 
 	private ?App $app = null;
 	private string $mainFile;
@@ -682,13 +682,13 @@ final class Plugin {
 	private function current( bool $fresh = false ): bool {
 		if ( $fresh ) {
 			wp_cache_delete( $this->schema_option(), 'options' );
-			self::$hasLedger = null;
+			self::$has_ledger = null;
 		}
 		if ( get_option( $this->schema_option() ) !== $this->schemaHash() ) {
 			return false;
 		}
 
-		return self::$hasLedger ??= $this->migrator()->hasLedger();
+		return self::$has_ledger ??= $this->migrator()->hasLedger();
 	}
 
 	private function migrator(): Migrator {

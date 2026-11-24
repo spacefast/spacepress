@@ -51,11 +51,11 @@ final class Scf {
 	);
 
 	/** @var list<callable> */
-	private static array $fieldFilters = array();
+	private static array $field_filters = array();
 
 	/** @param callable(array $field, array $def, string $col, array $spec): array $fn */
 	public static function fieldFilter( callable $fn ): void {
-		self::$fieldFilters[] = $fn;
+		self::$field_filters[] = $fn;
 	}
 
 	// ================================================================ registration (acf/init, priority 5)
@@ -337,7 +337,7 @@ final class Scf {
 		if ( isset( $def['ui']['placeholder'] ) && in_array( $field['type'], array( 'text', 'textarea', 'email', 'url', 'number', 'select' ), true ) ) {
 			$field['placeholder'] = $def['ui']['placeholder'];
 		}
-		foreach ( self::$fieldFilters as $fn ) {
+		foreach ( self::$field_filters as $fn ) {
 			$field = $fn( $field, $def, $col, $spec );
 		}
 

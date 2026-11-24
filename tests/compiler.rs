@@ -1887,6 +1887,75 @@ export default function EntityPage({ item }: PageProps<"entities/[slug]">) {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
+/// String literal equality (`x === "a"`) and same-path disjunctions (`x === "a" || x === "b"`)
+/// narrow `x` to the matched literal union on the true branch and exclude matched literals on the
+/// false branch, while disjunctions over distinct paths (`a === "x" || b === "y"`) stay conservative.
+#[test]
+fn string_literal_and_disjunction_narrowing_in_branches_and_ternaries() {
+    let tmp = std::env::temp_dir().join(format!("typedpress-str-or-narrow-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(
+        tmp.join("typedpress.config.ts"),
+        r#"import { defineConfig, db, mutation, select, table, text } from "typedpress";
+
+export const tasks = table({
+  title: text(),
+  role: select(["viewer", "accountant", "editor"]),
+  state: select(["draft", "review", "done"]),
+});
+
+export const createTask = mutation(
+  {},
+  async ({ title, rawRole, rawState }: { title: string; rawRole?: string; rawState?: string }) => {
+    const role = rawRole === "editor" || rawRole === "viewer" ? rawRole : "accountant";
+    const state = rawState === "review" || rawState === "done" ? rawState : "draft";
+    const [row] = await db.insert(tasks).values({ title, role, state }).returning();
+    return row;
+  },
+);
+
+export const filterActive = mutation(
+  {},
+  async ({ status }: { status: "draft" | "review" | "done" }) => {
+    if (status === "draft") return "skipped";
+    // After excluding "draft", status is "review" | "done".
+    const accept = (s: "review" | "done") => s;
+    if (status !== "review" && status !== "done") return "unreachable";
+    return accept(status);
+  },
+);
+
+export default defineConfig({ name: "str-or-narrow" });
+"#,
+    )
+    .unwrap();
+
+    let ok = first().arg("check").arg(&tmp).output().unwrap();
+    assert!(ok.status.success(), "{}", String::from_utf8_lossy(&ok.stderr));
+
+    // Disjunction over DIFFERENT variables must NOT falsely narrow either one.
+    std::fs::write(
+        tmp.join("typedpress.config.ts"),
+        r#"import { defineConfig, mutation } from "typedpress";
+
+export const bad = mutation({}, async ({ a, b }: { a: string; b: string }) => {
+  const onlyA = (x: "x") => x;
+  if (a === "x" || b === "y") {
+    return onlyA(a);
+  }
+  return "x";
+});
+
+export default defineConfig({ name: "str-or-narrow" });
+"#,
+    )
+    .unwrap();
+    let bad = first().arg("check").arg(&tmp).output().unwrap();
+    assert_eq!(bad.status.code(), Some(1), "{}", String::from_utf8_lossy(&bad.stderr));
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
 /// A fresh WordPress on SQLite with a built `wp-content` installed, served by `php -S`
 /// (`php tests/php/wp.php serve`): the site a client and `typedpress sync` talk to.
 struct Server {

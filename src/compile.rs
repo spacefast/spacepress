@@ -3422,6 +3422,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     });
                     return;
                 }
+                // `x === "editor"` and `x !== "editor"` narrow a string, string-literal union, or
+                // unknown value to the matched literal on one side and remove it on the other.
+                let str_lit = match (&l.kind, &r.kind) {
+                    (_, ExprKind::Str(value)) => Some((l, value.as_str())),
+                    (ExprKind::Str(value), _) => Some((r, value.as_str())),
+                    _ => None,
+                };
+                if let Some((subject, value)) = str_lit
+                    && let Some((n, t)) = self.path_ty(subject)
+                    && t.can_be_str_literal(value)
+                {
+                    let hit = Ty::StrLit(value.to_string());
+                    let miss = t.without_str(value);
+                    out.push(if (*op == BinOp::Eq) != negate {
+                        (n, hit, miss)
+                    } else {
+                        (n, miss, hit)
+                    });
+                    return;
+                }
                 let (subject, other) = match (&l.kind, &r.kind) {
                     (ExprKind::Null | ExprKind::Undefined, _) => (r, l),
                     _ => (l, r),
@@ -3459,19 +3479,41 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.fx().scopes.pop();
                 let right = out.split_off(start + left.len());
                 out.truncate(start);
-                out.extend(
-                    left.into_iter()
-                        .filter(|(name, _, _)| self.refinement_survives(r, name)),
-                );
-                out.extend(right);
-                // Both operands hold only on the conjunction's true side or
-                // the disjunction's false side. Keep the other side conservative:
-                // the declared type, or for a member path (`input.q`, which has no
-                // declaration of its own) both sides together, the type it had.
-                for entry in &mut out[start..] {
-                    entry.2 = self
-                        .declared_path_ty(&entry.0)
-                        .unwrap_or_else(|| Ty::union([entry.1.clone(), entry.2.clone()]));
+                let mut left_by_path: HashMap<String, (Ty, Ty)> = HashMap::new();
+                let mut order: Vec<String> = Vec::new();
+                for (name, yes, no) in left {
+                    if self.refinement_survives(r, &name) {
+                        if !left_by_path.contains_key(&name) {
+                            order.push(name.clone());
+                        }
+                        left_by_path.insert(name, (yes, no));
+                    }
+                }
+                let mut right_by_path: HashMap<String, (Ty, Ty)> = HashMap::new();
+                for (name, yes, no) in right {
+                    if !left_by_path.contains_key(&name) && !right_by_path.contains_key(&name) {
+                        order.push(name.clone());
+                    }
+                    right_by_path.insert(name, (yes, no));
+                }
+                // On the conjunction side both operands hold (`right_yes`, or `left_yes` if only
+                // narrowed on the left). On the disjunction side either the left failed (`left_no`)
+                // or the left held and the right failed (`right_no`): when both sides narrow the
+                // same path, their disjunction-side union is exact (enabling `x === "a" || x === "b"`
+                // and `x !== "a" && x !== "b"`). Paths narrowed on only one side stay conservative.
+                for name in order {
+                    match (left_by_path.remove(&name), right_by_path.remove(&name)) {
+                        (Some((_, left_no)), Some((right_yes, right_no))) => {
+                            out.push((name, right_yes, Ty::union([left_no, right_no])));
+                        }
+                        (Some((yes, no)), None) | (None, Some((yes, no))) => {
+                            let conservative = self
+                                .declared_path_ty(&name)
+                                .unwrap_or_else(|| Ty::union([yes.clone(), no.clone()]));
+                            out.push((name, yes, conservative));
+                        }
+                        (None, None) => {}
+                    }
                 }
             }
             ExprKind::Logical(LogOp::And | LogOp::Or, _, _) => {

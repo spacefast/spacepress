@@ -16,10 +16,12 @@ final class Access
     public const MEDIA = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'author'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']];
 
     /**
-     * Per-request memoization for compiled access callbacks evaluated without row/patch data.
-     * Cleared whenever Db mutates rows/globals, rolls back a transaction, or switches instances.
+     * Per-request memoization for compiled access callbacks evaluated without row/patch data,
+     * together with any render dependencies recorded during the evaluation so cache hits keep
+     * page-cache invalidation intact. Cleared whenever Db mutates rows/globals, rolls back a
+     * transaction, switches instances, or WordPress flushes CoreAccess.
      *
-     * @var array<string, bool|array>
+     * @var array<string, array{result: bool|array, reads: array<string, array{ids: list<int|string>, listed: bool}>, also: list<string>}>
      */
     private static array $cache = [];
 
@@ -75,13 +77,26 @@ final class Access
             if (is_string($slot) && $data === null) {
                 $cacheKey = Db::currentId() . "\0" . $slot . "\0" . ($user['id'] ?? '') . "\0" . ($user['role'] ?? '') . "\0" . $op . "\0" . ($collection ?? '');
                 if (array_key_exists($cacheKey, self::$cache)) {
-                    return self::$cache[$cacheKey];
+                    $cached = self::$cache[$cacheKey];
+                    Render\Reads::replay($cached['reads'], $cached['also']);
+
+                    return $cached['result'];
                 }
             }
             $fn = is_string($slot) ? '\\TypedPressApp\\' . $slot : $slot;
             $ctx = ['user' => $user, 'op' => $op, 'data' => $data];
             $ctx = is_string($slot) ? Seam::ctx($ctx, $dataShape) : $ctx;
-            $r = $fn($ctx);
+            // Access-rule queries always run trusted, never under an outer render's bound viewer,
+            // so `db.query.*` and file hydration can't re-enter access rules recursively.
+            $run = static fn () => Seam::asViewer(null, static fn () => $fn($ctx));
+            if ($cacheKey !== null) {
+                $depReads = [];
+                $depAlso = [];
+                $r = Render\Reads::during($run, $depReads, $depAlso);
+                Render\Reads::replay($depReads, $depAlso);
+            } else {
+                $r = $run();
+            }
             if ($r instanceof JsObject || is_array($r)) {
                 if ($collection === null) {
                     throw new \LogicException('A filter-valued access rule requires its collection');
@@ -90,7 +105,7 @@ final class Access
             }
             $result = is_array($r) ? $r : ($r === true);
             if ($cacheKey !== null) {
-                self::$cache[$cacheKey] = $result;
+                self::$cache[$cacheKey] = ['result' => $result, 'reads' => $depReads, 'also' => $depAlso];
             }
 
             return $result;

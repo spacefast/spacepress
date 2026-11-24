@@ -1362,6 +1362,26 @@ export const items = table({ title: text() }, {
 export default defineConfig({});"#,
             "access rules can't write to the database",
         ),
+        (
+            "system-restore",
+            r#"import { table, text, defineConfig } from "typedpress";
+export const items = table({ title: text() }, {
+  softDelete: true,
+  access: { read: async () => { await items.system.restore(1); return true; } },
+});
+export default defineConfig({});"#,
+            "access rules can't write to the database",
+        ),
+        (
+            "system-purge",
+            r#"import { table, text, defineConfig } from "typedpress";
+export const items = table({ title: text() }, {
+  softDelete: true,
+  access: { read: async () => { await items.system.purge(1); return true; } },
+});
+export default defineConfig({});"#,
+            "access rules can't write to the database",
+        ),
     ] {
         let tmp = std::env::temp_dir().join(format!("typedpress-access-ro-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
@@ -1515,10 +1535,26 @@ export default defineConfig({ name: "access-grants" });
         $clearedAfterWrite = count($cacheProp->getValue()) === 0;
         $strangerLabelsAfterGrant = array_column($db->findMany('entries', [], $stranger), 'label');
 
-        // 5. Global read inside action access rule + invalidation after globalUpdate.
+        // 5. Global read inside action access rule + invalidation after globalUpdate,
+        //    plus render dependency replay on memoized cache hits and trusted reads under Seam::asViewer.
         [$exportBefore, $_] = $wp->call('POST', '/actions/exportData', '{}', $viewerId);
         $db->globalUpdate('settings', ['allowExport' => 'yes']);
         [$exportAfter, $_] = $wp->call('POST', '/actions/exportData', '{}', $viewerId);
+
+        // First call populates Access::$cache outside a render; second call inside Reads::during
+        // hits the cache and must still record `global:settings` and `grants` dependencies.
+        $depReads = [];
+        $depAlso = [];
+        $actionRule = $db->schema()->action('exportData')['access'];
+        \TypedPress\Access::evaluate($actionRule, $viewer, 'create');
+        \TypedPress\Render\Reads::during(static function () use ($actionRule, $viewer, $db): void {
+            \TypedPress\Access::evaluate($actionRule, $viewer, 'create');
+            \TypedPress\Seam::asViewer($viewer, static function () use ($db, $viewer): void {
+                $db->findMany('entries', [], $viewer);
+            });
+        }, $depReads, $depAlso);
+        $memoizedReplayedGlobal = in_array('global:settings', $depAlso, true);
+        $memoizedReplayedGrants = isset($depReads['grants']);
 
         echo json_encode([
             'viewerLabels' => $viewerLabels,
@@ -1533,6 +1569,8 @@ export default defineConfig({ name: "access-grants" });
             'strangerLabelsAfterGrant' => $strangerLabelsAfterGrant,
             'exportBefore' => $exportBefore,
             'exportAfter' => $exportAfter,
+            'memoizedReplayedGlobal' => $memoizedReplayedGlobal,
+            'memoizedReplayedGrants' => $memoizedReplayedGrants,
         ]);
         "#,
         &serde_json::json!({}),
@@ -1553,6 +1591,8 @@ export default defineConfig({ name: "access-grants" });
             "strangerLabelsAfterGrant": ["Personal Coffee"],
             "exportBefore": 403,
             "exportAfter": 200,
+            "memoizedReplayedGlobal": true,
+            "memoizedReplayedGrants": true,
         })
     );
     let _ = std::fs::remove_dir_all(&tmp);

@@ -1150,7 +1150,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             // A hook given by reference (`afterCreate: restock`) reuses the helper's compiled body.
             let key = closure_key(&root.closure);
             let db_mode = match root.slot {
-                Slot::Access { .. } => DbMode::ReadOnly,
+                Slot::Access { .. } | Slot::AppAccess { .. } => DbMode::ReadOnly,
                 Slot::FieldAccess { .. } | Slot::Email { .. } => DbMode::None,
                 _ => DbMode::Full,
             };
@@ -11200,7 +11200,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .help("return a filter instead, e.g. `{ ownerId: ctx.user?.id ?? -1 }`"));
         }
         if !db_mode.allows_write() {
-            if matches!(m, "create" | "update" | "delete") {
+            if !matches!(m, "list" | "paginate" | "get" | "count") {
                 return Err(Diag::new(
                     span,
                     "access rules can't write to the database; put that in a hook or action",

@@ -44,7 +44,7 @@ export function WorkshopBoard() {
         Upload handout
         <input type="file" accept="application/pdf" onChange={onHandout} />
       </label>
-      <p hidden={!uploadedName}>{uploadedName}</p>
+      <p hidden={!open}>{uploadedName}</p>
     </aside>
   );
 }

@@ -1837,6 +1837,56 @@ export default defineConfig({ name: "file-reads" });
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
+/// `tp/_generated/routes.d.ts` must index `RegisteredKinds` by each collection's TypeScript key
+/// (`legalEntities`), not its snake_case SQL table name (`legal_entities`).
+#[test]
+fn routes_dts_uses_collection_ts_key_for_multi_word_kinds() {
+    let tmp = std::env::temp_dir().join(format!("typedpress-routes-dts-key-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(tmp.join("tp/app/entities/[slug]")).unwrap();
+    std::fs::write(
+        tmp.join("typedpress.config.ts"),
+        r#"import { collection, defineConfig, slug, text } from "typedpress";
+
+export const legalEntities = collection(
+  {
+    name: text(),
+    slug: slug({ source: "name" }).optional(),
+  },
+  { title: "name", url: "/entities/:slug" },
+);
+
+export default defineConfig({ name: "routes-dts-key" });
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.join("tp/app/entities/[slug]/page.tsx"),
+        r#"import { notFound, type PageProps } from "typedpress/app";
+
+export default function EntityPage({ item }: PageProps<"entities/[slug]">) {
+  if (!item) notFound();
+  return <h1>{item.name}</h1>;
+}
+"#,
+    )
+    .unwrap();
+
+    let built = first().arg("build").arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+
+    let routes_dts = std::fs::read_to_string(tmp.join("tp/_generated/routes.d.ts")).unwrap();
+    assert!(
+        routes_dts.contains("RegisteredKinds extends { legalEntities: { $inferSelect: infer R } }"),
+        "expected camelCase collection key in routes.d.ts:\n{routes_dts}"
+    );
+    assert!(
+        !routes_dts.contains("legal_entities"),
+        "routes.d.ts must not emit snake_case table name:\n{routes_dts}"
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
 /// A fresh WordPress on SQLite with a built `wp-content` installed, served by `php -S`
 /// (`php tests/php/wp.php serve`): the site a client and `typedpress sync` talk to.
 struct Server {

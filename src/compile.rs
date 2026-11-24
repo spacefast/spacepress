@@ -14154,8 +14154,12 @@ mod host_secret_tests {
     #[test]
     fn host_secrets_match_the_runtime() {
         let php = include_str!("../runtime/SpacePress/Env.php");
-        let start = php.find("HOST_SECRETS = [").expect("Env::HOST_SECRETS");
-        let list = &php[start..start + php[start..].find("];").unwrap()];
+        let list = php
+            .split_once("const HOST_SECRETS")
+            .and_then(|(_, rest)| rest.split_once('='))
+            .and_then(|(_, rest)| rest.split_once(';'))
+            .expect("Env::HOST_SECRETS")
+            .0;
         let runtime: Vec<&str> = list.split('\'').skip(1).step_by(2).collect();
         assert_eq!(
             runtime, HOST_SECRETS,

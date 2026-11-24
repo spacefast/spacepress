@@ -36,3 +36,22 @@ export interface LiveState<T> {
  * query reads props and literals. `{ enabled: false }` reads nothing.
  */
 export declare function useLive<T = any>(kind: string, query?: Record<string, unknown>, options?: { enabled?: boolean }): LiveState<T[]>;
+
+/** Metadata returned by `uploadFile(bucket, file, opts?)`. */
+export interface UploadedFile {
+  id: number;
+  bucket: string;
+  filename: string;
+  mime: string;
+  size: number;
+  ownerId: number | null;
+  createdAt: string;
+  url: string;
+}
+
+/**
+ * Upload a browser `File` or `Blob` to a registered `files()` private bucket via `@typedpress/client`
+ * (using the page's REST nonce). Must be called inside a `"use client"` event handler or effect with
+ * a string literal naming an exported bucket: `const uploaded = await uploadFile("inbox", file)`.
+ */
+export declare function uploadFile(bucket: string, file: Blob, options?: { filename?: string }): Promise<UploadedFile>;

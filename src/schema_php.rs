@@ -574,7 +574,7 @@ pub fn render(schema: &Schema) -> String {
                 php_str(&island.file),
                 island.actions.iter().map(|a| php_str(a)).collect::<Vec<_>>().join(", "),
                 if island.live { ", 'live' => true" } else { "" },
-                if island.actions.is_empty() {
+                if island.actions.is_empty() && island.uploads.is_empty() {
                     ""
                 } else {
                     ", 'client' => true"

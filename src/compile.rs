@@ -1113,6 +1113,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
                 let actions: std::collections::BTreeSet<String> = self.schema.actions.keys().cloned().collect();
+                let file_buckets: std::collections::BTreeSet<String> = self.schema.files.keys().cloned().collect();
                 let program = self.ev_program();
                 let assets: Vec<(String, &crate::assets::Asset)> = module
                     .body
@@ -1137,6 +1138,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     module,
                     crate::loader::CLIENT_MODULE,
                     &actions,
+                    &file_buckets,
                     &assets,
                 )?;
                 self.client = Some(client::ClientCtx {
@@ -3673,6 +3675,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "collections can't be used as values in hooks",
                 "pass the collection to db.insert/update/delete",
             ),
+            Ty::FileBucket(_) => err_help(
+                span,
+                "file buckets can't be used as values",
+                "call `.get(id)`, `.readText(id)` or `.readBase64(id)` directly on the bucket",
+            ),
             _ => Ok(v),
         }
     }
@@ -5008,13 +5015,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ok(number_is_finite_function())
             }
             Value::Builtin(Builtin::Global("Boolean")) => Ok(boolean_function()),
+            Value::FileBucket(b) => {
+                let Some(name) = b.name.get() else {
+                    return err_help(
+                        span,
+                        format!("`{n}` is a file bucket that isn't exported"),
+                        "export it from `typedpress.config.ts` or under `tp/`: `export const inbox = files({ ... })`",
+                    );
+                };
+                if !self.schema.files.contains_key(name) {
+                    return err(span, format!("unknown file bucket `{name}`"));
+                }
+                Ok(Out::atom(php_str(name), Ty::FileBucket(name.clone())))
+            }
             Value::Builtin(_)
             | Value::Column(_)
             | Value::ColRef(_)
             | Value::Action(_)
             | Value::Plugin(_)
             | Value::Screen(_)
-            | Value::FileBucket(_)
             | Value::Bound(..) => err(
                 span,
                 format!("`{n}` is {}, which only exists while the config is built", v.describe()),
@@ -10453,6 +10472,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::DbQuery => return err(m_span, format!("use `db.query.<collection>.{m}(...)`")),
             Ty::DbGlobals => return err(m_span, format!("use `db.globals.<global>.{m}(...)`")),
             Ty::DbGlobal(name) => return self.db_global_call(&name, m, args, m_span),
+            Ty::FileBucket(bucket) => return self.file_bucket_call(&bucket, m, args, span, m_span),
             _ => {}
         }
         if recv.ty == Ty::BigInt {
@@ -12094,6 +12114,84 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     /// `db.globals.<key>.get()` / `.update(patch)`: trusted, like `db.query`.
+    fn file_bucket_call(&mut self, bucket: &str, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
+        const METHODS: [&str; 3] = ["get", "readText", "readBase64"];
+        if !METHODS.contains(&m) {
+            let mut d = Diag::new(m_span, format!("file buckets have no method `{m}`"));
+            if let Some(s) = suggest(m, METHODS) {
+                d = d.help(format!("did you mean `{s}`?"));
+            } else {
+                d = d.help("use get(id), readText(id) or readBase64(id)");
+            }
+            return Err(d);
+        }
+        if self.fx().db_mode.is_restricted() {
+            return Err(Diag::new(
+                span,
+                "access rules can't read private files; put that in a hook, action or job",
+            )
+            .code(crate::diag::Code::AccessQuery)
+            .help("read file contents from a hook, query, mutation, route or background job"));
+        }
+        self.uses("read", format!("files.{bucket}"), m_span);
+        self.route_opaque(format!("files.{bucket}.{m}"));
+        if args.len() != 1 {
+            return err_help(
+                span,
+                format!("`{bucket}.{m}()` takes one file id"),
+                format!("write `await {bucket}.{m}(fileId)`"),
+            );
+        }
+        let id_expr = self.arg(args, 0, span, "a file id")?;
+        let id = self.expr(id_expr)?;
+        let id = self.finish_value(id, id_expr.span)?;
+        if !assignable(&id.ty, &Ty::Num) {
+            return err(
+                id_expr.span,
+                format!("`{bucket}.{m}` needs a file id (number), not {}", id.ty.describe()),
+            );
+        }
+        let (php, ty) = match m {
+            "get" => {
+                let mut fields = IndexMap::new();
+                fields.insert("id".to_string(), (Ty::Num, false));
+                fields.insert("bucket".to_string(), (Ty::Str, false));
+                fields.insert("filename".to_string(), (Ty::Str, false));
+                fields.insert("mime".to_string(), (Ty::Str, false));
+                fields.insert("size".to_string(), (Ty::Num, false));
+                fields.insert("ownerId".to_string(), (Ty::Num.nullable(), false));
+                fields.insert("createdAt".to_string(), (Ty::Str, false));
+                fields.insert("url".to_string(), (Ty::Str, false));
+                (
+                    format!(
+                        "\\TypedPress\\Media\\Files::getOrNull({}, (int) ({}))",
+                        php_str(bucket),
+                        id.php
+                    ),
+                    Ty::Obj(fields).nullable(),
+                )
+            }
+            "readText" => (
+                format!(
+                    "\\TypedPress\\Media\\Files::readText({}, (int) ({}))",
+                    php_str(bucket),
+                    id.php
+                ),
+                Ty::Str,
+            ),
+            "readBase64" => (
+                format!(
+                    "\\TypedPress\\Media\\Files::readBase64({}, (int) ({}))",
+                    php_str(bucket),
+                    id.php
+                ),
+                Ty::Str,
+            ),
+            _ => unreachable!(),
+        };
+        Ok(Out::atom(php, Ty::Promise(Box::new(ty))))
+    }
+
     fn db_global_call(&mut self, name: &str, m: &str, args: &[ArrEl], m_span: Span) -> Result<Out> {
         if m == "update" && !self.fx().db_mode.allows_write() {
             return Err(Diag::new(
@@ -12895,6 +12993,7 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::KindRevisions(_, _)
         | Ty::DbGlobals
         | Ty::DbGlobal(_)
+        | Ty::FileBucket(_)
         | Ty::Builder(_) => {
             if truthy {
                 t.clone()
@@ -13249,6 +13348,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::KindRevisions(_, _)
         | Ty::DbGlobals
         | Ty::DbGlobal(_)
+        | Ty::FileBucket(_)
         | Ty::Builder(_) => t.clone(),
     }
 }

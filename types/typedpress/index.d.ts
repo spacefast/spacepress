@@ -1829,7 +1829,25 @@ export declare function env(name: string): EnvValue;
 export interface Webhook { url: EnvValue | string; secret: EnvValue; events: WebhookEvent[] }
 export type WebhookEvent = `${string}.created` | `${string}.updated` | `${string}.deleted` | "*";
 export type FileRule = AccessShorthand | "owner" | ((ctx: AccessCtx) => Awaitable<boolean>);
-export interface FileBucket { readonly [fileBucketBrand]: true }
+export interface PrivateFileInfo {
+  id: number;
+  bucket: string;
+  filename: string;
+  mime: string;
+  size: number;
+  ownerId: number | null;
+  createdAt: string;
+  url: string;
+}
+export interface FileBucket {
+  readonly [fileBucketBrand]: true;
+  /** Trusted server read of file metadata (+ 5-minute signed URL), or null when missing or in another bucket. */
+  get(id: number): Promise<PrivateFileInfo | null>;
+  /** Trusted server read of file bytes as UTF-8 text (up to 16 MiB). Works on local disk and S3. */
+  readText(id: number): Promise<string>;
+  /** Trusted server read of file bytes as standard base64 (up to 16 MiB). Works on local disk and S3. */
+  readBase64(id: number): Promise<string>;
+}
 export type AnyFileBucket = FileBucket;
 /** A private file bucket, named by its export: `export const decks = files({ accept, maxBytes })`. */
 export declare function files(options: {

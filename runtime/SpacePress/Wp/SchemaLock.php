@@ -376,6 +376,7 @@ final class SchemaLock {
 		$corrected = array();
 		foreach ( self::ROLES as $name => $definition ) {
 			$keep = $old[ $name ] ?? ( isset( $roles[ $name ] ) ? $definition : null );
+			// phpcs:ignore Universal.Operators.StrictComparisons.LooseNotEqual -- The order of role settings is immaterial.
 			if ( ( $roles[ $name ] ?? null ) != $keep ) {
 				$corrected[ $name ] = $keep;
 			}
@@ -385,6 +386,7 @@ final class SchemaLock {
 			$caps   = is_array( $role ) ? (array) ( $role['capabilities'] ?? array() ) : array();
 			$kept   = array_filter( $caps, static fn ( $granted, $cap ): bool => ! self::sp_capability( (string) $cap ) || ( $before[ $cap ] ?? null ) === $granted, ARRAY_FILTER_USE_BOTH )
 				+ array_filter( $before, static fn ( $cap ): bool => self::sp_capability( (string) $cap ), ARRAY_FILTER_USE_KEY );
+			// phpcs:ignore Universal.Operators.StrictComparisons.LooseNotEqual -- Capability order is immaterial.
 			if ( ! array_key_exists( $name, $corrected ) && is_array( $role ) && $kept != $caps ) {
 				$corrected[ $name ] = array( 'capabilities' => $kept ) + $role;
 			}

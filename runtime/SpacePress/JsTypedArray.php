@@ -146,7 +146,7 @@ final class JsTypedArray {
 		if ( 'Int32Array' === $kind && $value >= 0x80000000 ) {
 			return $value - 0x100000000; }
 		if ( is_float( $value ) ) {
-			return 0.0 === $value && fdiv( 1, $value ) < 0 ? -0.0 : Js::n( $value == floor( $value ) && abs( $value ) < 9007199254740992 ? (int) $value : $value ); }
+			return 0.0 === $value && fdiv( 1, $value ) < 0 ? -0.0 : Js::n( floor( $value ) === $value && abs( $value ) < 9007199254740992 ? (int) $value : $value ); }
 		return $value;
 	}
 
@@ -300,7 +300,7 @@ final class JsTypedArray {
 			if ( ! is_int( $value ) && ! is_float( $value ) ) {
 				return -1; }
 			for ( $i = (int) $k; $i >= 0; $i-- ) {
-				if ( $this->at( $i ) == $value ) {
+				if ( Js::strictEq( $this->at( $i ), $value ) ) {
 					return $i; }
 			}
 			return -1;
@@ -320,7 +320,7 @@ final class JsTypedArray {
 		}
 		for ( $i = (int) $k; $i < $length; $i++ ) {
 			$item = $this->at( $i );
-			if ( $nan ? is_float( $item ) && is_nan( $item ) : $item == $value ) {
+			if ( $nan ? is_float( $item ) && is_nan( $item ) : Js::strictEq( $item, $value ) ) {
 				return 'includes' === $method ? true : $i; }
 		}
 		return 'includes' === $method ? false : -1;

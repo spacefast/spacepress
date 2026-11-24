@@ -218,9 +218,11 @@ final class Spacefast {
 		$resources = array();
 		foreach ( $relationships as $relationship ) {
 			foreach ( $taxonomies as $taxonomy ) {
+				// phpcs:ignore Universal.Operators.StrictComparisons.LooseNotEqual -- Database row IDs can arrive as integers or decimal strings.
 				if ( $taxonomy['term_taxonomy_id'] != $relationship['term_taxonomy_id'] || $taxonomy['taxonomy'] !== Model::TAXONOMY ) {
 					continue; }
 				foreach ( $termmeta as $meta ) {
+					// phpcs:ignore Universal.Operators.StrictComparisons.LooseEqual -- Database row IDs can arrive as integers or decimal strings.
 					if ( $meta['term_id'] == $taxonomy['term_id'] && $meta['meta_key'] === Model::RESOURCE_META ) {
 						$resources[ $relationship['object_id'] ] = $meta['meta_value']; }
 				}
@@ -257,6 +259,7 @@ final class Spacefast {
 			}
 			foreach ( $postmeta as &$field ) {
 				$prefix = '_zero_' . $resource . '_';
+				// phpcs:ignore Universal.Operators.StrictComparisons.LooseNotEqual -- Database row IDs can arrive as integers or decimal strings.
 				if ( $field['post_id'] != $post['ID'] || ! str_starts_with( $field['meta_key'], $prefix ) ) {
 					continue; }
 				$column = substr( $field['meta_key'], strlen( $prefix ) );

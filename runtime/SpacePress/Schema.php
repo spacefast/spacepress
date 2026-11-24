@@ -876,7 +876,7 @@ final class Schema {
 					continue;
 				}
 				$n    = $rules[ $k ];
-				$what = null === $unit ? Js::str( $n ) : Js::str( $n ) . " $unit" . ( 1 == $n ? '' : 's' );
+				$what = null === $unit ? Js::str( $n ) : Js::str( $n ) . " $unit" . ( 1.0 === (float) $n ? '' : 's' );
 				throw HttpError::invalidInput(
 					'item' === $unit ? "$name must have $words $what" : "$name must be $words $what",
 					$pointer,

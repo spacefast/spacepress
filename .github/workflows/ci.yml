@@ -303,6 +303,7 @@ jobs:
           key: wp-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json', 'tests/php/wp.php') }}
       # brand_upgrade builds a site with the last pre-rename runtime: that one commit, not the history.
       - run: git fetch --no-tags --depth=1 origin "$(sed -n "s/^const LEGACY_COMMIT = '\([0-9a-f]*\)';/\1/p" tests/php/brand_upgrade_test.php)"
+      - run: tests/php/run.sh
       - name: Check changed runtime PHP against WordPress standards
         if: github.event_name == 'pull_request'
         run: |
@@ -313,7 +314,6 @@ jobs:
           sudo apt-get install -y php8.3-xml composer
           composer install --working-dir=examples/php-standards --no-interaction --prefer-dist
           node scripts/check-php-standards.ts HEAD^1
-      - run: tests/php/run.sh
 
   vendor:
     if: github.event_name != 'pull_request'

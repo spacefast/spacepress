@@ -454,8 +454,8 @@ pub fn build(
         &program.app,
         &schema
             .collections
-            .iter()
-            .filter_map(|(name, c)| c.url.clone().map(|u| (name.clone(), u)))
+            .values()
+            .filter_map(|c| c.url.clone().map(|u| (c.key.clone(), u)))
             .collect::<Vec<_>>(),
     );
     let references = schema

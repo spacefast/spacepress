@@ -369,6 +369,31 @@ enum Resolved {
     Global(&'static str),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(super) enum DbMode {
+    /// Full database reads/writes and host effects (hooks, actions, jobs, routes, pages).
+    Full,
+    /// Read-only trusted DB queries (`db.query.*`, `db.globals.*.get`, `<kind>.system` reads);
+    /// writes, viewer-scoped kind reads, fetch, mail, jobs, once and WP calls are refused.
+    ReadOnly,
+    /// Pure: no database access at all (field access rules, email templates).
+    None,
+}
+
+impl DbMode {
+    pub(super) fn allows_read(self) -> bool {
+        matches!(self, Self::Full | Self::ReadOnly)
+    }
+
+    pub(super) fn allows_write(self) -> bool {
+        matches!(self, Self::Full)
+    }
+
+    pub(super) fn is_restricted(self) -> bool {
+        !matches!(self, Self::Full)
+    }
+}
+
 struct FnCtx {
     function: Span,
     scopes: Vec<HashMap<String, Local>>,
@@ -400,8 +425,8 @@ struct FnCtx {
     /// Labels for the next statement compiled, when it is a loop or switch.
     pending_labels: Vec<String>,
     conditional_depth: usize,
-    /// Access rules can't query (§1.6): `db` is rejected inside them and their closures.
-    no_db: bool,
+    /// Database and effect authority inside this function and its nested closures.
+    db_mode: DbMode,
     /// Set while compiling an access rule's own body: (collection table, op). Its returns are
     /// `true`/`false` or a filter literal checked against that collection.
     access: Option<(Option<String>, String)>,
@@ -423,11 +448,11 @@ pub struct Compiler<'a, 'p> {
     annotation_depth: usize,
     annotation_steps: usize,
     resolving_json_types: HashSet<usize>,
-    /// Compiled module-level helpers, separated by whether database access is forbidden.
-    helpers: HashMap<(usize, usize, bool), String>,
+    /// Compiled module-level helpers, separated by their database authority mode.
+    helpers: HashMap<(usize, usize, DbMode), String>,
     /// Failed helper compilations for the current receiver-typing scope. These survive speculative
     /// rollbacks so a refused helper chain is not retried exponentially.
-    failed_helpers: HashMap<(usize, usize, bool), Diag>,
+    failed_helpers: HashMap<(usize, usize, DbMode), Diag>,
     helper_values: HashMap<(usize, usize), String>,
     helper_closures: HashMap<usize, Rc<Closure>>,
     helper_types: HashMap<usize, Ty>,
@@ -1124,11 +1149,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.root_capabilities(root);
             // A hook given by reference (`afterCreate: restock`) reuses the helper's compiled body.
             let key = closure_key(&root.closure);
-            let no_db = matches!(
-                root.slot,
-                Slot::Access { .. } | Slot::FieldAccess { .. } | Slot::Email { .. }
-            );
-            self.compile_function(&root.closure, &name, Some(params), Some(&root.slot), no_db)?;
+            let db_mode = match root.slot {
+                Slot::Access { .. } => DbMode::ReadOnly,
+                Slot::FieldAccess { .. } | Slot::Email { .. } => DbMode::None,
+                _ => DbMode::Full,
+            };
+            self.compile_function(&root.closure, &name, Some(params), Some(&root.slot), db_mode)?;
             if let Some(ctx) = self.client.take() {
                 if ctx.root_pending {
                     return err_help(
@@ -1239,14 +1265,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             self.helpers
-                .entry((self.owner(), key, no_db))
+                .entry((self.owner(), key, db_mode))
                 .or_insert_with(|| name.clone());
             self.hook_writes(root);
             out.push((root.slot.clone(), name));
         }
         self.plugin = None;
         while let Some((closure, name, params)) = self.pending.pop() {
-            self.compile_function(&closure, &name, params, None, false)?;
+            self.compile_function(&closure, &name, params, None, DbMode::Full)?;
         }
         self.check_queries(&out)?;
         if self.uses_jobs {
@@ -1342,7 +1368,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         name: &str,
         params: Option<Vec<Ty>>,
         slot: Option<&Slot>,
-        no_db: bool,
+        db_mode: DbMode,
     ) -> Result<()> {
         // Keep identity keys alive while helper signatures and wrappers refer to them.
         self.helper_closures
@@ -1383,7 +1409,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             jumps: Vec::new(),
             pending_labels: Vec::new(),
             conditional_depth: 0,
-            no_db,
+            db_mode,
             access: match slot {
                 Some(Slot::FieldAccess { .. }) => Some((None, "field".into())),
                 Some(Slot::Access { owner, op }) => Some((
@@ -4837,7 +4863,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "`{method}` reads `this`, which is typed as that object, so call it on the object, e.g. `obj.{method}()`; to call it with another receiver, declare its `this`, e.g. `{method}(this: {{ count: number }})`"
                     )));
                 }
-                let helper_key = (self.owner(), key, self.fx().no_db);
+                let helper_key = (self.owner(), key, self.fx().db_mode);
                 if let Some(diag) = self.failed_helpers.get(&helper_key) {
                     return Err(diag.clone());
                 }
@@ -4916,7 +4942,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ok(Out::atom(php_str(&t), Ty::Collection(t)))
             }
             Value::Builtin(Builtin::Db) => {
-                if self.fx().no_db {
+                if !self.fx().db_mode.allows_read() {
                     return Err(Diag::new(span, "access rules can't query; put that in a hook")
                         .code(crate::diag::Code::AccessQuery)
                         .help("return a filter instead, e.g. `{ ownerId: ctx.user?.id ?? -1 }`"));
@@ -5655,7 +5681,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// `this`: the type of a module-level literal method's hidden receiver (`compile_method_now`).
     fn compile_helper_now(&mut self, c: &Rc<Closure>, name: &str, this: Option<Ty>) -> Result<()> {
         // Compile the helper before its caller so its return type is known.
-        let no_db = self.fx().no_db;
+        let db_mode = self.fx().db_mode;
         let saved_out = std::mem::take(&mut self.output);
         let saved_fx = self.fx.take();
         let saved_this = std::mem::replace(&mut self.implicit_this, this);
@@ -5663,7 +5689,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         // caller's `"use client"` analysis: a server component a client component renders stays
         // a server component.
         let saved_client = self.client.take();
-        let r = self.compile_function(c, name, None, None, no_db);
+        let r = self.compile_function(c, name, None, None, db_mode);
         self.client = saved_client;
         self.implicit_this = saved_this;
         self.fx = saved_fx;
@@ -5944,7 +5970,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             jumps: Vec::new(),
             pending_labels: Vec::new(),
             conditional_depth: 0,
-            no_db: self.fx().no_db,
+            db_mode: self.fx().db_mode,
             access: None,
         };
         if f.is_generator && !self.javascript_module(module) {
@@ -9036,7 +9062,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "use `mail.send(message)` or `mail.render(Template, props)`",
             );
         }
-        if self.fx().no_db {
+        if self.fx().db_mode.is_restricted() {
             return err_help(
                 span,
                 "access rules can't send mail",
@@ -9119,7 +9145,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 );
             }
         };
-        if self.fx().no_db {
+        if self.fx().db_mode.is_restricted() {
             return err_help(
                 span,
                 "access rules can't call connectors",
@@ -9314,7 +9340,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "use `abilities.call(\"vendor/name\", input)`",
             );
         }
-        if self.fx().no_db {
+        if self.fx().db_mode.is_restricted() {
             return err_help(
                 span,
                 "access rules can't call abilities",
@@ -9396,7 +9422,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if matches!(name, "update_option" | "delete_option" | "wp_insert_post") {
             self.writes(span, "calls a WordPress function that writes");
         }
-        if self.fx().no_db {
+        if self.fx().db_mode.is_restricted() {
             return err_help(
                 span,
                 format!("access rules can't call `{name}`"),
@@ -9469,7 +9495,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn once_call(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
-        if self.fx().no_db {
+        if self.fx().db_mode.is_restricted() {
             return err_help(span, "access rules can't use once()", "move it into a hook or action");
         }
         self.writes(span, "records a once() result");
@@ -9529,7 +9555,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             return Err(d);
         };
-        if self.fx().no_db {
+        if self.fx().db_mode.is_restricted() {
             return err_help(span, "access rules can't enqueue jobs", "enqueue from a hook or action");
         }
         if args.is_empty() || args.len() > 2 {
@@ -11167,6 +11193,33 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             return Err(d);
         }
+        let db_mode = self.fx().db_mode;
+        if !db_mode.allows_read() {
+            return Err(Diag::new(span, "access rules can't query; put that in a hook")
+                .code(crate::diag::Code::AccessQuery)
+                .help("return a filter instead, e.g. `{ ownerId: ctx.user?.id ?? -1 }`"));
+        }
+        if !db_mode.allows_write() {
+            if matches!(m, "create" | "update" | "delete") {
+                return Err(Diag::new(
+                    span,
+                    "access rules can't write to the database; put that in a hook or action",
+                )
+                .code(crate::diag::Code::AccessQuery)
+                .help("use read-only `db.query.<kind>` in access rules, and put writes in a hook or action"));
+            }
+            if !system {
+                let key = &self.schema.collections[table].key;
+                return Err(Diag::new(
+                    span,
+                    "access rules can't call viewer-scoped reads; use `db.query.<kind>` or `<kind>.system` instead",
+                )
+                .code(crate::diag::Code::AccessQuery)
+                .help(format!(
+                    "use `db.query.{key}.findMany(...)` or `{key}.system.{m}(...)` so access rules don't recurse"
+                )));
+            }
+        }
         let key = self.schema.collections[table].key.clone();
         self.uses(
             if matches!(m, "create" | "update" | "restore") {
@@ -12042,6 +12095,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// `db.globals.<key>.get()` / `.update(patch)`: trusted, like `db.query`.
     fn db_global_call(&mut self, name: &str, m: &str, args: &[ArrEl], m_span: Span) -> Result<Out> {
+        if m == "update" && !self.fx().db_mode.allows_write() {
+            return Err(Diag::new(
+                m_span,
+                "access rules can't write to the database; put that in a hook or action",
+            )
+            .code(crate::diag::Code::AccessQuery)
+            .help(format!(
+                "read globals with `db.globals.{name}.get()` in access rules, and put updates in a hook or action"
+            )));
+        }
         self.uses(
             if m == "update" { "write" } else { "read" },
             format!("globals.{name}"),
@@ -12125,6 +12188,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         self.route_opaque(format!("db.{m}"));
+        if !self.fx().db_mode.allows_write() {
+            return Err(Diag::new(
+                span,
+                "access rules can't write to the database; put that in a hook or action",
+            )
+            .code(crate::diag::Code::AccessQuery)
+            .help("use read-only `db.query.<kind>` in access rules, and put writes in a hook or action"));
+        }
         crate::builtins::check("db", m, args.len(), crate::builtins::Phase::Emitter, span)?;
         let t = self.arg(args, 0, span, "a collection")?;
         let v = self.expr(t)?;

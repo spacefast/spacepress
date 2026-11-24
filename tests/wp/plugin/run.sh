@@ -411,9 +411,21 @@ for dots in '../../..' '%2e%2e/%2e%2e/%2e%2e'; do
   [[ $(curl -s --path-as-is -u "$admin" -H "X-TypedPress-Deployment: $id:$token" "$api/deployments/$id/plan/$dots/$dots/wp-admin/admin-ajax.php?action=rest-nonce") == 0 ]] || fail "nor with a deployment's token, through $dots"
 done
 [[ $(curl -s -u "$admin" "$url/wp-admin/admin-ajax.php?action=rest-nonce") == 0 ]] || fail "an application password gets no nonce from admin-ajax.php"
-[[ $(curl -s --path-as-is -u "$admin" -d 'a=1' "$url//x/wp-json/typedpress-deploy/v1/site") != *wpadminbar* ]] || fail "an application password signs nobody in on a page whose path ends like the receiver's"
+receiver_like_site="$url//x/wp-json/typedpress-deploy/v1/site"
+receiver_like_plan="$url//x/wp-json/typedpress-deploy/v1/deployments/$id/plan"
+# curl skips session cookies without an expiry in the browser helper's cookie jar.
+frontend_cookie=$(awk -F '\t' '$3 == "/" && $6 ~ /^wordpress_logged_in_/ { print $6 "=" $7 }' "$work/cookies")
+# The theme's body class still identifies a signed-in visitor with the toolbar hidden.
+logged_in_body='<body[^>]*[[:space:]"]logged-in[[:space:]"]'
+for path in "$receiver_like_site" "$receiver_like_plan"; do
+  signed_in=$(curl -sS --path-as-is -b "$frontend_cookie" -d 'a=1' "$path")
+  [[ $signed_in =~ $logged_in_body ]] || fail "the login cookie signs in on the page at $path"
+done
+site_page=$(curl -sS --path-as-is -u "$admin" -d 'a=1' "$receiver_like_site")
+[[ $site_page == *'<body '* && ! $site_page =~ $logged_in_body ]] || fail "an application password signs nobody in on a page whose path ends like the receiver's"
 # Such a path is a page to WordPress, so a deployment's token selects nothing on it either: the live build answers.
-[[ $(curl -s --path-as-is -u "$admin" -H "X-TypedPress-Deployment: $id:$token" -d 'a=1' "$url//x/wp-json/typedpress-deploy/v1/deployments/$id/plan") != *wpadminbar* ]] || fail "a deployment's token on a page signs nobody in"
+plan_page=$(curl -sS --path-as-is -u "$admin" -H "X-TypedPress-Deployment: $id:$token" -d 'a=1' "$receiver_like_plan")
+[[ $plan_page == *'<body '* && ! $plan_page =~ $logged_in_body ]] || fail "a deployment's token on a page signs nobody in"
 [[ $(status -u "$editor" -H "X-TypedPress-Deployment: $id:$token" "$api/deployments/$id/plan") == 403 ]] || fail "the token alone does not open the plan"
 [[ $(status -u "$admin" -H "X-TypedPress-Deployment: $id:$(printf 'f%.0s' {1..64})" "$api/deployments/$id/plan") == 409 ]] || fail "a wrong token mounts nothing"
 [[ $(status -u "$admin" -X POST -H "X-TypedPress-Deployment: $id:$token" "$api/deployments/$id/activate") == 409 ]] || fail "a deployment whose trees never arrived can't go live"

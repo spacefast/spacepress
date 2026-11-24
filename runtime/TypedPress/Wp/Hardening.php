@@ -26,7 +26,7 @@ final class Hardening
     private const RULES = 'tp_rewrite_rules';
 
     /** In the order spec.md §6 lists them. */
-    public const SWITCHES = ['xmlrpc', 'pings', 'emoji', 'fileEditors', 'pluginAndThemeInstalls', 'autoUpdates', 'customizer', 'comments', 'authors', 'schemaLock', 'loginErrors', 'permalinks', 'timezone', 'blockTheme'];
+    public const SWITCHES = ['xmlrpc', 'pings', 'emoji', 'adminBar', 'fileEditors', 'pluginAndThemeInstalls', 'autoUpdates', 'customizer', 'comments', 'authors', 'schemaLock', 'loginErrors', 'permalinks', 'timezone', 'blockTheme'];
 
     /** Error codes that differ between an account that exists and one that doesn't (other plugins' sign-ins add them too). */
     private const ACCOUNT_CODES = ['invalid_username', 'invalid_email', 'incorrect_password', 'invalidcombo'];
@@ -141,6 +141,12 @@ final class Hardening
         remove_filter('the_content_feed', 'wp_staticize_emoji');
         remove_filter('comment_text_rss', 'wp_staticize_emoji');
         remove_filter('wp_mail', 'wp_staticize_emoji_for_email');
+    }
+
+    /** No frontend admin bar for signed-in visitors; classic wp-admin keeps its toolbar. */
+    private static function adminBar(): void
+    {
+        add_filter('show_admin_bar', '__return_false');
     }
 
     /** The plugin and theme file editors are gone for everyone, administrators included. */

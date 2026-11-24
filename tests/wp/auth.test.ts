@@ -859,7 +859,7 @@ test("an application password signs nobody in on a page, whatever the URL starts
   // The probe sees a signed-in page when there is one: the editor's cookie reads the private post.
   const cookie = await loginCookie(site, "editor", `${site}/`);
   const asEditor = await raw("GET", `/?s=${secret}`, { cookie });
-  assert.deepEqual([asEditor.status, asEditor.body.includes(hidden), asEditor.body.includes("wpadminbar")], [200, true, true], "the cookie's page shows the private post");
+  assert.deepEqual([asEditor.status, asEditor.body.includes(hidden), /<body[^>]*\blogged-in\b/.test(asEditor.body)], [200, true, true], "the cookie's page shows the private post");
   const abilitiesOnly = agent("--abilities=blog/guestbook-create");
   for (const [who, header] of [["unscoped", auth("editor")], ["read-only", agent()], ["ability-limited", abilitiesOnly]] as const) {
     // WordPress lets `rest_route` in the query or the body replace the route in the path: an empty one makes this a page.

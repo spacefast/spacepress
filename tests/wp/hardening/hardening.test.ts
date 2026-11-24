@@ -31,7 +31,7 @@ const INSTALL_CAPS = ["install_plugins", "upload_plugins", "update_plugins", "de
 
 test("the active app lists every switch it applies", async () => {
   const schema = (await (await fetch(`${harness.url}/wp-json/typedpress/v1`, { headers: auth("admin") })).json()) as { data: { runtime: { wp: { hardening: string[] } } } };
-  assert.deepEqual(schema.data.runtime.wp.hardening, ["xmlrpc", "pings", "emoji", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "authors", "schemaLock", "loginErrors", "permalinks", "timezone", "blockTheme"]);
+  assert.deepEqual(schema.data.runtime.wp.hardening, ["xmlrpc", "pings", "emoji", "adminBar", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "authors", "schemaLock", "loginErrors", "permalinks", "timezone", "blockTheme"]);
 });
 
 test("xmlrpc: every call is refused, system methods included, and nothing advertises the endpoint", async () => {
@@ -142,7 +142,7 @@ async function withWordPressDefaults(run: () => Promise<void>) {
 test("xmlrpc and pings left out of the config: WordPress's own, the site's Discussion settings included", async () => {
   await withWordPressDefaults(async () => {
     const listing = (await (await fetch(`${site}/wp-json/typedpress/v1`, { headers: auth("admin") })).json()).data.runtime.wp.hardening;
-    assert.deepEqual(listing, ["emoji", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "authors", "schemaLock", "loginErrors", "permalinks", "timezone", "blockTheme"]);
+    assert.deepEqual(listing, ["emoji", "adminBar", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "authors", "schemaLock", "loginErrors", "permalinks", "timezone", "blockTheme"]);
     // XML-RPC answers, signed-in methods included (an unscoped application password, as WordPress allows).
     const listed = await xmlrpc("system.listMethods");
     assert.equal(listed.status, 200);
@@ -220,6 +220,15 @@ test("fileEditors and pluginAndThemeInstalls: refused to the administrator in wp
 test("autoUpdates: core, plugin and theme updates never run on their own", () => {
   assert.deepEqual(evalJson(`require_once ABSPATH . 'wp-admin/includes/class-wp-automatic-updater.php';
     echo wp_json_encode([(new WP_Automatic_Updater())->is_disabled(), wp_is_auto_update_enabled_for_type('plugin'), wp_is_auto_update_enabled_for_type('theme'), apply_filters('auto_update_core', true, (object) [])]);`), [true, false, false, false]);
+});
+
+test("adminBar: hidden on the front end for signed-in visitors; classic wp-admin keeps its toolbar", async () => {
+  const cookie = await loginCookie(site, "admin", `${site}/wp-admin/`);
+  const front = await (await page("/", cookie)).text();
+  assert.match(front, /<body[^>]*\blogged-in\b/);
+  assert.doesNotMatch(front, /wpadminbar/);
+  const admin = await (await page("/wp-admin/index.php", cookie)).text();
+  assert.match(admin, /wpadminbar/);
 });
 
 test("customizer: customize.php and its links are gone for the administrator", async () => {
@@ -344,7 +353,9 @@ test("without an active TypedPress app, WordPress keeps XML-RPC, comments, the C
   assert.deepEqual(adminCan("customize", "edit_plugins", "install_plugins"), [true, true, true]);
   const cookie = await loginCookie(site, "admin", `${site}/wp-admin/`);
   assert.equal((await page("/wp-admin/customize.php", cookie)).status, 200);
-  assert.match(await (await page("/", cookie)).text(), /wp-emoji|_wpemojiSettings/);
+  const homeAsAdmin = await (await page("/", cookie)).text();
+  assert.match(homeAsAdmin, /wp-emoji|_wpemojiSettings/);
+  assert.match(homeAsAdmin, /wpadminbar/);
   assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${id}), get_option('permalink_structure'), get_option('tp_rewrite_rules', null)]);`), [true, "", null]);
   assert.equal((await page(`/?p=${id}`)).status, 200, "plain permalinks route again");
   assert.match((await signIn("nobody-here", "guess"))[2], /is not registered on this site/, "wp-login.php's own errors again");

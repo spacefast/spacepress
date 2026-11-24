@@ -250,6 +250,7 @@ final class Prebuilt {
 		$plugins = array_values( array_unique( $plugins ) );
 		sort( $plugins );
 		foreach ( wp_get_mu_plugins() as $mu ) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- An optional MU plugin can disappear while computing the cache key.
 			hash_update( $hash, 'mu:' . basename( $mu ) . ':' . (string) @hash_file( 'sha256', $mu ) . "\n" );
 		}
 		foreach ( array( 'advanced-cache.php', 'object-cache.php', 'db.php' ) as $dropin ) {
@@ -639,6 +640,7 @@ final class Prebuilt {
 		if ( false === $handle ) {
 			return;
 		}
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- A failed stat skips the cached response and renders normally.
 		$stat = @fstat( $handle );
 		$etag = is_array( $stat ) ? \SpacePress\Validator::stream( $handle, (int) $stat['size'] ) : null;
 		if ( null === $etag ) {

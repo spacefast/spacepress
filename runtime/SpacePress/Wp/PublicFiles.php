@@ -378,6 +378,7 @@ final class PublicFiles {
 				}
 				if ( $prev_root === $root && isset( $prev_link_set[ $rel ] ) ) {
 					if ( @unlink( $dest ) || ! is_link( $dest ) ) {
+						// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- The false result triggers the file-copy fallback on hosts without symlinks.
 						if ( @symlink( $target, $dest ) ) {
 							$created_links[] = $rel;
 						}
@@ -392,6 +393,7 @@ final class PublicFiles {
 				// Never overwrite a real file or directory already in the document root.
 				continue;
 			}
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- The false result triggers the file-copy fallback on hosts without symlinks.
 			if ( @symlink( $target, $dest ) ) {
 				$created_links[] = $rel;
 			}

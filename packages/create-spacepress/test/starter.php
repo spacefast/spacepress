@@ -75,7 +75,7 @@ foreach ( array( '/missing/', '/notes/missing/' ) as $path ) {
 }
 
 $document = new DOMDocument();
-@$document->loadHTML( $home );
+$document->loadHTML( $home, LIBXML_NOERROR | LIBXML_NOWARNING );
 $xpath = new DOMXPath( $document );
 // A stylesheet of 4 KB or less is inlined in <head> (SpacePress\Assets::INLINE_LIMIT); a larger one is linked.
 $inline     = $xpath->evaluate( 'string(//style[starts-with(@id, "spacepress-app-site-") and contains(@id, "-css-inline-css")])' );

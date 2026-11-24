@@ -46,6 +46,7 @@ final class Seed {
 				"\0",
 				array(
 					$plugin->buildHash(),
+					// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- A build without compiled functions contributes an empty digest.
 					(string) @hash_file( 'sha256', $plugin->dir . '/sp/app/functions.php' ),
 					(string) Js::jsonStringify( $version ),
 				)

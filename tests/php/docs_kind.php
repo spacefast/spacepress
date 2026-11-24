@@ -75,7 +75,7 @@ function fetch( string $url, array $headers = array() ): array {
 /** What a docs page shows: its heading, tree, table of contents, pager and title. */
 function doc( array $r ): array {
 	$html = new DOMDocument();
-	@$html->loadHTML( '<?xml encoding="utf-8"?>' . $r['body'] );
+	$html->loadHTML( '<?xml encoding="utf-8"?>' . $r['body'], LIBXML_NOERROR | LIBXML_NOWARNING );
 	$x     = new DOMXPath( $html );
 	$texts = static fn ( string $q ): array => array_map( static fn ( DOMNode $n ): string => trim( $n->textContent ), iterator_to_array( $x->query( $q ) ) );
 	$tree  = static function ( DOMNode $ul ) use ( &$tree, $x ): array {
@@ -471,7 +471,7 @@ $out['blocks fenced inside'] = \SpacePress\Sync\Markdown::toBlocks("<Callout typ
 // marked lines and a tab group, no script; written back as the same fences.
 $setup = fetch( "$url/docs/guides/setup/" );
 $html  = new DOMDocument();
-@$html->loadHTML( '<?xml encoding="utf-8"?>' . $setup['body'] );
+$html->loadHTML( '<?xml encoding="utf-8"?>' . $setup['body'], LIBXML_NOERROR | LIBXML_NOWARNING );
 $x                = new DOMXPath( $html );
 $text             = static fn ( ?DOMNode $n ): ?string => null === $n ? null : trim( $n->textContent );
 $out['code']      = array(

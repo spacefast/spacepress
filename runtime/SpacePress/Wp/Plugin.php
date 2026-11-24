@@ -739,10 +739,12 @@ final class Plugin {
 	}
 
 	private function schemaHash(): string {
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Unavailable build files contribute an empty digest.
 		$parts    = array( (string) @hash_file( 'sha256', $this->dir . '/sp/app/schema.php' ) );
 		$migFiles = glob( $this->dir . '/sp/app/migrations/*/migration.sql' ) ?: array();
 		sort( $migFiles, SORT_STRING );
 		foreach ( $migFiles as $file ) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Unavailable build files contribute an empty digest.
 			$parts[] = basename( dirname( $file ) ) . ':' . (string) @hash_file( 'sha256', $file );
 		}
 
@@ -751,6 +753,7 @@ final class Plugin {
 
 	/** Identifies the compiled schema this request runs: what a runtime schema version was validated on. */
 	public function buildHash(): string {
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Unavailable build files contribute an empty digest.
 		return $this->loadedHash ??= (string) @hash_file( 'sha256', $this->dir . '/sp/app/schema.php' );
 	}
 

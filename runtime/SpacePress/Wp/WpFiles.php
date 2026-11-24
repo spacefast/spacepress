@@ -154,6 +154,7 @@ final class WpFiles implements FileStorage {
 		}
 		$name = 'probe-' . bin2hex( random_bytes( 8 ) ) . '.txt';
 		$file = self::root() . '/' . $name;
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- The write probe checks the return value and reports failure itself.
 		if ( @file_put_contents( $file, 'first' ) !== 5 ) {
 			// No probe file means no proof: a 404 for a missing file says nothing about the web server.
 			update_option( self::OK, '0', true );

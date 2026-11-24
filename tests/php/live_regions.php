@@ -106,7 +106,7 @@ function pageSeed( string $url, string $id, array $headers = array() ): array {
 		throw new RuntimeException( curl_error( $ch ) );
 	}
 	$doc = new DOMDocument();
-	@$doc->loadHTML( $body );
+	$doc->loadHTML( $body, LIBXML_NOERROR | LIBXML_NOWARNING );
 	$element = ( new DOMXPath( $doc ) )->query( "//*[@data-sp-live='$id']" )->item( 0 );
 	return json_decode( $element->getAttribute( 'data-sp-live-seed' ), true, 512, JSON_THROW_ON_ERROR );
 }

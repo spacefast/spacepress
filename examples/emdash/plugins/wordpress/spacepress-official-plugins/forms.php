@@ -19,6 +19,7 @@ function valid_form( array $input ): array|\WP_Error {
 			}
 			if ( 'website' === $field['name'] || 'data' === $field['name'] ) {
 				return problem( 'invalid_form', 'Reserved field name' ); }
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- An invalid validation pattern is detected from the false return value.
 			if ( isset( $field['validation']['pattern'] ) && @preg_match( '~' . str_replace( '~', '\\~', $field['validation']['pattern'] ) . '~u', '' ) === false ) {
 				return problem( 'invalid_form', 'Invalid field pattern' );
 			}

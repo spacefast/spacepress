@@ -57,7 +57,7 @@ function fetch( string $url, string $method = 'GET', array $headers = array(), ?
 /** The form on $html that posts to a URL ending in $suffix: its action and its inputs. */
 function form( string $html, string $suffix ): array {
 	$doc = new DOMDocument();
-	@$doc->loadHTML( '<?xml encoding="utf-8"?>' . $html );
+	$doc->loadHTML( '<?xml encoding="utf-8"?>' . $html, LIBXML_NOERROR | LIBXML_NOWARNING );
 	foreach ( $doc->getElementsByTagName( 'form' ) as $form ) {
 		if ( str_ends_with( $form->getAttribute( 'action' ), $suffix ) ) {
 			$fields = array();

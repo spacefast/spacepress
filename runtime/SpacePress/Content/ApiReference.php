@@ -572,7 +572,8 @@ final class ApiReference {
 	public static function slug( string $name ): string {
 		$kebab = (string) preg_replace( '/(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/', '-', remove_accents( $name ) );
 
-		return trim( (string) preg_replace( '/[^a-z0-9]+/', '-', strtolower( $kebab ) ), '-' ) ?: 'api';
+		$slug = trim( (string) preg_replace( '/[^a-z0-9]+/', '-', strtolower( $kebab ) ), '-' );
+		return $slug ? $slug : 'api';
 	}
 
 	/** OpenAPI's Markdown, as HTML. */

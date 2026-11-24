@@ -14,7 +14,7 @@ final class CartHandoff {
 
 	private static bool $requested           = false;
 	private static ?string $source           = null;
-	private static ?\WC_Order $checkoutOrder = null;
+	private static ?\WC_Order $checkout_order = null;
 
 	public static function register( Plugin $plugin ): void {
 		add_action( 'before_woocommerce_init', static fn () => self::prepare( $plugin ), 0 );
@@ -24,14 +24,14 @@ final class CartHandoff {
 		add_action(
 			'woocommerce_store_api_checkout_order_processed',
 			static function ( \WC_Order $order ): void {
-				self::$checkoutOrder = $order;
+				self::$checkout_order = $order;
 			}
 		);
 		add_action(
 			'woocommerce_checkout_order_processed',
 			static function ( $id, $data, \WC_Order $order ): void {
 				self::link_order( $order );
-				self::$checkoutOrder = $order;
+				self::$checkout_order = $order;
 			},
 			10,
 			3
@@ -39,8 +39,8 @@ final class CartHandoff {
 		add_action(
 			'woocommerce_before_cart_emptied',
 			static function (): void {
-				if ( null !== self::$checkoutOrder ) {
-					self::settle( self::$checkoutOrder ); }
+				if ( null !== self::$checkout_order ) {
+					self::settle( self::$checkout_order ); }
 			}
 		);
 		// AppRouter serves the checkout page at priority 1.

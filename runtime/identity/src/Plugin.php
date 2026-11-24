@@ -15,20 +15,20 @@ final class Plugin {
 	 */
 	public const TWO_FACTOR_KEY                    = 'SpacePress_Identity_TwoFactorProvider';
 	public const VERSION                           = '0.3.0';
-	private static ?\WP_Error $authenticationError = null;
+	private static ?\WP_Error $authentication_error = null;
 	public static DB $db;
 	public static Accounts $accounts;
 	public static Sessions $sessions;
 	public static Security $security;
 	public static Api $api;
 	/** What core's application-password check last answered on this request: the user, the error, or null. */
-	private static \WP_User|\WP_Error|null $applicationPassword = null;
+	private static \WP_User|\WP_Error|null $application_password = null;
 	public static function applicationPassword(): \WP_User|\WP_Error|null {
-		return self::$applicationPassword;
+		return self::$application_password;
 	}
 	public static function authenticationError(): ?\WP_Error {
-		$application = self::$applicationPassword;
-		return self::$authenticationError ?? ( is_wp_error( $application ) && $application->get_error_code() === 'storage_unavailable' ? $application : null );
+		$application = self::$application_password;
+		return self::$authentication_error ?? ( is_wp_error( $application ) && $application->get_error_code() === 'storage_unavailable' ? $application : null );
 	}
 	private static function refusal( Failure $error ): \WP_Error {
 		return new \WP_Error( $error->kind, $error->getMessage(), array( 'status' => $error->status ) );
@@ -512,13 +512,13 @@ final class Plugin {
 		add_action(
 			'application_password_did_authenticate',
 			static function ( $user ): void {
-				self::$applicationPassword = $user instanceof \WP_User ? $user : null;
+				self::$application_password = $user instanceof \WP_User ? $user : null;
 			}
 		);
 		add_action(
 			'application_password_failed_authentication',
 			static function ( $error ): void {
-				self::$applicationPassword = $error instanceof \WP_Error ? $error : null;
+				self::$application_password = $error instanceof \WP_Error ? $error : null;
 			}
 		);
 		// Access tokens on the REST API (`Authorization: Bearer`), after core's own resolvers.
@@ -528,17 +528,17 @@ final class Plugin {
 		add_filter(
 			'determine_current_user',
 			static function ( $uid ) {
-				self::$authenticationError = null;
+				self::$authentication_error = null;
 				if ( ! $uid ) {
 					return $uid;
 				}
 				try {
 					if ( ! in_array( self::$accounts->status( (int) $uid ), array( 'active', 'none' ), true ) ) {
-						self::$authenticationError = new \WP_Error( 'suspended', 'This account is suspended.', array( 'status' => 403 ) );
+						self::$authentication_error = new \WP_Error( 'suspended', 'This account is suspended.', array( 'status' => 403 ) );
 						return 0;
 					}
 				} catch ( Failure $e ) {
-					self::$authenticationError = self::refusal( $e );
+					self::$authentication_error = self::refusal( $e );
 					return 0;
 				}
 				return $uid;

@@ -111,14 +111,14 @@ final class Register {
 			return $valid;
 		}
 
-		if ( in_array( self::$sanitizing, array( 'GET', 'DELETE' ), true ) && ! self::$typedQuery ) {
+		if ( in_array( self::$sanitizing, array( 'GET', 'DELETE' ), true ) && ! self::$typed_query ) {
 			// Core sanitizes (types) a query string only when all of it validates; remember which.
 			self::$untyped = true === $valid ? null : ( $valid instanceof \WP_Error ? $valid->get_error_message() : 'Invalid input' );
 		}
 
 		return match ( true ) {
 			null === self::$sanitizing => true,
-			in_array( self::$sanitizing, array( 'GET', 'DELETE' ), true ) && ! self::$typedQuery => $valid,
+			in_array( self::$sanitizing, array( 'GET', 'DELETE' ), true ) && ! self::$typed_query => $valid,
 			default => new \WP_Error( 'sp_raw_input', 'SpacePress validates JSON input itself' ),
 		};
 	}
@@ -152,7 +152,7 @@ final class Register {
 			return self::wrong_run_name();
 		}
 		self::$stack[]    = array( $request, self::state() );
-		self::$typedQuery = false;
+		self::$typed_query = false;
 		self::$queried    = null;
 		if ( ! in_array( $request->get_method(), array( 'GET', 'HEAD', 'DELETE' ), true ) ) {
 			return $result;
@@ -178,7 +178,7 @@ final class Register {
 			} catch ( \JsonException ) {
 				return $result;
 			}
-			self::$typedQuery = true;
+			self::$typed_query = true;
 			self::$queried    = array( $name, $sent );
 			$query['input']   = $input;
 			$request->set_query_params( $query );
@@ -239,7 +239,7 @@ final class Register {
 		self::$method     = self::$sanitizing;
 		self::$untyped    = null;
 		self::$responded  = array();
-		self::$runRoute   = ! \SpacePress\Wp\Facade::dispatching() && self::client_operation( $name ) ? $name : null;
+		self::$run_route   = ! \SpacePress\Wp\Facade::dispatching() && self::client_operation( $name ) ? $name : null;
 		$headers          = array();
 		foreach ( $request->get_headers() as $key => $values ) {
 			$headers[ str_replace( '_', '-', strtolower( (string) $key ) ) ] = implode( ', ', (array) $values );
@@ -333,7 +333,7 @@ final class Register {
 
 	/** @return array this request's state, as {@see restore()} puts it back */
 	private static function state(): array {
-		return array( self::$sanitizing, self::$method, self::$untyped, self::$raw, self::$headers, self::$responded, self::$runRoute, self::$typedQuery, self::$queried );
+		return array( self::$sanitizing, self::$method, self::$untyped, self::$raw, self::$headers, self::$responded, self::$run_route, self::$typed_query, self::$queried );
 	}
 
 	/**
@@ -343,10 +343,10 @@ final class Register {
 	public static function beginCallbacks( mixed $response, mixed $handler, \WP_REST_Request $request ): mixed {
 		if ( self::runRoute( $request ) === null && array() !== self::$stack ) {
 			self::$stack[]    = array( $request, self::state() );
-			self::$method     = self::$untyped = self::$runRoute = null;
+			self::$method     = self::$untyped = self::$run_route = null;
 			self::$raw        = self::$headers = self::$queried = null;
 			self::$responded  = array();
-			self::$typedQuery = false;
+			self::$typed_query = false;
 		}
 		self::$sanitizing = null;
 
@@ -386,7 +386,7 @@ final class Register {
 			if ( self::$stack[ $i ][0] === $request ) {
 				if ( $i < $count - 1 ) {
 					// The frame above holds this request's state as the first abandoned request saved it.
-					[self::$sanitizing, self::$method, self::$untyped, self::$raw, self::$headers, self::$responded, self::$runRoute, self::$typedQuery, self::$queried] = self::$stack[ $i + 1 ][1];
+					[self::$sanitizing, self::$method, self::$untyped, self::$raw, self::$headers, self::$responded, self::$run_route, self::$typed_query, self::$queried] = self::$stack[ $i + 1 ][1];
 					array_splice( self::$stack, $i + 1 );
 				}
 
@@ -399,7 +399,7 @@ final class Register {
 	private static function restore( mixed $request ): void {
 		for ( $i = count( self::$stack ) - 1; $i >= 0; $i-- ) {
 			if ( self::$stack[ $i ][0] === $request ) {
-				[self::$sanitizing, self::$method, self::$untyped, self::$raw, self::$headers, self::$responded, self::$runRoute, self::$typedQuery, self::$queried] = self::$stack[ $i ][1];
+				[self::$sanitizing, self::$method, self::$untyped, self::$raw, self::$headers, self::$responded, self::$run_route, self::$typed_query, self::$queried] = self::$stack[ $i ][1];
 				array_splice( self::$stack, $i );
 
 				return;
@@ -465,11 +465,11 @@ final class Register {
 	 * values core types. JSON input in the query of a non-query ability is read as sent instead.
 	 */
 	public static function queryString(): bool {
-		return in_array( self::$method, array( 'GET', 'DELETE' ), true ) && ! self::$typedQuery;
+		return in_array( self::$method, array( 'GET', 'DELETE' ), true ) && ! self::$typed_query;
 	}
 
 	/** This run's query carries an ability's JSON input as sent ({@see jsonInput()}). */
-	private static bool $typedQuery = false;
+	private static bool $typed_query = false;
 
 	/**
 	 * One of the app's abilities core's run route is serving in this request, as {@see startSanitizing()}
@@ -478,7 +478,7 @@ final class Register {
 	 * order steps) is not: hidden from agents, it has no HTTP route either.
 	 */
 	public static function running(): ?string {
-		return self::$runRoute;
+		return self::$run_route;
 	}
 
 	private static function client_operation( string $name ): bool {
@@ -499,7 +499,7 @@ final class Register {
 	/** @var array<string, true> the operations the app's schema declares, by ability name */
 	private static array $client = array();
 
-	private static ?string $runRoute = null;
+	private static ?string $run_route = null;
 
 	/** Public view of one descriptor: what core receives, minus callbacks. */
 	public static function describe( array $op ): array {

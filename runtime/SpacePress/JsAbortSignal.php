@@ -167,7 +167,7 @@ final class JsAbortSignal {
 			if ( $entry[1] ) {
 				$this->listeners[ $i ] = null; }
 			try {
-				( $entry[0] === self::$handlerMarker ? $this->onabort : $entry[0] )( $event );
+				( $entry[0] === self::$handler_marker ? $this->onabort : $entry[0] )( $event );
 			} catch ( \Throwable $e ) {
 				$error ??= $e;
 			}
@@ -175,17 +175,17 @@ final class JsAbortSignal {
 		return $error;
 	}
 
-	private static ?\Closure $handlerMarker = null;
+	private static ?\Closure $handler_marker = null;
 
 	/** An event handler attribute keeps the listener slot of its first non-null assignment. */
 	public function setOnabort( mixed $handler ): void {
-		self::$handlerMarker ??= static function (): void {};
+		self::$handler_marker ??= static function (): void {};
 		$handler               = $handler instanceof \Closure ? $handler : null;
 		if ( null !== $handler && null === $this->onabort ) {
-			$this->listeners[] = array( self::$handlerMarker, false ); }
+			$this->listeners[] = array( self::$handler_marker, false ); }
 		if ( null === $handler ) {
 			foreach ( $this->listeners as $i => $entry ) {
-				if ( null !== $entry && $entry[0] === self::$handlerMarker ) {
+				if ( null !== $entry && $entry[0] === self::$handler_marker ) {
 					$this->listeners[ $i ] = null; }
 			}
 		}

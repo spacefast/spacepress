@@ -49,28 +49,28 @@ final class SchemaLock {
 	private const FORMS = array( 'acf_field_group', 'acf_post_type', 'acf_taxonomy', 'acf_ui_options_page' );
 
 	/** @var array<string, true> */
-	private static array $postTypes = array();
+	private static array $post_types = array();
 	/** @var array<string, true> SCF options pages SpacePress registers: menu slugs and post ids */
-	private static array $optionsPages = array();
+	private static array $options_pages = array();
 	/** @var array<string, true> the user meta and option names SpacePress's fields write */
-	private static array $userMeta = array();
+	private static array $user_meta = array();
 	/** @var array<string, true> */
 	private static array $options = array();
 	/** Set while an SCF ability runs: a refusal from its save becomes the ability's own error. */
-	private static ?string $abilityRefused = null;
+	private static ?string $ability_refused = null;
 	private static int $abilities          = 0;
 
 	public static function apply( Schema $schema ): void {
 		foreach ( $schema->collections() as $spec ) {
 			// WordPress's own posts aren't the app's to lock: other plugins' fields on posts keep working.
 			if ( isset( $spec['wp']['postType'] ) && ! ( $spec['native'] ?? false ) ) {
-				self::$postTypes[ self::norm( $spec['wp']['postType'] ) ] = true;
+				self::$post_types[ self::norm( $spec['wp']['postType'] ) ] = true;
 			}
 		}
-		self::$optionsPages = array( 'spacepress-' . $schema->name() => true );
+		self::$options_pages = array( 'spacepress-' . $schema->name() => true );
 		foreach ( $schema->globals() as $global ) {
-			self::$optionsPages[ self::norm( $global['wp']['menuSlug'] ) ] = true;
-			self::$optionsPages[ self::norm( $global['wp']['postId'] ) ]   = true;
+			self::$options_pages[ self::norm( $global['wp']['menuSlug'] ) ] = true;
+			self::$options_pages[ self::norm( $global['wp']['postId'] ) ]   = true;
 			foreach ( array_keys( $global['fields'] ) as $field ) {
 				// SCF keeps a value as `<postId>_<field>` and its field key as `_<postId>_<field>`.
 				self::$options[ self::norm( $global['wp']['postId'] . '_' . $field ) ] = true;
@@ -78,7 +78,7 @@ final class SchemaLock {
 		}
 		$users = $schema->auth()['collection'] ?? null;
 		foreach ( null === $users ? array() : array_keys( $schema->collection( $users )['columns'] ) as $col ) {
-			self::$userMeta[ self::norm( WpUserStore::META . $col ) ] = true;
+			self::$user_meta[ self::norm( WpUserStore::META . $col ) ] = true;
 		}
 		add_filter( 'wp_insert_post_empty_content', array( self::class, 'saving' ), PHP_INT_MAX, 2 );
 		add_filter( 'wp_pre_execute_ability', array( self::class, 'ability' ), 10, 3 );
@@ -129,7 +129,7 @@ final class SchemaLock {
 		}
 		if ( self::$abilities > 0 ) {
 			// Inside an SCF ability: the save fails, and the ability answers with the refusal.
-			self::$abilityRefused ??= $problem;
+			self::$ability_refused ??= $problem;
 
 			return true;
 		}
@@ -224,8 +224,8 @@ final class SchemaLock {
 			return $result;
 		}
 		self::$abilities      = max( 0, self::$abilities - 1 );
-		$refused              = self::$abilityRefused;
-		self::$abilityRefused = null;
+		$refused              = self::$ability_refused;
+		self::$ability_refused = null;
 
 		return null === $refused ? $result : self::error( $refused );
 	}
@@ -262,7 +262,7 @@ final class SchemaLock {
 			}
 		}
 		foreach ( array( 'menu_slug', 'post_id' ) as $key ) {
-			if ( isset( self::$optionsPages[ $name = self::norm( $object[ $key ] ?? null ) ] ) ) {
+			if ( isset( self::$options_pages[ $name = self::norm( $object[ $key ] ?? null ) ] ) ) {
 				return "the options page $name";
 			}
 		}
@@ -270,7 +270,7 @@ final class SchemaLock {
 			foreach ( is_array( $rules ) ? $rules : array() as $rule ) {
 				$param = is_array( $rule ) ? (string) ( $rule['param'] ?? '' ) : '';
 				$value = is_array( $rule ) ? ( $rule['value'] ?? null ) : null;
-				if ( ( 'post_type' === $param && self::sp_type( $value ) ) || ( 'options_page' === $param && isset( self::$optionsPages[ self::norm( $value ) ] ) ) ) {
+				if ( ( 'post_type' === $param && self::sp_type( $value ) ) || ( 'options_page' === $param && isset( self::$options_pages[ self::norm( $value ) ] ) ) ) {
 					return 'the field list of ' . self::norm( $value );
 				}
 			}
@@ -309,7 +309,7 @@ final class SchemaLock {
 		}
 		$type = $screen['post_type'] ?? ( is_numeric( $screen['post_id'] ?? null ) ? get_post_type( (int) $screen['post_id'] ) : null );
 
-		return self::sp_type( $type ) || isset( self::$optionsPages[ self::norm( $screen['options_page'] ?? null ) ] ) ? false : $match;
+		return self::sp_type( $type ) || isset( self::$options_pages[ self::norm( $screen['options_page'] ?? null ) ] ) ? false : $match;
 	}
 
 	/**
@@ -326,7 +326,7 @@ final class SchemaLock {
 		$first  = match ( $target['type'] ) {
 			'post' => self::sp_type( get_post_type( (int) $target['id'] ) ),
 			'user' => self::protected_user_meta( $field['name'] ?? null ),
-			'option' => isset( self::$optionsPages[ self::norm( $target['id'] ) ] ) || isset( self::$options[ self::norm( $target['id'] . '_' . ( $field['name'] ?? '' ) ) ] ),
+			'option' => isset( self::$options_pages[ self::norm( $target['id'] ) ] ) || isset( self::$options[ self::norm( $target['id'] . '_' . ( $field['name'] ?? '' ) ) ] ),
 			default => false,
 		};
 
@@ -336,7 +336,7 @@ final class SchemaLock {
 	private static function protected_user_meta( mixed $name ): bool {
 		$name = self::norm( $name );
 
-		return isset( self::$userMeta[ $name ] ) || $name === self::norm( WpUserStore::ROLE_META );
+		return isset( self::$user_meta[ $name ] ) || $name === self::norm( WpUserStore::ROLE_META );
 	}
 
 	// ================================================================ options and roles
@@ -411,7 +411,7 @@ final class SchemaLock {
 	/** A capability of one of SpacePress's post types (`edit_others_sp_notes`, `edit_sp_notes_item`). */
 	private static function sp_capability( string $cap ): bool {
 		$cap = self::norm( $cap );
-		foreach ( self::$postTypes as $type => $_ ) {
+		foreach ( self::$post_types as $type => $_ ) {
 			if ( str_ends_with( $cap, "_$type" ) || str_ends_with( $cap, "_{$type}_item" ) ) {
 				return true;
 			}
@@ -465,7 +465,7 @@ final class SchemaLock {
 	private static function sp_type( mixed $type ): bool {
 		$type = self::norm( $type );
 
-		return '' !== $type && ( isset( self::$postTypes[ $type ] ) || str_starts_with( $type, self::PREFIX ) );
+		return '' !== $type && ( isset( self::$post_types[ $type ] ) || str_starts_with( $type, self::PREFIX ) );
 	}
 
 	/**

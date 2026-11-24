@@ -138,7 +138,7 @@ final class Uploads {
 					self::object( (string) $upload['file'] );
 				} catch ( \Throwable ) {
 					@unlink( $upload['file'] );
-					self::$storageFailed = true; // core reports any upload error as a 500; this one is a 503
+					self::$storage_failed = true; // core reports any upload error as a 500; this one is a 503
 					return array(
 						'error'            => 'The configured upload storage is unavailable',
 						'sp_storage_error' => true,
@@ -420,14 +420,14 @@ final class Uploads {
 		}
 	}
 
-	private static bool $storageFailed = false;
+	private static bool $storage_failed = false;
 	/** The attachment core is deleting right now, whose path needs no bytes. */
 	private static ?int $deleting = null;
 
 	/** Whether this request's upload failed because the storage was unavailable; reading it resets it. */
 	public static function storageFailed(): bool {
-		$failed              = self::$storageFailed;
-		self::$storageFailed = false;
+		$failed              = self::$storage_failed;
+		self::$storage_failed = false;
 
 		return $failed;
 	}

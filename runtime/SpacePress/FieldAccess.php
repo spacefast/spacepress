@@ -38,7 +38,7 @@ final class FieldAccess {
 	/** @var ?\Closure(array): bool */
 	private static ?\Closure $withheld = null;
 	/** @var ?\Closure(): HttpError the credential's own refusal for supplying a withheld field */
-	private static ?\Closure $withheldRefusal = null;
+	private static ?\Closure $withheld_refusal = null;
 
 	/**
 	 * Fields this request's credential is not shown, whatever their rules say (a scoped application
@@ -53,7 +53,7 @@ final class FieldAccess {
 	 */
 	public static function withhold( callable $fn, ?callable $refusal = null ): void {
 		self::$withheld        = $fn( ... );
-		self::$withheldRefusal = null === $refusal ? null : $refusal( ... );
+		self::$withheld_refusal = null === $refusal ? null : $refusal( ... );
 	}
 
 	private static function withheld( array $def ): bool {
@@ -258,7 +258,7 @@ final class FieldAccess {
 		$before = null !== $stored_in && array_key_exists( $name, $stored_in ) ? $stored_in[ $name ] : null;
 		// Credential-withheld fields cannot be supplied on create, including nested fields.
 		if ( 'create' === $op && self::withheld( $def ) ) {
-			throw null !== self::$withheldRefusal ? ( self::$withheldRefusal )() : self::denied( $viewer, $name, $ptr );
+			throw null !== self::$withheld_refusal ? ( self::$withheld_refusal )() : self::denied( $viewer, $name, $ptr );
 		}
 		// An allowing update rule explicitly opts into write-only input, at every nesting depth.
 		if ( 'update' === $op && ! isset( $def['access']['update'] )

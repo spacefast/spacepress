@@ -30,7 +30,7 @@ final class Files {
 	);
 
 	private static ?FileStorage $storage       = null;
-	private static ?\SpacePress\Db $storageFor = null;
+	private static ?\SpacePress\Db $storage_for = null;
 
 	public static function register(): void {
 		Extensions::route( 'files', FileRoutes::dispatch( ... ) );
@@ -62,9 +62,9 @@ final class Files {
 
 	/** The active app's private-file storage. */
 	public static function storage(): FileStorage {
-		if ( null === self::$storage || self::$storageFor !== db() ) {
+		if ( null === self::$storage || self::$storage_for !== db() ) {
 			self::$storage    = new \SpacePress\Wp\WpFiles( \SpacePress\Wp\Runtime::plugin()?->connection() ?? throw new \LogicException( 'No SpacePress app is active' ), db()->schema()->name() );
-			self::$storageFor = db();
+			self::$storage_for = db();
 		}
 
 		return self::$storage;

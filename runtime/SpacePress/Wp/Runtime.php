@@ -8,10 +8,10 @@ final class Runtime {
 	public const SERIES             = \SpacePress\Schema::SERIES;
 	public const VERSION            = '0.3.0';
 	private static ?Plugin $plugin  = null;
-	private static ?string $appFile = null;
+	private static ?string $app_file = null;
 	private static bool $booted     = false;
 	/** The runtime plugin's main file, for URLs of the runtime's own browser modules. */
-	private static ?string $runtimeFile = null;
+	private static ?string $runtime_file = null;
 	private static bool $managed        = false;
 	/** @var array<string, callable> `wp spacepress` commands other SpacePress plugins register (identity) */
 	private static array $commands = array();
@@ -27,7 +27,7 @@ final class Runtime {
 			return;
 		}
 		self::$booted      = true;
-		self::$runtimeFile = $runtimeFile;
+		self::$runtime_file = $runtimeFile;
 		RouteRequest::register();
 		AgentScope::trackCookie();
 		// Application passwords sign in where core accepts them and nowhere else: on a request WordPress
@@ -399,7 +399,7 @@ final class Runtime {
 	}
 
 	public static function app( string $dir, string $mainFile, ?\SpacePress\Schema $schema = null ): ?Plugin {
-		if ( self::$appFile === $mainFile ) {
+		if ( self::$app_file === $mainFile ) {
 			return self::$plugin;
 		}
 		try {
@@ -419,7 +419,7 @@ final class Runtime {
 				class_exists( \SpacePress\Identity\Plugin::class, false ) && \SpacePress\Identity\Plugin::install();
 			}
 			self::$plugin  = new Plugin( $dir, $mainFile, $schema );
-			self::$appFile = $mainFile;
+			self::$app_file = $mainFile;
 			\SpacePress\Extensions::schemaDescribe(
 				static function ( array $description ): array {
 					$description['runtime']['wp']                  = Platform::versions();
@@ -448,7 +448,7 @@ final class Runtime {
 
 	/** The runtime plugin's main file (`spacepress-runtime/spacepress-runtime.php`, or the build store's mount). */
 	public static function file(): string {
-		return self::$runtimeFile ?? dirname( __DIR__, 2 ) . '/spacepress-runtime.php';
+		return self::$runtime_file ?? dirname( __DIR__, 2 ) . '/spacepress-runtime.php';
 	}
 
 	public static function unavailable(): ?string {

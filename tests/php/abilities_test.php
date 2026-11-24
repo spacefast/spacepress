@@ -129,7 +129,7 @@ if ( wp_has_ability( 'core/content-query' ) ) {
 // Core's run route serves an `agents: false` operation of the app's own schema (its typed client
 // runs it) only while that run is the request; a nested internal REST request keeps the outer one's
 // state, and nothing outlives it.
-$hidden = new ReflectionProperty( \SpacePress\Wp\Abilities\Register::class, 'runRoute' );
+$hidden = new ReflectionProperty( \SpacePress\Wp\Abilities\Register::class, 'run_route' );
 $wp->actAs( 'editor' );
 $outer_seen = null;
 $probe      = static function ( mixed $response, mixed $handler, mixed $request ) use ( &$outer_seen ) {

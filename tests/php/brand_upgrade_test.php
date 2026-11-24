@@ -58,7 +58,10 @@ $legacy = 'typedpress';
 $after = $state();
 // The one stored value that keeps the earlier name on purpose (the S3 key prefix of objects already
 // stored), and the look-alikes this test planted for other plugins and the site's owner.
-$hasLegacy = static fn (array $rows): array => array_values(array_filter(array_map('json_encode', $rows), static fn (string $r): bool => !str_contains($r, '"sp_upload_keys"')
+// WordPress caches absolute theme paths. The existing site's directory keeps its original name.
+$fixtureDirectory = basename($before['dir']);
+$hasLegacy = static fn (array $rows): array => array_values(array_filter(array_map(
+    static fn (array $row): string => str_replace($fixtureDirectory, '<site>', json_encode($row, JSON_THROW_ON_ERROR)), $rows), static fn (string $r): bool => !str_contains($r, '"sp_upload_keys"')
     && !preg_match('/tp_(unrelated|prebuilt_other|global_other)|typedpress-home-owner|not the app/', $r)
     && (str_contains($r, $legacy) || preg_match('/(?<![a-z0-9])_?tp_/', $r) === 1)));
 

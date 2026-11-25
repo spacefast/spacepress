@@ -972,10 +972,12 @@ function wpCore(): string {
 	// it downloaded itself (`SP_WP_CORE_ZIP`, with its SHA-256 in `SP_WP_CORE_SHA256`).
 	$other = getenv( 'SP_WP_CORE_ZIP' );
 	if ( is_string( $other ) && '' !== $other ) {
-		return wpArchive( $other, 'file://' . wpCache() . "/$other", (string) getenv( 'SP_WP_CORE_SHA256' ), 'WordPress' );
+		// phpcs:ignore WordPress.WP.CapitalPDangit.MisspelledInText -- The ZIP directory is lowercase.
+		return wpArchive( $other, 'file://' . wpCache() . "/$other", (string) getenv( 'SP_WP_CORE_SHA256' ), 'wordpress' );
 	}
 
-	return wpArchive( 'wordpress-' . WP_CORE_VERSION . '.zip', 'https://wordpress.org/wordpress-' . WP_CORE_VERSION . '.zip', WP_CORE_SHA256, 'WordPress' );
+	// phpcs:ignore WordPress.WP.CapitalPDangit.MisspelledInText -- The ZIP directory is lowercase.
+	return wpArchive( 'wordpress-' . WP_CORE_VERSION . '.zip', 'https://wordpress.org/wordpress-' . WP_CORE_VERSION . '.zip', WP_CORE_SHA256, 'wordpress' );
 }
 
 /**

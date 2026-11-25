@@ -519,7 +519,7 @@ export const todoSummaryWidget = adminWidget({
   ],
   width: 2,
   height: 1,
-  link: { label: "Manage tasks", to: "/screens/todoAdminScreen" },
+  link: { label: "Manage tasks", to: "/screens/todo-admin-screen" },
 });
 
 export const todoDashboard = adminDashboard({

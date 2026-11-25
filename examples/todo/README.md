@@ -23,3 +23,17 @@ npm install --prefix examples/todo
 ```
 
 Open the printed URL and sign in with the local dev credentials (`admin` / `spacepress-test-admin`). Open `/wp-admin/new/` to inspect the SpacePress Admin dashboard and DataViews screen.
+
+## Screenshots
+
+| Light Workspace | Slide-over Inspector (Light) |
+| --- | --- |
+| ![Workspace light](screenshots/01-workspace-light.png) | ![Inspector light](screenshots/02-inspector-light.png) |
+
+| Dark Mode Inspector | Full Task Page & Native Comments |
+| --- | --- |
+| ![Inspector dark](screenshots/03-inspector-dark.png) | ![Task detail](screenshots/04-task-detail.png) |
+
+| SpacePress Admin Dashboard | Admin DataViews Screen | Mobile (390px) |
+| --- | --- | --- |
+| ![Admin dashboard](screenshots/05-admin-dashboard.png) | ![Admin DataViews](screenshots/06-admin-dataviews.png) | ![Mobile view](screenshots/07-mobile.png) |

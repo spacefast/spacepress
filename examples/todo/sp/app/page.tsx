@@ -278,7 +278,7 @@ export default async function TodoWorkspacePage({
 
         <div className="todo-sidebar__footer">
           <TodoShortcuts hasInspector={selectedTask !== null} />
-          <a href="/wp-admin/new/screens/todoAdminScreen" className="sp-topbar__link">DataViews ↗</a>
+          <a href="/wp-admin/new/screens/todo-admin-screen" className="sp-topbar__link">DataViews ↗</a>
         </div>
       </aside>
 

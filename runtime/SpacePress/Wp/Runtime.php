@@ -418,7 +418,7 @@ final class Runtime {
 				// Identity waited for the move to install its storage.
 				class_exists( \SpacePress\Identity\Plugin::class, false ) && \SpacePress\Identity\Plugin::install();
 			}
-			self::$plugin  = new Plugin( $dir, $mainFile, $schema );
+			self::$plugin   = new Plugin( $dir, $mainFile, $schema );
 			self::$app_file = $mainFile;
 			\SpacePress\Extensions::schemaDescribe(
 				static function ( array $description ): array {

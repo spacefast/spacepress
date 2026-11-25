@@ -65,11 +65,12 @@ final class Plugin {
 	 * empty tables beside the site's own. The runtime runs that move when it registers the app, then
 	 * calls {@see install()}. The earlier name is the schema version option the old identity wrote.
 	 */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Keep the name used by the identity bootstrap.
 	public static function storageCurrent(): bool {
 		// The runtime's marker answers on a settled site (autoloaded: no query).
 		$upgrade = get_option( 'sp_brand_upgrade', 0 );
 
-		return $upgrade !== 'started' && ( (int) $upgrade > 0 || ! Legacy::stored() );
+		return 'started' !== $upgrade && ( (int) $upgrade > 0 || ! Legacy::stored() );
 	}
 
 	public static function boot( string $file ): void {

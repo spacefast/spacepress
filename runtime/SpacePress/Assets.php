@@ -122,7 +122,7 @@ final class Assets
         $plugin = Wp\Runtime::plugin();
         foreach ($files as $file) {
             $handle = 'spacepress-app-' . sanitize_key(str_replace('.', '-', $file));
-            if (str_starts_with($file, '/spacepress-styles/')) {
+            if (str_starts_with($file, '/spacepress-styles/') || str_starts_with($file, '/typedpress-styles/assets/')) {
                 wp_enqueue_style($handle, home_url($file), [], null);
                 continue;
             }

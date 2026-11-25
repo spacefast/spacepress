@@ -18,7 +18,7 @@ export function hostFs(getExports) {
     return out;
   };
   return {
-    read_file: bind((name) => fs.readFileSync(name, 'utf8')),
+    read_file_bytes: bind((name) => fs.readFileSync(name).toString('base64')),
     canonicalize: bind((name) => fs.realpathSync(name)),
     read_dir: bind((name) => fs.readdirSync(name).map((entry) => path.join(name, entry))),
     stat: bind((name) => {

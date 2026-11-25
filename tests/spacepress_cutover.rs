@@ -1,4 +1,4 @@
-//! Verifies SpacePress config, module specifiers (`spacepress`, `spacefast/app`, `spacepress:db`),
+//! Verifies SpacePress config, built-in module specifiers and their compatibility aliases,
 //! `spacepress.source-bundle.v1` capture/compile, and `connectors.call()` compilation.
 
 #[cfg(feature = "host")]
@@ -63,7 +63,7 @@ export default defineConfig({ name: "my-spacepress-app" });
 
 #[cfg(feature = "host")]
 #[test]
-fn spacefast_app_module_specifier_and_spacepress_db_compile() {
+fn spacefast_module_aliases_compile_from_captured_sources() {
     let temp = tempfile::tempdir().unwrap();
     let project = temp.path().join("project");
     std::fs::create_dir_all(project.join("sp")).unwrap();
@@ -86,13 +86,13 @@ export default defineConfig({ name: "notes-app" });
     std::fs::write(
         project.join("sp/actions.ts"),
         r#"
-import { query, db } from "spacefast/app";
-import { notes } from "spacepress:db";
+import { query } from "@spacefast/spacepress";
+import { notes } from "@spacefast/spacepress:db";
 
 export const countNotes = query(
     { access: "anyone" },
     async () => {
-        const rows = await db.query.notes.findMany();
+        const rows = await notes.list({ limit: 5 });
         return { count: rows.length };
     },
 );

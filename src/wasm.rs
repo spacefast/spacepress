@@ -386,7 +386,7 @@ fn compile_request(request: Request) -> String {
 }
 
 /// Filesystem operations accept either an absolute `project` on the host or a `files`
-/// map relative to it.
+/// map relative to it. A host project may supply its generated config as `configSource`.
 pub fn operation(operation: &str, request: &str) -> String {
     diag::isolated(|| {
         let result = (|| -> Result<serde_json::Value, String> {
@@ -395,7 +395,14 @@ pub fn operation(operation: &str, request: &str) -> String {
             if !project.has_root() {
                 return Err("project must be absolute".into());
             }
+            let config_source = request
+                .get("configSource")
+                .map(|value| value.as_str().ok_or("configSource must be a string"))
+                .transpose()?;
             let fs: Rc<dyn Fs> = if let Some(files) = request.get("files") {
+                if config_source.is_some() {
+                    return Err("configSource requires a host project".into());
+                }
                 let files: BTreeMap<String, String> =
                     serde_json::from_value(files.clone()).map_err(|e| e.to_string())?;
                 let mut absolute = BTreeMap::new();
@@ -418,6 +425,16 @@ pub fn operation(operation: &str, request: &str) -> String {
                 {
                     Rc::new(loader::Disk)
                 }
+            };
+            let fs: Rc<dyn Fs> = if let Some(source) = config_source {
+                let root = fs.canonicalize(&project).map_err(|e| e.to_string())?;
+                Rc::new(loader::Generated {
+                    inner: fs,
+                    path: root.join(crate::layout::CONFIG),
+                    source: source.to_owned(),
+                })
+            } else {
+                fs
             };
             match operation {
                 "sources" => {

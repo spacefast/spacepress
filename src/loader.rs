@@ -77,18 +77,18 @@ pub trait Fs {
 }
 
 /// A file system with one more file: a module SpacePress writes for the project and never puts on disk.
-struct Generated<'a> {
-    inner: &'a dyn Fs,
-    path: &'a Path,
-    source: &'a str,
+pub(crate) struct Generated {
+    pub(crate) inner: Rc<dyn Fs>,
+    pub(crate) path: PathBuf,
+    pub(crate) source: String,
 }
 
-impl Fs for Generated<'_> {
+impl Fs for Generated {
     fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
         self.inner.read_dir(path)
     }
     fn is_symlink(&self, path: &Path) -> bool {
-        self.inner.is_symlink(path)
+        path != self.path && self.inner.is_symlink(path)
     }
     fn allow_packages(&self) -> bool {
         self.inner.allow_packages()
@@ -98,7 +98,7 @@ impl Fs for Generated<'_> {
     }
     fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
         if path == self.path {
-            Ok(self.source.to_string())
+            Ok(self.source.clone())
         } else {
             self.inner.read_to_string(path)
         }
@@ -114,14 +114,14 @@ impl Fs for Generated<'_> {
         path == self.path || self.inner.is_file(path)
     }
     fn is_dir(&self, path: &Path) -> bool {
-        self.inner.is_dir(path)
+        path != self.path && self.inner.is_dir(path)
     }
     fn exists(&self, path: &Path) -> bool {
         path == self.path || self.inner.exists(path)
     }
     fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
         if path == self.path {
-            Ok(path.to_path_buf())
+            Ok(self.path.clone())
         } else {
             self.inner.canonicalize(path)
         }
@@ -315,11 +315,17 @@ fn load_with_styles(fs: Rc<dyn Fs>, entry: &Path, discover_styles: bool) -> std:
     match crate::astro_content::module(&*fs, &program.root) {
         Ok(Some((path, source))) => {
             let generated = Generated {
-                inner: &*fs,
-                path: &path,
-                source: &source,
+                inner: fs.clone(),
+                path,
+                source,
             };
-            match load_module(&generated, &path, &mut program, &mut by_path, &mut diagnostics) {
+            match load_module(
+                &generated,
+                &generated.path,
+                &mut program,
+                &mut by_path,
+                &mut diagnostics,
+            ) {
                 Ok(module) => program.app_modules.push(module),
                 Err(d) => diagnostics.push(d.phase(diag::Code::Schema)),
             }
@@ -1424,7 +1430,7 @@ fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> R
     )))
 }
 
-/// Rewrites `"spacefast/app"` imports, exports and requires to `"spacepress"`.
+/// Resolves compatibility spellings for compiler-provided imports, exports and requires.
 fn normalize_spacefast_modules(body: &mut [Stmt], commonjs: Option<&mut CommonJs>) {
     let sources = body.iter_mut().filter_map(|stmt| match stmt {
         Stmt::Import { source, .. }
@@ -1436,9 +1442,16 @@ fn normalize_spacefast_modules(body: &mut [Stmt], commonjs: Option<&mut CommonJs
         .into_iter()
         .flat_map(|c| c.requires.iter_mut().map(|(spec, _)| spec));
     for spec in sources.chain(requires) {
-        if spec == SPACEFAST_APP_MODULE {
-            *spec = SP_MODULE.to_owned();
-        }
+        let canonical = match spec.as_str() {
+            SPACEFAST_APP_MODULE | "@spacefast/spacepress" => SP_MODULE,
+            "@spacefast/spacepress/app" => APP_MODULE,
+            "@spacefast/spacepress/client" => CLIENT_MODULE,
+            "@spacefast/spacepress/content" => CONTENT_MODULE,
+            "@spacefast/spacepress/danger" => DANGER_MODULE,
+            "@spacefast/spacepress:db" => DB_MODULE,
+            _ => continue,
+        };
+        *spec = canonical.to_owned();
     }
 }
 fn import_source(s: &Stmt) -> Option<(String, Span)> {

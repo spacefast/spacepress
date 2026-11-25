@@ -1,5 +1,6 @@
 //! Synchronous host filesystem. Each import returns a sp_alloc-owned, length-prefixed
 //! UTF-8 JSON result: {data: value} or {error: {kind, message}}. No WASI dependency.
+//! The read_file_bytes data is a standard base64 string.
 use crate::loader::Fs;
 use serde::de::DeserializeOwned;
 use std::{
@@ -9,7 +10,7 @@ use std::{
 
 #[link(wasm_import_module = "host")]
 unsafe extern "C" {
-    fn read_file(path: *const u8, len: usize) -> *mut u8;
+    fn read_file_bytes(path: *const u8, len: usize) -> *mut u8;
     fn stat(path: *const u8, len: usize) -> *mut u8;
     fn canonicalize(path: *const u8, len: usize) -> *mut u8;
     fn read_dir(path: *const u8, len: usize) -> *mut u8;
@@ -41,7 +42,13 @@ fn call<T: DeserializeOwned>(
 pub struct Host;
 impl Fs for Host {
     fn read_to_string(&self, path: &Path) -> io::Result<String> {
-        call(path, read_file)
+        String::from_utf8(self.read(path)?)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "stream did not contain valid UTF-8"))
+    }
+    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+        let encoded: String = call(path, read_file_bytes)?;
+        crate::assets::base64_decode(&encoded)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "host file response is not base64"))
     }
     fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
         call(path, canonicalize)

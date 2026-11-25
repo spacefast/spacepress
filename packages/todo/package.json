@@ -1,0 +1,42 @@
+{
+  "name": "@spacepress/todo",
+  "version": "0.1.0",
+  "description": "Reusable GTD + PARA task module for SpacePress apps (collection, hierarchical taxonomy, scheduling, dependencies, recurrence, and domain helpers)",
+  "license": "MIT",
+  "homepage": "https://github.com/spacefast/spacepress/tree/main/packages/todo#readme",
+  "type": "module",
+  "engines": {
+    "node": ">=22.23.4"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./schema": {
+      "types": "./src/schema.ts",
+      "default": "./src/schema.ts"
+    },
+    "./domain": {
+      "types": "./src/domain.ts",
+      "default": "./src/domain.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spacefast/spacepress.git",
+    "directory": "packages/todo"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

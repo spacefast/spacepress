@@ -215,7 +215,7 @@ final class Site {
 	public static function parseManifest( string $bytes, bool $stored = false ): array {
 		$manifest = json_decode( $bytes, true, 16 );
 		$format   = $manifest['format'] ?? null;
-		if ( ! is_array( $manifest ) || ! ( $format === 'spacepress.build.v1' || ( $stored && $format === Legacy::BUILD_FORMAT ) )
+		if ( ! is_array( $manifest ) || ! ( 'spacepress.build.v1' === $format || ( $stored && Legacy::BUILD_FORMAT === $format ) )
 			|| ! is_string( $manifest['name'] ?? null ) || preg_match( '/\A[a-z0-9-]+\z/D', $manifest['name'] ) !== 1
 			|| ! self::validId( $manifest['runtime'] ?? null ) || ! self::validId( $manifest['app'] ?? null ) ) {
 			throw new \RuntimeException( 'This is not a SpacePress build manifest' );
@@ -357,7 +357,7 @@ final class Site {
 		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
 			// Before the site has moved identity's tables, the account is in the earlier one.
 			$table = Legacy::accounts();
-			if ( $table === null ) {
+			if ( null === $table ) {
 				return false;
 			}
 		}

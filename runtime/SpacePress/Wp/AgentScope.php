@@ -189,10 +189,10 @@ final class AgentScope {
 		$earlier = BrandUpgrade::earlierScope( $item );
 		if ( array_key_exists( self::KEY, $item ) ) {
 			// Both keys on one entry (a network part way through its move): the narrower of the two.
-			return $earlier === null ? self::normalize( $item[ self::KEY ] ) : BrandUpgrade::narrower( self::normalize( $item[ self::KEY ] ), self::normalize( $earlier ) );
+			return null === $earlier ? self::normalize( $item[ self::KEY ] ) : BrandUpgrade::narrower( self::normalize( $item[ self::KEY ] ), self::normalize( $earlier ) );
 		}
 
-		return $earlier === null ? null : self::normalize( $earlier );
+		return null === $earlier ? null : self::normalize( $earlier );
 	}
 
 	/** Whether this request's credential grants `write` or `personal`. An unscoped request has both. */

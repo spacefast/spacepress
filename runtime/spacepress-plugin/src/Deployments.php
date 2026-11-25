@@ -136,7 +136,7 @@ final class Deployments {
 				'state' => match ( true ) {
 					$build === $live => 'Live',
 					( $manifest = Site::manifest( $build ) ) !== null && Legacy::build( $manifest ) => 'Pre-release (record)',
-					$manifest !== null && Site::ready( $build ) && Site::complete( $manifest ) => 'Stored',
+					null !== $manifest && Site::ready( $build ) && Site::complete( $manifest ) => 'Stored',
 					default => 'Files gone',
 				},
 			);

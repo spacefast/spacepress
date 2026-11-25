@@ -50,7 +50,7 @@ final class SpacePressQuery {
 	 * content and excerpt only), and `orderby=relevance` needs core's own term, so it becomes core's
 	 * date order over the rows SpacePress matched.
 	 */
-	public static function coreArgs( array $args ): array {
+	public static function coreArgs( array $args ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		unset( $args['s'], $args['search_columns'], $args['exact'], $args['sentence'] );
 		if ( ( $args['orderby'] ?? null ) === 'relevance' ) {
 			$args['orderby'] = 'date';
@@ -65,7 +65,7 @@ final class SpacePressQuery {
 	 */
 	public static function attach( string $collection, \WP_REST_Request $request, Viewer $viewer, mixed $response ): mixed {
 		$given = self::given( $request, array( 'with' ) );
-		if ( array() === $given || ! $response instanceof \WP_REST_Response || ! is_array( $data = $response->get_data() ) ) {
+		if ( array() === $given || ! $response instanceof \WP_REST_Response || ! is_array( $data = $response->get_data() ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $response;
 		}
 		$single = ! array_is_list( $data );
@@ -126,7 +126,7 @@ final class SpacePressQuery {
 		if ( array() === $columns ) {
 			return array( 'search' => $term );
 		}
-		$core = $collection === ( Plugin::instance()?->schema->auth()['collection'] ?? null )
+		$core = $collection === ( Plugin::instance()?->schema->auth()['collection'] ?? null ) // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			? array( 'name' => 'name' )
 			: array(
 				'post_title'   => $spec['title'] ?? null,

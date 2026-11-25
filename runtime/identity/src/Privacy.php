@@ -28,7 +28,7 @@ final class Privacy {
 			),
 		);
 	}
-	public function requireTransferredOwnership( int $uid ): void {
+	public function requireTransferredOwnership( int $uid ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$memberships = $this->db->rows(
 			"SELECT organization_id FROM {$this->db->prefix}members WHERE wp_user_id=%d AND role='owner' FOR UPDATE",
 			$uid,

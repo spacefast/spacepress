@@ -58,7 +58,7 @@ final class JsBinary {
 		};
 	}
 
-	public static function staticCall( string $owner, string $method, array $a ): mixed {
+	public static function staticCall( string $owner, string $method, array $a ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( 'ArrayBuffer' === $owner && 'isView' === $method ) {
 			$value = $a[0] ?? JsUndefined::Value;
 			return $value instanceof JsTypedArray || $value instanceof JsDataView;
@@ -71,7 +71,7 @@ final class JsBinary {
 	}
 
 	/** `value instanceof constructor` when the right side is a runtime value. */
-	public static function instanceOfValue( mixed $value, mixed $constructor ): bool {
+	public static function instanceOfValue( mixed $value, mixed $constructor ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $constructor instanceof JsConstructor ) {
 			return self::instanceOf( $value, $constructor->name ); }
 		if ( $constructor instanceof JsClass ) {
@@ -79,7 +79,7 @@ final class JsBinary {
 		throw new JsError( "Right-hand side of 'instanceof' is not a supported constructor", 'TypeError' );
 	}
 
-	public static function constructorGet( JsConstructor $constructor, string $key ): mixed {
+	public static function constructorGet( JsConstructor $constructor, string $key ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$name = $constructor->name;
 		if ( 'name' === $key ) {
 			return $name; }
@@ -90,7 +90,7 @@ final class JsBinary {
 			return JsUndefined::Value; }
 		$method = $name . '.' . $key;
 		if ( ! isset( self::$methods[ $method ] ) ) {
-			$invoke                   = static fn ( mixed $thisArg, JsArray $args ): mixed => self::staticCall( $name, $key, $args->a );
+			$invoke                   = static fn ( mixed $thisArg, JsArray $args ): mixed => self::staticCall( $name, $key, $args->a ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			self::$methods[ $method ] = Js::dynamicMethodFunction( static fn ( ...$args ) => $invoke( JsUndefined::Value, new JsArray( $args ) ), $invoke );
 		}
 		return self::$methods[ $method ];
@@ -124,7 +124,7 @@ final class JsBinary {
 			$value instanceof JsTypedArray => in_array( $name, self::TYPED_METHODS, true ),
 			$value instanceof JsArrayBuffer => 'slice' === $name,
 			$value instanceof JsDataView => JsDataView::method( $name ),
-			$value instanceof JsText => $name === ( $value->decoder ? 'decode' : 'encode' ) || ! $value->decoder && 'encodeInto' === $name,
+			$value instanceof JsText => $name === ( $value->decoder ? 'decode' : 'encode' ) || ! $value->decoder && 'encodeInto' === $name, // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			$value instanceof JsBlob => in_array( $name, array( 'slice', 'text', 'arrayBuffer', 'bytes', 'stream' ), true ),
 		};
 	}
@@ -150,15 +150,15 @@ final class JsBinary {
 		$family = $value instanceof JsTypedArray ? 'TypedArray' : self::tag( $value );
 		$key    = $family . ':' . $name;
 		if ( ! isset( self::$methods[ $key ] ) ) {
-			$invoke                = static function ( mixed $thisArg, JsArray $args ) use ( $family, $name ): mixed {
-				$compatible = is_object( $thisArg ) && self::is( $thisArg ) && ( $thisArg instanceof JsTypedArray ? 'TypedArray' : self::tag( $thisArg ) ) === $family;
+			$invoke                = static function ( mixed $thisArg, JsArray $args ) use ( $family, $name ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$compatible = is_object( $thisArg ) && self::is( $thisArg ) && ( $thisArg instanceof JsTypedArray ? 'TypedArray' : self::tag( $thisArg ) ) === $family; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( 'valueOf' === $name ) {
-					return Js::requirePresent( $thisArg ); }
-				if ( 'toString' === $name && ! $thisArg instanceof JsTypedArray ) {
-					return Js::dynamicObjectTag( $thisArg ); }
+					return Js::requirePresent( $thisArg ); } // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				if ( 'toString' === $name && ! $thisArg instanceof JsTypedArray ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					return Js::dynamicObjectTag( $thisArg ); } // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( ! $compatible ) {
 					throw new JsError( 'Illegal invocation', 'TypeError' ); }
-				return self::call( $thisArg, $name, $args->a );
+				return self::call( $thisArg, $name, $args->a ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			};
 			self::$methods[ $key ] = Js::dynamicMethodFunction( static fn ( ...$args ) => $invoke( JsUndefined::Value, new JsArray( $args ) ), $invoke );
 		}
@@ -225,7 +225,7 @@ final class JsBinary {
 	 * Action and ability results are JSON. JSON has no byte type, and JSON.stringify's object of
 	 * indexes is not a wire contract a client can rely on, so byte values are refused there.
 	 */
-	public static function refuseWire( mixed $value, string $where ): mixed {
+	public static function refuseWire( mixed $value, string $where ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::find_bytes( $value, $where, '', new \SplObjectStorage() );
 		return $value;
 	}

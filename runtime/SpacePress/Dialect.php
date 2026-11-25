@@ -9,22 +9,22 @@ final class Dialect {
 
 	public function __construct(
 		public readonly string $name,            // 'mysql'
-		public readonly string $quoteOpen,       // '`'
-		public readonly string $quoteClose,
+		/* phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name. */ public readonly string $quoteOpen,       // '`'
+		public readonly string $quoteClose, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		/** sprintf template: (expr, ci arg): a collation name, or BINARY/empty when translated. */
-		public readonly string $likeFn,
-		public readonly bool $windowFunctions,   // true (MySQL 8, MariaDB >= 10.2, the SQLite translator)
+		public readonly string $likeFn, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		/* phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name. */ public readonly bool $windowFunctions,   // true (MySQL 8, MariaDB >= 10.2, the SQLite translator)
 		/** MySQL only: the case-insensitive collation for ilike ('utf8mb4_0900_ai_ci' MySQL 8, 'utf8mb4_unicode_ci' MariaDB). */
-		public readonly string $ciCollation = 'utf8mb4_0900_ai_ci',
+		public readonly string $ciCollation = 'utf8mb4_0900_ai_ci', // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		/** `LIMIT` with no bound: MySQL's maximum row count, or the translator's largest signed integer. */
-		public readonly string $noLimit = '18446744073709551615',
+		public readonly string $noLimit = '18446744073709551615', // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		/** MySQL as the SQLite Database Integration plugin translates it (see mysqlOnSqlite()). */
 		public readonly bool $translated = false,
 	) {
 	}
 
-	public static function mysql( string $ciCollation = 'utf8mb4_0900_ai_ci' ): self {
-		return new self( 'mysql', '`', '`', "%s LIKE ? COLLATE %s ESCAPE '\\\\'", true, $ciCollation );
+	public static function mysql( string $ciCollation = 'utf8mb4_0900_ai_ci' ): self { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		return new self( 'mysql', '`', '`', "%s LIKE ? COLLATE %s ESCAPE '\\\\'", true, $ciCollation ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/**
@@ -34,7 +34,7 @@ final class Dialect {
 	 * plain (case-insensitive) `LIKE`; the unbounded LIMIT is SQLite's largest signed integer; and
 	 * `DATE_FORMAT` seconds come out wrong, so dates are reshaped with string functions.
 	 */
-	public static function mysqlOnSqlite(): self {
+	public static function mysqlOnSqlite(): self { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return new self( 'mysql', '`', '`', '%s LIKE %s?', true, '', '9223372036854775807', true );
 	}
 
@@ -47,31 +47,31 @@ final class Dialect {
 		}
 		$arg = match ( true ) {
 			$this->translated => 'BINARY ',
-			default => $ci ? $this->ciCollation : 'utf8mb4_bin',
+			default => $ci ? $this->ciCollation : 'utf8mb4_bin', // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		};
 
-		return sprintf( $this->likeFn, $expr, $arg );
+		return sprintf( $this->likeFn, $expr, $arg ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	/** $expr, a MySQL `DATETIME` in UTC, as SpacePress's ISO instant (`2026-01-02T03:04:05.000Z`). */
-	public function isoTimestamp( string $expr ): string {
+	public function isoTimestamp( string $expr ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->translated
 			? "CONCAT(REPLACE($expr, ' ', 'T'), '.000Z')"
 			: "DATE_FORMAT($expr, '%Y-%m-%dT%H:%i:%s.000Z')";
 	}
 
 	/** $expr, a date stored as `Ymd` text (SCF's form), as `Y-m-d`. */
-	public function isoDate( string $expr ): string {
+	public function isoDate( string $expr ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->translated
 			? "CONCAT(SUBSTR($expr, 1, 4), '-', SUBSTR($expr, 5, 2), '-', SUBSTR($expr, 7, 2))"
 			: "DATE_FORMAT(STR_TO_DATE($expr, '%Y%m%d'), '%Y-%m-%d')";
 	}
 
 	public function quote( string $ident ): string {
-		return $this->quoteOpen . str_replace( $this->quoteClose, $this->quoteClose . $this->quoteClose, $ident ) . $this->quoteClose;
+		return $this->quoteOpen . str_replace( $this->quoteClose, $this->quoteClose . $this->quoteClose, $ident ) . $this->quoteClose; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
-	public function writeLock(): string {
+	public function writeLock(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->translated ? '' : ' FOR UPDATE';
 	}
 }

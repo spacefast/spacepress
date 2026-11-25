@@ -11,24 +11,24 @@ final class Source {
 		/** Quoted, prefixed: '"posts"' | '`wp_sp_comments`' | '`wp_posts`'. */
 		public readonly string $table,
 		/** '' for plain tables; "{a}.post_type = 'sp_posts' AND ..." for posts. */
-		public readonly string $baseWhere,
+		public readonly string $baseWhere, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		/** @var array<string, ColumnRef> keyed by column name */
 		public readonly array $columns,
 	) {
 	}
 
 	/** A plain table: every column is `{a}.<quoted physical col>`, kind from the schema type. */
-	public static function plain( Dialect $d, string $quotedTable, array $columnSpecs, bool $textBooleans = false ): self {
+	public static function plain( Dialect $d, string $quotedTable, array $columnSpecs, bool $textBooleans = false ): self { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$refs = array();
-		foreach ( $columnSpecs as $name => $col ) {
+		foreach ( $columnSpecs as $name => $col ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$physical      = (string) ( $col['column'] ?? $name );
 			$expr          = '{a}.' . $d->quote( $physical );
-			$cmp           = $textBooleans && 'boolean' === $col['type']
+			$cmp           = $textBooleans && 'boolean' === $col['type'] // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				? "CASE CAST($expr AS CHAR) WHEN 'true' THEN '1' WHEN 'false' THEN '0' ELSE CAST($expr AS CHAR) END"
 				: '';
 			$refs[ $name ] = new ColumnRef( $expr, '', $cmp, ColumnRef::kindFor( $col['type'] ) );
 		}
 
-		return new self( $quotedTable, '', $refs );
+		return new self( $quotedTable, '', $refs ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 }

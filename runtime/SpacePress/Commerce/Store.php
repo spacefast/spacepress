@@ -20,7 +20,7 @@ final class Store implements \SpacePress\Store {
 	private bool $trash = false;
 	public function __construct( private readonly Connection $db, private readonly Schema $schema, private readonly WpTableStore $tables ) {}
 
-	public function withTrash( callable $fn ): mixed {
+	public function withTrash( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$previous    = $this->trash;
 		$this->trash = true;
 		try {
@@ -124,7 +124,7 @@ final class Store implements \SpacePress\Store {
 		$sku = $p->get_sku();
 		return array(
 			'id'               => $p->get_id(),
-			'uid'              => $p->get_meta( '_sp_uid' ) ?: null,
+			'uid'              => $p->get_meta( '_sp_uid' ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			'name'             => $p->get_name(),
 			'slug'             => $p->get_slug(),
 			'description'      => $p->get_description(),
@@ -170,7 +170,7 @@ final class Store implements \SpacePress\Store {
 				if ( 'line_item' === $type ) {
 					return $data + array(
 						'product'     => $item->get_product_id(),
-						'variation'   => $item->get_variation_id() ?: null,
+						'variation'   => $item->get_variation_id() ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 						'quantity'    => $item->get_quantity(),
 						'subtotal'    => $item->get_subtotal(),
 						'subtotalTax' => $item->get_subtotal_tax(),
@@ -193,7 +193,7 @@ final class Store implements \SpacePress\Store {
 			'updatedAt'     => $date( $o->get_date_modified() ),
 			'paidAt'        => $date( $o->get_date_paid() ),
 			'completedAt'   => $date( $o->get_date_completed() ),
-			'customer'      => $o->get_customer_id() ?: null,
+			'customer'      => $o->get_customer_id() ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			'paymentMethod' => $o->get_payment_method(),
 			'paymentTitle'  => $o->get_payment_method_title(),
 			'total'         => $o->get_total(),
@@ -364,7 +364,7 @@ final class Store implements \SpacePress\Store {
 		if ( false !== $status && 'trash' !== $status ) {
 			throw new \RuntimeException( "Could not delete product $pk" ); }
 	}
-	public function readGuards( string $collection, Viewer $viewer, bool $forSelect = false ): array {
+	public function readGuards( string $collection, Viewer $viewer, bool $forSelect = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$spec = $this->schema->collection( $collection );
 		if ( 'order' === $spec['commerce'] ) {
 			if ( ! AgentScope::may( 'personal' ) ) {
@@ -379,9 +379,9 @@ final class Store implements \SpacePress\Store {
 		return ( $viewer->user['role'] ?? null ) === 'admin'; }
 	public function dialect(): Dialect {
 		return $this->tables->dialect(); }
-	public function transaction( callable $fn ): mixed {
+	public function transaction( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		return $this->db->transaction( $fn ); }
-	public function afterCommit( callable $fn ): void {
+	public function afterCommit( callable $fn ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$this->db->afterCommit( $fn ); }
 	public function applySystemStatements( array $statements ): void {
 		$this->tables->applySystemStatements( $statements ); }
@@ -391,10 +391,10 @@ final class Store implements \SpacePress\Store {
 		$this->tables->globalWrite( $name, $values ); }
 	public function revisions( string $collection, int|string $pk ): array {
 		return array(); }
-	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void {}
-	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array {
+	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void {} // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return null; }
-	public function promoteDue( string $collection, string $nowIso ): array {
+	public function promoteDue( string $collection, string $nowIso ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return array(); }
 	public function mapError( \Throwable $e ): \Throwable {
 		return $this->tables->mapError( $e ); }

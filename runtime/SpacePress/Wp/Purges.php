@@ -85,7 +85,7 @@ final class Purges {
 		// Trash, delete and status changes that don't go through wp_insert_post (wp_publish_post, cron).
 		add_action(
 			'transition_post_status',
-			static function ( string $new, string $old, \WP_Post $post ) use ( $plugin ): void {
+			static function ( string $new, string $old, \WP_Post $post ) use ( $plugin ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.newFound -- Preserve the existing PHP parameter name.
 				if ( self::listening() && $new !== $old ) {
 					self::add( $plugin, self::post_urls( $post, 'publish' === $old || 'publish' === $new ) );
 					self::planned_post( $plugin, $post );
@@ -108,8 +108,8 @@ final class Purges {
 		);
 		add_action(
 			'set_object_terms',
-			static function ( int $id, array $terms, array $ttIds, string $taxonomy, bool $append, array $old ) use ( $plugin ): void {
-				$changed  = array_map( 'intval', $ttIds );
+			static function ( int $id, array $terms, array $ttIds, string $taxonomy, bool $append, array $old ) use ( $plugin ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$changed  = array_map( 'intval', $ttIds ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$previous = array_map( 'intval', $old );
 				sort( $changed );
 				sort( $previous );
@@ -124,9 +124,9 @@ final class Purges {
 		// wp_remove_object_terms() fires this, not set_object_terms: the terms the post left.
 		add_action(
 			'deleted_term_relationships',
-			static function ( int $id, array $ttIds, string $taxonomy ) use ( $plugin ): void {
-				if ( self::listening() && array() !== $ttIds ) {
-					self::changed_post_terms( $plugin, $id, $taxonomy, array_map( 'intval', $ttIds ) );
+			static function ( int $id, array $ttIds, string $taxonomy ) use ( $plugin ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				if ( self::listening() && array() !== $ttIds ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					self::changed_post_terms( $plugin, $id, $taxonomy, array_map( 'intval', $ttIds ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				}
 			},
 			10,
@@ -134,8 +134,8 @@ final class Purges {
 		);
 		// A term edit purges its archive before (edit_terms runs before the update, so a slug change
 		// still names the old URL) and after; a delete purges it before the term goes.
-		$term = static function ( int $termId, string $taxonomy ) use ( $plugin ): void {
-			$term = get_term( $termId, $taxonomy );
+		$term = static function ( int $termId, string $taxonomy ) use ( $plugin ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$term = get_term( $termId, $taxonomy ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			if ( self::listening() && $term instanceof \WP_Term ) {
 				$planned = self::planned_kind_urls( $plugin, 'taxonomy', $taxonomy );
 				self::add( $plugin, array( ...self::listings( self::term_urls( array( $term->term_taxonomy_id ), $taxonomy ) ), ...$planned ) );
@@ -144,7 +144,7 @@ final class Purges {
 		add_action( 'edit_terms', $term, 10, 2 );
 		add_action(
 			'created_term',
-			static function ( int $termId, int $ttId, string $taxonomy ) use ( $plugin ): void {
+			static function ( int $termId, int $ttId, string $taxonomy ) use ( $plugin ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( self::listening() ) {
 					self::add( $plugin, self::planned_kind_urls( $plugin, 'taxonomy', $taxonomy ), false );
 				}
@@ -152,7 +152,7 @@ final class Purges {
 			10,
 			3
 		);
-		add_action( 'edited_term', static fn ( int $termId, int $ttId, string $taxonomy ) => $term( $termId, $taxonomy ), 10, 3 );
+		add_action( 'edited_term', static fn ( int $termId, int $ttId, string $taxonomy ) => $term( $termId, $taxonomy ), 10, 3 ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		add_action( 'pre_delete_term', $term, 10, 2 );
 		// The shared document shell uses site settings and menus even on a literal page.
 		$shell = static function (): void {
@@ -383,14 +383,14 @@ final class Purges {
 	 *
 	 * @return list<string>
 	 */
-	private static function post_urls( ?\WP_Post $post, bool $wasPublic = false ): array {
+	private static function post_urls( ?\WP_Post $post, bool $wasPublic = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ! $post instanceof \WP_Post || 'revision' === $post->post_type || wp_is_post_autosave( $post ) ) {
 			return array();
 		}
 		$type = get_post_type_object( $post->post_type );
 		// A SpacePress kind with a `url` is publicly queryable without being `public` (it stays out of
 		// core's public lists), and its items still have public URLs to purge.
-		if ( ! $type instanceof \WP_Post_Type || ! ( $type->public || $type->publicly_queryable ) || ( ! $wasPublic && ! is_post_publicly_viewable( $post ) ) ) {
+		if ( ! $type instanceof \WP_Post_Type || ! ( $type->public || $type->publicly_queryable ) || ( ! $wasPublic && ! is_post_publicly_viewable( $post ) ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return array();
 		}
 		$permalink = self::permalink( $post );
@@ -427,21 +427,21 @@ final class Purges {
 	}
 
 	/** @param list<int> $ttIds */
-	private static function changed_post_terms( Plugin $plugin, int $id, string $taxonomy, array $ttIds ): void {
+	private static function changed_post_terms( Plugin $plugin, int $id, string $taxonomy, array $ttIds ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$post = get_post( $id );
 		$urls = self::post_urls( $post );
 		if ( array() !== $urls ) {
-			self::add( $plugin, array( ...self::listings( self::term_urls( $ttIds, $taxonomy ) ), ...$urls ) );
+			self::add( $plugin, array( ...self::listings( self::term_urls( $ttIds, $taxonomy ) ), ...$urls ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		self::planned_post( $plugin, $post );
 		self::add( $plugin, self::planned_kind_urls( $plugin, 'taxonomy', $taxonomy ), false );
 	}
 
 	/** @return list<string> */
-	private static function planned_kind_urls( Plugin $plugin, string $wpField, string $wpName ): array {
+	private static function planned_kind_urls( Plugin $plugin, string $wpField, string $wpName ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$urls = array();
 		foreach ( $plugin->schema->kinds() as $name => $spec ) {
-			if ( ( $spec['wp'][ $wpField ] ?? null ) === $wpName ) {
+			if ( ( $spec['wp'][ $wpField ] ?? null ) === $wpName ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				array_push( $urls, ...\SpacePress\Render\RoutePlan::urls( $plugin, (string) $name ) );
 			}
 		}
@@ -473,14 +473,14 @@ final class Purges {
 	 * @param list<int> $ttIds
 	 * @return list<string>
 	 */
-	private static function term_urls( array $ttIds, string $taxonomy ): array {
+	private static function term_urls( array $ttIds, string $taxonomy ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$object = get_taxonomy( $taxonomy );
 		if ( ! $object instanceof \WP_Taxonomy || ! $object->public || ! $object->publicly_queryable ) {
 			return array();
 		}
 		$urls = array();
-		foreach ( array_unique( $ttIds ) as $ttId ) {
-			$term = get_term_by( 'term_taxonomy_id', (int) $ttId, $taxonomy );
+		foreach ( array_unique( $ttIds ) as $ttId ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$term = get_term_by( 'term_taxonomy_id', (int) $ttId, $taxonomy ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$link = $term instanceof \WP_Term ? get_term_link( $term ) : null;
 			if ( is_string( $link ) ) {
 				$urls[] = $link;

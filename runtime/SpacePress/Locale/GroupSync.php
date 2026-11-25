@@ -90,7 +90,7 @@ final class GroupSync {
 		// caller's (possibly field-filtered) view; but a supplied synced value is compared only with
 		// what the caller can see, so the check never reveals a hidden value.
 		$visible = null === $viewer ? null : $find( $viewer );
-		if ( ( null !== $viewer && null === $visible ) || ( $source = $find( null ) ) === null ) {
+		if ( ( null !== $viewer && null === $visible ) || ( $source = $find( null ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			throw HttpError::invalidInput( "No $collection row with $pk " . Js::str( $of ), '/translationOf' );
 		}
 		$visible ??= $source;
@@ -139,7 +139,7 @@ final class GroupSync {
 	}
 
 	/** Check the final patch (including beforeUpdate changes) before the source row is written. */
-	public static function requireReadableSiblings( string $collection, array $row, array $previous, ?Viewer $viewer ): void {
+	public static function requireReadableSiblings( string $collection, array $row, array $previous, ?Viewer $viewer ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null === $viewer || ! Module::localized( $collection ) ) {
 			return;
 		}
@@ -175,7 +175,7 @@ final class GroupSync {
 			null === $join
 				? self::adopt( $collection, $row ) // a row that joined a group outside the API (wp-admin "+")
 				: self::joined( $collection, $row, $join[2], $join[3] );
-		} elseif ( ( $changed = self::synced_changes( $spec, $row, $previous ) ) !== array() ) {
+		} elseif ( ( $changed = self::synced_changes( $spec, $row, $previous ) ) !== array() ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			$siblings = self::siblings( $collection, $row, $pk );
 			self::quietly(
 				self::key( $collection, $row, $pk ),
@@ -298,7 +298,7 @@ final class GroupSync {
 	 *
 	 * @param non-empty-list<array> $rows
 	 */
-	public static function adoptAll( string $collection, array $rows ): void {
+	public static function adoptAll( string $collection, array $rows ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$spec   = db()->schema()->collection( $collection );
 		$pk     = $spec['primaryKey'];
 		$source = $rows[0];
@@ -324,7 +324,7 @@ final class GroupSync {
 		$ids    = array_values( Module::members( $row, $pk ) );
 		$oldest = array() === $ids ? null : min( $ids );
 		if ( null === $oldest || $oldest === $row[ $pk ]
-			|| ( $source = db()->findFirst(
+			|| ( $source = db()->findFirst( // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				$collection,
 				array(
 					'where'  => array( $pk => $oldest ),
@@ -353,7 +353,7 @@ final class GroupSync {
 	}
 
 	/** Propagation writes are trusted pipeline updates that must not re-propagate within the same group. */
-	private static function quietly( string $group, callable $fn ): void {
+	private static function quietly( string $group, callable $fn ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$was                    = self::$active[ $group ] ?? null;
 		self::$active[ $group ] = true;
 		try {

@@ -53,7 +53,7 @@ final class DB {
 	 * with a savepoint instead of issuing START TRANSACTION, which would silently commit the
 	 * owner's work. The connection itself is asked, so no host has to cooperate.
 	 */
-	public function transaction( callable $fn ): mixed {
+	public function transaction( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$level = $this->depth++;
 		if ( 0 === $level && $this->outer_transaction() ) {
 			$level = 1;
@@ -96,7 +96,7 @@ final class DB {
 			wp_cache_delete( $uid, 'user_meta' );
 		}
 	}
-	public function inTransaction(): bool {
+	public function inTransaction(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->depth > 0;
 	}
 	/**
@@ -123,7 +123,7 @@ final class DB {
 			$this->wp->last_error = '';
 		}
 	}
-	public function lockSession( array $session ): array {
+	public function lockSession( array $session ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$uid = (int) $session['wp_user_id'];
 		$this->lock( $uid );
 		$live = $this->row(
@@ -145,7 +145,7 @@ final class DB {
 		}
 		return $live;
 	}
-	public function credentialMutation( array $session, callable $fn ): mixed {
+	public function credentialMutation( array $session, callable $fn ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		return $this->transaction(
 			function () use ( $session, $fn ) {
 				$this->lockSession( $session );

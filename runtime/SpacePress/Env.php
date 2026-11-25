@@ -91,11 +91,11 @@ final class Env {
 		'FCGI_ROLE',
 	);
 
-	public static function hostSecret( string $name ): bool {
+	public static function hostSecret( string $name ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return in_array( strtoupper( $name ), self::HOST_SECRETS, true );
 	}
 
-	public static function requestValue( string $name ): bool {
+	public static function requestValue( string $name ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$upper = strtoupper( $name );
 		if ( in_array( $upper, self::REQUEST_NAMES, true ) ) {
 			return true;

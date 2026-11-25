@@ -47,7 +47,7 @@ final class CompositeStore implements Store, Links {
 
 	private function for( string $collection ): Store {
 		// The auth collection's rows are WordPress users (§6.2).
-		if ( null !== $this->users && $collection === ( $this->schema->auth()['collection'] ?? null ) ) {
+		if ( null !== $this->users && $collection === ( $this->schema->auth()['collection'] ?? null ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return $this->users;
 		}
 		if ( isset( $this->schema->collection( $collection )['commerce'] ) && ! isset( $this->schema->taxonomies()[ $collection ] ) ) {
@@ -60,7 +60,7 @@ final class CompositeStore implements Store, Links {
 		return $this->isPostBacked( $collection ) ? $this->posts : $this->tables;
 	}
 
-	public function afterCommit( callable $fn ): void {
+	public function afterCommit( callable $fn ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$this->db->afterCommit( $fn );
 	}
 
@@ -68,7 +68,7 @@ final class CompositeStore implements Store, Links {
 		$this->tables->applySystemStatements( $statements );
 	}
 
-	public function transaction( callable $fn ): mixed {
+	public function transaction( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		return $this->db->transaction( $fn );
 	}
 
@@ -77,7 +77,7 @@ final class CompositeStore implements Store, Links {
 	}
 
 	/** The post or native Woo store reads its just-trashed row for the update lifecycle. */
-	public function withTrash( string $collection, callable $fn ): mixed {
+	public function withTrash( string $collection, callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$store = $this->for( $collection );
 		return method_exists( $store, 'withTrash' ) ? $store->withTrash( $fn ) : $fn();
 	}
@@ -94,10 +94,10 @@ final class CompositeStore implements Store, Links {
 		$this->for( $collection )->delete( $collection, $pk );
 	}
 
-	public function softDelete( string $collection, int|string $pk, string $at, ?int $userId, ?string $group ): void {
+	public function softDelete( string $collection, int|string $pk, string $at, ?int $userId, ?string $group ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$store = $this->for( $collection );
 		if ( method_exists( $store, 'softDelete' ) ) {
-			$store->softDelete( $collection, $pk, $at, $userId, $group );
+			$store->softDelete( $collection, $pk, $at, $userId, $group ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return;
 		}
 		$store->delete( $collection, $pk );
@@ -123,8 +123,8 @@ final class CompositeStore implements Store, Links {
 		return $this->for( $collection )->showsUnique( $collection, $column, $viewer );
 	}
 
-	public function readGuards( string $collection, \SpacePress\Viewer $viewer, bool $forSelect = false ): array {
-		return $this->for( $collection )->readGuards( $collection, $viewer, $forSelect );
+	public function readGuards( string $collection, \SpacePress\Viewer $viewer, bool $forSelect = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		return $this->for( $collection )->readGuards( $collection, $viewer, $forSelect ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	public function globalRead( string $name ): ?array {
@@ -139,28 +139,28 @@ final class CompositeStore implements Store, Links {
 		return $this->for( $collection )->revisions( $collection, $pk );
 	}
 
-	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void {
+	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ( $meta['op'] ?? null ) === 'purge' && $this->isPostBacked( $collection ) ) {
 			// Permanent wp_delete_post removes all WP child revisions, so persist the purge audit snapshot in sp__revisions.
 			if ( $this->tables->hasRevisionsTable() ) {
-				$this->tables->revisionWrite( $collection, $pk, $encodedRow, $userId, $meta );
+				$this->tables->revisionWrite( $collection, $pk, $encodedRow, $userId, $meta ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 
 			return;
 		}
-		$this->for( $collection )->revisionWrite( $collection, $pk, $encodedRow, $userId, $meta );
+		$this->for( $collection )->revisionWrite( $collection, $pk, $encodedRow, $userId, $meta ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
-	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array {
-		return $this->for( $collection )->revision( $collection, $pk, $revisionId, $byVersion );
+	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		return $this->for( $collection )->revision( $collection, $pk, $revisionId, $byVersion ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	public function latestSchemaMigration(): ?string {
 		return $this->tables->latestSchemaMigration();
 	}
 
-	public function promoteDue( string $collection, string $nowIso ): array {
-		return $this->for( $collection )->promoteDue( $collection, $nowIso );
+	public function promoteDue( string $collection, string $nowIso ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		return $this->for( $collection )->promoteDue( $collection, $nowIso ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	public function mapError( \Throwable $e ): \Throwable {
@@ -178,8 +178,8 @@ final class CompositeStore implements Store, Links {
 		return $this->links_for( $join )->linkTable( $join );
 	}
 
-	public function links( string $join, string $by, array $ids, bool $forUpdate = false ): array {
-		return $this->links_for( $join )->links( $join, $by, $ids, $forUpdate );
+	public function links( string $join, string $by, array $ids, bool $forUpdate = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		return $this->links_for( $join )->links( $join, $by, $ids, $forUpdate ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	public function setLinks( string $join, int|string $owner, array $targets ): void {

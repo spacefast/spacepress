@@ -147,9 +147,9 @@ final class Module {
 	 * @param list<mixed> $queries `['kind' => key, 'op' => 'list'|'paginate'|'get'|'count', 'args' => array, 'id' => int|string, 'token' => ?string]`
 	 * @return list<array<string, mixed>>
 	 */
-	public static function evaluate( Db $db, Viewer $viewer, array $queries, int $budgetMs = self::BUDGET_MS ): array {
+	public static function evaluate( Db $db, Viewer $viewer, array $queries, int $budgetMs = self::BUDGET_MS ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return $db->current(
-			static function () use ( $db, $viewer, $queries, $budgetMs ): array {
+			static function () use ( $db, $viewer, $queries, $budgetMs ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$store = $db->store();
 				if ( ! $store instanceof CompositeStore ) {
 					throw new \LogicException( 'Reactive queries need the WordPress store' );
@@ -218,7 +218,7 @@ final class Module {
 						continue;
 					}
 					// The first read always runs, so every request makes progress.
-					if ( $ran > 0 && $spent >= $budgetMs ) {
+					if ( $ran > 0 && $spent >= $budgetMs ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						$results[] = array( 'pending' => true );
 						continue;
 					}
@@ -284,12 +284,12 @@ final class Module {
 		);
 	}
 
-	public static function validPageUrl( mixed $url ): bool {
+	public static function validPageUrl( mixed $url ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return is_string( $url ) && strlen( $url ) <= 2048 && preg_match( '~\A/(?![/\\\\])[^\x00-\x20\x7f#]*\z~', $url ) === 1;
 	}
 
 	/** A GET seed has no counter snapshot from before its data was read. The first poll checks its hash. */
-	public static function pageSeed( Db $db, Viewer $viewer, string $url, string $region, string $html, array $reads, array $notices ): array {
+	public static function pageSeed( Db $db, Viewer $viewer, string $url, string $region, string $html, array $reads, array $notices ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$kinds = self::keys( $db, $reads, $notices );
 		$seed  = array(
 			'url'   => $url,
@@ -646,7 +646,7 @@ final class Module {
 		$guards = $db->readScope( $collection, $viewer );
 		// A read extension that may drop rows (Extensions::onRead without `constraintSafe`) is a
 		// row filter the scope above doesn't show.
-		if ( $collection === ( $schema->auth()['collection'] ?? null ) || ( $spec['builtin'] ?? null ) !== null
+		if ( $collection === ( $schema->auth()['collection'] ?? null ) || ( $spec['builtin'] ?? null ) !== null // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			|| ! \SpacePress\Extensions::constraintReadsSafe() ) {
 			return null;
 		}
@@ -660,7 +660,7 @@ final class Module {
 			array() === $guards => Versions::ALL,
 			// Only a kind with drafts keeps a `published` counter. A localized kind's published rows
 			// also show their whole translation group, drafts included, which that counter misses.
-			$guards === array( array( 'status' => 'published' ) ) && ( $spec['drafts'] ?? false ) && ! ( $spec['localized'] ?? false ) => Versions::PUBLISHED,
+			$guards === array( array( 'status' => 'published' ) ) && ( $spec['drafts'] ?? false ) && ! ( $spec['localized'] ?? false ) => Versions::PUBLISHED, // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			default => null,
 		};
 	}

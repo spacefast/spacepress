@@ -88,7 +88,7 @@ final class Trees {
 	 * URLs the build's plugins make (`plugins_url`) resolve there. Only the plugins inside the tree are
 	 * copied, and only {@see PUBLIC} file types: never PHP, a manifest, a migration or seed content.
 	 */
-	public static function mirror( string $root, string $public, string $kind, string $id ): void {
+	public static function mirror( string $root, string $public, string $kind, string $id ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.publicFound -- Preserve the existing PHP parameter name.
 		$target = "$public/$kind/$id";
 		if ( is_dir( $target ) ) {
 			return;
@@ -201,7 +201,7 @@ final class Trees {
 
 	/** @param list<string> $out */
 	private static function walk( string $dir, string $prefix, array &$out ): void {
-		foreach ( scandir( $dir ) ?: array() as $name ) {
+		foreach ( scandir( $dir ) ?: array() as $name ) { // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			if ( '.' === $name || '..' === $name ) {
 				continue;
 			}
@@ -255,7 +255,7 @@ final class Trees {
 				$system     = 0;
 				$attributes = 0;
 				// Unix entries carry the file type in the high bits: only files and directories are taken.
-				if ( $archive->getExternalAttributesIndex( $i, $system, $attributes ) && $system === \ZipArchive::OPSYS_UNIX
+				if ( $archive->getExternalAttributesIndex( $i, $system, $attributes ) && $system === \ZipArchive::OPSYS_UNIX // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 					&& ! in_array( ( $attributes >> 16 ) & 0170000, array( 0, 0100000, 0040000 ), true ) ) {
 					throw new \RuntimeException( "The uploaded $kind tree has a link or special file" );
 				}
@@ -320,7 +320,7 @@ final class Trees {
 		if ( is_link( $path ) || is_file( $path ) ) {
 			@unlink( $path );
 		} elseif ( is_dir( $path ) ) {
-			foreach ( scandir( $path ) ?: array() as $name ) {
+			foreach ( scandir( $path ) ?: array() as $name ) { // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 				if ( '.' !== $name && '..' !== $name ) {
 					self::remove( $path . '/' . $name );
 				}

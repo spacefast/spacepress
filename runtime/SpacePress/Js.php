@@ -40,7 +40,7 @@ final class Js {
 			$v instanceof JsTypedArray => $v->call( 'join', array() ),
 			JsBinary::is( $v ) => self::dynamicObjectTag( $v ),
 			$v instanceof JsDate => throw new JsError( 'Date string coercion is not supported', 'TypeError' ),
-			$v instanceof JsError => $v->jsName . ( $v->getMessage() === '' ? '' : ': ' . $v->getMessage() ),
+			$v instanceof JsError => $v->jsName . ( $v->getMessage() === '' ? '' : ': ' . $v->getMessage() ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$v instanceof RegExp => (string) $v,
 			$v instanceof \Closure => throw new JsError( 'Function string coercion is not supported', 'TypeError' ),
 			$v instanceof \Stringable => (string) $v,
@@ -49,7 +49,7 @@ final class Js {
 	}
 
 	/** URI table adapted from ts2php; see URI-ENCODING-NOTICE.txt. */
-	public static function encodeURI( string $value ): string {
+	public static function encodeURI( string $value ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return strtr(
 			self::encodeURIComponent( $value ),
 			array(
@@ -68,7 +68,7 @@ final class Js {
 		);
 	}
 
-	public static function encodeURIComponent( string $value ): string {
+	public static function encodeURIComponent( string $value ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! mb_check_encoding( $value, 'UTF-8' ) ) {
 			throw new JsError( 'URI malformed', 'URIError' );
 		}
@@ -124,7 +124,7 @@ final class Js {
 	 *
 	 * @return array{string, int}
 	 */
-	private static function shortestDigits( float $x ): array {
+	private static function shortestDigits( float $x ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		for ( $p = 0; $p < 17; $p++ ) {
 			$s                = sprintf( '%.' . $p . 'e', $x );
 			[$mantissa, $exp] = explode( 'e', $s );
@@ -189,7 +189,7 @@ final class Js {
 			)[ strtolower( $m[1] ) ];
 			[$value, $used] = self::parseDigits( $m[2], $radix );
 
-			return $used === strlen( $m[2] ) ? self::num( (float) $value ) : NAN;
+			return $used === strlen( $m[2] ) ? self::num( (float) $value ) : NAN; // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 		}
 
 		return match ( $t ) {
@@ -257,7 +257,7 @@ final class Js {
 	 *
 	 * @return array{int|float, int} [value, number of bytes consumed]
 	 */
-	private static function parseDigits( string $s, int $radix ): array {
+	private static function parseDigits( string $s, int $radix ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$value = 0;
 		$width = match ( $radix ) {
 			2 => 1, 4 => 2, 8 => 3, 16 => 4, 32 => 5, default => null };
@@ -358,7 +358,7 @@ final class Js {
 	}
 
 	/** Postfix `x++` / `x--` (`$step` 1 or -1): steps the place like add() and returns the old value. */
-	public static function postStep( int|float &$x, int $step ): int|float {
+	public static function postStep( int|float &$x, int $step ): int|float { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$old = self::n( $x );
 		$x   = self::add( $old, $step );
 
@@ -366,8 +366,8 @@ final class Js {
 	}
 
 	/** Prefix `++x` / `--x`: the place is evaluated once (an index with side effects runs once). */
-	public static function preStep( int|float &$x, int $step ): int|float {
-		return $x = self::add( $x, $step );
+	public static function preStep( int|float &$x, int $step ): int|float { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		return $x = self::add( $x, $step ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 	}
 
 	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
@@ -386,7 +386,7 @@ final class Js {
 		} elseif ( 'exp' === $method ) {
 			if ( 0.0 === (float) $x ) {
 				return 1; }
-			if ( $x === -INF ) {
+			if ( $x === -INF ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				return 0; }
 			if ( INF === $x ) {
 				return INF; }
@@ -440,7 +440,7 @@ final class Js {
 		throw new JsError( 'Power requires an exact supported result; engine-dependent rounding is not supported', 'RangeError' );
 	}
 
-	private static function jsNumbers( mixed $v ): mixed {
+	private static function jsNumbers( mixed $v ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( is_int( $v ) ) {
 			return self::n( $v );
 		}
@@ -498,7 +498,7 @@ final class Js {
 		return ~self::toInt32( self::toNumber( $a ) );
 	}
 
-	private static function toInt32( int|float $n ): int {
+	private static function toInt32( int|float $n ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( is_float( $n ) ) {
 			if ( ! is_finite( $n ) ) {
 				return 0;
@@ -511,12 +511,12 @@ final class Js {
 		return $n >= 0x80000000 ? $n - 0x100000000 : $n;
 	}
 
-	private static function toUint32( int|float $n ): int {
+	private static function toUint32( int|float $n ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::toInt32( $n ) & 0xFFFFFFFF;
 	}
 
 	/** ToIntegerOrInfinity: NaN → 0, truncation toward zero. */
-	public static function toInteger( int|float $n ): int|float {
+	public static function toInteger( int|float $n ): int|float { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( is_int( $n ) ) {
 			return $n;
 		}
@@ -531,7 +531,7 @@ final class Js {
 	}
 
 	/** Resolve a relative index (slice/at semantics) against a length. */
-	private static function relIndex( int|float $i, int $len ): int {
+	private static function relIndex( int|float $i, int $len ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$i = self::toInteger( $i );
 		if ( $i < 0 ) {
 			return (int) max( $len + $i, 0 );
@@ -540,7 +540,7 @@ final class Js {
 		return (int) min( $i, $len );
 	}
 
-	private static function clampIndex( int|float $i, int $len ): int {
+	private static function clampIndex( int|float $i, int $len ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return (int) min( max( self::toInteger( $i ), 0 ), $len );
 	}
 
@@ -585,7 +585,7 @@ final class Js {
 		return $a === $b;
 	}
 
-	private static function sameValueZero( mixed $a, mixed $b ): bool {
+	private static function sameValueZero( mixed $a, mixed $b ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( is_float( $a ) && is_float( $b ) && is_nan( $a ) && is_nan( $b ) ) {
 			return true;
 		}
@@ -652,7 +652,7 @@ final class Js {
 	 *
 	 * @return array{string, string} [integer digits, fraction digits]
 	 */
-	private static function exactDecimal( float $x ): array {
+	private static function exactDecimal( float $x ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$bits = unpack( 'J', pack( 'E', $x ) )[1];
 		$exp  = ( $bits >> 52 ) & 0x7FF;
 		$mant = $bits & 0xFFFFFFFFFFFFF;
@@ -699,7 +699,7 @@ final class Js {
 		return array( substr( $s, 0, -$point ), substr( $s, -$point ) );
 	}
 
-	private static function incrementDecimal( string $digits ): string {
+	private static function incrementDecimal( string $digits ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		for ( $i = strlen( $digits ) - 1; $i >= 0; $i-- ) {
 			if ( '9' !== $digits[ $i ] ) {
 				$digits[ $i ] = (string) ( (int) $digits[ $i ] + 1 );
@@ -727,7 +727,7 @@ final class Js {
 	 * UTF-8 can't hold. JS keeps it as a distinct value (`"😀".charAt(0) !== "😀".charAt(1)`);
 	 * any stand-in here would compare, sort or hash differently, so splitting a pair throws.
 	 */
-	private static function fromUnits( string $u ): string {
+	private static function fromUnits( string $u ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$n = strlen( $u );
 		// The input is a contiguous slice of well-formed UTF-16; only its boundaries can split a pair.
 		if ( $n >= 2 ) {
@@ -746,7 +746,7 @@ final class Js {
 	 * that pairs every surrogate is the JavaScript string; one that leaves a lone surrogate throws,
 	 * as slicing one does (see fromUnits).
 	 */
-	public static function fromCharCode( mixed ...$codes ): string {
+	public static function fromCharCode( mixed ...$codes ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$u = '';
 		foreach ( $codes as $code ) {
 			$n    = self::toNumber( $code );
@@ -757,7 +757,7 @@ final class Js {
 	}
 
 	/** `String.fromCodePoint(...points)`: a RangeError for anything but an integer 0..0x10FFFF. */
-	public static function fromCodePoint( mixed ...$points ): string {
+	public static function fromCodePoint( mixed ...$points ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$u = '';
 		foreach ( $points as $point ) {
 			$n = self::toNumber( $point );
@@ -771,7 +771,7 @@ final class Js {
 	}
 
 	/** UTF-16LE units to UTF-8, refusing any unpaired surrogate anywhere in them. */
-	private static function wellFormed( string $u ): string {
+	private static function wellFormed( string $u ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$n = intdiv( strlen( $u ), 2 );
 		for ( $i = 0; $i < $n; $i++ ) {
 			$unit = ord( $u[ 2 * $i ] ) | ( ord( $u[ 2 * $i + 1 ] ) << 8 );
@@ -788,16 +788,16 @@ final class Js {
 	}
 
 	/** A result would hold a lone surrogate: see loneSurrogate(). */
-	public static function splitsPair(): never {
+	public static function splitsPair(): never { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::loneSurrogate();
 	}
 
-	private static function loneSurrogate(): never {
+	private static function loneSurrogate(): never { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		throw new JsError( 'This splits a character in two (a lone UTF-16 surrogate), which compiled code can\'t represent; slice at character boundaries, for example with Array.from(s)', 'RangeError' );
 	}
 
 	/** Units [$from, $to) of a UTF-16LE string, as UTF-8. */
-	private static function unitSlice( string $u, int $from, int $to ): string {
+	private static function unitSlice( string $u, int $from, int $to ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $from >= $to ? '' : self::fromUnits( substr( $u, 2 * $from, 2 * ( $to - $from ) ) );
 	}
 
@@ -819,7 +819,7 @@ final class Js {
 		return self::unitSlice( $u, min( $a, $b ), max( $a, $b ) );
 	}
 
-	public static function charAt( string $s, int|float $i ): string {
+	public static function charAt( string $s, int|float $i ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$i = self::toInteger( $i );
 
 		if ( $i < 0 ) {
@@ -859,7 +859,7 @@ final class Js {
 	}
 
 	/** String.prototype.indexOf for strings, Array.prototype.indexOf for lists. */
-	public static function indexOf( string|JsArray $s, mixed $needle, mixed $from = 0 ): int {
+	public static function indexOf( string|JsArray $s, mixed $needle, mixed $from = 0 ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $s instanceof JsArray ) {
 			$len = count( $s->a );
 			if ( 0 === $len ) {
@@ -877,7 +877,7 @@ final class Js {
 		$n    = self::units( self::str( $needle ) );
 		$from = self::toNumber( $from );
 		// A byte match at an odd offset straddles two units; keep looking.
-		for ( $at = 2 * self::clampIndex( $from, intdiv( strlen( $u ), 2 ) ); ( $found = strpos( $u, $n, $at ) ) !== false; $at = $found + 1 ) {
+		for ( $at = 2 * self::clampIndex( $from, intdiv( strlen( $u ), 2 ) ); ( $found = strpos( $u, $n, $at ) ) !== false; $at = $found + 1 ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			if ( 0 === $found % 2 ) {
 				return intdiv( $found, 2 );
 			}
@@ -891,12 +891,12 @@ final class Js {
 	 * An omitted `fromIndex` searches from the end; a given one (even `null`, which JS turns
 	 * into 0) is a number. Omission is the default argument, never `null`.
 	 */
-	public static function lastIndexOf( string|JsArray $s, mixed $needle, mixed ...$fromArg ): int {
+	public static function lastIndexOf( string|JsArray $s, mixed $needle, mixed ...$fromArg ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		if ( $s instanceof JsArray ) {
 			$len = count( $s->a );
 			if ( 0 === $len ) {
 				return -1; }
-			$from = array() === $fromArg ? null : self::toNumber( $fromArg[0] );
+			$from = array() === $fromArg ? null : self::toNumber( $fromArg[0] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			// fromIndex: relative to the end when negative, clamped to the last element.
 			$last = $len - 1;
 			if ( null !== $from ) {
@@ -915,14 +915,14 @@ final class Js {
 		$u     = self::units( $s );
 		$n     = self::units( self::str( $needle ) );
 		$len   = intdiv( strlen( $u ), 2 );
-		$from  = array() === $fromArg ? null : self::toNumber( $fromArg[0] );
+		$from  = array() === $fromArg ? null : self::toNumber( $fromArg[0] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$start = null === $from || is_nan( $from ) ? $len : self::clampIndex( $from, $len );
 		if ( '' === $n ) {
 			return $start;
 		}
 		// Walk the original buffer once, retaining the last aligned match within the bound.
 		$last = -1;
-		for ( $at = 0; ( $found = strpos( $u, $n, $at ) ) !== false && $found <= 2 * $start; $at = $found + 1 ) {
+		for ( $at = 0; ( $found = strpos( $u, $n, $at ) ) !== false && $found <= 2 * $start; $at = $found + 1 ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			if ( 0 === $found % 2 ) {
 				$last = intdiv( $found, 2 );
 			}
@@ -979,7 +979,7 @@ final class Js {
 					return new JsArray( $out );
 				}
 			}
-			$p = $q = $end;
+			$p = $q = $end; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		}
 		$out[] = substr( $s, $p );
 
@@ -987,7 +987,7 @@ final class Js {
 	}
 
 	/** Byte length of the UTF-8 character starting at byte $i (1 at end of string). */
-	public static function charLenAt( string $s, int $i ): int {
+	public static function charLenAt( string $s, int $i ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $i >= strlen( $s ) ) {
 			return 1;
 		}
@@ -1001,11 +1001,11 @@ final class Js {
 		};
 	}
 
-	public static function padStart( string $s, int|float $len, string $fill = ' ' ): string {
+	public static function padStart( string $s, int|float $len, string $fill = ' ' ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::pad( $s, $len, $fill, true );
 	}
 
-	public static function padEnd( string $s, int|float $len, string $fill = ' ' ): string {
+	public static function padEnd( string $s, int|float $len, string $fill = ' ' ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::pad( $s, $len, $fill, false );
 	}
 
@@ -1029,11 +1029,11 @@ final class Js {
 		return preg_replace( '/^[' . self::WS . ']+|[' . self::WS . ']+$/uD', '', $s ) ?? trim( $s );
 	}
 
-	public static function trimStart( string $s ): string {
+	public static function trimStart( string $s ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return preg_replace( '/^[' . self::WS . ']+/u', '', $s ) ?? ltrim( $s );
 	}
 
-	public static function trimEnd( string $s ): string {
+	public static function trimEnd( string $s ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return preg_replace( '/[' . self::WS . ']+$/uD', '', $s ) ?? rtrim( $s );
 	}
 
@@ -1042,7 +1042,7 @@ final class Js {
 			if ( $pattern->sticky ) {
 				throw new JsError( 'Sticky replacement is not supported', 'TypeError' ); }
 			if ( $pattern->global ) {
-				$pattern->lastIndex = 0; }
+				$pattern->lastIndex = 0; } // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$matches = $pattern->global ? $pattern->matchAll( $s ) : array_filter( array( $pattern->execMatch( $s ) ) );
 
 			return self::applyReplacements( $s, $matches, $replacement, $pattern->hasNamedGroups() );
@@ -1055,7 +1055,7 @@ final class Js {
 		return self::applyReplacements( $s, array( array( $pos, $pos + strlen( $pattern ), array(), array() ) ), $replacement, false );
 	}
 
-	public static function replaceAll( string $s, string|RegExp $pattern, string|\Closure $replacement ): string {
+	public static function replaceAll( string $s, string|RegExp $pattern, string|\Closure $replacement ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $pattern instanceof RegExp ) {
 			if ( ! $pattern->global ) {
 				throw new JsError( 'replaceAll must be called with a global RegExp', 'TypeError' );
@@ -1081,7 +1081,7 @@ final class Js {
 	/**
 	 * @param iterable<array{int, int, list<?string>, array<string, ?string>}> $matches byte ranges + captures
 	 */
-	private static function applyReplacements( string $s, iterable $matches, string|\Closure $replacement, bool $named ): string {
+	private static function applyReplacements( string $s, iterable $matches, string|\Closure $replacement, bool $named ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$out  = '';
 		$last = 0;
 		foreach ( $matches as $match ) {
@@ -1116,7 +1116,7 @@ final class Js {
 	 * @param list<?string> $groups
 	 * @param ?array<string, ?string> $names null when the pattern has no named groups
 	 */
-	private static function expandReplacement( string $tpl, string $s, int $start, int $end, array $groups, ?array $names, bool $between = false ): string {
+	private static function expandReplacement( string $tpl, string $s, int $start, int $end, array $groups, ?array $names, bool $between = false ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! str_contains( $tpl, '$' ) ) {
 			return $tpl;
 		}
@@ -1140,7 +1140,7 @@ final class Js {
 	}
 
 	/** @param list<?string> $groups */
-	private static function numberedGroup( string $digits, array $groups, int $m ): string {
+	private static function numberedGroup( string $digits, array $groups, int $m ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$two = (int) $digits;
 		if ( strlen( $digits ) === 2 && $two >= 1 && $two <= $m ) {
 			return $groups[ $two - 1 ] ?? '';
@@ -1185,9 +1185,9 @@ final class Js {
 	}
 
 	/** @return ?list<?string> */
-	public static function strMatch( string $s, RegExp $re ): ?JsArray {
+	public static function strMatch( string $s, RegExp $re ): ?JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $re->global ) {
-			$re->lastIndex = 0;
+			$re->lastIndex = 0; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$all           = array();
 			foreach ( $re->matchAll( $s ) as [$start, $end] ) {
 				$all[] = substr( $s, $start, $end - $start );
@@ -1262,7 +1262,7 @@ final class Js {
 				throw new JsError( 'Prototype mutation is not supported', 'TypeError' ); }
 			return $o->set( $key, $value );
 		}
-		if ( '__proto__' === $key && ! $o->nullPrototype && ! array_key_exists( $key, $o->p ) ) {
+		if ( '__proto__' === $key && ! $o->nullPrototype && ! array_key_exists( $key, $o->p ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			throw new JsError( 'Prototype mutation is not supported', 'TypeError' );
 		}
 		if ( null !== $o->class && ! array_key_exists( $key, $o->p ) && $o->class->writeInherited( $o, $key, $value, false ) ) {
@@ -1296,7 +1296,7 @@ final class Js {
 		'Math'     => array( 'abs', 'acos', 'acosh', 'asin', 'asinh', 'atan', 'atanh', 'atan2', 'ceil', 'cbrt', 'expm1', 'clz32', 'cos', 'cosh', 'exp', 'floor', 'fround', 'hypot', 'imul', 'log', 'log1p', 'log2', 'log10', 'max', 'min', 'pow', 'random', 'round', 'sign', 'sin', 'sinh', 'sqrt', 'tan', 'tanh', 'trunc', 'E', 'LN10', 'LN2', 'LOG10E', 'LOG2E', 'PI', 'SQRT1_2', 'SQRT2' ),
 	);
 
-	private static function prototypeHas( string $prototype, string $key ): bool {
+	private static function prototypeHas( string $prototype, string $key ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return in_array( $key, self::PROTOTYPE_NAMES[ $prototype ], true )
 			|| ( 'Object' !== $prototype && in_array( $key, self::PROTOTYPE_NAMES['Object'], true ) );
 	}
@@ -1315,7 +1315,7 @@ final class Js {
 	 * symbols (Array.prototype[Symbol.iterator], ...), which SpacePress doesn't model, so a
 	 * well-known symbol on them throws instead of guessing.
 	 */
-	public static function symbolLookup( mixed $object, JsSymbol $key ): mixed {
+	public static function symbolLookup( mixed $object, JsSymbol $key ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.objectFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		if ( $object instanceof JsObject ) {
 			if ( $object->hasSymbol( $key ) ) {
 				return $object->getSymbol( $key ); }
@@ -1325,12 +1325,12 @@ final class Js {
 			return $object->symbolGet( $key, true ); }
 		if ( $object instanceof JsPrototype ) {
 			return $object->class->symbolGet( $key, false ); }
-		if ( $key->isWellKnown ) {
+		if ( $key->isWellKnown ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			throw new JsError( 'Symbol-keyed properties are only supported on plain objects', 'TypeError' ); }
 		return JsClass::absent();
 	}
 
-	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.objectFound -- Preserve the method name used by compiled PHP.
 	public static function hasProperty( mixed $key, mixed $object ): bool {
 		if ( ! is_object( $object ) || $object instanceof JsUndefined ) {
 			$search = is_object( $key ) ? '[object Object]' : self::str( $key );
@@ -1344,7 +1344,7 @@ final class Js {
 		if ( $object instanceof JsObject ) {
 			if ( array_key_exists( $key, $object->p ) || array_key_exists( $key, $object->hidden ) ) {
 				return true; }
-			if ( $object->nullPrototype ) {
+			if ( $object->nullPrototype ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				return false; }
 			return ( $object->class?->hasMember( $key ) ?? false ) || self::prototypeHas( 'Object', $key );
 		}
@@ -1354,7 +1354,7 @@ final class Js {
 		if ( $object instanceof JsArguments ) {
 			// Arguments indexes can be deleted, so presence is the slot itself, not the length.
 			$own = preg_match( '/^(?:0|[1-9][0-9]*)$/D', $key ) === 1 && array_key_exists( (int) $key, $object->a );
-			return array_key_exists( $key, $object->p ) || $own || 'callee' === $key || ( 'length' === $key && ! $object->lengthDeleted ) || self::prototypeHas( 'Object', $key );
+			return array_key_exists( $key, $object->p ) || $own || 'callee' === $key || ( 'length' === $key && ! $object->lengthDeleted ) || self::prototypeHas( 'Object', $key ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		if ( $object instanceof JsPrototype ) {
 			return 'constructor' === $key || $object->class->hasMember( $key ) || self::prototypeHas( 'Object', $key );
@@ -1394,7 +1394,7 @@ final class Js {
 	 * string indexes, regex `lastIndex`, class and function `prototype`, arguments `callee`, Math
 	 * constants) throw JavaScript's TypeError.
 	 */
-	public static function delete( mixed $object, mixed $key ): bool {
+	public static function delete( mixed $object, mixed $key ): bool { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.objectFound -- Preserve the existing PHP parameter name.
 		if ( self::isNullish( $object ) ) {
 			throw new JsError( 'Cannot convert undefined or null to object', 'TypeError' ); }
 		if ( $object instanceof JsPrototype ) {
@@ -1414,7 +1414,7 @@ final class Js {
 		};
 		$canonical_index = preg_match( '/^(?:0|[1-9][0-9]*)$/D', $key ) === 1 && (float) $key < 4294967295;
 		if ( $object instanceof JsObject ) {
-			if ( '__proto__' === $key && ! $object->nullPrototype && ! array_key_exists( $key, $object->p ) ) {
+			if ( '__proto__' === $key && ! $object->nullPrototype && ! array_key_exists( $key, $object->p ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				return true; }
 			unset( $object->p[ $key ] );
 			return true;
@@ -1438,7 +1438,7 @@ final class Js {
 				$refuse( '#<Object>' ); }
 			if ( 'length' === $key ) {
 				$object->length        = JsUndefined::Value;
-				$object->lengthDeleted = true;
+				$object->lengthDeleted = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				return true; }
 			if ( $canonical_index ) {
 				unset( $object->a[ (int) $key ] );
@@ -1480,7 +1480,7 @@ final class Js {
 	}
 
 	/** Whether a present key of a built-in value is inherited (so `delete` is a no-op). */
-	private static function prototypeProperty( object $object, string $key ): bool {
+	private static function prototypeProperty( object $object, string $key ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.objectFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		if ( $object instanceof JsMap || $object instanceof JsSet || $object instanceof JsDate || $object instanceof \Closure && ! in_array( $key, array( 'length', 'name' ), true ) ) {
 			return true; }
 		if ( $object instanceof JsNamespace ) {
@@ -1537,7 +1537,7 @@ final class Js {
 		return $out;
 	}
 
-	private static function toLength( mixed $value ): int {
+	private static function toLength( mixed $value ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$n = self::toInteger( self::toNumber( $value ) );
 		return $n <= 0 ? 0 : (int) min( $n, 9007199254740991 );
 	}
@@ -1564,7 +1564,7 @@ final class Js {
 		return JsUndefined::Value;
 	}
 
-	public static function findIndex( JsArray $a, \Closure $f ): int {
+	public static function findIndex( JsArray $a, \Closure $f ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		for ( $i = 0, $len = count( $a->a ); $i < $len; $i++ ) {
 			$value = self::element( $a, $i );
 			if ( self::truthy( $f( $value, $i, $a ) ) ) {
@@ -1573,7 +1573,7 @@ final class Js {
 		return -1;
 	}
 
-	public static function findLast( JsArray $a, \Closure $f ): mixed {
+	public static function findLast( JsArray $a, \Closure $f ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		for ( $i = count( $a->a ) - 1; $i >= 0; $i-- ) {
 			$value = self::element( $a, $i );
 			if ( self::truthy( $f( $value, $i, $a ) ) ) {
@@ -1582,7 +1582,7 @@ final class Js {
 		return JsUndefined::Value;
 	}
 
-	public static function findLastIndex( JsArray $a, \Closure $f ): int {
+	public static function findLastIndex( JsArray $a, \Closure $f ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		for ( $i = count( $a->a ) - 1; $i >= 0; $i-- ) {
 			$value = self::element( $a, $i );
 			if ( self::truthy( $f( $value, $i, $a ) ) ) {
@@ -1646,12 +1646,12 @@ final class Js {
 		return false;
 	}
 
-	private static ?\SplObjectStorage $stringArrays = null;
+	private static ?\SplObjectStorage $stringArrays = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	public static function join( JsArray $a, mixed $sep = JsUndefined::Value ): string {
 		$len   = count( $a->a );
 		$sep   = JsUndefined::Value === $sep ? ',' : self::str( $sep );
-		$stack = self::$stringArrays ??= new \SplObjectStorage();
+		$stack = self::$stringArrays ??= new \SplObjectStorage(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( $stack->offsetExists( $a ) ) {
 			return ''; }
 		$stack->offsetSet( $a );
@@ -1739,11 +1739,11 @@ final class Js {
 		return $out;
 	}
 
-	public static function splice( JsArray $a, int|float $start, int|float|null $deleteCount = null, mixed ...$items ): JsArray {
+	public static function splice( JsArray $a, int|float $start, int|float|null $deleteCount = null, mixed ...$items ): JsArray { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		self::writable( $a );
 		$len   = count( $a->a );
 		$start = self::relIndex( $start, $len );
-		$count = null === $deleteCount ? $len - $start : self::clampIndex( $deleteCount, $len - $start );
+		$count = null === $deleteCount ? $len - $start : self::clampIndex( $deleteCount, $len - $start ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return new JsArray( array_splice( $a->a, $start, $count, $items ) );
 	}
 
@@ -1755,7 +1755,7 @@ final class Js {
 		return $a;
 	}
 
-	public static function toReversed( JsArray $a ): JsArray {
+	public static function toReversed( JsArray $a ): JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return new JsArray( array_reverse( $a->a ) ); }
 
 	public static function sort( JsArray $a, mixed $cmp = null ): JsArray {
@@ -1768,10 +1768,10 @@ final class Js {
 		return $a;
 	}
 
-	public static function toSorted( JsArray $a, mixed $cmp = null ): JsArray {
+	public static function toSorted( JsArray $a, mixed $cmp = null ): JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::sorted( $a, $cmp ); }
 
-	private static ?\WeakMap $sortComparators = null;
+	private static ?\WeakMap $sortComparators = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	/**
 	 * Marks a compiled comparator that is a numeric difference of the two parameters or of the
@@ -1779,8 +1779,8 @@ final class Js {
 	 */
 	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
 	public static function sortComparator( \Closure $callback, array $keys, bool $descending ): \Closure {
-		self::$sortComparators            ??= new \WeakMap();
-		self::$sortComparators[ $callback ] = array( $keys, $descending );
+		self::$sortComparators            ??= new \WeakMap(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		self::$sortComparators[ $callback ] = array( $keys, $descending ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		return $callback;
 	}
 
@@ -1841,10 +1841,10 @@ final class Js {
 	 * @param list<mixed> $items
 	 * @return list<mixed>|null
 	 */
-	private static function sortedByKeys( array $items, \Closure $cmp ): ?array {
-		if ( ! isset( self::$sortComparators[ $cmp ] ) ) {
+	private static function sortedByKeys( array $items, \Closure $cmp ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		if ( ! isset( self::$sortComparators[ $cmp ] ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			return null; }
-		[$keys, $descending] = self::$sortComparators[ $cmp ];
+		[$keys, $descending] = self::$sortComparators[ $cmp ]; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$keyed               = array();
 		foreach ( $items as $item ) {
 			$key = $item;
@@ -1952,7 +1952,7 @@ final class Js {
 		return $best;
 	}
 
-	private static function isNegZero( int|float $x ): bool {
+	private static function isNegZero( int|float $x ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return is_float( $x ) && 0.0 === $x && fdiv( 1, $x ) < 0;
 	}
 
@@ -1971,9 +1971,9 @@ final class Js {
 	// ---------------------------------------------------------------- objects
 
 	/** `{ __proto__: null, ... }`: the fresh literal inherits nothing from Object.prototype. */
-	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.objectFound -- Preserve the method name used by compiled PHP.
 	public static function nullPrototype( JsObject $object ): JsObject {
-		$object->nullPrototype = true;
+		$object->nullPrototype = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		return $object;
 	}
 
@@ -2022,7 +2022,7 @@ final class Js {
 		return $out;
 	}
 
-	public static function hasOwn( JsObject|JsArray $o, mixed $key ): bool {
+	public static function hasOwn( JsObject|JsArray $o, mixed $key ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$key = self::key( $key );
 		if ( $o instanceof JsObject || array_key_exists( $key, $o->p ) ) {
 			return array_key_exists( $key, $o->p ); }
@@ -2042,7 +2042,7 @@ final class Js {
 		return self::copyGraph( $value, new \SplObjectStorage(), false );
 	}
 
-	private static function copyGraph( mixed $value, \SplObjectStorage $seen, bool $structured ): mixed {
+	private static function copyGraph( mixed $value, \SplObjectStorage $seen, bool $structured ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $value instanceof \Closure ) {
 			if ( $structured ) {
 				throw new JsError( 'Function could not be cloned', 'DataCloneError' ); }
@@ -2102,7 +2102,7 @@ final class Js {
 			if ( $seen->offsetExists( $value ) ) {
 				return $seen[ $value ]; }
 			if ( $value instanceof JsError ) {
-				$copy           = new JsError( $value->getMessage(), $value->jsName, $value->hasMessage );
+				$copy           = new JsError( $value->getMessage(), $value->jsName, $value->hasMessage ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				$seen[ $value ] = $copy;
 				return $copy;
 			}
@@ -2111,7 +2111,7 @@ final class Js {
 				$seen[ $value ] = $copy;
 				return $copy;
 			}
-			$copy           = $value instanceof JsObject ? new JsObject( nullPrototype: ! $structured && $value->nullPrototype ) : new JsArray();
+			$copy           = $value instanceof JsObject ? new JsObject( nullPrototype: ! $structured && $value->nullPrototype ) : new JsArray(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$seen[ $value ] = $copy;
 			if ( $value instanceof JsObject ) {
 				foreach ( self::ownKeys( $value->p ) as $key ) {
@@ -2132,20 +2132,20 @@ final class Js {
 	}
 
 	/** The JSON value tree shared by SpacePress's encoder and foreign encoders. */
-	public static function jsonTree( mixed $value ): mixed {
+	public static function jsonTree( mixed $value ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::jsonValueTree( self::jsonClassValue( $value, '' ), new \SplObjectStorage() );
 	}
 
 	/** SerializeJSONProperty step 2: a class `toJSON` method replaces the value, receiving the key. */
-	private static function jsonClassValue( mixed $value, string $key ): mixed {
+	private static function jsonClassValue( mixed $value, string $key ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $value instanceof JsObject && ! array_key_exists( 'toJSON', $value->p ) && null !== $value->class
-			&& ( $method = $value->class->readInherited( $value, 'toJSON', false ) ) instanceof \Closure ) {
+			&& ( $method = $value->class->readInherited( $value, 'toJSON', false ) ) instanceof \Closure ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return self::dynamicMethod( $value, 'toJSON' )( $key );
 		}
 		return $value;
 	}
 
-	private static function jsonValueTree( mixed $value, \SplObjectStorage $stack ): mixed {
+	private static function jsonValueTree( mixed $value, \SplObjectStorage $stack ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ( $value instanceof JsObject || $value instanceof JsArray || $value instanceof JsArguments )
 			&& array_key_exists( 'toJSON', $value->p ) && $value->p['toJSON'] instanceof \Closure ) {
 			throw new JsError( 'Custom toJSON callbacks are not supported', 'TypeError' );
@@ -2220,11 +2220,11 @@ final class Js {
 		}
 	}
 
-	public static function sameJson( mixed $a, mixed $b ): bool {
+	public static function sameJson( mixed $a, mixed $b ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::sameGraph( $a, $b, array() );
 	}
 
-	private static function sameGraph( mixed $a, mixed $b, array $seen ): bool {
+	private static function sameGraph( mixed $a, mixed $b, array $seen ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $a instanceof JsObject || $a instanceof JsArray || $b instanceof JsObject || $b instanceof JsArray ) {
 			if ( ! is_object( $a ) || ! is_object( $b ) || $a::class !== $b::class ) {
 				return false; }
@@ -2247,7 +2247,7 @@ final class Js {
 		return self::strictEq( $a, $b );
 	}
 
-	public static function ownKeys( array $o ): array {
+	public static function ownKeys( array $o ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( array_is_list( $o ) ) {
 			return array_keys( $o );
 		}
@@ -2265,7 +2265,7 @@ final class Js {
 		return array( ...$indexes, ...$names );
 	}
 
-	public static function jsonStringify( mixed $v, int|float|string|null $indent = null ): ?string {
+	public static function jsonStringify( mixed $v, int|float|string|null $indent = null ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$v = self::jsonClassValue( $v, '' );
 		if ( $v instanceof \Closure || JsUndefined::Value === $v || $v instanceof JsSymbol ) {
 			return null;
@@ -2281,7 +2281,7 @@ final class Js {
 				// If the result doesn't depend on the gap, it's never written and the cut doesn't
 				// matter: compare two encodes with different stand-in gaps.
 				$plain = self::encode( $v, '', '' );
-				if ( $plain !== self::encode( $v, ' ', '' ) ) {
+				if ( $plain !== self::encode( $v, ' ', '' ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 					throw $e;
 				}
 
@@ -2345,7 +2345,7 @@ final class Js {
 	 * `-0` → `-0.0` outside strings, so json_decode keeps the sign. A linear scan: a regex over a long
 	 * string literal can exceed PCRE's backtrack limit, and preg_replace then returns null.
 	 */
-	private static function markNegativeZero( string $s ): string {
+	private static function markNegativeZero( string $s ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! str_contains( $s, '-0' ) ) {
 			return $s;
 		}
@@ -2381,7 +2381,7 @@ final class Js {
 	 * Integers stay exact: request bodies and stored json() values
 	 * may carry ids. Throws \JsonException.
 	 */
-	public static function decodeJson( string $s, int $depth = 512 ): mixed {
+	public static function decodeJson( string $s, int $depth = 512 ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$s = self::markNegativeZero( $s );
 		try {
 			return self::fromJson( json_decode( $s, false, $depth, JSON_THROW_ON_ERROR ) );
@@ -2402,7 +2402,7 @@ final class Js {
 		}
 	}
 
-	private static function restoreNul( mixed $v, string $mark ): mixed {
+	private static function restoreNul( mixed $v, string $mark ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( is_string( $v ) ) {
 			return str_replace( $mark, "\0", $v ); }
 		if ( $v instanceof JsArray ) {
@@ -2417,7 +2417,7 @@ final class Js {
 		return $v;
 	}
 
-	private static function fromJson( mixed $v ): mixed {
+	private static function fromJson( mixed $v ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $v instanceof \stdClass ) {
 			$out = new JsObject();
 			foreach ( get_object_vars( $v ) as $key => $value ) {
@@ -2427,7 +2427,7 @@ final class Js {
 		return is_array( $v ) ? new JsArray( array_map( self::fromJson( ... ), $v ) ) : $v;
 	}
 
-	public static function jsonParse( string $s ): mixed {
+	public static function jsonParse( string $s ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		try {
 			// Compiled JSON.parse: `{}` stays an object, and integers past ±2^53 are the doubles JS parses.
 			return self::jsNumbers( self::decodeJson( $s, 4096 ) );
@@ -2459,7 +2459,7 @@ final class Js {
 	 * @param callable(): T $fn
 	 * @return T
 	 */
-	public static function atInstant( callable $fn ): mixed {
+	public static function atInstant( callable $fn ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		if ( null !== self::$instant ) {
 			return $fn();
 		}
@@ -2478,12 +2478,12 @@ final class Js {
 	 * instants" deterministic. Inside atInstant() it is that one instant.
 	 */
 	/** Typed `new Map(entries?)`: entries are [key, value] arrays already checked by the compiler. */
-	public static function newMap( mixed $entries = JsUndefined::Value ): JsMap {
+	public static function newMap( mixed $entries = JsUndefined::Value ): JsMap { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::dynamicConstruct( 'Map', new JsArray( JsUndefined::Value === $entries ? array() : array( $entries ) ) );
 	}
 
 	/** Typed `new Set(values?)`. */
-	public static function newSet( mixed $values = JsUndefined::Value ): JsSet {
+	public static function newSet( mixed $values = JsUndefined::Value ): JsSet { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::dynamicConstruct( 'Set', new JsArray( JsUndefined::Value === $values ? array() : array( $values ) ) );
 	}
 
@@ -2559,7 +2559,7 @@ final class Js {
 		return is_string( $v ) ? self::parseDate( $v ) : NAN;
 	}
 
-	private static function timeClip( float $t ): int|float {
+	private static function timeClip( float $t ): int|float { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_finite( $t ) || abs( $t ) > self::MAX_TIME ) {
 			return NAN;
 		}
@@ -2568,7 +2568,7 @@ final class Js {
 	}
 
 	/** ES date-time string format; no zone = UTC. */
-	private static function parseDate( string $s ): int|float {
+	private static function parseDate( string $s ): int|float { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$re = '/^([+-]\d{6}|\d{4})(?:-(\d{2})(?:-(\d{2}))?)?'
 			. '(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:\d{2})?)?$/D';
 		if ( ! preg_match( $re, $s, $m ) || str_starts_with( $s, '-000000' )
@@ -2603,7 +2603,7 @@ final class Js {
 		return self::timeClip( (float) ( $days * 86400000 + ( ( $h * 60 + $mi ) * 60 + $sec ) * 1000 + $ms - $offset ) );
 	}
 
-	private static function daysFromCivil( int $y, int $m, int $d ): int {
+	private static function daysFromCivil( int $y, int $m, int $d ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$y  -= $m <= 2 ? 1 : 0;
 		$era = intdiv( $y >= 0 ? $y : $y - 399, 400 );
 		$yoe = $y - $era * 400;
@@ -2614,7 +2614,7 @@ final class Js {
 	}
 
 	/** @return array{int, int, int} */
-	private static function civilFromDays( int $z ): array {
+	private static function civilFromDays( int $z ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$z  += 719468;
 		$era = intdiv( $z >= 0 ? $z : $z - 146096, 146097 );
 		$doe = $z - $era * 146097;

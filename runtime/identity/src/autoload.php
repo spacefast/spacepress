@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 spl_autoload_register(
-	static function ( string $class ): void {
+	static function ( string $class ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP parameter name.
 		static $polyfills = null;
 		$polyfills      ??= require dirname( __DIR__ ) . '/vendor-prefixed/composer/polyfill_classes.php';
 		if ( isset( $polyfills[ $class ] ) || str_starts_with( $class, 'SpacePress\\Identity\\Vendor\\' ) ) {

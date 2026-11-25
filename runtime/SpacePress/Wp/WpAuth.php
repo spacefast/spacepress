@@ -33,7 +33,7 @@ final class WpAuth implements Auth {
 				default => null,
 			};
 		}
-		if ( IdentityBridge::available() && ( $error = \SpacePress\Identity\Plugin::authenticationError() ) !== null ) {
+		if ( IdentityBridge::available() && ( $error = \SpacePress\Identity\Plugin::authenticationError() ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			throw new HttpError( (int) ( $error->get_error_data()['status'] ?? 503 ), $error->get_error_code(), $error->get_error_message() );
 		}
 		if ( ! $user->exists() ) {

@@ -32,20 +32,20 @@ final class Module {
 	}
 
 	/** Give a post saved in wp-admin or core REST its uid, written as meta outside the pipeline. */
-	public static function editorUid( int $postId, \WP_Post $post ): void {
+	public static function editorUid( int $postId, \WP_Post $post ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$plugin = Plugin::instance();
 		if ( null === $plugin || $plugin->connection()->busy() || in_array( $post->post_status, array( 'auto-draft', 'trash', 'inherit' ), true ) ) {
 			return;
 		}
 		foreach ( $plugin->schema->collections() as $name => $spec ) {
 			if ( ( $spec['uid'] ?? false ) && ( $spec['wp']['postType'] ?? null ) === $post->post_type && ( $spec['editor'] ?? true ) ) {
-				if ( get_post_meta( $postId, \SpacePress\Wp\WpPostStore::UID_META, true ) === '' ) {
+				if ( get_post_meta( $postId, \SpacePress\Wp\WpPostStore::UID_META, true ) === '' ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					$plugin->app()->db->transaction(
 						static fn () => self::ensureUids(
 							(string) $name,
 							array(
 								array(
-									$spec['primaryKey'] => $postId,
+									$spec['primaryKey'] => $postId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 									'uid'               => null,
 								),
 							)
@@ -59,7 +59,7 @@ final class Module {
 	}
 
 	/** Mint a uid on create when the writer gave none; refuse to change one. */
-	public static function onWrite( string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided ): void {
+	public static function onWrite( string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! ( db()->schema()->collection( $collection )['uid'] ?? false ) ) {
 			return;
 		}
@@ -71,7 +71,7 @@ final class Module {
 	}
 
 	/** Rows written outside the API pipeline (wp-admin, core REST) get their uid here. */
-	public static function onWritten( string $op, string $collection, array $row, ?array $previous ): void {
+	public static function onWritten( string $op, string $collection, array $row, ?array $previous ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( 'delete' === $op || ! ( db()->schema()->collection( $collection )['uid'] ?? false ) ) {
 			return;
 		}
@@ -91,7 +91,7 @@ final class Module {
 	 * @param list<array> $rows full rows
 	 * @return list<array> the rows with `uid` filled
 	 */
-	public static function ensureUids( string $collection, array $rows ): array {
+	public static function ensureUids( string $collection, array $rows ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$pk = db()->schema()->collection( $collection )['primaryKey'];
 		foreach ( $rows as &$row ) {
 			if ( ( $row['uid'] ?? null ) !== null ) {
@@ -122,7 +122,7 @@ final class Module {
 	}
 
 	/** This site's identity, minted once: base files are keyed by it (§5.4). */
-	public static function siteId(): string {
+	public static function siteId(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		// add_option() overwrites on a concurrent first boot; the first id written must win.
 		$connection = Plugin::instance()->connection();
 		$options    = $connection->wpdb()->options;

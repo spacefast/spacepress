@@ -40,7 +40,7 @@ final class Markdown {
 		'core/separator',
 	);
 
-	public static function toBlocks( string $markdown ): string {
+	public static function toBlocks( string $markdown ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$markdown = str_replace( array( "\r\n", "\r" ), "\n", $markdown );
 		if ( trim( $markdown ) === '' ) {
 			return '';
@@ -93,7 +93,7 @@ final class Markdown {
 	}
 
 	/** Stored blocks → Markdown, or 422 not_representable naming what Markdown can't carry. */
-	public static function fromBlocks( string $blocks ): string {
+	public static function fromBlocks( string $blocks ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( trim( $blocks ) === '' ) {
 			return '';
 		}
@@ -138,7 +138,7 @@ final class Markdown {
 	 * came from markup (a custom HTML block) or from text (`&lt;script&gt;`). This is for reading;
 	 * fromBlocks() is the sync format, written from stored markup and refusing what it can't carry.
 	 */
-	public static function renderPost( \WP_Post $subject ): string {
+	public static function renderPost( \WP_Post $subject ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		Blocks::boot();
 		global $post;
 		$previous = $post ?? null;
@@ -165,7 +165,7 @@ final class Markdown {
 	 * Rendered HTML (a `sp/app/` page's own output) as Markdown for reading, with the same rule
 	 * as renderPost(): no raw HTML reaches the output.
 	 */
-	public static function fromRenderedHtml( string $html ): string {
+	public static function fromRenderedHtml( string $html ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$markdown = trim( HtmlMarkdown::convert( $html ) );
 
 		return '' === $markdown ? '' : self::escape_tags( $markdown ) . "\n";
@@ -217,7 +217,7 @@ final class Markdown {
 			if ( null !== $name && ! in_array( $name, self::MARKDOWN_BLOCKS, true ) ) {
 				return $name;
 			}
-			if ( ( $inner = self::unsupported( $block['innerBlocks'] ?? array() ) ) !== null ) {
+			if ( ( $inner = self::unsupported( $block['innerBlocks'] ?? array() ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				return $inner;
 			}
 		}
@@ -279,7 +279,7 @@ final class Markdown {
 	}
 
 	private static function strip_heading_id( array $block ): array {
-		if ( ! is_string( $html = $block['innerContent'][0] ?? null ) ) {
+		if ( ! is_string( $html = $block['innerContent'][0] ?? null ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $block;
 		}
 		$tags = new Tags( $html );
@@ -377,7 +377,7 @@ final class Markdown {
 		Blocks::boot();
 		$key = array();
 		foreach ( Blocks::parse( $blocks ) as $block ) {
-			if ( ( $node = self::block_key( $block ) ) !== null ) {
+			if ( ( $node = self::block_key( $block ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				$key[] = $node;
 			}
 		}
@@ -424,7 +424,7 @@ final class Markdown {
 		if ( is_string( $root_id ) && ( $attrs['anchor'] ?? null ) === $root_id ) {
 			unset( $attrs['anchor'] );
 		}
-		if ( 'core/heading' === $name && is_string( $root_id ) && $root_id === self::heading_id( (string) ( $block['innerHTML'] ?? '' ), $inner ) ) {
+		if ( 'core/heading' === $name && is_string( $root_id ) && $root_id === self::heading_id( (string) ( $block['innerHTML'] ?? '' ), $inner ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			unset( $inner[ $root ]['attrs']['id'] );
 		}
 		if ( 'core/code' === $name ) {
@@ -476,7 +476,7 @@ final class Markdown {
 		while ( $tags->next_token() ) {
 			$type = $tags->get_token_type();
 			if ( '#tag' === $type ) {
-				$tag = match ( $name = (string) $tags->get_tag() ) {
+				$tag = match ( $name = (string) $tags->get_tag() ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 					'B' => 'STRONG',
 					'I' => 'EM',
 					default => $name,
@@ -583,7 +583,7 @@ final class Markdown {
 			}
 			foreach ( $node['inner'] as $i => $inner ) {
 				if ( isset( $inner['block'] ) ) {
-					if ( ( $lost = self::first_loss( array( $candidate['inner'][ $i ] ), array( $inner ) ) ) !== null ) {
+					if ( ( $lost = self::first_loss( array( $candidate['inner'][ $i ] ), array( $inner ) ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 						return $lost;
 					}
 				} elseif ( $candidate['inner'][ $i ] !== $inner ) {

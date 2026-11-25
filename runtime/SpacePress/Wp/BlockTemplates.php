@@ -241,7 +241,7 @@ final class BlockTemplates {
 	}
 
 	/** Whether the owner saved (and published) a sign-in template in the Site Editor. */
-	public static function loginCustomized(): bool {
+	public static function loginCustomized(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! function_exists( 'wp_is_block_theme' ) || ! wp_is_block_theme() ) {
 			return false;
 		}
@@ -337,7 +337,7 @@ final class BlockTemplates {
 	}
 
 	/** `<TemplatePart slug tagName? className? />`: one of the theme's template parts, as `core/template-part` renders it. */
-	public static function part( mixed $slug, mixed $tag, mixed $class ): Html {
+	public static function part( mixed $slug, mixed $tag, mixed $class ): Html { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP parameter name.
 		$attrs = array( 'slug' => (string) $slug );
 		if ( is_string( $tag ) && '' !== $tag ) {
 			$attrs['tagName'] = $tag;

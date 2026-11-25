@@ -11,7 +11,7 @@ final class JsText {
 
 	public const LABELS = array( 'utf-8', 'utf8', 'unicode-1-1-utf-8', 'unicode11utf8', 'unicode20utf8', 'x-unicode20utf8' );
 
-	private function __construct( public readonly bool $decoder, public readonly bool $fatal = false, public readonly bool $ignoreBOM = false ) {}
+	private function __construct( public readonly bool $decoder, public readonly bool $fatal = false, public readonly bool $ignoreBOM = false ) {} // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 	public static function encoder( array $a ): self {
 		return new self( false ); }
@@ -31,7 +31,7 @@ final class JsText {
 		return match ( $key ) {
 			'encoding' => 'utf-8',
 			'fatal' => $this->decoder ? $this->fatal : null,
-			'ignoreBOM' => $this->decoder ? $this->ignoreBOM : null,
+			'ignoreBOM' => $this->decoder ? $this->ignoreBOM : null, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			default => null,
 		};
 	}
@@ -52,7 +52,7 @@ final class JsText {
 			$input = $get( 0 );
 			if ( JsUndefined::Value === $input ) {
 				return ''; }
-			return self::decode( self::source( $input, 'TextDecoder.decode' ), $this->fatal, $this->ignoreBOM );
+			return self::decode( self::source( $input, 'TextDecoder.decode' ), $this->fatal, $this->ignoreBOM ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		throw new JsError( $name . ' is not a function', 'TypeError' );
 	}
@@ -66,7 +66,7 @@ final class JsText {
 		};
 	}
 
-	private static function encodeInto( string $source, mixed $destination ): JsObject {
+	private static function encodeInto( string $source, mixed $destination ): JsObject { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! $destination instanceof JsTypedArray || 'Uint8Array' !== $destination->kind ) {
 			throw new JsError( 'encodeInto needs a Uint8Array destination', 'TypeError' );
 		}
@@ -96,8 +96,8 @@ final class JsText {
 	 * mb_scrub and mb_convert_encoding replace different spans, so only valid input takes the
 	 * mbstring fast path.
 	 */
-	public static function decode( string $bytes, bool $fatal = false, bool $ignoreBOM = false ): string {
-		if ( ! $ignoreBOM && str_starts_with( $bytes, "\xEF\xBB\xBF" ) ) {
+	public static function decode( string $bytes, bool $fatal = false, bool $ignoreBOM = false ): string { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( ! $ignoreBOM && str_starts_with( $bytes, "\xEF\xBB\xBF" ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$bytes = substr( $bytes, 3 ); }
 		if ( mb_check_encoding( $bytes, 'UTF-8' ) ) {
 			return $bytes; }

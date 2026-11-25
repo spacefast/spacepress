@@ -70,9 +70,9 @@ final class DestructiveMigrations implements MigrationProvider {
 	}
 
 	/** Refuse unless running under WP-CLI (or explicit CLI test harness under CLI SAPI). */
-	public static function requireCli( bool $cliContext = false ): void {
+	public static function requireCli( bool $cliContext = false ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$is_wp_cli   = defined( 'WP_CLI' ) && WP_CLI;
-		$is_cli_test = $cliContext && PHP_SAPI === 'cli';
+		$is_cli_test = $cliContext && PHP_SAPI === 'cli'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ! $is_wp_cli && ! $is_cli_test ) {
 			throw new HttpError(
 				403,
@@ -106,8 +106,8 @@ final class DestructiveMigrations implements MigrationProvider {
 	 *   tableStorageNames: array<string, string>,
 	 * }
 	 */
-	public static function retiredState( string $migrationsDir ): array {
-		$files = glob( rtrim( $migrationsDir, '/' ) . '/*/ops.json' ) ?: array();
+	public static function retiredState( string $migrationsDir ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$files = glob( rtrim( $migrationsDir, '/' ) . '/*/ops.json' ) ?: array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, Universal.Operators.DisallowShortTernary.Found -- Preserve the existing PHP variable name. Keep the existing falsey fallback.
 		$by_id = array();
 		foreach ( $files as $file ) {
 			$id = basename( dirname( $file ) );
@@ -117,8 +117,8 @@ final class DestructiveMigrations implements MigrationProvider {
 		}
 		ksort( $by_id, SORT_STRING );
 
-		$retiredColumns = array();
-		$retiredTables  = array();
+		$retiredColumns = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$retiredTables  = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$physical_names = array();
 
 		foreach ( $by_id as $id => $file ) {
@@ -145,13 +145,13 @@ final class DestructiveMigrations implements MigrationProvider {
 								$storage              = is_string( $def['storageName'] ?? null ) && '' !== $def['storageName'] ? $def['storageName'] : $t;
 								$physical_names[ $t ] = '{prefix}sp_' . $storage;
 							}
-							unset( $retiredTables[ $t ] );
+							unset( $retiredTables[ $t ] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						}
 						break;
 					case 'retireColumn':
 						$c = is_string( $op['column'] ?? null ) ? $op['column'] : '';
 						if ( '' !== $t && '' !== $c ) {
-							$retiredColumns[ "$t.$c" ] = array(
+							$retiredColumns[ "$t.$c" ] = array( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 								'table'     => $t,
 								'column'    => $c,
 								'retiredIn' => (string) $id,
@@ -162,44 +162,44 @@ final class DestructiveMigrations implements MigrationProvider {
 					case 'unretireColumn':
 					case 'purgeRetiredColumn':
 						$c = is_string( $op['column'] ?? null ) ? $op['column'] : '';
-						unset( $retiredColumns[ "$t.$c" ] );
+						unset( $retiredColumns[ "$t.$c" ] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						break;
 					case 'retireTable':
 						if ( '' !== $t ) {
 							if ( is_string( $op['physicalTable'] ?? null ) && '' !== $op['physicalTable'] ) {
 								$physical_names[ $t ] = $op['physicalTable'];
 							}
-							$retiredTables[ $t ] = array(
+							$retiredTables[ $t ] = array( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 								'table'     => $t,
 								'retiredIn' => (string) $id,
 							);
-							foreach ( array_keys( $retiredColumns ) as $k ) {
+							foreach ( array_keys( $retiredColumns ) as $k ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 								if ( str_starts_with( $k, "$t." ) ) {
-									unset( $retiredColumns[ $k ] );
+									unset( $retiredColumns[ $k ] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 								}
 							}
 						}
 						break;
 					case 'unretireTable':
 					case 'purgeRetiredTable':
-						unset( $retiredTables[ $t ] );
+						unset( $retiredTables[ $t ] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						break;
 				}
 			}
 		}
 
 		return array(
-			'retiredColumns'    => $retiredColumns,
-			'retiredTables'     => $retiredTables,
+			'retiredColumns'    => $retiredColumns, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			'retiredTables'     => $retiredTables, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			'tableStorageNames' => $physical_names,
 		);
 	}
 
 	/** Inspect retired columns, retired tables, live counts, and destructive audit history. */
-	public static function status( Plugin $plugin, ?string $migrationsDir = null, bool $cliContext = false ): array {
-		self::requireCli( $cliContext );
+	public static function status( Plugin $plugin, ?string $migrationsDir = null, bool $cliContext = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		self::requireCli( $cliContext ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$cfg   = self::requireEnabled( $plugin );
-		$dir   = $migrationsDir ?? ( $plugin->dir . '/sp/app/migrations' );
+		$dir   = $migrationsDir ?? ( $plugin->dir . '/sp/app/migrations' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$state = self::retiredState( $dir );
 		$conn  = $plugin->connection();
 
@@ -255,12 +255,12 @@ final class DestructiveMigrations implements MigrationProvider {
 		string $table,
 		string $column,
 		array $opts = array(),
-		?string $migrationsDir = null,
-		bool $cliContext = false,
+		?string $migrationsDir = null, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		bool $cliContext = false, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	): array {
-		self::requireCli( $cliContext );
+		self::requireCli( $cliContext ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$cfg   = self::requireEnabled( $plugin );
-		$dir   = $migrationsDir ?? ( $plugin->dir . '/sp/app/migrations' );
+		$dir   = $migrationsDir ?? ( $plugin->dir . '/sp/app/migrations' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$state = self::retiredState( $dir );
 
 		if ( ! isset( $state['retiredColumns'][ "$table.$column" ] ) ) {
@@ -272,7 +272,7 @@ final class DestructiveMigrations implements MigrationProvider {
 		}
 
 		$conn       = $plugin->connection();
-		$retiredIn  = $state['retiredColumns'][ "$table.$column" ]['retiredIn'];
+		$retiredIn  = $state['retiredColumns'][ "$table.$column" ]['retiredIn']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$phys_table = self::physicalTable( $plugin, $table, $state['tableStorageNames'] );
 		if ( self::is_active_physical_column( $plugin, $phys_table, $column ) ) {
 			throw new HttpError(
@@ -303,7 +303,7 @@ final class DestructiveMigrations implements MigrationProvider {
 			);
 		}
 
-		self::require_applied_retirement( $plugin, $retiredIn, "column `$table.$column`" );
+		/* phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name. */ self::require_applied_retirement( $plugin, $retiredIn, "column `$table.$column`" );
 		self::require_confirmation( $live_count, $opts['confirmRows'] ?? null, "dropping column `$phys_table.$column` ($live_count non-null values)" );
 		$reason       = self::require_reason( $opts['reason'] ?? null );
 		$archive_path = self::resolve_archive( $cfg, $opts['archiveTo'] ?? null );
@@ -351,12 +351,12 @@ final class DestructiveMigrations implements MigrationProvider {
 		Plugin $plugin,
 		string $table,
 		array $opts = array(),
-		?string $migrationsDir = null,
-		bool $cliContext = false,
+		?string $migrationsDir = null, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		bool $cliContext = false, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	): array {
-		self::requireCli( $cliContext );
+		self::requireCli( $cliContext ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$cfg   = self::requireEnabled( $plugin );
-		$dir   = $migrationsDir ?? ( $plugin->dir . '/sp/app/migrations' );
+		$dir   = $migrationsDir ?? ( $plugin->dir . '/sp/app/migrations' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$state = self::retiredState( $dir );
 
 		if ( $plugin->schema->hasCollection( $table ) || ! isset( $state['retiredTables'][ $table ] ) ) {
@@ -368,7 +368,7 @@ final class DestructiveMigrations implements MigrationProvider {
 		}
 
 		$conn       = $plugin->connection();
-		$retiredIn  = $state['retiredTables'][ $table ]['retiredIn'];
+		$retiredIn  = $state['retiredTables'][ $table ]['retiredIn']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$phys_table = self::physicalTable( $plugin, $table, $state['tableStorageNames'] );
 		if ( self::is_active_physical_table( $plugin, $phys_table ) ) {
 			throw new HttpError(
@@ -402,7 +402,7 @@ final class DestructiveMigrations implements MigrationProvider {
 			);
 		}
 
-		self::require_applied_retirement( $plugin, $retiredIn, "table `$table`" );
+		self::require_applied_retirement( $plugin, $retiredIn, "table `$table`" ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		self::require_confirmation( $live_count, $opts['confirmRows'] ?? null, "dropping table `$phys_table` ($live_count rows)" );
 		$reason       = self::require_reason( $opts['reason'] ?? null );
 		$archive_path = self::resolve_archive( $cfg, $opts['archiveTo'] ?? null );
@@ -449,9 +449,9 @@ final class DestructiveMigrations implements MigrationProvider {
 		Plugin $plugin,
 		string $kind,
 		array $opts = array(),
-		bool $cliContext = false,
+		bool $cliContext = false, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	): array {
-		self::requireCli( $cliContext );
+		self::requireCli( $cliContext ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$cfg = self::requireEnabled( $plugin );
 		if ( ! $plugin->schema->hasCollection( $kind ) ) {
 			throw HttpError::notFound( "Unknown kind `$kind`." );
@@ -465,9 +465,9 @@ final class DestructiveMigrations implements MigrationProvider {
 			'deleted' => 'only',
 			'limit'   => 10000,
 		);
-		$olderThan = $opts['olderThan'] ?? null;
-		if ( is_string( $olderThan ) && '' !== $olderThan ) {
-			$seconds        = self::parse_duration( $olderThan );
+		$olderThan = $opts['olderThan'] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( is_string( $olderThan ) && '' !== $olderThan ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$seconds        = self::parse_duration( $olderThan ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$cutoff         = Js::iso( Js::now() - ( $seconds * 1000 ) );
 			$query['where'] = array( 'deletedAt' => array( 'lte' => $cutoff ) );
 		}
@@ -482,7 +482,7 @@ final class DestructiveMigrations implements MigrationProvider {
 				'warning'     => "DESTRUCTIVE: Will permanently purge $live_count soft-deleted row(s) from `$kind`.",
 				'kind'        => $kind,
 				'rows'        => $live_count,
-				'olderThan'   => $olderThan,
+				'olderThan'   => $olderThan, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				'confirmFlag' => "--confirm-rows=$live_count",
 			);
 		}
@@ -496,7 +496,7 @@ final class DestructiveMigrations implements MigrationProvider {
 		return Migrator::locked(
 			$conn,
 			$plugin->schemaLock(),
-			static function () use ( $plugin, $db, $kind, $spec, $query, $olderThan, $cutoff, $opts, $reason, $archive_path ): array {
+			static function () use ( $plugin, $db, $kind, $spec, $query, $olderThan, $cutoff, $opts, $reason, $archive_path ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$rows       = $db->findMany( $kind, $query );
 				$live_count = count( $rows );
 				self::require_confirmation( $live_count, $opts['confirmRows'] ?? null, "purging $live_count soft-deleted rows from `$kind`" );
@@ -506,7 +506,7 @@ final class DestructiveMigrations implements MigrationProvider {
 					$archived = self::write_jsonl( $archive_path, $rows );
 				}
 
-				$summary_sql = "-- purge-deleted $kind ($live_count rows" . ( $olderThan ? ", olderThan=$olderThan" : '' ) . ')';
+				$summary_sql = "-- purge-deleted $kind ($live_count rows" . ( $olderThan ? ", olderThan=$olderThan" : '' ) . ')'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, WordPress.NamingConventions.ValidVariableName.InterpolatedVariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$id          = self::begin_audit( $plugin, "purge_{$kind}", $summary_sql, $opts['actor'] ?? null, $reason, $live_count );
 				$pk          = $spec['primaryKey'];
 				$purged      = 0;
@@ -544,9 +544,9 @@ final class DestructiveMigrations implements MigrationProvider {
 		Plugin $plugin,
 		string $sql,
 		array $opts = array(),
-		bool $cliContext = false,
+		bool $cliContext = false, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	): array {
-		self::requireCli( $cliContext );
+		self::requireCli( $cliContext ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$cfg = self::requireEnabled( $plugin );
 		if ( ! $cfg['allowRawSql'] ) {
 			throw new HttpError(
@@ -576,15 +576,15 @@ final class DestructiveMigrations implements MigrationProvider {
 			static function () use ( $plugin, $conn, $trimmed, $rendered, $opts, $reason ): array {
 				$id = self::begin_audit( $plugin, 'raw_sql', $trimmed, $opts['actor'] ?? null, $reason, 0 );
 				$conn->run( $rendered );
-				$rowsAffected = max( 0, $conn->changes() );
-				self::finish_audit( $plugin, $id, $rowsAffected );
+				$rowsAffected = max( 0, $conn->changes() ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				self::finish_audit( $plugin, $id, $rowsAffected ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 				return array(
 					'id'           => $id,
 					'kind'         => 'destructive',
 					'operation'    => 'raw-sql',
 					'sql'          => $rendered,
-					'rowsAffected' => $rowsAffected,
+					'rowsAffected' => $rowsAffected, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				);
 			}
 		);
@@ -597,7 +597,7 @@ final class DestructiveMigrations implements MigrationProvider {
 	 * @param array<string, mixed> $flags
 	 * @return array{int, string}
 	 */
-	public static function wpCli( Plugin $plugin, array $args, array $flags, bool $cliContext = false ): array {
+	public static function wpCli( Plugin $plugin, array $args, array $flags, bool $cliContext = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		try {
 			$sub            = $args[0] ?? 'status';
 			$opts           = array(
@@ -611,33 +611,33 @@ final class DestructiveMigrations implements MigrationProvider {
 			$migrations_dir = is_string( $flags['migrations-dir'] ?? null ) ? $flags['migrations-dir'] : null;
 
 			$data = match ( $sub ) {
-				'status', 'plan' => self::status( $plugin, $migrations_dir, $cliContext ),
+				'status', 'plan' => self::status( $plugin, $migrations_dir, $cliContext ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				'drop-column' => self::dropColumn(
 					$plugin,
 					$args[1] ?? throw HttpError::invalidInput( 'Usage: wp spacepress danger drop-column <table> <column> --confirm-rows=<N> --reason="..."' ),
 					$args[2] ?? throw HttpError::invalidInput( 'Usage: wp spacepress danger drop-column <table> <column> --confirm-rows=<N> --reason="..."' ),
 					$opts,
 					$migrations_dir,
-					$cliContext,
+					$cliContext, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				),
 				'drop-table' => self::dropTable(
 					$plugin,
 					$args[1] ?? throw HttpError::invalidInput( 'Usage: wp spacepress danger drop-table <table> --confirm-rows=<N> --reason="..."' ),
 					$opts,
 					$migrations_dir,
-					$cliContext,
+					$cliContext, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				),
 				'purge-deleted' => self::purgeDeleted(
 					$plugin,
 					$args[1] ?? throw HttpError::invalidInput( 'Usage: wp spacepress danger purge-deleted <kind> --confirm-rows=<N> --reason="..."' ),
 					$opts,
-					$cliContext,
+					$cliContext, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				),
 				'raw-sql' => self::rawSql(
 					$plugin,
 					is_string( $flags['sql'] ?? null ) ? $flags['sql'] : throw HttpError::invalidInput( 'Usage: wp spacepress danger raw-sql --sql="<statement>" --reason="..."' ),
 					$opts,
-					$cliContext,
+					$cliContext, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				),
 				default => throw HttpError::invalidInput( "Unknown danger subcommand `$sub`. Use status, plan, drop-column, drop-table, purge-deleted, or raw-sql." ),
 			};
@@ -717,25 +717,25 @@ final class DestructiveMigrations implements MigrationProvider {
 		return false;
 	}
 
-	private static function require_applied_retirement( Plugin $plugin, string $retiredIn, string $target ): void {
+	private static function require_applied_retirement( Plugin $plugin, string $retiredIn, string $target ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$conn   = $plugin->connection();
 		$ledger = $conn->prefix() . 'sp__migrations';
 		if ( ! self::table_exists( $conn, $ledger ) ) {
 			throw new HttpError(
 				409,
 				'retirement_not_applied',
-				"Refusing to drop $target: retirement migration `$retiredIn` has not been applied to this database yet. Run `wp spacepress migrate` first.",
+				"Refusing to drop $target: retirement migration `$retiredIn` has not been applied to this database yet. Run `wp spacepress migrate` first.", // phpcs:ignore WordPress.NamingConventions.ValidVariableName.InterpolatedVariableNotSnakeCase -- Preserve the existing PHP variable name.
 			);
 		}
 		$rows = $conn->run(
 			"SELECT 1 FROM `$ledger` WHERE `app` = ? AND `id` = ? LIMIT 1",
-			array( $plugin->schema->name(), $retiredIn ),
+			array( $plugin->schema->name(), $retiredIn ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		);
 		if ( array() === $rows ) {
 			throw new HttpError(
 				409,
 				'retirement_not_applied',
-				"Refusing to drop $target: retirement migration `$retiredIn` has not been applied to this database yet. Run `wp spacepress migrate` first.",
+				"Refusing to drop $target: retirement migration `$retiredIn` has not been applied to this database yet. Run `wp spacepress migrate` first.", // phpcs:ignore WordPress.NamingConventions.ValidVariableName.InterpolatedVariableNotSnakeCase -- Preserve the existing PHP variable name.
 			);
 		}
 	}
@@ -795,8 +795,8 @@ final class DestructiveMigrations implements MigrationProvider {
 	}
 
 	/** @param array{requireArchive: bool} $cfg */
-	private static function resolve_archive( array $cfg, ?string $archiveTo ): ?string {
-		$path = trim( (string) $archiveTo );
+	private static function resolve_archive( array $cfg, ?string $archiveTo ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$path = trim( (string) $archiveTo ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( '' === $path ) {
 			if ( $cfg['requireArchive'] ) {
 				throw new HttpError(
@@ -828,7 +828,7 @@ final class DestructiveMigrations implements MigrationProvider {
 			foreach ( $rows as $row ) {
 				$line    = (string) Js::jsonStringify( $row ) . "\n";
 				$written = fwrite( $fh, $line );
-				if ( $written !== strlen( $line ) ) {
+				if ( $written !== strlen( $line ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 					throw new \RuntimeException( "Short write while archiving to `$path`." );
 				}
 			}
@@ -883,12 +883,12 @@ final class DestructiveMigrations implements MigrationProvider {
 	}
 
 	/** Finalize the audit row with `kind = 'destructive'` and the observed affected row count. */
-	private static function finish_audit( Plugin $plugin, string $id, int $rowsAffected ): void {
+	private static function finish_audit( Plugin $plugin, string $id, int $rowsAffected ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$conn   = $plugin->connection();
 		$ledger = $conn->prefix() . 'sp__migrations';
 		$conn->run(
 			"UPDATE `$ledger` SET `kind` = 'destructive', `rows_affected` = ? WHERE `app` = ? AND `id` = ?",
-			array( $rowsAffected, $plugin->schema->name(), $id ),
+			array( $rowsAffected, $plugin->schema->name(), $id ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		);
 	}
 }

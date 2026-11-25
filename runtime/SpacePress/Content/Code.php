@@ -100,7 +100,7 @@ final class Code {
 	/** `1, 3-4` → `1,3-4`, ignoring anything that isn't a line number or range. */
 	private static function ranges( string $spec ): string {
 		$parts = array();
-		foreach ( preg_split( '/\s*,\s*/', trim( $spec ) ) ?: array() as $part ) {
+		foreach ( preg_split( '/\s*,\s*/', trim( $spec ) ) ?: array() as $part ) { // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			if ( preg_match( '/^(\d+)(?:-(\d+))?$/', $part, $m ) === 1 && (int) $m[1] > 0 && ( ! isset( $m[2] ) || (int) $m[2] >= (int) $m[1] ) ) {
 				$parts[] = $part;
 			}
@@ -196,7 +196,7 @@ final class Code {
 		$out  = array();
 		$open = array();
 		$line = '';
-		foreach ( preg_split( '/(<span[^>]*>|<\/span>|\n)/', $html, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY ) ?: array() as $part ) {
+		foreach ( preg_split( '/(<span[^>]*>|<\/span>|\n)/', $html, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY ) ?: array() as $part ) { // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			if ( "\n" === $part ) {
 				$out[] = $line . str_repeat( '</span>', count( $open ) );
 				$line  = implode( '', $open );

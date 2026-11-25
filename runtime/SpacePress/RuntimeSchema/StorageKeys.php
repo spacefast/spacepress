@@ -50,7 +50,7 @@ final class StorageKeys {
 	 *
 	 * @return list<list<?string|true>>
 	 */
-	public static function ofType( string $name, string $type ): array {
+	public static function ofType( string $name, string $type ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return in_array( $type, array( 'group', 'repeater', 'blocks' ), true ) ? array( array( $name ), array( $name . '_', true ) ) : array( array( $name ) );
 	}
 

@@ -22,7 +22,7 @@ final class JsSort {
 
 	/** @var list<array{int, int}> pending runs as [base, length] */
 	private array $runs    = array();
-	private int $minGallop = self::MIN_GALLOP;
+	private int $minGallop = self::MIN_GALLOP; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	/** @param list<mixed> $work */
 	private function __construct( private array $work, private readonly \Closure $less ) {}
@@ -133,7 +133,7 @@ final class JsSort {
 		[$base_a, $length_a] = $this->runs[ $i ];
 		[$base_b, $length_b] = $this->runs[ $i + 1 ];
 		$this->runs[ $i ][1] = $length_a + $length_b;
-		if ( $i + 3 === count( $this->runs ) ) {
+		if ( $i + 3 === count( $this->runs ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			$this->runs[ $i + 1 ] = $this->runs[ $i + 2 ]; }
 		array_pop( $this->runs );
 		$k         = $this->gallop_right( $this->work, $this->work[ $base_b ], $base_a, $length_a, 0 );
@@ -255,7 +255,7 @@ final class JsSort {
 				return true; }
 			if ( 1 === $length_a ) {
 				return false; }
-			$min_gallop = $this->minGallop;
+			$min_gallop = $this->minGallop; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			while ( true ) {
 				$wins_a = 0;
 				$wins_b = 0;
@@ -285,7 +285,7 @@ final class JsSort {
 				while ( $wins_a >= self::MIN_GALLOP || $wins_b >= self::MIN_GALLOP || $first ) {
 					$first           = false;
 					$min_gallop      = max( 1, $min_gallop - 1 );
-					$this->minGallop = $min_gallop;
+					$this->minGallop = $min_gallop; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 					$wins_a          = $this->gallop_right( $temp, $this->work[ $cursor_b ], $cursor_temp, $length_a, 0 );
 					if ( $wins_a > 0 ) {
 						$this->copy_in( $temp, $cursor_temp, $dest, $wins_a );
@@ -314,7 +314,7 @@ final class JsSort {
 						return false; }
 				}
 				$min_gallop++;
-				$this->minGallop = $min_gallop;
+				$this->minGallop = $min_gallop; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			}
 		} )();
 		if ( $exit ) {
@@ -339,7 +339,7 @@ final class JsSort {
 				return true; }
 			if ( 1 === $length_b ) {
 				return false; }
-			$min_gallop = $this->minGallop;
+			$min_gallop = $this->minGallop; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			while ( true ) {
 				$wins_a = 0;
 				$wins_b = 0;
@@ -369,7 +369,7 @@ final class JsSort {
 				while ( $wins_a >= self::MIN_GALLOP || $wins_b >= self::MIN_GALLOP || $first ) {
 					$first           = false;
 					$min_gallop      = max( 1, $min_gallop - 1 );
-					$this->minGallop = $min_gallop;
+					$this->minGallop = $min_gallop; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 					$k               = $this->gallop_right( $this->work, $temp[ $cursor_temp ], $base_a, $length_a, $length_a - 1 );
 					$wins_a          = $length_a - $k;
 					if ( $wins_a > 0 ) {
@@ -400,7 +400,7 @@ final class JsSort {
 						return true; }
 				}
 				$min_gallop++;
-				$this->minGallop = $min_gallop;
+				$this->minGallop = $min_gallop; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			}
 		} )();
 		if ( $exit ) {

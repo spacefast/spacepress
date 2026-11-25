@@ -21,8 +21,8 @@ use SpacePress\Wp\Abilities\JsonSchema;
  */
 final class PostMeta extends \WP_REST_Post_Meta_Fields {
 
-	public function __construct( string $postType, private readonly string $collection ) {
-		parent::__construct( $postType );
+	public function __construct( string $postType, private readonly string $collection ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		parent::__construct( $postType ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/** register_post_meta for every field of a post-backed collection (init). */
@@ -103,8 +103,8 @@ final class PostMeta extends \WP_REST_Post_Meta_Fields {
 		foreach ( $spec['columns'] as $col => $def ) {
 			$col = (string) $col;
 			// A `terms` field is core's own taxonomy field on the post (`sp_<taxonomy>`), not post meta.
-			if ( $col !== $spec['primaryKey'] && $col !== ( $spec['title'] ?? null ) && $col !== ( $spec['content'] ?? null )
-				&& $col !== ( $spec['slug'] ?? null ) && $col !== ( $spec['excerpt'] ?? null ) && ! ( $def['system'] ?? false ) && ! self::terms( $def ) ) {
+			if ( $col !== $spec['primaryKey'] && $col !== ( $spec['title'] ?? null ) && $col !== ( $spec['content'] ?? null ) // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
+				&& $col !== ( $spec['slug'] ?? null ) && $col !== ( $spec['excerpt'] ?? null ) && ! ( $def['system'] ?? false ) && ! self::terms( $def ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				$out[ $col ] = $def;
 			}
 		}
@@ -137,7 +137,7 @@ final class PostMeta extends \WP_REST_Post_Meta_Fields {
 	}
 
 	/** Core's handling, for the registered meta that isn't a SpacePress field. */
-	private function others( callable $fn ): mixed {
+	private function others( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$this->others = true;
 		try {
 			return $fn();
@@ -179,7 +179,7 @@ final class PostMeta extends \WP_REST_Post_Meta_Fields {
 			return null;
 		}
 		$fields = self::fields( $this->spec() );
-		$values = $norms = array();
+		$values = $norms = array(); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		$first  = $this->input ?? $meta;
 		$db     = Plugin::instance()?->db() ?? throw new \LogicException( 'No SpacePress app' );
 		$viewer = CoreAccess::viewer();

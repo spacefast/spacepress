@@ -130,7 +130,7 @@ final class ThemeStyles {
 	}
 
 	/** `wp spacepress styles export`: one `{"data": …}` or `{"error": …}` line, like every `wp spacepress` command. */
-	public static function wpCli( array $args, array $flags ): int {
+	public static function wpCli( array $args, array $flags ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		try {
 			if ( ( $args[0] ?? '' ) !== 'export' ) {
 				throw new \SpacePress\HttpError( 400, 'invalid_command', 'Usage: wp spacepress styles export' );

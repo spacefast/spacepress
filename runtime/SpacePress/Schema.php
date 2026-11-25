@@ -63,7 +63,7 @@ final class Schema {
 		return is_array( $this->raw['retention'] ?? null ) ? $this->raw['retention'] : null;
 	}
 
-	public function runtimeSchema(): ?array {
+	public function runtimeSchema(): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->raw['runtimeSchema'] ?? null;
 	}
 
@@ -96,7 +96,7 @@ final class Schema {
 	 * @param array<string, mixed> $data
 	 * @return array<string, mixed>
 	 */
-	public static function resolveAliases( array $spec, array $data, string $ptr = '' ): array {
+	public static function resolveAliases( array $spec, array $data, string $ptr = '' ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$map = array();
 		foreach ( $spec['columns'] ?? array() as $name => $col ) {
 			foreach ( $col['aliases'] ?? array() as $alias ) {
@@ -208,7 +208,7 @@ final class Schema {
 	}
 
 	/** `publicAuthors`: core's author archives and user listings stay public (spec §6). */
-	public function publicAuthors(): bool {
+	public function publicAuthors(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return ( $this->raw['publicAuthors'] ?? false ) === true;
 	}
 
@@ -238,7 +238,7 @@ final class Schema {
 	 * @return array<string, string>
 	 */
 	/** @return array<string, array{tag: string, component: string, attributes: array, required: list<string>, children: bool}> blocks content may use, by block name */
-	public function contentBlocks(): array {
+	public function contentBlocks(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->raw['blocks'] ?? array();
 	}
 
@@ -261,7 +261,7 @@ final class Schema {
 	 *
 	 * @return array<string, array{width: int, height: int, format: string}>
 	 */
-	public function assetsMeta(): array {
+	public function assetsMeta(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->raw['assetsMeta'] ?? array();
 	}
 
@@ -281,12 +281,12 @@ final class Schema {
 	}
 
 	/** @return list<array{hook: string, filter: bool, priority: int, args: int, handler: string}> */
-	public function wpHooks(): array {
+	public function wpHooks(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->raw['wpHooks'] ?? array();
 	}
 
 	/** @return array<string, list<string>> class => the public properties its hook view exposes */
-	public function wpViews(): array {
+	public function wpViews(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->raw['wpViews'] ?? array();
 	}
 
@@ -298,7 +298,7 @@ final class Schema {
 		return $this->raw['webhooks'] ?? array();
 	}
 
-	public function hasCollection( string $name ): bool {
+	public function hasCollection( string $name ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return isset( $this->raw['collections'][ $name ] ) || isset( $this->raw['taxonomies'][ $name ] );
 	}
 
@@ -384,21 +384,21 @@ final class Schema {
 			);
 		}
 
-		$runtimeSchema = $this->runtimeSchema();
+		$runtimeSchema = $this->runtimeSchema(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 		return Extensions::describe(
-			( null === $runtimeSchema ? array() : array(
+			( null === $runtimeSchema ? array() : array( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				// The schema below is the build's plus this version of the site's own changes (spec §2.10).
 				'runtimeSchema' => array(
-					'version' => $runtimeSchema['active']['version'] ?? 0,
-					'hash'    => $runtimeSchema['active']['hash'] ?? '',
+					'version' => $runtimeSchema['active']['version'] ?? 0, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					'hash'    => $runtimeSchema['active']['hash'] ?? '', // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					'build'   => array(
-						'version' => $runtimeSchema['version'] ?? 0,
-						'hash'    => $runtimeSchema['hash'] ?? '',
+						'version' => $runtimeSchema['version'] ?? 0, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+						'hash'    => $runtimeSchema['hash'] ?? '', // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					),
 				)
 					// Why the site serves less than its newest version: a broken chain or an option written outside apply.
-					+ ( isset( $runtimeSchema['active']['problem'] ) ? array( 'problem' => $runtimeSchema['active']['problem'] ) : array() ),
+					+ ( isset( $runtimeSchema['active']['problem'] ) ? array( 'problem' => $runtimeSchema['active']['problem'] ) : array() ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			) ) + array(
 				'name'        => $this->name(),
 				'runtime'     => array( 'series' => $this->runtime() ),
@@ -466,7 +466,7 @@ final class Schema {
 	 * the relation (`where: { location: 5 }` filters the id, `where: { location: { name: "x" } }`
 	 * filters through it), so an object whose keys aren't all field operators means the relation.
 	 */
-	public static function filtersRelation( array $spec, string $key, mixed $value ): bool {
+	public static function filtersRelation( array $spec, string $key, mixed $value ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! isset( $spec['relations'][ $key ] ) ) {
 			return false;
 		}
@@ -482,12 +482,12 @@ final class Schema {
 	// ================================================================ generators
 
 	/** True when a create must receive this column (no default, not generated). */
-	public static function isRequired( array $col ): bool {
+	public static function isRequired( array $col ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return ( ( $col['notNull'] ?? false ) || ( $col['required'] ?? false ) ) && ! isset( $col['default'] ) && ! ( $col['omit'] ?? false ) && ! ( $col['autoIncrement'] ?? false ) && ! ( $col['readOnly'] ?? false )
 			&& ! ( 'slug' === $col['type'] && isset( $col['source'] ) ); // derived when left out
 	}
 
-	public static function isJsonType( string $type ): bool {
+	public static function isJsonType( string $type ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return in_array( $type, self::JSON_TYPES, true );
 	}
 
@@ -588,7 +588,7 @@ final class Schema {
 	 * Normalize an object against a field map (group items, repeater rows, block items, globals, action
 	 * input): unknown keys rejected, absent fields → default or null, notNull enforced.
 	 */
-	public static function normalizeFields( array $fields, mixed $obj, string $base ): array {
+	public static function normalizeFields( array $fields, mixed $obj, string $base ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$obj = Seam::toPhp( $obj, $fields ) ?? array();
 		if ( ! self::is_object( $obj ) ) {
 			throw HttpError::invalidInput( 'Expected an object', $base );
@@ -665,7 +665,7 @@ final class Schema {
 	}
 
 	/** @return ?list<int> a many-ref's target ids, in write order, each once */
-	private static function refList( mixed $v, string $name, string $pointer ): ?array {
+	private static function refList( mixed $v, string $name, string $pointer ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_array( $v ) || ! array_is_list( $v ) ) {
 			return null;
 		}
@@ -837,7 +837,7 @@ final class Schema {
 	}
 
 	/** Decode a full row: every column key present, in schema order. */
-	public static function decodeRow( array $columns, array $raw ): array {
+	public static function decodeRow( array $columns, array $raw ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$row = array();
 		foreach ( $columns as $name => $col ) {
 			$row[ $name ] = self::decode( $col, $raw[ $name ] ?? null );
@@ -854,11 +854,11 @@ final class Schema {
 	 *
 	 * @throws HttpError invalid_input
 	 */
-	public static function checkRules( array $col, mixed $v, string $name, string $pointer, array $ctx, ?array $dataShape = null, ?array $path = null ): void {
+	public static function checkRules( array $col, mixed $v, string $name, string $pointer, array $ctx, ?array $dataShape = null, ?array $path = null ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		if ( null === $v ) {
 			return;
 		}
-		$dataShape ??= array( $name => $col );
+		$dataShape ??= array( $name => $col ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$path      ??= array( $name );
 		$type        = $col['type'];
 		$rules       = $col['rules'] ?? array();
@@ -893,11 +893,11 @@ final class Schema {
 			$slot = $rules['validate'];
 			if ( is_string( $slot ) ) {
 				$fn    = '\\SpacePressApp\\' . $slot;
-				$jsCtx = Seam::ctx( $ctx, $dataShape ?? array( $name => $col ) );
-				$value = $jsCtx->p['data'];
+				$jsCtx = Seam::ctx( $ctx, $dataShape ?? array( $name => $col ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$value = $jsCtx->p['data']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				foreach ( $path ?? array( $name ) as $key ) {
 					$value = Seam::container( $value )[ $key ] ?? null; }
-				$r = $fn( $value, $jsCtx );
+				$r = $fn( $value, $jsCtx ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			} else {
 				$r = $slot( $v, $ctx );
 			}
@@ -909,14 +909,14 @@ final class Schema {
 			}
 		}
 		match ( $type ) {
-			'group' => self::checkFields( $col['fields'] ?? array(), $v, $pointer, $ctx, $dataShape, $path ?? array( $name ) ),
+			'group' => self::checkFields( $col['fields'] ?? array(), $v, $pointer, $ctx, $dataShape, $path ?? array( $name ) ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			'repeater' => array_map(
-				static fn ( $item, $i ) => self::checkFields( $col['fields'] ?? array(), $item, "$pointer/$i", $ctx, $dataShape, array( ...( $path ?? array( $name ) ), $i ) ),
+				static fn ( $item, $i ) => self::checkFields( $col['fields'] ?? array(), $item, "$pointer/$i", $ctx, $dataShape, array( ...( $path ?? array( $name ) ), $i ) ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$v,
 				array_keys( $v ),
 			),
 			'blocks' => array_map(
-				static fn ( $item, $i ) => self::checkFields( $col['layouts'][ $item['layout'] ] ?? array(), $item, "$pointer/$i", $ctx, $dataShape, array( ...( $path ?? array( $name ) ), $i ) ),
+				static fn ( $item, $i ) => self::checkFields( $col['layouts'][ $item['layout'] ] ?? array(), $item, "$pointer/$i", $ctx, $dataShape, array( ...( $path ?? array( $name ) ), $i ) ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$v,
 				array_keys( $v ),
 			),
@@ -924,9 +924,9 @@ final class Schema {
 		};
 	}
 
-	public static function checkFields( array $fields, array $obj, string $base, array $ctx, ?array $dataShape = null, array $path = array() ): void {
+	public static function checkFields( array $fields, array $obj, string $base, array $ctx, ?array $dataShape = null, array $path = array() ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		foreach ( $fields as $name => $f ) {
-			self::checkRules( $f, $obj[ $name ] ?? null, (string) $name, $base . HttpError::seg( $name ), $ctx, $dataShape ?? $fields, array( ...$path, $name ) );
+			self::checkRules( $f, $obj[ $name ] ?? null, (string) $name, $base . HttpError::seg( $name ), $ctx, $dataShape ?? $fields, array( ...$path, $name ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 	}
 
@@ -935,7 +935,7 @@ final class Schema {
 	 *
 	 * @return list<array{int, string, string}> [id, pointer, accept]
 	 */
-	public static function mediaRefs( array $col, mixed $v, string $pointer ): array {
+	public static function mediaRefs( array $col, mixed $v, string $pointer ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null === $v ) {
 			return array();
 		}
@@ -978,7 +978,7 @@ final class Schema {
 	 * Validate an action input object: unknown keys rejected, defaults applied, values coerced,
 	 * rules run (validate ctx.data = the input). Returns the JS form.
 	 */
-	public static function validateInput( array $columns, mixed $input, string $base = '', ?array $user = null ): array {
+	public static function validateInput( array $columns, mixed $input, string $base = '', ?array $user = null ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null === $input ) {
 			$input = array();
 		}
@@ -999,7 +999,7 @@ final class Schema {
 		return $out;
 	}
 
-	public static function roleRank( string $role ): int {
+	public static function roleRank( string $role ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$i = array_search( $role, self::ROLES, true );
 
 		return false === $i ? -1 : $i;

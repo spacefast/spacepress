@@ -23,10 +23,10 @@ final class Plugin {
 	public static Api $api;
 	/** What core's application-password check last answered on this request: the user, the error, or null. */
 	private static \WP_User|\WP_Error|null $application_password = null;
-	public static function applicationPassword(): \WP_User|\WP_Error|null {
+	public static function applicationPassword(): \WP_User|\WP_Error|null { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::$application_password;
 	}
-	public static function authenticationError(): ?\WP_Error {
+	public static function authenticationError(): ?\WP_Error { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$application = self::$application_password;
 		return self::$authentication_error ?? ( is_wp_error( $application ) && $application->get_error_code() === 'storage_unavailable' ? $application : null );
 	}
@@ -361,17 +361,17 @@ final class Plugin {
 		);
 		// One sign-in: signing in on wp-login.php as someone else sets this browser's identity session
 		// aside, and signing out of WordPress ends it.
-		$identityCookie = static function ( ?int $keepFor ): void {
+		$identityCookie = static function ( ?int $keepFor ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$secret = (string) ( $_COOKIE[ Sessions::cookieName() ] ?? '' );
 			if ( '' === $secret ) {
 				return;
 			}
 			try {
 				$session = self::$sessions->find( $secret );
-				if ( $session && (int) $session['wp_user_id'] === $keepFor ) {
+				if ( $session && (int) $session['wp_user_id'] === $keepFor ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					return;
 				}
-				if ( $session && null === $keepFor ) {
+				if ( $session && null === $keepFor ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					self::$sessions->revoke( (int) $session['wp_user_id'], (string) $session['id'] );
 				}
 			} catch ( Failure ) {
@@ -382,8 +382,8 @@ final class Plugin {
 			}
 			unset( $_COOKIE[ Sessions::cookieName() ] );
 		};
-		add_action( 'wp_login', static fn ( $login, $user ) => $identityCookie( $user instanceof \WP_User ? (int) $user->ID : 0 ), 10, 2 );
-		add_action( 'wp_logout', static fn () => $identityCookie( null ) );
+		add_action( 'wp_login', static fn ( $login, $user ) => $identityCookie( $user instanceof \WP_User ? (int) $user->ID : 0 ), 10, 2 ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		add_action( 'wp_logout', static fn () => $identityCookie( null ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		// On the sign-in form (wp-login.php's, or `<LoginForm />`) when it signs in for Identity (an
 		// application's authorization, the account screens): the ways in that need no WordPress
 		// password, for accounts made with an email code, a passkey or a provider. They sign in to
@@ -392,7 +392,7 @@ final class Plugin {
 			'login_form',
 			static function (): void {
 				$redirect = is_string( $_REQUEST['redirect_to'] ?? null ) ? wp_unslash( $_REQUEST['redirect_to'] ) : '';
-				if ( $redirect !== self::url( '' ) && ! str_starts_with( $redirect, self::url( '/' ) ) && ! str_starts_with( $redirect, self::url( '?' ) ) ) {
+				if ( $redirect !== self::url( '' ) && ! str_starts_with( $redirect, self::url( '/' ) ) && ! str_starts_with( $redirect, self::url( '?' ) ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 					return;
 				}
 				$prefix = self::url( '/authorize?' );
@@ -409,15 +409,15 @@ final class Plugin {
 				echo '<p class="spacepress-identity-methods"><a href="' . esc_url( $url ) . '">' . esc_html__( 'Sign in with an email code, a passkey or another account', 'spacepress-identity' ) . '</a></p>';
 			}
 		);
-		$rememberPassword = static function ( $uid ): void {
+		$rememberPassword = static function ( $uid ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$user = get_userdata( (int) $uid );
 			if ( $user instanceof \WP_User ) {
 				Accounts::rememberPasswordHash( $user->user_pass );
 			}
 		};
-		add_action( 'user_register', $rememberPassword );
-		add_action( 'profile_update', $rememberPassword );
-		add_action( 'wp_set_password', static fn ( $password, $uid ) => $rememberPassword( $uid ), 10, 2 );
+		add_action( 'user_register', $rememberPassword ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		add_action( 'profile_update', $rememberPassword ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		add_action( 'wp_set_password', static fn ( $password, $uid ) => $rememberPassword( $uid ), 10, 2 ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		// Every WordPress user write inside an identity transaction is recorded, so a rollback
 		// (identity's own or its host's) clears what the object cache learned from it.
 		$touched = static function ( $uid ): void {
@@ -445,20 +445,20 @@ final class Plugin {
 		// A deleted WordPress user takes its identity (credentials, emails, account) with it.
 		add_action( 'delete_user', static fn ( $uid ) => self::$accounts->forgetUser( (int) $uid ) );
 		// A password set anywhere (profile, reset, wp_set_password) ends every identity sign-in.
-		$passwordChanged = static function ( $user ): void {
+		$passwordChanged = static function ( $user ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$uid = $user instanceof \WP_User ? (int) $user->ID : (int) $user;
 			if ( $uid > 0 && self::$db->row( 'SELECT wp_user_id FROM ' . self::$db->prefix . 'accounts WHERE wp_user_id=%d', $uid ) ) {
 				self::$sessions->revoke( $uid );
 			}
 		};
-		add_action( 'wp_set_password', static fn ( $password, $uid ) => $passwordChanged( (int) $uid ), 10, 2 );
-		add_action( 'after_password_reset', static fn ( $user ) => $passwordChanged( $user ) );
+		add_action( 'wp_set_password', static fn ( $password, $uid ) => $passwordChanged( (int) $uid ), 10, 2 ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		add_action( 'after_password_reset', static fn ( $user ) => $passwordChanged( $user ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		add_action(
 			'profile_update',
-			static function ( $uid, $old ) use ( $passwordChanged ): void {
+			static function ( $uid, $old ) use ( $passwordChanged ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$now = get_userdata( (int) $uid );
 				if ( $now && $old instanceof \WP_User && $now->user_pass !== $old->user_pass ) {
-					$passwordChanged( (int) $uid );
+					$passwordChanged( (int) $uid ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				}
 			},
 			10,
@@ -703,7 +703,7 @@ final class Plugin {
 	 * The issuer's route prefix below home_url() (default `/identity`).
 	 * Hosts may override via the SP_AUTH_PREFIX constant or `sp_auth_prefix` filter (e.g. `/__spacefast/auth`).
 	 */
-	public static function basePath(): string {
+	public static function basePath(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$prefix =
 			defined( 'SP_AUTH_PREFIX' ) &&
 			is_string( SP_AUTH_PREFIX ) &&
@@ -729,7 +729,7 @@ final class Plugin {
 	 * longer-lived than the WordPress session it came from, and is written as this browser's
 	 * cookie. Null when the browser is signed in to neither.
 	 */
-	public static function browserSession( bool $bridge = true ): ?array {
+	public static function browserSession( bool $bridge = true ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$session = self::$sessions->find( (string) ( $_COOKIE[ Sessions::cookieName() ] ?? '' ) );
 		$uid     = (int) wp_validate_auth_cookie( '', 'logged_in' );
 		if ( $session && ( 0 === $uid || (int) $session['wp_user_id'] === $uid ) ) {
@@ -803,7 +803,7 @@ final class Plugin {
 		$confirmed = false;
 		if ( $post && isset( $_POST['confirm'] ) ) {
 			Api::checkOrigin( (string) ( $_SERVER['HTTP_ORIGIN'] ?? '' ), true, true );
-			$confirmed = $uid > 0 && $uid === get_current_user_id()
+			$confirmed = $uid > 0 && $uid === get_current_user_id() // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				&& wp_verify_nonce( is_string( $_POST['csrf'] ?? null ) ? $_POST['csrf'] : '', 'spacepress-identity-logout' ) !== false;
 			if ( ! $confirmed ) {
 				throw new Failure( 'invalid_csrf', 'Refresh the page and try again.', 403 );
@@ -913,14 +913,14 @@ final class Plugin {
 			return;
 		}
 		$canonical     = wp_parse_url( home_url() );
-		$canonicalHost =
+		$canonicalHost = // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$canonical['host'] .
 			( isset( $canonical['port'] ) ? ':' . $canonical['port'] : '' );
-		if ( ( $_SERVER['HTTP_HOST'] ?? '' ) !== $canonicalHost ) {
+		if ( ( $_SERVER['HTTP_HOST'] ?? '' ) !== $canonicalHost ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			wp_safe_redirect(
 				$canonical['scheme'] .
 					'://' .
-					$canonicalHost .
+					$canonicalHost . // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					( $_SERVER['REQUEST_URI'] ?? self::basePath() ),
 				303,
 			);
@@ -1008,23 +1008,23 @@ final class Plugin {
 			}
 			$provider = Providers::callbackProvider( $route, $_GET );
 			if ( null !== $provider ) {
-				$signedIn = ( new Providers(
+				$signedIn = ( new Providers( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					self::$security,
 					self::$accounts,
 					self::$sessions,
 				) )->callback( $provider );
-				$result   = self::$api->providerLogin( $signedIn['uid'] );
+				$result   = self::$api->providerLogin( $signedIn['uid'] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				// A pending application authorization continues after the provider (and MFA).
 				$params = array_filter(
 					array(
 						'factor'    => 'mfa_required' === $result['kind'] ? $result['challenge_id'] : null,
-						'return_to' => $signedIn['return_to'] ?: null,
+						'return_to' => $signedIn['return_to'] ?: null, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, Universal.Operators.DisallowShortTernary.Found -- Preserve the existing PHP variable name. Keep the existing falsey fallback.
 						// A reauthentication resumes through its browser-bound cookie after the factor.
-						'reauth'    => '/authorize?resume=1' === $signedIn['return_to'] ? '1' : null,
+						'reauth'    => '/authorize?resume=1' === $signedIn['return_to'] ? '1' : null, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					)
 				);
-				if ( 'signed_in' === $result['kind'] && '' !== $signedIn['return_to'] ) {
-					wp_safe_redirect( home_url( self::basePath() . $signedIn['return_to'] ) );
+				if ( 'signed_in' === $result['kind'] && '' !== $signedIn['return_to'] ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					wp_safe_redirect( home_url( self::basePath() . $signedIn['return_to'] ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					exit();
 				}
 				wp_safe_redirect( home_url( self::basePath() ) . ( $params ? '?' . http_build_query( $params ) : '' ) );
@@ -1033,7 +1033,7 @@ final class Plugin {
 			if ( '/authorize' === $route ) {
 				$query = 'POST' === $_SERVER['REQUEST_METHOD'] ? $_POST : $_GET;
 				if ( isset( $query['resume'] ) ) {
-					[$resumeId, $resumeSecret] = array_pad(
+					[$resumeId, $resumeSecret] = array_pad( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						explode(
 							'.',
 							(string) ( $_COOKIE[ Sessions::cookieName( 'zi_reauth' ) ] ?? '' ),
@@ -1043,19 +1043,19 @@ final class Plugin {
 						'',
 					);
 					$resume                    = self::$security->consume(
-						$resumeId,
+						$resumeId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						'authorize_reauth',
-						$resumeSecret,
+						$resumeSecret, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					);
-					$freshSession              = self::browserSession();
+					$freshSession              = self::browserSession(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					if (
-						null === $freshSession ||
-						$freshSession['id'] ===
+						null === $freshSession || // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+						$freshSession['id'] === // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 							$resume['payload']['prior_session'] ||
-						(int) $freshSession['created_at'] <
+						(int) $freshSession['created_at'] < // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 							$resume['payload']['requested_at'] ||
 						// A session opened from a WordPress sign-in carries that sign-in's time.
-						(int) $freshSession['verified_at'] <
+						(int) $freshSession['verified_at'] < // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 							$resume['payload']['requested_at']
 					) {
 						throw new Failure(
@@ -1096,7 +1096,7 @@ final class Plugin {
 									time() - (int) $query['max_age'] ) ) )
 				) {
 					$binding  = Security::token();
-					$resumeId = self::$security->challenge(
+					$resumeId = self::$security->challenge( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						'authorize_reauth',
 						0,
 						'',
@@ -1109,7 +1109,7 @@ final class Plugin {
 					);
 					setcookie(
 						Sessions::cookieName( 'zi_reauth' ),
-						$resumeId . '.' . $binding,
+						$resumeId . '.' . $binding, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						array(
 							'expires'  => time() + 300,
 							'path'     => '/',

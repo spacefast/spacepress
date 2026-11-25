@@ -50,7 +50,7 @@ final class Coediting {
 
 		// Native posts retain core's role-specific publish/author capabilities. A peer's
 		// save must not lend that authority to another participant's opaque updates.
-		return ! ( $spec['native'] ?? false ) && null !== $type && ( $type->rest_namespace ?: 'wp/v2' ) === 'wp/v2'
+		return ! ( $spec['native'] ?? false ) && null !== $type && ( $type->rest_namespace ?: 'wp/v2' ) === 'wp/v2' // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			&& ( $spec['content'] ?? null ) !== null
 			&& ! isset( $rules['read']['fn'] ) && ! isset( $rules['update']['fn'] ) && self::fields( $spec['columns'] )
 			&& null !== $viewer && Access::evaluate( $rules['read'], $viewer, 'read' ) === true
@@ -77,7 +77,7 @@ final class Coediting {
 	}
 
 	public static function allows( string $collection, int $id ): bool {
-		if ( ! self::eligible( $collection ) || ( $viewer = CoreAccess::viewer() ) === null ) {
+		if ( ! self::eligible( $collection ) || ( $viewer = CoreAccess::viewer() ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return false;
 		}
 		$post = get_post( $id );
@@ -91,8 +91,8 @@ final class Coediting {
 			&& CoreAccess::covers( $collection, 'update', $id, $viewer );
 	}
 
-	public static function disabled( bool $disabled, string $postType ): bool {
-		$collection = CoreAccess::collection( $postType );
+	public static function disabled( bool $disabled, string $postType ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$collection = CoreAccess::collection( $postType ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 		return $disabled || ( null !== $collection && ! self::eligible( $collection ) );
 	}
@@ -104,9 +104,9 @@ final class Coediting {
 	}
 
 	/** A schema change starts another upstream storage namespace; old updates remain intact. */
-	public static function storageRoom( string $room ): string {
+	public static function storageRoom( string $room ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( preg_match( '#^postType/([^/:]+):[1-9][0-9]*$#D', $room, $match )
-			&& ( $collection = CoreAccess::collection( $match[1] ) ) !== null ) {
+			&& ( $collection = CoreAccess::collection( $match[1] ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $room . ':spacepress:' . self::fingerprint( $collection );
 		}
 
@@ -143,7 +143,7 @@ final class Coediting {
 			foreach ( Plugin::instance()?->schema->collections() ?? array() as $collection => $spec ) {
 				$type   = $spec['wp']['postType'] ?? null;
 				$object = null === $type ? null : get_post_type_object( $type );
-				if ( null !== $object && ( $object->rest_base ?: $type ) === $match[1]
+				if ( null !== $object && ( $object->rest_base ?: $type ) === $match[1] // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 					&& ( ! self::allows( (string) $collection, (int) ( $match[2] ?? 0 ) )
 						|| ! self::current_schema( (string) $collection, $request ) ) ) {
 					return self::refused( array() );
@@ -168,7 +168,7 @@ final class Coediting {
 
 	private static function room_allowed( string $room, \WP_REST_Request $request ): bool {
 		if ( ! preg_match( '#^postType/([^/:]+):([1-9][0-9]*)$#D', $room, $match )
-			|| ( $collection = CoreAccess::collection( $match[1] ) ) === null ) {
+			|| ( $collection = CoreAccess::collection( $match[1] ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return false;
 		}
 
@@ -205,7 +205,7 @@ final class Coediting {
 		return null === $collection ? null : array( $collection, $parent->ID );
 	}
 
-	public static function authorizeMeta( bool $allowed, string $key, int $id ): bool {
+	public static function authorizeMeta( bool $allowed, string $key, int $id ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$owner = self::owner( $id );
 
 		return $allowed && ( null === $owner || self::allows( $owner[0], $owner[1] ) );
@@ -220,16 +220,16 @@ final class Coediting {
 
 	public static function metadata( mixed $value, int $id, string $key, bool $single, string $type ): mixed {
 		if ( in_array( $key, array( self::DOCUMENT, self::SNAPSHOT ), true )
-			&& ( $owner = self::owner( $id ) ) !== null && ! self::readable( $owner[0], $id, $key ) ) {
+			&& ( $owner = self::owner( $id ) ) !== null && ! self::readable( $owner[0], $id, $key ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $single ? '' : array();
 		}
 
 		return $value;
 	}
 
-	public static function saved( mixed $metaId, int $id, string $key, mixed $value ): void {
+	public static function saved( mixed $metaId, int $id, string $key, mixed $value ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( in_array( $key, array( self::DOCUMENT, self::SNAPSHOT ), true )
-			&& ( $owner = self::owner( $id ) ) !== null && self::allows( $owner[0], $owner[1] ) ) {
+			&& ( $owner = self::owner( $id ) ) !== null && self::allows( $owner[0], $owner[1] ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			update_metadata( 'post', $id, self::SCHEMA . $key, self::fingerprint( $owner[0] ) );
 		}
 	}

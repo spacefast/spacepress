@@ -74,7 +74,7 @@ final class Polylang {
 		add_action(
 			'set_object_terms',
 			static function ( int $object_id, mixed $terms, mixed $tt_ids, string $taxonomy ): void {
-				if ( 'post_translations' === $taxonomy && ! self::$busy && ! self::sp_writing() && ( $tt_ids = (array) $tt_ids ) !== array() ) {
+				if ( 'post_translations' === $taxonomy && ! self::$busy && ! self::sp_writing() && ( $tt_ids = (array) $tt_ids ) !== array() ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 					self::adopt( $object_id, (int) reset( $tt_ids ) );
 				}
 			},
@@ -118,15 +118,15 @@ final class Polylang {
 	}
 
 	/** locale => post id of $postId's group (self included), in configured locale spelling. */
-	public static function group( int $postId, array $locales ): array {
+	public static function group( int $postId, array $locales ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$by_slug = array();
 		foreach ( $locales as $l ) {
 			$by_slug[ self::slug( $l ) ] = $l;
 		}
 		$out     = array();
-		$members = (array) pll_get_post_translations( $postId );
-		if ( array() === $members && ( $own = pll_get_post_language( $postId ) ) ) {
-			$members = array( $own => $postId );
+		$members = (array) pll_get_post_translations( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( array() === $members && ( $own = pll_get_post_language( $postId ) ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Keep the assignment and its test together. Preserve the existing PHP variable name.
+			$members = array( $own => $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		foreach ( $members as $slug => $id ) {
 			$out[ $by_slug[ $slug ] ?? $slug ] = (int) $id;
@@ -256,7 +256,7 @@ final class Polylang {
 	}
 
 	/** Create every configured locale missing from Polylang; the default locale becomes Polylang's default. */
-	public static function ensureLanguages(): void {
+	public static function ensureLanguages(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$schema  = Runtime::plugin()?->schema;
 		$locales = $schema?->locales();
 		if ( null === $locales || ! function_exists( 'PLL' ) || ! function_exists( 'pll_languages_list' ) ) {
@@ -329,7 +329,7 @@ final class Polylang {
 	}
 
 	/** Whether the loaded Polylang has the language model SpacePress calls ({@see languages()}). */
-	public static function hasLanguageModel(): bool {
+	public static function hasLanguageModel(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$languages = function_exists( 'PLL' ) && is_object( PLL()->model ?? null ) ? ( PLL()->model->languages ?? null ) : null;
 
 		return is_object( $languages ) && method_exists( $languages, 'get' ) && method_exists( $languages, 'add' ) && method_exists( $languages, 'update_default' );
@@ -364,7 +364,7 @@ final class Polylang {
 	}
 
 	/** @return list<string> post types of localized post-backed collections */
-	private static function postTypes(): array {
+	private static function postTypes(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$schema = Runtime::plugin()?->schema;
 		if ( $schema?->locales() === null ) {
 			return array();
@@ -387,13 +387,13 @@ final class Polylang {
 	 * one transaction, checked as a whole: if a hook makes them diverge, that adoption rolls back
 	 * and the error surfaces to whoever made the link, which itself stands.
 	 */
-	private static function adopt( int $postId, int $group_tt ): void {
+	private static function adopt( int $postId, int $group_tt ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$plugin = Runtime::plugin();
-		$type   = get_post_type( $postId );
+		$type   = get_post_type( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === $plugin || ! in_array( $type, self::postTypes(), true ) ) {
 			return;
 		}
-		$members = array_map( 'intval', array_values( (array) pll_get_post_translations( $postId ) ) );
+		$members = array_map( 'intval', array_values( (array) pll_get_post_translations( $postId ) ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( count( $members ) < 2 ) {
 			return;
 		}
@@ -439,7 +439,7 @@ final class Polylang {
 		return Runtime::plugin()?->connection()->busy() ?? false;
 	}
 
-	private static function busy( callable $fn ): mixed {
+	private static function busy( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		[$was, self::$busy] = array( self::$busy, true );
 		try {
 			return $fn();

@@ -26,7 +26,7 @@ use SpacePress\Wp\Comments;
  */
 final class CommentsView {
 
-	public static function render( string $collection, mixed $item, ?string $class ): Html {
+	public static function render( string $collection, mixed $item, ?string $class ): Html { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP parameter name.
 		$id     = (int) ( $item instanceof JsObject ? ( $item->p['id'] ?? 0 ) : ( is_array( $item ) ? ( $item['id'] ?? 0 ) : 0 ) );
 		$viewer = \SpacePress\Wp\CoreAccess::viewer();
 		if ( $id <= 0 || null === $viewer || ! \SpacePress\Wp\CoreAccess::covers( $collection, 'read', $id, $viewer ) ) {
@@ -81,7 +81,7 @@ final class CommentsView {
 	}
 
 	/** @param array<int, list<array<string, mixed>>> $byParent */
-	private static function list( array $by_parent, int $parent, int $level, int $depth, int $post_id, int $user_id ): ?Html {
+	private static function list( array $by_parent, int $parent, int $level, int $depth, int $post_id, int $user_id ): ?Html { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.parentFound -- Preserve the existing PHP parameter name.
 		$rows = $by_parent[ $parent ] ?? array();
 		if ( array() === $rows ) {
 			return null;
@@ -100,7 +100,7 @@ final class CommentsView {
 					array( 'className' => 'spacepress-comment-meta' ),
 					Html::element( 'strong', array(), (string) $row['authorName'] ),
 					' ',
-					Html::element( 'time', array( 'dateTime' => (string) $row['createdAt'] ), wp_date( get_option( 'date_format' ) ?: 'Y-m-d', (int) strtotime( (string) $row['createdAt'] ) ) ),
+					Html::element( 'time', array( 'dateTime' => (string) $row['createdAt'] ), wp_date( get_option( 'date_format' ) ?: 'Y-m-d', (int) strtotime( (string) $row['createdAt'] ) ) ), // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 					$held ? Html::children( ' ', Html::element( 'em', array(), __( 'Awaiting moderation' ) ) ) : null,
 				),
 				Html::element( 'div', array( 'className' => 'spacepress-comment-body' ), Markup::kses( wpautop( esc_html( (string) $row['content'] ) ) ) ),
@@ -113,7 +113,7 @@ final class CommentsView {
 		return Html::element( 0 === $parent ? 'ol' : 'ol', array( 'className' => 0 === $parent ? 'spacepress-comments-list' : 'spacepress-comments-replies' ), ...$items );
 	}
 
-	private static function form( int $post_id, int $parent, string $label ): Html {
+	private static function form( int $post_id, int $parent, string $label ): Html { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.parentFound -- Preserve the existing PHP parameter name.
 		$field = 'spacepress-comment-' . $post_id . '-' . $parent;
 		$form  = Html::element(
 			'form',

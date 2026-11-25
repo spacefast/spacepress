@@ -156,13 +156,13 @@ final class Mail {
 		}
 	}
 
-	public static function sendWordPress( array|string $to, string $subject, string $body, array $headers, ?string $alt ): bool {
+	public static function sendWordPress( array|string $to, string $subject, string $body, array $headers, ?string $alt ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null === $alt ) {
 			return (bool) wp_mail( $to, $subject, $body, $headers );
 		}
 		$configure = static function ( $mailer ) use ( $alt ): void {
 			if ( is_object( $mailer ) ) {
-				$mailer->AltBody = $alt;
+				$mailer->AltBody = $alt; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			}
 		};
 		add_action( 'phpmailer_init', $configure );
@@ -179,7 +179,7 @@ final class Mail {
 	 *
 	 * @return array{to: list<string>, subject: string, message: string, headers: list<string>, alt: ?string}
 	 */
-	public static function wpMailArguments( array $payload ): array {
+	public static function wpMailArguments( array $payload ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$format  = static fn ( array $a ): string => isset( $a['name'] ) ? self::encoded_name( $a['name'] ) . ' <' . $a['email'] . '>' : $a['email'];
 		$headers = array( 'From: ' . $format( $payload['from'] ), 'Reply-To: ' . $format( $payload['replyTo'] ?? $payload['from'] ) );
 		foreach ( array(

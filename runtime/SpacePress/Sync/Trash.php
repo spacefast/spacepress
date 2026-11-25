@@ -25,7 +25,7 @@ final class Trash {
 
 	private const UID_META = '_sp_uid';
 
-	public static function postBacked( array $spec ): bool {
+	public static function postBacked( array $spec ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return ( ( $spec['editor'] ?? true ) || ( $spec['commerce'] ?? null ) === 'product' ) && isset( $spec['wp']['postType'] );
 	}
 

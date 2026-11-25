@@ -35,28 +35,28 @@ final class EditorSave {
 	private static int $nested = 0;
 
 	/** Native collision resolution must not reveal competing slugs before save authorization. */
-	public static function uniqueSlug( mixed $override, string $slug, ?int $postId, string $status, string $postType ): mixed {
-		$postId ??= 0;
+	public static function uniqueSlug( mixed $override, string $slug, ?int $postId, string $status, string $postType ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		$postId ??= 0; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$plugin   = Plugin::instance();
 		if ( null === $plugin || self::busy() || get_current_user_id() === 0
-			|| ( $collection = CoreAccess::collection( $postType ) ) === null
-			|| ( $column = $plugin->schema->collection( $collection )['slug'] ?? null ) === null ) {
+			|| ( $collection = CoreAccess::collection( $postType ) ) === null // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Keep the assignment and its test together. Preserve the existing PHP variable name.
+			|| ( $column = $plugin->schema->collection( $collection )['slug'] ?? null ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $override;
 		}
 		try {
 			$viewer   = CoreAccess::viewer() ?? throw new HttpError( 403, 'suspended', 'This account is suspended' );
-			$before   = $postId > 0 ? $plugin->db()->editorRow( $collection, $postId ) : null;
-			$wrapped  = null !== self::$open && self::$open['collection'] === $collection && self::$open['postId'] === $postId;
-			$form     = is_admin() && (int) ( $_POST['post_ID'] ?? 0 ) === $postId
+			$before   = $postId > 0 ? $plugin->db()->editorRow( $collection, $postId ) : null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$wrapped  = null !== self::$open && self::$open['collection'] === $collection && self::$open['postId'] === $postId; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$form     = is_admin() && (int) ( $_POST['post_ID'] ?? 0 ) === $postId // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				&& in_array( $_POST['action'] ?? null, array( 'editpost', 'inline-save' ), true );
 			$supplied = $wrapped ? self::$open['supplied'] : self::formData( $collection )[1];
 			if ( null !== $before && ( $wrapped || $form ) && ! in_array( $column, $supplied, true )
-				&& in_array( get_post_status( $postId ), array( 'publish', 'future', 'private' ), true ) ) {
+				&& in_array( get_post_status( $postId ), array( 'publish', 'future', 'private' ), true ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				// An omitted native column stays unchanged, including an empty stored value. Never
 				// branch on hidden equality or ask WordPress to repair it against competing rows.
 				return (string) ( $before[ $column ] ?? '' );
 			}
-			$publishing = null !== $before && ! in_array( get_post_status( $postId ), array( 'publish', 'future', 'private' ), true )
+			$publishing = null !== $before && ! in_array( get_post_status( $postId ), array( 'publish', 'future', 'private' ), true ) // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				&& in_array( $status, array( 'publish', 'future', 'private' ), true );
 			$plugin->db()->requireUniqueVisibility( $collection, array( $column => $slug ), $viewer, $publishing, $before );
 			if ( ! $publishing && $plugin->db()->unchangedReadableUnique( $collection, $column, $slug, $before, $viewer ) ) {
@@ -69,7 +69,7 @@ final class EditorSave {
 					'',
 					array(
 						'response'  => $e->status,
-						'code'      => $e->errorCode,
+						'code'      => $e->errorCode, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 						'back_link' => true,
 					)
 				);
@@ -86,9 +86,9 @@ final class EditorSave {
 	 * code running in one) the save is still authorized, and a refusal or any core error throws, so
 	 * the enclosing transaction rolls back instead of committing a half-done save.
 	 */
-	public static function rest( string $collection, ?int $postId, \WP_REST_Request $request, callable $save ): mixed {
+	public static function rest( string $collection, ?int $postId, \WP_REST_Request $request, callable $save ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$plugin = Plugin::instance() ?? throw new \LogicException( 'No SpacePress app' );
-		$before = null === $postId ? null : $plugin->db()->editorRow( $collection, $postId );
+		$before = null === $postId ? null : $plugin->db()->editorRow( $collection, $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		try {
 			[$declared, $supplied] = CoreAccess::incoming( $collection, $request, singleSelector: true );
 			$viewer                = CoreAccess::viewer() ?? throw new HttpError( 403, 'suspended', 'This account is suspended' );
@@ -104,7 +104,7 @@ final class EditorSave {
 		}
 		if ( $plugin->connection()->inTransaction() ) {
 			$outer      = self::$open;
-			self::$open = self::scope( 'rest', $collection, $postId, $before, $declared, $supplied ) + array( 'nested' => true );
+			self::$open = self::scope( 'rest', $collection, $postId, $before, $declared, $supplied ) + array( 'nested' => true ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			try {
 				$result = $save();
 				if ( is_wp_error( $result ) ) {
@@ -123,7 +123,7 @@ final class EditorSave {
 				self::$open = $outer;
 			}
 		}
-		self::open( 'rest', $collection, $postId, $before, $declared, $supplied );
+		self::open( 'rest', $collection, $postId, $before, $declared, $supplied ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		try {
 			$result = $save();
 			if ( ! is_wp_error( $result ) && ! self::$open['checked'] ) {
@@ -181,7 +181,7 @@ final class EditorSave {
 	public static function begin( mixed $data, mixed $postarr, mixed $unsanitized = null, mixed $update = false ): mixed {
 		$plugin = Plugin::instance();
 		if ( ! is_array( $data ) || null === $plugin || $plugin->connection()->busy()
-			|| ( $collection = CoreAccess::collection( (string) ( $data['post_type'] ?? '' ) ) ) === null ) {
+			|| ( $collection = CoreAccess::collection( (string) ( $data['post_type'] ?? '' ) ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $data;
 		}
 		if ( $plugin->connection()->inTransaction() ) {
@@ -208,9 +208,9 @@ final class EditorSave {
 	}
 
 	/** wp_insert_post: an insert learns its post id here. */
-	public static function inserted( mixed $postId ): void {
+	public static function inserted( mixed $postId ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === self::$open || null !== self::$open['postId'] || self::busy()
-			|| CoreAccess::collection( (string) get_post_type( (int) $postId ) ) !== self::$open['collection'] ) {
+			|| CoreAccess::collection( (string) get_post_type( (int) $postId ) ) !== self::$open['collection'] ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return;
 		}
 		if ( self::$nested > 0 ) {
@@ -218,7 +218,7 @@ final class EditorSave {
 
 			return;
 		}
-		self::$open['postId'] = (int) $postId;
+		self::$open['postId'] = (int) $postId; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	public static function check( mixed $post ): void {
@@ -238,17 +238,17 @@ final class EditorSave {
 		}
 	}
 
-	public static function beginDelete( mixed $postId ): void {
+	public static function beginDelete( mixed $postId ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$plugin = Plugin::instance();
-		if ( null !== self::$open && 'delete' === self::$open['owner'] && self::$open['postId'] === (int) $postId ) {
+		if ( null !== self::$open && 'delete' === self::$open['owner'] && self::$open['postId'] === (int) $postId ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			self::$open['prepared'] = false; // prepared at pre_delete_post: core started it, it goes on in it
 			return;
 		}
 		if ( null === $plugin || self::busy() || $plugin->connection()->inTransaction()
-			|| ( $collection = CoreAccess::collection( (string) get_post_type( (int) $postId ) ) ) === null ) {
+			|| ( $collection = CoreAccess::collection( (string) get_post_type( (int) $postId ) ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Keep the assignment and its test together. Preserve the existing PHP variable name.
 			return;
 		}
-		self::open( 'delete', $collection, (int) $postId, null, null, array() );
+		self::open( 'delete', $collection, (int) $postId, null, null, array() ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		self::$open['checked'] = true; // delete_post (the delete rule) decided it
 	}
 
@@ -256,7 +256,7 @@ final class EditorSave {
 	 * Open a delete's transaction before core starts it (`pre_delete_post`), for a delete whose
 	 * before half must be able to decline it; false when another save is open.
 	 */
-	public static function prepareDelete( string $collection, int $postId ): bool {
+	public static function prepareDelete( string $collection, int $postId ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$plugin = Plugin::instance();
 		if ( null !== self::$open && 'delete' === self::$open['owner'] && ( self::$open['prepared'] ?? false ) ) {
 			self::rollback(); // a prepared delete that never started: a later pre_delete_post declined it
@@ -264,7 +264,7 @@ final class EditorSave {
 		if ( null === $plugin || self::busy() || $plugin->connection()->inTransaction() ) {
 			return false;
 		}
-		self::open( 'delete', $collection, $postId, null, null, array() );
+		self::open( 'delete', $collection, $postId, null, null, array() ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		self::$open['checked']  = true;
 		self::$open['prepared'] = true;
 
@@ -272,27 +272,27 @@ final class EditorSave {
 	}
 
 	/** The prepared delete was refused by its before half: nothing of it commits. */
-	public static function abandonDelete(): void {
+	public static function abandonDelete(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null !== self::$open && 'delete' === self::$open['owner'] ) {
 			self::rollback();
 		}
 	}
 
 	/** A prepared delete core never started (a later pre_delete_post declined it) rolls back. */
-	public static function abandonPrepared(): void {
+	public static function abandonPrepared(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null !== self::$open && 'delete' === self::$open['owner'] && ( self::$open['prepared'] ?? false ) ) {
 			self::rollback();
 		}
 	}
 
-	public static function endDelete( mixed $postId ): void {
-		if ( null !== self::$open && 'delete' === self::$open['owner'] && self::$open['postId'] === (int) $postId ) {
+	public static function endDelete( mixed $postId ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		if ( null !== self::$open && 'delete' === self::$open['owner'] && self::$open['postId'] === (int) $postId ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			self::commit();
 		}
 	}
 
 	/** wp-admin's revision.php checks its nonce, then restores: the save opens here. */
-	public static function beginRestore( mixed $action, mixed $result ): void {
+	public static function beginRestore( mixed $action, mixed $result ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$plugin = Plugin::instance();
 		if ( null === $plugin || false === $result || ! is_string( $action ) || ! str_starts_with( $action, 'restore-post_' )
 			|| $plugin->connection()->inTransaction() ) {
@@ -306,8 +306,8 @@ final class EditorSave {
 		}
 	}
 
-	public static function endRestore( mixed $postId ): void {
-		if ( null !== self::$open && 'restore' === self::$open['owner'] && self::$open['postId'] === (int) $postId ) {
+	public static function endRestore( mixed $postId ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		if ( null !== self::$open && 'restore' === self::$open['owner'] && self::$open['postId'] === (int) $postId ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			self::authorize_or_die();
 			self::commit();
 		}
@@ -468,7 +468,7 @@ final class EditorSave {
 	 *
 	 * @return array{?array<string, mixed>, list<string>}
 	 */
-	private static function formData( string $collection ): array {
+	private static function formData( string $collection ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ( ! is_admin() && ! wp_doing_ajax() ) || get_current_user_id() === 0 ) {
 			return array( null, array() );
 		}
@@ -499,8 +499,8 @@ final class EditorSave {
 
 	// ================================================================ transaction
 
-	private static function open( string $owner, string $collection, ?int $postId, ?array $before, ?array $declared, array $supplied ): void {
-		$scope = self::scope( $owner, $collection, $postId, $before, $declared, $supplied );
+	private static function open( string $owner, string $collection, ?int $postId, ?array $before, ?array $declared, array $supplied ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$scope = self::scope( $owner, $collection, $postId, $before, $declared, $supplied ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		Plugin::instance()?->connection()->begin();
 		self::$nested = 0;
 		self::$open   = $scope;
@@ -510,21 +510,21 @@ final class EditorSave {
 	 * A save's state. `covers`: the update-rule filters (serialized) that match the row as it is
 	 * before the save, for the rule evaluated without data and with the request's declared data.
 	 */
-	private static function scope( string $owner, string $collection, ?int $postId, ?array $before, ?array $declared, array $supplied ): array {
+	private static function scope( string $owner, string $collection, ?int $postId, ?array $before, ?array $declared, array $supplied ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$plugin = Plugin::instance() ?? throw new \LogicException( 'No SpacePress app' );
-		return $plugin->db()->current( fn (): array => self::scope_in_context( $owner, $collection, $postId, $before, $declared, $supplied ) );
+		return $plugin->db()->current( fn (): array => self::scope_in_context( $owner, $collection, $postId, $before, $declared, $supplied ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
-	private static function scope_in_context( string $owner, string $collection, ?int $postId, ?array $before, ?array $declared, array $supplied ): array {
+	private static function scope_in_context( string $owner, string $collection, ?int $postId, ?array $before, ?array $declared, array $supplied ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$plugin = Plugin::instance() ?? throw new \LogicException( 'No SpacePress app' );
 		$covers = array();
 		$viewer = null === $before || get_current_user_id() === 0 ? null : CoreAccess::viewer();
-		if ( null !== $viewer && null !== $postId ) {
+		if ( null !== $viewer && null !== $postId ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$plugin->app();
 			$rule = Access::collectionRules( $plugin->schema->collection( $collection ) )['update'];
 			foreach ( null === $declared ? array( null ) : array( null, $declared ) as $data ) {
 				$r = Access::evaluate( $rule, $viewer, 'update', $data, $plugin->schema->collection( $collection )['columns'], $collection );
-				if ( is_array( $r ) && $plugin->db()->permits( $collection, 'update', $postId, $viewer, $data ) ) {
+				if ( is_array( $r ) && $plugin->db()->permits( $collection, 'update', $postId, $viewer, $data ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					$covers[] = serialize( $r );
 				}
 			}
@@ -534,7 +534,7 @@ final class EditorSave {
 		return array(
 			'owner'      => $owner,
 			'collection' => $collection,
-			'postId'     => $postId,
+			'postId'     => $postId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			'before'     => $before,
 			'covers'     => $covers,
 			'declared'   => $declared,
@@ -546,30 +546,30 @@ final class EditorSave {
 
 	/** Commit the save; a COMMIT that fails rolls back (Connection) and cleans the post's caches too. */
 	private static function commit(): void {
-		$postId     = self::$open['postId'] ?? null;
+		$postId     = self::$open['postId'] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		self::$open = null;
 		try {
 			Plugin::instance()?->connection()->commit();
 		} catch ( \Throwable $e ) {
-			self::forget( $postId );
+			self::forget( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			throw $e;
 		}
 	}
 
 	private static function rollback(): void {
-		$postId     = self::$open['postId'] ?? null;
+		$postId     = self::$open['postId'] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		self::$open = null;
 		try {
 			Plugin::instance()?->connection()->rollback();
 		} finally {
-			self::forget( $postId );
+			self::forget( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 	}
 
 	/** Core wrote the post outside SpacePress's store: no cache may keep a ghost of a rolled-back save. */
-	private static function forget( ?int $postId ): void {
-		if ( null !== $postId ) {
-			clean_post_cache( $postId );
+	private static function forget( ?int $postId ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( null !== $postId ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			clean_post_cache( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		CoreAccess::flush();
 	}

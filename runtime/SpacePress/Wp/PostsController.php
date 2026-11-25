@@ -20,7 +20,7 @@ final class PostsController extends \WP_REST_Posts_Controller {
 
 	private string $collection;
 	/** @var ?array{request: \WP_REST_Request, ids: list<int>, rows: array, generation: int} */
-	private ?array $projectedPage = null;
+	private ?array $projectedPage = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	public function __construct( $post_type ) {
 		parent::__construct( $post_type );
@@ -69,11 +69,11 @@ final class PostsController extends \WP_REST_Posts_Controller {
 		// other rows than each item's own read, every item keeps its own.
 		$batch = ( $facade || $request->has_param( '_fields' ) ) && $request->get_method() === 'GET'
 			&& \SpacePress\Extensions::constraintReadsSafe() && ! \SpacePress\Locale\Module::localized( $this->collection );
-		if ( ( ! $facade && ! $batch ) || ( $viewer = CoreAccess::viewer() ) === null ) {
+		if ( ( ! $facade && ! $batch ) || ( $viewer = CoreAccess::viewer() ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $this->read_request( $request, fn () => $this->read_items( $request ) );
 		}
-		$previous            = $this->projectedPage;
-		$this->projectedPage = $batch ? array(
+		$previous            = $this->projectedPage; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		$this->projectedPage = $batch ? array( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			'request'    => $request,
 			'ids'        => array(),
 			'rows'       => array(),
@@ -85,8 +85,8 @@ final class PostsController extends \WP_REST_Posts_Controller {
 				if ( $facade ) {
 					Facade::prefetch( $this->collection, $ids, $viewer );
 				}
-				if ( null !== $this->projectedPage && -1 === $this->projectedPage['generation'] && count( $ids ) > 1 && count( $ids ) <= 100 ) {
-					$this->projectedPage['ids'] = $ids;
+				if ( null !== $this->projectedPage && -1 === $this->projectedPage['generation'] && count( $ids ) > 1 && count( $ids ) <= 100 ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+					$this->projectedPage['ids'] = $ids; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				}
 			}
 			return $posts;
@@ -96,7 +96,7 @@ final class PostsController extends \WP_REST_Posts_Controller {
 			return $this->read_request( $request, fn () => $this->read_items( $request ) );
 		} finally {
 			remove_filter( 'the_posts', $prefetch, 10 );
-			$this->projectedPage = $previous;
+			$this->projectedPage = $previous; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 	}
 
@@ -152,7 +152,7 @@ final class PostsController extends \WP_REST_Posts_Controller {
 
 	private function read_item_permissions( \WP_REST_Request $request ) {
 		$viewer = CoreAccess::viewer();
-		if ( ( $denied = CoreAccess::readDenial( $this->collection, $viewer ) ) !== null ) {
+		if ( ( $denied = CoreAccess::readDenial( $this->collection, $viewer ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $denied;
 		}
 		$post = $this->get_post( $request['id'] );
@@ -220,9 +220,9 @@ final class PostsController extends \WP_REST_Posts_Controller {
 
 	private function stored_row( int $id, \WP_REST_Request $request ): ?array {
 		$db = Plugin::instance()?->db();
-		if ( null !== $this->projectedPage && $this->projectedPage['request'] === $request ) {
-			$page = &$this->projectedPage;
-			if ( $page['generation'] !== CoreAccess::generation() ) {
+		if ( null !== $this->projectedPage && $this->projectedPage['request'] === $request ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$page = &$this->projectedPage; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			if ( $page['generation'] !== CoreAccess::generation() ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				$page['rows'] = array();
 			}
 			if ( array() !== $page['ids'] && in_array( $id, $page['ids'], true ) ) {
@@ -231,7 +231,7 @@ final class PostsController extends \WP_REST_Posts_Controller {
 				$page['generation'] = CoreAccess::generation();
 				$page['rows']       = $db?->editorRows( $this->collection, $ids ) ?? array();
 			}
-			if ( $page['generation'] === CoreAccess::generation() && isset( $page['rows'][ $id ] ) ) {
+			if ( $page['generation'] === CoreAccess::generation() && isset( $page['rows'][ $id ] ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				return $page['rows'][ $id ];
 			}
 		}
@@ -245,7 +245,7 @@ final class PostsController extends \WP_REST_Posts_Controller {
 		// For the facade's own dispatches, SpacePress's row as this viewer reads it (field masks, system
 		// fields such as `uid`, `locale` and `translations`): core already decided the item is
 		// readable; the facade only reshapes. Core's own clients keep core's shape.
-		if ( Facade::dispatching() && $response instanceof \WP_REST_Response && is_array( $data = $response->get_data() ) && ( $viewer = CoreAccess::viewer() ) !== null ) {
+		if ( Facade::dispatching() && $response instanceof \WP_REST_Response && is_array( $data = $response->get_data() ) && ( $viewer = CoreAccess::viewer() ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			$data[ Kinds::ROW ] = Facade::spRow( $this->collection, (int) $item->ID, $viewer );
 			$response->set_data( $data );
 		}
@@ -310,7 +310,7 @@ final class PostsController extends \WP_REST_Posts_Controller {
 			}
 		}
 		$sent = $request->get_json_params() ?? $request->get_body_params();
-		if ( is_string( $status = $sent['status'] ?? null ) ) {
+		if ( is_string( $status = $sent['status'] ?? null ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			$data['status'] = array(
 				'publish' => 'published',
 				'future'  => 'scheduled',
@@ -357,7 +357,7 @@ final class PostsController extends \WP_REST_Posts_Controller {
 					// `rest_insert_{type}`, the registered REST fields, `rest_after_insert_{type}`. Other
 					// plugins hooked there see the API's writes as they see core's.
 					clean_post_cache( (int) $row[ $pk ] );
-					$post = get_post( (int) $row[ $pk ] ) ?: throw new \LogicException( "Post {$row[$pk]} vanished" );
+					$post = get_post( (int) $row[ $pk ] ) ?: throw new \LogicException( "Post {$row[$pk]} vanished" ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 					$this->core_fields( $post, $request );
 					do_action( "rest_insert_{$this->post_type}", $post, $request, null === $id );
 					// Other plugins' registered meta (outside SpacePress's fields), as core's save writes it.
@@ -401,7 +401,7 @@ final class PostsController extends \WP_REST_Posts_Controller {
 		$postarr = array();
 		if ( $request->has_param( 'author' ) && (int) $request['author'] !== (int) $post->post_author ) {
 			$type = get_post_type_object( $this->post_type );
-			if ( (int) $request['author'] !== get_current_user_id() && ! current_user_can( $type->cap->edit_others_posts ) ) {
+			if ( (int) $request['author'] !== get_current_user_id() && ! current_user_can( $type->cap->edit_others_posts ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				throw new \SpacePress\HttpError( 403, 'forbidden', 'You may not set another author', '/author' );
 			}
 			$postarr['post_author'] = (int) $request['author'];

@@ -30,7 +30,7 @@ final class Migrator {
 	private static array $providers = array();
 
 	/** Register an opt-in migration provider (e.g., `spacepress/danger`). */
-	public static function registerProvider( MigrationProvider $provider ): void {
+	public static function registerProvider( MigrationProvider $provider ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::$providers[ $provider->id() ] = $provider;
 	}
 
@@ -40,7 +40,7 @@ final class Migrator {
 	}
 
 	/** Clear registered providers (for tests). */
-	public static function resetProviders(): void {
+	public static function resetProviders(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::$providers = array();
 	}
 
@@ -50,7 +50,7 @@ final class Migrator {
 	 * verbs so string defaults (e.g. `DEFAULT 'Drop table'`) never trigger false positives.
 	 * Destructive operations must go through an explicit CLI-only MigrationProvider.
 	 */
-	public static function assertForwardOnly( string $statement, string $migrationId = '' ): void {
+	public static function assertForwardOnly( string $statement, string $migrationId = '' ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$sql   = SchemaCheck::sql( $statement );
 		$clean = self::strip_sql_literals_and_comments( $sql );
 		if ( '' === $clean ) {
@@ -58,7 +58,7 @@ final class Migrator {
 		}
 		if ( preg_match( '/\b(DROP\s+TABLE|DROP\s+COLUMN|TRUNCATE\s+(?:TABLE\s+)?|RENAME\s+TABLE|RENAME\s+COLUMN|CHANGE\s+COLUMN)\b/i', $clean, $m ) ) {
 			$verb = trim( $m[1] );
-			$ctx  = '' !== $migrationId ? " in migration $migrationId" : '';
+			$ctx  = '' !== $migrationId ? " in migration $migrationId" : ''; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, WordPress.NamingConventions.ValidVariableName.InterpolatedVariableNotSnakeCase -- Preserve the existing PHP variable name.
 			throw new \RuntimeException(
 				"Refusing destructive DDL ($verb)$ctx: core SpacePress migrations are strictly forward-only. Opt into `spacepress/danger` and run `wp spacepress danger` via CLI for explicit destructive cleanup."
 			);
@@ -140,7 +140,7 @@ final class Migrator {
 	/** Lists `<id>/migration.sql` folders under `$this->dir`, returning sorted `id => path`. */
 	private function migration_files(): array {
 		$found = array();
-		foreach ( glob( $this->dir . '/*/migration.sql' ) ?: array() as $file ) {
+		foreach ( glob( $this->dir . '/*/migration.sql' ) ?: array() as $file ) { // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			$id = basename( dirname( $file ) );
 			if ( '' !== $id && '.' !== $id && '..' !== $id ) {
 				$found[ $id ] = $file;
@@ -153,7 +153,7 @@ final class Migrator {
 
 	/** The statements of a migration file: split on standalone `--> statement-breakpoint` lines. */
 	public static function statements( string $sql ): array {
-		$parts = preg_split( '/(?:^|\R)[ \t]*-->[ \t]*statement-breakpoint[ \t]*(?:\R|$)/', $sql ) ?: array();
+		$parts = preg_split( '/(?:^|\R)[ \t]*-->[ \t]*statement-breakpoint[ \t]*(?:\R|$)/', $sql ) ?: array(); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 
 		return array_values(
 			array_filter(
@@ -178,7 +178,7 @@ final class Migrator {
 	 * Records `<id>:<n>` (statement n of migration id) as applied without running it, for a statement
 	 * whose effect is already in the database. Only the next pending statement can be marked.
 	 */
-	public function markApplied( string $step ): void {
+	public function markApplied( string $step ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! preg_match( '/^(.+):([1-9]\\d*)$/', $step, $m ) ) {
 			throw \SpacePress\HttpError::invalidInput( '--mark-applied takes <migration id>:<statement number>, e.g. 20261121180000_7k9m2x_init:1', '/mark-applied' );
 		}
@@ -409,7 +409,7 @@ final class Migrator {
 	}
 
 	/** Ensure `{prefix}sp__migrations` exists in the unified ledger format. */
-	public static function ensureLedger( Connection $db, \SpacePress\Schema $schema ): string {
+	public static function ensureLedger( Connection $db, \SpacePress\Schema $schema ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return ( new self( $db, '', $schema ) )->ledger();
 	}
 
@@ -508,7 +508,7 @@ final class Migrator {
 		foreach ( $expected['indexes'] as $index ) {
 			$actual = $indexes[ $index['name'] ] ?? array();
 			if ( array_column( $actual, 'c' ) !== $index['columns']
-				|| array_filter( $actual, static fn ( array $r ): bool => (int) $r['u'] !== (int) ! $index['unique'] || null !== $r['p'] ) !== array() ) {
+				|| array_filter( $actual, static fn ( array $r ): bool => (int) $r['u'] !== (int) ! $index['unique'] || null !== $r['p'] ) !== array() ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				throw new DbError( "Cannot adopt $table: index {$index['name']} must already have the declared columns and uniqueness, without prefix lengths" );
 			}
 		}
@@ -538,7 +538,7 @@ final class Migrator {
 	 * to 30 seconds for another holder, then throws rather than letting the caller run on a schema
 	 * that is still changing.
 	 */
-	public static function locked( Connection $db, string $name, callable $fn, int $seconds = 30 ): mixed {
+	public static function locked( Connection $db, string $name, callable $fn, int $seconds = 30 ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		return $db->locked( 'spacepress:' . substr( hash( 'sha256', DB_NAME . ':' . $db->prefix() . ':' . $name ), 0, 40 ), $seconds, $fn );
 	}
 
@@ -550,7 +550,7 @@ final class Migrator {
 	 *
 	 * @param callable(): bool $current
 	 */
-	public static function upgrade( Connection $db, string $name, callable $current, callable $fn ): ?string {
+	public static function upgrade( Connection $db, string $name, callable $current, callable $fn ): ?string { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		try {
 			self::locked(
 				$db,
@@ -595,13 +595,13 @@ final class Migrator {
 	}
 
 	/** Records an audit row (for data or destructive CLI migrations) in the unified ledger. */
-	public function recordAudit(
+	public function recordAudit( // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		string $id,
 		string $kind,
-		?string $sqlHash = null,
+		?string $sqlHash = null, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		?string $actor = null,
 		?string $reason = null,
-		?int $rowsAffected = null,
+		?int $rowsAffected = null, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	): void {
 		if ( ! in_array( $kind, array( 'schema', 'data', 'destructive' ), true ) ) {
 			throw new \InvalidArgumentException( "Invalid migration kind: $kind" );
@@ -609,7 +609,7 @@ final class Migrator {
 		$ledger = $this->ledger();
 		$this->db->run(
 			"INSERT INTO `$ledger` (`app`, `id`, `kind`, `applied_at`, `sql`, `actor`, `reason`, `rows_affected`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-			array( $this->schema->name(), $id, $kind, gmdate( 'Y-m-d\\TH:i:s.000\\Z' ), $sqlHash, $actor, $reason, $rowsAffected ),
+			array( $this->schema->name(), $id, $kind, gmdate( 'Y-m-d\\TH:i:s.000\\Z' ), $sqlHash, $actor, $reason, $rowsAffected ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		);
 	}
 
@@ -633,7 +633,7 @@ final class Migrator {
 	}
 
 	/** Whether the ledger exists. */
-	public function hasLedger(): bool {
+	public function hasLedger(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$rows = $this->db->run( 'SELECT COLUMN_NAME AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', array( $this->table( 'sp__migrations' ) ) );
 		if ( array() === $rows ) {
 			return false;
@@ -670,7 +670,7 @@ final class Migrator {
 	 *
 	 * @return list<string>
 	 */
-	public function nonInnoDb(): array {
+	public function nonInnoDb(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$wpdb = $this->db->wpdb();
 		// Users join SpacePress's transactions too (auth collections and guests, §6.2): check them always.
 		$names = array( $wpdb->posts, $wpdb->postmeta, $wpdb->users, $wpdb->usermeta );

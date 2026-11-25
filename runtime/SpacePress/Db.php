@@ -26,16 +26,16 @@ final class Db {
 	/** @var list<BulkUpdate> open updates, innermost last */
 	private array $bulk = array();
 	/** Active cascade soft-delete group inherited by viewer-checked child deletes. */
-	private ?string $activeDeleteGroup = null;
+	private ?string $activeDeleteGroup = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** Prevents re-entering group child restore while restoring children of a deletedGroup. */
-	private bool $restoringGroup = false;
+	private bool $restoringGroup = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** @var array<string, array<int|string, int|string>> primary keys currently being deleted, by collection */
 	private array $deleting = array();
 	/** @var ?array<string, array<int|string, int>> deletion order within the current traversal */
 	private ?array $deleted = null;
 	/** @var array<string, array<int|string, array>> deleted row snapshots within the current traversal */
-	private array $deletedRows  = array();
-	private int $deleteSequence = 0;
+	private array $deletedRows  = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
+	private int $deleteSequence = 0; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	public function __construct(
 		private readonly Store $store,
@@ -44,13 +44,13 @@ final class Db {
 	) {
 	}
 
-	public static function setInstance( self $db ): void {
+	public static function setInstance( self $db ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::$instance = $db;
 		Access::clearCache();
 	}
 
 	/** Identity of the active Db instance (0 when none is bound), for Access cache scoping. */
-	public static function currentId(): int {
+	public static function currentId(): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$db = self::$current ?? self::$instance;
 
 		return null !== $db ? spl_object_id( $db ) : 0;
@@ -78,7 +78,7 @@ final class Db {
 	}
 
 	/** Run $fn with this Db as `db()`; the previous one is restored after, even on a throw. */
-	public function current( callable $fn ): mixed {
+	public function current( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$previous      = self::$current;
 		self::$current = $this;
 		try {
@@ -101,7 +101,7 @@ final class Db {
 	}
 
 	/** The user hooks and validators see as ctx.user for the rest of this request/command. */
-	public function setActor( ?array $user ): void {
+	public function setActor( ?array $user ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$this->actor = $user;
 	}
 
@@ -110,7 +110,7 @@ final class Db {
 	}
 
 	/** @return array{user: ?array} */
-	public function hookCtx(): array {
+	public function hookCtx(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return array( 'user' => $this->actor );
 	}
 
@@ -120,10 +120,10 @@ final class Db {
 	 * values that win over the patch (a translation group's synced values). That update then skips
 	 * $pk, so its hooks run once. False when no such update is open.
 	 */
-	public function updateWithin( string $collection, int|string $from, int|string $pk, array $values ): bool {
+	public function updateWithin( string $collection, int|string $from, int|string $pk, array $values ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$bulk = null;
 		foreach ( array_reverse( $this->bulk ) as $open ) {
-			if ( $open->collection === $collection && $open->current === self::key( $from ) ) {
+			if ( $open->collection === $collection && $open->current === self::key( $from ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				$bulk = $open;
 				break;
 			}
@@ -140,14 +140,14 @@ final class Db {
 		$existing = $this->select_decoded( $collection, $opts, '', null )[0] ?? null;
 		if ( null !== $existing ) {
 			// Through nested(): the early write counts toward MAX_HOOK_DEPTH like the write it replaces.
-			$bulk->done[ $key ] = $this->nested( fn () => Js::atInstant( fn () => $this->update_one( $collection, $bulk->spec, $existing, $bulk->set, $bulk->viewer, $values, $bulk->errorViewer ) ) );
+			$bulk->done[ $key ] = $this->nested( fn () => Js::atInstant( fn () => $this->update_one( $collection, $bulk->spec, $existing, $bulk->set, $bulk->viewer, $values, $bulk->errorViewer ) ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 
 		return true;
 	}
 
 	/** Run $fn in one store transaction (joins an open one). Any throwable rolls back. */
-	public function transaction( callable $fn ): mixed {
+	public function transaction( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		return $this->current(
 			function () use ( $fn ): mixed {
 				try {
@@ -165,7 +165,7 @@ final class Db {
 	 * the first write ({@see Wp\Connection::reading()}), so work that writes nothing sends the
 	 * database neither START TRANSACTION nor COMMIT.
 	 */
-	public function reading( callable $fn ): mixed {
+	public function reading( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$store = $this->store;
 
 		return $this->current( static fn () => $store instanceof Wp\CompositeStore ? $store->db->reading( $fn ) : $store->transaction( $fn ) );
@@ -176,7 +176,7 @@ final class Db {
 	 *
 	 * @return array<string, list<int|string>> collection => promoted pks (only non-empty)
 	 */
-	public function promoteDue(): array {
+	public function promoteDue(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$now = Js::iso( Js::now() );
 		$out = array();
 		foreach ( $this->schema->collections() as $name => $spec ) {
@@ -198,7 +198,7 @@ final class Db {
 	// ================================================================ reads
 
 	/** @return list<array> */
-	public function findMany( string $collection, array|JsObject $opts = array(), ?Viewer $viewer = null ): array {
+	public function findMany( string $collection, array|JsObject $opts = array(), ?Viewer $viewer = null ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->current(
 			function () use ( $collection, $opts, $viewer ): array {
 				$opts = Seam::query( $collection, $opts, $this->schema );
@@ -209,7 +209,7 @@ final class Db {
 		);
 	}
 
-	public function findFirst( string $collection, array|JsObject $opts = array(), ?Viewer $viewer = null ): ?array {
+	public function findFirst( string $collection, array|JsObject $opts = array(), ?Viewer $viewer = null ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$opts = Seam::query( $collection, $opts, $this->schema );
 		return $this->findMany( $collection, array( 'limit' => 1 ) + $opts, $viewer )[0] ?? null;
 	}
@@ -223,9 +223,9 @@ final class Db {
 	 * @param list<array> $guards extra filters (access) — read guards are added here when $viewer is set
 	 * @return list<array>
 	 */
-	private function fetch( string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = array(), ?array &$decoded = null, bool $forUpdate = false ): array {
+	private function fetch( string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = array(), ?array &$decoded = null, bool $forUpdate = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$published_only = false;
-		$decoded        = $this->select_decoded( $collection, $opts, $ptr, $viewer, $partition, $guards, prune: true, published_only: $published_only, forUpdate: $forUpdate );
+		$decoded        = $this->select_decoded( $collection, $opts, $ptr, $viewer, $partition, $guards, prune: true, published_only: $published_only, forUpdate: $forUpdate ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		// What a page render read (its purges): only a read that named its rows and found them all
 		// depends on those rows alone.
 		$named = Render\Reads::recording() ? $this->named( $collection, $opts, $partition, $published_only ) : null;
@@ -302,12 +302,12 @@ final class Db {
 	 * Select full storage rows without presentation transforms; write guards remain SQL filters.
 	 * $filterViewer confines a write selector's relation filters to rows that viewer may read.
 	 */
-	private function select_decoded( string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = array(), ?Viewer $filter_viewer = null, bool $prune = false, ?bool &$published_only = null, bool $forUpdate = false ): array {
+	private function select_decoded( string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = array(), ?Viewer $filter_viewer = null, bool $prune = false, ?bool &$published_only = null, bool $forUpdate = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return $this->current(
-			function () use ( $collection, &$opts, $ptr, $viewer, $partition, $guards, $filter_viewer, $prune, &$published_only, $forUpdate ): array {
+			function () use ( $collection, &$opts, $ptr, $viewer, $partition, $guards, $filter_viewer, $prune, &$published_only, $forUpdate ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$spec = $this->schema->hasCollection( $collection ) ? $this->schema->collection( $collection ) : null;
 				$only = null;
-				$q    = $this->compile_read( $collection, $opts, $ptr, $viewer, $partition, $guards, $filter_viewer, $prune, $only, $published_only, forUpdate: $forUpdate );
+				$q    = $this->compile_read( $collection, $opts, $ptr, $viewer, $partition, $guards, $filter_viewer, $prune, $only, $published_only, forUpdate: $forUpdate ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( null !== $partition && array() === $partition[1] ) {
 					return array();
 				}
@@ -315,7 +315,7 @@ final class Db {
 
 				return array_map(
 					static fn ( array $raw ) => Schema::decodeRow( $columns, $raw ),
-					$this->with_links( $collection, $this->store->select( $collection, $q ), $only, $forUpdate ),
+					$this->with_links( $collection, $this->store->select( $collection, $q ), $only, $forUpdate ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				);
 			}
 		);
@@ -381,13 +381,13 @@ final class Db {
 	 *
 	 * @return array{sql: string, params: list<int|float|string|null>}
 	 */
-	public function countQuery( string $collection, mixed $where = null, ?Viewer $viewer = null, array $extra = array(), bool $forUpdate = false ): array {
+	public function countQuery( string $collection, mixed $where = null, ?Viewer $viewer = null, array $extra = array(), bool $forUpdate = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		return $this->current(
-			function () use ( $collection, $where, $viewer, $extra, $forUpdate ): array {
+			function () use ( $collection, $where, $viewer, $extra, $forUpdate ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$opts = Seam::query( $collection, ( null === $where ? array() : array( 'where' => $where ) ) + $extra, $this->schema );
 				// The inner SELECT scans the referencing rows and their index ranges. Locking only the
 				// aggregate would leave the inner read on the transaction's old snapshot.
-				$q        = $this->compile_read( $collection, $opts, '', $viewer, count: true, forUpdate: $forUpdate );
+				$q        = $this->compile_read( $collection, $opts, '', $viewer, count: true, forUpdate: $forUpdate ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$q['sql'] = 'SELECT COUNT(*) AS n FROM (' . $q['sql'] . ') first_count';
 
 				return $q;
@@ -411,9 +411,9 @@ final class Db {
 	}
 
 	/** One read compiled: query extensions, option checks, the viewer's read guards. */
-	private function compile_read( string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = array(), ?Viewer $filter_viewer = null, bool $prune = false, ?array &$only = null, ?bool &$published_only = null, bool $count = false, bool $forUpdate = false ): array {
+	private function compile_read( string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = array(), ?Viewer $filter_viewer = null, bool $prune = false, ?array &$only = null, ?bool &$published_only = null, bool $count = false, bool $forUpdate = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return $this->current(
-			function () use ( $collection, &$opts, $ptr, $viewer, $partition, $guards, $filter_viewer, $prune, &$only, &$published_only, $count, $forUpdate ): array {
+			function () use ( $collection, &$opts, $ptr, $viewer, $partition, $guards, $filter_viewer, $prune, &$only, &$published_only, $count, $forUpdate ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( ! $this->schema->hasCollection( $collection ) ) {
 					throw HttpError::invalidQuery( "Unknown collection '$collection'", '' === $ptr ? null : $ptr );
 				}
@@ -442,7 +442,7 @@ final class Db {
 						$guards[] = $allowed;
 					}
 				}
-				$build = function () use ( $collection, &$opts, $ptr, $viewer, $partition, &$guards, $filter_viewer, $prune, &$only, &$published_only, $spec, $deleted, $count, $forUpdate ): array {
+				$build = function () use ( $collection, &$opts, $ptr, $viewer, $partition, &$guards, $filter_viewer, $prune, &$only, &$published_only, $spec, $deleted, $count, $forUpdate ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					if ( null !== $viewer ) {
 						array_push( $guards, ...$this->readGuards( $collection, $viewer, for_select: true, deleted: $deleted ) );
 					}
@@ -487,7 +487,7 @@ final class Db {
 						$guards,
 						null === $fv ? null : fn ( string $target ): array => $this->readGuards( $target, $fv, for_select: true ),
 						$only,
-						$forUpdate
+						$forUpdate // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					);
 				};
 
@@ -527,7 +527,7 @@ final class Db {
 	 * @param-out ?\Closure(): list<int|string> $remaining
 	 * @return ?list<int|string>
 	 */
-	public function permittedKeys( string $collection, string $op, Viewer $viewer, ?int $candidate = null, ?\Closure &$remaining = null ): ?array {
+	public function permittedKeys( string $collection, string $op, Viewer $viewer, ?int $candidate = null, ?\Closure &$remaining = null ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$remaining = null;
 		$read      = $this->preparePermittedKeys( $collection, $op, $viewer );
 		return null === $read ? null : $read( $candidate, $remaining );
@@ -538,7 +538,7 @@ final class Db {
 	 * know whether the rule refused. Its later item or list read can execute the same decision.
 	 * Null means unrestricted; an outright refusal throws.
 	 */
-	public function preparePermittedKeys( string $collection, string $op, Viewer $viewer, bool $validate = false ): ?\Closure {
+	public function preparePermittedKeys( string $collection, string $op, Viewer $viewer, bool $validate = false ): ?\Closure { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$guards = 'read' === $op ? $this->readGuards( $collection, $viewer, select_when_restricted: true ) : $this->write_guards( $collection, $op, $viewer, null );
 		if ( array() === $guards ) {
 			return null;
@@ -567,9 +567,9 @@ final class Db {
 		);
 	}
 
-	private function key_query( string $collection, ?array $where, array $guards, bool $forUpdate = false ): array {
+	private function key_query( string $collection, ?array $where, array $guards, bool $forUpdate = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$pk = $this->schema->collection( $collection )['primaryKey'];
-		return Sql::select( $this->schema, $this->store, $collection, null === $where ? array() : array( 'where' => $where ), guards: $guards, only: array( $pk => true ), forUpdate: $forUpdate );
+		return Sql::select( $this->schema, $this->store, $collection, null === $where ? array() : array( 'where' => $where ), guards: $guards, only: array( $pk => true ), forUpdate: $forUpdate ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/**
@@ -579,12 +579,12 @@ final class Db {
 	 *
 	 * @return list<array|SqlPredicate>
 	 */
-	public function readScope( string $collection, Viewer $viewer ): array {
+	public function readScope( string $collection, Viewer $viewer ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->readGuards( $collection, $viewer );
 	}
 
 	/** The read rule (+ draft visibility) as filters; throws 401/403 when the rule is false. */
-	private function readGuards( string $collection, Viewer $viewer, bool $for_select = false, string $deleted = 'exclude', bool $select_when_restricted = false ): array {
+	private function readGuards( string $collection, Viewer $viewer, bool $for_select = false, string $deleted = 'exclude', bool $select_when_restricted = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$spec = $this->schema->collection( $collection );
 		$rule = Access::collectionRules( $spec )['read'];
 		$r    = $this->current( fn () => Access::evaluate( $rule, $viewer, 'read', null, $spec['columns'], $collection ) );
@@ -611,7 +611,7 @@ final class Db {
 	 * @param list<array<string, mixed>> $raw storage rows
 	 * @return list<array<string, mixed>>
 	 */
-	private function with_links( string $collection, array $raw, ?array $only = null, bool $forUpdate = false ): array {
+	private function with_links( string $collection, array $raw, ?array $only = null, bool $forUpdate = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$spec = $this->schema->collection( $collection );
 		$pk   = $spec['primaryKey'];
 		foreach ( array() === $raw ? array() : $spec['columns'] as $name => $col ) {
@@ -619,7 +619,7 @@ final class Db {
 				continue;
 			}
 			$ids = array();
-			foreach ( $this->links()->links( $col['references']['join'], 'owner_id', array_column( $raw, $pk ), $forUpdate ) as $link ) {
+			foreach ( $this->links()->links( $col['references']['join'], 'owner_id', array_column( $raw, $pk ), $forUpdate ) as $link ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$ids[ $link['owner_id'] ][] = $link['target_id'];
 			}
 			foreach ( $raw as &$row ) {
@@ -782,7 +782,7 @@ final class Db {
 		return $this->schema->locales() !== null && ( $this->schema->collection( $collection )['localized'] ?? false );
 	}
 
-	private function populate_media( array $rows, string $col, bool $list ): array {
+	private function populate_media( array $rows, string $col, bool $list ): array { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.listFound -- Preserve the existing PHP parameter name.
 		$ids = array();
 		foreach ( $rows as $row ) {
 			if ( ! array_key_exists( $col, $row ) ) {
@@ -868,7 +868,7 @@ final class Db {
 	}
 
 	/** @return ?list<array> */
-	public function update( string $collection, array|JsObject $set, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null, ?Viewer $errorViewer = null ): ?array {
+	public function update( string $collection, array|JsObject $set, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null, ?Viewer $errorViewer = null ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		[$set, $where] = array( Seam::container( $set ), Seam::filter( $collection, $where, $this->schema ) );
 		// Flattened before the access rule sees the patch: rules get plain arrays outside json() values.
 		// In update(), `undefined` means untouched (omitted) while `null` clears nullable fields.
@@ -878,7 +878,7 @@ final class Db {
 		}
 		$set = Schema::resolveAliases( $this->schema->collection( $collection ), $set );
 		return $this->nested(
-			function () use ( $collection, $set, $where, $returning, $viewer, $errorViewer ) {
+			function () use ( $collection, $set, $where, $returning, $viewer, $errorViewer ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$spec   = $this->schema->collection( $collection );
 				$guards = null === $viewer ? array() : $this->write_guards( $collection, 'update', $viewer, $set );
 				$out    = array();
@@ -886,7 +886,7 @@ final class Db {
 				// A referential update must use the same current rows the delete preflight locked.
 				$rows         = $this->select_decoded( $collection, $opts, '', null, null, $guards, $viewer, forUpdate: null !== $viewer && array() !== $this->deleting );
 				$pk           = $spec['primaryKey'];
-				$bulk         = new BulkUpdate( $collection, $spec, $set, $viewer, array_map( static fn ( array $row ) => self::key( $row[ $pk ] ), $rows ), $errorViewer );
+				$bulk         = new BulkUpdate( $collection, $spec, $set, $viewer, array_map( static fn ( array $row ) => self::key( $row[ $pk ] ), $rows ), $errorViewer ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$this->bulk[] = $bulk;
 				try {
 					foreach ( $rows as $existing ) {
@@ -897,7 +897,7 @@ final class Db {
 						}
 						unset( $bulk->pending[ $key ] );
 						$bulk->current = $key;
-						$out[]         = Js::atInstant( fn () => $this->update_one( $collection, $spec, $existing, $set, $viewer, errorViewer: $errorViewer ) );
+						$out[]         = Js::atInstant( fn () => $this->update_one( $collection, $spec, $existing, $set, $viewer, errorViewer: $errorViewer ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					}
 				} finally {
 					array_pop( $this->bulk );
@@ -958,15 +958,15 @@ final class Db {
 	 *
 	 * @return ?list<array>
 	 */
-	public function purge( string $collection, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null, bool $onlyDeleted = false ): ?array {
+	public function purge( string $collection, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null, bool $onlyDeleted = false ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$where = Seam::filter( $collection, $where, $this->schema );
 		return $this->nested(
-			function () use ( $collection, $where, $returning, $viewer, $onlyDeleted ) {
+			function () use ( $collection, $where, $returning, $viewer, $onlyDeleted ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$spec   = $this->schema->collection( $collection );
 				$guards = null === $viewer ? array() : $this->write_guards( $collection, 'purge', $viewer, null );
 				$opts   = array( 'where' => $where );
 				if ( $spec['softDelete'] ?? false ) {
-					$opts['deleted'] = $onlyDeleted ? 'only' : 'include';
+					$opts['deleted'] = $onlyDeleted ? 'only' : 'include'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				}
 				$rows = $this->select_decoded( $collection, $opts, '', null, null, $guards, $viewer, forUpdate: null !== $viewer );
 				$this->purge_rows( $collection, $rows, $viewer );
@@ -987,7 +987,7 @@ final class Db {
 	}
 
 	/** The canonical default preview and write share constraint preflight before generators run. */
-	public function withDefaults( string $collection, array $data, ?Viewer $viewer = null ): array {
+	public function withDefaults( string $collection, array $data, ?Viewer $viewer = null ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->current(
 			function () use ( $collection, $data, $viewer ): array {
 				$columns     = $this->schema->collection( $collection )['columns'];
@@ -1080,7 +1080,7 @@ final class Db {
 		$this->check_values( $columns, $norm, $full, $viewer );
 		$this->requireUniqueVisibility( $collection, $norm, $viewer );
 
-		$insert = $links = array();
+		$insert = $links = array(); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		foreach ( $norm as $name => $v ) {
 			if ( 'refList' === $columns[ $name ]['type'] ) {
 				$links[ $name ] = $v ?? array();
@@ -1097,8 +1097,8 @@ final class Db {
 		Access::clearCache();
 		[$row, $raw]  = $this->read_by_pk( $collection, $spec, $pk );
 		$pk_column    = $spec['primaryKey'];
-		$allocatedKey = ( $columns[ $pk_column ]['autoIncrement'] ?? false ) && ! array_key_exists( $pk_column, $insert );
-		$this->record_revision( $collection, $spec, $pk, $raw, 'create', null, $row, $allocatedKey );
+		$allocatedKey = ( $columns[ $pk_column ]['autoIncrement'] ?? false ) && ! array_key_exists( $pk_column, $insert ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$this->record_revision( $collection, $spec, $pk, $raw, 'create', null, $row, $allocatedKey ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$this->hook( $collection, $spec, 'afterCreate', $row );
 		$this->published( $collection, $spec, $row, null );
 		Extensions::written( 'create', $collection, $row, null );
@@ -1107,7 +1107,7 @@ final class Db {
 	}
 
 	/** @param array $values trusted values applied over $patch after access and field rules (updateWithin) */
-	private function update_one( string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer, array $values = array(), ?Viewer $errorViewer = null ): array {
+	private function update_one( string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer, array $values = array(), ?Viewer $errorViewer = null ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$columns  = $spec['columns'];
 		$pk       = $spec['primaryKey'];
 		$provided = $patch;
@@ -1119,7 +1119,7 @@ final class Db {
 				$generations[ $name ] = $col['onUpdate'];
 			}
 		}
-		$this->requireGeneratedVisibility( $collection, $generations, $viewer ?? $errorViewer );
+		$this->requireGeneratedVisibility( $collection, $generations, $viewer ?? $errorViewer ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		foreach ( $columns as $name => $col ) {
 			if ( isset( $col['onUpdate'] ) && ! array_key_exists( $name, $patch ) ) {
 				$patch[ $name ] = Schema::generate( $col['onUpdate'], $col );
@@ -1166,30 +1166,30 @@ final class Db {
 		if ( $publishing && null !== $slug_col ) {
 			// WordPress drafts may share slugs. Publication is a new uniqueness operation, even
 			// when the readable draft's slug was echoed or omitted from the patch.
-			$this->requireUniqueVisibility( $collection, array( $slug_col => $patch[ $slug_col ] ?? $previous[ $slug_col ] ?? null ), $viewer ?? $errorViewer, true );
+			$this->requireUniqueVisibility( $collection, array( $slug_col => $patch[ $slug_col ] ?? $previous[ $slug_col ] ?? null ), $viewer ?? $errorViewer, true ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			if ( ! array_key_exists( $slug_col, $patch ) ) {
 				$norm[ $slug_col ] = $previous[ $slug_col ] ?? null;
 			}
 		}
-		$this->requireUniqueVisibility( $collection, $patch, $viewer ?? $errorViewer, existing: $previous );
+		$this->requireUniqueVisibility( $collection, $patch, $viewer ?? $errorViewer, existing: $previous ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null !== $slug_col && array_key_exists( $slug_col, $patch ) && ! array_key_exists( $slug_col, $norm ) ) {
 			$norm[ $slug_col ] = $this->derive_slug( $collection, $spec, $norm + $previous, $pk_value );
 		}
-		$this->check_values( $columns, $norm, $norm + $previous, $viewer ?? $errorViewer );
-		$this->requireUniqueVisibility( $collection, $norm, $viewer ?? $errorViewer, existing: $previous );
-		$set = $links = array();
+		$this->check_values( $columns, $norm, $norm + $previous, $viewer ?? $errorViewer ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$this->requireUniqueVisibility( $collection, $norm, $viewer ?? $errorViewer, existing: $previous ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$set = $links = array(); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		foreach ( $norm as $name => $v ) {
 			if ( 'refList' === $columns[ $name ]['type'] ) {
 				$links[ $name ] = $v ?? array();
 				continue;
 			}
-			if ( ! ( $publishing && $name === $slug_col ) && $this->unchangedReadableUnique( $collection, (string) $name, $v, $previous, $viewer ?? $errorViewer ) ) {
+			if ( ! ( $publishing && $name === $slug_col ) && $this->unchangedReadableUnique( $collection, (string) $name, $v, $previous, $viewer ?? $errorViewer ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				continue; // WordPress meta uniqueness checks must not inspect competitors for a no-op.
 			}
 			$set[ $name ] = Schema::store( $columns[ $name ], $v );
 		}
-		$this->require_incoming_visibility( $collection, $set, $viewer ?? $errorViewer );
-		Locale\GroupSync::requireReadableSiblings( $collection, $norm + $previous, $previous, $viewer ?? $errorViewer );
+		$this->require_incoming_visibility( $collection, $set, $viewer ?? $errorViewer ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		Locale\GroupSync::requireReadableSiblings( $collection, $norm + $previous, $previous, $viewer ?? $errorViewer ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		try {
 			$this->store->update( $collection, $pk_value, $set );
 			$this->writeLinks( $columns, $pk_value, $links );
@@ -1201,13 +1201,13 @@ final class Db {
 		$this->record_revision( $collection, $spec, $pk_value, $raw, 'update', $previous, $row );
 		$this->hook( $collection, $spec, 'afterUpdate', $row, $previous );
 		$this->published( $collection, $spec, $row, $previous );
-		Extensions::written( 'update', $collection, $row, $previous, $viewer ?? $errorViewer );
+		Extensions::written( 'update', $collection, $row, $previous, $viewer ?? $errorViewer ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 		return $row;
 	}
 
 	/** A many-ref write replaces the row's whole list. @param array<string, list<int>> $links */
-	public function writeLinks( array $columns, int|string $pk, array $links ): void {
+	public function writeLinks( array $columns, int|string $pk, array $links ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( $links as $name => $ids ) {
 			$this->links()->setLinks( $columns[ $name ]['references']['join'], $pk, $ids );
 		}
@@ -1217,7 +1217,7 @@ final class Db {
 	private function delete_rows( string $collection, array $rows, ?Viewer $viewer, ?string $group = null ): array {
 		$root            = null === $this->deleted;
 		$this->deleted ??= array();
-		$selected_at     = $this->deleteSequence;
+		$selected_at     = $this->deleteSequence; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$spec            = $this->schema->collection( $collection );
 		$out             = array();
 		try {
@@ -1225,9 +1225,9 @@ final class Db {
 				$pk = $this->pk_value( $spec, $row );
 				if ( ( $this->deleted[ $collection ][ $pk ] ?? 0 ) <= $selected_at ) {
 					$deleted = $this->delete_one( $collection, $spec, $row, $pk, $viewer, $group );
-					$out[]   = $deleted ?? $this->deletedRows[ $collection ][ $pk ] ?? $row;
+					$out[]   = $deleted ?? $this->deletedRows[ $collection ][ $pk ] ?? $row; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				} else {
-					$out[] = $this->deletedRows[ $collection ][ $pk ] ?? $row;
+					$out[] = $this->deletedRows[ $collection ][ $pk ] ?? $row; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				}
 			}
 
@@ -1235,8 +1235,8 @@ final class Db {
 		} finally {
 			if ( $root ) {
 				$this->deleted        = null;
-				$this->deletedRows    = array();
-				$this->deleteSequence = 0;
+				$this->deletedRows    = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+				$this->deleteSequence = 0; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			}
 		}
 	}
@@ -1251,26 +1251,26 @@ final class Db {
 			Extensions::write( 'delete', $collection, $row, $existing, $viewer, $existing );
 			$this->hook( $collection, $spec, 'beforeDelete', $row );
 			if ( ( $spec['softDelete'] ?? false ) && method_exists( $this->store, 'softDelete' ) ) {
-				$group ??= $this->activeDeleteGroup ?? self::uuid();
+				$group ??= $this->activeDeleteGroup ?? self::uuid(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				$this->soft_referential_actions( $collection, $row, $group, $viewer );
 				$at     = Js::iso( Js::now() );
-				$userId = $this->actor['id'] ?? null;
+				$userId = $this->actor['id'] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				try {
-					$this->store->softDelete( $collection, $pk, $at, is_int( $userId ) ? $userId : null, $group );
+					$this->store->softDelete( $collection, $pk, $at, is_int( $userId ) ? $userId : null, $group ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				} catch ( \Throwable $e ) {
 					throw $this->store->mapError( $e );
 				}
 				Access::clearCache();
 				$row['deletedAt'] = $at;
-				$row['deletedBy'] = is_int( $userId ) ? $userId : null;
+				$row['deletedBy'] = is_int( $userId ) ? $userId : null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( array_key_exists( 'deletedGroup', $row ) ) {
 					$row['deletedGroup'] = $group;
 				}
 				if ( array_key_exists( '_live', $row ) ) {
 					$row['_live'] = null;
 				}
-				$this->deleted[ $collection ][ $pk ]     = ++$this->deleteSequence;
-				$this->deletedRows[ $collection ][ $pk ] = $row;
+				$this->deleted[ $collection ][ $pk ]     = ++$this->deleteSequence; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+				$this->deletedRows[ $collection ][ $pk ] = $row; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				if ( $spec['revisions'] ?? false ) {
 					[, $raw_deleted] = $this->read_by_pk( $collection, $spec, $pk, deleted: 'include' );
 					$this->record_revision( $collection, $spec, $pk, $raw_deleted, 'delete', $existing, $row );
@@ -1287,8 +1287,8 @@ final class Db {
 				throw $this->store->mapError( $e );
 			}
 			Access::clearCache();
-			$this->deleted[ $collection ][ $pk ]     = ++$this->deleteSequence;
-			$this->deletedRows[ $collection ][ $pk ] = $row;
+			$this->deleted[ $collection ][ $pk ]     = ++$this->deleteSequence; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$this->deletedRows[ $collection ][ $pk ] = $row; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$this->hook( $collection, $spec, 'afterDelete', $row );
 			Extensions::written( 'delete', $collection, $row, $existing );
 
@@ -1309,7 +1309,7 @@ final class Db {
 			throw $this->store->mapError( $e );
 		}
 		Access::clearCache();
-		if ( $cascade_children && ! $this->restoringGroup && null !== $group ) {
+		if ( $cascade_children && ! $this->restoringGroup && null !== $group ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$this->restore_group_children( $collection, $pk_value, $group, $viewer );
 		}
 		[$restored, $raw_restored] = $this->read_by_pk( $collection, $spec, $pk_value );
@@ -1322,8 +1322,8 @@ final class Db {
 
 	/** Restore any soft-deleted children across kinds that were cascade-deleted under the same deletedGroup. */
 	private function restore_group_children( string $parent_collection, int|string $parent_pk, string $group, ?Viewer $viewer ): void {
-		$prev                 = $this->restoringGroup;
-		$this->restoringGroup = true;
+		$prev                 = $this->restoringGroup; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		$this->restoringGroup = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		try {
 			foreach ( $this->schema->kinds() as $child => $cspec ) {
 				if ( ! ( $cspec['softDelete'] ?? false ) || ! isset( $cspec['columns']['deletedGroup'] ) ) {
@@ -1355,7 +1355,7 @@ final class Db {
 				}
 			}
 		} finally {
-			$this->restoringGroup = $prev;
+			$this->restoringGroup = $prev; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 	}
 
@@ -1363,7 +1363,7 @@ final class Db {
 	private function purge_rows( string $collection, array $rows, ?Viewer $viewer ): void {
 		$root            = null === $this->deleted;
 		$this->deleted ??= array();
-		$selected_at     = $this->deleteSequence;
+		$selected_at     = $this->deleteSequence; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$spec            = $this->schema->collection( $collection );
 		try {
 			foreach ( $rows as $row ) {
@@ -1375,8 +1375,8 @@ final class Db {
 		} finally {
 			if ( $root ) {
 				$this->deleted        = null;
-				$this->deletedRows    = array();
-				$this->deleteSequence = 0;
+				$this->deletedRows    = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+				$this->deleteSequence = 0; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			}
 		}
 	}
@@ -1399,7 +1399,7 @@ final class Db {
 			} catch ( \Throwable $e ) {
 				throw $this->store->mapError( $e );
 			}
-			$this->deleted[ $collection ][ $pk_value ] = ++$this->deleteSequence;
+			$this->deleted[ $collection ][ $pk_value ] = ++$this->deleteSequence; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$this->hook( $collection, $spec, 'afterPurge', $row );
 			Extensions::written( 'delete', $collection, $row, $existing );
 		} finally {
@@ -1459,8 +1459,8 @@ final class Db {
 					}
 					if ( null !== $viewer ) {
 						$cpk                     = $cspec['primaryKey'];
-						$prev_group              = $this->activeDeleteGroup;
-						$this->activeDeleteGroup = $group;
+						$prev_group              = $this->activeDeleteGroup; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+						$this->activeDeleteGroup = $group; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 						$written                 = 0;
 						try {
 							foreach ( $dependents as $dependent ) {
@@ -1470,9 +1470,9 @@ final class Db {
 							error_log( '[spacepress] a soft-delete cascade refused: ' . $e::class . ': ' . $e->getMessage() );
 							throw self::hidden_reference();
 						} finally {
-							$this->activeDeleteGroup = $prev_group;
+							$this->activeDeleteGroup = $prev_group; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 						}
-						if ( $written !== count( $dependents ) ) {
+						if ( $written !== count( $dependents ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 							throw self::hidden_reference();
 						}
 					} else {
@@ -1496,7 +1496,7 @@ final class Db {
 							error_log( '[spacepress] a soft-delete set-null/default refused: ' . $e::class . ': ' . $e->getMessage() );
 							throw self::hidden_reference();
 						}
-						if ( $written !== count( $dependents ) ) {
+						if ( $written !== count( $dependents ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 							throw self::hidden_reference();
 						}
 					} else {
@@ -1519,7 +1519,7 @@ final class Db {
 	}
 
 	/** Run the viewer's delete visibility check inside the transaction that will remove the row. */
-	public function requireDeleteVisibility( string $collection, array $row, Viewer $viewer ): void {
+	public function requireDeleteVisibility( string $collection, array $row, Viewer $viewer ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$this->refuse_hidden_references( $collection, $row, $viewer );
 	}
 
@@ -1587,7 +1587,7 @@ final class Db {
 	}
 
 	/** Check the visibility of a pipeline write's translation siblings before propagation. */
-	public function requireReadableTranslations( string $collection, array $ids, Viewer $viewer ): void {
+	public function requireReadableTranslations( string $collection, array $ids, Viewer $viewer ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( array() === $ids ) {
 			return;
 		}
@@ -1747,7 +1747,7 @@ final class Db {
 		return $include_trash ? $this->with_trash_for( $collection, $count ) : $count();
 	}
 
-	private function with_trash_for( string $collection, callable $fn ): mixed {
+	private function with_trash_for( string $collection, callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$store = $this->store;
 
 		return $store instanceof Wp\CompositeStore && $store->isPostBacked( $collection ) ? $store->posts->withTrash( $fn ) : $fn();
@@ -1758,7 +1758,7 @@ final class Db {
 	 * matching $where ({@see Wp\WpPostStore::withSqlVisibility()}): a post-password cookie is checked
 	 * against those posts' passwords only, however many other protected posts the kind has.
 	 */
-	private function sql_visibility( string $collection, array $where, callable $fn ): mixed {
+	private function sql_visibility( string $collection, array $where, callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$store = $this->store;
 		if ( ! $store instanceof Wp\CompositeStore || ! $store->isPostBacked( $collection ) ) {
 			return $fn();
@@ -1795,7 +1795,7 @@ final class Db {
 	}
 
 	/** Both ends of a relationship must be readable before constraints can answer about its rows. */
-	private function require_reference_visibility( string $parent, string $column, string $child, array $def, Viewer $viewer ): void {
+	private function require_reference_visibility( string $parent, string $column, string $child, array $def, Viewer $viewer ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.parentFound -- Preserve the existing PHP parameter name.
 		if ( FieldAccess::mayHide( $this->schema->collection( $parent )['columns'][ $column ], $viewer ) ) {
 			throw new HttpError( 409, 'reference_violation', 'A hidden field may be referenced by this row' );
 		}
@@ -1929,7 +1929,7 @@ final class Db {
 		return $absent || null === $data[ $name ] || '' === $data[ $name ];
 	}
 
-	private function derive_slug( string $collection, array $spec, array $row, int|string|null $self ): ?string {
+	private function derive_slug( string $collection, array $spec, array $row, int|string|null $self ): ?string { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.selfFound -- Preserve the existing PHP parameter name.
 		$slug_col = $spec['slug'];
 		$source   = $spec['columns'][ $slug_col ]['source'] ?? null;
 		$text     = null === $source ? null : ( $row[ $source ] ?? null );
@@ -1958,7 +1958,7 @@ final class Db {
 	}
 
 	public static function slugify( string $s ): string {
-		if ( class_exists( \Transliterator::class ) && ( $t = \Transliterator::create( 'Any-Latin; Latin-ASCII' ) ) !== null ) {
+		if ( class_exists( \Transliterator::class ) && ( $t = \Transliterator::create( 'Any-Latin; Latin-ASCII' ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			$s = (string) $t->transliterate( $s );
 		}
 		$s = trim( (string) preg_replace( '/[^a-z0-9]+/', '-', strtolower( $s ) ), '-' );
@@ -1983,7 +1983,7 @@ final class Db {
 	 * Every media id in $norm (normalized values by column) names an existing attachment, of an
 	 * accepted kind. Also for core REST `meta` writes, which store through the post store directly.
 	 */
-	public function checkMedia( array $columns, array $norm ): void {
+	public function checkMedia( array $columns, array $norm ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$refs = array();
 		foreach ( $norm as $name => $v ) {
 			array_push( $refs, ...Schema::mediaRefs( $columns[ $name ], $v, HttpError::seg( $name ) ) );
@@ -2000,7 +2000,7 @@ final class Db {
 	}
 
 	/** Core REST and editor inputs use the same reference visibility check as the write pipeline. */
-	public function validateWriteReferences( string $collection, array $data, ?Viewer $viewer ): void {
+	public function validateWriteReferences( string $collection, array $data, ?Viewer $viewer ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$this->current(
 			function () use ( $collection, $data, $viewer ): void {
 				$columns = $this->schema->collection( $collection )['columns'];
@@ -2061,7 +2061,7 @@ final class Db {
 	}
 
 	/** Potential generators are checked before hidden storage decides whether they will run. */
-	public function requireGeneratedVisibility( string $collection, array $generations, ?Viewer $viewer ): void {
+	public function requireGeneratedVisibility( string $collection, array $generations, ?Viewer $viewer ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$this->current(
 			function () use ( $collection, $generations, $viewer ): void {
 				if ( null === $viewer ) {
@@ -2112,7 +2112,7 @@ final class Db {
 	 * swallowing a conflict would falsely acknowledge a write and could commit partial hook effects.
 	 * An unchanged value on a readable row/column is safe only when persistence skips its lookup.
 	 */
-	public function requireUniqueVisibility( string $collection, array $data, ?Viewer $viewer, bool $creating = false, ?array $existing = null ): void {
+	public function requireUniqueVisibility( string $collection, array $data, ?Viewer $viewer, bool $creating = false, ?array $existing = null ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$this->current( fn () => $this->check_unique_visibility( $collection, $data, $viewer, $creating, $existing ) );
 	}
 
@@ -2154,7 +2154,7 @@ final class Db {
 	}
 
 	/** An echoed visible unique value needs no competitor lookup. Prove visibility before equality. */
-	public function unchangedReadableUnique( string $collection, string $name, mixed $value, ?array $existing, ?Viewer $viewer ): bool {
+	public function unchangedReadableUnique( string $collection, string $name, mixed $value, ?array $existing, ?Viewer $viewer ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->current(
 			function () use ( $collection, $name, $value, $existing, $viewer ): bool {
 				if ( null === $viewer || null === $existing ) {
@@ -2222,7 +2222,7 @@ final class Db {
 	 * A scheduled item reached its time (WP cron's `publish_future_post`, or the lazy promotion):
 	 * its `afterPublish`, run as the system in one transaction.
 	 */
-	public function afterPromotion( string $collection, int|string $pk ): void {
+	public function afterPromotion( string $collection, int|string $pk ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$spec = $this->schema->collection( $collection );
 		if ( ! isset( $spec['hooks']['afterPublish'] ) ) {
 			return;
@@ -2282,7 +2282,7 @@ final class Db {
 		return is_float( $v ) ? (int) $v : $v;
 	}
 
-	private function nested( callable $fn ): mixed {
+	private function nested( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		if ( $this->depth >= self::MAX_HOOK_DEPTH + 1 ) {
 			throw new HttpError( 500, 'hook_recursion', 'Hooks nested writes more than ' . self::MAX_HOOK_DEPTH . ' levels deep' );
 		}
@@ -2297,7 +2297,7 @@ final class Db {
 	// ================================================================ editor saves (WP, §4.9)
 
 	/** Trusted editor capture: full decoded storage values, without display transforms or projection. */
-	public function editorRow( string $collection, int|string $pk ): ?array {
+	public function editorRow( string $collection, int|string $pk ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$opts = array(
 			'where' => array( $this->schema->collection( $collection )['primaryKey'] => $pk ),
 			'limit' => 1,
@@ -2307,7 +2307,7 @@ final class Db {
 	}
 
 	/** Stored rows for a page of WordPress post IDs, with the same decoding as editorRow(). */
-	public function editorRows( string $collection, array $ids ): array {
+	public function editorRows( string $collection, array $ids ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$pk    = $this->schema->collection( $collection )['primaryKey'];
 		$opts  = array(
 			'where' => array( $pk => array( 'in' => $ids ) ),
@@ -2331,7 +2331,7 @@ final class Db {
 	 * editorRow() for a row WordPress may hold in its trash: what a move into or out of the trash, and
 	 * a permanent delete from it, know of the row as stored. Every other read leaves the trash out.
 	 */
-	public function editorRowIncludingTrash( string $collection, int|string $pk ): ?array {
+	public function editorRowIncludingTrash( string $collection, int|string $pk ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$store = $this->store;
 
 		return $store instanceof Wp\CompositeStore
@@ -2343,21 +2343,21 @@ final class Db {
 	 * After a wp-admin/core REST save: afterCreate (no $previousRow) or afterUpdate, with the row
 	 * re-read through the store. Counts toward MAX_HOOK_DEPTH. Runs in one transaction.
 	 */
-	public function afterEditorSave( string $collection, int|string $pk, ?array $previousRow, ?array $user = null ): void {
+	public function afterEditorSave( string $collection, int|string $pk, ?array $previousRow, ?array $user = null ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$this->as_editor(
 			$user,
-			function () use ( $collection, $pk, $previousRow ) {
+			function () use ( $collection, $pk, $previousRow ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$spec  = $this->schema->collection( $collection );
 				[$row] = $this->read_by_pk( $collection, $spec, $pk );
-				null === $previousRow ? $this->hook( $collection, $spec, 'afterCreate', $row ) : $this->hook( $collection, $spec, 'afterUpdate', $row, $previousRow );
-				$this->published( $collection, $spec, $row, $previousRow );
-				Extensions::written( null === $previousRow ? 'create' : 'update', $collection, $row, $previousRow );
+				null === $previousRow ? $this->hook( $collection, $spec, 'afterCreate', $row ) : $this->hook( $collection, $spec, 'afterUpdate', $row, $previousRow ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$this->published( $collection, $spec, $row, $previousRow ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				Extensions::written( null === $previousRow ? 'create' : 'update', $collection, $row, $previousRow ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 		);
 	}
 
 	/** Before an editor-side delete: beforeDelete($row) and the pipeline FK actions. */
-	public function beforeEditorDelete( string $collection, array $row, ?Viewer $viewer = null ): void {
+	public function beforeEditorDelete( string $collection, array $row, ?Viewer $viewer = null ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$pk = $this->pk_value( $this->schema->collection( $collection ), $row );
 		if ( isset( $this->deleting[ $collection ][ $pk ] ) ) {
 			return;
@@ -2380,7 +2380,7 @@ final class Db {
 	}
 
 	/** After an editor-side delete: afterDelete($row). */
-	public function afterEditorDelete( string $collection, array $row, ?array $user = null ): void {
+	public function afterEditorDelete( string $collection, array $row, ?array $user = null ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$this->as_editor(
 			$user,
 			function () use ( $collection, $row ) {
@@ -2390,7 +2390,7 @@ final class Db {
 		);
 	}
 
-	private function as_editor( ?array $user, callable $fn ): void {
+	private function as_editor( ?array $user, callable $fn ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$prev        = $this->actor;
 		$this->actor = $user;
 		try {
@@ -2402,8 +2402,8 @@ final class Db {
 
 	// ================================================================ revisions (§6.4 / ADR 2026-11-21 §5)
 
-	private ?string $latestMigration    = null;
-	private bool $latestMigrationLoaded = false;
+	private ?string $latestMigration    = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
+	private bool $latestMigrationLoaded = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	private function record_revision(
 		string $collection,
@@ -2413,7 +2413,7 @@ final class Db {
 		string $op,
 		?array $previous = null,
 		?array $current = null,
-		bool $allocatedKey = false,
+		bool $allocatedKey = false, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	): void {
 		if ( ! ( $spec['revisions'] ?? false ) ) {
 			return;
@@ -2441,20 +2441,20 @@ final class Db {
 				'op'              => $op,
 				'schemaMigration' => $this->latestSchemaMigration(),
 				'changed'         => $changed,
-				'allocatedKey'    => $allocatedKey,
+				'allocatedKey'    => $allocatedKey, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			)
 		);
 	}
 
-	private function latestSchemaMigration(): ?string {
-		if ( ! $this->latestMigrationLoaded ) {
-			$this->latestMigrationLoaded = true;
-			$this->latestMigration       = method_exists( $this->store, 'latestSchemaMigration' )
+	private function latestSchemaMigration(): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		if ( ! $this->latestMigrationLoaded ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$this->latestMigrationLoaded = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$this->latestMigration       = method_exists( $this->store, 'latestSchemaMigration' ) // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				? $this->store->latestSchemaMigration()
 				: null;
 		}
 
-		return $this->latestMigration;
+		return $this->latestMigration; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	/** @return list<array{id: int, version: int, op: string, at: string, userId: ?int, schemaMigration: ?string, changed: ?list<string>}> newest first; needs update access on the row */
@@ -2489,15 +2489,15 @@ final class Db {
 	}
 
 	/** The full decoded row at a revision. */
-	public function revision( string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null, bool $byVersion = false ): array {
-		return $this->current( fn (): array => $this->revision_at( $collection, $pk, $revisionId, $viewer, $byVersion ) );
+	public function revision( string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null, bool $byVersion = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		return $this->current( fn (): array => $this->revision_at( $collection, $pk, $revisionId, $viewer, $byVersion ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
-	private function revision_at( string $collection, int|string $pk, int $revisionId, ?Viewer $viewer, bool $byVersion = false ): array {
+	private function revision_at( string $collection, int|string $pk, int $revisionId, ?Viewer $viewer, bool $byVersion = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$this->require_revisable( $collection, $pk, $viewer );
 
-		return $this->present( array( $this->revisionRow( $collection, $pk, $revisionId, $byVersion ) ), $collection, $viewer )[0]
-			?? throw HttpError::notFound( "No revision $revisionId for $collection $pk" );
+		return $this->present( array( $this->revisionRow( $collection, $pk, $revisionId, $byVersion ) ), $collection, $viewer )[0] // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			?? throw HttpError::notFound( "No revision $revisionId for $collection $pk" ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.InterpolatedVariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/**
@@ -2505,15 +2505,15 @@ final class Db {
 	 * Schema-aware decoding maps aliased or physical column names to the current logical schema,
 	 * drops retired columns, and fills columns added in later forward-only migrations with their defaults.
 	 */
-	public function revisionRow( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): array {
-		$rev = $this->current( fn () => $this->store->revision( $collection, $pk, $revisionId, $byVersion ) )
-			?? throw HttpError::notFound( "No revision $revisionId for $collection $pk" );
+	public function revisionRow( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		$rev = $this->current( fn () => $this->store->revision( $collection, $pk, $revisionId, $byVersion ) ) // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			?? throw HttpError::notFound( "No revision $revisionId for $collection $pk" ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.InterpolatedVariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 		return self::decodeRevisionPayload( $this->schema->collection( $collection ), is_array( $rev['row'] ?? null ) ? $rev['row'] : array() );
 	}
 
 	/** Schema-aware decoding of a historical revision snapshot across forward-only migrations and column aliases. */
-	public static function decodeRevisionPayload( array $spec, array $raw ): array {
+	public static function decodeRevisionPayload( array $spec, array $raw ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$columns = $spec['columns'];
 		// 1. Resolve logical aliases (e.g. `.alias("old_name")`).
 		$mapped = Schema::resolveAliases( $spec, $raw );
@@ -2546,13 +2546,13 @@ final class Db {
 	 *
 	 * @return array{from: int, to: int, changes: list<array{field: string, from: mixed, to: mixed}>}
 	 */
-	public function diffRevisions( string $collection, int|string $pk, int $fromVersion, int $toVersion, ?Viewer $viewer = null, bool $byVersion = true ): array {
+	public function diffRevisions( string $collection, int|string $pk, int $fromVersion, int $toVersion, ?Viewer $viewer = null, bool $byVersion = true ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		return $this->current(
-			function () use ( $collection, $pk, $fromVersion, $toVersion, $viewer, $byVersion ): array {
+			function () use ( $collection, $pk, $fromVersion, $toVersion, $viewer, $byVersion ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$this->require_revisable( $collection, $pk, $viewer );
 				$spec     = $this->schema->collection( $collection );
-				$from_row = $this->revision_at( $collection, $pk, $fromVersion, $viewer, $byVersion );
-				$to_row   = $this->revision_at( $collection, $pk, $toVersion, $viewer, $byVersion );
+				$from_row = $this->revision_at( $collection, $pk, $fromVersion, $viewer, $byVersion ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$to_row   = $this->revision_at( $collection, $pk, $toVersion, $viewer, $byVersion ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$changes  = array();
 				foreach ( $spec['columns'] as $name => $col ) {
 					$name = (string) $name;
@@ -2574,8 +2574,8 @@ final class Db {
 				}
 
 				return array(
-					'from'    => $fromVersion,
-					'to'      => $toVersion,
+					'from'    => $fromVersion, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					'to'      => $toVersion, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					'changes' => $changes,
 				);
 			}
@@ -2589,15 +2589,15 @@ final class Db {
 	 * rules pass: it sends nothing for them, so nothing about them can be probed, and a restore never
 	 * leaves part of the row at a later state. The answer is masked like every read.
 	 */
-	public function restoreRevision( string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null, bool $byVersion = false ): array {
+	public function restoreRevision( string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null, bool $byVersion = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		return $this->current(
-			function () use ( $collection, $pk, $revisionId, $viewer, $byVersion ): array {
+			function () use ( $collection, $pk, $revisionId, $viewer, $byVersion ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$spec = $this->schema->collection( $collection );
 				$this->require_revisable( $collection, $pk, $viewer );
-				$row     = $this->revisionRow( $collection, $pk, $revisionId, $byVersion );
+				$row     = $this->revisionRow( $collection, $pk, $revisionId, $byVersion ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$opts    = array( 'where' => array( $spec['primaryKey'] => $pk ) );
 				$current = $this->select_decoded( $collection, $opts, '', null )[0] ?? throw HttpError::notFound( "No $collection row $pk" );
-				$patch   = $hidden = array();
+				$patch   = $hidden = array(); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 				foreach ( $spec['columns'] as $name => $col ) {
 					// A revision taken where links aren't kept with the row (WordPress revisions) leaves a
 					// `refList` it holds as null as it is.
@@ -2650,7 +2650,7 @@ final class Db {
 	// ================================================================ globals (§3.6)
 
 	/** Current values (JS form); never-written fields read as their defaults. */
-	public function globalGet( string $name, ?Viewer $viewer = null ): array {
+	public function globalGet( string $name, ?Viewer $viewer = null ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->current(
 			function () use ( $name, $viewer ): array {
 				$g = $this->schema->global( $name );
@@ -2673,7 +2673,7 @@ final class Db {
 		);
 	}
 
-	public function globalUpdate( string $name, array|JsObject $patch, ?Viewer $viewer = null ): array {
+	public function globalUpdate( string $name, array|JsObject $patch, ?Viewer $viewer = null ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$patch = Seam::container( $patch );
 		$g     = $this->schema->global( $name );
 		$patch = Seam::toPhp( $patch, $g['fields'] );
@@ -2708,19 +2708,19 @@ final class Db {
 
 	// ================================================================ media (§4.6)
 
-	public function mediaUpload( string $tmpPath, string $filename, ?string $alt, ?Viewer $viewer = null ): array {
+	public function mediaUpload( string $tmpPath, string $filename, ?string $alt, ?Viewer $viewer = null ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		if ( null !== $viewer ) {
 			Access::require( Access::MEDIA['create'], $viewer, 'create', null, 'upload media' );
 		}
 
-		return $this->transaction( fn () => $this->media->upload( $tmpPath, $filename, $this->actor, $alt ) );
+		return $this->transaction( fn () => $this->media->upload( $tmpPath, $filename, $this->actor, $alt ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
-	public function mediaGet( int $id ): ?array {
+	public function mediaGet( int $id ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->current( fn () => $this->media->get( $id ) );
 	}
 
-	public function mediaList( array $opts ): array {
+	public function mediaList( array $opts ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->current( fn () => $this->media->list( $opts ) );
 	}
 
@@ -2731,7 +2731,7 @@ final class Db {
 	 *
 	 * @param ?callable(): void $remove
 	 */
-	public function mediaDelete( int $id, ?Viewer $viewer = null, ?callable $remove = null ): ?array {
+	public function mediaDelete( int $id, ?Viewer $viewer = null, ?callable $remove = null ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null !== $viewer ) {
 			Access::require( Access::MEDIA['delete'], $viewer, 'delete', null, 'delete media' );
 		}

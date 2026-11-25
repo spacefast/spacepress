@@ -125,7 +125,7 @@ final class StoreApiPolicy {
 		if ( ! isset( $url['scheme'], $url['host'] ) ) {
 			return null; }
 		$scheme = strtolower( $url['scheme'] );
-		$port   = isset( $url['port'] ) && $url['port'] !== ( array(
+		$port   = isset( $url['port'] ) && $url['port'] !== ( array( // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			'http'  => 80,
 			'https' => 443,
 		)[ $scheme ] ?? 0 ) ? ':' . $url['port'] : '';

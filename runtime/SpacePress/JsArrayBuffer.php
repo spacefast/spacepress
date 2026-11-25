@@ -19,7 +19,7 @@ final class JsArrayBuffer {
 	}
 
 	/** ToIndex for lengths and offsets, refusing what PHP cannot allocate. */
-	public static function byteCount( mixed $value ): int {
+	public static function byteCount( mixed $value ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( JsUndefined::Value === $value ) {
 			return 0; }
 		$n = Js::toInteger( Js::toNumber( $value ) );
@@ -30,7 +30,7 @@ final class JsArrayBuffer {
 		return (int) $n;
 	}
 
-	public function byteLength(): int {
+	public function byteLength(): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return strlen( $this->bytes ); }
 
 	public function slice( mixed $start, mixed $end ): self {

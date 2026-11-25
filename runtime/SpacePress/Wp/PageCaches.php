@@ -93,9 +93,9 @@ final class PageCaches {
 	/** @param list<string> $paths root-relative paths with their query, as `sp_purge_urls` gives them */
 	public static function purge( array $paths ): void {
 		$origin  = self::origin();
-		$home    = (string) ( wp_parse_url( home_url( '/' ), PHP_URL_PATH ) ?: '/' );
-		$vipSite = function_exists( 'wpvip_purge_edge_cache_for_site' ) && ( in_array( '/*', $paths, true ) || count( $paths ) > self::VIP_URLS );
-		if ( $vipSite ) {
+		$home    = (string) ( wp_parse_url( home_url( '/' ), PHP_URL_PATH ) ?: '/' ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
+		$vipSite = function_exists( 'wpvip_purge_edge_cache_for_site' ) && ( in_array( '/*', $paths, true ) || count( $paths ) > self::VIP_URLS ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( $vipSite ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			wpvip_purge_edge_cache_for_site();
 		}
 		$edge = array();
@@ -109,9 +109,9 @@ final class PageCaches {
 			if ( self::batcache() ) {
 				batcache_clear_url( self::batcache_url( $url ) );
 			}
-			if ( ! $vipSite && function_exists( 'wpvip_purge_edge_cache_for_url' ) ) {
+			if ( ! $vipSite && function_exists( 'wpvip_purge_edge_cache_for_url' ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				wpvip_purge_edge_cache_for_url( $url );
-			} elseif ( ! $vipSite && function_exists( 'wpcom_vip_purge_edge_cache_for_url' ) ) {
+			} elseif ( ! $vipSite && function_exists( 'wpcom_vip_purge_edge_cache_for_url' ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				wpcom_vip_purge_edge_cache_for_url( $url );
 			}
 			if ( $path === $home ) {

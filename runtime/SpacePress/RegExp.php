@@ -22,23 +22,23 @@ final class RegExp implements \Stringable {
 	public readonly string $flags;
 	public readonly bool $global;
 	public readonly bool $sticky;
-	public mixed $lastIndex = 0;
+	public mixed $lastIndex = 0; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** The compiled PCRE pattern, including delimiters and modifiers. */
 	public readonly string $pattern;
-	private readonly string $anchoredPattern;
+	private readonly string $anchoredPattern; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** @var list<string> named groups, in declaration order */
 	private array $names    = array();
-	private int $groupCount = 0;
+	private int $groupCount = 0; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	// translation state
 	private string $src;
 	private int $pos;
-	private bool $dotAll;
+	private bool $dotAll; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	private bool $multiline;
 	private bool $unicode;
 	/** These atoms can consume a surrogate half or distinguish it from a UTF-8 stand-in. */
-	private bool $requiresUnicodeOnAstral = false;
-	private bool $requiresUnitMatching    = false;
+	private bool $requiresUnicodeOnAstral = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
+	private bool $requiresUnitMatching    = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	public function __construct( string $source, string $flags = '' ) {
 		$chars = str_split( $flags );
@@ -60,7 +60,7 @@ final class RegExp implements \Stringable {
 		$this->flags     = implode( '', $chars );
 		$this->global    = in_array( 'g', $chars, true );
 		$this->sticky    = in_array( 'y', $chars, true );
-		$this->dotAll    = in_array( 's', $chars, true );
+		$this->dotAll    = in_array( 's', $chars, true ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$this->multiline = in_array( 'm', $chars, true );
 		$this->unicode   = in_array( 'u', $chars, true );
 
@@ -75,10 +75,10 @@ final class RegExp implements \Stringable {
 		$this->pos                     = 0;
 		$body                          = $this->translate();
 		$this->pattern                 = '/' . $body . '/u' . ( in_array( 'i', $chars, true ) ? 'i' : '' );
-		$this->anchoredPattern         = $this->pattern . 'A';
-		$this->requiresUnicodeOnAstral = $this->requiresUnicodeOnAstral
+		$this->anchoredPattern         = $this->pattern . 'A'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		$this->requiresUnicodeOnAstral = $this->requiresUnicodeOnAstral // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			|| preg_match( '/[\x{10000}-\x{10FFFF}]/u', $source ) === 1;
-		$this->requiresUnitMatching    = $this->requiresUnicodeOnAstral;
+		$this->requiresUnitMatching    = $this->requiresUnicodeOnAstral; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 		set_error_handler( static fn () => true );
 		try {
@@ -96,13 +96,13 @@ final class RegExp implements \Stringable {
 		return array(
 			'source'    => $this->src,
 			'flags'     => $this->flags,
-			'lastIndex' => $this->lastIndex,
+			'lastIndex' => $this->lastIndex, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		);
 	}
 
 	public function __unserialize( array $data ): void {
 		$this->__construct( $data['source'], $data['flags'] );
-		$this->lastIndex = $data['lastIndex'];
+		$this->lastIndex = $data['lastIndex']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	private static function escape_source( string $source ): string {
@@ -145,18 +145,18 @@ final class RegExp implements \Stringable {
 	/** Stateful RegExpBuiltinExec, shared by test and exec. Empty matches keep lastIndex. */
 	public function execMatch( string $s ): ?array {
 		$stateful = $this->global || $this->sticky;
-		$index    = max( 0, Js::toInteger( Js::toNumber( $this->lastIndex ) ) );
+		$index    = max( 0, Js::toInteger( Js::toNumber( $this->lastIndex ) ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$offset   = $stateful ? $index : 0;
 		if ( $offset > Js::length( $s ) ) {
-			$this->lastIndex = 0;
+			$this->lastIndex = 0; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			return null; }
-		if ( ! $this->unicode && $this->requiresUnitMatching && preg_match( '/[\x{10000}-\x{10FFFF}]/u', $s ) === 1 ) {
+		if ( ! $this->unicode && $this->requiresUnitMatching && preg_match( '/[\x{10000}-\x{10FFFF}]/u', $s ) === 1 ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			throw new JsError( 'This RegExp on astral text requires the u flag', 'RangeError' );
 		}
 		$byte_offset = strlen( Js::slice( $s, 0, $offset ) );
 		$match       = $this->matchAt( $s, $byte_offset, $this->sticky );
 		if ( $stateful ) {
-			$this->lastIndex = null === $match ? 0 : Js::length( substr( $s, 0, $match[1] ) ); }
+			$this->lastIndex = null === $match ? 0 : Js::length( substr( $s, 0, $match[1] ) ); } // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		return $match;
 	}
 
@@ -173,7 +173,7 @@ final class RegExp implements \Stringable {
 		if ( str_contains( $this->flags, 'i' ) && preg_match( '/[^\\x00-\\x7f]/', $s ) === 1 ) {
 			throw new JsError( 'Ignore-case regexes require ASCII input', 'RangeError' );
 		}
-		$r = preg_match( $anchored ? $this->anchoredPattern : $this->pattern, $s, $m, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $offset );
+		$r = preg_match( $anchored ? $this->anchoredPattern : $this->pattern, $s, $m, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $offset ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( false === $r ) {
 			throw new JsError( 'RegExp execution failed: ' . preg_last_error_msg() );
 		}
@@ -190,7 +190,7 @@ final class RegExp implements \Stringable {
 			}
 		}
 		// PCRE omits trailing unset groups; JS reports them as undefined.
-		for ( $i = count( $groups ); $i < $this->groupCount; $i++ ) {
+		for ( $i = count( $groups ); $i < $this->groupCount; $i++ ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$groups[] = null;
 		}
 
@@ -205,7 +205,7 @@ final class RegExp implements \Stringable {
 	 * @return list<array{0: int, 1: int, 2: list<?string>, 3: array<string, ?string>, 4?: true}>
 	 */
 	public function matchAll( string $s ): array {
-		if ( ! $this->unicode && $this->requiresUnicodeOnAstral
+		if ( ! $this->unicode && $this->requiresUnicodeOnAstral // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			&& preg_match( '/[\x{10000}-\x{10FFFF}]/u', $s ) === 1 ) {
 			throw new JsError( 'Dots, complemented shorthands, character classes, lookarounds and surrogate or astral literals on text outside the Basic Multilingual Plane (an emoji, say) require Unicode mode; add the u flag', 'RangeError' );
 		}
@@ -241,7 +241,7 @@ final class RegExp implements \Stringable {
 				// in-pair position before the next ordinary match, including when none exists.
 				$until = $m[0] ?? $size;
 				for ( $scan = $offset; $scan < $until; $scan += Js::charLenAt( $s, $scan ) ) {
-					if ( isset( $inside_offsets[ $scan ] ) && ( $in = $this->inside_pair( $shadow, $inside_offsets[ $scan ], $scan ) ) !== null ) {
+					if ( isset( $inside_offsets[ $scan ] ) && ( $in = $this->inside_pair( $shadow, $inside_offsets[ $scan ], $scan ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 						$out[] = $in;
 					}
 				}
@@ -384,18 +384,18 @@ final class RegExp implements \Stringable {
 	}
 
 	private function translate(): string {
-		$this->groupCount = preg_match_all( '/\((?!\?)|\(\?<(?![=!])/', preg_replace( '/\\\\.|\[(?:\\\\.|[^\]\\\\])*\]/s', '', $this->src ) ?? '' );
+		$this->groupCount = preg_match_all( '/\((?!\?)|\(\?<(?![=!])/', preg_replace( '/\\\\.|\[(?:\\\\.|[^\]\\\\])*\]/s', '', $this->src ) ?? '' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$out              = '';
 		$len              = strlen( $this->src );
 		while ( $this->pos < $len ) {
 			$c = $this->src[ $this->pos++ ];
 			if ( '.' === $c ) {
-				$this->requiresUnicodeOnAstral = true;
+				$this->requiresUnicodeOnAstral = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			}
 			$out .= match ( $c ) {
 				'\\' => $this->escape( false ),
 				'[' => $this->char_class(),
-				'.' => $this->dotAll ? '(?s:.)' : '[^' . self::LINE_TERMINATORS . ']',
+				'.' => $this->dotAll ? '(?s:.)' : '[^' . self::LINE_TERMINATORS . ']', // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				'^' => $this->multiline ? '(?<![^' . self::LINE_TERMINATORS . '])' : '^',
 				'$' => $this->multiline ? '(?![^' . self::LINE_TERMINATORS . '])' : '\z',
 				'/' => '\/',
@@ -423,7 +423,7 @@ final class RegExp implements \Stringable {
 
 	private function group_open(): string {
 		if ( preg_match( '/\G\?<?[=!]/A', $this->src, $look, 0, $this->pos ) ) {
-			$this->requiresUnicodeOnAstral = true;
+			$this->requiresUnicodeOnAstral = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		if ( preg_match( '/\G\?<([A-Za-z_$][\w$]*)>/A', $this->src, $m, 0, $this->pos ) ) {
 			if ( str_contains( $m[1], '$' ) ) {
@@ -444,7 +444,7 @@ final class RegExp implements \Stringable {
 			throw new JsError( 'Ignore-case regexes do not support encoded character escapes', 'SyntaxError' );
 		}
 		if ( in_array( $c, array( 'D', 'W', 'S' ), true ) ) {
-			$this->requiresUnicodeOnAstral = true;
+			$this->requiresUnicodeOnAstral = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 
 		switch ( $c ) {
@@ -522,7 +522,7 @@ final class RegExp implements \Stringable {
 		if ( ctype_digit( $c ) ) {
 			preg_match( '/\G\d*/A', $this->src, $m, 0, $this->pos );
 			$n = (int) ( $c . $m[0] );
-			if ( '0' !== $c && ! $in_class && $n <= $this->groupCount ) {
+			if ( '0' !== $c && ! $in_class && $n <= $this->groupCount ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				$this->pos += strlen( $m[0] );
 
 				return "(?:\\g{{$n}}|(?({$n})(?!)))";
@@ -593,11 +593,11 @@ final class RegExp implements \Stringable {
 		if ( $cp >= 0xD800 && $cp <= 0xDBFF && preg_match( '/\G\\\\u([dD][c-fC-F][0-9A-Fa-f]{2})/A', $this->src, $lo, 0, $this->pos ) ) {
 			$this->pos                    += 6;
 			$cp                            = 0x10000 + ( ( $cp - 0xD800 ) << 10 ) + ( hexdec( $lo[1] ) - 0xDC00 );
-			$this->requiresUnicodeOnAstral = true;
+			$this->requiresUnicodeOnAstral = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		} elseif ( $cp >= 0xD800 && $cp <= 0xDFFF ) {
 			if ( $in_class ) {
 				throw new JsError( 'Lone surrogate escapes in regex character classes are not supported', 'SyntaxError' ); }
-			$this->requiresUnicodeOnAstral = true;
+			$this->requiresUnicodeOnAstral = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			return '(?!)'; // a lone surrogate can never occur in UTF-8 input
 		}
 
@@ -609,7 +609,7 @@ final class RegExp implements \Stringable {
 	 * class, so a class containing them becomes an alternation/lookahead.
 	 */
 	private function char_class(): string {
-		$this->requiresUnicodeOnAstral = true;
+		$this->requiresUnicodeOnAstral = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$negated                       = ( $this->src[ $this->pos ] ?? '' ) === '^';
 		if ( $negated ) {
 			++$this->pos;

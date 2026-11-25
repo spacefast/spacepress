@@ -42,7 +42,7 @@ final class Facade {
 	public const PREFIX = '/wp-json/' . self::NAMESPACE;
 
 	/** Active REST namespace (hosts may override via SP_API_NAMESPACE or `sp_api_namespace`). */
-	public static function apiNamespace(): string {
+	public static function apiNamespace(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$ns = defined( 'SP_API_NAMESPACE' ) && is_string( SP_API_NAMESPACE ) && SP_API_NAMESPACE !== ''
 			? SP_API_NAMESPACE
 			: self::NAMESPACE;
@@ -66,7 +66,7 @@ final class Facade {
 	 * read rule doesn't cover it. Core has already decided the item is readable; this only gives the
 	 * facade SpacePress's own shape of it (PostsController puts it on the facade's dispatches).
 	 */
-	public static function spRow( string $collection, int $id, \SpacePress\Viewer $viewer ): ?object {
+	public static function spRow( string $collection, int $id, \SpacePress\Viewer $viewer ): ?object { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$key = $collection . "\0" . ( $viewer->user['id'] ?? 0 ) . "\0" . ( $viewer->user['role'] ?? '' );
 		if ( ! isset( self::$rows[ $key ] ) || ! array_key_exists( $id, self::$rows[ $key ] ) ) {
 			self::prefetch( $collection, array( $id ), $viewer );
@@ -99,9 +99,9 @@ final class Facade {
 		} catch ( HttpError ) {
 			$found = array();
 		}
-		$byId = array_column( $found, null, $pk );
+		$byId = array_column( $found, null, $pk ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		foreach ( $missing as $id ) {
-			self::$rows[ $key ][ $id ] = $byId[ $id ] ?? null;
+			self::$rows[ $key ][ $id ] = $byId[ $id ] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 	}
 
@@ -170,7 +170,7 @@ final class Facade {
 	 * answer depends on who asks, so Batcache keeps none.
 	 */
 	public static function served( mixed $served, mixed $result, mixed $request ): mixed {
-		if ( $served || ! $request instanceof \WP_REST_Request || ( $path = self::below( (string) $request->get_route() ) ) === null ) {
+		if ( $served || ! $request instanceof \WP_REST_Request || ( $path = self::below( (string) $request->get_route() ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $served;
 		}
 		if ( function_exists( 'batcache_cancel' ) ) {
@@ -243,7 +243,7 @@ final class Facade {
 		if ( 'actions' === $name && count( $segments ) === 2 ) {
 			return self::action( $plugin, $method, $segments[1], $query, $body );
 		}
-		if ( $name === \SpacePress\Live\Module::ROUTE && count( $segments ) === 1 ) {
+		if ( $name === \SpacePress\Live\Module::ROUTE && count( $segments ) === 1 ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return \SpacePress\Live\Module::serve( $plugin, $method, $body ); // reactive queries: its own file
 		}
 		if ( isset( $plugin->schema->globals()[ $name ] ) && count( $segments ) === 1 ) {
@@ -462,7 +462,7 @@ final class Facade {
 	 */
 	private static function paging( array $query ): array {
 		$limit = isset( $query['limit'] ) ? (int) $query['limit'] : self::LIMIT;
-		if ( $limit < 1 || (string) $limit !== (string) ( $query['limit'] ?? $limit ) ) {
+		if ( $limit < 1 || (string) $limit !== (string) ( $query['limit'] ?? $limit ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			throw HttpError::invalidQuery( 'limit must be a positive integer', '/limit' );
 		}
 		$offset = 0;
@@ -647,7 +647,7 @@ final class Facade {
 	}
 
 	/** What a browser's form post to `$path` flashes under (an action's name, or `comments`), if this request is one. */
-	private static function formAction( string $method, string $path ): ?string {
+	private static function formAction( string $method, string $path ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$segments = array_values( array_filter( explode( '/', $path ), static fn ( $s ) => '' !== $s ) );
 		if ( 'POST' !== $method || ! \SpacePress\Render\Forms::posted() ) {
 			return null;
@@ -739,7 +739,7 @@ final class Facade {
 	 * route: rendering one needs its path, never its bytes. Any other dispatch (an action's run, a
 	 * post read that embeds media) may use the file.
 	 */
-	public static function mediaWithoutBytes(): bool {
+	public static function mediaWithoutBytes(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		[$method, $route] = array() === self::$dispatches ? array( null, '' ) : self::$dispatches[ count( self::$dispatches ) - 1 ];
 
 		return in_array( $method, array( 'GET', 'HEAD', 'DELETE' ), true ) && preg_match( '#^/wp/v2/media(?:/\d+)?/?$#', $route ) === 1;
@@ -1046,7 +1046,7 @@ final class Facade {
 		if ( null === $viewer ) {
 			throw HttpError::notFound( "No $collection row $id" );
 		}
-		$formatUser = static function ( ?int $uid ): ?array {
+		$formatUser = static function ( ?int $uid ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			if ( null === $uid || $uid <= 0 ) {
 				return null;
 			}
@@ -1069,7 +1069,7 @@ final class Facade {
 						'version'         => $r['version'],
 						'op'              => $r['op'],
 						'at'              => $r['at'],
-						'user'            => $formatUser( $r['userId'] ),
+						'user'            => $formatUser( $r['userId'] ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						'schemaMigration' => $r['schemaMigration'],
 						'changed'         => $r['changed'],
 					),
@@ -1132,7 +1132,7 @@ final class Facade {
 			// Autosaves are drafts in progress, not revisions: they are left out in the query, so the
 			// page counts and the cursor stay exact.
 			[$limit, $offset] = self::paging( $query );
-			$noAutosaves      = static function ( array $args ): array {
+			$noAutosaves      = static function ( array $args ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				global $wpdb;
 				$parent = (int) ( $args['post_parent'] ?? 0 );
 				// wp_is_post_autosave(): a revision whose name holds "<parent>-autosave".
@@ -1140,7 +1140,7 @@ final class Facade {
 				// Core already sets `post__not_in` from the route's `exclude` (default []): add to it.
 				return array() === $ids ? $args : array( 'post__not_in' => array_merge( (array) ( $args['post__not_in'] ?? array() ), array_map( 'intval', $ids ) ) ) + $args;
 			};
-			add_filter( 'rest_revision_query', $noAutosaves );
+			add_filter( 'rest_revision_query', $noAutosaves ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			try {
 				$response = self::run(
 					self::request(
@@ -1154,23 +1154,23 @@ final class Facade {
 					)
 				);
 			} finally {
-				remove_filter( 'rest_revision_query', $noAutosaves );
+				remove_filter( 'rest_revision_query', $noAutosaves ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
-			$coreRows = (array) $hidden( static fn () => self::unwrap( $response ) );
-			$metaById = array();
+			$coreRows = (array) $hidden( static fn () => self::unwrap( $response ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$metaById = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			foreach ( $db->revisions( $collection, $id, $viewer ) as $entry ) {
-				$metaById[ $entry['id'] ] = $entry;
+				$metaById[ $entry['id'] ] = $entry; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 			$out = array();
-			foreach ( $coreRows as $r ) {
+			foreach ( $coreRows as $r ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$rid   = (int) $r['id'];
-				$m     = $metaById[ $rid ] ?? null;
+				$m     = $metaById[ $rid ] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$out[] = array(
 					'id'              => $rid,
 					'version'         => $m['version'] ?? 1,
 					'op'              => $m['op'] ?? 'update',
 					'at'              => self::iso_gmt( (string) ( $r['date_gmt'] ?? '' ) ),
-					'user'            => $formatUser( (int) ( $r['author'] ?? 0 ) ?: null ),
+					'user'            => $formatUser( (int) ( $r['author'] ?? 0 ) ?: null ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, Universal.Operators.DisallowShortTernary.Found -- Preserve the existing PHP variable name. Keep the existing falsey fallback.
 					'schemaMigration' => $m['schemaMigration'] ?? null,
 					'changed'         => $m['changed'] ?? null,
 				);
@@ -1251,7 +1251,7 @@ final class Facade {
 			throw HttpError::invalidInput( 'Send the file as multipart/form-data field "file"', '/file' );
 		}
 		$err = (int) ( $file['error'] ?? UPLOAD_ERR_NO_FILE );
-		if ( $err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE ) {
+		if ( $err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			throw new HttpError( 413, 'payload_too_large', 'The upload is larger than this server accepts' );
 		}
 		$request = new \WP_REST_Request( 'POST', $route );

@@ -52,7 +52,7 @@ final class Module {
 	 * Handlers must not run inside the CLI command's transaction: there are no savepoints, so a
 	 * caught handler failure would commit its partial writes. The result is filled in after commit.
 	 */
-	private static function afterCommit( callable $fn ): \JsonSerializable {
+	private static function afterCommit( callable $fn ): \JsonSerializable { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		$result = new class() implements \JsonSerializable {
 			public mixed $value = null;
 

@@ -10,5 +10,5 @@ namespace SpacePress;
  */
 final class JsPrototype {
 
-	public function __construct( public readonly JsClass $class ) {}
+	public function __construct( public readonly JsClass $class ) {} // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP parameter name.
 }

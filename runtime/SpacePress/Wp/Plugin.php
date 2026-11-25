@@ -25,7 +25,7 @@ final class Plugin {
 	private static ?bool $has_ledger = null;
 
 	private ?App $app = null;
-	private string $mainFile;
+	private string $mainFile; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	private ?Connection $connection = null;
 	/** Why storage is behind this build (a failed or contended upgrade); SpacePress's REST refuses meanwhile. */
 	private ?string $unavailable = null;
@@ -41,15 +41,15 @@ final class Plugin {
 	private array $drops = array();
 
 	/** A standalone deploy can replace schema.php mid-request. A managed build's files are immutable. */
-	private ?string $loadedHash       = null;
-	private ?string $loadedSchemaHash = null;
+	private ?string $loadedHash       = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
+	private ?string $loadedSchemaHash = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
-	public function __construct( public readonly string $dir, string $mainFile, public readonly Schema $schema ) {
+	public function __construct( public readonly string $dir, string $mainFile, public readonly Schema $schema ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ! Runtime::managed() ) {
 			$this->buildHash();
 		}
 		self::$instance = $this;
-		$this->mainFile = $mainFile;
+		$this->mainFile = $mainFile; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP property name. Preserve the existing PHP variable name.
 		if ( $this->schema->commerce() !== null ) {
 			\SpacePress\Commerce\Module::register( $this ); }
 		DestructiveMigrations::registerFor( $this );
@@ -67,9 +67,9 @@ final class Plugin {
 			// Users created outside SpacePress become members with the collection's defaults.
 			add_action(
 				'user_register',
-				function ( int $userId ): void {
+				function ( int $userId ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					if ( ! $this->connection()->busy() ) {
-						WpUserStore::fillDefaults( $this->schema, $userId );
+						WpUserStore::fillDefaults( $this->schema, $userId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					}
 				}
 			);
@@ -87,14 +87,14 @@ final class Plugin {
 		// While storage is behind, SpacePress collections' posts can't be written by any path (core REST,
 		// wp-admin, other plugins): their hooks would run against tables the build doesn't match.
 		// Last, so no later callback (SCF's `_acf_changed` one returns false) can undo the refusal.
-		add_filter( 'wp_insert_post_empty_content', fn ( $empty, $post ) => $empty || ( $this->unavailable() !== null && $this->touches_collection( $post ) ), PHP_INT_MAX, 2 );
-		$refuseDelete = fn ( $check, $post ) => $this->unavailable() !== null && $post instanceof \WP_Post && $this->touches_collection( (array) $post ) ? false : $check;
+		add_filter( 'wp_insert_post_empty_content', fn ( $empty, $post ) => $empty || ( $this->unavailable() !== null && $this->touches_collection( $post ) ), PHP_INT_MAX, 2 ); // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.emptyFound -- Preserve the existing PHP parameter name.
+		$refuseDelete = fn ( $check, $post ) => $this->unavailable() !== null && $post instanceof \WP_Post && $this->touches_collection( (array) $post ) ? false : $check; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		// WordPress empties its trash on a schedule (wp_scheduled_delete), with nobody there to read a
 		// refusal. For SpacePress post types with softDelete enabled, block wp_scheduled_delete so
 		// SpacePress's own `retention` policy (default `"forever"`) governs trash lifetime.
 		add_filter(
 			'pre_delete_post',
-			function ( $check, $post ) use ( $refuseDelete ) {
+			function ( $check, $post ) use ( $refuseDelete ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( $post instanceof \WP_Post && doing_action( 'wp_scheduled_delete' ) && Retention::blocksWpScheduledDelete( $this->schema, $post->post_type ) ) {
 					return false;
 				}
@@ -110,14 +110,14 @@ final class Plugin {
 					}
 				}
 
-				return $refuseDelete( $check, $post ) ?? $this->prepareDelete( $check, $post );
+				return $refuseDelete( $check, $post ) ?? $this->prepareDelete( $check, $post ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			},
 			PHP_INT_MAX,
 			2
 		);
 		// The run's last prepared delete, if a later filter declined it, ends with the run.
 		add_action( 'wp_scheduled_delete', array( EditorSave::class, 'abandonPrepared' ), PHP_INT_MAX, 0 );
-		add_filter( 'pre_trash_post', $refuseDelete, PHP_INT_MAX, 2 );
+		add_filter( 'pre_trash_post', $refuseDelete, PHP_INT_MAX, 2 ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		// wp_untrash_post deletes the trash metadata before its update; refuse before that.
 		add_filter(
 			'pre_untrash_post',
@@ -145,20 +145,20 @@ final class Plugin {
 		// Keep SpacePress soft-delete metadata in sync when a post is trashed or untrashed via wp-admin or core REST.
 		add_action(
 			'trashed_post',
-			function ( int $postId ): void {
+			function ( int $postId ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( $this->connection()->busy() ) {
 					return;
 				}
-				$collection = $this->collection_of( $postId );
+				$collection = $this->collection_of( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( null === $collection || ! ( $this->schema->collection( $collection )['softDelete'] ?? false ) ) {
 					return;
 				}
-				update_post_meta( $postId, WpPostStore::DELETED_AT_META, \SpacePress\Js::iso( \SpacePress\Js::now() ) );
+				update_post_meta( $postId, WpPostStore::DELETED_AT_META, \SpacePress\Js::iso( \SpacePress\Js::now() ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$uid = get_current_user_id();
 				if ( $uid > 0 ) {
-					update_post_meta( $postId, WpPostStore::DELETED_BY_META, (string) $uid );
+					update_post_meta( $postId, WpPostStore::DELETED_BY_META, (string) $uid ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				} else {
-					delete_post_meta( $postId, WpPostStore::DELETED_BY_META );
+					delete_post_meta( $postId, WpPostStore::DELETED_BY_META ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				}
 			},
 			10,
@@ -166,17 +166,17 @@ final class Plugin {
 		);
 		add_action(
 			'untrashed_post',
-			function ( int $postId ): void {
+			function ( int $postId ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( $this->connection()->busy() ) {
 					return;
 				}
-				$collection = $this->collection_of( $postId );
+				$collection = $this->collection_of( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( null === $collection || ! ( $this->schema->collection( $collection )['softDelete'] ?? false ) ) {
 					return;
 				}
-				delete_post_meta( $postId, WpPostStore::DELETED_AT_META );
-				delete_post_meta( $postId, WpPostStore::DELETED_BY_META );
-				delete_post_meta( $postId, WpPostStore::DELETED_GROUP_META );
+				delete_post_meta( $postId, WpPostStore::DELETED_AT_META ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				delete_post_meta( $postId, WpPostStore::DELETED_BY_META ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				delete_post_meta( $postId, WpPostStore::DELETED_GROUP_META ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			},
 			10,
 			1
@@ -251,7 +251,7 @@ final class Plugin {
 		ContentPages::register( $this );
 		RoutePages::register( $this );
 		KindUrls::register( $this );
-		MarkdownTwins::register( $this->mainFile );
+		MarkdownTwins::register( $this->mainFile ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		Sitemap::register( $this );
 		SearchHandler::register( $this );
 		Purges::register( $this );
@@ -315,18 +315,18 @@ final class Plugin {
 	 *
 	 * @param list<string> $args
 	 */
-	public function cli( array $args, array $assocArgs = array() ): void {
-		foreach ( $assocArgs as $name => $value ) {
+	public function cli( array $args, array $assocArgs = array() ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		foreach ( $assocArgs as $name => $value ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$args[] = '--' . $name . ( true === $value ? '' : '=' . ( false === $value ? 'false' : (string) $value ) );
 		}
 		// (Runtime's `wp spacepress` dispatcher already refused everything but `migrate` while storage is behind.)
 		if ( ( $args[0] ?? '' ) === 'danger' ) {
-			[$code, $out] = DestructiveMigrations::wpCli( $this, array_slice( $args, 1 ), $assocArgs );
+			[$code, $out] = DestructiveMigrations::wpCli( $this, array_slice( $args, 1 ), $assocArgs ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		} elseif ( ( $args[0] ?? '' ) === 'migrate' ) {
 			try {
 				// `--drop=likes=1204,likes.note=12`: WP-CLI keeps the last of repeated flags, so values are comma-separated.
-				$this->drops = SchemaCheck::drops( array_key_exists( 'drop', $assocArgs ) ? array( $assocArgs['drop'] ) : array() );
-				$mark        = $assocArgs['mark-applied'] ?? null;
+				$this->drops = SchemaCheck::drops( array_key_exists( 'drop', $assocArgs ) ? array( $assocArgs['drop'] ) : array() ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$mark        = $assocArgs['mark-applied'] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( is_string( $mark ) ) {
 					Migrator::locked( $this->connection(), $this->schema_option(), fn () => $this->migrator()->markApplied( $mark ) );
 				}
@@ -357,14 +357,14 @@ final class Plugin {
 	}
 
 	/** rest_pre_dispatch: core /wp/v2 writes to a SpacePress collection get a 503 while storage is behind. */
-	public function refuseCoreWrites( mixed $result, \WP_REST_Server $server, \WP_REST_Request $request ): mixed {
+	public function refuseCoreWrites( mixed $result, \WP_REST_Server $server, \WP_REST_Request $request ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null !== $result || $request->get_method() === 'GET' || $this->unavailable() === null ) {
 			return $result;
 		}
 		foreach ( $this->post_backed() as $spec ) {
 			// WordPress matches routes case-insensitively, so this does too.
 			$object = get_post_type_object( $spec['wp']['postType'] );
-			if ( preg_match( '#^/wp/v2/' . preg_quote( (string) ( $object?->rest_base ?: $spec['wp']['postType'] ), '#' ) . '(/|$)#i', $request->get_route() ) ) {
+			if ( preg_match( '#^/wp/v2/' . preg_quote( (string) ( $object?->rest_base ?: $spec['wp']['postType'] ), '#' ) . '(/|$)#i', $request->get_route() ) ) { // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 				return new \WP_Error( 'sp_unavailable', self::UNAVAILABLE, array( 'status' => 503 ) );
 			}
 		}
@@ -396,7 +396,7 @@ final class Plugin {
 		return false;
 	}
 
-	private function owns_collection_posts( int $userId ): bool {
+	private function owns_collection_posts( int $userId ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		global $wpdb;
 		$types = array_map( static fn ( array $spec ): string => (string) $spec['wp']['postType'], $this->post_backed() );
 		if ( array() === $types ) {
@@ -404,7 +404,7 @@ final class Plugin {
 		}
 		$in = implode( ', ', array_fill( 0, count( $types ), '%s' ) );
 
-		return (bool) $wpdb->get_var( $wpdb->prepare( "SELECT 1 FROM {$wpdb->posts} WHERE post_author = %d AND post_type IN ($in) LIMIT 1", $userId, ...$types ) );
+		return (bool) $wpdb->get_var( $wpdb->prepare( "SELECT 1 FROM {$wpdb->posts} WHERE post_author = %d AND post_type IN ($in) LIMIT 1", $userId, ...$types ) ); // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- The IN list contains generated placeholders with bound values. Preserve the existing PHP variable name.
 	}
 
 	private function is_collection_type( string $type ): bool {
@@ -429,7 +429,7 @@ final class Plugin {
 
 	/** A URL inside the app plugin's directory (its compiled client modules). */
 	public function url( string $path ): string {
-		return plugins_url( $path, $this->mainFile );
+		return plugins_url( $path, $this->mainFile ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	public function app(): App {
@@ -458,7 +458,7 @@ final class Plugin {
 			$this->unavailable = $this->remember( $refused );
 			$this->notice( $this->unavailable );
 		} catch ( \Throwable $error ) {
-			deactivate_plugins( plugin_basename( $this->mainFile ) );
+			deactivate_plugins( plugin_basename( $this->mainFile ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			wp_die( esc_html( $error->getMessage() ), 'SpacePress', array( 'back_link' => true ) );
 		}
 		// migrateLocked() already provisioned identity and backfilled members.
@@ -481,7 +481,7 @@ final class Plugin {
 		}
 	}
 
-	public function maybeMigrate(): void {
+	public function maybeMigrate(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! Runtime::installs() || $this->current() ) {
 			return;
 		}
@@ -512,7 +512,7 @@ final class Plugin {
 		);
 	}
 
-	public function installSeed(): void {
+	public function installSeed(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $this->unavailable() !== null ) {
 			return;
 		}
@@ -604,7 +604,7 @@ final class Plugin {
 			$refusals = $runtime['refusals'] ?? array();
 		} catch ( \SpacePress\HttpError $e ) {
 			$refusals[] = array(
-				'code'    => $e->errorCode,
+				'code'    => $e->errorCode, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				'message' => $e->getMessage(),
 			);
 		}
@@ -623,7 +623,7 @@ final class Plugin {
 		} catch ( \SpacePress\HttpError $e ) {
 			// An existingTable this site may not bind (SpacePress\Wp\Guard), refused before anything is read.
 			$refusals[] = array(
-				'code'    => $e->errorCode,
+				'code'    => $e->errorCode, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				'message' => $e->getMessage(),
 			);
 		}
@@ -650,16 +650,16 @@ final class Plugin {
 		}
 		$applied = $this->migrator()->migrate();
 		NativePosts::adopt( $this );
-		if ( ( $compiled = \SpacePress\RuntimeSchema\Loader::compiled() ) !== null ) {
+		if ( ( $compiled = \SpacePress\RuntimeSchema\Loader::compiled() ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			// `runtimeSchema`: runtime changes are checked against the fields of every build that ran here.
 			\SpacePress\RuntimeSchema\Loader::rememberDeclared( $compiled );
 		}
 		delete_option( $this->refusal_option() );
 		IdentityBridge::provision();
 		$this->backfill_members();
-		$schemaHash = $this->schemaHash();
-		NativePosts::rememberPostTypes( $this->schema, $schemaHash );
-		update_option( $this->schema_option(), $schemaHash, false );
+		$schemaHash = $this->schemaHash(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		NativePosts::rememberPostTypes( $this->schema, $schemaHash ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		update_option( $this->schema_option(), $schemaHash, false ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 		return $applied;
 	}
@@ -695,11 +695,11 @@ final class Plugin {
 		return new Migrator( $this->connection(), $this->dir . '/sp/app/migrations', $this->schema, $this->drops );
 	}
 
-	public function pendingMigrations(): array {
+	public function pendingMigrations(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->migrator()->pending();
 	}
 
-	public function storageProblems(): array {
+	public function storageProblems(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->migrator()->nonInnoDb();
 	}
 
@@ -715,7 +715,7 @@ final class Plugin {
 	 * The named lock a deploy holds while it checks and migrates storage. Applying a runtime schema
 	 * change takes the same lock (spec §2.10), so it never interleaves with a deploy.
 	 */
-	public function schemaLock(): string {
+	public function schemaLock(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->schema_option();
 	}
 
@@ -725,12 +725,12 @@ final class Plugin {
 	 * build's directory is mounted and never rewrites the file this request loaded, so the recorded
 	 * hash, not the file, says what is live. Also false when a deploy replaced the file in place.
 	 */
-	public function buildIsCurrent(): bool {
+	public function buildIsCurrent(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		wp_cache_delete( 'alloptions', 'options' );
 		wp_cache_delete( $this->schema_option(), 'options' );
 		clearstatcache( true, $this->dir . '/sp/app/schema.php' );
 
-		$loaded = $this->loadedSchemaHash ??= $this->schemaHash();
+		$loaded = $this->loadedSchemaHash ??= $this->schemaHash(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		return get_option( $this->schema_option() ) === $loaded && $this->schemaHash() === $loaded;
 	}
 
@@ -738,12 +738,12 @@ final class Plugin {
 		return 'sp_' . $this->schema->name() . '_schema';
 	}
 
-	private function schemaHash(): string {
+	private function schemaHash(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Unavailable build files contribute an empty digest.
 		$parts    = array( (string) @hash_file( 'sha256', $this->dir . '/sp/app/schema.php' ) );
-		$migFiles = glob( $this->dir . '/sp/app/migrations/*/migration.sql' ) ?: array();
-		sort( $migFiles, SORT_STRING );
-		foreach ( $migFiles as $file ) {
+		$migFiles = glob( $this->dir . '/sp/app/migrations/*/migration.sql' ) ?: array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, Universal.Operators.DisallowShortTernary.Found -- Preserve the existing PHP variable name. Keep the existing falsey fallback.
+		sort( $migFiles, SORT_STRING ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		foreach ( $migFiles as $file ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Unavailable build files contribute an empty digest.
 			$parts[] = basename( dirname( $file ) ) . ':' . (string) @hash_file( 'sha256', $file );
 		}
@@ -752,13 +752,13 @@ final class Plugin {
 	}
 
 	/** Identifies the compiled schema this request runs: what a runtime schema version was validated on. */
-	public function buildHash(): string {
-		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Unavailable build files contribute an empty digest.
+	public function buildHash(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Unavailable build files contribute an empty digest.
 		return $this->loadedHash ??= (string) @hash_file( 'sha256', $this->dir . '/sp/app/schema.php' );
 	}
 
 	/** The manifest for this exact immutable app tree, when the build loader mounted it. */
-	public function mountedManifest(): ?array {
+	public function mountedManifest(): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! Runtime::managed() || ! class_exists( \SpacePress\Loader\Loader::class, false ) ) {
 			return null;
 		}
@@ -773,7 +773,7 @@ final class Plugin {
 
 	// ================================================================ registration
 
-	public function registerPostTypes(): void {
+	public function registerPostTypes(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( $this->post_backed() as $name => $spec ) {
 			if ( $spec['native'] ?? false ) {
 				// WordPress's own posts (`wp.posts.extend()`): core registers the type; the app's fields
@@ -883,7 +883,7 @@ final class Plugin {
 		}
 	}
 
-	public function registerFields(): void {
+	public function registerFields(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		Scf::register( $this->schema );
 		Scf::registerFilters();
 	}
@@ -892,7 +892,7 @@ final class Plugin {
 	 * The app's own wp-admin menu: the parent of its globals (SCF options pages) and of SpacePress Admin's
 	 * table screens (runtime/admin/lib/screens.php), so it exists when the app has either.
 	 */
-	public function adminMenu(): void {
+	public function adminMenu(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		// The kinds SpacePress Admin gives a classic list screen (runtime/admin/lib/screens.php uses the same test).
 		$tables = array_filter(
 			$this->schema->collections(),
@@ -920,7 +920,7 @@ final class Plugin {
 	 * The app's own wp-admin page without SpacePress Admin (`admin: false`): a list of the pages under it,
 	 * the app's globals and table screens, so the entry is never an empty page.
 	 */
-	public static function renderAppMenuPage( string $slug ): void {
+	public static function renderAppMenuPage( string $slug ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		echo '<div class="wrap"><h1>' . esc_html( get_admin_page_title() ) . '</h1><ul>';
 		foreach ( $GLOBALS['submenu'][ $slug ] ?? array() as $item ) {
 			if ( ( $item[2] ?? $slug ) === $slug || ! current_user_can( (string) ( $item[1] ?? 'do_not_allow' ) ) ) {
@@ -936,7 +936,7 @@ final class Plugin {
 	 * registry (runtime/admin/lib/screens.php) like any PHP screen. Without SpacePress Admin
 	 * (`admin: false`) nothing listens for `sp_admin_screens`, and the function is absent.
 	 */
-	public function registerScreens(): void {
+	public function registerScreens(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! function_exists( 'sp_admin_register_screen' ) ) {
 			return;
 		}
@@ -948,7 +948,7 @@ final class Plugin {
 	/**
 	 * The app's `adminWidget()` and `adminDashboard()` exports, compiled into schema.php.
 	 */
-	public function registerDashboards(): void {
+	public function registerDashboards(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( function_exists( 'sp_admin_register_declarative_widget' ) ) {
 			foreach ( $this->schema->widgets() as $id => $widget ) {
 				sp_admin_register_declarative_widget( (string) $id, $widget );
@@ -963,32 +963,32 @@ final class Plugin {
 
 	// ================================================================ editor hooks (§4.9)
 
-	public function capturePrevious( int $postId ): void {
-		$collection = $this->collection_of( $postId );
+	public function capturePrevious( int $postId ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		$collection = $this->collection_of( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === $collection || $this->connection()->busy() || $this->unavailable() !== null ) {
 			return;
 		}
-		$post = get_post( $postId );
+		$post = get_post( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		// A trashed post is read too: its untrash is an update of a row that exists, never a create.
-		$this->before[ $postId ] = $post instanceof \WP_Post && 'auto-draft' !== $post->post_status
-			? ( 'trash' === $post->post_status ? $this->app()->db->editorRowIncludingTrash( $collection, $postId ) : $this->app()->db->editorRow( $collection, $postId ) )
+		$this->before[ $postId ] = $post instanceof \WP_Post && 'auto-draft' !== $post->post_status // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			? ( 'trash' === $post->post_status ? $this->app()->db->editorRowIncludingTrash( $collection, $postId ) : $this->app()->db->editorRow( $collection, $postId ) ) // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			: null;
 	}
 
 	/** Run $fn with trashed posts readable ({@see WpPostStore::withTrash()}): a move into the trash re-reads the row. */
-	private function withTrash( callable $fn ): mixed {
+	private function withTrash( callable $fn ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		$store = $this->app()->db->store();
 
 		return $store instanceof CompositeStore ? $store->posts->withTrash( $fn ) : $fn();
 	}
 
-	public function afterEditorSave( int $postId, \WP_Post $post, bool $update, ?\WP_Post $before ): void {
-		$collection = $this->collection_of( $postId );
-		if ( null === $collection || isset( $this->promoting[ $postId ] ) || $this->connection()->busy() || $this->unavailable() !== null || in_array( $post->post_status, array( 'auto-draft', 'inherit' ), true ) ) {
+	public function afterEditorSave( int $postId, \WP_Post $post, bool $update, ?\WP_Post $before ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		$collection = $this->collection_of( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( null === $collection || isset( $this->promoting[ $postId ] ) || $this->connection()->busy() || $this->unavailable() !== null || in_array( $post->post_status, array( 'auto-draft', 'inherit' ), true ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return;
 		}
-		$previous = $this->editor_previous( $postId, $before );
-		unset( $this->before[ $postId ] );
+		$previous = $this->editor_previous( $postId, $before ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		unset( $this->before[ $postId ] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		// WordPress's trash is not a delete: the row stays and an untrash brings it back. Into or out of
 		// the trash, the move is reported as the status change it is for visitors (a published item
 		// leaving or entering the published set, as an unpublish or a publish is), and is nothing to
@@ -999,7 +999,7 @@ final class Plugin {
 		}
 		$app = $this->app();
 		try {
-			$save = fn () => $app->db->transaction( fn () => $app->db->afterEditorSave( $collection, $postId, $previous, WpAuth::current() ) );
+			$save = fn () => $app->db->transaction( fn () => $app->db->afterEditorSave( $collection, $postId, $previous, WpAuth::current() ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$trash ? $this->withTrash( $save ) : $save();
 		} catch ( \Throwable $e ) {
 			EditorSave::fail( $e );
@@ -1011,7 +1011,7 @@ final class Plugin {
 	 * actions, beforeDelete). Refused or thrown: that item rolls back, is logged, and core skips it
 	 * (false). Passed: before_delete_post finds the half done and doesn't run it again.
 	 */
-	private function prepareDelete( mixed $check, mixed $post ): mixed {
+	private function prepareDelete( mixed $check, mixed $post ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null !== $check || ! $post instanceof \WP_Post || ! wp_doing_cron() ) {
 			return $check;
 		}
@@ -1032,24 +1032,24 @@ final class Plugin {
 		return $check;
 	}
 
-	public function beforeEditorDelete( int $postId, ?\WP_Post $post = null, bool $prepared = false ): void {
-		if ( isset( $this->deleting[ $postId ] ) && ! $prepared ) {
+	public function beforeEditorDelete( int $postId, ?\WP_Post $post = null, bool $prepared = false ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		if ( isset( $this->deleting[ $postId ] ) && ! $prepared ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return; // its before half ran at pre_delete_post
 		}
-		$collection = $this->collection_of( $postId );
+		$collection = $this->collection_of( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === $collection || $this->connection()->busy() || $this->unavailable() !== null ) {
 			return;
 		}
 		$db = $this->app()->db;
 		// A post deleted from the trash is still the row it was: the delete runs its lifecycle here, once.
-		$row = $db->editorRowIncludingTrash( $collection, $postId );
+		$row = $db->editorRowIncludingTrash( $collection, $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null !== $row ) {
-			$this->deleting[ $postId ] = array( $collection, $row );
+			$this->deleting[ $postId ] = array( $collection, $row ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			try {
 				$user = WpAuth::current();
 				$db->beforeEditorDelete( $collection, $row, null === $user ? null : new Viewer( $user ) );
 			} catch ( \Throwable $e ) {
-				unset( $this->deleting[ $postId ] );
+				unset( $this->deleting[ $postId ] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( $prepared ) {
 					throw $e;
 				}
@@ -1058,12 +1058,12 @@ final class Plugin {
 		}
 	}
 
-	public function afterEditorDelete( int $postId, ?\WP_Post $post = null ): void {
-		if ( ! isset( $this->deleting[ $postId ] ) ) {
+	public function afterEditorDelete( int $postId, ?\WP_Post $post = null ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		if ( ! isset( $this->deleting[ $postId ] ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return;
 		}
-		[$collection, $row] = $this->deleting[ $postId ];
-		unset( $this->deleting[ $postId ] );
+		[$collection, $row] = $this->deleting[ $postId ]; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		unset( $this->deleting[ $postId ] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		try {
 			$this->app()->db->afterEditorDelete( $collection, $row, WpAuth::current() );
 		} catch ( \Throwable $e ) {
@@ -1080,7 +1080,7 @@ final class Plugin {
 
 	public function promoted( mixed $post ): void {
 		$id = (int) ( $post instanceof \WP_Post ? $post->ID : $post );
-		if ( isset( $this->promoting[ $id ] ) && ( $collection = $this->collection_of( $id ) ) !== null ) {
+		if ( isset( $this->promoting[ $id ] ) && ( $collection = $this->collection_of( $id ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			// Promotion runs no write hooks but `afterPublish`; watchers still need to see the row appear.
 			$db = $this->app()->db;
 			$db->current( static fn () => \SpacePress\Realtime\Module::promoted( $collection, array( $id ) ) );
@@ -1094,21 +1094,21 @@ final class Plugin {
 		unset( $this->promoting[ $id ] );
 	}
 
-	public function revisionsToKeep( int $keep, \WP_Post $post ): int {
+	public function revisionsToKeep( int $keep, \WP_Post $post ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return isset( $this->promoting[ $post->ID ] ) ? 0 : $keep;
 	}
 
 	/** Every revision of a First post, whoever saved it, carries the full row (§4.7). Autosaves keep their own meta. */
-	public function snapshotRevision( int $revisionId, int $postId ): void {
-		$collection = $this->collection_of( $postId );
-		if ( null === $collection || wp_is_post_autosave( $revisionId ) ) {
+	public function snapshotRevision( int $revisionId, int $postId ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		$collection = $this->collection_of( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( null === $collection || wp_is_post_autosave( $revisionId ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return;
 		}
-		CompositeStore::create( $this->schema, $this->connection() )->posts->snapshotRevision( $collection, $revisionId, $postId );
+		CompositeStore::create( $this->schema, $this->connection() )->posts->snapshotRevision( $collection, $revisionId, $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/** Core only compares title/content/excerpt; a change to any other First column also earns a revision. */
-	public function revisionHasChanged( bool $changed, \WP_Post $latest, \WP_Post $post ): bool {
+	public function revisionHasChanged( bool $changed, \WP_Post $latest, \WP_Post $post ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$collection = $this->collection_of( $post->ID );
 		if ( $changed || null === $collection ) {
 			return $changed;
@@ -1123,16 +1123,16 @@ final class Plugin {
 	 * SCF keeps an unchecked true_false and an emptied list as '', so for those types only a missing
 	 * meta row means "no value"; a '' boolean is stored as false, which is what SCF means by it.
 	 */
-	public function fillEditorDefaults( int $postId, \WP_Post $post, bool $update, ?\WP_Post $before ): void {
-		\SpacePress\Js::atInstant( fn () => $this->fill_editor_defaults_at( $postId, $post, $update, $before ) );
+	public function fillEditorDefaults( int $postId, \WP_Post $post, bool $update, ?\WP_Post $before ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		\SpacePress\Js::atInstant( fn () => $this->fill_editor_defaults_at( $postId, $post, $update, $before ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
-	private function fill_editor_defaults_at( int $postId, \WP_Post $post, bool $update, ?\WP_Post $before ): void {
-		$collection = $this->collection_of( $postId );
-		if ( null === $collection || isset( $this->promoting[ $postId ] ) || $this->connection()->busy() || $this->unavailable() !== null || in_array( $post->post_status, array( 'auto-draft', 'trash', 'inherit' ), true ) ) {
+	private function fill_editor_defaults_at( int $postId, \WP_Post $post, bool $update, ?\WP_Post $before ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$collection = $this->collection_of( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( null === $collection || isset( $this->promoting[ $postId ] ) || $this->connection()->busy() || $this->unavailable() !== null || in_array( $post->post_status, array( 'auto-draft', 'trash', 'inherit' ), true ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return;
 		}
-		$created = $this->editor_previous( $postId, $before ) === null;
+		$created = $this->editor_previous( $postId, $before ) === null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$spec    = $this->schema->collection( $collection );
 		$store   = CompositeStore::create( $this->schema, $this->connection() )->posts;
 		$values  = array();
@@ -1151,8 +1151,8 @@ final class Plugin {
 				}
 			}
 			$key    = $spec['wp']['metaPrefix'] . $col;
-			$exists = metadata_exists( 'post', $postId, $key );
-			$raw    = $exists ? get_post_meta( $postId, $key, true ) : null;
+			$exists = metadata_exists( 'post', $postId, $key ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$raw    = $exists ? get_post_meta( $postId, $key, true ) : null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$empty  = ! $exists || ( ! in_array( $def['type'], array( 'boolean', 'select', 'mediaList' ), true ) && in_array( $raw, array( '', false ), true ) );
 			if ( ! $created && isset( $def['onUpdate'] ) ) {
 				$values[ $col ] = self::generated( $def, Schema::generate( $def['onUpdate'], $def ), $col );
@@ -1162,7 +1162,7 @@ final class Plugin {
 				$values[ $col ] = Schema::store( $def, false );
 			}
 		}
-		$this->filled[ $postId ] = array_map( 'strval', array_keys( $values ) );
+		$this->filled[ $postId ] = array_map( 'strval', array_keys( $values ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( array() !== $values ) {
 			try {
 				$viewer = get_current_user_id() === 0 ? null : ( CoreAccess::viewer() ?? throw new HttpError( 403, 'suspended', 'This account is suspended' ) );
@@ -1171,13 +1171,13 @@ final class Plugin {
 			} catch ( HttpError $e ) {
 				EditorSave::fail( $e );
 			}
-			$store->update( $collection, $postId, $values );
+			$store->update( $collection, $postId, $values ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 	}
 
 	/** @return list<string> columns this request's editor save of $postId generated (trusted, not input) */
-	public function editorFilled( int $postId ): array {
-		return $this->filled[ $postId ] ?? array();
+	public function editorFilled( int $postId ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		return $this->filled[ $postId ] ?? array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/**
@@ -1194,8 +1194,8 @@ final class Plugin {
 	}
 
 	/** The row captured before this editor save, or null when the save created the post. */
-	private function editor_previous( int $postId, ?\WP_Post $before ): ?array {
-		return null === $before || 'auto-draft' === $before->post_status ? null : ( $this->before[ $postId ] ?? null );
+	private function editor_previous( int $postId, ?\WP_Post $before ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		return null === $before || 'auto-draft' === $before->post_status ? null : ( $this->before[ $postId ] ?? null ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	// ================================================================ helpers
@@ -1205,8 +1205,8 @@ final class Plugin {
 		return array_filter( $this->schema->collections(), static fn ( array $c ) => ( $c['editor'] ?? true ) && ( $c['wp'] ?? null ) !== null );
 	}
 
-	private function collection_of( int $postId ): ?string {
-		$type = get_post_type( $postId );
+	private function collection_of( int $postId ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$type = get_post_type( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		foreach ( $this->post_backed() as $name => $spec ) {
 			if ( $spec['wp']['postType'] === $type ) {
 				return (string) $name;

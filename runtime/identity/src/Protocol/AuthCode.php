@@ -36,7 +36,7 @@ final class AuthCode {
 	 * Consume a code for a token request. Returns the grant row, or an OAuth error code when the
 	 * request must fail; a replay also revokes the family minted from the first redemption.
 	 */
-	public function redeem( string $code, string $clientId, string $redirectUri, string $verifier ): array|string {
+	public function redeem( string $code, string $clientId, string $redirectUri, string $verifier ): array|string { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$row = $this->db->row(
 			"SELECT * FROM {$this->db->prefix}codes WHERE id=%s FOR UPDATE",
 			self::digest( $code ),
@@ -45,8 +45,8 @@ final class AuthCode {
 		// a guessed verifier can neither burn a live code nor revoke the family it produced.
 		if (
 			! $row ||
-			! hash_equals( $row['client_id'], $clientId ) ||
-			! hash_equals( $row['redirect_uri'], $redirectUri ) ||
+			! hash_equals( $row['client_id'], $clientId ) || // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			! hash_equals( $row['redirect_uri'], $redirectUri ) || // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			! preg_match( '/^[A-Za-z0-9._~-]{43,128}$/D', $verifier ) ||
 			! hash_equals( $row['code_challenge'], self::challenge( $verifier ) )
 		) {
@@ -73,11 +73,11 @@ final class AuthCode {
 	}
 
 	/** Record which token family a code produced, so a later replay can revoke it. */
-	public function bind( string $codeId, string $family ): void {
+	public function bind( string $codeId, string $family ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$this->db->run(
 			"UPDATE {$this->db->prefix}codes SET family=%s WHERE id=%s",
 			$family,
-			$codeId,
+			$codeId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		);
 	}
 
@@ -90,7 +90,7 @@ final class AuthCode {
 	}
 
 	/** @throws Failure */
-	public static function requireChallenge( mixed $challenge, mixed $method ): string {
+	public static function requireChallenge( mixed $challenge, mixed $method ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( 'S256' !== $method || ! is_string( $challenge ) || ! preg_match( '/^[A-Za-z0-9_-]{43}$/D', $challenge ) ) {
 			throw new Failure(
 				'invalid_authorization_request',

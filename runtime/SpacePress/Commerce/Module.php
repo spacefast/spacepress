@@ -172,7 +172,7 @@ final class Module {
 		add_filter( 'woocommerce_product_get_price', static fn ( $price, $product ) => $product->get_regular_price(), PHP_INT_MAX, 2 );
 		add_filter( 'woocommerce_create_pages', '__return_empty_array', PHP_INT_MAX );
 		add_filter( 'woocommerce_get_cart_url', static fn () => home_url( '/cart' ) );
-		add_filter( 'woocommerce_get_checkout_page_id', static fn ( $id ) => self::checkoutPage( $plugin ) ?: $id );
+		add_filter( 'woocommerce_get_checkout_page_id', static fn ( $id ) => self::checkoutPage( $plugin ) ?: $id ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		add_action( 'before_woocommerce_init', self::isolate_shared_cart( ... ), 0 );
 		CartHandoff::register( $plugin );
 		StoreApiPolicy::register( $plugin->schema->frontend() );
@@ -257,12 +257,12 @@ final class Module {
 			);
 		}
 		foreach ( array( 'pre_delete_post', 'pre_trash_post' ) as $hook ) {
-			add_filter( $hook, static fn ( $check, $post ) => $post instanceof \WP_Post && $post->ID === self::checkoutPage( $plugin ) ? false : $check, PHP_INT_MAX, 2 ); }
+			add_filter( $hook, static fn ( $check, $post ) => $post instanceof \WP_Post && $post->ID === self::checkoutPage( $plugin ) ? false : $check, PHP_INT_MAX, 2 ); } // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 		add_filter(
 			'wp_insert_post_data',
 			static function ( array $data, array $input ) use ( $plugin ): array {
 				$id = (int) ( $input['ID'] ?? 0 );
-				if ( $id > 0 && $id === self::checkoutPage( $plugin ) && ! self::valid_checkout( wp_unslash( $data['post_content'] ?? '' ) ) ) {
+				if ( $id > 0 && $id === self::checkoutPage( $plugin ) && ! self::valid_checkout( wp_unslash( $data['post_content'] ?? '' ) ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 					$data['post_content'] = wp_slash( get_post_field( 'post_content', $id, 'raw' ) );
 				}
 				return $data;
@@ -370,7 +370,7 @@ final class Module {
 	}
 
 	/** Request-time installation keeps wp-admin usable on failure; managed initialization still throws. */
-	public static function onInit( Plugin $plugin ): void {
+	public static function onInit( Plugin $plugin ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$type = get_post_type_object( 'product' );
 		if ( $type ) {
 			$type->show_in_abilities = false; }
@@ -394,7 +394,7 @@ final class Module {
 		}
 	}
 
-	private static function changed( Plugin $plugin, string $resource, int $id ): void {
+	private static function changed( Plugin $plugin, string $resource, int $id ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.resourceFound -- Preserve the existing PHP parameter name.
 		foreach ( $plugin->schema->kinds() as $name => $spec ) {
 			if ( ( $spec['commerce'] ?? '' ) === $resource ) {
 				$plugin->app();
@@ -413,7 +413,7 @@ final class Module {
 		} unset( $setting );
 		return $settings;
 	}
-	public static function checkOrderStorage(): void {
+	public static function checkOrderStorage(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		global $wpdb;
 		// Both options in one statement, from the database rather than the option cache.
 		$values = $wpdb->get_col( "SELECT option_value FROM {$wpdb->options} WHERE option_name IN ('woocommerce_custom_orders_table_enabled', 'woocommerce_custom_orders_table_data_sync_enabled')" );
@@ -623,7 +623,7 @@ final class Module {
 		return false;
 	}
 
-	public static function checkoutPage( Plugin $plugin ): int {
+	public static function checkoutPage( Plugin $plugin ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$path = $plugin->schema->commerce()['checkout'] ?? '/checkout';
 		foreach ( $plugin->schema->app()['content'] ?? array() as $route => $page ) {
 			if ( rtrim( $page['path'], '/' ) === rtrim( $path, '/' ) ) {
@@ -635,7 +635,7 @@ final class Module {
 		}
 		return 0;
 	}
-	public static function privatePath( Plugin $plugin, string $path ): bool {
+	public static function privatePath( Plugin $plugin, string $path ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $plugin->schema->commerce() === null ) {
 			return false; }
 		$path    = '/' . implode( '/', array_map( 'rawurldecode', array_values( array_filter( explode( '/', $path ), static fn ( $part ) => '' !== $part ) ) ) );
@@ -644,7 +644,7 @@ final class Module {
 			$page = get_page_uri( $id );
 			if ( $page ) {
 				$private[] = '/' . rawurldecode( $page ); }
-			if ( $id === (int) get_option( 'page_on_front' ) && get_option( 'show_on_front' ) === 'page' ) {
+			if ( $id === (int) get_option( 'page_on_front' ) && get_option( 'show_on_front' ) === 'page' ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				$private[] = '/'; }
 		}
 		foreach ( $private as $root ) {
@@ -654,13 +654,13 @@ final class Module {
 		return false;
 	}
 
-	public static function privateRequest( Plugin $plugin ): bool {
+	public static function privateRequest( Plugin $plugin ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $plugin->schema->commerce() === null ) {
 			return false; }
 		$path = AppRouter::requestPath();
 		$base = rtrim( (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH ), '/' );
 		if ( '' !== $base && ( $path === $base || str_starts_with( $path, $base . '/' ) ) ) {
-			$path = substr( $path, strlen( $base ) ) ?: '/';
+			$path = substr( $path, strlen( $base ) ) ?: '/'; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		}
 		return self::cart_action() || self::privatePath( $plugin, $path ) || is_cart() || is_checkout() || is_account_page();
 	}
@@ -669,7 +669,7 @@ final class Module {
 	 * Woo's session cookie reached Woo on this request: {@see isolateSharedCart()} did not take it
 	 * out, so what Woo prints may be this visitor's cart. Such an answer is never a shared one.
 	 */
-	public static function cartSession( Plugin $plugin ): bool {
+	public static function cartSession( Plugin $plugin ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $plugin->schema->commerce() !== null && isset( $_COOKIE[ self::sessionCookie() ] );
 	}
 
@@ -712,7 +712,7 @@ final class Module {
 	}
 
 	/** Woo's session cookie name, as WC_Session_Handler builds it. */
-	public static function sessionCookie(): string {
+	public static function sessionCookie(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return (string) apply_filters( 'woocommerce_cookie', 'wp_woocommerce_session_' . COOKIEHASH );
 	}
 
@@ -730,7 +730,7 @@ final class Module {
 		printf( '<meta name="sp-woo-checkout-script" content="%s">' . "\n", esc_url( add_query_arg( 'ver', $script['version'], $script['src'] ) ) );
 	}
 	/** Only native Woo endpoints may extend checkout's Page route. */
-	public static function routePath( Plugin $plugin, string $path ): string {
+	public static function routePath( Plugin $plugin, string $path ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $plugin->schema->commerce() === null ) {
 			return $path; }
 		$checkout = rtrim( $plugin->schema->commerce()['checkout'] ?? '/checkout', '/' );
@@ -747,7 +747,7 @@ final class Module {
 		}
 		return $path;
 	}
-	public static function downloadDirectory( string $file ): string {
+	public static function downloadDirectory( string $file ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		try {
 			$parent = ( new \Automattic\WooCommerce\Internal\Utilities\URL( $file ) )->get_parent_url(); } catch ( \Automattic\WooCommerce\Internal\Utilities\URLException $e ) {
 			throw \SpacePress\HttpError::invalidInput( $e->getMessage(), '/downloads' ); }
@@ -755,7 +755,7 @@ final class Module {
 				throw \SpacePress\HttpError::invalidInput( 'Downloads need a valid directory URL of at most 256 characters', '/downloads' ); }
 			return $parent;
 	}
-	public static function approveDownload( string $file ): void {
+	public static function approveDownload( string $file ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$register = wc_get_container()->get( \Automattic\WooCommerce\Internal\ProductDownloads\ApprovedDirectories\Register::class );
 		try {
 			$id = $register->add_approved_directory( self::downloadDirectory( $file ), true );

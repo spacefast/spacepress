@@ -28,11 +28,11 @@ final class ImageCdn {
 	 *
 	 * @return array{array<string, string>, int, int} [args, width, height]
 	 */
-	public static function args( int $origW, int $origH, array $size, ?array $focal ): array {
+	public static function args( int $origW, int $origH, array $size, ?array $focal ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$cover = ( $size['fit'] ?? 'inside' ) === 'cover';
-		$dims  = Images::dimensions( $origW, $origH, (int) $size['width'], isset( $size['height'] ) ? (int) $size['height'] : null, $cover, $focal );
+		$dims  = Images::dimensions( $origW, $origH, (int) $size['width'], isset( $size['height'] ) ? (int) $size['height'] : null, $cover, $focal ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === $dims ) {
-			return array( array(), $origW, $origH );
+			return array( array(), $origW, $origH ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		[, , $x, $y, $w, $h, $sw, $sh] = $dims;
 
@@ -47,8 +47,8 @@ final class ImageCdn {
 	}
 
 	/** @return array{url: string, width: int, height: int} */
-	public static function size( string $url, int $origW, int $origH, array $size, ?array $focal ): array {
-		[$args, $w, $h] = self::args( $origW, $origH, $size, $focal );
+	public static function size( string $url, int $origW, int $origH, array $size, ?array $focal ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		[$args, $w, $h] = self::args( $origW, $origH, $size, $focal ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		// Other `jetpack_photon_pre_args` filters may rewrite crops for their own URLs; ours keeps the focal rectangle.
 		$keep = static fn ( $given, $image ) => $image === $url && is_array( $given ) ? $args + $given : $given;
 		add_filter( 'jetpack_photon_pre_args', $keep, PHP_INT_MAX, 2 );

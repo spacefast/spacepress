@@ -51,7 +51,7 @@ final class FieldAccess {
 	 * @param callable(array $def): bool $fn
 	 * @param ?callable(): HttpError $refusal
 	 */
-	public static function withhold( callable $fn, ?callable $refusal = null ): void {
+	public static function withhold( callable $fn, ?callable $refusal = null ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		self::$withheld         = $fn( ... );
 		self::$withheld_refusal = null === $refusal ? null : $refusal( ... );
 	}
@@ -122,7 +122,7 @@ final class FieldAccess {
 
 	// ================================================================ query
 
-	public static function checkQuery( string $collection, array &$opts, ?Viewer $viewer, string $pointer ): void {
+	public static function checkQuery( string $collection, array &$opts, ?Viewer $viewer, string $pointer ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null === $viewer ) {
 			return;
 		}
@@ -206,7 +206,7 @@ final class FieldAccess {
 	}
 
 	/** True when some row could hide this column (or a sub-field inside it) from $viewer. */
-	public static function mayHide( array $def, Viewer $viewer ): bool {
+	public static function mayHide( array $def, Viewer $viewer ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( self::withheld( $def ) ) {
 			return true;
 		}
@@ -226,7 +226,7 @@ final class FieldAccess {
 	// ================================================================ write
 
 	/** $stored: an editor save supplies its persisted data separately from the input it must authorize. */
-	public static function checkWrite( string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided, bool $stored = false ): void {
+	public static function checkWrite( string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided, bool $stored = false ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null === $viewer || 'delete' === $op ) {
 			return;
 		}
@@ -353,7 +353,7 @@ final class FieldAccess {
 	 * fill the rest. Other types are returned as given. For writes that bypass {@see checkWrite()}'s
 	 * resolution (core REST `meta`).
 	 */
-	public static function effectiveGroup( string $op, array $def, mixed $value, mixed $before, Viewer $viewer ): mixed {
+	public static function effectiveGroup( string $op, array $def, mixed $value, mixed $before, Viewer $viewer ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( 'group' !== $def['type'] ) {
 			return $value;
 		}
@@ -592,7 +592,7 @@ final class FieldAccess {
 	}
 
 	/** Apply $fn(fields, item) to each object of a group/repeater/blocks value. */
-	private static function map_items( array $def, mixed $value, callable $fn ): mixed {
+	private static function map_items( array $def, mixed $value, callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		if ( 'group' === $def['type'] ) {
 			return is_array( $value ) ? $fn( $def['fields'] ?? array(), $value ) : $value;
 		}

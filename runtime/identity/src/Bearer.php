@@ -19,18 +19,18 @@ final class Bearer {
 	private static ?string $failure = null;
 	private static ?array $token    = null;
 
-	public static function resolve( mixed $userId ): mixed {
+	public static function resolve( mixed $userId ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		self::$token   = null;
 		self::$failure = null;
 		$raw           = self::header();
 		// An application password (core, priority 20 before us) wins; a logged-in WordPress cookie
 		// doesn't: REST discards a cookie user without a nonce, and an explicit Bearer is the
 		// caller's chosen identity.
-		if ( $userId && ( null === $raw || self::appPassword() ) ) {
-			return $userId;
+		if ( $userId && ( null === $raw || self::appPassword() ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			return $userId; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		if ( null === $raw ) {
-			return $userId;
+			return $userId; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		try {
 			$token = ( new OAuth( Plugin::$db, Plugin::$accounts ) )->access( $raw );
@@ -40,7 +40,7 @@ final class Bearer {
 					? Plugin::$accounts->status( (int) $claims['sub'] )
 					: 'none';
 				self::$failure = in_array( $status, array( 'suspended', 'deletion_requested', 'deleted' ), true ) ? 'suspended' : 'invalid_token';
-				return $userId;
+				return $userId; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 			self::$failure = null;
 			self::$token   = $token;
@@ -51,7 +51,7 @@ final class Bearer {
 		}
 	}
 
-	private static function appPassword(): bool {
+	private static function appPassword(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return Plugin::applicationPassword() instanceof \WP_User;
 	}
 

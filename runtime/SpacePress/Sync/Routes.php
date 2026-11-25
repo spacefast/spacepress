@@ -131,7 +131,7 @@ final class Routes {
 	}
 
 	/** Trusted spacepress-sync apply used by the publish seed; HTTP dispatch always supplies a viewer. */
-	public static function seedRecord( string $collection, array $spec, mixed $record ): string {
+	public static function seedRecord( string $collection, array $spec, mixed $record ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$record = \SpacePress\Seam::container( $record );
 		if ( ! is_array( $record ) || ! Uid::valid( $record['uid'] ?? null ) ) {
 			throw HttpError::invalidInput( 'seed record.uid must match zr_ + 20 hex characters', '/uid' );
@@ -244,7 +244,7 @@ final class Routes {
 			if ( ! Lock::fresh( $collection, $current['row'][ $pk ] ) ) {
 				return self::stale( $collection, $spec, $viewer, false, "$collection $uid changed while this request ran; read it again" );
 			}
-			if ( $expect !== self::digest_of( $current ) ) {
+			if ( $expect !== self::digest_of( $current ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				return self::stale( $collection, $spec, $viewer, $current, "$collection $uid changed since it was read" );
 			}
 			if ( Canon::digest( $sent ) === $current['digest'] ) {
@@ -268,7 +268,7 @@ final class Routes {
 		if ( ! isset( $stored['record'] ) ) {
 			throw new HttpError( 422, 'not_representable', $stored['message'] ?? 'The stored record cannot be written back' );
 		}
-		$normalized = $stored['digest'] !== Canon::digest( $sent );
+		$normalized = $stored['digest'] !== Canon::digest( $sent ); // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 		$out        = array(
 			'uid'    => $uid,
 			'digest' => $stored['digest'],
@@ -306,7 +306,7 @@ final class Routes {
 		if ( ! Lock::fresh( $collection, $id ) ) {
 			return self::stale( $collection, $spec, $viewer, false, "$collection $uid changed while this request ran; read it again" );
 		}
-		if ( $expect !== self::digest_of( $current ) ) {
+		if ( $expect !== self::digest_of( $current ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return self::stale( $collection, $spec, $viewer, $current, "$collection $uid changed since it was read" );
 		}
 		if ( ! Trash::trash( $collection, $spec, db()->editorRow( $collection, $id ), $viewer ) ) {
@@ -342,7 +342,7 @@ final class Routes {
 			try {
 				$out[] = $one( $item, "/records/$i" );
 			} catch ( HttpError $e ) {
-				if ( 'not_representable' !== $e->errorCode ) {
+				if ( 'not_representable' !== $e->errorCode ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 					throw $e;
 				}
 				$out[] = array(

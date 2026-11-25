@@ -22,6 +22,6 @@ final class Refused extends \SpacePress\HttpError {
 
 	/** What the corpus records for this refusal: the diagnostic, or the runtime's own code. */
 	public function verdict(): string {
-		return $this->diagnostic ?? $this->errorCode;
+		return $this->diagnostic ?? $this->errorCode; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 }

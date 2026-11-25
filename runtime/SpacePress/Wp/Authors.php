@@ -59,7 +59,7 @@ final class Authors {
 		add_filter(
 			'comment_class',
 			static fn ( mixed $classes ): mixed => ! is_array( $classes ) || self::public( $schema ) ? $classes
-			: array_values( array_filter( $classes, static fn ( mixed $class ): bool => ! is_string( $class ) || ! str_starts_with( $class, 'comment-author-' ) ) ),
+			: array_values( array_filter( $classes, static fn ( mixed $class ): bool => ! is_string( $class ) || ! str_starts_with( $class, 'comment-author-' ) ) ), // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP parameter name.
 			PHP_INT_MAX
 		);
 		add_filter( 'author_link', static fn ( mixed $link, mixed $author = 0 ): mixed => self::$archive_url || is_admin() || self::visible( $schema, (int) $author ) ? $link : home_url( '/' ), PHP_INT_MAX, 2 );
@@ -67,7 +67,7 @@ final class Authors {
 		\SpacePress\Extensions::onWritten(
 			static function ( string $op, string $collection, array $row, ?array $previous = null ) use ( $schema ): void {
 				$id = (int) ( $row['id'] ?? $previous['id'] ?? 0 );
-				if ( $collection !== self::kind( $schema ) || $id <= 0 ) {
+				if ( $collection !== self::kind( $schema ) || $id <= 0 ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 					return;
 				}
 				unset( self::$seen[ $id ] );
@@ -81,7 +81,7 @@ final class Authors {
 	 * user's link as the home page ({@see apply()}), but a cache may still hold the archive itself
 	 * from when the user was visible, or holds its 404.
 	 */
-	public static function archiveUrl( int $user ): string {
+	public static function archiveUrl( int $user ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::$archive_url = true;
 		try {
 			return get_author_posts_url( $user );

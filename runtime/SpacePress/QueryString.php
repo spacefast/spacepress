@@ -47,11 +47,11 @@ final class QueryString {
 	 *
 	 * @param list<array{string, string}> $pairs
 	 */
-	public static function toJs( array $pairs ): JsObject {
+	public static function toJs( array $pairs ): JsObject { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$all = static fn ( mixed $name ): array => array_values(
 			array_map(
 				static fn ( array $pair ): string => $pair[1],
-				array_filter( $pairs, static fn ( array $pair ): bool => $pair[0] === Js::str( $name ) ),
+				array_filter( $pairs, static fn ( array $pair ): bool => $pair[0] === Js::str( $name ) ), // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			)
 		);
 

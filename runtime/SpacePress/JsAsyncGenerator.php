@@ -18,7 +18,7 @@ final class JsAsyncGenerator {
 	private const COMPLETED       = 4;
 
 	private int $state             = self::START;
-	private bool $generatorStarted = false;
+	private bool $generatorStarted = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** @var list<array{string, mixed, JsPromise}> */
 	private array $queue = array();
 
@@ -84,10 +84,10 @@ final class JsAsyncGenerator {
 	private function resume( string $kind, mixed $value ): JsUndefined {
 		try {
 			if ( 'next' === $kind ) {
-				if ( $this->generatorStarted ) {
+				if ( $this->generatorStarted ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 					$this->generator->send( $value );
 				} else {
-					$this->generatorStarted = true;
+					$this->generatorStarted = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 					$this->generator->current();
 				}
 			} elseif ( 'throw' === $kind ) {

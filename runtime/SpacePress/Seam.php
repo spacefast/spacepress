@@ -16,7 +16,7 @@ final class Seam {
 		};
 	}
 
-	public static function toPhp( mixed $value, ?array $shape = null ): mixed {
+	public static function toPhp( mixed $value, ?array $shape = null ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::acyclic( $value, new \SplObjectStorage(), new \SplObjectStorage() );
 		return self::runtime_value( $value, $shape );
 	}
@@ -103,12 +103,12 @@ final class Seam {
 		return $value;
 	}
 
-	public static function toJs( mixed $value, ?array $shape = null ): mixed {
+	public static function toJs( mixed $value, ?array $shape = null ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::js_value( $value, $shape, false );
 	}
 
 	/** Input can still contain invalid or unknown fields; retain them for normal validation. */
-	public static function inputToJs( mixed $value, ?array $shape ): mixed {
+	public static function inputToJs( mixed $value, ?array $shape ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::js_value( $value, $shape, true );
 	}
 
@@ -160,7 +160,7 @@ final class Seam {
 			foreach ( $value as $item ) {
 				$item_shape = match ( $type ) {
 					'repeater' => $shape['fields'] ?? array(),
-					'blocks' => array( 'layout' => array( 'type' => 'text' ) ) + ( is_string( $layout = self::container( $item )['layout'] ?? null ) ? ( $shape['layouts'][ $layout ] ?? array() ) : array() ),
+					'blocks' => array( 'layout' => array( 'type' => 'text' ) ) + ( is_string( $layout = self::container( $item )['layout'] ?? null ) ? ( $shape['layouts'][ $layout ] ?? array() ) : array() ), // phpcs:ignore WordPress.CodeAnalysis.AssignmentInTernaryCondition.FoundInTernaryCondition, Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 					'mediaList' => array( 'type' => 'media' ),
 					'refList' => array( 'type' => 'integer' ),
 					default => null,
@@ -190,7 +190,7 @@ final class Seam {
 		return self::toJs( $row, $fields );
 	}
 
-	public static function rowToJs( string $collection, array $row, array $with = array() ): JsObject {
+	public static function rowToJs( string $collection, array $row, array $with = array() ): JsObject { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$schema = Db::instance()->schema();
 		if ( ! $schema->hasCollection( $collection ) ) {
 			return self::media( $row ); }
@@ -217,11 +217,11 @@ final class Seam {
 		return self::toJs( $row, $fields );
 	}
 
-	public static function rowToPhp( string $collection, JsObject|array $row ): array {
+	public static function rowToPhp( string $collection, JsObject|array $row ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::toPhp( $row, Db::instance()->schema()->collection( $collection )['columns'] );
 	}
 
-	public static function ctx( array $ctx, ?array $dataShape = null ): JsObject {
+	public static function ctx( array $ctx, ?array $dataShape = null ): JsObject { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$shape = array(
 			'user' => array(
 				'id'   => array( 'type' => 'integer' ),
@@ -230,13 +230,13 @@ final class Seam {
 			),
 		);
 		if ( array_key_exists( 'data', $ctx ) ) {
-			$shape['data'] = $dataShape; }
+			$shape['data'] = $dataShape; } // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return self::inputToJs( $ctx, $shape );
 	}
 
 	public static function generated( array $col, mixed $value ): mixed {
 		return self::toPhp( JsUndefined::Value === $value ? null : $value, $col ); }
-	public static function toWire( mixed $value ): mixed {
+	public static function toWire( mixed $value ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$tree = Js::jsonTree( JsBinary::refuseWire( $value, 'this operation' ) );
 		// MCP consumes object operation envelopes as arrays before it invokes its JSON encoder.
 		if ( $tree instanceof \stdClass ) {
@@ -262,7 +262,7 @@ final class Seam {
 	 * bound where they were started or registered (JsJobs::async, JsPromise::then, Timers::set).
 	 * Only reads are bound: writes from code a render calls stay trusted.
 	 */
-	public static function asViewer( ?Viewer $viewer, callable $fn ): mixed {
+	public static function asViewer( ?Viewer $viewer, callable $fn ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		$previous     = self::$viewer;
 		$fiber        = \Fiber::getCurrent();
 		self::$viewer = $viewer;
@@ -314,7 +314,7 @@ final class Seam {
 	 * Runs $fn with the kind API bound to $visitor (an action's or a route's caller; `new Viewer(null)`
 	 * is an anonymous one), then restores the binding before. Unlike asViewer(), `db.*` stays trusted.
 	 */
-	public static function asVisitor( ?Viewer $visitor, callable $fn ): mixed {
+	public static function asVisitor( ?Viewer $visitor, callable $fn ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		$previous      = self::$visitor;
 		self::$visitor = $visitor;
 		try {
@@ -498,10 +498,10 @@ final class Seam {
 	}
 
 	/** Diffs two revisions of a row by version number. */
-	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the method name used by compiled PHP.
 	public static function kindRevisionsDiff( string $collection, mixed $id, mixed $fromVersion, mixed $toVersion, bool $trusted ): JsObject {
-		$from = is_int( $fromVersion ) || is_float( $fromVersion ) ? (int) $fromVersion : throw HttpError::invalidInput( 'fromVersion must be an integer' );
-		$to   = is_int( $toVersion ) || is_float( $toVersion ) ? (int) $toVersion : throw HttpError::invalidInput( 'toVersion must be an integer' );
+		$from = is_int( $fromVersion ) || is_float( $fromVersion ) ? (int) $fromVersion : throw HttpError::invalidInput( 'fromVersion must be an integer' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$to   = is_int( $toVersion ) || is_float( $toVersion ) ? (int) $toVersion : throw HttpError::invalidInput( 'toVersion must be an integer' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$diff = Db::instance()->diffRevisions( $collection, self::toPhp( $id ), $from, $to, self::as( $trusted ), byVersion: true );
 
 		return new JsObject(

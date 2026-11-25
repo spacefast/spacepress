@@ -52,7 +52,7 @@ final class Comments {
 		// so every path (the form, REST, wp-admin, wp-comments-post.php, other plugins) is covered.
 		add_action(
 			'transition_comment_status',
-			static function ( mixed $new, mixed $old, mixed $comment ): void {
+			static function ( mixed $new, mixed $old, mixed $comment ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.newFound -- Preserve the existing PHP parameter name.
 				if ( $comment instanceof \WP_Comment && self::visible( (string) $old, (string) $new, $comment ) ) {
 					self::seen( $comment );
 				}
@@ -201,8 +201,8 @@ final class Comments {
 	}
 
 	/** The collection whose item $postId is, when that kind has comments on. */
-	public static function collection( int $postId ): ?string {
-		$type = $postId > 0 ? get_post_type( $postId ) : false;
+	public static function collection( int $postId ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$type = $postId > 0 ? get_post_type( $postId ) : false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 		return is_string( $type ) ? ( self::$types[ $type ] ?? null ) : null;
 	}
@@ -229,13 +229,13 @@ final class Comments {
 	 * An anonymous comment on a `guests` kind needs a name and a valid email: the policy decides
 	 * that, never the Discussion setting `require_name_email`.
 	 */
-	private static function refusal( int $postId, int $parent, int $userId = 0, string $name = '', string $email = '' ): ?\WP_Error {
-		$collection = self::collection( $postId );
+	private static function refusal( int $postId, int $parent, int $userId = 0, string $name = '', string $email = '' ): ?\WP_Error { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, Universal.NamingConventions.NoReservedKeywordParameterNames.parentFound -- Preserve the existing PHP variable name. Preserve the existing PHP parameter name.
+		$collection = self::collection( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === $collection ) {
 			return null; // not a kind of the app's: Hardening's comments_open decides
 		}
 		$policy    = self::policy( $collection );
-		$anonymous = max( $userId, get_current_user_id() ) === 0;
+		$anonymous = max( $userId, get_current_user_id() ) === 0; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ! $policy['guests'] && $anonymous ) {
 			return new \WP_Error( 'sp_comment_sign_in', __( 'Sign in to comment.' ), array( 'status' => 401 ) );
 		}
@@ -245,7 +245,7 @@ final class Comments {
 		if ( $parent > 0 ) {
 			$depth   = 1;
 			$comment = get_comment( $parent );
-			if ( ! $comment instanceof \WP_Comment || (int) $comment->comment_post_ID !== $postId ) {
+			if ( ! $comment instanceof \WP_Comment || (int) $comment->comment_post_ID !== $postId ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				return new \WP_Error( 'sp_comment_parent', __( 'The comment you reply to is not on this item.' ), array( 'status' => 400 ) );
 			}
 			while ( $comment instanceof \WP_Comment && (int) $comment->comment_parent > 0 && $depth < 64 ) {
@@ -259,7 +259,7 @@ final class Comments {
 			}
 		}
 		if ( null !== $policy['closeAfterDays'] ) {
-			$post = get_post( $postId );
+			$post = get_post( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			if ( $post instanceof \WP_Post && time() - (int) strtotime( $post->post_date_gmt . ' UTC' ) > $policy['closeAfterDays'] * DAY_IN_SECONDS ) {
 				return new \WP_Error( 'sp_comment_closed', __( 'Comments are closed on this item.' ), array( 'status' => 403 ) );
 			}
@@ -295,22 +295,22 @@ final class Comments {
 	 *
 	 * @return list<array<string, mixed>>
 	 */
-	public static function thread( int $postId, int $userId ): array {
+	public static function thread( int $postId, int $userId ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$args     = array(
-			'post_id'                   => $postId,
+			'post_id'                   => $postId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			'type'                      => 'comment',
 			'orderby'                   => 'comment_date_gmt',
 			'order'                     => 'ASC',
 			'update_comment_meta_cache' => false,
 		);
 		$comments = get_comments( $args + array( 'status' => 'approve' ) );
-		if ( $userId > 0 ) {
+		if ( $userId > 0 ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$comments = array(
 				...$comments,
 				...get_comments(
 					$args + array(
 						'status'  => 'hold',
-						'user_id' => $userId,
+						'user_id' => $userId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					)
 				),
 			);
@@ -319,8 +319,8 @@ final class Comments {
 		return array_map(
 			static fn ( \WP_Comment $c ): array => array(
 				'id'         => (int) $c->comment_ID,
-				'parent'     => (int) $c->comment_parent ?: null,
-				'author'     => (int) $c->user_id ?: null,
+				'parent'     => (int) $c->comment_parent ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
+				'author'     => (int) $c->user_id ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 				'authorName' => $c->comment_author,
 				'content'    => $c->comment_content,
 				'status'     => '1' === $c->comment_approved ? 'approved' : 'pending',

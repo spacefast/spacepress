@@ -177,7 +177,7 @@ final class Site {
 		return isset( $_GET['_method'] ) || isset( $_POST['_method'] ) || isset( $_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'] );
 	}
 
-	public static function validId( mixed $id ): bool {
+	public static function validId( mixed $id ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return is_string( $id ) && preg_match( '/\A[0-9a-f]{64}\z/D', $id ) === 1;
 	}
 
@@ -212,7 +212,7 @@ final class Site {
 	 * A build a pre-release receiver stored (its format is in {@see Legacy::BUILD_FORMAT}) is read too,
 	 * as the record it is: its baseline, name and history stay readable, and it is never mounted.
 	 */
-	public static function parseManifest( string $bytes, bool $stored = false ): array {
+	public static function parseManifest( string $bytes, bool $stored = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$manifest = json_decode( $bytes, true, 16 );
 		$format   = $manifest['format'] ?? null;
 		if ( ! is_array( $manifest ) || ! ( 'spacepress.build.v1' === $format || ( $stored && Legacy::BUILD_FORMAT === $format ) )
@@ -236,7 +236,7 @@ final class Site {
 	}
 
 	/** This receiver has no checkout suspension or shipping-compatible selection/recovery yet. */
-	public static function checkCommerce( array $manifest ): void {
+	public static function checkCommerce( array $manifest ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$path   = self::root() . '/app/' . $manifest['app'] . '/manifest.json';
 		$hosted = json_decode( (string) @file_get_contents( $path ), true );
 		if ( ! is_array( $hosted ) || ( $hosted['format'] ?? null ) !== 'spacepress.hosted.v1' ) {
@@ -289,7 +289,7 @@ final class Site {
 	 * store's own (`<store>/.lock`, the one the compiler and the loader take). What another request
 	 * wrote while this one waited is read from the database again.
 	 */
-	public static function locked( callable $fn ): mixed {
+	public static function locked( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		// A site with no store has no deployment to lock: {@see Receiver::create()} makes it first.
 		$root = self::root() ?? throw new \RuntimeException( 'This site has no SpacePress build store yet' );
 		Trees::prepare( $root );
@@ -314,7 +314,7 @@ final class Site {
 	 * written first: a request that dies between the two writes leaves the old code live with the
 	 * right baseline, never new code beside a baseline the database has moved past.
 	 */
-	public static function makeLive( string $build, array $manifest, string $kind ): void {
+	public static function makeLive( string $build, array $manifest, string $kind ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$history   = self::history();
 		$history[] = array(
 			'build'    => $build,
@@ -338,7 +338,7 @@ final class Site {
 	 * administrators, and on a network only its super admins. Being allowed to activate plugins that
 	 * are already installed is not enough.
 	 */
-	public static function mayDeploy(): bool {
+	public static function mayDeploy(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return current_user_can( self::CAPABILITY );
 	}
 
@@ -361,7 +361,7 @@ final class Site {
 				return false;
 			}
 		}
-		$status = $wpdb->get_var( $wpdb->prepare( "SELECT status FROM `$table` WHERE wp_user_id = %d", $user ) );
+		$status = $wpdb->get_var( $wpdb->prepare( "SELECT status FROM `$table` WHERE wp_user_id = %d", $user ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The account table is derived internally and the user ID is bound.
 
 		return null !== $status && 'active' !== $status;
 	}
@@ -396,7 +396,7 @@ final class Site {
 	 * hardening), and deploying is how such a site gets new code. A filter another plugin adds after
 	 * plugins have loaded is not seen.
 	 */
-	public static function fileMods(): bool {
+	public static function fileMods(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::$file_mods ??= wp_is_file_mod_allowed( 'capability_update_core' );
 	}
 

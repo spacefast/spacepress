@@ -34,13 +34,13 @@ final class Blocks {
 	 * A block's own HTML with the delimiters dropped: innerContent interleaves its markup with a null
 	 * for each inner block.
 	 */
-	public static function innerHtml( array $block ): string {
+	public static function innerHtml( array $block ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$html  = '';
 		$index = 0;
 		foreach ( $block['innerContent'] ?? array() as $chunk ) {
 			if ( is_string( $chunk ) ) {
 				$html .= $chunk;
-			} elseif ( is_array( $child = $block['innerBlocks'][ $index++ ] ?? null ) ) {
+			} elseif ( is_array( $child = $block['innerBlocks'][ $index++ ] ?? null ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				$html .= self::innerHtml( $child );
 			}
 		}

@@ -92,7 +92,7 @@ final class Nav {
 		// Titles compare as people read them: case aside, numbers by value ("Step 9" before "Step 10").
 		usort( $out, static fn ( array $a, array $b ): int => array( $a['order'], strnatcasecmp( $a['title'], $b['title'] ), $a['id'] ) <=> array( $b['order'], 0, $b['id'] ) );
 
-		return self::$items[ $key ] = $out;
+		return self::$items[ $key ] = $out; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 	}
 
 	/** @return array<int, list<array>> parent id (0 for the top) => children, sorted */
@@ -113,7 +113,7 @@ final class Nav {
 	public static function tree( string $kind, mixed $current, int $depth ): JsArray {
 		$current  = is_int( $current ) ? $current : ( is_float( $current ) ? (int) $current : null );
 		$children = self::by_parent( self::items( $kind ) );
-		$build    = static function ( int $parent, int $depth ) use ( &$build, $children, $current ): array {
+		$build    = static function ( int $parent, int $depth ) use ( &$build, $children, $current ): array { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.parentFound -- Preserve the existing PHP parameter name.
 			$out = array();
 			foreach ( $children[ $parent ] ?? array() as $item ) {
 				$below = $depth > 1 ? $build( $item['id'], $depth - 1 ) : array();
@@ -141,7 +141,7 @@ final class Nav {
 		$current  = is_int( $current ) ? $current : ( is_float( $current ) ? (int) $current : null );
 		$children = self::by_parent( self::items( $kind ) );
 		$flat     = array();
-		$walk     = static function ( int $parent ) use ( &$walk, &$flat, $children ): void {
+		$walk     = static function ( int $parent ) use ( &$walk, &$flat, $children ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.parentFound -- Preserve the existing PHP parameter name.
 			foreach ( $children[ $parent ] ?? array() as $item ) {
 				$flat[] = $item;
 				$walk( $item['id'] );

@@ -54,7 +54,7 @@ final class Module {
 		foreach ( $spec['columns'] as $name => $col ) {
 			$generated = isset( $col['onUpdate'] ) || isset( $col['default']['now'] ) || isset( $col['default']['fn'] ) || ( $col['autoIncrement'] ?? false );
 			if ( $name !== $spec['primaryKey'] && ! ( $col['system'] ?? false ) && ! self::translated( $col )
-				&& $name !== ( $spec['slug'] ?? null ) && ! $generated ) {
+				&& $name !== ( $spec['slug'] ?? null ) && ! $generated ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				$out[] = (string) $name;
 			}
 		}

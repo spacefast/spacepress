@@ -129,7 +129,7 @@ final class Register {
 	}
 
 	/** Why core left this request's query-string input untyped, or null when it typed it. */
-	public static function untypedReason(): ?string {
+	public static function untypedReason(): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::$untyped;
 	}
 
@@ -143,8 +143,8 @@ final class Register {
 	 * same way. Any other ability (a readonly action, a revision read) takes its JSON as sent, as a
 	 * POSTed run does: its values keep their types and `{}` stays an object ({@see sentInput()}).
 	 */
-	public static function jsonInput( mixed $result, mixed $server, \WP_REST_Request $request ): mixed {
-		if ( ! empty( $result ) || ( $name = self::run_name_for_dispatch( $request ) ) === null ) {
+	public static function jsonInput( mixed $result, mixed $server, \WP_REST_Request $request ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		if ( ! empty( $result ) || ( $name = self::run_name_for_dispatch( $request ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $result;
 		}
 		$selected = $request->get_param( 'name' );
@@ -214,7 +214,7 @@ final class Register {
 	}
 
 	/** The ability name of a request to core's run route (`/wp-abilities/v1/abilities/<name>/run`), or null. */
-	private static function runRoute( \WP_REST_Request $request ): ?string {
+	private static function runRoute( \WP_REST_Request $request ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::run_name( $request->get_route() );
 	}
 
@@ -231,8 +231,8 @@ final class Register {
 	}
 
 	/** rest_pre_dispatch starts the run before WordPress sanitizes its input. */
-	public static function startSanitizing( mixed $passthrough, mixed $server, \WP_REST_Request $request ): mixed {
-		if ( ! empty( $passthrough ) || ( $name = self::run_name_for_dispatch( $request ) ) === null ) {
+	public static function startSanitizing( mixed $passthrough, mixed $server, \WP_REST_Request $request ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		if ( ! empty( $passthrough ) || ( $name = self::run_name_for_dispatch( $request ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $passthrough;
 		}
 		self::$sanitizing = $request->get_method();
@@ -257,7 +257,7 @@ final class Register {
 	 * as sent: the same input, decoded again with `{}` kept, is what the ability runs on.
 	 */
 	private static function raw_input( \WP_REST_Request $request ): ?array {
-		if ( $request->get_method() !== 'POST' || ( $ran = self::runRoute( $request ) ) === null ) {
+		if ( $request->get_method() !== 'POST' || ( $ran = self::runRoute( $request ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return null;
 		}
 		try {
@@ -273,7 +273,7 @@ final class Register {
 	 * Run $fn with $json (a raw JSON object) as ability $name's input as sent, so `{}` inside a json()
 	 * value survives the array core hands to the ability (the facade's actions).
 	 */
-	public static function withSentInput( string $name, string $json, callable $fn ): mixed {
+	public static function withSentInput( string $name, string $json, callable $fn ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		$previous = self::$given;
 		try {
 			$decoded = trim( $json ) === '' ? new \SpacePress\JsObject() : \SpacePress\Js::decodeJson( $json );
@@ -289,7 +289,7 @@ final class Register {
 	}
 
 	/** The executing ability's input as sent: the facade's own ({@see withSentInput()}), else the run request's. */
-	public static function sentInput( string $name, mixed $input ): mixed {
+	public static function sentInput( string $name, mixed $input ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( array( self::$given, self::$raw ) as $sent ) {
 			if ( null !== $sent && $sent[0] === $name ) {
 				return $sent[1];
@@ -312,7 +312,7 @@ final class Register {
 			}
 			// A run of the app's own ability answers for whoever asks, as the app API does: never a
 			// shared copy (Batcache keeps what a request without a WordPress cookie prints otherwise).
-			if ( $request instanceof \WP_REST_Request && ( $name = self::runRoute( $request ) ) !== null && self::client_operation( $name ) ) {
+			if ( $request instanceof \WP_REST_Request && ( $name = self::runRoute( $request ) ) !== null && self::client_operation( $name ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				$response->header( 'Cache-Control', 'private, no-store' );
 				$response->header( 'Vary', 'Origin, Cookie, Authorization' );
 				if ( function_exists( 'batcache_cancel' ) ) {
@@ -340,11 +340,11 @@ final class Register {
 	 * An ordinary REST request gets its own state once its route matches. A route miss leaves
 	 * the enclosing Ability run's state in place.
 	 */
-	public static function beginCallbacks( mixed $response, mixed $handler, \WP_REST_Request $request ): mixed {
+	public static function beginCallbacks( mixed $response, mixed $handler, \WP_REST_Request $request ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( self::runRoute( $request ) === null && array() !== self::$stack ) {
 			self::$stack[]     = array( $request, self::state() );
-			self::$method      = self::$untyped = self::$run_route = null;
-			self::$raw         = self::$headers = self::$queried = null;
+			self::$method      = self::$untyped = self::$run_route = null; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
+			self::$raw         = self::$headers = self::$queried = null; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 			self::$responded   = array();
 			self::$typed_query = false;
 		}
@@ -353,7 +353,7 @@ final class Register {
 		return $response;
 	}
 
-	public static function discardShortCircuit( mixed $response, mixed $server, \WP_REST_Request $request ): mixed {
+	public static function discardShortCircuit( mixed $response, mixed $server, \WP_REST_Request $request ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! empty( $response ) ) {
 			self::restore( $request );
 		}
@@ -361,11 +361,11 @@ final class Register {
 		return $response;
 	}
 
-	public static function beforePermission( mixed $response, mixed $handler, \WP_REST_Request $request ): mixed {
+	public static function beforePermission( mixed $response, mixed $handler, \WP_REST_Request $request ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::beforeExecute( $response, $request );
 	}
 
-	public static function beforeExecute( mixed $response, \WP_REST_Request $request ): mixed {
+	public static function beforeExecute( mixed $response, \WP_REST_Request $request ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::resume( $request );
 		// The run controller reads the merged name. Route-scoped credentials and visibility use
 		// the path, so permission checks and execution must use the same name.
@@ -417,7 +417,7 @@ final class Register {
 		// An ability that answers null (signed-out `me`, an action that returns nothing) is a 204:
 		// core would send 200 with an empty body, which is not JSON to a client that parses it.
 		if ( $response instanceof \WP_REST_Response && $response->get_data() === null && $response->get_status() === 200
-			&& $request instanceof \WP_REST_Request && ( $name = self::runRoute( $request ) ) !== null && isset( self::$names[ $name ] ) ) {
+			&& $request instanceof \WP_REST_Request && ( $name = self::runRoute( $request ) ) !== null && isset( self::$names[ $name ] ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			$response->set_status( 204 );
 		}
 		if ( $response instanceof \WP_Error && str_starts_with( (string) $response->get_error_code(), 'sp_' ) ) {
@@ -464,7 +464,7 @@ final class Register {
 	 * Whether the executing ability's input arrived as a query string (core's GET/DELETE run), whose
 	 * values core types. JSON input in the query of a non-query ability is read as sent instead.
 	 */
-	public static function queryString(): bool {
+	public static function queryString(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return in_array( self::$method, array( 'GET', 'DELETE' ), true ) && ! self::$typed_query;
 	}
 
@@ -488,8 +488,8 @@ final class Register {
 	}
 
 	/** sp_identity_rest_cookie_route: core's run route of an operation the app's schema declares. */
-	public static function cookieRoute( mixed $allowed, mixed $route ): bool {
-		if ( $allowed || ! is_string( $route ) || ( $name = self::run_name( $route ) ) === null ) {
+	public static function cookieRoute( mixed $allowed, mixed $route ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		if ( $allowed || ! is_string( $route ) || ( $name = self::run_name( $route ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return (bool) $allowed;
 		}
 
@@ -511,7 +511,7 @@ final class Register {
 
 	/** The Rust compiler's kebab-case (`shopping_list` → `shopping-list`, `approveComment` → `approve-comment`). */
 	public static function kebab( string $name ): string {
-		$chars = preg_split( '//u', $name, -1, PREG_SPLIT_NO_EMPTY ) ?: array();
+		$chars = preg_split( '//u', $name, -1, PREG_SPLIT_NO_EMPTY ) ?: array(); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		$out   = '';
 		foreach ( $chars as $i => $c ) {
 			if ( '_' === $c || '-' === $c ) {
@@ -552,7 +552,7 @@ final class Register {
 		self::$client = array_fill_keys( array_column( $ops, 'name' ), true );
 		// Features add their own operations here (runtime schema changes: SpacePress\RuntimeSchema\Surfaces).
 		$ops = apply_filters( 'sp_ability_operations', $ops, $app );
-		if ( ( $enqueue = Module::enqueuer() ) !== null ) {
+		if ( ( $enqueue = Module::enqueuer() ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			foreach ( $schema->jobs() as $name => $job ) {
 				if ( $job['agents'] ?? false ) {
 					$ops[] = self::job( $app, $label, (string) $name, $job, $enqueue );
@@ -1097,7 +1097,7 @@ final class Register {
 	}
 
 	/** @return list<array> */
-	private static function global( string $app, string $app_label, string $name, array $global ): array {
+	private static function global( string $app, string $app_label, string $name, array $global ): array { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.globalFound -- Preserve the existing PHP parameter name.
 		$k      = self::kebab( $name );
 		$rules  = Access::globalRules( $global );
 		$values = JsonSchema::fields( $global['fields'], true );

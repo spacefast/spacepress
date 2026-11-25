@@ -18,8 +18,8 @@ interface Issuer {
 	public function guest(): array;
 
 	/** End the current session's sign-in. */
-	public function signOut( array $user ): void;
+	public function signOut( array $user ): void; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
 	/** True where emails are verified by the issuer (then members can't set their own directly). */
-	public function verifiesEmail(): bool;
+	public function verifiesEmail(): bool; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 }

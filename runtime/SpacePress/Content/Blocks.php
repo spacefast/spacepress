@@ -205,7 +205,7 @@ final class Blocks {
 	 *
 	 * @param callable(string): string $convert Markdown to stored blocks
 	 */
-	public static function toBlocks( string $markdown, callable $convert ): string {
+	public static function toBlocks( string $markdown, callable $convert ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( self::all() === array() || ! preg_match( '/^<[A-Z]/m', $markdown ) ) {
 			return $convert( $markdown );
 		}
@@ -324,7 +324,7 @@ final class Blocks {
 	 * @param list<array> $blocks parsed blocks
 	 * @param callable(string): string $produce stored blocks (with no component block) to Markdown
 	 */
-	public static function fromBlocks( array $blocks, callable $produce ): string {
+	public static function fromBlocks( array $blocks, callable $produce ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$all   = self::all();
 		$out   = array();
 		$run   = array();

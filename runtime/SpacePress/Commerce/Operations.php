@@ -64,7 +64,7 @@ final class Operations {
 		);
 		add_action(
 			'woocommerce_restore_order_item_stock',
-			static function ( $item, $new, $old, \WC_Order $order ): void {
+			static function ( $item, $new, $old, \WC_Order $order ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.newFound -- Preserve the existing PHP parameter name.
 				do_action( 'spacepress_woo_order_stock', $item->get_product_id(), $order->get_id(), $new - $old, 'return' );
 			},
 			10,
@@ -73,7 +73,7 @@ final class Operations {
 		// A refund with "Restock refunded items" puts stock back without restoring the order's.
 		add_action(
 			'woocommerce_restock_refunded_item',
-			static function ( $id, $old, $new, \WC_Order $order ): void {
+			static function ( $id, $old, $new, \WC_Order $order ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.newFound -- Preserve the existing PHP parameter name.
 				do_action( 'spacepress_woo_order_stock', (int) $id, $order->get_id(), $new - $old, 'return' );
 			},
 			10,

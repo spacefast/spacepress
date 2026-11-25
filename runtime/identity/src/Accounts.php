@@ -175,7 +175,7 @@ final class Accounts {
 			}
 		);
 	}
-	public function removeEmail( int $uid, int $id ): void {
+	public function removeEmail( int $uid, int $id ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$this->db->transaction(
 			function () use ( $uid, $id ) {
 				$a = $this->db->lock( $uid );
@@ -211,7 +211,7 @@ final class Accounts {
 	private const MAX_ARGON_THREADS    = 2;
 
 	/** Ordinary requests only provision fixed material and enqueue the background inventory. */
-	public static function provisionPasswordHash(): void {
+	public static function provisionPasswordHash(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		// Written under the current names while identity's storage is still under the earlier one,
 		// these would be set aside by the next boot's move, and again on every boot it fails.
 		if ( ! Legacy::settled() && ! Plugin::storageCurrent() ) {
@@ -241,7 +241,7 @@ final class Accounts {
 	}
 
 	/** A locked option row serializes workers/writers; the cursor and profiles commit together. */
-	public static function inventoryPasswordHashes(): void {
+	public static function inventoryPasswordHashes(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( get_option( self::PASSWORD_INVENTORY )['complete'] ) {
 			wp_clear_scheduled_hook( self::PASSWORD_INVENTORY );
 			return;
@@ -255,7 +255,7 @@ final class Accounts {
 						return;
 					}
 					$profiles         = self::locked_password_option( self::PASSWORD_PROFILES );
-					$previousProfiles = $profiles;
+					$previousProfiles = $profiles; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					$page             = Plugin::$db->rows( "SELECT ID,user_pass FROM {$wpdb->users} WHERE ID > %d ORDER BY ID LIMIT 1000", $state['after'] );
 					foreach ( $page as $row ) {
 						$profile = self::password_profile( $row['user_pass'] );
@@ -268,7 +268,7 @@ final class Accounts {
 						$state['after'] = (int) $row['ID'];
 					}
 					$state['complete'] = count( $page ) < 1000;
-					if ( $profiles !== $previousProfiles ) {
+					if ( $profiles !== $previousProfiles ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						self::write_password_option( self::PASSWORD_PROFILES, $profiles );
 					}
 					self::write_password_option( self::PASSWORD_INVENTORY, $state );
@@ -306,7 +306,7 @@ final class Accounts {
 	}
 
 	/** Keep profiles after upgrades: removing the last old hash must not change just its user's work. */
-	public static function rememberPasswordHash( string $hash ): void {
+	public static function rememberPasswordHash( string $hash ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		// As in provisionPasswordHash(): the move would set the profiles written now aside.
 		if ( ! Legacy::settled() && ! Plugin::storageCurrent() ) {
 			return;
@@ -446,12 +446,12 @@ final class Accounts {
 		} else {
 			// Complete inventories give every sign-in the same algorithm/cost schedule.
 			foreach ( get_option( self::PASSWORD_PROFILES ) as $kind => $dummy ) {
-				$dummyProfile = self::password_profile( $dummy );
+				$dummyProfile = self::password_profile( $dummy ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				// Old inventory options must not replay costs rejected by the current policy.
-				if ( self::UNSUPPORTED_PASSWORD_PROFILE === $dummyProfile ) {
+				if ( self::UNSUPPORTED_PASSWORD_PROFILE === $dummyProfile ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					continue;
 				}
-				$actual  = $user && self::UNSUPPORTED_PASSWORD_PROFILE !== $profile && $profile === $kind && $dummyProfile === $profile;
+				$actual  = $user && self::UNSUPPORTED_PASSWORD_PROFILE !== $profile && $profile === $kind && $dummyProfile === $profile; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$checked = wp_check_password( $password, $actual ? $user->user_pass : $dummy, $actual ? $user->ID : 0 );
 				if ( $actual ) {
 					$valid = $checked;
@@ -468,7 +468,7 @@ final class Accounts {
 		$this->ensure( (int) $user->ID );
 		return (int) $user->ID;
 	}
-	public function emailLogin( string $email ): int {
+	public function emailLogin( string $email ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$email = self::email( $email );
 		return $this->db->transaction(
 			function () use ( $email ) {
@@ -520,8 +520,8 @@ final class Accounts {
 		string $subject,
 		?string $email,
 		string $name,
-		?int $linkUid = null,
-		?string $linkSessionId = null,
+		?int $linkUid = null, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		?string $linkSessionId = null, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	): int {
 		if (
 			'' === $issuer ||
@@ -541,16 +541,16 @@ final class Accounts {
 				$subject,
 				$email,
 				$name,
-				$linkUid,
+				$linkUid, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$key,
-				$linkSessionId,
+				$linkSessionId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			) {
-				if ( null !== $linkUid ) {
-					$this->db->lock( $linkUid );
+				if ( null !== $linkUid ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					$this->db->lock( $linkUid ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					$session = $this->db->row(
 						"SELECT * FROM {$this->db->prefix}sessions WHERE id=%s AND wp_user_id=%d FOR UPDATE",
-						$linkSessionId ?? '',
-						$linkUid,
+						$linkSessionId ?? '', // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+						$linkUid, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					);
 					if (
 						! $session ||
@@ -571,7 +571,7 @@ final class Accounts {
 				);
 				if ( $existing ) {
 					$uid = (int) $existing['wp_user_id'];
-					if ( null !== $linkUid && $linkUid !== $uid ) {
+					if ( null !== $linkUid && $linkUid !== $uid ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						throw new Failure(
 							'provider_in_use',
 							'This provider belongs to another account.',
@@ -583,7 +583,7 @@ final class Accounts {
 				}
 				// A host that already keeps a WordPress user for this identity (its own verified
 				// platform accounts) names it here; the identity then signs in to that account.
-				$uid = $linkUid ?: ( (int) apply_filters( 'sp_identity_provider_account', 0, $issuer, $subject, $name ) ?: null );
+				$uid = $linkUid ?: ( (int) apply_filters( 'sp_identity_provider_account', 0, $issuer, $subject, $name ) ?: null ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, Universal.Operators.DisallowShortTernary.Found -- Preserve the existing PHP variable name. Keep the existing falsey fallback.
 				if ( ! $uid ) {
 					if ( ! $email ) {
 						throw new Failure(
@@ -633,7 +633,7 @@ final class Accounts {
 	 * memberships, pending challenges and codes, the account). A later user given the same id, or
 	 * someone re-registering the email, starts with nothing of it.
 	 */
-	public function forgetUser( int $uid ): void {
+	public function forgetUser( int $uid ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$this->db->transaction(
 			function () use ( $uid ): void {
 				foreach ( array( 'sessions', 'tokens', 'codes', 'challenges', 'emails', 'providers', 'passkeys', 'mfa', 'recovery_codes', 'members', 'accounts' ) as $table ) {
@@ -651,10 +651,10 @@ final class Accounts {
 		return $row ? (string) $row['status'] : 'none';
 	}
 	/** Mint a session + token pair without a browser flow; reserved for the SpacePress runtime (§3.5). */
-	public function issueForUser( int $wpUserId, string $clientId ): array {
-		return ( new OAuth( $this->db, $this ) )->issueForUser( $wpUserId, $clientId );
+	public function issueForUser( int $wpUserId, string $clientId ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		return ( new OAuth( $this->db, $this ) )->issueForUser( $wpUserId, $clientId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
-	public static function isGuest( int $uid ): bool {
+	public static function isGuest( int $uid ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return in_array( 'sp_guest', (array) get_userdata( $uid )?->roles, true );
 	}
 	/**
@@ -669,7 +669,7 @@ final class Accounts {
 	 *
 	 * @param ?array $session the identity session the browser presented, if any
 	 */
-	public function verifiedSignIn( string $email, ?array $session ): int {
+	public function verifiedSignIn( string $email, ?array $session ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$email = self::email( $email );
 		$guest = null === $session ? null : (int) $session['wp_user_id'];
 		if ( null === $guest || ! self::isGuest( $guest ) ) {

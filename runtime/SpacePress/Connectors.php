@@ -44,8 +44,8 @@ final class Connectors {
 		if ( $result instanceof \WP_Error ) {
 			$data   = $result->get_error_data();
 			$status = is_array( $data ) && is_int( $data['status'] ?? null ) ? $data['status'] : 502;
-			$code   = (string) ( $result->get_error_code() ?: 'connector_error' );
-			throw new HttpError( $status, $code, $result->get_error_message() ?: 'Connector call failed.' );
+			$code   = (string) ( $result->get_error_code() ?: 'connector_error' ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
+			throw new HttpError( $status, $code, $result->get_error_message() ?: 'Connector call failed.' ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		}
 
 		return Seam::toJs( $result, array( 'type' => 'json' ) );
@@ -129,7 +129,7 @@ final class Connectors {
 			throw new \RuntimeException( 'No connector answered ' . $role . ':' . $tool . ' (sp_connectors_call returned null)' );
 		}
 		if ( $result instanceof \WP_Error ) {
-			throw new \RuntimeException( 'Connector ' . $role . ':' . $tool . ' failed: ' . ( $result->get_error_message() ?: $result->get_error_code() ) );
+			throw new \RuntimeException( 'Connector ' . $role . ':' . $tool . ' failed: ' . ( $result->get_error_message() ?: $result->get_error_code() ) ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		}
 	}
 

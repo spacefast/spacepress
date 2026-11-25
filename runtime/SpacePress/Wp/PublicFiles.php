@@ -134,7 +134,7 @@ final class PublicFiles {
 		return $parsed[ $dir ];
 	}
 
-	public static function manifestHash( Plugin $plugin ): ?string {
+	public static function manifestHash( Plugin $plugin ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$raw = self::manifest_raw( $plugin->dir );
 
 		return '' === $raw ? null : hash( 'sha256', $raw );
@@ -152,7 +152,7 @@ final class PublicFiles {
 	}
 
 	/** Content version (12-hex SHA-256) of a JavaScript file in `public/`, or null. */
-	public static function scriptVersion( Plugin $plugin, string $relative ): ?string {
+	public static function scriptVersion( Plugin $plugin, string $relative ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$ext = strtolower( pathinfo( $relative, PATHINFO_EXTENSION ) );
 		if ( 'js' !== $ext && 'mjs' !== $ext ) {
 			return null;
@@ -177,18 +177,18 @@ final class PublicFiles {
 	 * The `wp-content/` directory holding `$plugin`'s public files on disk, or null when a managed
 	 * build has no public assets mirror configured (never expose a private build store via symlinks).
 	 */
-	public static function publicDir( Plugin $plugin ): ?string {
+	public static function publicDir( Plugin $plugin ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( Runtime::managed() ) {
 			$loaded    = class_exists( \SpacePress\Loader\Loader::class, false ) ? \SpacePress\Loader\Loader::loaded() : null;
-			$assetsDir = is_array( $loaded ) && is_string( $loaded['assetsDir'] ?? null ) && '' !== $loaded['assetsDir']
+			$assetsDir = is_array( $loaded ) && is_string( $loaded['assetsDir'] ?? null ) && '' !== $loaded['assetsDir'] // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				? rtrim( $loaded['assetsDir'], '/\\' )
 				: null;
 			$manifest  = is_array( $loaded['manifest'] ?? null ) ? $loaded['manifest'] : null;
-			if ( null === $assetsDir || null === $manifest ) {
+			if ( null === $assetsDir || null === $manifest ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				return null;
 			}
 
-			return $assetsDir . '/app/' . $manifest['app'] . '/plugins/spacepress-app-' . $manifest['name'] . '/public';
+			return $assetsDir . '/app/' . $manifest['app'] . '/plugins/spacepress-app-' . $manifest['name'] . '/public'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 
 		return $plugin->dir . '/public';
@@ -207,7 +207,7 @@ final class PublicFiles {
 			return;
 		}
 		$public_dir = self::publicDir( $plugin );
-		$source     = null !== $public_dir ? ( realpath( $public_dir ) ?: '' ) : '';
+		$source     = null !== $public_dir ? ( realpath( $public_dir ) ?: '' ) : ''; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		$hash       = self::manifestHash( $plugin ) ?? '';
 		$routes     = self::routes_fingerprint( $plugin->schema );
 		$stored     = get_option( self::SYMLINKS_OPTION );
@@ -247,7 +247,7 @@ final class PublicFiles {
 					'literals' => $literals,
 				),
 				JSON_UNESCAPED_SLASHES
-			) ?: ''
+			) ?: '' // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		);
 	}
 
@@ -259,7 +259,7 @@ final class PublicFiles {
 	 * top-level `index.html`, never creates directories that shadow literal app routes, and cleans
 	 * up stale symlinks from previous builds.
 	 */
-	public static function syncSymlinks( Plugin $plugin ): void {
+	public static function syncSymlinks( Plugin $plugin ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$public_dir = self::publicDir( $plugin );
 		if ( null === $public_dir ) {
 			return;
@@ -267,7 +267,7 @@ final class PublicFiles {
 		self::syncSymlinksForDir( $plugin->dir, $public_dir, $plugin->schema );
 	}
 
-	public static function syncSymlinksForDir( string $appDir, string $publicDir, \SpacePress\Schema $schema ): void {
+	public static function syncSymlinksForDir( string $appDir, string $publicDir, \SpacePress\Schema $schema ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$root = self::document_root();
 		if ( null === $root ) {
 			return;
@@ -279,9 +279,9 @@ final class PublicFiles {
 		$prev_stale    = is_array( $stored ) && is_array( $stored['stale'] ?? null ) ? $stored['stale'] : array();
 		$prev_link_set = array_fill_keys( $prev_links, true );
 
-		$source_top = is_dir( $publicDir ) ? realpath( $publicDir ) : false;
-		$manifest   = self::manifest_for_dir( $appDir );
-		$raw        = self::manifest_raw( $appDir );
+		$source_top = is_dir( $publicDir ) ? realpath( $publicDir ) : false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$manifest   = self::manifest_for_dir( $appDir ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$raw        = self::manifest_raw( $appDir ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$hash       = '' === $raw ? '' : hash( 'sha256', $raw );
 		$routes     = self::routes_fingerprint( $schema );
 		$reserved   = $schema->reserved();
@@ -416,7 +416,7 @@ final class PublicFiles {
 		}
 		$pending_dirs = false;
 		$prune_list   = $prev_root === $root ? array_keys( $owned_dirs ) : $prev_dirs;
-		usort( $prune_list, static fn ( string $a, string $b ): int => substr_count( $b, '/' ) <=> substr_count( $a, '/' ) ?: strlen( $b ) <=> strlen( $a ) );
+		usort( $prune_list, static fn ( string $a, string $b ): int => substr_count( $b, '/' ) <=> substr_count( $a, '/' ) ?: strlen( $b ) <=> strlen( $a ) ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		foreach ( $prune_list as $dir ) {
 			if ( $prev_root !== $root || ! isset( $needed_dirs[ $dir ] ) ) {
 				$dir_path = $prev_root . '/' . $dir;
@@ -461,7 +461,7 @@ final class PublicFiles {
 	}
 
 	/** Remove every symlink and empty directory SpacePress created in the document root. */
-	public static function removeSymlinks(): void {
+	public static function removeSymlinks(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$stored = get_option( self::SYMLINKS_OPTION );
 		if ( ! is_array( $stored ) || ! is_string( $stored['root'] ?? null ) || '' === $stored['root'] ) {
 			delete_option( self::SYMLINKS_OPTION );
@@ -482,7 +482,7 @@ final class PublicFiles {
 			}
 		}
 		$dirs = is_array( $stored['dirs'] ?? null ) ? array_values( array_filter( $stored['dirs'], 'is_string' ) ) : array();
-		usort( $dirs, static fn ( string $a, string $b ): int => substr_count( $b, '/' ) <=> substr_count( $a, '/' ) ?: strlen( $b ) <=> strlen( $a ) );
+		usort( $dirs, static fn ( string $a, string $b ): int => substr_count( $b, '/' ) <=> substr_count( $a, '/' ) ?: strlen( $b ) <=> strlen( $a ) ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		$remaining_dirs = array();
 		foreach ( $dirs as $dir ) {
 			if ( '' === $dir ) {
@@ -546,7 +546,7 @@ final class PublicFiles {
 				$remaining[] = $item;
 			}
 		}
-		usort( $dirs, static fn ( array $a, array $b ): int => substr_count( $b['path'], '/' ) <=> substr_count( $a['path'], '/' ) ?: strlen( $b['path'] ) <=> strlen( $a['path'] ) );
+		usort( $dirs, static fn ( array $a, array $b ): int => substr_count( $b['path'], '/' ) <=> substr_count( $a['path'], '/' ) ?: strlen( $b['path'] ) <=> strlen( $a['path'] ) ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		foreach ( $dirs as $item ) {
 			$full = $item['root'] . '/' . $item['path'];
 			if ( is_dir( $full ) && ! @rmdir( $full ) && is_dir( $full ) ) {
@@ -580,7 +580,7 @@ final class PublicFiles {
 	 * The `public/` file PHP answers this request with (one the document root has no link for:
 	 * `/.well-known/*`, a route-shadowed child, the top-level `index.html`), or null.
 	 */
-	public static function fallbackFile( Plugin $plugin ): ?string {
+	public static function fallbackFile( Plugin $plugin ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$method = strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) );
 		if ( 'GET' !== $method && 'HEAD' !== $method || MarkdownTwins::negotiating() ) {
 			return null;
@@ -733,7 +733,7 @@ final class PublicFiles {
 			if ( $path !== $base && ! str_starts_with( $path, $base . '/' ) ) {
 				return null;
 			}
-			$path = substr( $path, strlen( $base ) ) ?: '/';
+			$path = substr( $path, strlen( $base ) ) ?: '/'; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		}
 
 		return $path;

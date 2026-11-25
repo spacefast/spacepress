@@ -59,7 +59,7 @@ final class Html {
 		return trim( $html );
 	}
 
-	public static function fromHtml( string $html ): string {
+	public static function fromHtml( string $html ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return str_replace( array( "\r\n", "\r" ), "\n", $html );
 	}
 
@@ -78,7 +78,7 @@ final class Html {
 		}
 	}
 
-	private static function isStatic( string $name ): bool {
+	private static function isStatic( string $name ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( class_exists( \WP_Block_Type_Registry::class ) ) {
 			$type = \WP_Block_Type_Registry::get_instance()->get_registered( $name );
 

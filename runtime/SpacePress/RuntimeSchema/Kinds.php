@@ -150,7 +150,7 @@ final class Kinds {
 	}
 
 	/** What `schema.php` holds for a stored collection. */
-	public static function expandCollection( string $name, array $stored ): array {
+	public static function expandCollection( string $name, array $stored ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$access         = array_fill_keys( self::COLLECTION_OPS, array( 'role' => 'editor' ) );
 		$access['read'] = array( 'role' => 'anyone' );
 		foreach ( $stored['access'] ?? array() as $op => $rule ) {
@@ -253,7 +253,7 @@ final class Kinds {
 	}
 
 	/** What `schema.php` holds for a stored global. */
-	public static function expandGlobal( string $name, array $stored ): array {
+	public static function expandGlobal( string $name, array $stored ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$access = array(
 			'read'   => array( 'role' => 'anyone' ),
 			'update' => array( 'role' => 'editor' ),

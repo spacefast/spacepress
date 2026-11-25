@@ -12,7 +12,7 @@ namespace SpacePress;
 interface Links {
 
 	/** The quoted, prefixed table, for SQL that reads it (filters). */
-	public function linkTable( string $join ): string;
+	public function linkTable( string $join ): string; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
 	/**
 	 * Links whose `$by` column ('owner_id' | 'target_id') is one of `$ids`, in position order.
@@ -20,10 +20,10 @@ interface Links {
 	 * @param list<int|string> $ids
 	 * @return list<array{owner_id: int, target_id: int, position: int}>
 	 */
-	public function links( string $join, string $by, array $ids, bool $forUpdate = false ): array;
+	public function links( string $join, string $by, array $ids, bool $forUpdate = false ): array; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 	/** Replace an owner's links with `$targets`, positions in list order. @param list<int> $targets */
-	public function setLinks( string $join, int|string $owner, array $targets ): void;
+	public function setLinks( string $join, int|string $owner, array $targets ): void; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
 	/** Remove every link whose `$by` column is `$id`. */
 	public function unlink( string $join, string $by, int|string $id ): void;

@@ -555,7 +555,7 @@ final class TableController extends \WP_REST_Controller {
 	 * pipeline runs in one transaction; SpacePress's refusals become core's `WP_Error` with SpacePress's code,
 	 * status and pointer.
 	 */
-	private function run( string $op, \WP_REST_Request $request, callable $fn ): mixed {
+	private function run( string $op, \WP_REST_Request $request, callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$plugin = Plugin::instance() ?? throw new \LogicException( 'No SpacePress app' );
 		if ( $plugin->unavailable() !== null ) {
 			return new \WP_Error( 'sp_unavailable', Plugin::UNAVAILABLE, array( 'status' => 503 ) );

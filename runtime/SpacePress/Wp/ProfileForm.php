@@ -70,8 +70,8 @@ final class ProfileForm {
 	// ================================================================ render
 
 	/** acf/pre_load_value: a structured member field reads the member row's value, in SCF's form. */
-	public static function load( mixed $value, mixed $postId, mixed $field ): mixed {
-		if ( null !== $value || ( $ctx = self::member( $postId, $field ) ) === null || ! $ctx['structured'] ) {
+	public static function load( mixed $value, mixed $postId, mixed $field ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( null !== $value || ( $ctx = self::member( $postId, $field ) ) === null || ! $ctx['structured'] ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Keep the assignment and its test together. Preserve the existing PHP variable name.
 			return $value;
 		}
 		[$collection, $id, $def, $col] = array( $ctx['collection'], $ctx['id'], $ctx['def'], $ctx['col'] );
@@ -86,9 +86,9 @@ final class ProfileForm {
 	}
 
 	/** acf/pre_load_reference: a member field name's field key, for every user. */
-	public static function reference( mixed $reference, mixed $name, mixed $postId ): mixed {
+	public static function reference( mixed $reference, mixed $name, mixed $postId ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null !== $reference || ! is_string( $name ) || ! str_starts_with( $name, WpUserStore::META )
-			|| ! is_string( $postId ) || ! preg_match( '/^user_\d+$/D', $postId ) ) {
+			|| ! is_string( $postId ) || ! preg_match( '/^user_\d+$/D', $postId ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return $reference;
 		}
 		$collection = Plugin::instance()?->schema->auth()['collection'] ?? null;
@@ -141,13 +141,13 @@ final class ProfileForm {
 		$visible = FieldAccess::strip( array( $stored ), $collection, $viewer )[0] ?? array();
 		$nested  = in_array( $def['type'], self::STRUCTURED, true ) && FieldAccess::mayHide( array( 'access' => array() ) + $def, $viewer );
 
-		return ! $nested && array_key_exists( $col, $visible ) && $visible[ $col ] === ( $stored[ $col ] ?? null );
+		return ! $nested && array_key_exists( $col, $visible ) && $visible[ $col ] === ( $stored[ $col ] ?? null ); // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 	}
 
 	// ================================================================ save
 
 	/** personal_options_update / edit_user_profile_update: open the save before core updates the user. */
-	public static function begin( mixed $userId ): void {
+	public static function begin( mixed $userId ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$plugin = Plugin::instance();
 		if ( null === $plugin || ( $plugin->schema->auth()['collection'] ?? null ) === null ) {
 			return;
@@ -164,7 +164,7 @@ final class ProfileForm {
 		}
 		$plugin->connection()->begin();
 		self::$open = array(
-			'user'   => (int) $userId,
+			'user'   => (int) $userId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			'patch'  => array(),
 			'viewer' => null,
 		);
@@ -172,7 +172,7 @@ final class ProfileForm {
 		// It consumes its nonce, so its later profile_update callback does not save again.
 		// SpacePress must select and authorize the member while core still holds the original row.
 		if ( function_exists( 'acf_get_instance' ) ) {
-			acf_get_instance( 'ACF_Form_User' )->save_user( (int) $userId );
+			acf_get_instance( 'ACF_Form_User' )->save_user( (int) $userId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		self::authorize();
 	}
@@ -181,8 +181,8 @@ final class ProfileForm {
 	 * acf/pre_update_value: inside a profile save, a member field is staged for end(); outside
 	 * one, a structured member field is a trusted SpacePress write. Either way SCF writes nothing itself.
 	 */
-	public static function update( mixed $check, mixed $value, mixed $postId, mixed $field ): mixed {
-		if ( null !== $check || Scf::$io > 0 || ( $ctx = self::member( $postId, $field ) ) === null ) {
+	public static function update( mixed $check, mixed $value, mixed $postId, mixed $field ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( null !== $check || Scf::$io > 0 || ( $ctx = self::member( $postId, $field ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Keep the assignment and its test together. Preserve the existing PHP variable name.
 			return $check;
 		}
 		$open = null !== self::$open && self::$open['user'] === $ctx['id'];
@@ -194,21 +194,21 @@ final class ProfileForm {
 		}
 		$js = $ctx['structured']
 			? self::incoming( $ctx, wp_unslash( $value ), $field, $open )
-			: Scf::fromScf( $ctx['def'], wp_unslash( Scf::updateValue( $value, $postId, $field ) ), (string) $field['key'] );
+			: Scf::fromScf( $ctx['def'], wp_unslash( Scf::updateValue( $value, $postId, $field ) ), (string) $field['key'] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( $open ) {
 			self::$open['patch'][ $ctx['col'] ] = $js;
 
 			return true;
 		}
 		self::plugin()->db()->update( $ctx['collection'], array( $ctx['col'] => $js ), array( 'id' => $ctx['id'] ) );
-		acf_flush_value_cache( $postId, (string) $field['name'] );
+		acf_flush_value_cache( $postId, (string) $field['name'] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 		return true;
 	}
 
 	/** SCF validates the same effective value that the profile save will write, before its AJAX gate. */
-	public static function validationValue( mixed $raw, array $field ): mixed {
-		$post_id = acf_get_form_data( 'post_id' ) ?: ( $_POST['_acf_post_id'] ?? null );
+	public static function validationValue( mixed $raw, array $field ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		$post_id = acf_get_form_data( 'post_id' ) ?: ( $_POST['_acf_post_id'] ?? null ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		$ctx     = self::member( $post_id, $field );
 
 		return null !== $ctx && $ctx['structured']
@@ -261,9 +261,9 @@ final class ProfileForm {
 	}
 
 	/** profile_update: core accepted and wrote the user; apply the checked patch and commit together. */
-	public static function end( mixed $userId ): void {
+	public static function end( mixed $userId ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$plugin = self::plugin();
-		if ( null === self::$open || self::$open['user'] !== (int) $userId || $plugin->connection()->busy() ) {
+		if ( null === self::$open || self::$open['user'] !== (int) $userId || $plugin->connection()->busy() ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return;
 		}
 		$id         = self::$open['user'];
@@ -585,8 +585,8 @@ final class ProfileForm {
 	}
 
 	/** @return ?array{collection: string, id: int, col: string, def: array, structured: bool} a top-level member field on an existing user */
-	private static function member( mixed $postId, mixed $field ): ?array {
-		if ( ! is_array( $field ) || empty( $field['sp_member'] ) || ! is_string( $postId ) || ! preg_match( '/^user_(\d+)$/D', $postId, $m ) || 0 === (int) $m[1] ) {
+	private static function member( mixed $postId, mixed $field ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( ! is_array( $field ) || empty( $field['sp_member'] ) || ! is_string( $postId ) || ! preg_match( '/^user_(\d+)$/D', $postId, $m ) || 0 === (int) $m[1] ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return null;
 		}
 		$collection = Plugin::instance()?->schema->auth()['collection'] ?? null;

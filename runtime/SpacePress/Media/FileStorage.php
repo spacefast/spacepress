@@ -16,7 +16,7 @@ interface FileStorage {
 	public function unavailable(): ?string;
 
 	/** Persist $tmpPath under private identity $rel (removed again if the transaction rolls back). */
-	public function store( string $tmpPath, string $rel ): void;
+	public function store( string $tmpPath, string $rel ): void; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 	/** @param array{bucket: string, filename: string, mime: string, size: int, path: string, ownerId: ?int, createdAt: string} $row */
 	public function insert( array $row ): int;
@@ -25,7 +25,7 @@ interface FileStorage {
 	 * @param list<int> $ids
 	 * @return array<int, array{id: int, bucket: string, filename: string, mime: string, size: int, path: string, ownerId: ?int, createdAt: string}>
 	 */
-	public function getMany( array $ids ): array;
+	public function getMany( array $ids ): array; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
 	/** Delete the row now and its bytes once the transaction commits. */
 	public function delete( array $row ): void;
@@ -34,7 +34,7 @@ interface FileStorage {
 	public function stream( string $rel ): \Closure;
 
 	/** Absolute or root-relative URL of an API route ('/files/decks/1/download'). */
-	public function apiUrl( string $route ): string;
+	public function apiUrl( string $route ): string; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
 	/** `GET /_schema` `runtime.privateFiles`. */
 	public function describe(): array;

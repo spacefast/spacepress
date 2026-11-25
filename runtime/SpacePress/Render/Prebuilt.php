@@ -216,7 +216,7 @@ final class Prebuilt {
 		$key    = md5( (string) wp_json_encode( $key ) );
 		$stored = get_option( 'sp_prebuilt_id' );
 		if ( is_array( $stored ) && ( $stored['key'] ?? null ) === $key && is_string( $stored['id'] ?? null ) ) {
-			return $id = $stored['id'];
+			return $id = $stored['id']; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		}
 		$id = self::compute_id( $trees, $map_hash );
 		update_option(
@@ -284,18 +284,18 @@ final class Prebuilt {
 		}
 		$given = $_SERVER['HTTP_X_SPACEPRESS_PRERENDER'] ?? null;
 		if ( ! is_string( $given ) || preg_match( '/\A(\d{1,12})\.[0-9a-f]{64}\z/', $given, $m ) !== 1 || ! function_exists( 'get_option' ) ) {
-			return $answer = false;
+			return $answer = false; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		}
 		$expires = (int) $m[1];
 		if ( $expires < time() || $expires > time() + self::TOKEN_TTL + 60 ) {
-			return $answer = false;
+			return $answer = false; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		}
 		$path          = (string) ( parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '/' ), PHP_URL_PATH ) ?? '/' );
-		return $answer = hash_equals( self::token( $path, $expires ), $given );
+		return $answer = hash_equals( self::token( $path, $expires ), $given ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 	}
 
 	/** A viewer function ran while prerendering: the page can't be one file for everyone. */
-	public static function viewerCall( string $function ): void {
+	public static function viewerCall( string $function ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.functionFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		if ( self::prerendering() ) {
 			self::refuse( $function );
 		}
@@ -386,7 +386,7 @@ final class Prebuilt {
 					if ( isset( $seen[ $u['path'] ] ) || \SpacePress\Commerce\Module::privatePath( $plugin, $u['path'] ) ) {
 						return false;
 					}
-					return $seen[ $u['path'] ] = true;
+					return $seen[ $u['path'] ] = true; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 				}
 			)
 		);
@@ -404,7 +404,7 @@ final class Prebuilt {
 	 * in path order.
 	 * Any change to a page, a component, an action or the schema changes it.
 	 */
-	public static function appHash( Plugin $plugin ): string {
+	public static function appHash( Plugin $plugin ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$root  = $plugin->dir . '/sp/app';
 		$files = array();
 		foreach ( new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $root, \FilesystemIterator::SKIP_DOTS ) ) as $f ) {
@@ -431,8 +431,8 @@ final class Prebuilt {
 	private static function items( Plugin $plugin, string $kind, Viewer $viewer ): array {
 		$spec     = $plugin->schema->collection( $kind );
 		$urls     = KindUrls::instance();
-		$postType = $spec['wp']['postType'] ?? null;
-		if ( null === $urls || ! is_string( $postType ) ) {
+		$postType = $spec['wp']['postType'] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( null === $urls || ! is_string( $postType ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return array();
 		}
 		$pk    = (string) $spec['primaryKey'];
@@ -587,7 +587,7 @@ final class Prebuilt {
 		if ( '' !== $base && $uri !== $base && ! str_starts_with( $uri, $base . '/' ) ) {
 			return;
 		}
-		$path = substr( $uri, strlen( $base ) ) ?: '/';
+		$path = substr( $uri, strlen( $base ) ) ?: '/'; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		// `/index` is not the home page's URL; only its twin `/index.md` is.
 		if ( '/index' === $path || '/index/' === $path ) {
 			return;
@@ -604,7 +604,7 @@ final class Prebuilt {
 		// A page only at its one address (`/about/`, AppRouter::address): the other spelling reaches
 		// the router, which redirects it. A twin is `/about.md` only, so `/about/.md` is rejected below.
 		if ( ! $markdown ) {
-			if ( $html !== AppRouter::address( $html ) ) {
+			if ( $html !== AppRouter::address( $html ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				return;
 			}
 			$html = '/' === $html ? '/' : rtrim( $html, '/' );
@@ -673,7 +673,7 @@ final class Prebuilt {
 		header( 'Content-Length: ' . (string) $stat['size'] );
 		if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) !== 'HEAD' ) {
 			// PHP 8.5 can allocate the entire file in fpassthru(), exceeding a bounded request's memory.
-			while ( ( $chunk = fread( $handle, 65536 ) ) !== false && '' !== $chunk ) {
+			while ( ( $chunk = fread( $handle, 65536 ) ) !== false && '' !== $chunk ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.FoundInWhileCondition -- Keep the assignment and its test together.
 				echo $chunk;
 			}
 		}
@@ -873,7 +873,7 @@ final class Prebuilt {
 	private static function sweep(): void {
 		$root = dirname( self::dir() );
 		foreach ( is_dir( $root ) ? (array) scandir( $root ) : array() as $entry ) {
-			if ( '.' !== $entry && '..' !== $entry && preg_match( '/^[0-9a-f]{16}$/', (string) $entry ) === 1 && $root . '/' . $entry !== self::dir() ) {
+			if ( '.' !== $entry && '..' !== $entry && preg_match( '/^[0-9a-f]{16}$/', (string) $entry ) === 1 && $root . '/' . $entry !== self::dir() ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				self::remove( $root . '/' . $entry );
 			}
 		}
@@ -907,7 +907,7 @@ final class Prebuilt {
 				continue;
 			}
 			if ( '' !== $base && str_starts_with( $path, $base ) ) {
-				$path = substr( $path, strlen( $base ) ) ?: '/';
+				$path = substr( $path, strlen( $base ) ) ?: '/'; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			}
 			$path  = '/' === $path ? '/' : rtrim( $path, '/' );
 			$match = AppRouter::match( $app['routes'], $path, $app['routeIndex'] );

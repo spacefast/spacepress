@@ -48,7 +48,7 @@ final class UserMeta {
 	public static function readable( mixed $response, mixed $handler, mixed $request ): mixed {
 		if ( null !== $response || ! $request instanceof \WP_REST_Request || ! Rest::reads( $handler )
 			|| preg_match( '#^/wp/v2/users/(\d+)$#i', $request->get_route() ) !== 1
-			|| ! Facade::dispatching() || ( $collection = self::collection() ) === null ) {
+			|| ! Facade::dispatching() || ( $collection = self::collection() ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $response;
 		}
 		$allowed = call_user_func( $handler['permission_callback'], $request );
@@ -73,7 +73,7 @@ final class UserMeta {
 		return null !== $row ? null : $missing;
 	}
 
-	public static function registerMeta(): void {
+	public static function registerMeta(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( self::fields() as $col => $def ) {
 			$schema = array( 'default' => null ) + JsonSchema::column( $def, true );
 			$types  = array_values( array_diff( (array) $schema['type'], array( 'null' ) ) );
@@ -116,7 +116,7 @@ final class UserMeta {
 	public static function prepare( mixed $response, mixed $user, mixed $request ): mixed {
 		$collection = self::collection();
 		if ( null === $collection || ! $response instanceof \WP_REST_Response || ! $user instanceof \WP_User
-			|| ! is_array( $data = $response->get_data() ) || ! is_array( $data['meta'] ?? null ) ) {
+			|| ! is_array( $data = $response->get_data() ) || ! is_array( $data['meta'] ?? null ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $response;
 		}
 		$fields = self::fields();
@@ -236,8 +236,8 @@ final class UserMeta {
 		// A role SpacePress knows is the member's `role`; another plugin's role stays core's (promote_user),
 		// and the member's ladder role follows its capabilities (WpUserStore::syncRole).
 		$roles = $request->get_param( 'roles' );
-		if ( is_array( $roles ) && count( $roles ) === 1 && ( $role = WpUserStore::firstRole( (string) reset( $roles ) ) ) !== null ) {
-			if ( is_wp_error( $denied = self::check_roles( $id, $roles ) ) ) {
+		if ( is_array( $roles ) && count( $roles ) === 1 && ( $role = WpUserStore::firstRole( (string) reset( $roles ) ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
+			if ( is_wp_error( $denied = self::check_roles( $id, $roles ) ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				return $denied;
 			}
 			$core['role'] = $role;
@@ -303,7 +303,7 @@ final class UserMeta {
 		}
 		$roles = $request->get_param( 'roles' );
 		if ( is_array( $roles ) && array() !== $roles ) {
-			if ( is_wp_error( $denied = self::check_roles( 0, $roles ) ) ) {
+			if ( is_wp_error( $denied = self::check_roles( 0, $roles ) ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				return $denied;
 			}
 			$data['role'] = count( $roles ) === 1 ? WpUserStore::firstRole( (string) reset( $roles ) ) : null;
@@ -330,7 +330,7 @@ final class UserMeta {
 					}
 					// The rest of core's create_item, as it runs after wp_insert_user: its hooks (creating),
 					// other plugins' registered meta, additional fields.
-					$user = get_user_by( 'id', $id ) ?: throw new \LogicException( "User $id vanished" );
+					$user = get_user_by( 'id', $id ) ?: throw new \LogicException( "User $id vanished" ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 					do_action( 'rest_insert_user', $user, $request, true );
 					$others = is_array( $meta ) ? array_diff_key( $meta, self::fields() ) : array();
 					if ( array() !== $others ) {
@@ -484,7 +484,7 @@ final class UserMeta {
 		$data   = $error?->get_error_data();
 		$status = is_array( $data ) && is_int( $data['status'] ?? null ) ? $data['status'] : ( $response instanceof \WP_REST_Response ? $response->get_status() : 500 );
 
-		return new HttpError( $status, (string) ( $error?->get_error_code() ?: 'rest_error' ), (string) ( $error?->get_error_message() ?: 'The user save failed' ) );
+		return new HttpError( $status, (string) ( $error?->get_error_code() ?: 'rest_error' ), (string) ( $error?->get_error_message() ?: 'The user save failed' ) ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 	}
 
 	private static function collection(): ?string {

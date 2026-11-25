@@ -65,22 +65,22 @@ final class Rev {
 	 * @param array<array-key, mixed> $rows
 	 * @return array<array-key, mixed>
 	 */
-	public static function attachAll( string $collection, array $rows ): array {
+	public static function attachAll( string $collection, array $rows ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$spec = Plugin::instance()?->schema->hasCollection( $collection ) ? Plugin::instance()->schema->collection( $collection ) : null;
 		if ( null === $spec || ! self::enabled( $spec ) ) {
 			return $rows;
 		}
 		$pk    = $spec['primaryKey'];
-		$intPk = ( $spec['columns'][ $pk ]['type'] ?? '' ) === 'integer';
+		$intPk = ( $spec['columns'][ $pk ]['type'] ?? '' ) === 'integer'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$ids   = array();
 		foreach ( $rows as $row ) {
 			if ( is_array( $row ) && isset( $row[ $pk ] ) ) {
-				$ids[] = $intPk ? (int) $row[ $pk ] : (string) $row[ $pk ];
+				$ids[] = $intPk ? (int) $row[ $pk ] : (string) $row[ $pk ]; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 		}
 		$states = self::states( $collection, $ids );
 		foreach ( $rows as $i => $row ) {
-			$key   = is_array( $row ) && isset( $row[ $pk ] ) ? ( $intPk ? (int) $row[ $pk ] : (string) $row[ $pk ] ) : null;
+			$key   = is_array( $row ) && isset( $row[ $pk ] ) ? ( $intPk ? (int) $row[ $pk ] : (string) $row[ $pk ] ) : null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$state = null !== $key ? ( $states[ $key ] ?? null ) : null;
 			if ( null !== $state ) {
 				$rows[ $i ] = $row + array( self::FIELD => self::encode( $state, false ) );
@@ -121,15 +121,15 @@ final class Rev {
 		}
 		$plugin = Plugin::instance();
 		$spec   = null !== $plugin && $plugin->schema->hasCollection( $collection ) ? $plugin->schema->collection( $collection ) : null;
-		$isPost = null !== $spec && Staged::enabled( $spec );
+		$isPost = null !== $spec && Staged::enabled( $spec ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null !== $viewer ) {
-			$allowed = ( $isPost && CoreAccess::covers( $collection, 'update', (int) $id, $viewer ) )
+			$allowed = ( $isPost && CoreAccess::covers( $collection, 'update', (int) $id, $viewer ) ) // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				|| ( $plugin?->db()->permits( $collection, 'update', $id, $viewer, $data ) ?? false );
 			if ( ! $allowed ) {
 				return; // the write refuses them as it refuses anyone the rule doesn't cover
 			}
 		}
-		if ( $isPost ) {
+		if ( $isPost ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			self::lock( (int) $id, $takeover );
 		}
 		if ( null === $expected ) {
@@ -178,9 +178,9 @@ final class Rev {
 			static function () use ( $plugin, $spec, $collection, $id, $expected, $takeover, $viewer, $write, $data ): mixed {
 				$conn      = $plugin->connection();
 				$table     = '`' . str_replace( '`', '``', $spec['existingTable'] ?? ( $conn->prefix() . $spec['table'] ) ) . '`';
-				$pkCol     = '`' . str_replace( '`', '``', (string) ( $spec['columns'][ $spec['primaryKey'] ]['column'] ?? $spec['primaryKey'] ) ) . '`';
-				$forUpdate = $conn->sqlite() ? '' : ' FOR UPDATE';
-				$conn->run( "SELECT 1 FROM $table WHERE $pkCol = ?$forUpdate", array( $id ) );
+				$pkCol     = '`' . str_replace( '`', '``', (string) ( $spec['columns'][ $spec['primaryKey'] ]['column'] ?? $spec['primaryKey'] ) ) . '`'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$forUpdate = $conn->sqlite() ? '' : ' FOR UPDATE'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$conn->run( "SELECT 1 FROM $table WHERE $pkCol = ?$forUpdate", array( $id ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.InterpolatedVariableNotSnakeCase -- Preserve the existing PHP variable name.
 				self::require( $collection, $id, $expected, $takeover, $viewer, data: $data );
 
 				return $write();
@@ -218,7 +218,7 @@ final class Rev {
 	 * (its update, delete, or a revision restore) is a 409, for a caller who may edit the item.
 	 * Core's own block-editor autosave already stores a per-user autosave while a post is locked.
 	 */
-	public static function restLock( mixed $result, mixed $server, mixed $request ): mixed {
+	public static function restLock( mixed $result, mixed $server, mixed $request ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null !== $result || ! $request instanceof \WP_REST_Request || in_array( $request->get_method(), array( 'GET', 'HEAD', 'OPTIONS' ), true )
 			|| Facade::dispatching() || get_current_user_id() === 0 ) {
 			return $result;
@@ -228,7 +228,7 @@ final class Rev {
 				continue;
 			}
 			$type = (string) $spec['wp']['postType'];
-			$base = preg_quote( (string) ( get_post_type_object( $type )?->rest_base ?: $type ), '#' );
+			$base = preg_quote( (string) ( get_post_type_object( $type )?->rest_base ?: $type ), '#' ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			if ( ! preg_match( '#^/wp/v2/' . $base . '/(\d+)(/revisions/\d+/restore)?/?$#i', $request->get_route(), $m ) ) {
 				continue;
 			}
@@ -278,24 +278,24 @@ final class Rev {
 		$in = static fn ( array $values ): string => implode( ', ', array_fill( 0, count( $values ), '?' ) );
 		if ( ! Staged::enabled( $spec ) ) {
 			$table  = '`' . str_replace( '`', '``', $spec['existingTable'] ?? ( $db->prefix() . $spec['table'] ) ) . '`';
-			$pkName = (string) $spec['primaryKey'];
-			$physPk = (string) ( $spec['columns'][ $pkName ]['column'] ?? $pkName );
-			$pkCol  = '`' . str_replace( '`', '``', $physPk ) . '`';
-			$intPk  = ( $spec['columns'][ $pkName ]['type'] ?? '' ) === 'integer';
+			$pkName = (string) $spec['primaryKey']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$physPk = (string) ( $spec['columns'][ $pkName ]['column'] ?? $pkName ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$pkCol  = '`' . str_replace( '`', '``', $physPk ) . '`'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$intPk  = ( $spec['columns'][ $pkName ]['type'] ?? '' ) === 'integer'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$rows   = array();
-			foreach ( $db->run( "SELECT * FROM $table WHERE $pkCol IN ({$in($ids)})", $ids ) as $row ) {
-				$k          = $intPk ? (int) $row[ $physPk ] : (string) $row[ $physPk ];
+			foreach ( $db->run( "SELECT * FROM $table WHERE $pkCol IN ({$in($ids)})", $ids ) as $row ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.InterpolatedVariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$k          = $intPk ? (int) $row[ $physPk ] : (string) $row[ $physPk ]; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$rows[ $k ] = $row;
 			}
 			if ( array() === $rows ) {
 				return array();
 			}
 			$revs     = array();
-			$revTable = $db->prefix() . 'sp__revisions';
-			if ( $db->run( 'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', array( $revTable ) ) !== array() ) {
-				$strIds = array_map( 'strval', array_keys( $rows ) );
-				foreach ( $db->run( "SELECT `pk`, MAX(`id`) AS id FROM `$revTable` WHERE `collection` = ? AND `pk` IN ({$in($strIds)}) GROUP BY `pk`", array( $collection, ...$strIds ) ) as $r ) {
-					$k          = $intPk ? (int) $r['pk'] : (string) $r['pk'];
+			$revTable = $db->prefix() . 'sp__revisions'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			if ( $db->run( 'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', array( $revTable ) ) !== array() ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$strIds = array_map( 'strval', array_keys( $rows ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				foreach ( $db->run( "SELECT `pk`, MAX(`id`) AS id FROM `$revTable` WHERE `collection` = ? AND `pk` IN ({$in($strIds)}) GROUP BY `pk`", array( $collection, ...$strIds ) ) as $r ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.InterpolatedVariableNotSnakeCase, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					$k          = $intPk ? (int) $r['pk'] : (string) $r['pk']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					$revs[ $k ] = (int) $r['id'];
 				}
 			}
@@ -338,7 +338,7 @@ final class Rev {
 		// The names are listed too, so the database can find the rows by `post_name`'s index, as
 		// each item's own read did, whatever number of revisions an item has.
 		$names     = static fn ( array $of ): array => array( ...array_map( static fn ( int $id ): string => $id . '-revision-v1', $of ), ...array_map( array( WpPostStore::class, 'stagedName' ), $of ) );
-		$revisions = $holding = array();
+		$revisions = $holding = array(); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		foreach ( $db->run(
 			"SELECT post_parent, MAX(CASE WHEN post_name = CONCAT(post_parent, '-revision-v1') THEN ID ELSE 0 END) AS revision,"
 			. ' MAX(CASE WHEN post_name = CONCAT(post_parent, ?) THEN ID ELSE 0 END) AS staged'
@@ -350,7 +350,7 @@ final class Rev {
 				$holding[] = (int) $row['post_parent'];
 			}
 		}
-		$staged = $stagedMeta = array();
+		$staged = $stagedMeta = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, Squiz.PHP.DisallowMultipleAssignments.Found -- Preserve the existing PHP variable name. Keep the assignment and its test together.
 		if ( array() !== $holding ) {
 			foreach ( $db->run(
 				"SELECT r.post_parent, r.ID, r.post_modified_gmt, r.post_title, r.post_content, m.meta_value FROM `{$wpdb->posts}` r LEFT JOIN `{$wpdb->postmeta}` m ON m.post_id = r.ID AND m.meta_key = ?"
@@ -364,7 +364,7 @@ final class Rev {
 			// A staged revision's fields change through its meta; its id, record and copy of the post cover a re-stage.
 			$first = array_values( array_map( static fn ( array $rows ): int => (int) $rows[0]['ID'], $staged ) );
 			foreach ( array() === $first ? array() : $db->run( "SELECT post_id, meta_key, meta_value FROM `{$wpdb->postmeta}` WHERE post_id IN ({$in($first)}) ORDER BY post_id, meta_key, meta_id", $first ) as $row ) {
-				$stagedMeta[ (int) $row['post_id'] ][] = array(
+				$stagedMeta[ (int) $row['post_id'] ][] = array( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					'meta_key'   => $row['meta_key'],
 					'meta_value' => $row['meta_value'],
 				);
@@ -376,7 +376,7 @@ final class Rev {
 				'id'       => $id,
 				'live'     => self::digest( array( $post, $meta[ $id ] ) ),
 				'revision' => $revisions[ $id ] ?? 0,
-				'staged'   => isset( $staged[ $id ] ) ? self::digest( array( $staged[ $id ], $stagedMeta[ (int) $staged[ $id ][0]['ID'] ] ?? array() ) ) : null,
+				'staged'   => isset( $staged[ $id ] ) ? self::digest( array( $staged[ $id ], $stagedMeta[ (int) $staged[ $id ][0]['ID'] ] ?? array() ) ) : null, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			);
 		}
 

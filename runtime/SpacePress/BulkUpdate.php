@@ -25,7 +25,7 @@ final class BulkUpdate {
 		public readonly array $set,
 		public readonly ?Viewer $viewer,
 		array $keys,
-		public readonly ?Viewer $errorViewer = null,
+		public readonly ?Viewer $errorViewer = null, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	) {
 		$this->pending = array_fill_keys( $keys, true );
 	}

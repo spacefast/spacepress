@@ -9,7 +9,7 @@ class HttpError extends \Exception {
 
 	public function __construct(
 		public readonly int $status,
-		public readonly string $errorCode,
+		public readonly string $errorCode, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		string $message,
 		public readonly ?string $pointer = null,
 	) {

@@ -24,7 +24,7 @@ final class Islands {
 	 *
 	 * @param array<string, mixed> $context
 	 */
-	public static function context( string $namespace, array $context ): string {
+	public static function context( string $namespace, array $context ): string { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.namespaceFound -- Preserve the existing PHP parameter name.
 		self::$used[ $namespace ] = true;
 		return (string) Js::jsonStringify( new JsObject( $context ) );
 	}
@@ -88,7 +88,7 @@ final class Islands {
 	 * plugin) as the script module `@spacepress/client`, for modules that import it. Registering doesn't
 	 * load it: a page loads it only when a module it enqueues depends on it.
 	 */
-	public static function registerClient(): bool {
+	public static function registerClient(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$plugin = Wp\Runtime::plugin();
 		if ( null === $plugin || ! function_exists( 'wp_register_script_module' ) || ! is_file( $plugin->dir . '/sp/app/client/spacepress-client.js' ) ) {
 			return false;
@@ -117,7 +117,7 @@ final class Islands {
 	 * `spacepress export --site` points at the hosted site). A page that does import it gets
 	 * WordPress's own copy.
 	 */
-	public static function printClientData(): void {
+	public static function printClientData(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( self::$client_used || ! Render\Navigation::active() ) {
 			return;
 		}
@@ -139,7 +139,7 @@ final class Islands {
 	 *
 	 * @return array{root: string, api: string, nonce?: string, nonceEndpoint?: string, nonceSession?: string}
 	 */
-	public static function clientData( array $data ): array {
+	public static function clientData( array $data ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$root     = rest_url();
 		$parts    = wp_parse_url( $root );
 		$relative = ( $parts['path'] ?? '/' ) . ( isset( $parts['query'] ) ? '?' . $parts['query'] : '' );
@@ -160,7 +160,7 @@ final class Islands {
 	}
 
 	/** The page can renew its nonce for the WordPress login session that rendered it. */
-	public static function renewClientNonce(): void {
+	public static function renewClientNonce(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$session = self::client_nonce_session();
 		if ( null === $session || ! hash_equals( $session, (string) ( $_SERVER['HTTP_X_SPACEPRESS_REST_SESSION'] ?? '' ) )
 			|| wp_validate_auth_cookie( '', 'logged_in' ) !== get_current_user_id() ) {
@@ -183,7 +183,7 @@ final class Islands {
 	private static bool $client_used = false;
 
 	/** A module this page enqueues imports the client. */
-	public static function useClient(): void {
+	public static function useClient(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::$client_used = true;
 	}
 
@@ -193,7 +193,7 @@ final class Islands {
 	 * the build store has no `spacepress-runtime.php` and no digest constant; its runtime URLs already
 	 * name the runtime revision, so the release version is enough there.
 	 */
-	public static function runtimeVersion(): string {
+	public static function runtimeVersion(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return defined( 'SP_RUNTIME_HASH' ) ? (string) SP_RUNTIME_HASH : Wp\Runtime::VERSION;
 	}
 
@@ -207,13 +207,13 @@ final class Islands {
 			return $done;
 		}
 		if ( ! self::registerClient() ) {
-			return $done = false;
+			return $done = false; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		}
 		wp_register_script_module( self::LIVE, plugins_url( 'sp/Render/client/live.js', Wp\Runtime::file() ), array( self::CLIENT ), self::runtimeVersion() );
 		// The live reads go as the visitor, with the nonce the page prints for a signed-in one.
 		self::useClient();
 
-		return $done = true;
+		return $done = true; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 	}
 
 	/**
@@ -304,8 +304,8 @@ final class Islands {
 			}
 			// A store that calls a server action imports the typed client, which runs it as the
 			// action's Ability (`client.actions.<name>()`) with the nonce the page prints for it.
-			$viaClient = ( $island['client'] ?? false ) === true;
-			if ( $viaClient && self::registerClient() ) {
+			$viaClient = ( $island['client'] ?? false ) === true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			if ( $viaClient && self::registerClient() ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$deps[] = self::CLIENT;
 				self::useClient();
 			}
@@ -323,14 +323,14 @@ final class Islands {
 				$app     = Wp\Abilities\Register::kebab( $plugin->schema->name() );
 				$actions = array();
 				foreach ( $island['actions'] as $action ) {
-					$actions[ $action ] = $viaClient
+					$actions[ $action ] = $viaClient // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						? rest_url( 'wp-abilities/v1/abilities/' . $app . '/' . Wp\Abilities\Register::kebab( (string) $action ) . '/run' )
 						: Wp\Facade::url( '/actions/' . rawurlencode( (string) $action ) );
 				}
 				$config['actions'] = (object) $actions;
 				// Only a signed-in visitor needs one: a signed-out page is cached and prebuilt, past a
 				// nonce's lifetime, and an expired one would refuse its calls.
-				if ( ! $viaClient && is_user_logged_in() ) {
+				if ( ! $viaClient && is_user_logged_in() ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					$config['nonce'] = wp_create_nonce( 'wp_rest' );
 				}
 			}

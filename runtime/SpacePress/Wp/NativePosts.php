@@ -101,9 +101,9 @@ final class NativePosts {
 		$app        = $plugin->schema->name();
 		$previous   = get_option( 'sp_' . $app . '_post_types' );
 		$types      = $previous['types'] ?? null;
-		$schemaHash = $previous['schemaHash'] ?? null;
+		$schemaHash = $previous['schemaHash'] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ! is_array( $types ) || ! in_array( $old, $types, true )
-			|| ! is_string( $schemaHash ) || $schemaHash !== get_option( 'sp_' . $app . '_schema' ) ) {
+			|| ! is_string( $schemaHash ) || $schemaHash !== get_option( 'sp_' . $app . '_schema' ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing PHP variable name. Preserve the existing comparison order.
 			return 0;
 		}
 		foreach ( $plugin->schema->collections() as $spec ) {
@@ -164,12 +164,12 @@ final class NativePosts {
 	}
 
 	/** Remember the post types the app declared on this site after a successful migration. */
-	public static function rememberPostTypes( \SpacePress\Schema $schema, string $schemaHash ): void {
+	public static function rememberPostTypes( \SpacePress\Schema $schema, string $schemaHash ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$types = array_column( array_column( $schema->collections(), 'wp' ), 'postType' );
 		update_option(
 			'sp_' . $schema->name() . '_post_types',
 			array(
-				'schemaHash' => $schemaHash,
+				'schemaHash' => $schemaHash, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				'types'      => $types,
 			),
 			false
@@ -181,7 +181,7 @@ final class NativePosts {
 	 * their own for an author, all for whoever has `read_others_posts`-level rights (`edit_others_posts`
 	 * and `read_private_posts`). Null when the viewer reads every post. A SQL predicate on `{a}`.
 	 */
-	public static function readGuard( Connection $db, \SpacePress\Viewer $viewer ): ?\SpacePress\SqlPredicate {
+	public static function readGuard( Connection $db, \SpacePress\Viewer $viewer ): ?\SpacePress\SqlPredicate { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$user = (int) ( $viewer->user['id'] ?? 0 );
 		if ( $user > 0 && user_can( $user, 'edit_others_posts' ) && user_can( $user, 'read_private_posts' ) ) {
 			return null;

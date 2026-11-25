@@ -9,7 +9,7 @@ final class Api {
 	public const DEFAULT_NAMESPACE = 'spacepress-identity/v1';
 
 	/** Active REST namespace for Identity API (hosts may override via SP_IDENTITY_API_NAMESPACE or `sp_identity_api_namespace`). */
-	public static function apiNamespace(): string {
+	public static function apiNamespace(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$ns =
 			defined( 'SP_IDENTITY_API_NAMESPACE' ) &&
 			is_string( SP_IDENTITY_API_NAMESPACE ) &&
@@ -85,7 +85,7 @@ final class Api {
 		$response->header( 'Cache-Control', 'no-store' );
 		return $response;
 	}
-	public static function checkOrigin( string $origin, bool $required, bool $siteOnly = false ): void {
+	public static function checkOrigin( string $origin, bool $required, bool $siteOnly = false ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$home     = wp_parse_url( home_url() );
 		$expected =
 			$home['scheme'] .
@@ -95,7 +95,7 @@ final class Api {
 		if (
 			( $required || '' !== $origin ) &&
 			$origin !== $expected &&
-			( $siteOnly || ! OAuth::allowedOrigin( Plugin::$db, $origin ) )
+			( $siteOnly || ! OAuth::allowedOrigin( Plugin::$db, $origin ) ) // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		) {
 			throw new Failure(
 				'invalid_origin',
@@ -164,7 +164,7 @@ final class Api {
 		Sessions::cookie( $created['secret'], $created['session']['expires_at'] );
 		return array( 'kind' => 'signed_in' );
 	}
-	public function providerLogin( int $uid ): array {
+	public function providerLogin( int $uid ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->login( $uid );
 	}
 	private function handle(
@@ -773,7 +773,7 @@ final class Api {
 		}
 		if ( 'people/suspend' === $op && 'POST' === $method ) {
 			$uid = (int) $this->field( $r, 'id' );
-			if ( $uid === get_current_user_id() ) {
+			if ( $uid === get_current_user_id() ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				throw new Failure(
 					'self_suspend',
 					'Use another administrator to suspend this account.',

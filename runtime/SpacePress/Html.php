@@ -431,9 +431,9 @@ final class Html {
 			}
 			$fp = $attributes['fetchPriority'] ?? $attributes['fetchpriority'] ?? null;
 			if ( is_string( $fp ) && strtolower( $fp ) === 'high' ) {
-				$srcSet = is_string( $attributes['srcSet'] ?? $attributes['srcset'] ?? null ) ? ( $attributes['srcSet'] ?? $attributes['srcset'] ) : null;
+				$srcSet = is_string( $attributes['srcSet'] ?? $attributes['srcset'] ?? null ) ? ( $attributes['srcSet'] ?? $attributes['srcset'] ) : null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$sizes  = is_string( $attributes['sizes'] ?? null ) ? $attributes['sizes'] : null;
-				Assets::preloadImage( $src, $srcSet, $sizes );
+				Assets::preloadImage( $src, $srcSet, $sizes ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 		}
 		$open .= self::attributes( $attributes, $custom, $tag ) . $tail;
@@ -639,7 +639,7 @@ final class Html {
 	 * `posts/1`, `#top`). Any other scheme, and a protocol-relative `//host`, drops the attribute.
 	 * The compiler refuses a literal that fails this check.
 	 */
-	public static function safeUrl( string $url ): bool {
+	public static function safeUrl( string $url ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		// Browsers ignore leading and trailing C0 controls and spaces, and tabs and newlines anywhere.
 		$url = (string) preg_replace( '/[\t\n\r]/', '', trim( $url, "\x00..\x20" ) );
 		if ( str_starts_with( $url, '//' ) || str_starts_with( $url, '/\\' ) || str_starts_with( $url, '\\' ) ) {

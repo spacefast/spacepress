@@ -30,12 +30,12 @@ final class Access {
 	 */
 	private static array $cache = array();
 
-	public static function clearCache(): void {
+	public static function clearCache(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::$cache = array();
 	}
 
 	/** @return array{read: array, create: array, update: array, delete: array, restore: array, purge: array} */
-	public static function collectionRules( array $spec ): array {
+	public static function collectionRules( array $spec ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$a      = $spec['access'] ?? array();
 		$delete = $a['delete'] ?? self::DEFAULT_WRITE;
 
@@ -50,7 +50,7 @@ final class Access {
 	}
 
 	/** @return array{read: array, update: array} */
-	public static function globalRules( array $global ): array {
+	public static function globalRules( array $global ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.globalFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		$a = $global['access'] ?? array();
 
 		return array(
@@ -59,7 +59,7 @@ final class Access {
 		);
 	}
 
-	public static function evaluate( array $rule, Viewer $viewer, string $op, ?array $data = null, ?array $dataShape = null, ?string $collection = null ): bool|array {
+	public static function evaluate( array $rule, Viewer $viewer, string $op, ?array $data = null, ?array $dataShape = null, ?string $collection = null ): bool|array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$user = $viewer->user;
 		if ( array_key_exists( 'allow', $rule ) ) {
 			return (bool) $rule['allow'];
@@ -93,7 +93,7 @@ final class Access {
 				'op'   => $op,
 				'data' => $data,
 			);
-			$ctx = is_string( $slot ) ? Seam::ctx( $ctx, $dataShape ) : $ctx;
+			$ctx = is_string( $slot ) ? Seam::ctx( $ctx, $dataShape ) : $ctx; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			// Access-rule queries always run trusted, never under an outer render's bound viewer,
 			// so `db.query.*` and file hydration can't re-enter access rules recursively.
 			$run = static fn () => Seam::asViewer( null, static fn () => $fn( $ctx ) );
@@ -127,7 +127,7 @@ final class Access {
 	}
 
 	/** True when the rule can only return a boolean (draft visibility applies to these, §1.6). */
-	public static function isShorthand( array $rule ): bool {
+	public static function isShorthand( array $rule ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return ! isset( $rule['fn'] );
 	}
 
@@ -138,8 +138,8 @@ final class Access {
 	}
 
 	/** An access rule that is a plain boolean check (create, actions, globals, media): throw unless allowed. */
-	public static function require( array $rule, Viewer $viewer, string $op, ?array $data, string $what, ?array $dataShape = null ): void {
-		$r = self::evaluate( $rule, $viewer, $op, $data, $dataShape );
+	public static function require( array $rule, Viewer $viewer, string $op, ?array $data, string $what, ?array $dataShape = null ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$r = self::evaluate( $rule, $viewer, $op, $data, $dataShape ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( is_array( $r ) ) {
 			throw new \LogicException( "The $op rule for $what returned a filter; it must return a boolean" );
 		}

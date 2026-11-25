@@ -11,7 +11,7 @@ use SpacePress\Wp\Runtime;
 final class Email {
 
 	/** @return array{html: string, text: string}|null */
-	public static function invitation( string $siteName, string $identityUrl, string $invitationCode ): ?array {
+	public static function invitation( string $siteName, string $identityUrl, string $invitationCode ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$plugin = Runtime::plugin();
 		$name   = $plugin?->schema->components()['emails/identity/organization-invite.tsx'] ?? null;
 		if ( null === $name ) {
@@ -22,9 +22,9 @@ final class Email {
 			'\\SpacePressApp\\' . $name,
 			new JsObject(
 				array(
-					'siteName'       => $siteName,
-					'identityUrl'    => $identityUrl,
-					'invitationCode' => $invitationCode,
+					'siteName'       => $siteName, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					'identityUrl'    => $identityUrl, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					'invitationCode' => $invitationCode, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					'expiresIn'      => 'seven days',
 				)
 			)
@@ -43,7 +43,7 @@ final class Email {
 		// Preserve paragraphs, line breaks and link destinations in the plain-text alternative.
 		$text = preg_replace_callback(
 			'/(<a\b[^>]*>)(.*?)<\/a>/is',
-			static function ( array $match ): string {
+			static function ( array $match ): string { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.matchFound -- Preserve the existing PHP parameter name.
 				$tag = new \WP_HTML_Tag_Processor( $match[1] );
 				$tag->next_tag( 'A' );
 				$href = $tag->get_attribute( 'href' );

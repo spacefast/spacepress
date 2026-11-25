@@ -24,15 +24,15 @@ final class Images {
 	 * @param ?array{x: float|int, y: float|int} $focal 0..1 from the top-left; null = core's centre
 	 * @return ?list<int>
 	 */
-	public static function dimensions( int $origW, int $origH, int $w, ?int $h, bool $crop, ?array $focal = null ): ?array {
-		$dims = image_resize_dimensions( $origW, $origH, $w, $h ?? 0, $crop );
+	public static function dimensions( int $origW, int $origH, int $w, ?int $h, bool $crop, ?array $focal = null ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$dims = image_resize_dimensions( $origW, $origH, $w, $h ?? 0, $crop ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ! is_array( $dims ) ) {
 			return null;
 		}
 		$dims = array_map( 'intval', array_values( $dims ) );
 		if ( $crop && null !== $focal ) {
-			$dims[2] = self::origin( (float) $focal['x'], $origW, $dims[6] );
-			$dims[3] = self::origin( (float) $focal['y'], $origH, $dims[7] );
+			$dims[2] = self::origin( (float) $focal['x'], $origW, $dims[6] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$dims[3] = self::origin( (float) $focal['y'], $origH, $dims[7] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 
 		return $dims;
@@ -59,7 +59,7 @@ final class Images {
 		$i      = 13 + ( ( $flags & 0x80 ) ? 3 << ( ( $flags & 7 ) + 1 ) : 0 );
 		$frames = 0;
 		$skip   = static function ( int $i ) use ( $b, $n ): int {
-			while ( $i < $n && ( $len = ord( $b[ $i ] ) ) !== 0 ) {
+			while ( $i < $n && ( $len = ord( $b[ $i ] ) ) !== 0 ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.FoundInWhileCondition -- Keep the assignment and its test together.
 				$i += $len + 1;
 			}
 

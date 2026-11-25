@@ -53,7 +53,7 @@ final class Reads {
 	 * lookup): the row it finds is what the page depends on, whichever column the URL names it by.
 	 * The item's own URL changes are announced by its post hooks (`Wp\Purges`).
 	 */
-	public static function named( string $collection, callable $fn ): mixed {
+	public static function named( string $collection, callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$previous    = self::$named;
 		self::$named = $collection;
 		try {
@@ -125,7 +125,7 @@ final class Reads {
 	 * @param-out array<string, array{ids: list<int|string>, listed: bool}> $reads
 	 * @param-out list<string> $also
 	 */
-	public static function during( callable $fn, ?array &$reads = null, ?array &$also = null ): mixed {
+	public static function during( callable $fn, ?array &$reads = null, ?array &$also = null ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		if ( ! self::$hooked ) {
 			self::$hooked = true;
 			\SpacePress\Extensions::onRead(

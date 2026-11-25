@@ -46,9 +46,9 @@ final class LoginView {
 	 *
 	 * @return array{errors: string, messages: string, errorList: list<string>, messageList: list<string>, login: string, remember: bool, redirectTo: string}
 	 */
-	public static function capture( \WP_Error $errors, string $redirectTo, string $login ): array {
-		$errorList   = array();
-		$messageList = array();
+	public static function capture( \WP_Error $errors, string $redirectTo, string $login ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$errorList   = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$messageList = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		foreach ( $errors->get_error_codes() as $code ) {
 			$severity = $errors->get_error_data( $code );
 			foreach ( $errors->get_error_messages( $code ) as $message ) {
@@ -56,47 +56,47 @@ final class LoginView {
 					continue;
 				}
 				if ( 'message' === $severity ) {
-					$messageList[] = (string) $message;
+					$messageList[] = (string) $message; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				} else {
-					$errorList[] = (string) $message;
+					$errorList[] = (string) $message; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				}
 			}
 		}
 		// `login_message`: the notice plugins and themes put above the form, as login_header() shows it.
 		$notice = (string) apply_filters( 'login_message', '' );
 		if ( trim( wp_strip_all_tags( $notice ) ) !== '' ) {
-			array_unshift( $messageList, $notice );
+			array_unshift( $messageList, $notice ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		// As login_header() builds them.
 		$errors_html = '';
-		if ( array() !== $errorList ) {
-			$errors_html = count( $errorList ) > 1
-				? '<ul class="login-error-list">' . implode( '', array_map( static fn ( string $e ): string => "<li>$e</li>", $errorList ) ) . '</ul>'
-				: '<p>' . $errorList[0] . '</p>';
+		if ( array() !== $errorList ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$errors_html = count( $errorList ) > 1 // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				? '<ul class="login-error-list">' . implode( '', array_map( static fn ( string $e ): string => "<li>$e</li>", $errorList ) ) . '</ul>' // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				: '<p>' . $errorList[0] . '</p>'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$filtered    = (string) apply_filters( 'login_errors', $errors_html );
 			if ( $filtered !== $errors_html ) {
 				// A filter rewrote them (the loginErrors hardening's one generic message): its text wins.
-				$errorList = '' === $filtered ? array() : array( $filtered );
+				$errorList = '' === $filtered ? array() : array( $filtered ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 			$errors_html = $filtered;
 		}
 		$messages_html = '';
-		if ( array() !== $messageList ) {
-			$messages_html = implode( '', array_map( static fn ( string $m ): string => "<p>$m</p>", $messageList ) );
+		if ( array() !== $messageList ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$messages_html = implode( '', array_map( static fn ( string $m ): string => "<p>$m</p>", $messageList ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$filtered      = (string) apply_filters( 'login_messages', $messages_html );
 			if ( $filtered !== $messages_html ) {
-				$messageList = '' === $filtered ? array() : array( $filtered );
+				$messageList = '' === $filtered ? array() : array( $filtered ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 			$messages_html = $filtered;
 		}
-		return self::$state = array(
+		return self::$state = array( // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 			'errors'      => $errors_html,
 			'messages'    => $messages_html,
-			'errorList'   => array_values( array_filter( array_map( self::text( ... ), $errorList ), static fn ( string $t ): bool => '' !== $t ) ),
-			'messageList' => array_values( array_filter( array_map( self::text( ... ), $messageList ), static fn ( string $t ): bool => '' !== $t ) ),
+			'errorList'   => array_values( array_filter( array_map( self::text( ... ), $errorList ), static fn ( string $t ): bool => '' !== $t ) ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			'messageList' => array_values( array_filter( array_map( self::text( ... ), $messageList ), static fn ( string $t ): bool => '' !== $t ) ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			'login'       => $login,
 			'remember'    => ! empty( $_POST['rememberme'] ),
-			'redirectTo'  => $redirectTo,
+			'redirectTo'  => $redirectTo, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		);
 	}
 
@@ -124,7 +124,7 @@ final class LoginView {
 	 * wp-login.php's errors and messages above them. On any page other than `login.tsx` it is a
 	 * sign-in form that comes back to the page it is on.
 	 */
-	public static function form( mixed $class, mixed $submit, mixed $notices, mixed $links = null ): Html {
+	public static function form( mixed $class, mixed $submit, mixed $notices, mixed $links = null ): Html { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP parameter name.
 		$state = self::$state ?? self::fresh();
 		$out   = '';
 		if ( false !== $notices ) {
@@ -180,7 +180,7 @@ final class LoginView {
 		$uri = (string) ( $_SERVER['REQUEST_URI'] ?? '/' );
 		// REQUEST_URI already holds a subdirectory install's path; home_url() would add it again.
 		$here = (string) wp_parse_url( home_url( '/' ), PHP_URL_SCHEME ) . '://' . (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST )
-			. ( ( $port = wp_parse_url( home_url( '/' ), PHP_URL_PORT ) ) ? ":$port" : '' ) . ( str_starts_with( $uri, '/' ) ? $uri : '/' );
+			. ( ( $port = wp_parse_url( home_url( '/' ), PHP_URL_PORT ) ) ? ":$port" : '' ) . ( str_starts_with( $uri, '/' ) ? $uri : '/' ); // phpcs:ignore WordPress.CodeAnalysis.AssignmentInTernaryCondition.FoundInTernaryCondition, Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		return array(
 			'errors'      => '',
 			'messages'    => '',

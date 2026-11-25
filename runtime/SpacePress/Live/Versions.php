@@ -55,7 +55,7 @@ final class Versions {
 	}
 
 	/** `transition_post_status`: a post of a SpacePress kind moved into or out of the trash. */
-	public static function trashed( string $new, string $old, \WP_Post $post ): void {
+	public static function trashed( string $new, string $old, \WP_Post $post ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.newFound -- Preserve the existing PHP parameter name.
 		if ( $new === $old || ( 'trash' !== $new && 'trash' !== $old ) ) {
 			return;
 		}

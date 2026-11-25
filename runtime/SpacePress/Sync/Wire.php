@@ -24,11 +24,11 @@ final class Wire {
 	 *
 	 * @return list<string>
 	 */
-	public static function fieldNames( array $spec ): array {
+	public static function fieldNames( array $spec ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$names = array();
 		foreach ( $spec['columns'] as $name => $col ) {
 			$name = (string) $name;
-			if ( $name === $spec['primaryKey'] || $name === ( $spec['content'] ?? null ) || 'uid' === $name
+			if ( $name === $spec['primaryKey'] || $name === ( $spec['content'] ?? null ) || 'uid' === $name // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				|| ( $col['readOnly'] ?? false ) || isset( $col['onUpdate'] ) || ( $col['hidden'] ?? false ) || ( ( $col['derived'] ?? false ) && ! self::is_translations( $spec, $name ) ) ) {
 				continue;
 			}
@@ -84,7 +84,7 @@ final class Wire {
 			try {
 				$body = self::body_out( $spec, $row );
 			} catch ( HttpError $e ) {
-				if ( 'not_representable' !== $e->errorCode ) {
+				if ( 'not_representable' !== $e->errorCode ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 					throw $e;
 				}
 				$out[] = array(
@@ -109,13 +109,13 @@ final class Wire {
 	 * A record in its one spelling. PHP decodes `{}` as an empty array; `fields` is always an object.
 	 * An empty body is null: WordPress can't store a null post_content, and a file has no other empty.
 	 */
-	public static function record( string $uid, mixed $fields, mixed $body, bool $hasBody = true ): array {
+	public static function record( string $uid, mixed $fields, mixed $body, bool $hasBody = true ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$record = array(
 			'uid'    => $uid,
 			'fields' => array() === $fields ? new \stdClass() : $fields,
 		);
 
-		return $hasBody ? $record + array( 'body' => '' === $body ? null : $body ) : $record;
+		return $hasBody ? $record + array( 'body' => '' === $body ? null : $body ) : $record; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/**
@@ -150,7 +150,7 @@ final class Wire {
 			if ( self::is_translations( $spec, $name ) ) {
 				// Derived, so never written. A new row joins the group of the first peer that already
 				// exists (lane H's translationOf); a peer pushed later links itself the same way.
-				if ( $create && ( $peer = self::first_peer( $collection, $spec, $value, $record['uid'] ?? null, $viewer ) ) !== null ) {
+				if ( $create && ( $peer = self::first_peer( $collection, $spec, $value, $record['uid'] ?? null, $viewer ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 					$data['translationOf'] = $peer;
 				}
 				continue;
@@ -176,7 +176,7 @@ final class Wire {
 				} else {
 					$data[ $name ] = null === $ref || null === $value ? $value : self::resolve( $ref, $name, $value, $viewer ); }
 			} catch ( HttpError $e ) {
-				if ( null === $missing || ! in_array( $e->errorCode, array( 'sync_missing_reference', 'reference_violation' ), true ) ) {
+				if ( null === $missing || ! in_array( $e->errorCode, array( 'sync_missing_reference', 'reference_violation' ), true ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 					throw $e;
 				}
 				$missing[]     = $e;
@@ -206,7 +206,7 @@ final class Wire {
 		return $data;
 	}
 
-	private static function first_peer( string $collection, array $spec, mixed $translations, mixed $self, ?\SpacePress\Viewer $viewer ): int|string|null {
+	private static function first_peer( string $collection, array $spec, mixed $translations, mixed $self, ?\SpacePress\Viewer $viewer ): int|string|null { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.selfFound -- Preserve the existing PHP parameter name.
 		$translations = \SpacePress\Seam::container( $translations );
 		if ( ! is_array( $translations ) ) {
 			throw HttpError::invalidInput( 'translations must map locales to uids', '/fields/translations' );
@@ -226,7 +226,7 @@ final class Wire {
 					$viewer
 				);
 			} catch ( HttpError $e ) {
-				if ( ! in_array( $e->errorCode, array( 'sync_missing_reference', 'reference_violation' ), true ) ) {
+				if ( ! in_array( $e->errorCode, array( 'sync_missing_reference', 'reference_violation' ), true ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 					throw $e;
 				}
 				// Hidden and absent peers both wait for a later visible translation to join them.

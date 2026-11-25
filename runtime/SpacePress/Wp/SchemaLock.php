@@ -112,7 +112,7 @@ final class SchemaLock {
 	 *
 	 * @param array<string, mixed> $post slashed, as wp_insert_post received it
 	 */
-	public static function saving( mixed $empty, mixed $post ): mixed {
+	public static function saving( mixed $empty, mixed $post ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.emptyFound -- Preserve the existing PHP parameter name.
 		$type = is_array( $post ) ? (string) ( $post['post_type'] ?? '' ) : '';
 		if ( ! str_starts_with( $type, 'acf-' ) || in_array( $post['post_status'] ?? '', array( 'trash', 'acf-disabled' ), true ) || self::trusted() ) {
 			return $empty;
@@ -139,7 +139,7 @@ final class SchemaLock {
 	/** The first problem in any SCF form of this request (wp-admin's edit screens post them). */
 	private static function forms(): ?string {
 		foreach ( self::FORMS as $form ) {
-			if ( is_array( $_POST[ $form ] ?? null ) && ( $problem = self::problem( wp_unslash( $_POST[ $form ] ) ) ) !== null ) {
+			if ( is_array( $_POST[ $form ] ?? null ) && ( $problem = self::problem( wp_unslash( $_POST[ $form ] ) ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				return $problem;
 			}
 		}
@@ -153,7 +153,7 @@ final class SchemaLock {
 	 *
 	 * @return array<string, mixed>
 	 */
-	private static function object( string $key, string $content, int $parent ): array {
+	private static function object( string $key, string $content, int $parent ): array { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.parentFound -- Preserve the existing PHP parameter name.
 		$settings = is_serialized( $content ) ? @unserialize( trim( $content ), array( 'allowed_classes' => false ) ) : null;
 
 		return array(
@@ -219,7 +219,7 @@ final class SchemaLock {
 	}
 
 	/** wp_ability_execute_result: an SCF ability whose save was refused answers with the refusal. */
-	public static function abilityResult( mixed $result, mixed $name ): mixed {
+	public static function abilityResult( mixed $result, mixed $name ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_string( $name ) || ! str_starts_with( $name, 'scf/' ) ) {
 			return $result;
 		}
@@ -241,7 +241,7 @@ final class SchemaLock {
 	 *
 	 * @param array<string, mixed> $object an SCF field group, field, post type, taxonomy or options page
 	 */
-	private static function problem( array $object ): ?string {
+	private static function problem( array $object ): ?string { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.objectFound -- Preserve the existing PHP parameter name.
 		foreach ( array( 'key', 'parent' ) as $key ) {
 			$name = self::norm( $object[ $key ] ?? null );
 			if ( str_starts_with( $name, self::GROUP_PREFIX ) || str_starts_with( $name, self::FIELD_PREFIX ) ) {
@@ -252,7 +252,7 @@ final class SchemaLock {
 			'post_type' => 'post type',
 			'taxonomy'  => 'taxonomy',
 		) as $key => $label ) {
-			if ( str_starts_with( $name = self::norm( $object[ $key ] ?? null ), self::PREFIX ) ) {
+			if ( str_starts_with( $name = self::norm( $object[ $key ] ?? null ), self::PREFIX ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				return "the $label $name";
 			}
 		}
@@ -262,7 +262,7 @@ final class SchemaLock {
 			}
 		}
 		foreach ( array( 'menu_slug', 'post_id' ) as $key ) {
-			if ( isset( self::$options_pages[ $name = self::norm( $object[ $key ] ?? null ) ] ) ) {
+			if ( isset( self::$options_pages[ $name = self::norm( $object[ $key ] ?? null ) ] ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				return "the options page $name";
 			}
 		}
@@ -277,7 +277,7 @@ final class SchemaLock {
 		}
 		foreach ( array( 'fields', 'sub_fields', 'layouts' ) as $nested ) {
 			foreach ( is_array( $object[ $nested ] ?? null ) ? $object[ $nested ] : array() as $child ) {
-				if ( is_array( $child ) && ( $problem = self::problem( $child ) ) !== null ) {
+				if ( is_array( $child ) && ( $problem = self::problem( $child ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 					return $problem;
 				}
 			}
@@ -303,7 +303,7 @@ final class SchemaLock {
 	 * A field group kept in the database never applies to one of SpacePress's kinds or options pages,
 	 * whatever its rules say (`!=`, a post id, a status). Groups registered in code are not this rule's.
 	 */
-	public static function matchRule( mixed $match, mixed $rule, mixed $screen, mixed $group ): mixed {
+	public static function matchRule( mixed $match, mixed $rule, mixed $screen, mixed $group ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.matchFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		if ( ! $match || ! is_array( $group ) || empty( $group['ID'] ) || ! is_array( $screen ) ) {
 			return $match;
 		}
@@ -318,11 +318,11 @@ final class SchemaLock {
 	 * post, a global's options page, or one of the user meta and option names SpacePress's own fields write;
 	 * the rest of the save goes on. SpacePress's own fields are SCF's local fields.
 	 */
-	public static function value( mixed $check, mixed $value, mixed $postId, mixed $field ): mixed {
+	public static function value( mixed $check, mixed $value, mixed $postId, mixed $field ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null !== $check || ! is_array( $field ) || self::trusted() || ( isset( $field['key'] ) && acf_is_local_field( (string) $field['key'] ) ) ) {
 			return $check;
 		}
-		$target = acf_decode_post_id( $postId );
+		$target = acf_decode_post_id( $postId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$first  = match ( $target['type'] ) {
 			'post' => self::sp_type( get_post_type( (int) $target['id'] ) ),
 			'user' => self::protected_user_meta( $field['name'] ?? null ),
@@ -336,7 +336,7 @@ final class SchemaLock {
 	private static function protected_user_meta( mixed $name ): bool {
 		$name = self::norm( $name );
 
-		return isset( self::$user_meta[ $name ] ) || $name === self::norm( WpUserStore::ROLE_META );
+		return isset( self::$user_meta[ $name ] ) || $name === self::norm( WpUserStore::ROLE_META ); // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 	}
 
 	// ================================================================ options and roles
@@ -402,7 +402,7 @@ final class SchemaLock {
 				unset( $roles[ $name ], $wp->roles[ $name ], $wp->role_names[ $name ], $wp->role_objects[ $name ] );
 				continue;
 			}
-			$roles[ $name ]            = $wp->roles[ $name ] = $role;
+			$roles[ $name ]            = $wp->roles[ $name ] = $role; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 			$wp->role_names[ $name ]   = (string) ( $role['name'] ?? $name );
 			$wp->role_objects[ $name ] = new \WP_Role( (string) $name, (array) ( $role['capabilities'] ?? array() ) );
 		}

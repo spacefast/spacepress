@@ -53,7 +53,7 @@ final class GitDispatch {
 	}
 
 	/** Run $fn with dispatches off (the `/sync` routes). */
-	public static function quietly( callable $fn ): mixed {
+	public static function quietly( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$was         = self::$quiet;
 		self::$quiet = true;
 		try {
@@ -116,7 +116,7 @@ final class GitDispatch {
 	}
 
 	/** Whether WordPress can keep the token: the Secrets API is there and its provider takes writes. */
-	public static function secretsWritable(): bool {
+	public static function secretsWritable(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return function_exists( 'wp_is_secrets_api_available' ) && wp_is_secrets_api_available()
 			&& ( ! function_exists( 'wp_secrets_provider_is_writable' ) || wp_secrets_provider_is_writable() );
 	}
@@ -234,7 +234,7 @@ final class GitDispatch {
 	}
 
 	/** Keep the token in WordPress's Secrets API; refused where there is none, never kept elsewhere. */
-	public static function storeToken( string $token ): void {
+	public static function storeToken( string $token ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! self::secretsWritable() ) {
 			throw new HttpError( 409, 'secrets_unavailable', 'This WordPress has no writable Secrets API, so the token is never stored in the database: set SP_GITHUB_DISPATCH_TOKEN in the environment or wp-config.php instead.' );
 		}

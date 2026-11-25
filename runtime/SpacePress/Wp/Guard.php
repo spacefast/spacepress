@@ -58,7 +58,7 @@ final class Guard {
 	 *
 	 * @param list<mixed> $args
 	 */
-	public static function call( string $function, array $args ): void {
+	public static function call( string $function, array $args ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.functionFound -- Preserve the existing PHP parameter name.
 		$kind = self::rules()['functions'][ $function ] ?? null;
 		if ( 'read' === $kind || 'write' === $kind ) {
 			self::option( $args[0] ?? null, 'write' === $kind ? 'write' : 'read' );
@@ -129,7 +129,7 @@ final class Guard {
 		throw new HttpError( 403, 'protected_option', "App code can't $verb the WordPress option `" . self::shown( $name ) . "`: {$rule['why']}. Store app settings in a global or a table, or under an option name of the app's own" );
 	}
 
-	private static function postType( mixed $type ): void {
+	private static function postType( mixed $type ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$type    = is_string( $type ) ? trim( $type ) : '';
 		$object  = '' === $type ? null : get_post_type_object( $type );
 		$allowed = in_array( $type, array( 'post', 'page' ), true )
@@ -213,7 +213,7 @@ final class Guard {
 		$found = array();
 		$sql   = "SELECT TABLE_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE %s
             AND COLUMN_NAME IN ('option_name', 'option_value', 'autoload') GROUP BY TABLE_NAME HAVING COUNT(DISTINCT COLUMN_NAME) = 3";
-		foreach ( (array) $wpdb->get_col( $wpdb->prepare( $sql, $wpdb->esc_like( $prefix ) . '%options' ) ) as $table ) {
+		foreach ( (array) $wpdb->get_col( $wpdb->prepare( $sql, $wpdb->esc_like( $prefix ) . '%options' ) ) as $table ) { // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- The SQL template is static and its search pattern is bound.
 			$other = strtolower( substr( (string) $table, 0, -strlen( 'options' ) ) );
 			if ( $other !== $own && str_starts_with( $other, $own ) ) {
 				$found[] = $other;

@@ -84,7 +84,7 @@ final class HtmlMarkdown {
 	/** The fence language of the open `<pre>`: its or its `<code>`'s `language-<x>` class. */
 	private string $language = '';
 	/** Whether the last block written is a list item, so the next item joins it without a blank line. */
-	private bool $listOpen = false;
+	private bool $listOpen = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	private ?array $table  = null;
 
 	public static function convert( string $html ): string {
@@ -109,7 +109,7 @@ final class HtmlMarkdown {
 	private static function fallback( string $html ): string {
 		$html       = (string) preg_replace( '#<(script|style|template)\b.*?</\1>#is', '', $html );
 		$text       = html_entity_decode( wp_strip_all_tags( $html ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-		$paragraphs = preg_split( '/\n\s*\n/', trim( $text ) ) ?: array();
+		$paragraphs = preg_split( '/\n\s*\n/', trim( $text ) ) ?: array(); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 
 		return implode( "\n\n", array_filter( array_map( static fn ( string $p ): string => trim( (string) preg_replace( '/\s+/u', ' ', $p ) ), $paragraphs ) ) );
 	}
@@ -161,8 +161,8 @@ final class HtmlMarkdown {
 			'HR' === $tag => $this->rule(),
 			'BR' === $tag => $this->pre > 0 ? $this->code                                  .= "\n" : $this->line .= "  \n",
 			'TABLE' === $tag => $this->open_table(),
-			'TR' === $tag => null === $this->table ?: $this->table['row']                   = array(),
-			'TD' === $tag || 'TH' === $tag => null === $this->table ?: $this->table['cell'] = '',
+			'TR' === $tag => null === $this->table ?: $this->table['row']                   = array(), // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
+			'TD' === $tag || 'TH' === $tag => null === $this->table ?: $this->table['cell'] = '', // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			default => $this->inline( $tag, $p ),
 		};
 	}
@@ -305,7 +305,7 @@ final class HtmlMarkdown {
 			foreach ( $this->containers as $i => &$container ) {
 				if ( 'BLOCKQUOTE' === $container['tag'] ) {
 					$prefix .= '> ';
-				} elseif ( $i === array_key_last( $this->containers ) && $first && $container['pending'] ) {
+				} elseif ( $i === array_key_last( $this->containers ) && $first && $container['pending'] ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 					$prefix              .= $container['bullet'];
 					$container['pending'] = false;
 				} else {
@@ -319,12 +319,12 @@ final class HtmlMarkdown {
 		unset( $text );
 		$in_list  = array() !== $this->containers && 'BLOCKQUOTE' !== end( $this->containers )['tag'];
 		$previous = array_key_last( $this->blocks );
-		if ( $in_list && null !== $previous && ( $this->blocks[ $previous ][-1] ?? '' ) !== "\n" && $this->listOpen ) {
+		if ( $in_list && null !== $previous && ( $this->blocks[ $previous ][-1] ?? '' ) !== "\n" && $this->listOpen ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$this->blocks[ $previous ] .= "\n" . implode( "\n", $lines );
 		} else {
 			$this->blocks[] = implode( "\n", $lines );
 		}
-		$this->listOpen = $in_list;
+		$this->listOpen = $in_list; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	private function open_list( string $tag, Html $p ): void {
@@ -353,7 +353,7 @@ final class HtmlMarkdown {
 
 	private function open_quote(): void {
 		$this->flush();
-		$this->listOpen     = false;
+		$this->listOpen     = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$this->containers[] = array(
 			'tag'     => 'BLOCKQUOTE',
 			'ordered' => false,
@@ -367,7 +367,7 @@ final class HtmlMarkdown {
 		$this->flush();
 		$closed = array_pop( $this->containers );
 		// A list nested in an item hands back to its parent list: the next item joins it.
-		$this->listOpen = null !== $closed && 'BLOCKQUOTE' !== $closed['tag'] && array() !== $this->containers && 'BLOCKQUOTE' !== end( $this->containers )['tag'];
+		$this->listOpen = null !== $closed && 'BLOCKQUOTE' !== $closed['tag'] && array() !== $this->containers && 'BLOCKQUOTE' !== end( $this->containers )['tag']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	private function open_pre( string $language ): void {
@@ -390,10 +390,10 @@ final class HtmlMarkdown {
 		$code           = rtrim( $this->code, "\n" );
 		$this->code     = '';
 		$fence          = str_repeat( '`', max( 3, self::longest_run( $code, '`' ) + 1 ) );
-		$this->listOpen = false;
+		$this->listOpen = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$this->push( $fence . $this->language . "\n" . $code . "\n" . $fence );
 		$this->language = '';
-		$this->listOpen = false;
+		$this->listOpen = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	private static function longest_run( string $text, string $char ): int {
@@ -404,9 +404,9 @@ final class HtmlMarkdown {
 
 	private function rule(): void {
 		$this->flush();
-		$this->listOpen = false;
+		$this->listOpen = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$this->push( '---' );
-		$this->listOpen = false;
+		$this->listOpen = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	// ================================================================ tables
@@ -454,8 +454,8 @@ final class HtmlMarkdown {
 				$lines[] = '|' . str_repeat( '---|', $width );
 			}
 		}
-		$this->listOpen = false;
+		$this->listOpen = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$this->push( implode( "\n", $lines ) );
-		$this->listOpen = false;
+		$this->listOpen = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 }

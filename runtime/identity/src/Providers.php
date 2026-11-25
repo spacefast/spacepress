@@ -54,7 +54,7 @@ final class Providers {
 	 * `<issuer>/callback/<name>` are served; a host picks the one its provider is registered with
 	 * through `sp_identity_callback_url`, which receives the default, the provider and the path form.
 	 */
-	public static function callbackUrl( string $name ): string {
+	public static function callbackUrl( string $name ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$base     = Plugin::basePath();
 		$query    = home_url( $base . '/provider/callback?provider=' . rawurlencode( $name ) );
 		$path     = home_url( $base . '/callback/' . rawurlencode( $name ) );
@@ -62,7 +62,7 @@ final class Providers {
 		return is_string( $filtered ) && '' !== $filtered ? $filtered : $query;
 	}
 	/** The provider a callback route names: `/callback/<name>`, or `/provider/callback` with `?provider=`. */
-	public static function callbackProvider( string $route, array $query ): ?string {
+	public static function callbackProvider( string $route, array $query ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( '/provider/callback' === $route ) {
 			return sanitize_key( is_string( $query['provider'] ?? null ) ? $query['provider'] : '' );
 		}
@@ -77,20 +77,20 @@ final class Providers {
 			? $target
 			: '';
 	}
-	public function start( string $name, ?array $linkSession = null, array $extra = array(), string $returnTo = '' ): string {
-		if ( $linkSession ) {
-			$this->sessions->recent( $linkSession );
+	public function start( string $name, ?array $linkSession = null, array $extra = array(), string $returnTo = '' ): string { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( $linkSession ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$this->sessions->recent( $linkSession ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		$request = $this->client( $name )->start( $extra );
 		$binding = Security::token();
 		$id      = $this->security->challenge(
 			'oidc',
-			(int) ( $linkSession['wp_user_id'] ?? 0 ),
-			(string) ( $linkSession['id'] ?? '' ),
+			(int) ( $linkSession['wp_user_id'] ?? 0 ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			(string) ( $linkSession['id'] ?? '' ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			array(
 				'provider'  => $name,
 				'store'     => $request['store'],
-				'return_to' => self::continuation( $returnTo ),
+				'return_to' => self::continuation( $returnTo ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			),
 			$binding,
 			300,

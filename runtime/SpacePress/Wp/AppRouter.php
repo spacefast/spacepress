@@ -93,13 +93,13 @@ final class AppRouter {
 	/** @var array<string, ?string> templateFor() by path, for this request */
 	private array $templates = array();
 	/** The wp_head callback that prints the head's description, canonical and social tags in a block template. */
-	private ?\Closure $headTags = null;
+	private ?\Closure $headTags = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** @var list<string> the stylesheets of the route being rendered, linked by document() */
 	private array $styles = array();
 	/** @var list<array{file: string, type: string}> font preloads for the route being rendered */
 	private array $preloads = array();
 	/** This response's `Cache-Control`: private unless serve() found it shareable. */
-	private string $cacheControl = 'private, no-store, max-age=0';
+	private string $cacheControl = 'private, no-store, max-age=0'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	public static function instance(): ?self {
 		return self::$instance;
@@ -171,8 +171,8 @@ final class AppRouter {
 				}
 			}
 			$last     = end( $pattern );
-			$catchAll = is_string( $last ) && str_starts_with( $last, '*' );
-			if ( $ok && ( $catchAll || count( $pattern ) === count( $segments ) ) ) {
+			$catchAll = is_string( $last ) && str_starts_with( $last, '*' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			if ( $ok && ( $catchAll || count( $pattern ) === count( $segments ) ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				return array(
 					'route'  => $route,
 					'params' => $params,
@@ -194,7 +194,7 @@ final class AppRouter {
 	 * so no two of them take the same request for different pages. `$uri` is a request URI other
 	 * than this request's (the page cache's read index names a URL by it).
 	 */
-	public static function requestPath( ?string $uri = null ): string {
+	public static function requestPath( ?string $uri = null ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return (string) ( wp_parse_url( '/' . ltrim( $uri ?? (string) ( $_SERVER['REQUEST_URI'] ?? '/' ), '/' ), PHP_URL_PATH ) ?? '/' );
 	}
 
@@ -205,7 +205,7 @@ final class AppRouter {
 			if ( $path !== $base && ! str_starts_with( $path, $base . '/' ) ) {
 				return null;
 			}
-			$path = substr( $path, strlen( $base ) ) ?: '/';
+			$path = substr( $path, strlen( $base ) ) ?: '/'; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		}
 		return $path;
 	}
@@ -233,27 +233,27 @@ final class AppRouter {
 	}
 
 	/** Whether a layout is a root layout: `app/layout.tsx`, or one below route groups only (`app/(site)/layout.tsx`). */
-	public static function rootLayout( string $path ): bool {
+	public static function rootLayout( string $path ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return preg_match( '#\Aapp/(?:\([^/]+\)/)*layout\.tsx\z#', $path ) === 1;
 	}
 
 	/** The owning page for a local link. A public file takes precedence over a dynamic route. */
-	private array $linkPages = array();
+	private array $linkPages = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	private function link_page( string $path ): ?array {
-		if ( array_key_exists( $path, $this->linkPages ) ) {
-			return $this->linkPages[ $path ];
+		if ( array_key_exists( $path, $this->linkPages ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			return $this->linkPages[ $path ]; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		$route = $this->reserved( $path ) ? null : ( $this->match_path( $path )['route'] ?? null );
 		if ( ( $route['page'] ?? null ) === null
 			|| ( strpbrk( $route['pattern'], ':*' ) !== false && PublicFiles::serves( $this->plugin, $path ) ) ) {
 			$route = null;
 		}
-		return $this->linkPages[ $path ] = $route;
+		return $this->linkPages[ $path ] = $route; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase, Squiz.PHP.DisallowMultipleAssignments.Found -- Preserve the existing PHP property name. Keep the assignment and its test together.
 	}
 
 	/** A query at the home path can ask WordPress for a post, an archive or an endpoint. */
-	public static function wordPressHomeQuery( string $url ): bool {
+	public static function wordPressHomeQuery( string $url ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		global $wp;
 		$query = wp_parse_url( $url, PHP_URL_QUERY );
 		if ( ! is_string( $query ) || '' === $query ) {
@@ -264,7 +264,7 @@ final class AppRouter {
 	}
 
 	/** Only a destination the app owns and whose policy always requires a session can skip the guest redirect. */
-	public function linkRequiresLogin( string $path ): bool {
+	public function linkRequiresLogin( string $path ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$route = $this->link_page( $path );
 		return ! empty( $route['loginRequired'] ) && ! $this->root_kind( $route );
 	}
@@ -274,7 +274,7 @@ final class AppRouter {
 	 * own document (a classic theme), or null when no app page serves it. `<Link>` carries it, so a
 	 * click to a page in another template loads the whole page instead of swapping the region.
 	 */
-	public function templateFor( string $path ): ?string {
+	public function templateFor( string $path ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( array_key_exists( $path, $this->templates ) ) {
 			return $this->templates[ $path ];
 		}
@@ -286,13 +286,13 @@ final class AppRouter {
 			! self::themed() => 'document',
 			default => BlockTemplates::slug( $route['template'] ),
 		};
-		return $this->templates[ $path ] = $template;
+		return $this->templates[ $path ] = $template; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 	}
 
 	/** wp-login.php has its own template. Links that leave it use full browser navigation. */
-	public function linkTemplateFor( string $path ): ?string {
+	public function linkTemplateFor( string $path ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$target = $this->templateFor( $path );
-		if ( $this->template === BlockTemplates::LOGIN && $target !== ( self::themed() ? BlockTemplates::LOGIN : 'document' ) ) {
+		if ( $this->template === BlockTemplates::LOGIN && $target !== ( self::themed() ? BlockTemplates::LOGIN : 'document' ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return null;
 		}
 		return $target;
@@ -501,11 +501,11 @@ final class AppRouter {
 	 * the URL, so the caller decides; true when the page does and the visitor isn't sent (the request
 	 * goes on, and the router answers it).
 	 */
-	public function moveTo( string $url ): ?bool {
+	public function moveTo( string $url ): ?bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$path = (string) ( wp_parse_url( $url, PHP_URL_PATH ) ?? '/' );
 		$base = rtrim( (string) ( wp_parse_url( home_url( '/' ), PHP_URL_PATH ) ?? '/' ), '/' );
 		if ( '' !== $base && str_starts_with( $path, $base ) ) {
-			$path = substr( $path, strlen( $base ) ) ?: '/';
+			$path = substr( $path, strlen( $base ) ) ?: '/'; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		}
 		$match = $this->reserved( $path ) ? null : $this->match_path( $path );
 		if ( null === $match || ( $match['route']['page'] ?? null ) === null ) {
@@ -641,7 +641,7 @@ final class AppRouter {
 		$query->setup_postdata( $post );
 	}
 
-	private function notFound( bool $sharedItemMiss = false ): never {
+	private function notFound( bool $sharedItemMiss = false ): never { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		global $wp_query;
 		$wp_query->set_404();
 		$route  = $this->app['notFound'] ?? null;
@@ -649,8 +649,8 @@ final class AppRouter {
 		if ( ! is_array( $route ) ) {
 			// The theme's own 404 template, as WordPress renders it, with core's title.
 			$this->template = BlockTemplates::NOT_FOUND;
-			if ( $sharedItemMiss && null === $viewer->user ) {
-				$this->cacheControl = 'public, max-age=0, s-maxage=60, must-revalidate';
+			if ( $sharedItemMiss && null === $viewer->user ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$this->cacheControl = 'public, max-age=0, s-maxage=60, must-revalidate'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			}
 			$this->document(
 				404,
@@ -689,7 +689,7 @@ final class AppRouter {
 	 * Other actions (lost password, reset, register, logout, Two Factor's screens) keep
 	 * WordPress's own pages (docs/decisions/2026-11-15-one-sign-in-page.md).
 	 */
-	public function login( mixed $errors, mixed $redirectTo = '' ): mixed {
+	public function login( mixed $errors, mixed $redirectTo = '' ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		global $action;
 		if ( ! $errors instanceof \WP_Error || ! in_array( $action ?? 'login', array( 'login', 'checkemail' ), true )
 			|| isset( $_REQUEST['interim-login'] ) || isset( $_REQUEST['customize-login'] ) || headers_sent()
@@ -709,7 +709,7 @@ final class AppRouter {
 		// render) falls back to WordPress's own page: nobody is ever locked out of signing in.
 		try {
 			$this->plugin->app();
-			\SpacePress\Render\LoginView::capture( $errors, is_string( $redirectTo ) ? $redirectTo : '', $login );
+			\SpacePress\Render\LoginView::capture( $errors, is_string( $redirectTo ) ? $redirectTo : '', $login ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$viewer         = CoreAccess::viewer() ?? new Viewer( null );
 			$this->template = BlockTemplates::LOGIN;
 			if ( is_array( $route ) ) {
@@ -769,7 +769,7 @@ final class AppRouter {
 		);
 		add_filter( 'wp_robots', 'wp_robots_sensitive_page' );
 		add_action( 'wp_head', 'wp_strict_cross_origin_referrer' );
-		$this->cacheControl = 'private, no-store, max-age=0';
+		$this->cacheControl = 'private, no-store, max-age=0'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		do_action( 'sp_app_login_rendered', (string) ( $_SERVER['REQUEST_URI'] ?? '/' ) );
 		$this->document( 200, $head, $body );
 	}
@@ -789,7 +789,7 @@ final class AppRouter {
 		$guards         = $route['guards'];
 		$plan           = $route['plan'] ?? array();
 		$uri            = (string) ( $_SERVER['REQUEST_URI'] ?? '/' );
-		$missingItem    = false;
+		$missingItem    = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null !== $moved && ( $plan['class'] ?? null ) === 'immutable'
 			&& null === $viewer->user
 			&& RoutePlan::requestAllowsSharing( $this->plugin ) && \SpacePress\Render\Cache::shareable( $uri, array() ) ) {
@@ -829,11 +829,11 @@ final class AppRouter {
 			[$head, $body] = \SpacePress\Render\Live::page(
 				$app->db,
 				200 === $status ? $viewer : null,
-				function () use ( $route, $params, $viewer, $props, $page, $layouts, &$missingItem ): array {
+				function () use ( $route, $params, $viewer, $props, $page, $layouts, &$missingItem ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					if ( ( $route['kind'] ?? null ) !== null ) {
 						$item = Seam::asViewer( $viewer, fn () => $this->item( $route['kind'], $params ) );
 						if ( null === $item ) {
-							$missingItem = true;
+							$missingItem = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 							throw Halt::notFoundSignal();
 						}
 						$props->p['item'] = $item;
@@ -852,7 +852,7 @@ final class AppRouter {
 			if ( 404 === $status ) {
 				$this->document( 404, array( 'title' => __( 'Page not found' ) ), '<h1>' . esc_html__( 'Page not found' ) . '</h1>' );
 			}
-			$this->notFound( $missingItem && null === $moved && $this->shareable_item_miss( $route, $params, $viewer, $uri ) );
+			$this->notFound( $missingItem && null === $moved && $this->shareable_item_miss( $route, $params, $viewer, $uri ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		} catch ( \SpacePress\HttpError $error ) {
 			// A read the visitor may not make (a guarded query) is not found for them.
 			if ( 401 === $error->status || 403 === $error->status || 404 === $error->status ) {
@@ -878,7 +878,7 @@ final class AppRouter {
 		$anonymous                     = null === $viewer->user && RoutePlan::requestAllowsSharing( $this->plugin )
 			&& ! \SpacePress\Render\Forms::marked() && ! \SpacePress\Render\SearchView::marked() && ! \SpacePress\Render\LoginView::private()
 			&& \SpacePress\Render\Cache::shareable( $uri, $declared );
-		[$this->cacheControl, $shared] = \SpacePress\Render\Cache::policy(
+		[$this->cacheControl, $shared] = \SpacePress\Render\Cache::policy( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$status,
 			$anonymous,
 			array() !== $guards || ( $plan['class'] ?? null ) === 'request-private',
@@ -890,7 +890,7 @@ final class AppRouter {
 		// A URL the read index can't hold (a query parameter the page doesn't declare, one query
 		// variant too many) can't be purged, so its response is this visitor's alone.
 		if ( ! $shared ) {
-			$this->cacheControl = \SpacePress\Render\Cache::PRIVATE;
+			$this->cacheControl = \SpacePress\Render\Cache::PRIVATE; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			// Nor may it become a prebuilt file, which no write would know to rebuild.
 			if ( 200 === $status ) {
 				\SpacePress\Render\Prebuilt::unrecorded();
@@ -916,7 +916,7 @@ final class AppRouter {
 		return array_keys( $route['kind']['params'] ) === array( 'slug' ) && isset( $spec['wp']['postType'] )
 			&& empty( $spec['hierarchical'] ) && ! isset( $spec['commerce'] )
 			&& ! \SpacePress\Locale\Module::localized( $route['kind']['name'] )
-			&& null !== $path && $uri === wp_parse_url( home_url( $this->canonical( $path ) ), PHP_URL_PATH )
+			&& null !== $path && $uri === wp_parse_url( home_url( $this->canonical( $path ) ), PHP_URL_PATH ) // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			&& is_string( $slug ) && preg_match( '/^[a-z0-9-]+$/D', $slug ) === 1
 			// A row excluded by a read guard can become visible without this post being saved.
 			&& get_page_by_path( $slug, OBJECT, array( $spec['wp']['postType'] ) ) === null;
@@ -995,7 +995,7 @@ final class AppRouter {
 		}
 		// The visitor read the item just now: what the page renders around it (its comments) need
 		// not ask the kind's read rule about it again.
-		if ( ( $reader = Seam::viewer() ) !== null && ( $spec['wp']['postType'] ?? null ) !== null
+		if ( ( $reader = Seam::viewer() ) !== null && ( $spec['wp']['postType'] ?? null ) !== null // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			&& \SpacePress\Extensions::constraintReadsSafe() ) {
 			CoreAccess::readable( $name, array( $id ), $reader );
 		}
@@ -1041,7 +1041,7 @@ final class AppRouter {
 	 * Whether a guarded `sp/app/` page serves this path (below the home URL): a
 	 * signed-out visitor is sent to sign in there, so the address is not public.
 	 */
-	public function guarded( string $path, ?string $postType = null ): bool {
+	public function guarded( string $path, ?string $postType = null ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$match = $this->reserved( $path ) ? null : $this->match_path( $path );
 		if ( null === $match || ( $match['route']['page'] ?? null ) === null ) {
 			return false;
@@ -1051,7 +1051,7 @@ final class AppRouter {
 			return false;
 		}
 		// A kind mounted at /:path leaves other post types and WordPress archives to the theme.
-		return null === $postType || ! $this->root_kind( $route ) || $this->kind_type( $route ) === $postType;
+		return null === $postType || ! $this->root_kind( $route ) || $this->kind_type( $route ) === $postType; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/** @return ?array{route: array, params: array} */
@@ -1059,7 +1059,7 @@ final class AppRouter {
 		$path = (string) ( wp_parse_url( $url, PHP_URL_PATH ) ?? '/' );
 		$base = rtrim( (string) ( wp_parse_url( home_url( '/' ), PHP_URL_PATH ) ?? '/' ), '/' );
 		if ( '' !== $base && str_starts_with( $path, $base ) ) {
-			$path = substr( $path, strlen( $base ) ) ?: '/';
+			$path = substr( $path, strlen( $base ) ) ?: '/'; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		}
 		if ( $this->reserved( $path ) || \SpacePress\Commerce\Module::privatePath( $this->plugin, $path ) ) {
 			return null;
@@ -1158,13 +1158,13 @@ final class AppRouter {
 	 *
 	 * @return array{html: string, reads: array, unseen: bool}
 	 */
-	public function liveRegion( string $url, string $region, Viewer $viewer ): array {
+	public function liveRegion( string $url, string $region, Viewer $viewer ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$path  = (string) ( wp_parse_url( $url, PHP_URL_PATH ) ?? '/' );
 		$query = (string) ( wp_parse_url( $url, PHP_URL_QUERY ) ?? '' );
 		// Below a home URL in a subdirectory, the route is the path after it, as for a GET.
 		$base = rtrim( (string) ( wp_parse_url( home_url( '/' ), PHP_URL_PATH ) ?? '/' ), '/' );
 		if ( '' !== $base && str_starts_with( $path, $base . '/' ) ) {
-			$path = substr( $path, strlen( $base ) ) ?: '/';
+			$path = substr( $path, strlen( $base ) ) ?: '/'; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		}
 		$match = $this->reserved( $path ) ? null : $this->match_path( $path );
 		if ( null === $match || ( $match['route']['page'] ?? null ) === null ) {
@@ -1324,14 +1324,14 @@ final class AppRouter {
 			if ( ( $layout['chrome'] ?? true ) === false ) {
 				continue;
 			}
-			$layoutProps = new JsObject(
+			$layoutProps = new JsObject( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				array(
 					'params'   => $props->p['params'],
 					'children' => $html,
 				)
 			);
-			$layoutFn    = '\\SpacePressApp\\' . $layout['component'];
-			$html        = Html::component( $layoutFn( ... ), $layoutProps );
+			$layoutFn    = '\\SpacePressApp\\' . $layout['component']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$html        = Html::component( $layoutFn( ... ), $layoutProps ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		// Rendering runs every component now, so their reads happen inside the visitor binding.
 		$body = Html::child( $html );
@@ -1383,7 +1383,7 @@ final class AppRouter {
 							ksort( $key );
 						}
 						// Invalid UTF-8 is substituted, not a failed encoding every such link would share.
-						$key = json_encode( $key, JSON_INVALID_UTF8_SUBSTITUTE ) ?: serialize( $key );
+						$key = json_encode( $key, JSON_INVALID_UTF8_SUBSTITUTE ) ?: serialize( $key ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 						if ( ! isset( $seen[ $key ] ) ) {
 							$seen[ $key ]   = true;
 							$out['links'][] = $link;
@@ -1529,7 +1529,7 @@ final class AppRouter {
 		add_action( 'wp_head', '_block_template_render_title_tag', 1 );
 		add_action(
 			'wp_head',
-			$this->headTags = static function () use ( $head ): void {
+			$this->headTags = static function () use ( $head ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				if ( is_string( $head['description'] ?? null ) && '' !== $head['description'] ) {
 					echo '<meta name="description" content="' . esc_attr( $head['description'] ) . "\">\n";
 				}
@@ -1546,7 +1546,7 @@ final class AppRouter {
 			// The template didn't place the page: the default template, else First's own document,
 			// without the styles and scripts the failed render's blocks enqueued.
 			self::dequeue_since( $queued );
-			$fallback = $template->slug === BlockTemplates::PAGE ? null : BlockTemplates::resolve( BlockTemplates::PAGE );
+			$fallback = $template->slug === BlockTemplates::PAGE ? null : BlockTemplates::resolve( BlockTemplates::PAGE ); // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			$html     = null === $fallback ? null : BlockTemplates::html( $fallback, Navigation::region( 'sp-page' ) . $body . Navigation::END );
 			if ( null === $html ) {
 				self::dequeue_since( $queued );
@@ -1574,10 +1574,10 @@ final class AppRouter {
 	/** @param array<string, mixed> $head */
 	private function document( int $status, array $head, string $body ): never {
 		status_header( $status );
-		if ( str_starts_with( $this->cacheControl, 'private' ) ) {
+		if ( str_starts_with( $this->cacheControl, 'private' ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			self::private_response();
 		}
-		\SpacePress\Render\Cache::send( $this->cacheControl );
+		\SpacePress\Render\Cache::send( $this->cacheControl ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( \SpacePress\Render\Prebuilt::prerendering() ) {
 			// The prebuild writes a file only from an answer the router rendered for it.
 			header( 'X-SpacePress-Prerendered: 1' );
@@ -1616,7 +1616,7 @@ final class AppRouter {
 		if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) === 'HEAD' ) {
 			exit;
 		}
-		if ( str_starts_with( $this->cacheControl, 'public' ) ) {
+		if ( str_starts_with( $this->cacheControl, 'public' ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			ob_start();
 		}
 		$template = null !== $this->template && self::themed() ? BlockTemplates::resolve( $this->template ) : null;
@@ -1627,10 +1627,10 @@ final class AppRouter {
 		$this->plain( $head, $body, $status );
 	}
 
-	private function finishPage( int $status ): void {
-		if ( str_starts_with( $this->cacheControl, 'public' ) && ! headers_sent() ) {
+	private function finishPage( int $status ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		if ( str_starts_with( $this->cacheControl, 'public' ) && ! headers_sent() ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			// Core or a plugin can enqueue a nonce or set a cookie while the document is printed.
-			\SpacePress\Render\Cache::finishPage( $this->cacheControl, $status );
+			\SpacePress\Render\Cache::finishPage( $this->cacheControl, $status ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 	}
 
@@ -1646,16 +1646,16 @@ final class AppRouter {
 	 * blocks ran: the Cache-Control header is still unsent, so it can change.
 	 */
 	private function private_if_login_fields(): void {
-		if ( ! \SpacePress\Render\LoginView::private() || str_starts_with( $this->cacheControl, 'private' ) ) {
+		if ( ! \SpacePress\Render\LoginView::private() || str_starts_with( $this->cacheControl, 'private' ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			return;
 		}
 		if ( headers_sent( $file, $line ) ) {
 			error_log( "SpacePress: a Login form block made this page private, but output started at $file:$line, so its Cache-Control could not change" );
 			return;
 		}
-		$this->cacheControl = 'private, no-store, max-age=0';
+		$this->cacheControl = 'private, no-store, max-age=0'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		nocache_headers();
-		\SpacePress\Render\Cache::send( $this->cacheControl );
+		\SpacePress\Render\Cache::send( $this->cacheControl ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( function_exists( 'batcache_cancel' ) ) {
 			batcache_cancel();
 		}
@@ -1695,8 +1695,8 @@ final class AppRouter {
 		// A block template that couldn't place the page may have hooked its title and head tags.
 		remove_action( 'wp_head', '_block_template_render_title_tag', 1 );
 		remove_action( 'wp_head', '_block_template_viewport_meta_tag', 0 );
-		if ( null !== $this->headTags ) {
-			remove_action( 'wp_head', $this->headTags, 2 );
+		if ( null !== $this->headTags ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			remove_action( 'wp_head', $this->headTags, 2 ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		echo "<!DOCTYPE html>\n<html " . get_language_attributes() . ">\n<head>\n<meta charset=\"" . esc_attr( (string) get_option( 'blog_charset' ) ) . "\">\n";
 		echo "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";

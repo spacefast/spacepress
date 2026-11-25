@@ -85,7 +85,7 @@ final class Guests {
 	}
 
 	/** Days a guest may stay inactive, or null when pruning is off. */
-	public static function ttlDays(): ?int {
+	public static function ttlDays(): ?int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$raw = trim( (string) Env::get( 'SP_GUEST_TTL_DAYS' ) );
 		if ( '' === $raw ) {
 			return self::DEFAULT_TTL_DAYS;

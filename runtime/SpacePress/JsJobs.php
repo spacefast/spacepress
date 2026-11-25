@@ -20,11 +20,11 @@ final class JsJobs {
 		( self::$queue ??= new \SplQueue() )->enqueue( $job );
 	}
 
-	public static function trackRejection( JsPromise $promise ): void {
+	public static function trackRejection( JsPromise $promise ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		( self::$unhandled ??= new \SplObjectStorage() )->offsetSet( $promise );
 	}
 
-	public static function untrackRejection( JsPromise $promise ): void {
+	public static function untrackRejection( JsPromise $promise ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::$unhandled?->offsetUnset( $promise );
 	}
 
@@ -162,7 +162,7 @@ final class JsJobs {
 				throw new JsError( 'This promise can never settle: nothing left to run' . ( '' === $site ? '' : ' (awaited at ' . $site . ')' ), 'Error' );
 			}
 		}
-		if ( $promise->state === JsPromise::REJECTED ) {
+		if ( $promise->state === JsPromise::REJECTED ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			throw Js::throwable( $promise->result );
 		}
 		return $promise->result;

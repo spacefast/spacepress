@@ -16,7 +16,7 @@ final class Mfa {
 	public function setup( int $uid, string $label ): array {
 		$otp = \SpacePress\Identity\Vendor\OTPHP\TOTP::generate();
 		$otp->setLabel( $label );
-		$otp->setIssuer( get_bloginfo( 'name' ) ?: 'Identity' );
+		$otp->setIssuer( get_bloginfo( 'name' ) ?: 'Identity' ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		$this->db->transaction(
 			function () use ( $uid, $otp ) {
 				$this->db->lock( $uid );
@@ -89,7 +89,7 @@ final class Mfa {
 			}
 		);
 	}
-	public function recoveryCodes( int $uid ): array {
+	public function recoveryCodes( int $uid ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->db->transaction(
 			function () use ( $uid ) {
 				$this->db->lock( $uid );

@@ -18,7 +18,7 @@ use SpacePress\JsObject;
 final class Functions {
 
 	/** @param list<mixed> $args the author's arguments, then the catalog's fixed ones */
-	public static function call( string $function, array $args ): mixed {
+	public static function call( string $function, array $args ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.functionFound -- Preserve the existing PHP parameter name.
 		if ( in_array( $function, array( 'is_user_logged_in', 'current_user_can', 'get_current_user_id' ), true ) ) {
 			\SpacePress\Render\Prebuilt::viewerCall( $function );
 		}
@@ -75,7 +75,7 @@ final class Functions {
 		}
 	}
 
-	private static function toPhp( mixed $value ): mixed {
+	private static function toPhp( mixed $value ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return match ( true ) {
 			$value instanceof JsObject, $value instanceof JsArray => \SpacePress\Seam::toPhp( $value ),
 			\SpacePress\JsUndefined::Value === $value => null,

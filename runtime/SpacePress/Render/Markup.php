@@ -38,7 +38,7 @@ final class Markup {
 	 */
 	public static function link( array $props, mixed $children ): Html {
 		$prefetch    = $props['prefetch'] ?? false;
-		$requireAuth = $props['requireAuth'] ?? null;
+		$requireAuth = $props['requireAuth'] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		unset( $props['prefetch'], $props['requireAuth'] );
 		$href  = $props['href'] ?? null;
 		$local = is_string( $href ) ? self::local_href( $href ) : null;
@@ -49,10 +49,10 @@ final class Markup {
 			if ( '/' === $path && \SpacePress\Wp\AppRouter::wordPressHomeQuery( $local ) ) {
 				$router = null;
 			}
-			if ( is_bool( $requireAuth ) ? $requireAuth : $router?->linkRequiresLogin( $path ) ) {
+			if ( is_bool( $requireAuth ) ? $requireAuth : $router?->linkRequiresLogin( $path ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				// Static HTML can be opened by anyone. An inferred guard will run at the destination.
 				if ( Prebuilt::prerendering() ) {
-					if ( true === $requireAuth ) {
+					if ( true === $requireAuth ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						Prebuilt::viewerCall( 'Link requireAuth' );
 					}
 					return Html::element( 'a', $props, $children );
@@ -91,7 +91,7 @@ final class Markup {
 		$src    = $props['src'] ?? null;
 		$width  = $props['width'] ?? null;
 		$height = $props['height'] ?? null;
-		$srcSet = null;
+		$srcSet = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 		if ( $src instanceof \SpacePress\JsObject ) {
 			$map = $src->p;
@@ -120,7 +120,7 @@ final class Markup {
 				}
 				if ( count( $candidates ) > 1 ) {
 					ksort( $candidates );
-					$srcSet = implode( ', ', $candidates );
+					$srcSet = implode( ', ', $candidates ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				}
 			}
 			$src = $url;
@@ -141,8 +141,8 @@ final class Markup {
 		if ( null !== $height ) {
 			$props['height'] = $height;
 		}
-		if ( null !== $srcSet ) {
-			$props['srcSet'] = $srcSet;
+		if ( null !== $srcSet ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$props['srcSet'] = $srcSet; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		if ( ! isset( $props['decoding'] ) || self::nullish( $props['decoding'] ) ) {
 			$props['decoding'] = 'async';
@@ -177,7 +177,7 @@ final class Markup {
 		if ( '' !== $base && $path !== $base && ! str_starts_with( $path, $base . '/' ) ) {
 			return null;
 		}
-		return ( substr( $path, strlen( $base ) ) ?: '/' ) . substr( $href, strcspn( $href, '?#' ) );
+		return ( substr( $path, strlen( $base ) ) ?: '/' ) . substr( $href, strcspn( $href, '?#' ) ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 	}
 
 	private static function nullish( mixed $value ): bool {

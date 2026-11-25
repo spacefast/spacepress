@@ -15,7 +15,7 @@ interface MigrationProvider {
 	public function id(): string;
 
 	/** When true, Migrator refuses to invoke this provider during HTTP or activation requests. */
-	public function cliOnly(): bool;
+	public function cliOnly(): bool; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
 	/** Human-readable description of what this provider enables. */
 	public function describe(): string;

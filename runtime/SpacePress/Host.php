@@ -20,7 +20,7 @@ final class Host {
 	}
 
 	/** `navigator.platform`: `Linux x86_64`, `MacIntel`, `Win32`, ... */
-	public static function navigatorPlatform(): string {
+	public static function navigatorPlatform(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::current()[1];
 	}
 
@@ -32,14 +32,14 @@ final class Host {
 	 *
 	 * @return array{0: string, 1: string}
 	 */
-	public static function names( string $family, string $os, ?string $machine, int $intSize = PHP_INT_SIZE ): array {
+	public static function names( string $family, string $os, ?string $machine, int $intSize = PHP_INT_SIZE ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$platform = match ( $family ) {
 			'Windows' => 'win32',
 			'Darwin' => 'darwin',
 			'Solaris' => 'sunos',
 			default => strtolower( $os ),
 		};
-		$arch = null === $machine ? ( 8 === $intSize ? 'x64' : 'ia32' ) : self::arch( $machine );
+		$arch = null === $machine ? ( 8 === $intSize ? 'x64' : 'ia32' ) : self::arch( $machine ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 		return array( $platform, self::navigator( $platform, $arch ) );
 	}

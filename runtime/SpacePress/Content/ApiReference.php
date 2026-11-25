@@ -51,7 +51,7 @@ final class ApiReference {
 			set_transient( $cache, $reference, DAY_IN_SECONDS );
 		}
 
-		return self::$read[ $key ] = self::js( $reference );
+		return self::$read[ $key ] = self::js( $reference ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 	}
 
 	/** The app's own document, with this site as its server. */
@@ -156,14 +156,14 @@ final class ApiReference {
 			$params[]    = $field;
 		}
 		$body     = array();
-		$bodyType = '';
+		$bodyType = ''; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$example  = null;
 		$request  = self::deref( $doc, $op['requestBody'] ?? null );
 		if ( is_array( $request['content'] ?? null ) && array() !== $request['content'] ) {
-			$bodyType = isset( $request['content']['application/json'] ) ? 'application/json' : (string) array_key_first( $request['content'] );
-			$schema   = is_array( $request['content'][ $bodyType ]['schema'] ?? null ) ? $request['content'][ $bodyType ]['schema'] : array();
+			$bodyType = isset( $request['content']['application/json'] ) ? 'application/json' : (string) array_key_first( $request['content'] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$schema   = is_array( $request['content'][ $bodyType ]['schema'] ?? null ) ? $request['content'][ $bodyType ]['schema'] : array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$body     = self::fields( $doc, $schema, 0, array() );
-			$example  = 'application/json' === $bodyType ? self::example( $doc, $schema, 0 ) : null;
+			$example  = 'application/json' === $bodyType ? self::example( $doc, $schema, 0 ) : null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		$responses = array();
 		foreach ( is_array( $op['responses'] ?? null ) ? $op['responses'] : array() as $status => $response ) {
@@ -189,11 +189,11 @@ final class ApiReference {
 			'description' => self::markdown( $op['description'] ?? null ),
 			'access'      => is_string( $op['x-spacepress-access'] ?? null ) ? $op['x-spacepress-access'] : '',
 			'params'      => $params,
-			'bodyType'    => $bodyType,
+			'bodyType'    => $bodyType, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			'body'        => $body,
 			'responses'   => $responses,
-			'curl'        => self::curl( strtoupper( $method ), $url, $bodyType, $example ),
-			'fetch'       => self::fetch( strtoupper( $method ), $url, $bodyType, $example ),
+			'curl'        => self::curl( strtoupper( $method ), $url, $bodyType, $example ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			'fetch'       => self::fetch( strtoupper( $method ), $url, $bodyType, $example ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		);
 	}
 
@@ -588,10 +588,10 @@ final class ApiReference {
 		try {
 			$blocks = parse_blocks( \SpacePress\Sync\Markdown::toBlocks( $text ) );
 		} catch ( \Throwable ) {
-			return $cache[ $text ] = '<p>' . esc_html( $text ) . '</p>';
+			return $cache[ $text ] = '<p>' . esc_html( $text ) . '</p>'; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		}
 
-		return $cache[ $text ] = trim( self::static_html( $blocks ) );
+		return $cache[ $text ] = trim( self::static_html( $blocks ) ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 	}
 
 	/**

@@ -22,7 +22,7 @@ final class JsAbortSignal {
 	public function onabort(): ?\Closure {
 		return $this->onabort; }
 
-	public static function abortError(): JsError {
+	public static function abortError(): JsError { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return new JsError( 'This operation was aborted', 'AbortError' );
 	}
 
@@ -78,7 +78,7 @@ final class JsAbortSignal {
 		return $result;
 	}
 
-	public function throwIfAborted(): JsUndefined {
+	public function throwIfAborted(): JsUndefined { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $this->aborted ) {
 			throw self::thrown( $this->reason ); }
 		return JsUndefined::Value;
@@ -89,7 +89,7 @@ final class JsAbortSignal {
 		return $reason instanceof \Throwable ? $reason : new JsError( 'Throwing a non-Error abort reason is not supported; abort with an Error', 'TypeError' );
 	}
 
-	public function addEventListener( mixed $type, mixed $listener, mixed $options = JsUndefined::Value ): JsUndefined {
+	public function addEventListener( mixed $type, mixed $listener, mixed $options = JsUndefined::Value ): JsUndefined { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( Js::str( $type ) !== 'abort' || Js::isNullish( $listener ) ) {
 			return JsUndefined::Value; }
 		if ( ! $listener instanceof \Closure ) {
@@ -113,7 +113,7 @@ final class JsAbortSignal {
 		return JsUndefined::Value;
 	}
 
-	public function removeEventListener( mixed $type, mixed $listener, mixed $options = JsUndefined::Value ): JsUndefined {
+	public function removeEventListener( mixed $type, mixed $listener, mixed $options = JsUndefined::Value ): JsUndefined { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( Js::str( $type ) !== 'abort' ) {
 			return JsUndefined::Value; }
 		foreach ( $this->listeners as $i => $entry ) {
@@ -124,7 +124,7 @@ final class JsAbortSignal {
 	}
 
 	/** https://dom.spec.whatwg.org/#abortsignal-signal-abort */
-	public function signalAbort( mixed $reason ): void {
+	public function signalAbort( mixed $reason ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $this->aborted ) {
 			return; }
 		$this->aborted = true;
@@ -178,7 +178,7 @@ final class JsAbortSignal {
 	private static ?\Closure $handler_marker = null;
 
 	/** An event handler attribute keeps the listener slot of its first non-null assignment. */
-	public function setOnabort( mixed $handler ): void {
+	public function setOnabort( mixed $handler ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::$handler_marker ??= static function (): void {};
 		$handler                = $handler instanceof \Closure ? $handler : null;
 		if ( null !== $handler && null === $this->onabort ) {

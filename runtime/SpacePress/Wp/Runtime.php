@@ -18,7 +18,7 @@ final class Runtime {
 	/** Why the shared system tables are behind this runtime (failed or contended upgrade), else null. */
 	private static ?string $unavailable = null;
 
-	public static function boot( string $runtimeFile ): void {
+	public static function boot( string $runtimeFile ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( self::$booted ) {
 			return;
 		}
@@ -27,7 +27,7 @@ final class Runtime {
 			return;
 		}
 		self::$booted       = true;
-		self::$runtime_file = $runtimeFile;
+		self::$runtime_file = $runtimeFile; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		RouteRequest::register();
 		AgentScope::trackCookie();
 		// Application passwords sign in where core accepts them and nowhere else: on a request WordPress
@@ -36,7 +36,7 @@ final class Runtime {
 		add_action( 'wp_authenticate_application_password_errors', array( AgentScope::class, 'authenticating' ), 10, 3 );
 		add_filter( 'rest_authentication_errors', array( AgentScope::class, 'booted' ), 0 );
 		add_filter( 'rest_authentication_errors', array( AgentScope::class, 'unenforced' ), 95 );
-		register_activation_hook( $runtimeFile, array( self::class, 'activate' ) );
+		register_activation_hook( $runtimeFile, array( self::class, 'activate' ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		PageCaches::register();
 		// As with app migrations: a runtime updated by copying files in sets up its tables on the
 		// first request of any kind, once, under a lock.
@@ -94,7 +94,7 @@ final class Runtime {
 	 *
 	 * @param callable(list<string> $args, array<string, string|true> $flags): int $fn prints its own JSON; returns the exit code
 	 */
-	public static function command( string $name, callable $fn ): void {
+	public static function command( string $name, callable $fn ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		if ( '' === $name || isset( self::$commands[ $name ] ) ) {
 			throw new \LogicException( "Invalid or duplicate wp spacepress command '$name'" );
 		}
@@ -115,14 +115,14 @@ final class Runtime {
 	}
 
 	/** Mount exactly one version after platform plugins load. Visitors never migrate managed apps. */
-	public static function mount( string $runtimeFile, string $appDir, array $variables = array(), ?\SpacePress\Schema $schema = null ): Plugin {
+	public static function mount( string $runtimeFile, string $appDir, array $variables = array(), ?\SpacePress\Schema $schema = null ): Plugin { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( self::$booted && ! self::$managed ) {
 			throw new \RuntimeException( 'A site-wide SpacePress runtime is already loaded' );
 		}
 		self::$managed = true;
 		\SpacePress\Env::isolate( $variables );
-		self::boot( $runtimeFile );
-		$plugin = self::app( $appDir, $appDir . '/' . basename( $appDir ) . '.php', $schema );
+		self::boot( $runtimeFile ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$plugin = self::app( $appDir, $appDir . '/' . basename( $appDir ) . '.php', $schema ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === $plugin ) {
 			throw new \RuntimeException( 'Cannot mount the managed SpacePress app; check platform requirements' );
 		}
@@ -210,7 +210,7 @@ final class Runtime {
 	 *
 	 * @return array{rules: bool, htaccess: ?bool} what was written; `htaccess` null when not attempted
 	 */
-	public static function installRewrites(): array {
+	public static function installRewrites(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! self::rewrites_behind() ) {
 			return array(
 				'rules'    => false,
@@ -279,7 +279,7 @@ final class Runtime {
 	 *
 	 * @return list<array>
 	 */
-	public static function installPlan(): array {
+	public static function installPlan(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$steps = array( ...ContentPages::plan(), ...RoutePages::plan() );
 		if ( null !== self::$plugin ) {
 			$steps = array( ...$steps, ...\SpacePress\Commerce\Module::plan( self::$plugin ) ); }
@@ -318,7 +318,7 @@ final class Runtime {
 		$identity = null;
 		if ( class_exists( \SpacePress\Identity\Schema::class ) ) {
 			$from     = (int) ( $option( 'sp_identity_schema_version' ) ?? 0 );
-			$identity = $from !== \SpacePress\Identity\Schema::VERSION ? array(
+			$identity = $from !== \SpacePress\Identity\Schema::VERSION ? array( // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				'from' => $from,
 				'to'   => \SpacePress\Identity\Schema::VERSION,
 			) : null;
@@ -328,7 +328,7 @@ final class Runtime {
 		// Every step initialize would run, in order, as one open set: whatever reads it (the deployment
 		// that decides whether a plan is empty) counts kinds it doesn't know too.
 		$steps = array();
-		if ( $recorded !== self::tablesVersion() ) {
+		if ( $recorded !== self::tablesVersion() ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			$steps[] = self::step( 'system-tables', 'system-tables', array( 'to' => self::tablesVersion() ) );
 		}
 		if ( null !== $identity ) {
@@ -341,7 +341,7 @@ final class Runtime {
 		return array(
 			'steps'          => array( ...$steps, ...$install ),
 			'platform'       => $platform,
-			'systemTables'   => $recorded === self::tablesVersion() ? null : array(
+			'systemTables'   => $recorded === self::tablesVersion() ? null : array( // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				'from'  => $recorded,
 				'to'    => self::tablesVersion(),
 				'steps' => \SpacePress\SystemTables::plan(),
@@ -378,7 +378,7 @@ final class Runtime {
 	}
 
 	/** Shared system tables (jobs, receipts, …): idempotent DDL, recorded by tablesVersion(). */
-	public static function applySystemTables(): void {
+	public static function applySystemTables(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		global $wpdb;
 		$schema = new \SpacePress\Schema(
 			array(
@@ -394,12 +394,12 @@ final class Runtime {
 	}
 
 	/** `<series>+<fingerprint>`: a runtime that registers another system table or step upgrades sites. */
-	public static function tablesVersion(): string {
+	public static function tablesVersion(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::SERIES . '+' . \SpacePress\SystemTables::fingerprint();
 	}
 
-	public static function app( string $dir, string $mainFile, ?\SpacePress\Schema $schema = null ): ?Plugin {
-		if ( self::$app_file === $mainFile ) {
+	public static function app( string $dir, string $mainFile, ?\SpacePress\Schema $schema = null ): ?Plugin { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( self::$app_file === $mainFile ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return self::$plugin;
 		}
 		try {
@@ -418,8 +418,8 @@ final class Runtime {
 				// Identity waited for the move to install its storage.
 				class_exists( \SpacePress\Identity\Plugin::class, false ) && \SpacePress\Identity\Plugin::install();
 			}
-			self::$plugin   = new Plugin( $dir, $mainFile, $schema );
-			self::$app_file = $mainFile;
+			self::$plugin   = new Plugin( $dir, $mainFile, $schema ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			self::$app_file = $mainFile; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			\SpacePress\Extensions::schemaDescribe(
 				static function ( array $description ): array {
 					$description['runtime']['wp']                  = Platform::versions();

@@ -29,25 +29,25 @@ final class Connection {
 	 * comes from. A request that only reads then sends neither it nor COMMIT.
 	 */
 	private bool $deferred                 = false;
-	private ?\Closure $pendingStorageCheck = null;
+	private ?\Closure $pendingStorageCheck = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	private ?\Closure $watch               = null;
-	private bool $rollbackOnly             = false;
+	private bool $rollbackOnly             = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** Core writes in flight: editor-save hooks ignore posts SpacePress itself is writing (§4.9). */
 	private int $busy = 0;
 	/** @var array<int, true> */
-	private array $touchedPosts = array();
+	private array $touchedPosts = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** @var array<string, true> */
-	private array $touchedOptions = array();
+	private array $touchedOptions = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** A post's caches were cleaned inside the open transaction ({@see wrotePost()}). */
-	private bool $wrotePost = false;
+	private bool $wrotePost = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** The `clean_post_cache` listener is registered ({@see watchPostWrites()}). */
-	private bool $watchingPosts = false;
+	private bool $watchingPosts = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** @var list<callable> */
-	private array $beforeCommit = array();
+	private array $beforeCommit = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** @var list<callable> */
-	private array $afterCommit = array();
+	private array $afterCommit = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** @var list<callable> */
-	private array $onRollback = array();
+	private array $onRollback = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** Rows the last statement changed (SQLite driver; mysqli answers ROW_COUNT() itself). */
 	private int $changes = 0;
 	/** @var array<int, true> SQLite handles (by object id) that already carry SpacePress's functions */
@@ -57,7 +57,7 @@ final class Connection {
 	public static ?\Closure $observer = null;
 
 	/** @param (\Closure(): void)|null $checkWriteStorage checks the app's MySQL storage before a transaction writes */
-	public function __construct( private readonly \wpdb $wpdb, private readonly ?\Closure $checkWriteStorage = null ) {
+	public function __construct( private readonly \wpdb $wpdb, private readonly ?\Closure $checkWriteStorage = null ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( $wpdb->dbh instanceof \PDO ) {
 			self::prepare_sqlite( $wpdb->dbh );
 		}
@@ -77,7 +77,7 @@ final class Connection {
 	}
 
 	/** `utf8mb4_unicode_ci` on MariaDB and MySQL 5.7, `utf8mb4_0900_ai_ci` on MySQL 8+ (§3.5 `ilike`). */
-	public function ciCollation(): string {
+	public function ciCollation(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$info = (string) $this->wpdb->db_server_info();
 		if ( stripos( $info, 'mariadb' ) !== false ) {
 			return 'utf8mb4_unicode_ci';
@@ -99,7 +99,7 @@ final class Connection {
 		if ( $this->depth > 0 && null !== $this->handle && $this->wpdb->dbh !== $this->handle ) {
 			// A reconnect (wpdb retries after a lost connection) ended this transaction on the server:
 			// what follows would commit on its own. Refuse it, and the commit.
-			$this->rollbackOnly = true;
+			$this->rollbackOnly = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			throw new DbError( 'the database connection was lost and replaced during the transaction', 2006 );
 		}
 		$this->before_statement( $sql );
@@ -140,7 +140,7 @@ final class Connection {
 		$tokens  = self::tokens( $dbh, $sql );
 		$literal = self::interpolate( $sql, $tokens, $values, $dbh );
 		$words   = array_map( static fn ( object $t ): string => strtoupper( $t->get_bytes() ), array_slice( $tokens, 0, 2 ) );
-		$ddl     = ! $dbh->inTransaction() && $words === array( 'ALTER', 'TABLE' );
+		$ddl     = ! $dbh->inTransaction() && $words === array( 'ALTER', 'TABLE' ); // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 		if ( $ddl && method_exists( $dbh, 'get_sqlite_pdo' ) ) {
 			// The driver runs ALTER TABLE as drop-and-recreate inside its own transaction, where SQLite
 			// ignores `PRAGMA foreign_keys = OFF`: the DROP would cascade into child rows. Migrations
@@ -150,7 +150,7 @@ final class Connection {
 			return $this->alter_sqlite( $dbh, $dbh->get_sqlite_pdo(), $literal, $sql );
 		}
 		try {
-			$stmt = $dbh->query( $literal, \PDO::FETCH_ASSOC );
+			$stmt = $dbh->query( $literal, \PDO::FETCH_ASSOC ); // phpcs:ignore WordPress.DB.RestrictedClasses.mysql__PDO -- The SQLite adapter uses PDO driver metadata.
 		} catch ( \PDOException $e ) {
 			throw self::sqlite_error( $e, $sql );
 		}
@@ -165,8 +165,8 @@ final class Connection {
 		try {
 			$dbh->query( 'START TRANSACTION' );
 			try {
-				$stmt   = $dbh->query( $literal, \PDO::FETCH_ASSOC );
-				$broken = $raw->query( 'PRAGMA foreign_key_check' )->fetchAll( \PDO::FETCH_ASSOC );
+				$stmt   = $dbh->query( $literal, \PDO::FETCH_ASSOC ); // phpcs:ignore WordPress.DB.RestrictedClasses.mysql__PDO -- The SQLite adapter uses PDO driver metadata.
+				$broken = $raw->query( 'PRAGMA foreign_key_check' )->fetchAll( \PDO::FETCH_ASSOC ); // phpcs:ignore WordPress.DB.RestrictedClasses.mysql__PDO -- The SQLite adapter uses PDO driver metadata.
 				if ( array() !== $broken ) {
 					$dbh->query( 'ROLLBACK' );
 					$tables = array_unique( array_map( static fn ( array $r ): string => (string) $r['table'] . ' -> ' . (string) $r['parent'], $broken ) );
@@ -222,7 +222,7 @@ final class Connection {
 		$at  = 0;
 		$i   = 0;
 		foreach ( $tokens as $token ) {
-			if ( (int) $token->id !== \WP_MySQL_Lexer::PARAM_MARKER ) {
+			if ( (int) $token->id !== \WP_MySQL_Lexer::PARAM_MARKER ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				continue;
 			}
 			if ( ! array_key_exists( $i, $values ) ) {
@@ -237,7 +237,7 @@ final class Connection {
 			};
 			$at = $token->start + $token->length;
 		}
-		if ( $i !== count( $values ) ) {
+		if ( $i !== count( $values ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			throw new DbError( "statement has fewer placeholders than parameters [$sql]", 0 );
 		}
 
@@ -251,11 +251,11 @@ final class Connection {
 		}
 		$this->changes = $stmt->rowCount();
 		$rows          = $stmt->fetchAll();
-		$ints          = $floats = array();
+		$ints          = $floats = array(); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		for ( $c = 0, $n = $stmt->columnCount(); $c < $n; $c++ ) {
-			$meta   = $stmt->getColumnMeta( $c ) ?: array();
+			$meta   = $stmt->getColumnMeta( $c ) ?: array(); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			$native = strtoupper( (string) ( $meta['native_type'] ?? '' ) );
-			if ( ( $meta['pdo_type'] ?? null ) === \PDO::PARAM_INT ) {
+			if ( ( $meta['pdo_type'] ?? null ) === \PDO::PARAM_INT ) { // phpcs:ignore WordPress.DB.RestrictedClasses.mysql__PDO -- The SQLite adapter uses PDO driver metadata.
 				$ints[] = $meta['name'];
 			} elseif ( 'DOUBLE' === $native || 'FLOAT' === $native ) {
 				$floats[] = $meta['name'];
@@ -315,10 +315,10 @@ final class Connection {
 		self::$prepared[ $pdo ] = true;
 		// PHP 8.4 moved the SQLite extensions onto Pdo\Sqlite, and 8.5 deprecates them on PDO; the plugin
 		// still constructs a plain PDO, whose only way to add functions is the deprecated pair (silenced).
-		$native    = $pdo instanceof \Pdo\Sqlite;
-		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Preserve registration through the deprecated API for legacy PDO connections.
-		$function  = static fn ( string $name, callable $fn, int $args ): bool => $native ? $pdo->createFunction( $name, $fn, $args ) : @$pdo->sqliteCreateFunction( $name, $fn, $args );
-		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Preserve registration through the deprecated API for legacy PDO connections.
+		$native = $pdo instanceof \Pdo\Sqlite;
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve registration through the deprecated API for legacy PDO connections.
+		$function = static fn ( string $name, callable $fn, int $args ): bool => $native ? $pdo->createFunction( $name, $fn, $args ) : @$pdo->sqliteCreateFunction( $name, $fn, $args );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, Universal.NamingConventions.NoReservedKeywordParameterNames.finalFound -- Preserve registration through the deprecated API for legacy PDO connections.
 		$aggregate = static fn ( string $name, callable $step, callable $final, int $args ): bool => $native ? $pdo->createAggregate( $name, $step, $final, $args ) : @$pdo->sqliteCreateAggregate( $name, $step, $final, $args );
 		// JSON_CONTAINS(doc, candidate): a list contains the candidate as one element; a scalar equals it.
 		$function(
@@ -424,7 +424,7 @@ final class Connection {
 	 * database (the translator answers `GET_LOCK` without locking anything). Waits up to $seconds.
 	 * Throws LockBusy only for contention; infrastructure failures remain RuntimeExceptions.
 	 */
-	public function locked( string $name, int $seconds, callable $fn ): mixed {
+	public function locked( string $name, int $seconds, callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		if ( ! $this->sqlite() ) {
 			$held = $this->run( 'SELECT GET_LOCK(?, ?) AS held', array( $name, $seconds ) )[0]['held'] ?? null;
 			if ( 0 === $held || '0' === $held ) {
@@ -440,7 +440,7 @@ final class Connection {
 			}
 		}
 		$file     = ( defined( 'DB_PATH' ) ? (string) DB_PATH : (string) ( DB_DIR . '/' . DB_FILE ) ) . '.' . substr( hash( 'sha256', $name ), 0, 16 ) . '.lock';
-		$handle   = fopen( $file, 'c' ) ?: throw new \RuntimeException( "cannot open lock file $file" );
+		$handle   = fopen( $file, 'c' ) ?: throw new \RuntimeException( "cannot open lock file $file" ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		$deadline = microtime( true ) + $seconds;
 		try {
 			while ( ! flock( $handle, LOCK_EX | LOCK_NB, $would_block ) ) {
@@ -463,7 +463,7 @@ final class Connection {
 	}
 
 	/** @param list<string> $statements idempotent DDL outside request transactions */
-	public function applySystemStatements( array $statements ): void {
+	public function applySystemStatements( array $statements ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $this->inTransaction() ) {
 			throw new \LogicException( 'System DDL cannot run inside a transaction' );
 		}
@@ -472,7 +472,7 @@ final class Connection {
 		}
 	}
 
-	public function insertId(): int {
+	public function insertId(): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$dbh = $this->wpdb->dbh;
 
 		return (int) ( $dbh instanceof \PDO ? $dbh->lastInsertId() : $this->mysqli()->insert_id );
@@ -490,13 +490,13 @@ final class Connection {
 	// ================================================================ transactions
 
 	/** Open a transaction or join the open one. Any throwable rolls back and cleans caches. */
-	public function transaction( callable $fn ): mixed {
+	public function transaction( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		if ( $this->depth > 0 ) {
 			++$this->depth;
 			try {
 				return $fn();
 			} catch ( \Throwable $e ) {
-				$this->rollbackOnly = true;
+				$this->rollbackOnly = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				throw $e;
 			} finally {
 				--$this->depth;
@@ -521,7 +521,7 @@ final class Connection {
 	 * writes). Reads before that point are not in it, so they see committed data and hold no locks;
 	 * a locking read (`FOR UPDATE`) starts it like a write. Joins an open transaction as it is.
 	 */
-	public function reading( callable $fn ): mixed {
+	public function reading( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		if ( $this->depth > 0 ) {
 			return $this->transaction( $fn );
 		}
@@ -540,8 +540,8 @@ final class Connection {
 	}
 
 	private function watch_statements(): void {
-		$this->pendingStorageCheck = $this->sqlite() ? null : $this->checkWriteStorage;
-		if ( $this->deferred || null !== $this->pendingStorageCheck ) {
+		$this->pendingStorageCheck = $this->sqlite() ? null : $this->checkWriteStorage; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		if ( $this->deferred || null !== $this->pendingStorageCheck ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			add_filter(
 				'query',
 				$this->watch = function ( mixed $sql ): mixed {
@@ -558,12 +558,12 @@ final class Connection {
 
 	/** One compatibility check per write transaction, before either store or WordPress SQL can write. */
 	private function before_statement( string $sql ): void {
-		if ( ( ! $this->deferred && null === $this->pendingStorageCheck ) || self::plain_read( $sql ) ) {
+		if ( ( ! $this->deferred && null === $this->pendingStorageCheck ) || self::plain_read( $sql ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			return;
 		}
-		if ( null !== $this->pendingStorageCheck ) {
-			( $this->pendingStorageCheck )();
-			$this->pendingStorageCheck = null;
+		if ( null !== $this->pendingStorageCheck ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			( $this->pendingStorageCheck )(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$this->pendingStorageCheck = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		if ( $this->deferred ) {
 			$this->start();
@@ -575,7 +575,7 @@ final class Connection {
 			remove_filter( 'query', $this->watch, PHP_INT_MAX );
 			$this->watch = null;
 		}
-		$this->pendingStorageCheck = null;
+		$this->pendingStorageCheck = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	/** A SELECT that takes no lock and writes nothing; anything else belongs inside the transaction. */
@@ -619,16 +619,16 @@ final class Connection {
 
 	/** Commit the outermost transaction, then run its afterCommit callbacks. A failed COMMIT rolls back. */
 	public function commit(): void {
-		if ( $this->rollbackOnly ) {
+		if ( $this->rollbackOnly ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$this->rollback();
 			throw new \RuntimeException( 'Cannot commit: a joined transaction failed' );
 		}
 		try {
 			// The transaction's own last statements (beforeCommit): they commit or roll back with it.
-			while ( array() !== $this->beforeCommit ) {
-				array_shift( $this->beforeCommit )();
+			while ( array() !== $this->beforeCommit ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+				array_shift( $this->beforeCommit )(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			}
-			if ( $this->rollbackOnly ) {
+			if ( $this->rollbackOnly ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				throw new \RuntimeException( 'Cannot commit: a joined transaction failed' );
 			}
 			$this->stop_watching_statements();
@@ -651,8 +651,8 @@ final class Connection {
 			throw $e;
 		}
 		$this->depth = 0;
-		$after       = $this->afterCommit;
-		$wrote_post  = $this->wrotePost;
+		$after       = $this->afterCommit; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		$wrote_post  = $this->wrotePost; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$this->reset();
 		// First, and not as an afterCommit callback: one of those throwing must not skip it.
 		if ( $wrote_post ) {
@@ -667,7 +667,7 @@ final class Connection {
 	public function rollback(): void {
 		$this->stop_watching_statements();
 		$this->depth = 0;
-		$undo        = $this->onRollback;
+		$undo        = $this->onRollback; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		try {
 			if ( ! $this->deferred ) {
 				$this->query( 'ROLLBACK' );
@@ -681,7 +681,7 @@ final class Connection {
 		}
 	}
 
-	public function inTransaction(): bool {
+	public function inTransaction(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->depth > 0;
 	}
 
@@ -690,26 +690,26 @@ final class Connection {
 	 * held for the shortest time and commits or rolls back with everything else. A throw rolls the
 	 * transaction back. Without a transaction it runs now.
 	 */
-	public function beforeCommit( callable $cb ): void {
-		$this->depth > 0 ? $this->beforeCommit[] = $cb : $cb();
+	public function beforeCommit( callable $cb ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		$this->depth > 0 ? $this->beforeCommit[] = $cb : $cb(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
-	public function afterCommit( callable $cb ): void {
-		$this->depth > 0 ? $this->afterCommit[] = $cb : $cb();
+	public function afterCommit( callable $cb ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		$this->depth > 0 ? $this->afterCommit[] = $cb : $cb(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
-	public function onRollback( callable $cb ): void {
+	public function onRollback( callable $cb ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $this->depth > 0 ) {
-			$this->onRollback[] = $cb;
+			$this->onRollback[] = $cb; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 	}
 
-	public function touchPost( int $id ): void {
-		$this->touchedPosts[ $id ] = true;
+	public function touchPost( int $id ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		$this->touchedPosts[ $id ] = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
-	public function touchOption( string $name ): void {
-		$this->touchedOptions[ $name ] = true;
+	public function touchOption( string $name ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		$this->touchedOptions[ $name ] = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	/**
@@ -718,9 +718,9 @@ final class Connection {
 	 * request may have cached something it read from before the write under the new stamp:
 	 * commit() moves the stamp once more as soon as the write is visible.
 	 */
-	public function wrotePost(): void {
+	public function wrotePost(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $this->depth > 0 ) {
-			$this->wrotePost = true;
+			$this->wrotePost = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 	}
 
@@ -728,15 +728,15 @@ final class Connection {
 	 * Calls wrotePost() on core's `clean_post_cache`, registered once per connection: stores are
 	 * built per editor save (Plugin::fillEditorDefaults), and each must not add another listener.
 	 */
-	public function watchPostWrites(): void {
-		if ( ! $this->watchingPosts ) {
-			$this->watchingPosts = true;
+	public function watchPostWrites(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		if ( ! $this->watchingPosts ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$this->watchingPosts = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			add_action( 'clean_post_cache', fn () => $this->wrotePost() );
 		}
 	}
 
 	/** Run a core write (wp_insert_post, update_field, ...) with the editor hooks muted. */
-	public function core( callable $fn ): mixed {
+	public function core( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		++$this->busy;
 		try {
 			return $fn();
@@ -750,19 +750,19 @@ final class Connection {
 	}
 
 	private function query( string $sql ): void {
-		if ( $this->wpdb->query( $sql ) === false ) {
+		if ( $this->wpdb->query( $sql ) === false ) { // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Preserve the transaction adapter’s complete SQL statement.
 			throw new DbError( "$sql failed: " . $this->wpdb->last_error, 0 );
 		}
 	}
 
 	private function clean_caches(): void {
-		foreach ( array_keys( $this->touchedPosts ) as $id ) {
+		foreach ( array_keys( $this->touchedPosts ) as $id ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			clean_post_cache( $id );
 		}
-		foreach ( array_keys( $this->touchedOptions ) as $name ) {
+		foreach ( array_keys( $this->touchedOptions ) as $name ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			wp_cache_delete( $name, 'options' );
 		}
-		if ( array() !== $this->touchedOptions ) {
+		if ( array() !== $this->touchedOptions ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			wp_cache_delete( 'alloptions', 'options' );
 			wp_cache_delete( 'notoptions', 'options' );
 		}
@@ -772,11 +772,11 @@ final class Connection {
 	}
 
 	private function reset(): void {
-		$this->rollbackOnly = false;
+		$this->rollbackOnly = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$this->deferred     = false;
 		$this->handle       = null;
-		$this->touchedPosts = $this->touchedOptions = array();
-		$this->wrotePost    = false;
-		$this->beforeCommit = $this->afterCommit = $this->onRollback = array();
+		$this->touchedPosts = $this->touchedOptions = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase, Squiz.PHP.DisallowMultipleAssignments.Found -- Preserve the existing PHP property name. Keep the assignment and its test together.
+		$this->wrotePost    = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		$this->beforeCommit = $this->afterCommit = $this->onRollback = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase, Squiz.PHP.DisallowMultipleAssignments.Found -- Preserve the existing PHP property name. Keep the assignment and its test together.
 	}
 }

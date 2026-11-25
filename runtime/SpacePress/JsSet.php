@@ -62,13 +62,13 @@ final class JsSet {
 		return $out;
 	}
 
-	public function entriesIterator(): \Generator {
+	public function entriesIterator(): \Generator { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( $this->iterate() as $value ) {
 			yield new JsArray( array( $value, $value ) ); } }
-	public function valuesIterator(): \Generator {
+	public function valuesIterator(): \Generator { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		yield from $this->iterate(); }
 
-	public function forEach( \Closure $callback ): void {
+	public function forEach( \Closure $callback ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( $this->iterate() as $value ) {
 			$callback( $value, $value, $this ); }
 	}

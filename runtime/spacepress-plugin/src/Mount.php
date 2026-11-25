@@ -164,7 +164,7 @@ final class Mount {
 		$alt       = $mail['alt'];
 		$configure = static function ( $mailer ) use ( $alt ): void {
 			if ( null !== $alt && is_object( $mailer ) ) {
-				$mailer->AltBody = $alt;
+				$mailer->AltBody = $alt; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			}
 		};
 		add_action( 'phpmailer_init', $configure );

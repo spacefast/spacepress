@@ -30,12 +30,12 @@ final class Storage {
 		return new \SpacePress\Wp\Bytes( $value );
 	}
 
-	public static function forUpdate(): string {
+	public static function forUpdate(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return ' FOR UPDATE';
 	}
 
 	/** A shared locking read: sees the latest commit without asking for an exclusive lock. */
-	public static function forShare(): string {
+	public static function forShare(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return ' LOCK IN SHARE MODE';
 	}
 
@@ -50,11 +50,11 @@ final class Storage {
 	}
 
 	/** `UPDATE IGNORE`: a unique conflict leaves the row unchanged instead of failing. */
-	public static function updateIgnore(): string {
+	public static function updateIgnore(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return 'UPDATE IGNORE';
 	}
 
-	public static function insertIgnore(): string {
+	public static function insertIgnore(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return 'INSERT IGNORE';
 	}
 

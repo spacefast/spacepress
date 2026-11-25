@@ -14,7 +14,7 @@ final class Sessions {
 	 * prefix makes the browser refuse any such cookie under this name. The prefix requires
 	 * Secure and Path=/, so plain-HTTP development keeps the bare name.
 	 */
-	public static function cookieName( string $name = self::COOKIE ): string {
+	public static function cookieName( string $name = self::COOKIE ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return is_ssl() ? '__Host-' . $name : $name;
 	}
 	public function __construct( private DB $db, private Security $security ) {
@@ -37,7 +37,7 @@ final class Sessions {
 				// The cookie is ambient: it lends no identity to another origin's request (a sibling
 				// host under the same site), a cross-site fetch, or a JSONP script include.
 				$origin = (string) ( $_SERVER['HTTP_ORIGIN'] ?? '' );
-				if ( ( '' !== $origin && $origin !== self::site_origin() ) || isset( $_GET['_jsonp'] )
+				if ( ( '' !== $origin && $origin !== self::site_origin() ) || isset( $_GET['_jsonp'] ) // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				|| ! in_array( (string) ( $_SERVER['HTTP_SEC_FETCH_SITE'] ?? '' ), array( '', 'same-origin', 'none' ), true ) ) {
 					return $result;
 				}
@@ -80,10 +80,10 @@ final class Sessions {
 	 * (where the browser sends no `Origin`, a GET) `Sec-Fetch-Site: same-origin`. A request that
 	 * says neither (a server-side client, an old browser) isn't treated as the site's.
 	 */
-	public static function fromSite(): bool {
+	public static function fromSite(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$origin = (string) ( $_SERVER['HTTP_ORIGIN'] ?? '' );
 		if ( '' !== $origin ) {
-			return $origin === self::site_origin();
+			return $origin === self::site_origin(); // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 		}
 		return 'same-origin' === (string) ( $_SERVER['HTTP_SEC_FETCH_SITE'] ?? '' );
 	}
@@ -97,9 +97,9 @@ final class Sessions {
 	 * its sign-in happened as `$verifiedAt` and when it ends as `$until`: it is never fresher, nor
 	 * longer-lived, than what it came from, and it ends when that WordPress session ends.
 	 */
-	public function create( int $uid, ?int $verifiedAt = null, ?int $until = null, ?string $wpToken = null ): array {
+	public function create( int $uid, ?int $verifiedAt = null, ?int $until = null, ?string $wpToken = null ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return $this->db->transaction(
-			function () use ( $uid, $verifiedAt, $until, $wpToken ) {
+			function () use ( $uid, $verifiedAt, $until, $wpToken ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$this->db->lock( $uid );
 				$secret  = Security::token();
 				$session = array(
@@ -109,7 +109,7 @@ final class Sessions {
 					'csrf'        => bin2hex( random_bytes( 32 ) ),
 					'created_at'  => time(),
 					'expires_at'  => min( time() + 86400, $until ?? PHP_INT_MAX ),
-					'verified_at' => min( time(), $verifiedAt ?? PHP_INT_MAX ),
+					'verified_at' => min( time(), $verifiedAt ?? PHP_INT_MAX ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					'label'       => substr(
 						sanitize_text_field(
 							$_SERVER['HTTP_USER_AGENT'] ?? 'Server session',
@@ -118,8 +118,8 @@ final class Sessions {
 						200,
 					),
 				);
-				if ( null !== $wpToken ) {
-					$session['wp_token'] = $wpToken;
+				if ( null !== $wpToken ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					$session['wp_token'] = $wpToken; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				}
 				$this->db->insert( 'sessions', $session );
 				$this->security->event( $uid, 'session.created' );
@@ -293,7 +293,7 @@ final class Sessions {
 	 * identity session but has no say over the browser's WordPress sign-in (an RP logout from a
 	 * client holding no cookie of this site).
 	 */
-	public function revoke( int $uid, ?string $id = null, bool $withWordPress = true ): void {
+	public function revoke( int $uid, ?string $id = null, bool $withWordPress = true ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$linked = $this->db->transaction(
 			function () use ( $uid, $id ) {
 				$this->db->run(
@@ -319,7 +319,7 @@ final class Sessions {
 		);
 		if ( null === $id ) {
 			\WP_Session_Tokens::get_instance( $uid )->destroy_all();
-		} elseif ( $withWordPress && is_string( $linked ) && '' !== $linked ) {
+		} elseif ( $withWordPress && is_string( $linked ) && '' !== $linked ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			// One sign-in: the WordPress session this one was opened from ends with it.
 			WordPressSessions::end( $uid, $linked );
 		}

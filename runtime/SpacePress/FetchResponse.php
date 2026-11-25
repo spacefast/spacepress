@@ -15,7 +15,7 @@ final class FetchResponse implements \JsonSerializable, \Stringable {
 
 	public function __construct(
 		public readonly int $status,
-		public readonly string $statusText,
+		public readonly string $statusText, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		public readonly string $url,
 		public readonly bool $redirected,
 		public readonly FetchHeaders $headers,

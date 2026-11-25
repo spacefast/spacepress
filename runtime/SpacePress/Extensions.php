@@ -23,9 +23,9 @@ final class Extensions {
 	 * @param callable(string $collection, array &$opts, ?Viewer $viewer, string $pointer): void $fn before option validation and SQL
 	 * @param bool $constraintSafe true only when row membership and constraint columns are preserved except for schema access rules
 	 */
-	public static function beforeRead( callable $fn, bool $constraintSafe = false ): void {
+	public static function beforeRead( callable $fn, bool $constraintSafe = false ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP parameter name. Preserve the existing PHP variable name.
 		self::$hooks['query'][]    = $fn;
-		self::$unproven_read_scope = self::$unproven_read_scope || ! $constraintSafe;
+		self::$unproven_read_scope = self::$unproven_read_scope || ! $constraintSafe; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/**
@@ -35,9 +35,9 @@ final class Extensions {
 	 *   ones the query keeps: a read with `columns` selects only those. Null: $fn may read any column, so every
 	 *   read selects every column.
 	 */
-	public static function onRead( callable $fn, bool $constraintSafe = false, ?\Closure $reads = null ): void {
+	public static function onRead( callable $fn, bool $constraintSafe = false, ?\Closure $reads = null ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP parameter name. Preserve the existing PHP variable name.
 		self::$hooks['read'][]     = $fn;
-		self::$unproven_read_scope = self::$unproven_read_scope || ! $constraintSafe;
+		self::$unproven_read_scope = self::$unproven_read_scope || ! $constraintSafe; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === $reads ) {
 			self::$reads_all = true;
 		} else {
@@ -51,7 +51,7 @@ final class Extensions {
 	 *
 	 * @return ?list<string>
 	 */
-	public static function readColumns( string $collection, ?Viewer $viewer ): ?array {
+	public static function readColumns( string $collection, ?Viewer $viewer ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( self::$reads_all ) {
 			return null;
 		}
@@ -64,32 +64,32 @@ final class Extensions {
 	}
 
 	/** Custom read callbacks may hide arbitrary rows/values unless their policy is already guarded. */
-	public static function constraintReadsSafe(): bool {
+	public static function constraintReadsSafe(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return ! self::$unproven_read_scope;
 	}
 
 	/** @param callable(string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void $fn */
-	public static function onWrite( callable $fn ): void {
+	public static function onWrite( callable $fn ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		self::$hooks['write'][] = $fn;
 	}
 
 	/** Consume virtual input before column validation; retain $provided unchanged. Normalizers must not persist effects. */
-	public static function normalizeWrite( callable $fn ): void {
+	public static function normalizeWrite( callable $fn ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		self::$hooks['input'][] = $fn;
 	}
 
 	/** @param callable(string, array, string, array, ?Viewer, callable(): Response): Response $fn after authorization, inside the transaction */
-	public static function aroundOperation( callable $fn ): void {
+	public static function aroundOperation( callable $fn ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		self::$hooks['execute'][] = $fn;
 	}
 
 	/** @param callable(string $op, string $collection, array $row, ?array $previous, ?Viewer $viewer): void $fn after the app hook, inside the transaction */
-	public static function onWritten( callable $fn ): void {
+	public static function onWritten( callable $fn ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		self::$hooks['written'][] = $fn;
 	}
 
 	/** Run after the active store's outermost commit; immediately if no transaction is open. */
-	public static function afterCommit( callable $fn ): void {
+	public static function afterCommit( callable $fn ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		$db = db();
 		$db->store()->afterCommit( static fn () => $db->current( $fn ) );
 	}
@@ -106,12 +106,12 @@ final class Extensions {
 	}
 
 	/** @param callable(array $actionSpec, string $name, string $rawBody, array $headers, ?Viewer $viewer): void $fn before input validation; null viewer is trusted CLI */
-	public static function beforeAction( callable $fn ): void {
+	public static function beforeAction( callable $fn ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		self::$hooks['action'][] = $fn;
 	}
 
 	/** @param callable(list<string> $args, array<string, string|true> $flags): mixed $fn inside the command transaction; args exclude the command */
-	public static function cli( string $command, callable $fn ): void {
+	public static function cli( string $command, callable $fn ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		if ( '' === $command || isset( self::$commands[ $command ] ) ) {
 			throw new \LogicException( "Invalid or duplicate extension command '$command'" );
 		}
@@ -119,12 +119,12 @@ final class Extensions {
 	}
 
 	/** @param callable(array $describe): array $fn */
-	public static function schemaDescribe( callable $fn ): void {
+	public static function schemaDescribe( callable $fn ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		self::$hooks['describe'][] = $fn;
 	}
 
 	/** @param callable(string $collection, list<int|string> $pks): void $fn primes page caches before store hydration or saved-result presentation */
-	public static function onLookup( callable $fn ): void {
+	public static function onLookup( callable $fn ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		self::$hooks['lookup'][] = $fn;
 	}
 
@@ -160,26 +160,26 @@ final class Extensions {
 		}
 	}
 
-	public static function execute( string $scope, array $spec, string $rawBody, array $headers, ?Viewer $viewer, callable $run ): Response {
+	public static function execute( string $scope, array $spec, string $rawBody, array $headers, ?Viewer $viewer, callable $run ): Response { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		foreach ( array_reverse( self::$hooks['execute'] ?? array() ) as $fn ) {
 			$next = $run;
-			$run  = static fn (): Response => $fn( $scope, $spec, $rawBody, $headers, $viewer, $next );
+			$run  = static fn (): Response => $fn( $scope, $spec, $rawBody, $headers, $viewer, $next ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 
 		return $run();
 	}
 
-	public static function routeHandler( string $prefix ): ?callable {
+	public static function routeHandler( string $prefix ): ?callable { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::$routes[ $prefix ] ?? null;
 	}
 
-	public static function action( array $spec, string $name, string $rawBody, array $headers, ?Viewer $viewer ): void {
+	public static function action( array $spec, string $name, string $rawBody, array $headers, ?Viewer $viewer ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		foreach ( self::$hooks['action'] ?? array() as $fn ) {
-			$fn( $spec, $name, $rawBody, $headers, $viewer );
+			$fn( $spec, $name, $rawBody, $headers, $viewer ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 	}
 
-	public static function cliHandler( string $command ): ?callable {
+	public static function cliHandler( string $command ): ?callable { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::$commands[ $command ] ?? null;
 	}
 

@@ -145,7 +145,7 @@ final class AgentScope {
 		);
 		\SpacePress\Extensions::schemaDescribe(
 			static function ( array $description ): array {
-				if ( ( $scope = self::current() ) !== null ) {
+				if ( ( $scope = self::current() ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 					$description['runtime']['credential'] = array( 'scope' => $scope );
 				}
 
@@ -346,11 +346,11 @@ final class AgentScope {
 			return self::refused( 'administration' ); }
 		// One ability's description: answered as its place in the lists is, with the grant it needs.
 		if ( preg_match( '#^/wp-abilities/v1/abilities/(.+?)/?$#i', $route, $m ) && wp_has_ability( $m[1] )
-			&& ( $grant = self::withheld( $scope, wp_get_ability( $m[1] ) ) ) !== null ) {
+			&& ( $grant = self::withheld( $scope, wp_get_ability( $m[1] ) ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return self::refused( $grant );
 		}
 		$read = in_array( strtoupper( $request->get_method() ), self::READS, true );
-		if ( ! Facade::dispatching() && ( $path = Facade::below( $route ) ) !== null ) {
+		if ( ! Facade::dispatching() && ( $path = Facade::below( $route ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			$refused = self::facade( $scope, $path, $read );
 
 			return null === $refused ? $result : self::refused( $refused );
@@ -432,7 +432,7 @@ final class AgentScope {
 		if ( str_starts_with( $name, 'mcp-adapter/' ) ) {
 			// The adapter describes any ability by name: one this credential isn't shown is not described.
 			$described = 'mcp-adapter/get-ability-info' === $name && is_array( $input ) && is_string( $input['ability_name'] ?? null ) ? $input['ability_name'] : null;
-			if ( null !== $described && wp_has_ability( $described ) && ( $grant = self::withheld( $scope, wp_get_ability( $described ) ) ) !== null ) {
+			if ( null !== $described && wp_has_ability( $described ) && ( $grant = self::withheld( $scope, wp_get_ability( $described ) ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				return self::error( $grant );
 			}
 			// The adapter's execute tool carries another ability's name, judged when that one runs. Its
@@ -492,7 +492,7 @@ final class AgentScope {
 	 * (`GET /wp-abilities/v1/abilities`, `discover-abilities`) leaves out what {@see withheld()} names,
 	 * before core pages the list.
 	 */
-	public static function included( mixed $include, mixed $ability ): mixed {
+	public static function included( mixed $include, mixed $ability ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.includeFound -- Preserve the existing PHP parameter name.
 		$scope = $include && $ability instanceof \WP_Ability ? self::current() : null;
 
 		return null === $scope ? $include : self::withheld( $scope, $ability ) === null;
@@ -549,7 +549,7 @@ final class AgentScope {
 	 * The request's scope, for capability checks. Core asks capabilities while it is still resolving
 	 * the user, so this never resolves it: it reads what core has recorded so far.
 	 */
-	private static function signedIn(): ?array {
+	private static function signedIn(): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null !== self::$request ) {
 			return self::$request;
 		}
@@ -559,7 +559,7 @@ final class AgentScope {
 			return null;
 		}
 
-		return self::$request = self::stored( \WP_Application_Passwords::get_user_application_password( $user->ID, $uuid ) );
+		return self::$request = self::stored( \WP_Application_Passwords::get_user_application_password( $user->ID, $uuid ) ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 	}
 
 	/** @param list<string> $allowed exact names, or `<namespace>/*` */
@@ -577,7 +577,7 @@ final class AgentScope {
 
 	/** rest_prepare_user: a credential without `personal` sees of any user what core shows anyone. */
 	public static function user( mixed $response ): mixed {
-		if ( self::may( 'personal' ) || ! $response instanceof \WP_REST_Response || ! is_array( $data = $response->get_data() ) ) {
+		if ( self::may( 'personal' ) || ! $response instanceof \WP_REST_Response || ! is_array( $data = $response->get_data() ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $response;
 		}
 		$data = array_intersect_key( $data, array_flip( self::USER_PUBLIC ) );
@@ -594,7 +594,7 @@ final class AgentScope {
 
 	/** rest_prepare_comment: a commenter's email and address are personal data. */
 	public static function comment( mixed $response ): mixed {
-		if ( ! self::may( 'personal' ) && $response instanceof \WP_REST_Response && is_array( $data = $response->get_data() ) ) {
+		if ( ! self::may( 'personal' ) && $response instanceof \WP_REST_Response && is_array( $data = $response->get_data() ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			$response->set_data(
 				array_diff_key(
 					$data,
@@ -611,7 +611,7 @@ final class AgentScope {
 	}
 
 	/** rest_user_query: core's user search reads email and login; without `personal` it reads names. */
-	public static function userQuery( mixed $args ): mixed {
+	public static function userQuery( mixed $args ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! self::may( 'personal' ) && is_array( $args ) && isset( $args['search'] ) ) {
 			$args['search_columns'] = array( 'display_name' );
 		}
@@ -639,7 +639,7 @@ final class AgentScope {
 	private static bool $cookie = false;
 
 	/** Registered as the runtime loads, before any user is resolved. */
-	public static function trackCookie(): void {
+	public static function trackCookie(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		add_action(
 			'auth_cookie_valid',
 			static function (): void {
@@ -654,14 +654,14 @@ final class AgentScope {
 		// default. Any other client's create keeps core's behaviour unless it sends a scope.
 		add_action(
 			'wp_create_application_password',
-			static function ( mixed $userId, mixed $item, mixed $password, mixed $args ): void {
+			static function ( mixed $userId, mixed $item, mixed $password, mixed $args ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$asked = is_array( $args ) ? ( $args[ self::KEY ] ?? null ) : null;
 				// Core's own Application Passwords screens create through this REST route with the browser's
 				// cookie; a password another plugin creates in PHP keeps core's behaviour.
 				$form = self::$cookie && wp_is_serving_rest_request()
 				&& preg_match( self::PASSWORDS, (string) ( $GLOBALS['wp']->query_vars['rest_route'] ?? '' ) ) === 1;
 				if ( is_array( $asked ) || $form ) {
-					self::store( (int) $userId, (string) ( $item['uuid'] ?? '' ), self::normalize( ( is_array( $asked ) ? $asked : array() ) + self::DEFAULT ) );
+					self::store( (int) $userId, (string) ( $item['uuid'] ?? '' ), self::normalize( ( is_array( $asked ) ? $asked : array() ) + self::DEFAULT ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				}
 			},
 			10,
@@ -743,8 +743,8 @@ final class AgentScope {
 	}
 
 	/** Record a scope on one application password entry (null removes it); core's own fields stay as they are. */
-	public static function store( int $userId, string $uuid, ?array $scope ): bool|\WP_Error {
-		$passwords = \WP_Application_Passwords::get_user_application_passwords( $userId );
+	public static function store( int $userId, string $uuid, ?array $scope ): bool|\WP_Error { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$passwords = \WP_Application_Passwords::get_user_application_passwords( $userId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		foreach ( $passwords as $i => $item ) {
 			if ( ( $item['uuid'] ?? null ) === $uuid ) {
 				// A new scope (or none) replaces the one a pre-release build stored there too.
@@ -753,7 +753,7 @@ final class AgentScope {
 				if ( null !== $scope ) {
 					$passwords[ $i ][ self::KEY ] = $scope;
 				}
-				update_user_meta( $userId, \WP_Application_Passwords::USERMETA_KEY_APPLICATION_PASSWORDS, $passwords );
+				update_user_meta( $userId, \WP_Application_Passwords::USERMETA_KEY_APPLICATION_PASSWORDS, $passwords ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 				return true;
 			}

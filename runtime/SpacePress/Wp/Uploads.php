@@ -43,7 +43,7 @@ final class Uploads {
 		return trim( $prefix, '/' ) . '/' . $site . '/' . hash( 'sha256', BrandUpgrade::uploadApp( Runtime::plugin()->schema->name() ) ) . '/';
 	}
 
-	public static function fileKey( string $rel ): string {
+	public static function fileKey( string $rel ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::prefix() . 'files/' . hash( 'sha256', $rel );
 	}
 
@@ -292,7 +292,7 @@ final class Uploads {
 				if ( self::active() && is_array( $sources ) ) {
 					$rel = get_post_meta( $id, '_wp_attached_file', true );
 					foreach ( $sources as &$source ) {
-						$path = dirname( $rel ) . '/' . wp_basename( wp_parse_url( $source['url'], PHP_URL_PATH ) ?: '' );
+						$path = dirname( $rel ) . '/' . wp_basename( wp_parse_url( $source['url'], PHP_URL_PATH ) ?: '' ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 						if ( isset( self::manifest( $id )[ $path ] ) ) {
 							$source['url'] = self::url( $id, $path );
 						} else {
@@ -370,11 +370,11 @@ final class Uploads {
 			return self::$written[ $cache ];
 		}
 		$key  = self::prefix() . 'media/' . bin2hex( random_bytes( 24 ) );
-		$mime = ( new \finfo( FILEINFO_MIME_TYPE ) )->file( $path ) ?: 'application/octet-stream';
+		$mime = ( new \finfo( FILEINFO_MIME_TYPE ) )->file( $path ) ?: 'application/octet-stream'; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		self::store()->put( $key, $path, $mime );
 		Runtime::plugin()?->connection()->onRollback( static fn () => self::discard( $key ) );
 
-		return self::$written[ $cache ] = array(
+		return self::$written[ $cache ] = array( // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 			'key'       => $key,
 			'sha'       => $sha,
 			'size'      => (int) filesize( $path ),
@@ -425,7 +425,7 @@ final class Uploads {
 	private static ?int $deleting = null;
 
 	/** Whether this request's upload failed because the storage was unavailable; reading it resets it. */
-	public static function storageFailed(): bool {
+	public static function storageFailed(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$failed               = self::$storage_failed;
 		self::$storage_failed = false;
 
@@ -474,7 +474,7 @@ final class Uploads {
 	}
 
 	/** Trusted maintenance entry point, with an explicit cutoff for bounded operational recovery. */
-	public static function reconcile( int $olderThan ): void {
+	public static function reconcile( int $olderThan ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$plugin = Runtime::plugin();
 		if ( ! self::active() || $plugin?->unavailable() !== null ) {
 			return;
@@ -484,7 +484,7 @@ final class Uploads {
 		[$objects, $next] = self::store()->page( self::prefix(), is_string( $cursor ) && '' !== $cursor ? $cursor : null );
 		foreach ( $objects as $object ) {
 			// The grace period bounds request lifetime and avoids collecting in-flight transactions.
-			if ( null === $object['time'] || $object['time'] >= $olderThan ) {
+			if ( null === $object['time'] || $object['time'] >= $olderThan ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				continue;
 			}
 			self::delete_unreferenced( $object['key'] );

@@ -89,8 +89,8 @@ final class CartHandoff {
 
 		$handler = new \WC_Session_Handler();
 		self::forget_cached_session( $source );
-		$sourceRevision = self::revision( $handler->get_session( $source, array() )['cart'] ?? null );
-		if ( null === $sourceRevision ) {
+		$sourceRevision = self::revision( $handler->get_session( $source, array() )['cart'] ?? null ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( null === $sourceRevision ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return; }
 		$cookie = $handler->get_session_cookie();
 		if ( $cookie && (int) $cookie[1] >= time() ) {
@@ -100,7 +100,7 @@ final class CartHandoff {
 			$revision = self::revision( $saved['cart'] ?? null );
 			$link     = maybe_unserialize( $saved[ self::LINK ] ?? null );
 			if ( ( $link['source'] ?? null ) === $source ) {
-				if ( null === $revision || $revision !== ( $link['revision'] ?? null ) || $revision === $sourceRevision ) {
+				if ( null === $revision || $revision !== ( $link['revision'] ?? null ) || $revision === $sourceRevision ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing comparison order. Preserve the existing PHP variable name.
 					return; }
 			} elseif ( null !== $revision ) {
 				return;
@@ -151,7 +151,7 @@ final class CartHandoff {
 
 	private static function link_order( \WC_Order $order ): void {
 		$link = WC()->session?->get( self::LINK );
-		if ( ! is_array( $link ) || $link['revision'] !== self::revision( WC()->cart->get_cart() ) ) {
+		if ( ! is_array( $link ) || $link['revision'] !== self::revision( WC()->cart->get_cart() ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			if ( ! $order->meta_exists( self::LINK ) ) {
 				return; }
 			$link = array();

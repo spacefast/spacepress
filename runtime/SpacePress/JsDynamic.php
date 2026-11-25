@@ -5,17 +5,17 @@ namespace SpacePress;
 /** Checked operations for imported JavaScript; authored TypeScript keeps its static contracts. */
 trait JsDynamic {
 
-	private static array $dynamicNamespaces          = array();
-	private static array $dynamicMethods             = array();
-	private static ?\WeakMap $dynamicMethodReceivers = null;
+	private static array $dynamicNamespaces          = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
+	private static array $dynamicMethods             = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
+	private static ?\WeakMap $dynamicMethodReceivers = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
-	public static function dynamicNamespace( string $name ): JsNamespace {
+	public static function dynamicNamespace( string $name ): JsNamespace { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( 'Math' !== $name && 'AbortSignal' !== $name ) {
 			throw new JsError( 'Unsupported JavaScript namespace ' . $name, 'TypeError' ); }
-		return self::$dynamicNamespaces[ $name ] ??= new JsNamespace( $name );
+		return self::$dynamicNamespaces[ $name ] ??= new JsNamespace( $name ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
-	private static function dynamicMethodValue( mixed $receiver, string $name ): mixed {
+	private static function dynamicMethodValue( mixed $receiver, string $name ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $receiver instanceof JsPromise || $receiver instanceof JsGenerator || $receiver instanceof JsAsyncGenerator ) {
 			$methods = $receiver instanceof JsPromise ? array( 'then', 'catch', 'finally' ) : array( 'next', 'return', 'throw' );
 			if ( ! in_array( $name, $methods, true ) ) {
@@ -28,7 +28,7 @@ trait JsDynamic {
 		if ( $receiver instanceof JsClass && $receiver->hasStaticMethod( $name ) ) {
 			return $receiver->methodValue( $name, true );
 		}
-		if ( $receiver instanceof JsObject && $receiver->nullPrototype ) {
+		if ( $receiver instanceof JsObject && $receiver->nullPrototype ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			return JsUndefined::Value; }
 		$owner = match ( true ) {
 			$receiver instanceof JsNamespace => $receiver->name,
@@ -60,21 +60,21 @@ trait JsDynamic {
 			return JsUndefined::Value;
 		}
 		$key = ( $static ? 'static:' : '' ) . $owner . ':' . $name;
-		if ( ! isset( self::$dynamicMethods[ $key ] ) ) {
+		if ( ! isset( self::$dynamicMethods[ $key ] ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$invoke = match ( true ) {
 				'Array' === $owner && 'slice' === $name => self::dynamicBorrowedSlice( ... ),
-				$static && Builtins::has( $owner, $name ) => static fn ( $thisArg, JsArray $args ) => self::dynamicStaticCall( $owner, $name, $args ),
-				default => static fn ( $thisArg, JsArray $args ) => self::dynamicBorrowedMethod( $owner, $thisArg, $name, $args ),
+				$static && Builtins::has( $owner, $name ) => static fn ( $thisArg, JsArray $args ) => self::dynamicStaticCall( $owner, $name, $args ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				default => static fn ( $thisArg, JsArray $args ) => self::dynamicBorrowedMethod( $owner, $thisArg, $name, $args ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			};
 			$function                                  = static fn ( ...$args ) => $invoke( JsUndefined::Value, new JsArray( $args ) );
-			self::$dynamicMethods[ $key ]              = $function;
-			self::$dynamicMethodReceivers            ??= new \WeakMap();
-			self::$dynamicMethodReceivers[ $function ] = $invoke;
+			self::$dynamicMethods[ $key ]              = $function; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			self::$dynamicMethodReceivers            ??= new \WeakMap(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			self::$dynamicMethodReceivers[ $function ] = $invoke; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
-		return self::$dynamicMethods[ $key ];
+		return self::$dynamicMethods[ $key ]; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
-	private static function dynamicBorrowedMethod( string $owner, mixed $receiver, string $name, JsArray $args ): mixed {
+	private static function dynamicBorrowedMethod( string $owner, mixed $receiver, string $name, JsArray $args ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( 'Object' === $owner && 'toString' === $name ) {
 			return self::dynamicObjectTag( $receiver ); }
 		if ( 'Object' === $owner && 'valueOf' === $name ) {
@@ -103,7 +103,7 @@ trait JsDynamic {
 	}
 
 	/** Array.prototype.slice borrowed by dense arrays or ordinary arguments. */
-	private static function dynamicBorrowedSlice( mixed $receiver, JsArray $args ): JsArray {
+	private static function dynamicBorrowedSlice( mixed $receiver, JsArray $args ): JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::requirePresent( $receiver );
 		if ( ! $receiver instanceof JsArray && ! $receiver instanceof JsArguments ) {
 			throw new JsError( 'Borrowed Array.slice supports arrays and arguments only', 'TypeError' );
@@ -126,14 +126,14 @@ trait JsDynamic {
 
 	public static function undefined(): JsUndefined {
 		return JsUndefined::Value; }
-	public static function isNullish( mixed $value ): bool {
+	public static function isNullish( mixed $value ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return null === $value || JsUndefined::Value === $value; }
 
 	/** The compiler uses this eager fallback only for literal values with no side effects. */
 	public static function coalesce( mixed $value, mixed $fallback ): mixed {
 		return self::isNullish( $value ) ? $fallback : $value;
 	}
-	public static function requirePresent( mixed $value ): mixed {
+	public static function requirePresent( mixed $value ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( self::isNullish( $value ) ) {
 			throw new JsError( 'Cannot read properties of null or undefined', 'TypeError' ); }
 		return $value;
@@ -141,7 +141,7 @@ trait JsDynamic {
 	public static function arguments( array $values ): JsArguments {
 		return new JsArguments( $values ); }
 
-	public static function dynamicGet( mixed $value, mixed $key ): mixed {
+	public static function dynamicGet( mixed $value, mixed $key ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		// Typed array element reads are the hot path of byte algorithms (hashes, codecs).
 		if ( is_int( $key ) && $value instanceof JsTypedArray ) {
 			return $key >= 0 && $key < $value->length ? $value->at( $key ) : JsUndefined::Value; }
@@ -154,13 +154,13 @@ trait JsDynamic {
 			return 'description' === $key ? $value->description : self::dynamicMethodValue( $value, $key );
 		}
 		if ( $value instanceof JsObject ) {
-			if ( '__proto__' === $key && ! $value->nullPrototype && ! array_key_exists( $key, $value->p ) ) {
+			if ( '__proto__' === $key && ! $value->nullPrototype && ! array_key_exists( $key, $value->p ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				throw new JsError( 'Prototype access is not supported', 'TypeError' ); }
 			if ( array_key_exists( $key, $value->p ) ) {
 				return $value->p[ $key ]; }
 			if ( array_key_exists( $key, $value->hidden ) ) {
 				return self::hiddenValue( $value, $key ); }
-			if ( null !== $value->class && ( $inherited = $value->class->readInherited( $value, $key, false ) ) !== JsClass::absent() ) {
+			if ( null !== $value->class && ( $inherited = $value->class->readInherited( $value, $key, false ) ) !== JsClass::absent() ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				return $inherited; }
 			return self::dynamicMethodValue( $value, $key );
 		}
@@ -195,7 +195,7 @@ trait JsDynamic {
 		}
 		if ( $value instanceof JsError ) {
 			return match ( $key ) {
-				'name' => $value->jsName, 'message' => $value->getMessage(), 'errors' => $value->errors ?? JsUndefined::Value, 'stack' => self::str( $value ), 'cause' => JsUndefined::Value, default => self::dynamicMethodValue( $value, $key ) };
+				'name' => $value->jsName, 'message' => $value->getMessage(), 'errors' => $value->errors ?? JsUndefined::Value, 'stack' => self::str( $value ), 'cause' => JsUndefined::Value, default => self::dynamicMethodValue( $value, $key ) }; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		if ( $value instanceof JsArray || $value instanceof JsArguments ) {
 			if ( $value instanceof JsArguments && 'callee' === $key ) {
@@ -218,7 +218,7 @@ trait JsDynamic {
 				'source' => $value->source, 'flags' => $value->flags, 'global' => $value->global,
 				'ignoreCase' => str_contains( $value->flags, 'i' ), 'multiline' => str_contains( $value->flags, 'm' ),
 				'unicode' => str_contains( $value->flags, 'u' ), 'dotAll' => str_contains( $value->flags, 's' ),
-				'sticky' => $value->sticky, 'lastIndex' => $value->lastIndex, 'hasIndices', 'unicodeSets' => false, default => self::dynamicMethodValue( $value, $key ),
+				'sticky' => $value->sticky, 'lastIndex' => $value->lastIndex, 'hasIndices', 'unicodeSets' => false, default => self::dynamicMethodValue( $value, $key ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			};
 		}
 		if ( 'size' === $key && ( $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsUrlSearchParams ) ) {
@@ -230,31 +230,31 @@ trait JsDynamic {
 	}
 
 	/** A hidden own property; a lazy stack is formatted from the error's current name and message. */
-	private static function hiddenValue( JsObject $value, string $key ): mixed {
+	private static function hiddenValue( JsObject $value, string $key ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$hidden = $value->hidden[ $key ];
-		if ( 'stack' === $key && $hidden === JsClass::lazyStack() ) {
+		if ( 'stack' === $key && $hidden === JsClass::lazyStack() ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			// V8 formats the header from the error at the first read; SpacePress records no frames.
-			$hidden = $value->hidden['stack'] = self::str( $value );
+			$hidden = $value->hidden['stack'] = self::str( $value ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		}
 		return $hidden;
 	}
 
 	/** A named optional property read; computed keys still need a lazy guard in compiled code. */
-	public static function optionalDataGet( mixed $value, string $key ): mixed {
+	public static function optionalDataGet( mixed $value, string $key ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::isNullish( $value ) ? JsUndefined::Value : self::dataGet( $value, $key );
 	}
 
-	public static function dataGet( mixed $value, mixed $key ): mixed {
+	public static function dataGet( mixed $value, mixed $key ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::requirePresent( $value );
 		$key = self::key( $key );
-		if ( $value instanceof JsObject && ! $value->nullPrototype && ! array_key_exists( $key, $value->p ) && Builtins::has( 'object', $key )
+		if ( $value instanceof JsObject && ! $value->nullPrototype && ! array_key_exists( $key, $value->p ) && Builtins::has( 'object', $key ) // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			&& ( null === $value->class || $value->class->accessor( $key, false ) === null ) ) {
 			throw new JsError( 'Inherited properties are not supported by typed data reads', 'TypeError' );
 		}
 		return self::dynamicGet( $value, $key );
 	}
 
-	public static function dynamicSet( mixed $target, mixed $key, mixed $value ): mixed {
+	public static function dynamicSet( mixed $target, mixed $key, mixed $value ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( is_int( $key ) && $target instanceof JsTypedArray ) {
 			$number = self::toNumber( $value );
 			if ( $key >= 0 && $key < $target->length ) {
@@ -283,7 +283,7 @@ trait JsDynamic {
 			return self::set( $target, $key, $value );
 		}
 		if ( $target instanceof RegExp && 'lastIndex' === $key ) {
-			$target->lastIndex = $value;
+			$target->lastIndex = $value; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			return $value; }
 		if ( $target instanceof JsAbortSignal && 'onabort' === $key ) {
 			$target->setOnabort( $value );
@@ -306,10 +306,10 @@ trait JsDynamic {
 			if ( 'length' === $key ) {
 				if ( $target instanceof JsArguments ) {
 					$target->length        = $value;
-					$target->lengthDeleted = false;
+					$target->lengthDeleted = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 					return $value; }
 				$length = self::toUint32( self::toNumber( $value ) );
-				if ( (float) $length !== (float) self::toNumber( $value ) ) {
+				if ( (float) $length !== (float) self::toNumber( $value ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 					throw new JsError( 'Invalid array length', 'RangeError' ); }
 				if ( $length > count( $target->a ) ) {
 					throw new JsError( 'SpacePress arrays are dense: length cannot create holes', 'RangeError' ); }
@@ -329,13 +329,13 @@ trait JsDynamic {
 	}
 
 	/** Reading a symbol key: undefined when absent, unless an unmodeled inherited symbol could answer. */
-	private static function symbolGet( mixed $value, JsSymbol $key ): mixed {
+	private static function symbolGet( mixed $value, JsSymbol $key ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$found = self::symbolLookup( $value, $key );
-		return $found === JsClass::absent() ? JsUndefined::Value : $found;
+		return $found === JsClass::absent() ? JsUndefined::Value : $found; // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 	}
 
 	/** `C.prototype[key]` for a string key: methods, `constructor` and built-in prototype data. */
-	private static function prototypeGet( JsPrototype $prototype, string $key ): mixed {
+	private static function prototypeGet( JsPrototype $prototype, string $key ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$class = $prototype->class;
 		if ( 'constructor' === $key ) {
 			return $class; }
@@ -343,7 +343,7 @@ trait JsDynamic {
 			throw new JsError( 'Reading a class accessor through its prototype is not supported', 'TypeError' );
 		}
 		$inherited = $class->readInherited( $prototype, $key, false );
-		if ( $inherited !== JsClass::absent() ) {
+		if ( $inherited !== JsClass::absent() ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return $inherited; }
 		if ( Builtins::has( 'object', $key ) ) {
 			throw new JsError( 'Unsupported inherited method ' . $key, 'TypeError' ); }
@@ -354,7 +354,7 @@ trait JsDynamic {
 	 * Object literals with runtime keys or spreads: ['k', key, value] and ['s', source] in
 	 * source order. Both define own data properties, so a '__proto__' key is ordinary data.
 	 */
-	public static function dynamicObject( array ...$parts ): JsObject {
+	public static function dynamicObject( array ...$parts ): JsObject { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$out = new JsObject();
 		foreach ( $parts as $part ) {
 			if ( 'k' === $part[0] ) {
@@ -401,7 +401,7 @@ trait JsDynamic {
 	}
 
 	/** `{ a, ...rest } = value` in imported JavaScript: the value's own enumerable keys except those named. */
-	public static function dynamicRest( mixed $value, array $keys ): JsObject {
+	public static function dynamicRest( mixed $value, array $keys ): JsObject { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::requirePresent( $value );
 		$skip = array_fill_keys( $keys, true );
 		$out  = new JsObject();
@@ -413,7 +413,7 @@ trait JsDynamic {
 	}
 
 	/** CreateDataProperty for a symbol key: an ordinary writable, enumerable, configurable slot. */
-	private static function defineSymbol( JsObject $target, JsSymbol $key, mixed $value ): void {
+	private static function defineSymbol( JsObject $target, JsSymbol $key, mixed $value ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$target->symbols[ spl_object_id( $key ) ] = array( $key, $value, true, true, true );
 	}
 
@@ -422,7 +422,7 @@ trait JsDynamic {
 	 * string keys have no attribute model, so only an ordinary assignment-equivalent
 	 * descriptor (writable, enumerable and configurable) is accepted for them.
 	 */
-	private static function dynamicDefineProperty( mixed $target, mixed $key, mixed $descriptor ): mixed {
+	private static function dynamicDefineProperty( mixed $target, mixed $key, mixed $descriptor ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_object( $target ) || $target instanceof JsUndefined || $target instanceof JsSymbol ) {
 			throw new JsError( 'Object.defineProperty called on non-object', 'TypeError' ); }
 		if ( ! $descriptor instanceof JsObject ) {
@@ -455,7 +455,7 @@ trait JsDynamic {
 		return $target;
 	}
 
-	public static function dynamicKeys( mixed $value ): JsArray {
+	public static function dynamicKeys( mixed $value ): JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( self::isNullish( $value ) ) {
 			return new JsArray(); }
 		if ( $value instanceof JsPrototype ) {
@@ -483,7 +483,7 @@ trait JsDynamic {
 		throw new JsError( 'Unsupported object enumeration', 'TypeError' );
 	}
 
-	public static function dynamicForIn( mixed $value ): \Generator {
+	public static function dynamicForIn( mixed $value ): \Generator { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		// A class inherits its parent's static fields, which for-in visits after its own (and
 		// Object.keys does not).
 		if ( $value instanceof JsClass ) {
@@ -510,16 +510,16 @@ trait JsDynamic {
 	}
 
 	/** An array itself (read live by destructuring assignment), or any other iterable's values. */
-	public static function dynamicIterableLive( mixed $value ): JsArray {
+	public static function dynamicIterableLive( mixed $value ): JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $value instanceof JsArray ? $value : self::dynamicIterable( $value );
 	}
 
 	/** The rest element of an array pattern: the elements from `$start`, read now. */
-	public static function restFrom( JsArray $list, int $start ): JsArray {
+	public static function restFrom( JsArray $list, int $start ): JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.listFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		return new JsArray( array_slice( $list->a, $start ) );
 	}
 
-	public static function dynamicIterable( mixed $value ): JsArray {
+	public static function dynamicIterable( mixed $value ): JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return new JsArray( iterator_to_array( self::dynamicIterator( $value ), false ) );
 	}
 
@@ -538,7 +538,7 @@ trait JsDynamic {
 		return $out;
 	}
 
-	public static function dynamicIterator( mixed $value ): \Generator {
+	public static function dynamicIterator( mixed $value ): \Generator { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $value instanceof JsArray ) {
 			for ( $i = 0; $i < count( $value->a ); $i++ ) {
 				yield $value->a[ $i ]; }
@@ -573,7 +573,7 @@ trait JsDynamic {
 		}
 	}
 
-	public static function dynamicObjectTag( mixed $value ): string {
+	public static function dynamicObjectTag( mixed $value ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$tag = match ( true ) {
 			JsUndefined::Value === $value => 'Undefined', null === $value => 'Null',
 			is_bool( $value ) => 'Boolean', is_int( $value ), is_float( $value ) => 'Number', is_string( $value ) => 'String',
@@ -603,7 +603,7 @@ trait JsDynamic {
 	 * The callee of `receiver.name?.(...)`: read once with the receiver bound, or null when the
 	 * property is null or undefined, so the call short-circuits before its arguments run.
 	 */
-	public static function optionalMethod( mixed $receiver, mixed $name ): ?\Closure {
+	public static function optionalMethod( mixed $receiver, mixed $name ): ?\Closure { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$method = self::dynamicGet( $receiver, $name );
 		if ( self::isNullish( $method ) ) {
 			return null; }
@@ -616,25 +616,25 @@ trait JsDynamic {
 		return static fn ( ...$args ) => self::dynamicInvoke( $method, $receiver, new JsArray( $args ) );
 	}
 
-	public static function callWithReceiver( mixed $function, mixed $receiver, JsArray $args ): mixed {
+	public static function callWithReceiver( mixed $function, mixed $receiver, JsArray $args ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.functionFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		return self::dynamicInvoke( $function, $receiver, $args );
 	}
 
-	public static function receiverFunction( \Closure $method ): \Closure {
+	public static function receiverFunction( \Closure $method ): \Closure { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::dynamicMethodFunction(
 			static fn ( ...$args ) => $method( JsUndefined::Value, ...$args ),
-			static fn ( $thisArg, JsArray $args ) => $method( $thisArg, ...$args->a ),
+			static fn ( $thisArg, JsArray $args ) => $method( $thisArg, ...$args->a ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		);
 	}
 
-	public static function dynamicMethodFunction( \Closure $function, \Closure $invoke ): \Closure {
-		self::$dynamicMethodReceivers            ??= new \WeakMap();
-		self::$dynamicMethodReceivers[ $function ] = $invoke;
+	public static function dynamicMethodFunction( \Closure $function, \Closure $invoke ): \Closure { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.functionFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
+		self::$dynamicMethodReceivers            ??= new \WeakMap(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		self::$dynamicMethodReceivers[ $function ] = $invoke; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		return $function;
 	}
 
 	/** `value instanceof constructor` where the constructor is only known at run time. */
-	public static function dynamicInstanceof( mixed $value, mixed $constructor ): bool {
+	public static function dynamicInstanceof( mixed $value, mixed $constructor ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $constructor instanceof JsClass ) {
 			return JsClass::instanceOf( $value, $constructor ); }
 		if ( $constructor instanceof JsConstructor ) {
@@ -647,33 +647,33 @@ trait JsDynamic {
 	}
 
 	/** `value instanceof Error` (or another Builtins::ERROR_CONSTRUCTORS name) for built-in errors and Error subclasses. */
-	public static function isError( mixed $value, string $name = 'Error' ): bool {
+	public static function isError( mixed $value, string $name = 'Error' ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $value instanceof JsError ) {
-			return 'Error' === $name || $value->jsName === $name;
+			return 'Error' === $name || $value->jsName === $name; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		return $value instanceof JsObject && ( $value->class?->extendsBuiltin( $name ) ?? false );
 	}
 
-	public static function dynamicCall( mixed $function, JsArray $args ): mixed {
+	public static function dynamicCall( mixed $function, JsArray $args ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.functionFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		if ( ! $function instanceof \Closure ) {
 			throw new JsError( 'Value is not a function', 'TypeError' ); }
 		return $function( ...$args->a );
 	}
 
-	private static function dynamicInvoke( mixed $function, mixed $receiver, JsArray $args ): mixed {
-		if ( $function instanceof \Closure && null !== self::$dynamicMethodReceivers && isset( self::$dynamicMethodReceivers[ $function ] ) ) {
-			return ( self::$dynamicMethodReceivers[ $function ] )( $receiver, $args );
+	private static function dynamicInvoke( mixed $function, mixed $receiver, JsArray $args ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.functionFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
+		if ( $function instanceof \Closure && null !== self::$dynamicMethodReceivers && isset( self::$dynamicMethodReceivers[ $function ] ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			return ( self::$dynamicMethodReceivers[ $function ] )( $receiver, $args ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		return self::dynamicCall( $function, $args );
 	}
 
-	public static function dataMethod( mixed $receiver, mixed $name ): \Closure {
+	public static function dataMethod( mixed $receiver, mixed $name ): \Closure { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$method = self::dataGet( $receiver, $name );
 		return static fn ( ...$args ) => self::dynamicInvoke( $method, $receiver, new JsArray( $args ) );
 	}
 
 	/** Resolve the callee before evaluating arguments, including an own method override. */
-	public static function dynamicMethod( mixed $receiver, mixed $name ): \Closure {
+	public static function dynamicMethod( mixed $receiver, mixed $name ): \Closure { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		// Byte views have no own properties, so their methods resolve directly (MD5's view.getUint32).
 		if ( ( $receiver instanceof JsDataView || $receiver instanceof JsTypedArray ) && ! $name instanceof JsSymbol ) {
 			$name = self::key( $name );
@@ -706,20 +706,20 @@ trait JsDynamic {
 				return static fn ( ...$args ) => $receiver->invokeOn( $receiver, $name, $args, true );
 			}
 		}
-		if ( $receiver instanceof JsObject && $receiver->nullPrototype ) {
+		if ( $receiver instanceof JsObject && $receiver->nullPrototype ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			return static fn ( ...$args ) => self::dynamicCall( JsUndefined::Value, new JsArray( $args ) );
 		}
 		return static fn ( ...$args ) => self::dynamicCallMethod( $receiver, $name, new JsArray( $args ), true );
 	}
 
-	public static function dynamicCallMethod( mixed $receiver, string $name, JsArray $args, bool $builtin = false ): mixed {
+	public static function dynamicCallMethod( mixed $receiver, string $name, JsArray $args, bool $builtin = false ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( self::isNullish( $receiver ) ) {
 			throw new JsError( 'Cannot read properties of null or undefined', 'TypeError' ); }
 		$a   = $args->a;
-		$get = static fn ( int $index, mixed $default = JsUndefined::Value ): mixed => array_key_exists( $index, $a ) ? $a[ $index ] : $default;
+		$get = static fn ( int $index, mixed $default = JsUndefined::Value ): mixed => array_key_exists( $index, $a ) ? $a[ $index ] : $default; // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.defaultFound -- Preserve the existing PHP parameter name.
 		if ( ! $builtin && $receiver instanceof JsObject && array_key_exists( $name, $receiver->p ) ) {
 			return self::dynamicInvoke( $receiver->p[ $name ], $receiver, $args ); }
-		if ( ! $builtin && $receiver instanceof JsObject && $receiver->nullPrototype ) {
+		if ( ! $builtin && $receiver instanceof JsObject && $receiver->nullPrototype ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			return self::dynamicCall( JsUndefined::Value, $args ); }
 		if ( ! $builtin && ( $receiver instanceof JsArray || $receiver instanceof JsArguments ) && array_key_exists( $name, $receiver->p ) ) {
 			return self::dynamicInvoke( $receiver->p[ $name ], $receiver, $args ); }
@@ -759,7 +759,7 @@ trait JsDynamic {
 		if ( 'toFixed' === $name && ( is_int( $receiver ) || is_float( $receiver ) ) ) {
 			return self::toFixed( $receiver, $get( 0, 0 ) ); }
 		if ( 'toString' === $name ) {
-			if ( ( is_int( $receiver ) || is_float( $receiver ) ) && $get( 0 ) !== JsUndefined::Value && ( $radix = self::toInteger( self::toNumber( $get( 0 ) ) ) ) !== 10 ) {
+			if ( ( is_int( $receiver ) || is_float( $receiver ) ) && $get( 0 ) !== JsUndefined::Value && ( $radix = self::toInteger( self::toNumber( $get( 0 ) ) ) ) !== 10 ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				if ( $radix < 2 || $radix > 36 ) {
 					throw new JsError( 'toString() radix must be between 2 and 36', 'RangeError' ); }
 				// Integer digits are exact in every base; fractional digits depend on the engine.
@@ -922,14 +922,14 @@ trait JsDynamic {
 		return $callback;
 	}
 
-	private static function dynamicPad( string $source, string $method, mixed $length, mixed $fill ): string {
+	private static function dynamicPad( string $source, string $method, mixed $length, mixed $fill ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$length = self::toInteger( self::toNumber( $length ) );
 		if ( $length <= self::length( $source ) ) {
 			return $source; }
 		return self::{$method}( $source, $length, JsUndefined::Value === $fill ? ' ' : self::str( $fill ) );
 	}
 
-	private static function dynamicArrayAt( JsArray $source, mixed $index ): mixed {
+	private static function dynamicArrayAt( JsArray $source, mixed $index ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$length = count( $source->a );
 		$index  = self::toInteger( self::toNumber( $index ) );
 		if ( $index < 0 ) {
@@ -937,13 +937,13 @@ trait JsDynamic {
 		return $index >= 0 && $index < $length ? self::dynamicGet( $source, (string) $index ) : JsUndefined::Value;
 	}
 
-	private static function dynamicFlat( JsArray $source, mixed $depth ): JsArray {
+	private static function dynamicFlat( JsArray $source, mixed $depth ): JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$length = count( $source->a );
 		$depth  = JsUndefined::Value === $depth ? 1 : self::toNumber( $depth );
 		return self::flat( new JsArray( array_slice( $source->a, 0, $length ) ), $depth );
 	}
 
-	private static function dynamicFill( JsArray $source, mixed $value, mixed $start, mixed $end ): JsArray {
+	private static function dynamicFill( JsArray $source, mixed $value, mixed $start, mixed $end ): JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::writable( $source );
 		$length = count( $source->a );
 		$from   = self::relIndex( self::toNumber( $start ), $length );
@@ -955,7 +955,7 @@ trait JsDynamic {
 		return $source;
 	}
 
-	private static function dynamicSplice( JsArray $source, JsArray $args ): JsArray {
+	private static function dynamicSplice( JsArray $source, JsArray $args ): JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::writable( $source );
 		$length = count( $source->a );
 		if ( array() === $args->a ) {
@@ -973,24 +973,24 @@ trait JsDynamic {
 		return JsUndefined::Value;
 	}
 
-	private static function dynamicCollectionForEach( JsMap|JsSet $collection, mixed $callback, mixed $thisArg ): JsUndefined {
-		if ( JsUndefined::Value !== $thisArg ) {
+	private static function dynamicCollectionForEach( JsMap|JsSet $collection, mixed $callback, mixed $thisArg ): JsUndefined { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		if ( JsUndefined::Value !== $thisArg ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			throw new JsError( 'forEach thisArg is not supported', 'TypeError' ); }
 		$collection->forEach( self::callback( $callback ) );
 		return JsUndefined::Value;
 	}
 
 	/** Array iterators read the live array by index, as %ArrayIteratorPrototype%.next does. */
-	public static function arrayIterator( JsArray $array, string $kind ): \Generator {
+	public static function arrayIterator( JsArray $array, string $kind ): \Generator { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.arrayFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		for ( $i = 0; $i < count( $array->a ); $i++ ) {
 			yield match ( $kind ) {
 				'keys' => $i, 'values' => $array->a[ $i ], default => new JsArray( array( $i, $array->a[ $i ] ) ) };
 		}
 	}
 
-	private static function dynamicArrayFind( JsArray $source, string $method, \Closure $callback ): mixed {
+	private static function dynamicArrayFind( JsArray $source, string $method, \Closure $callback ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$matched = JsUndefined::Value;
-		$visit   = static function ( $value, $index, $array ) use ( $callback, &$matched ): bool {
+		$visit   = static function ( $value, $index, $array ) use ( $callback, &$matched ): bool { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.arrayFound -- Preserve the existing PHP parameter name.
 			if ( ! self::truthy( $callback( $value, $index, $array ) ) ) {
 				return false; }
 			$matched = $value;
@@ -1003,7 +1003,7 @@ trait JsDynamic {
 		return $matched;
 	}
 
-	private static function dynamicArrayFrom( mixed $source, mixed $mapper = JsUndefined::Value ): JsArray {
+	private static function dynamicArrayFrom( mixed $source, mixed $mapper = JsUndefined::Value ): JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		self::requirePresent( $source );
 		$callback = JsUndefined::Value === $mapper ? null : self::callback( $mapper );
 		$result   = new JsArray();
@@ -1034,7 +1034,7 @@ trait JsDynamic {
 		return $result;
 	}
 
-	private static function dynamicApplyArguments( mixed $source ): array {
+	private static function dynamicApplyArguments( mixed $source ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( self::isNullish( $source ) ) {
 			return array(); }
 		if ( ! is_object( $source ) || $source instanceof \Closure ) {
@@ -1048,7 +1048,7 @@ trait JsDynamic {
 		return $values;
 	}
 
-	private static function dynamicStringSearch( string $source, string $method, mixed $search, mixed $position ): bool {
+	private static function dynamicStringSearch( string $source, string $method, mixed $search, mixed $position ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $search instanceof RegExp ) {
 			throw new JsError( $method . ' does not accept a RegExp', 'TypeError' ); }
 		$search   = self::str( $search );
@@ -1061,7 +1061,7 @@ trait JsDynamic {
 		};
 	}
 
-	private static function dynamicSplit( string $source, mixed $separator, mixed $limit ): JsArray {
+	private static function dynamicSplit( string $source, mixed $separator, mixed $limit ): JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$limit = JsUndefined::Value === $limit ? null : self::toUint32( self::toNumber( $limit ) );
 		if ( ! $separator instanceof RegExp && JsUndefined::Value !== $separator ) {
 			$separator = self::str( $separator ); }
@@ -1074,12 +1074,12 @@ trait JsDynamic {
 		return $result;
 	}
 
-	public static function dynamicStaticCall( string $owner, string $method, JsArray $args ): mixed {
+	public static function dynamicStaticCall( string $owner, string $method, JsArray $args ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		Builtins::check( $owner, $method, count( $args->a ) );
 		$a = $args->a;
 		if ( in_array( $owner, JsBinary::GLOBALS, true ) ) {
 			return JsBinary::staticCall( $owner, $method, $a ); }
-		$get = static fn ( int $i, mixed $default = JsUndefined::Value ): mixed => array_key_exists( $i, $a ) ? $a[ $i ] : $default;
+		$get = static fn ( int $i, mixed $default = JsUndefined::Value ): mixed => array_key_exists( $i, $a ) ? $a[ $i ] : $default; // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.defaultFound -- Preserve the existing PHP parameter name.
 		if ( 'AbortSignal' === $owner ) {
 			return match ( $method ) {
 				'abort' => JsAbortSignal::aborted( $get( 0 ) ), 'timeout' => JsAbortSignal::timeout( $get( 0 ) ),
@@ -1183,11 +1183,11 @@ trait JsDynamic {
 					throw new JsError( 'Unsupported Math property ' . $key, 'TypeError' );
 				}
 				if ( $source instanceof JsError ) {
-					return 'stack' === $key || 'message' === $key && $source->hasMessage;
+					return 'stack' === $key || 'message' === $key && $source->hasMessage; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				}
 				if ( $source instanceof JsObject && array_key_exists( $key, $source->hidden ) ) {
 					return true; }
-				if ( 'length' === $key && ( $source instanceof JsArray || is_string( $source ) || $source instanceof JsArguments && ! $source->lengthDeleted ) ) {
+				if ( 'length' === $key && ( $source instanceof JsArray || is_string( $source ) || $source instanceof JsArguments && ! $source->lengthDeleted ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 					return true; }
 				if ( 'callee' === $key && $source instanceof JsArguments || 'lastIndex' === $key && $source instanceof RegExp ) {
 					return true; }
@@ -1228,14 +1228,14 @@ trait JsDynamic {
 		throw new JsError( 'Unsupported static method ' . $owner . '.' . $method, 'TypeError' );
 	}
 
-	private static function dynamicCharCodeAt( string $value, int|float $index ): int|float {
+	private static function dynamicCharCodeAt( string $value, int|float $index ): int|float { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$index = self::toInteger( $index );
 		if ( $index < 0 || $index >= self::length( $value ) ) {
 			return NAN; }
 		return unpack( 'v', substr( self::units( $value ), 2 * (int) $index, 2 ) )[1];
 	}
 
-	public static function dynamicRegExpExec( RegExp $regexp, string $value ): ?JsArray {
+	public static function dynamicRegExpExec( RegExp $regexp, string $value ): ?JsArray { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$match = $regexp->execMatch( $value );
 		if ( null === $match ) {
 			return null; }
@@ -1249,7 +1249,7 @@ trait JsDynamic {
 		return $result;
 	}
 
-	public static function dynamicConstruct( mixed $constructor, JsArray $args ): mixed {
+	public static function dynamicConstruct( mixed $constructor, JsArray $args ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$a = $args->a;
 		if ( $constructor instanceof JsClass ) {
 			return $constructor->construct( ...$a ); }
@@ -1321,13 +1321,13 @@ trait JsDynamic {
 		// `Boolean` reached through a stored reference (`const o = { B: Boolean }; new o.B(x)`)
 		// escapes the build-time refusal. A wrapper object is truthy even around `false`, so a
 		// primitive here would diverge silently; throw the build-time message instead.
-		if ( $constructor === self::booleanFunction() ) {
+		if ( $constructor === self::booleanFunction() ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			throw new JsError( "`new Boolean(...)` creates a wrapper object, which isn't supported; call `Boolean(value)` without `new` for a primitive boolean", 'TypeError' );
 		}
 		throw new JsError( 'Value is not a supported constructor', 'TypeError' );
 	}
 
-	public static function dynamicRegExpCall( JsArray $args ): RegExp {
+	public static function dynamicRegExpCall( JsArray $args ): RegExp { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		Builtins::check( 'global', 'RegExp', count( $args->a ) );
 		if ( ( $args->a[0] ?? null ) instanceof RegExp && ( ! array_key_exists( 1, $args->a ) || JsUndefined::Value === $args->a[1] ) ) {
 			return $args->a[0]; }
@@ -1339,7 +1339,7 @@ trait JsDynamic {
 		return self::dynamicPrimitive( $value, $hint );
 	}
 
-	private static function dynamicPrimitive( mixed $value, string $hint = 'default' ): mixed {
+	private static function dynamicPrimitive( mixed $value, string $hint = 'default' ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $value instanceof JsDate ) {
 			if ( 'number' !== $hint ) {
 				throw new JsError( 'Date string coercion is not supported', 'TypeError' ); }
@@ -1351,9 +1351,9 @@ trait JsDynamic {
 					if ( ! $value->p[ $method ] instanceof \Closure ) {
 						continue; }
 					$result = self::dynamicInvoke( $value->p[ $method ], $value, new JsArray() );
-				} elseif ( $value instanceof JsObject && $value->nullPrototype ) {
+				} elseif ( $value instanceof JsObject && $value->nullPrototype ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 					continue; } elseif ( $value instanceof JsObject && null !== $value->class
-					&& ( $inherited = $value->class->readInherited( $value, $method, false ) ) !== JsClass::absent() ) {
+					&& ( $inherited = $value->class->readInherited( $value, $method, false ) ) !== JsClass::absent() ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 										// Class methods and Error.prototype.toString come before Object.prototype's.
 						if ( ! $inherited instanceof \Closure ) {
 							continue; }
@@ -1370,7 +1370,7 @@ trait JsDynamic {
 		return $value;
 	}
 
-	public static function dynamicBinary( string $operator, mixed $left, mixed $right ): mixed {
+	public static function dynamicBinary( string $operator, mixed $left, mixed $right ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( '===' === $operator || '!==' === $operator ) {
 			$equal = self::strictEq( $left, $right );
 			return '===' === $operator ? $equal : ! $equal; }
@@ -1405,7 +1405,7 @@ trait JsDynamic {
 	 * `+` with a string concatenates; relational and equality operators compare mathematically
 	 * across BigInt, number and numeric strings; everything else needs two BigInts.
 	 */
-	private static function bigintBinary( string $operator, mixed $left, mixed $right ): mixed {
+	private static function bigintBinary( string $operator, mixed $left, mixed $right ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( '+' === $operator && ( is_string( $left ) || is_string( $right ) ) ) {
 			return self::str( $left ) . self::str( $right ); }
 		if ( in_array( $operator, array( '<', '<=', '>', '>=', '==', '!=' ), true ) ) {
@@ -1431,7 +1431,7 @@ trait JsDynamic {
 	}
 
 	/** Mathematical comparison of a BigInt with a BigInt, number, string or boolean; null when unordered. */
-	private static function bigintCompare( mixed $a, mixed $b ): ?int {
+	private static function bigintCompare( mixed $a, mixed $b ): ?int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$side    = static function ( mixed $v ): JsBigInt|int|float|null {
 			if ( $v instanceof JsBigInt ) {
 				return $v; }
@@ -1465,7 +1465,7 @@ trait JsDynamic {
 			return $flip ? -$c : $c;
 	}
 
-	public static function looseEq( mixed $a, mixed $b ): bool {
+	public static function looseEq( mixed $a, mixed $b ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( self::isNullish( $a ) || self::isNullish( $b ) ) {
 			return self::isNullish( $a ) && self::isNullish( $b ); }
 		$ta = self::typeOf( $a );

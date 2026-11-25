@@ -13,14 +13,14 @@ final class ColumnRef {
 		/** Join emitted once per (query alias, column) when the column is used; '' when none. */
 		public readonly string $join,
 		/** Comparison expression for typed operators; '' = use expr. */
-		public readonly string $cmpExpr,
+		public readonly string $cmpExpr, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		/** 'scalar' | 'serialized-list' | 'json' — decides which operators Sql allows (§3.5). */
 		public readonly string $kind,
 	) {
 	}
 
 	/** The §3.5 kind for a schema column type. */
-	public static function kindFor( string $type ): string {
+	public static function kindFor( string $type ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return match ( $type ) {
 			'json', 'group', 'repeater', 'blocks' => 'json',
 			'mediaList', 'select' => 'serialized-list',

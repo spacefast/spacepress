@@ -16,23 +16,23 @@ final class JsIter {
 	private ?\Generator $native = null;
 	private mixed $iterator     = null;
 	private bool $done          = false;
-	private bool $fromSync      = false;
+	private bool $fromSync      = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	private function __construct( private readonly bool $async ) {}
 
-	public static function open( mixed $iterable ): self {
+	public static function open( mixed $iterable ): self { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.iterableFound -- Preserve the existing PHP parameter name.
 		$iter = new self( false );
 		$iter->init( $iterable );
 		return $iter;
 	}
 
-	public static function openAsync( mixed $iterable ): self {
+	public static function openAsync( mixed $iterable ): self { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.iterableFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		$iter = new self( true );
 		$iter->init( $iterable );
 		return $iter;
 	}
 
-	private function init( mixed $iterable ): void {
+	private function init( mixed $iterable ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.iterableFound -- Preserve the existing PHP parameter name.
 		if ( $this->async ) {
 			$method = self::wellKnownMethod( $iterable, 'asyncIterator' );
 			if ( $iterable instanceof JsAsyncGenerator ) {
@@ -43,7 +43,7 @@ final class JsIter {
 				$this->iterator = self::iterator_from( $method, $iterable );
 				return;
 			}
-			$this->fromSync = true;
+			$this->fromSync = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		if ( $iterable instanceof JsGenerator ) {
 			$this->iterator = $iterable;
@@ -70,7 +70,7 @@ final class JsIter {
 	 * Native values (promises, generators, streams) answer here; symbol-keyed properties on
 	 * plain objects are read through the Symbol runtime once it is available.
 	 */
-	public static function wellKnownMethod( mixed $value, string $name ): ?\Closure {
+	public static function wellKnownMethod( mixed $value, string $name ): ?\Closure { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $value instanceof JsReadableStream && 'asyncIterator' === $name ) {
 			return static fn () => $value->values();
 		}
@@ -95,13 +95,13 @@ final class JsIter {
 				$this->done = true;
 				return false; }
 			$this->value = $this->native->current();
-			if ( $this->fromSync ) {
+			if ( $this->fromSync ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				$this->value = $this->await_step( $this->value ); }
 			return true;
 		}
 		try {
 			$result = self::call( $this->iterator, 'next', array() );
-			if ( $this->async && ! $this->fromSync ) {
+			if ( $this->async && ! $this->fromSync ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				$result = JsJobs::await( $result ); }
 		} catch ( \Throwable $error ) {
 			// An iterator whose next() throws is not closed (IteratorStep is not IteratorClose).
@@ -117,7 +117,7 @@ final class JsIter {
 			return false;
 		}
 		$this->value = Js::dynamicGet( $result, 'value' );
-		if ( $this->fromSync ) {
+		if ( $this->fromSync ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$this->value = $this->await_step( $this->value ); }
 		return true;
 	}
@@ -167,7 +167,7 @@ final class JsIter {
 				return null; }
 			$result = Js::invokeWithReceiver( $method, $this->iterator, array() );
 		}
-		return $this->async && ! $this->fromSync ? JsJobs::await( $result ) : $result;
+		return $this->async && ! $this->fromSync ? JsJobs::await( $result ) : $result; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	private static function call( mixed $iterator, string $method, array $args ): mixed {
@@ -178,17 +178,17 @@ final class JsIter {
 	}
 
 	/** `yield* iterable` in a generator: forwards next/throw/return to the inner iterator. */
-	public static function delegate( mixed $iterable ): \Generator {
+	public static function delegate( mixed $iterable ): \Generator { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.iterableFound -- Preserve the existing PHP parameter name.
 		return self::delegation( $iterable, false );
 	}
 
 	/** `yield* iterable` in an async generator. */
-	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.iterableFound -- Preserve the method name used by compiled PHP.
 	public static function asyncDelegate( mixed $iterable ): \Generator {
 		return self::delegation( $iterable, true );
 	}
 
-	private static function delegation( mixed $iterable, bool $async ): \Generator {
+	private static function delegation( mixed $iterable, bool $async ): \Generator { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.iterableFound -- Preserve the existing PHP parameter name.
 		$iter = $async ? self::openAsync( $iterable ) : self::open( $iterable );
 		if ( null !== $iter->native ) {
 			// Built-in iterators have no throw(): the delegation closes and throws a TypeError
@@ -214,7 +214,7 @@ final class JsIter {
 				}
 			}
 			$result = self::call( $iterator, $mode, array( $received ) );
-			if ( $async && ! $iter->fromSync ) {
+			if ( $async && ! $iter->fromSync ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				$result = JsJobs::await( $result ); }
 			if ( ! $result instanceof JsObject ) {
 				throw new JsError( 'Iterator result ' . Js::thrownDescription( $result ) . ' is not an object', 'TypeError' );

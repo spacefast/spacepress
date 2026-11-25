@@ -15,7 +15,7 @@ final class Filter {
 	public function __construct(
 		public readonly string $locale,
 		public readonly ?string $fallback,
-		public readonly int|string|null $groupOf = null,
+		public readonly int|string|null $groupOf = null, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	) {
 	}
 }

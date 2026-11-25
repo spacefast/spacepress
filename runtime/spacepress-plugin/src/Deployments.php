@@ -135,7 +135,7 @@ final class Deployments {
 				// pre-release build is kept as a record, whole, and never made live.
 				'state' => match ( true ) {
 					$build === $live => 'Live',
-					( $manifest = Site::manifest( $build ) ) !== null && Legacy::build( $manifest ) => 'Pre-release (record)',
+					( $manifest = Site::manifest( $build ) ) !== null && Legacy::build( $manifest ) => 'Pre-release (record)', // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 					null !== $manifest && Site::ready( $build ) && Site::complete( $manifest ) => 'Stored',
 					default => 'Files gone',
 				},

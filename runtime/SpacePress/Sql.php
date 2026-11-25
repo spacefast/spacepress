@@ -37,13 +37,13 @@ final class Sql {
 	/** @var array<string, Source> */
 	private array $sources = array();
 	/** @var array<string, list<array>> */
-	private array $relationGuards = array();
+	private array $relationGuards = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	private bool $trusted         = false;
 
 	/** @param ?\Closure(string): list<array|SqlPredicate> $guardsFor the viewer's read guards per relation target (null = trusted) */
-	private function __construct( private readonly Schema $schema, private readonly Store $store, private readonly ?\Closure $guardsFor, bool $forUpdate ) {
+	private function __construct( private readonly Schema $schema, private readonly Store $store, private readonly ?\Closure $guardsFor, bool $forUpdate ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$this->d    = $store->dialect();
-		$this->lock = $forUpdate ? $this->d->writeLock() : '';
+		$this->lock = $forUpdate ? $this->d->writeLock() : ''; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/**
@@ -61,8 +61,8 @@ final class Sql {
 	 * @param list<array|SqlPredicate> $guards
 	 * @return array{sql: string, params: list<int|float|string|null>}
 	 */
-	public static function select( Schema $schema, Store $store, string $collection, array $opts, ?array $partition = null, string $ptr = '', array $guards = array(), ?\Closure $guardsFor = null, ?array $only = null, bool $forUpdate = false ): array {
-		return ( new self( $schema, $store, $guardsFor, $forUpdate ) )->compile( $collection, $opts, $partition, $ptr, $guards, $only );
+	public static function select( Schema $schema, Store $store, string $collection, array $opts, ?array $partition = null, string $ptr = '', array $guards = array(), ?\Closure $guardsFor = null, ?array $only = null, bool $forUpdate = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		return ( new self( $schema, $store, $guardsFor, $forUpdate ) )->compile( $collection, $opts, $partition, $ptr, $guards, $only ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/** @param ?array<string, mixed> $only the columns to select, by name; null selects every column */
@@ -72,10 +72,10 @@ final class Sql {
 		$alias   = $this->alias();
 		$conds   = array();
 		$deleted = $opts['deleted'] ?? 'exclude';
-		if ( '' !== $src->baseWhere ) {
+		if ( '' !== $src->baseWhere ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$base    = 'exclude' === $deleted
-				? $src->baseWhere
-				: str_replace( "NOT IN ('trash', ", 'NOT IN (', $src->baseWhere );
+				? $src->baseWhere // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+				: str_replace( "NOT IN ('trash', ", 'NOT IN (', $src->baseWhere ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$conds[] = $this->sub( $base, $alias, '' );
 			if ( 'only' === $deleted ) {
 				$conds[] = $alias . ".post_status = 'trash'";
@@ -191,7 +191,7 @@ final class Sql {
 	/** Value expression (storage form) or comparison expression for a column; marks it used. */
 	private function ref( string $collection, string $col, string $alias, bool $cmp ): string {
 		$r    = $this->source( $collection )->columns[ $col ] ?? throw new \LogicException( "Source for $collection has no column $col" );
-		$expr = $cmp && '' !== $r->cmpExpr ? $r->cmpExpr : $r->expr;
+		$expr = $cmp && '' !== $r->cmpExpr ? $r->cmpExpr : $r->expr; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( ! str_contains( $expr, '{j}' ) ) {
 			return str_replace( '{a}', $alias, $expr );
 		}
@@ -221,14 +221,14 @@ final class Sql {
 	// ================================================================ order / limit
 
 	/** @return list<string> "expr ASC|DESC" */
-	private function orderBy( string $collection, mixed $orderBy, string $alias, string $ptr ): array {
-		if ( ! is_array( $orderBy ) ) {
+	private function orderBy( string $collection, mixed $orderBy, string $alias, string $ptr ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		if ( ! is_array( $orderBy ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			throw HttpError::invalidQuery( 'orderBy must be an object', $ptr );
 		}
 		$spec    = $this->schema->collection( $collection );
-		$orderBy = Schema::resolveAliases( $spec, $orderBy, $ptr );
+		$orderBy = Schema::resolveAliases( $spec, $orderBy, $ptr ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$out     = array();
-		foreach ( $orderBy as $col => $dir ) {
+		foreach ( $orderBy as $col => $dir ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$col  = (string) $col;
 			$cptr = $ptr . HttpError::seg( $col );
 			if ( ! isset( $spec['columns'][ $col ] ) ) {
@@ -301,7 +301,7 @@ final class Sql {
 		return array() === $parts ? '1 = 1' : implode( ' AND ', $parts );
 	}
 
-	private function combine( string $op, mixed $list, string $ptr, callable $compile ): string {
+	private function combine( string $op, mixed $list, string $ptr, callable $compile ): string { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.listFound -- Preserve the existing PHP parameter name.
 		if ( ! is_array( $list ) || ! array_is_list( $list ) ) {
 			throw HttpError::invalidQuery( "$op must be an array", $ptr );
 		}
@@ -375,7 +375,7 @@ final class Sql {
 			if ( 'eq' !== $op && 'ne' !== $op ) {
 				throw HttpError::invalidQuery( "`$op` isn't supported on JSON columns", $ptr );
 			}
-			if ( '' !== $src->baseWhere && in_array( $col['type'], array( 'group', 'repeater', 'blocks' ), true ) ) {
+			if ( '' !== $src->baseWhere && in_array( $col['type'], array( 'group', 'repeater', 'blocks' ), true ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				throw HttpError::invalidQuery( "`$op` on `$name` isn't supported on editor collections; filter on a scalar column", $ptr );
 			}
 			if ( null === $arg ) {
@@ -409,12 +409,12 @@ final class Sql {
 		};
 	}
 
-	private function null_test( string $collection, string $name, string $alias, bool $isNull ): string {
+	private function null_test( string $collection, string $name, string $alias, bool $isNull ): string { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$ref = $this->source( $collection )->columns[ $name ];
 		// json kind may carry a cmpExpr meaning "empty" (post-backed group/repeater/blocks); scalars test expr.
 		$expr = $this->ref( $collection, $name, $alias, 'json' === $ref->kind );
 
-		return $expr . ( $isNull ? ' IS NULL' : ' IS NOT NULL' );
+		return $expr . ( $isNull ? ' IS NULL' : ' IS NOT NULL' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	private function compare( string $collection, string $name, string $op, mixed $arg, string $alias, string $ptr ): string {
@@ -430,7 +430,7 @@ final class Sql {
 		return $this->cmp_ref( $collection, $name, $alias ) . ' ' . self::CMP[ $op ] . ' ?';
 	}
 
-	private function in_list( string $collection, string $name, bool $negate, mixed $list, string $alias, string $ptr ): string {
+	private function in_list( string $collection, string $name, bool $negate, mixed $list, string $alias, string $ptr ): string { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.listFound -- Preserve the existing PHP parameter name.
 		if ( ! is_array( $list ) || ! array_is_list( $list ) ) {
 			throw HttpError::invalidQuery( 'Expected an array', $ptr );
 		}
@@ -469,7 +469,7 @@ final class Sql {
 		} elseif ( ! is_string( $v ) ) {
 			throw HttpError::invalidQuery( 'has expects a string', $ptr );
 		}
-		if ( '' !== $ref->cmpExpr ) {
+		if ( '' !== $ref->cmpExpr ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			// PHP-serialized array in postmeta: match one complete element (type-length-value can't
 			// produce a false substring hit). Ids may be stored as ints or numeric strings
 			// (SCF's gallery field stores strings), so ids match either form.
@@ -490,9 +490,9 @@ final class Sql {
 		return "JSON_CONTAINS($expr, ?)";
 	}
 
-	private function emptyList( string $collection, string $name, string $alias ): string {
+	private function emptyList( string $collection, string $name, string $alias ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$ref = $this->source( $collection )->columns[ $name ];
-		if ( '' !== $ref->cmpExpr ) {
+		if ( '' !== $ref->cmpExpr ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			// Post-backed: no row, '' and an empty serialized array all mean "empty".
 			return 'COALESCE(NULLIF(' . $this->ref( $collection, $name, $alias, true ) . ", ''), 'a:0:{}') = 'a:0:{}'";
 		}
@@ -554,16 +554,16 @@ final class Sql {
 		$src    = $this->source( $target );
 		$inner  = $this->alias();
 		$conds  = array();
-		if ( '' !== $src->baseWhere ) {
-			$conds[] = $this->sub( $src->baseWhere, $inner, '' );
+		if ( '' !== $src->baseWhere ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$conds[] = $this->sub( $src->baseWhere, $inner, '' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		} elseif ( ( $this->schema->collection( $target )['softDelete'] ?? false ) && isset( $src->columns['_live'] ) ) {
 			$conds[] = $this->cmp_ref( $target, '_live', $inner ) . ' = 1';
 		}
 		$conds[] = isset( $rel['through'] )
 			? $this->cmp_ref( $target, $this->schema->collection( $target )['primaryKey'], $inner ) . ' IN (' . $this->linked( $collection, $rel['through'], $alias ) . $this->lock . ')'
 			: $this->cmp_ref( $target, $rel['to'], $inner ) . ' = ' . $this->cmp_ref( $collection, $rel['from'], $alias );
-		if ( ! $this->trusted && null !== $this->guardsFor ) {
-			foreach ( $this->relationGuards[ $target ] ??= ( $this->guardsFor )( $target ) as $g ) {
+		if ( ! $this->trusted && null !== $this->guardsFor ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			foreach ( $this->relationGuards[ $target ] ??= ( $this->guardsFor )( $target ) as $g ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				$conds[] = $this->guard( $target, $g, $inner );
 			}
 		}
@@ -597,7 +597,7 @@ final class Sql {
 
 	/** The viewer's read guards for $collection (none when trusted), cached per compile. */
 	private function read_guards( string $collection ): array {
-		return $this->trusted || null === $this->guardsFor ? array() : ( $this->relationGuards[ $collection ] ??= ( $this->guardsFor )( $collection ) );
+		return $this->trusted || null === $this->guardsFor ? array() : ( $this->relationGuards[ $collection ] ??= ( $this->guardsFor )( $collection ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	/**
@@ -612,9 +612,9 @@ final class Sql {
 		$locale = $this->cmp_ref( $collection, 'locale', $alias );
 		$group  = $this->cmp_ref( $collection, 'translationGroup', $alias );
 		$parts  = array();
-		if ( null !== $f->groupOf ) {
-			$this->params[] = $f->groupOf;
-			$parts[]        = '(' . $this->cmp_ref( $collection, $pk, $alias ) . " = ? OR $group IN " . $this->groups( $collection, $pk, $f->groupOf ) . ')';
+		if ( null !== $f->groupOf ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$this->params[] = $f->groupOf; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$parts[]        = '(' . $this->cmp_ref( $collection, $pk, $alias ) . " = ? OR $group IN " . $this->groups( $collection, $pk, $f->groupOf ) . ')'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		$this->params[] = $f->locale;
 		$rule           = "$locale = ?";
@@ -632,7 +632,7 @@ final class Sql {
 		$src            = $this->source( $collection );
 		$inner          = $this->alias();
 		$group          = $this->cmp_ref( $collection, 'translationGroup', $inner );
-		$conds          = '' === $src->baseWhere ? array() : array( $this->sub( $src->baseWhere, $inner, '' ) );
+		$conds          = '' === $src->baseWhere ? array() : array( $this->sub( $src->baseWhere, $inner, '' ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$conds[]        = $this->cmp_ref( $collection, $col, $inner ) . ' = ?';
 		$this->params[] = $value;
 		$conds[]        = "$group IS NOT NULL";
@@ -655,7 +655,7 @@ final class Sql {
 		}
 		$pk           = $this->schema->collection( $collection )['primaryKey'];
 		$inner        = $this->alias();
-		$conds        = '' === $src->baseWhere ? array() : array( $this->sub( $src->baseWhere, $inner, '' ) );
+		$conds        = '' === $src->baseWhere ? array() : array( $this->sub( $src->baseWhere, $inner, '' ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$conds[]      = $this->cmp_ref( $collection, 'translationGroup', $inner ) . ' = ' . $this->cmp_ref( $collection, 'translationGroup', $alias );
 		$inner_locale = $this->ref( $collection, 'locale', $inner, false );
 		$conds[]      = "$inner_locale IS NOT NULL";
@@ -684,7 +684,7 @@ final class Sql {
 			default => $col['type'],
 		};
 		try {
-			return Schema::encode( $col, $v, ltrim( strrchr( $ptr, '/' ) ?: $ptr, '/' ), $ptr );
+			return Schema::encode( $col, $v, ltrim( strrchr( $ptr, '/' ) ?: $ptr, '/' ), $ptr ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		} catch ( HttpError $e ) {
 			throw HttpError::invalidQuery( $e->getMessage(), $ptr );
 		}
@@ -692,7 +692,7 @@ final class Sql {
 
 	/** With a cmpExpr the column compares in its WordPress meta form (§3.5.1). */
 	private function meta_param( array $col, ColumnRef $ref, int|float|string|null $v ): int|float|string|null {
-		if ( '' === $ref->cmpExpr || null === $v ) {
+		if ( '' === $ref->cmpExpr || null === $v ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			return $v;
 		}
 

@@ -21,7 +21,7 @@ if ( ! class_exists( Store::class, false ) ) {
 
 		public const FORMAT = 'spacepress.build.v1';
 
-		public static function validId( mixed $id ): bool {
+		public static function validId( mixed $id ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 			return is_string( $id ) && preg_match( '/\A[0-9a-f]{64}\z/D', $id ) === 1;
 		}
 
@@ -59,7 +59,7 @@ if ( ! class_exists( Store::class, false ) ) {
 		}
 
 		/** Write a small file by rename so readers see the old bytes or the new ones. */
-		public static function writeJson( string $root, string $relative, array $value ): void {
+		public static function writeJson( string $root, string $relative, array $value ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 			self::directories( $root );
 			$staged = self::staging( $root, 'json' );
 			if ( file_put_contents( $staged, json_encode( $value, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) . "\n" ) === false
@@ -99,7 +99,7 @@ if ( ! class_exists( Store::class, false ) ) {
 					}
 					$doomed = array();
 					foreach ( $live as $dir => $names ) {
-						$entries = @scandir( $root . '/' . $dir ) ?: array();
+						$entries = @scandir( $root . '/' . $dir ) ?: array(); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 						sort( $entries, SORT_STRING );
 						foreach ( $entries as $name ) {
 							$id = str_ends_with( $name, '.json' ) ? substr( $name, 0, -5 ) : $name;
@@ -118,7 +118,7 @@ if ( ! class_exists( Store::class, false ) ) {
 							self::remove( $trash );
 						}
 						// Staging left by an interrupted writer; every live writer holds this lock.
-						foreach ( @scandir( $root . '/.tmp' ) ?: array() as $name ) {
+						foreach ( @scandir( $root . '/.tmp' ) ?: array() as $name ) { // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 							if ( '.' !== $name && '..' !== $name ) {
 								self::remove( $root . '/.tmp/' . $name );
 							}
@@ -130,7 +130,7 @@ if ( ! class_exists( Store::class, false ) ) {
 		}
 
 		/** Run $fn holding flock(<root>/.lock), the compiler's writer lock. */
-		public static function locked( string $root, callable $fn ): mixed {
+		public static function locked( string $root, callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 			self::directories( $root );
 			$handle = fopen( $root . '/.lock', 'c' );
 			if ( false === $handle || ! flock( $handle, LOCK_EX ) ) {
@@ -158,7 +158,7 @@ if ( ! class_exists( Store::class, false ) ) {
 
 		private static function remove( string $path ): void {
 			if ( is_dir( $path ) && ! is_link( $path ) ) {
-				foreach ( scandir( $path ) ?: array() as $name ) {
+				foreach ( scandir( $path ) ?: array() as $name ) { // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 					if ( '.' !== $name && '..' !== $name ) {
 						self::remove( $path . '/' . $name );
 					}
@@ -171,6 +171,7 @@ if ( ! class_exists( Store::class, false ) ) {
 	}
 
 	/** Mounts exactly one build per request, then initializes it once per site. */
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- Keep the existing autoload and declaration layout.
 	final class Loader {
 
 		/** Plugins a sealed site never runs ({@see \SpacePress\Wp\Sealed::DENIED}, the compiler's `SEALED_DENIED`). */
@@ -299,7 +300,7 @@ if ( ! class_exists( Store::class, false ) ) {
 		 * @param list<string> $allowed
 		 * @return list<string>
 		 */
-		public static function allowedPlugins( array $active, array $allowed ): array {
+		public static function allowedPlugins( array $active, array $allowed ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 			// Never a plugin that serves stored content around SpacePress's read rules, even if a list names it.
 			$allowed = array_diff_key( array_fill_keys( $allowed, true ), array_fill_keys( self::SEALED_DENIED, true ) );
 
@@ -325,7 +326,7 @@ if ( ! class_exists( Store::class, false ) ) {
 		 * @param list<string> $allowed
 		 * @return list<string>
 		 */
-		public static function keepUnlisted( array $new, array $stored, array $allowed ): array {
+		public static function keepUnlisted( array $new, array $stored, array $allowed ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.newFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 			$hidden = array_values( array_diff( array_filter( $stored, 'is_string' ), self::allowedPlugins( $stored, $allowed ) ) );
 			$kept   = array_values( array_unique( array_merge( array_values( array_filter( $new, 'is_string' ) ), $hidden ) ) );
 			sort( $kept );
@@ -431,7 +432,7 @@ if ( ! class_exists( Store::class, false ) ) {
 		}
 
 		/** plugins_url() for files under the store, which lives outside WP_PLUGIN_DIR. */
-		private static function mapUrls( string $root, string $url ): void {
+		private static function mapUrls( string $root, string $url ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 			$prefix = wp_normalize_path( $root ) . '/';
 			add_filter(
 				'plugins_url',

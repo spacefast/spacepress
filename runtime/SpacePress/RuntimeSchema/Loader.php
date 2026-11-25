@@ -40,7 +40,7 @@ final class Loader {
 	private static array|false|null $references = null;
 
 	/** The stored type of every field a build that initialized on this site declared. */
-	public static function declaredOption( string $app ): string {
+	public static function declaredOption( string $app ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return 'sp_' . $app . '_declared_fields';
 	}
 
@@ -49,7 +49,7 @@ final class Loader {
 	 * it, so a runtime change is checked against all of them, not only against the build it is made
 	 * on. Called where a build initializes on the site (its migrations), not per request.
 	 */
-	public static function rememberDeclared( array $compiled ): void {
+	public static function rememberDeclared( array $compiled ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$app    = (string) ( $compiled['name'] ?? 'app' );
 		$known  = get_option( self::declaredOption( $app ) );
 		$known  = is_array( $known ) ? $known : array();
@@ -126,7 +126,7 @@ final class Loader {
 	}
 
 	/** Whether a stored state may be served: the empty state, or one apply sealed. */
-	public static function sealedBy( array $state ): bool {
+	public static function sealedBy( array $state ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		// phpcs:ignore Universal.Operators.StrictComparisons.LooseEqual -- Serialized object keys may arrive in any order.
 		if ( array_diff_key( $state, array( 'seal' => 1 ) ) == self::EMPTY && ! isset( $state['seal'] ) ) {
 			return true;
@@ -190,7 +190,7 @@ final class Loader {
 	 * compiled code names. Such a field reads "no value" either way, so hiding it changes nothing a
 	 * hook, action, job or page can observe.
 	 */
-	public static function hidableField( array $compiled, ?array $references, string $section, string $kind, string $field ): bool {
+	public static function hidableField( array $compiled, ?array $references, string $section, string $kind, string $field ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$definition = $compiled[ $section ][ $kind ][ 'globals' === $section ? 'fields' : 'columns' ][ $field ] ?? null;
 
 		return null !== $definition && null !== $references && ! ( $definition['notNull'] ?? false )
@@ -198,7 +198,7 @@ final class Loader {
 	}
 
 	/** The same for a whole kind the build declares: one no compiled code names. */
-	public static function hidableKind( array $compiled, ?array $references, string $section, string $kind ): bool {
+	public static function hidableKind( array $compiled, ?array $references, string $section, string $kind ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return isset( $compiled[ $section ][ $kind ] ) && null !== $references && ! in_array( $kind, $references['kinds'] ?? array( $kind ), true );
 	}
 
@@ -297,7 +297,7 @@ final class Loader {
 				if ( null !== $kind ) {
 					// The kind with its built-in fields (a collection's title and body), then its own
 					// fields under the same rules as fields added to any kind.
-					$sysCols                  = array(
+					$sysCols                  = array( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						'status'       => 1,
 						'publishedAt'  => 1,
 						'author'       => 1,
@@ -313,7 +313,7 @@ final class Loader {
 							'id'      => 1,
 							'title'   => 1,
 							'content' => 1,
-						) + $sysCols
+						) + $sysCols // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					);
 					$fields                   = array_diff_key( $kind[ $inner ], $own );
 					$kind[ $inner ]           = $own;
@@ -322,7 +322,7 @@ final class Loader {
 					if ( 'collections' === $section ) {
 						// Columns in the order the compiler writes them: system ones last.
 						$columns                             = $raw[ $section ][ $name ]['columns'];
-						$raw[ $section ][ $name ]['columns'] = array_diff_key( $columns, $sysCols ) + array_intersect_key( $columns, $sysCols );
+						$raw[ $section ][ $name ]['columns'] = array_diff_key( $columns, $sysCols ) + array_intersect_key( $columns, $sysCols ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					}
 				}
 			}
@@ -404,9 +404,9 @@ final class Loader {
 	 *
 	 * @param bool $ownKind the fields came with a kind the site added: a required field is fine there
 	 */
-	private static function add_fields( array $raw, bool $global, string $kind, array $fields, bool $ownKind ): array {
+	private static function add_fields( array $raw, bool $global, string $kind, array $fields, bool $ownKind ): array { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.globalFound, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP parameter name. Preserve the existing PHP variable name.
 		[$section, $inner] = $global ? array( 'globals', 'fields' ) : array( 'collections', 'columns' );
-		$keysOf            = static function ( array $raw ) use ( $global, $kind ): array {
+		$keysOf            = static function ( array $raw ) use ( $global, $kind ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$keys = array();
 			foreach ( $global ? $raw['globals'] : array( $kind => $raw['collections'][ $kind ] ) as $name => $spec ) {
 				foreach ( $spec[ $global ? 'fields' : 'columns' ] as $field => $definition ) {
@@ -419,10 +419,10 @@ final class Loader {
 
 			return $keys;
 		};
-		$taken             = $keysOf( $raw );
+		$taken             = $keysOf( $raw ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		foreach ( self::fields( $kind, $fields, $global ? Validator::GLOBAL : Validator::COLLECTION ) as $field => $definition ) {
 			if ( isset( $raw[ $section ][ $kind ][ $inner ][ $field ] ) || ! Changes::nameable( $field, array() )
-				|| ( ! $global && ! $ownKind && ( $definition['notNull'] ?? false ) && ! isset( $definition['default'] ) ) ) {
+				|| ( ! $global && ! $ownKind && ( $definition['notNull'] ?? false ) && ! isset( $definition['default'] ) ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				continue;
 			}
 			$keys = StorageKeys::of( $field, $definition );

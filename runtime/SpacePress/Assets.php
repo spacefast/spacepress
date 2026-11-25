@@ -37,7 +37,7 @@ final class Assets {
 	 *
 	 * @return ?array{width: int, height: int, format: string}
 	 */
-	public static function metaForUrl( string $url ): ?array {
+	public static function metaForUrl( string $url ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$plugin = Wp\Runtime::plugin();
 		if ( null === $plugin ) {
 			return null;
@@ -57,7 +57,7 @@ final class Assets {
 	}
 
 	/** Record a high-priority image to emit `<link rel="preload" as="image">` in `<head>`. */
-	public static function preloadImage( string $href, ?string $srcSet = null, ?string $sizes = null ): void {
+	public static function preloadImage( string $href, ?string $srcSet = null, ?string $sizes = null ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		if ( '' === $href || str_starts_with( $href, 'data:' ) ) {
 			return;
 		}
@@ -71,8 +71,8 @@ final class Assets {
 			'as'            => 'image',
 			'fetchpriority' => 'high',
 		);
-		if ( null !== $srcSet && '' !== $srcSet ) {
-			$entry['imagesrcset'] = $srcSet;
+		if ( null !== $srcSet && '' !== $srcSet ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$entry['imagesrcset'] = $srcSet; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		if ( null !== $sizes && '' !== $sizes ) {
 			$entry['imagesizes'] = $sizes;
@@ -132,7 +132,7 @@ final class Assets {
 				continue;
 			}
 			$disk = null !== $plugin ? $plugin->dir . '/' . self::DIR . $file : null;
-			if ( null !== $disk && is_file( $disk ) && ( $size = @filesize( $disk ) ) !== false && $size <= self::INLINE_LIMIT ) {
+			if ( null !== $disk && is_file( $disk ) && ( $size = @filesize( $disk ) ) !== false && $size <= self::INLINE_LIMIT ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				$css = (string) @file_get_contents( $disk );
 				if ( stripos( $css, '@import' ) === false ) {
 					$css = self::resolve_inline_urls( $css );

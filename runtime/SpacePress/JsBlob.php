@@ -12,7 +12,7 @@ namespace SpacePress;
 final class JsBlob {
 
 	/** @param list<int> $parts */
-	public function __construct( public readonly string $bytes, public readonly string $type = '', public readonly ?string $name = null, public readonly int|float $lastModified = 0, public readonly array $parts = array() ) {
+	public function __construct( public readonly string $bytes, public readonly string $type = '', public readonly ?string $name = null, public readonly int|float $lastModified = 0, public readonly array $parts = array() ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		assert( array_sum( $parts ) === strlen( $bytes ) );
 	}
 
@@ -30,7 +30,7 @@ final class JsBlob {
 		}
 		$type         = '';
 		$endings      = 'transparent';
-		$lastModified = null;
+		$lastModified = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ! Js::isNullish( $options ) ) {
 			if ( ! is_object( $options ) ) {
 				throw new JsError( 'The provided options are not an object', 'TypeError' ); }
@@ -43,7 +43,7 @@ final class JsBlob {
 			if ( $file ) {
 				$value = Js::dynamicGet( $options, 'lastModified' );
 				if ( JsUndefined::Value !== $value ) {
-					$lastModified = Js::toNumber( $value ); }
+					$lastModified = Js::toNumber( $value ); } // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 		}
 		if ( 'transparent' !== $endings && 'native' !== $endings ) {
@@ -62,9 +62,9 @@ final class JsBlob {
 		}
 		if ( ! $file ) {
 			return new self( $bytes, $type, null, 0, $parts ); }
-		$lastModified ??= Js::now();
-		$lastModified   = is_float( $lastModified ) && ! is_finite( $lastModified ) ? 0 : Js::toInteger( $lastModified );
-		return new self( $bytes, $type, Js::str( $a[1] ), $lastModified, $parts );
+		$lastModified ??= Js::now(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$lastModified   = is_float( $lastModified ) && ! is_finite( $lastModified ) ? 0 : Js::toInteger( $lastModified ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		return new self( $bytes, $type, Js::str( $a[1] ), $lastModified, $parts ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/** The part lengths that cover bytes [$from, $to). */
@@ -97,7 +97,7 @@ final class JsBlob {
 	public function get( string $key ): mixed {
 		return match ( $key ) {
 			'size' => strlen( $this->bytes ), 'type' => $this->type,
-			'name' => $this->name ?? null, 'lastModified' => null === $this->name ? null : $this->lastModified,
+			'name' => $this->name ?? null, 'lastModified' => null === $this->name ? null : $this->lastModified, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			'webkitRelativePath' => null === $this->name ? null : '',
 			default => null,
 		};

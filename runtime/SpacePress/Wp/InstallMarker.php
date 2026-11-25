@@ -48,7 +48,7 @@ final class InstallMarker {
 	/** @var array<int, int> blog id => forget() calls this request, so record() sees one made while it verified */
 	private static array $forgotten = array();
 	/** @var ?\Closure(): void runs between the final check and the write (tests inject an invalidation); null otherwise */
-	public static ?\Closure $beforeWrite = null;
+	public static ?\Closure $beforeWrite = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	public static function register(): void {
 		add_action( 'added_option', static fn ( string $option ) => self::watches( $option ) && self::forget(), 10, 1 );
@@ -73,7 +73,7 @@ final class InstallMarker {
 			return false;
 		}
 
-		return self::$current[ $blog ] = get_option( self::OPTION ) === self::key( $plugin );
+		return self::$current[ $blog ] = get_option( self::OPTION ) === self::key( $plugin ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 	}
 
 	/** Drop the marker: the next check runs every install step again. Returns true, for use in expressions. */
@@ -102,8 +102,8 @@ final class InstallMarker {
 		if ( null === $plugin || Runtime::managed() || Runtime::plugin() !== $plugin || self::current() || ! self::verified( $plugin ) ) {
 			return;
 		}
-		if ( null !== self::$beforeWrite ) {
-			( self::$beforeWrite )();
+		if ( null !== self::$beforeWrite ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			( self::$beforeWrite )(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		update_option( self::OPTION, self::key( $plugin ), true );
 		if ( ( self::$forgotten[ $blog ] ?? 0 ) !== $seen || ! self::verified( $plugin ) ) {

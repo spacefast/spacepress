@@ -36,13 +36,13 @@ namespace SpacePress;
 interface Store {
 
 	/** Open a transaction (or join one). Any Throwable rolls back everything written inside. */
-	public function transaction( callable $fn ): mixed;
+	public function transaction( callable $fn ): mixed; // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 
 	/** Run after the outermost commit (immediately without a transaction); discarded on rollback. */
-	public function afterCommit( callable $fn ): void;
+	public function afterCommit( callable $fn ): void; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 
 	/** @param list<string> $statements idempotent DDL; MySQL replaces {prefix}. Never inside a request transaction. */
-	public function applySystemStatements( array $statements ): void;
+	public function applySystemStatements( array $statements ): void; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
 	/**
 	 * Raw rows matching a compiled query. $q is produced by Sql::select() against $this->dialect()
@@ -82,28 +82,28 @@ interface Store {
 	 *
 	 * @return list<array|SqlPredicate>
 	 */
-	public function readGuards( string $collection, Viewer $viewer, bool $forSelect = false ): array;
+	public function readGuards( string $collection, Viewer $viewer, bool $forSelect = false ): array; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 
 	/**
 	 * True when the storage itself already shows $viewer every value of this unique column, whatever
 	 * the collection's read rule filters out. A unique write on it then answers as it would to a
 	 * trusted caller (taken: 409). False everywhere else: the write is refused before any lookup.
 	 */
-	public function showsUnique( string $collection, string $column, Viewer $viewer ): bool;
+	public function showsUnique( string $collection, string $column, Viewer $viewer ): bool; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
 	/** Encoded values keyed by field, null if never written. */
-	public function globalRead( string $name ): ?array;
+	public function globalRead( string $name ): ?array; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
-	public function globalWrite( string $name, array $values ): void;
+	public function globalWrite( string $name, array $values ): void; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
 	/** @return list<array{id: int, version?: int, op?: string, at: string, userId: ?int, schemaMigration?: ?string, changed?: ?list<string>, row: array}> newest first */
 	public function revisions( string $collection, int|string $pk ): array;
 
 	/** @param array{op?: string, schemaMigration?: ?string, changed?: ?list<string>, allocatedKey?: bool} $meta */
-	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void;
+	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 
 	/** @return ?array{id: int, version?: int, op?: string, at: string, userId: ?int, schemaMigration?: ?string, changed?: ?list<string>, row: array} */
-	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array;
+	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 	/**
 	 * Scheduled publishing. WpTable: UPDATE ... SET status='published' WHERE status='scheduled'
@@ -111,8 +111,8 @@ interface Store {
 	 *
 	 * @return list<int|string>
 	 */
-	public function promoteDue( string $collection, string $nowIso ): array;
+	public function promoteDue( string $collection, string $nowIso ): array; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 
 	/** Map a driver exception to a HttpError (unique_violation with pointer when the column is known, reference_violation) or rethrow. */
-	public function mapError( \Throwable $e ): \Throwable;
+	public function mapError( \Throwable $e ): \Throwable; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 }

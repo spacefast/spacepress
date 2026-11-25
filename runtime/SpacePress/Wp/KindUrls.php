@@ -38,7 +38,7 @@ final class KindUrls {
 	}
 
 	public static function register( Plugin $plugin ): void {
-		$self = self::$instance = new self( $plugin );
+		$self = self::$instance = new self( $plugin ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		if ( array() !== $self->kinds || array() !== $self->terms ) {
 			add_action( 'init', array( $self, 'rewrites' ), 1 );
 			// After Polylang's own (20), which prefixes a translation's link with its language
@@ -229,7 +229,7 @@ final class KindUrls {
 
 	/** A kind at the site root: `url: "/:path"`, a hierarchical kind's whole parent chain. */
 	private static function root( array $kind ): bool {
-		return $kind['segments'] === array( ':path' );
+		return $kind['segments'] === array( ':path' ); // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 	}
 
 	/**
@@ -353,7 +353,7 @@ final class KindUrls {
 				$term = null;
 			}
 		}
-		if ( ! $term instanceof \WP_Term || ( isset( $given['slug'] ) && isset( $given['id'] ) && $term->slug !== rawurldecode( $given['slug'] ) ) ) {
+		if ( ! $term instanceof \WP_Term || ( isset( $given['slug'] ) && isset( $given['id'] ) && $term->slug !== rawurldecode( $given['slug'] ) ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return array( 'error' => '404' );
 		}
 
@@ -374,7 +374,7 @@ final class KindUrls {
 	 * their own, each kind's under its read rule for this viewer; core would list none of them, since
 	 * SpacePress's post types are left out of searches.
 	 */
-	public function termArchive( \WP_Query $query ): void {
+	public function termArchive( \WP_Query $query ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( is_admin() || ! $query->is_main_query() || ! $query->is_tax() ) {
 			return;
 		}
@@ -389,7 +389,7 @@ final class KindUrls {
 			return;
 		}
 		$viewer = CoreAccess::viewer();
-		$types  = $clauses = array();
+		$types  = $clauses = array(); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		foreach ( $this->plugin->schema->collection( $kind )['wp']['on'] ?? array() as $attached ) {
 			if ( ! isset( $this->kinds[ $attached ] ) ) {
 				continue;
@@ -440,7 +440,7 @@ final class KindUrls {
 	}
 
 	/** `term_link`: a term of a SpacePress taxonomy with a `url`, at the URL its pattern gives. */
-	public function termLink( string $link, mixed $term, string $taxonomy ): string {
+	public function termLink( string $link, mixed $term, string $taxonomy ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( $this->terms as $name => $kind ) {
 			if ( $kind['taxonomy'] === $taxonomy && $term instanceof \WP_Term ) {
 				return user_trailingslashit( home_url( $this->termPath( $name, $term ) ) );
@@ -449,7 +449,7 @@ final class KindUrls {
 		return $link;
 	}
 
-	public function termPath( string $name, \WP_Term $term ): ?string {
+	public function termPath( string $name, \WP_Term $term ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! isset( $this->terms[ $name ] ) ) {
 			return null; }
 		$parts = array();
@@ -497,7 +497,7 @@ final class KindUrls {
 			if ( null === $value || '' === $value ) {
 				return null;
 			}
-			$parts[] = 'path' === $field ? implode( '/', array_map( 'rawurlencode', explode( '/', get_page_uri( $post ) ?: $value ) ) ) : rawurlencode( $value );
+			$parts[] = 'path' === $field ? implode( '/', array_map( 'rawurlencode', explode( '/', get_page_uri( $post ) ?: $value ) ) ) : rawurlencode( $value ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		}
 		// At the site root, an item whose first segment WordPress or SpacePress owns can't be reached:
 		// it has no URL, so no link, tree or sitemap points at it.
@@ -542,7 +542,7 @@ final class KindUrls {
 	 * that shows a field the viewer may not read (`:slug` with a read rule on the slug) gives them no
 	 * address: it would carry the hidden value. The sitemap and core's search both ask.
 	 */
-	public static function patternReadable( array $spec, \SpacePress\Viewer $viewer ): bool {
+	public static function patternReadable( array $spec, \SpacePress\Viewer $viewer ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( explode( '/', trim( (string) $spec['url'], '/' ) ) as $segment ) {
 			if ( ! str_starts_with( $segment, ':' ) ) {
 				continue;
@@ -601,7 +601,7 @@ final class KindUrls {
 	 * kind URL that resolved to an item whose pattern gives another URL (a wrong year, a stale
 	 * field) redirects to the canonical one, so every item has exactly one URL.
 	 */
-	public function oldSlug(): void {
+	public function oldSlug(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$name = get_query_var( 'name' );
 		$type = get_query_var( 'post_type' );
 		$kind = null;
@@ -644,7 +644,7 @@ final class KindUrls {
 				)
 			);
 			$post = $id > 0 ? get_post( $id ) : null;
-			if ( $post instanceof \WP_Post && ( $url = $this->build( $kind, $post ) ) !== null ) {
+			if ( $post instanceof \WP_Post && ( $url = $this->build( $kind, $post ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				$this->move( $kind, $post, $url );
 			}
 			return;
@@ -657,7 +657,7 @@ final class KindUrls {
 		$have = '/' . trim( (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '/' ), PHP_URL_PATH ), '/' );
 		$home = rtrim( (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH ), '/' );
 		if ( '' !== $home && str_starts_with( $have, $home ) ) {
-			$have = substr( $have, strlen( $home ) ) ?: '/';
+			$have = substr( $have, strlen( $home ) ) ?: '/'; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		}
 		if ( null !== $want && rawurldecode( $have ) !== rawurldecode( $want ) ) {
 			$this->move( $kind, $post, (string) $this->build( $kind, $post ) );
@@ -683,7 +683,7 @@ final class KindUrls {
 	}
 
 	/** `frontend: false`: no public HTML at all. */
-	public static function backendOnly(): void {
+	public static function backendOnly(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( is_admin() || is_feed() || is_robots() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 			return;
 		}
@@ -705,7 +705,7 @@ final class KindUrls {
 		$uri  = (string) ( $_SERVER['REQUEST_URI'] ?? '/' );
 		$home = rtrim( (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH ), '/' );
 		if ( '' !== $home && str_starts_with( $uri, $home ) ) {
-			$uri = substr( $uri, strlen( $home ) ) ?: '/';
+			$uri = substr( $uri, strlen( $home ) ) ?: '/'; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		}
 		nocache_headers();
 		wp_redirect( rtrim( $frontend, '/' ) . '/' . ltrim( $uri, '/' ), 308 );

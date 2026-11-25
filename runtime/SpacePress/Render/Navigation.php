@@ -35,7 +35,7 @@ final class Navigation {
 	 * the document's `wp-site-blocks`; inside a block template (which has that root already) it is
 	 * the page's own box.
 	 */
-	public static function region( string $class = 'wp-site-blocks' ): string {
+	public static function region( string $class = 'wp-site-blocks' ): string { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP parameter name.
 		return '<div class="' . esc_attr( $class ) . '" data-wp-interactive="' . esc_attr( self::NAMESPACE ) . '" data-wp-router-region="' . esc_attr( self::REGION ) . '">';
 	}
 

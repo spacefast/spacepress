@@ -8,7 +8,7 @@ namespace SpacePress;
 trait JsAsync {
 
 	/** The JavaScript value a caught PHP exception carries. */
-	public static function thrownValue( JsError $error ): mixed {
+	public static function thrownValue( JsError $error ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $error instanceof JsThrow ? $error->value : $error;
 	}
 
@@ -22,7 +22,7 @@ trait JsAsync {
 	 * class that extends Error (bound as itself, so its fields stay readable). Other thrown
 	 * values are refused, not coerced.
 	 */
-	public static function caughtError( JsError $error ): JsError|JsObject {
+	public static function caughtError( JsError $error ): JsError|JsObject { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $error instanceof JsThrow ) {
 			if ( self::isError( $error->value ) ) {
 				return $error->value; }
@@ -31,7 +31,7 @@ trait JsAsync {
 		return $error;
 	}
 
-	public static function thrownDescription( mixed $value ): string {
+	public static function thrownDescription( mixed $value ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return match ( true ) {
 			is_string( $value ) => $value,
 			null === $value, JsUndefined::Value === $value, is_bool( $value ), is_int( $value ), is_float( $value ) => self::str( $value ),
@@ -40,7 +40,7 @@ trait JsAsync {
 	}
 
 	/** Calls a JavaScript function value with an explicit receiver (a thenable's `then`). */
-	public static function invokeWithReceiver( mixed $function, mixed $receiver, array $args ): mixed {
+	public static function invokeWithReceiver( mixed $function, mixed $receiver, array $args ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.functionFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		return self::dynamicInvoke( $function, $receiver, new JsArray( $args ) );
 	}
 }

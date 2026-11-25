@@ -125,7 +125,7 @@ final class CoreAccess {
 	// ================================================================ capabilities
 
 	/** @param list<string> $caps */
-	public static function mapMetaCap( array $caps, string $cap, int $userId, array $args ): array {
+	public static function mapMetaCap( array $caps, string $cap, int $userId, array $args ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$plugin = Plugin::instance();
 		if ( null === $plugin ) {
 			return $caps;
@@ -142,14 +142,14 @@ final class CoreAccess {
 			if ( null === $collection ) {
 				return $caps;
 			}
-			$allowed = self::post_allowed( $collection, $cap, $post, $userId );
+			$allowed = self::post_allowed( $collection, $cap, $post, $userId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			// The store already checked the post's visibility, including password proof. WordPress
 			// maps a published post's read to `read`, which anonymous visitors lack.
 			if ( self::schema()->collection( $collection )['native'] ?? false ) {
 				if ( ! $allowed ) {
 					return array( 'do_not_allow' );
 				}
-				return 'read_post' === $cap && 'publish' === $post->post_status && $caps === array( 'read' ) ? array( 'exist' ) : $caps;
+				return 'read_post' === $cap && 'publish' === $post->post_status && $caps === array( 'read' ) ? array( 'exist' ) : $caps; // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			}
 
 			return self::grant( $allowed );
@@ -158,7 +158,7 @@ final class CoreAccess {
 			$term     = isset( $args[0] ) ? get_term( (int) $args[0] ) : null;
 			$taxonomy = $term instanceof \WP_Term ? self::taxonomyKind( $term->taxonomy ) : null;
 			if ( null !== $taxonomy ) {
-				return self::grant( self::term_allowed( $taxonomy, $cap, $term, $userId ) );
+				return self::grant( self::term_allowed( $taxonomy, $cap, $term, $userId ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 
 			return $caps;
@@ -168,12 +168,12 @@ final class CoreAccess {
 			return $caps;
 		}
 
-		return self::grant( self::type_allowed( $collection, $kind, $userId ) );
+		return self::grant( self::type_allowed( $collection, $kind, $userId ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/** One term: its taxonomy's update or delete rule covers it; assigning is a write to an item. */
-	private static function term_allowed( string $taxonomy, string $cap, \WP_Term $term, int $userId ): bool {
-		$viewer = self::viewer_for( $userId );
+	private static function term_allowed( string $taxonomy, string $cap, \WP_Term $term, int $userId ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$viewer = self::viewer_for( $userId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === $viewer || null === $viewer->user ) {
 			return false;
 		}
@@ -181,7 +181,7 @@ final class CoreAccess {
 		return match ( $cap ) {
 			'edit_term' => self::covers( $taxonomy, 'update', $term->term_id, $viewer ),
 			'delete_term' => self::covers( $taxonomy, 'delete', $term->term_id, $viewer ),
-			'assign_term' => self::type_allowed( $taxonomy, 'assign', $userId ) && self::covers( $taxonomy, 'read', $term->term_id, $viewer ),
+			'assign_term' => self::type_allowed( $taxonomy, 'assign', $userId ) && self::covers( $taxonomy, 'read', $term->term_id, $viewer ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		};
 	}
 
@@ -189,10 +189,10 @@ final class CoreAccess {
 	 * pre_insert_term: a signed-in user creating a term of a SpacePress taxonomy outside SpacePress's pipeline
 	 * (wp-admin, core's terms route, a post save naming a new tag) needs the taxonomy's create rule.
 	 */
-	public static function termCreate( mixed $term, mixed $taxonomy ): mixed {
+	public static function termCreate( mixed $term, mixed $taxonomy ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$plugin = Plugin::instance();
 		if ( $term instanceof \WP_Error || ! is_string( $taxonomy ) || null === $plugin || $plugin->connection()->busy()
-			|| get_current_user_id() === 0 || ( $kind = self::taxonomyKind( $taxonomy ) ) === null ) {
+			|| get_current_user_id() === 0 || ( $kind = self::taxonomyKind( $taxonomy ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $term;
 		}
 		$viewer = self::viewer();
@@ -204,8 +204,8 @@ final class CoreAccess {
 		return $term;
 	}
 
-	private static function post_allowed( string $collection, string $cap, \WP_Post $post, int $userId ): bool {
-		$viewer = self::viewer_for( $userId );
+	private static function post_allowed( string $collection, string $cap, \WP_Post $post, int $userId ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$viewer = self::viewer_for( $userId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === $viewer || ( 'read_post' !== $cap && null === $viewer->user ) ) {
 			return false;
 		}
@@ -231,8 +231,8 @@ final class CoreAccess {
 		return self::covers( $collection, $op, $post->ID, $viewer );
 	}
 
-	private static function type_allowed( string $collection, string $kind, int $userId ): bool {
-		$viewer = self::viewer_for( $userId );
+	private static function type_allowed( string $collection, string $kind, int $userId ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$viewer = self::viewer_for( $userId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === $viewer ) {
 			return false;
 		}
@@ -380,15 +380,15 @@ final class CoreAccess {
 		return self::viewer_for( get_current_user_id() );
 	}
 
-	private static function viewer_for( int $userId ): ?Viewer {
+	private static function viewer_for( int $userId ): ?Viewer { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( IdentityBridge::available() && ( \SpacePress\Identity\Plugin::authenticationError() !== null || \SpacePress\Identity\Bearer::failure() !== null ) ) {
 			return null;
 		}
-		$user = $userId > 0 ? get_userdata( $userId ) : false;
+		$user = $userId > 0 ? get_userdata( $userId ) : false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ! $user instanceof \WP_User ) {
 			return new Viewer( null );
 		}
-		if ( IdentityBridge::suspended( $userId ) ) {
+		if ( IdentityBridge::suspended( $userId ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return null;
 		}
 
@@ -398,7 +398,7 @@ final class CoreAccess {
 	// ================================================================ reads
 
 	/** The read rule's own refusal for this viewer (401/403), or null when it may allow rows. */
-	public static function readDenial( string $collection, ?Viewer $viewer ): ?\WP_Error {
+	public static function readDenial( string $collection, ?Viewer $viewer ): ?\WP_Error { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null === $viewer ) {
 			return self::error( new HttpError( 403, 'suspended', 'This account is suspended' ) );
 		}
@@ -416,7 +416,7 @@ final class CoreAccess {
 	 * this viewer goes, decided by the rules alone.
 	 */
 	public static function strip( mixed $response, string $collection, ?array $stored, ?Viewer $viewer ): mixed {
-		if ( ! $response instanceof \WP_REST_Response || ! is_array( $data = $response->get_data() ) ) {
+		if ( ! $response instanceof \WP_REST_Response || ! is_array( $data = $response->get_data() ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $response;
 		}
 		$spec = self::schema()->collection( $collection );
@@ -433,7 +433,7 @@ final class CoreAccess {
 		$dropped = false;
 		foreach ( $spec['columns'] as $col => $def ) {
 			$col = (string) $col;
-			if ( $col === $spec['primaryKey'] || ( $def['system'] ?? false ) || $col === ( $spec['title'] ?? null ) ) {
+			if ( $col === $spec['primaryKey'] || ( $def['system'] ?? false ) || $col === ( $spec['title'] ?? null ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				continue; // the title is always readable (§4.4)
 			}
 			$hidden = null === $visible
@@ -472,7 +472,7 @@ final class CoreAccess {
 	}
 
 	/** Revisions and autosaves of a SpacePress post are stripped against their own snapshot. */
-	public static function prepareChild( mixed $response, mixed $post, mixed $request ): mixed {
+	public static function prepareChild( mixed $response, mixed $post, mixed $request ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! $post instanceof \WP_Post ) {
 			return $response;
 		}
@@ -500,7 +500,7 @@ final class CoreAccess {
 	 * A list query naming a column the viewer may not read (slug) is refused. `search` isn't: it
 	 * matches only the fields the viewer may read ({@see \SpacePress\Search\Index::predicate()}).
 	 */
-	public static function queryDenial( string $collection, \WP_REST_Request $request, ?Viewer $viewer ): ?\WP_Error {
+	public static function queryDenial( string $collection, \WP_REST_Request $request, ?Viewer $viewer ): ?\WP_Error { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null === $viewer ) {
 			return null;
 		}
@@ -534,9 +534,9 @@ final class CoreAccess {
 	 * wp-admin lists of a SpacePress post type hold only the rows the viewer's read rule covers, and a
 	 * search there only reads the title when the content may be hidden from the viewer.
 	 */
-	public static function adminList( \WP_Query $query ): void {
-		if ( ! is_admin() || wp_doing_ajax() || ! $query->is_main_query() || ! is_string( $type = $query->get( 'post_type' ) )
-			|| ( $collection = self::collection( $type ) ) === null ) {
+	public static function adminList( \WP_Query $query ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		if ( ! is_admin() || wp_doing_ajax() || ! $query->is_main_query() || ! is_string( $type = $query->get( 'post_type' ) ) // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
+			|| ( $collection = self::collection( $type ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return;
 		}
 		$viewer = self::viewer();
@@ -555,7 +555,7 @@ final class CoreAccess {
 	 * (SCF adds one per field; core adds content and the rest). A side's visibility comes from the
 	 * snapshot it shows; without one, from the rules alone.
 	 */
-	public static function revisionDiff( mixed $diff, mixed $from, mixed $to ): mixed {
+	public static function revisionDiff( mixed $diff, mixed $from, mixed $to ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_array( $diff ) || ! $to instanceof \WP_Post ) {
 			return $diff;
 		}
@@ -579,7 +579,7 @@ final class CoreAccess {
 			}
 			foreach ( $spec['columns'] as $col => $def ) {
 				$col = (string) $col;
-				if ( $col === $spec['primaryKey'] || $col === ( $spec['title'] ?? null ) || ( $def['system'] ?? false ) ) {
+				if ( $col === $spec['primaryKey'] || $col === ( $spec['title'] ?? null ) || ( $def['system'] ?? false ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 					continue;
 				}
 				if ( null === $viewer || null === $row
@@ -592,10 +592,10 @@ final class CoreAccess {
 		$ids = array();
 		foreach ( array_keys( $hidden ) as $col ) {
 			$ids[] = $spec['wp']['metaPrefix'] . $col;
-			if ( $col === ( $spec['content'] ?? null ) ) {
+			if ( $col === ( $spec['content'] ?? null ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				array_push( $ids, 'post_content', 'post_excerpt' );
 			}
-			if ( $col === ( $spec['slug'] ?? null ) ) {
+			if ( $col === ( $spec['slug'] ?? null ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				$ids[] = 'post_name';
 			}
 		}
@@ -631,7 +631,7 @@ final class CoreAccess {
 	}
 
 	/** @param mixed $type the meta type (post, user, ...) */
-	public static function protectedMeta( mixed $protected, mixed $key, mixed $type ): mixed {
+	public static function protectedMeta( mixed $protected, mixed $key, mixed $type ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.protectedFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		if ( $protected || 'post' !== $type || ! is_string( $key ) ) {
 			return $protected;
 		}
@@ -647,12 +647,12 @@ final class CoreAccess {
 	}
 
 	/** The classic editor's textarea: empty when the designated content is hidden from the viewer. */
-	public static function adminContent( mixed $content, mixed $postId ): mixed {
-		return self::native_hidden( (int) $postId, 'content' ) ? '' : $content;
+	public static function adminContent( mixed $content, mixed $postId ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		return self::native_hidden( (int) $postId, 'content' ) ? '' : $content; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/** The slug box and quick edit: empty when the designated slug is hidden from the viewer. */
-	public static function adminSlug( mixed $slug, mixed $post ): mixed {
+	public static function adminSlug( mixed $slug, mixed $post ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $post instanceof \WP_Post && self::native_hidden( $post->ID, 'slug' ) ? '' : $slug;
 	}
 
@@ -662,7 +662,7 @@ final class CoreAccess {
 	 * form posted doesn't overwrite the stored value (a forged non-blank one still reaches EditorSave,
 	 * which refuses it as a write to a hidden column).
 	 */
-	public static function keepHidden( string $collection, array $stored, array $data ): array {
+	public static function keepHidden( string $collection, array $stored, array $data ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_admin() || get_current_user_id() === 0 ) {
 			return $data;
 		}
@@ -681,7 +681,7 @@ final class CoreAccess {
 	}
 
 	/** Is column $col of a First row hidden from this viewer (judged on $stored, or the rules alone)? */
-	public static function nativeHiddenFor( string $collection, string $col, ?array $stored = null ): bool {
+	public static function nativeHiddenFor( string $collection, string $col, ?array $stored = null ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$viewer = self::viewer();
 		if ( null === $viewer || null === $stored ) {
 			return null === $viewer || FieldAccess::mayHide( self::schema()->collection( $collection )['columns'][ $col ], $viewer );
@@ -690,13 +690,13 @@ final class CoreAccess {
 		return ! array_key_exists( $col, self::visible_fields( $stored, $collection, $viewer ) );
 	}
 
-	private static function native_hidden( int $postId, string $designation ): bool {
-		$collection = $postId > 0 ? self::collection( (string) get_post_type( $postId ) ) : null;
+	private static function native_hidden( int $postId, string $designation ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$collection = $postId > 0 ? self::collection( (string) get_post_type( $postId ) ) : null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$col        = null === $collection ? null : ( self::schema()->collection( $collection )[ $designation ] ?? null );
 		if ( null === $col ) {
 			return false;
 		}
-		return self::nativeHiddenFor( $collection, $col, Plugin::instance()?->db()->editorRow( $collection, $postId ) );
+		return self::nativeHiddenFor( $collection, $col, Plugin::instance()?->db()->editorRow( $collection, $postId ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	// ================================================================ wp-admin form
@@ -705,11 +705,11 @@ final class CoreAccess {
 	 * The edit screen doesn't render a top-level field holding anything the viewer can't read on this
 	 * post (a structured field with a hidden sub-field goes whole). Saves are EditorSave's to decide.
 	 */
-	public static function formField( mixed $field ): mixed {
+	public static function formField( mixed $field ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_array( $field ) || empty( $field['sp_top'] ) || ! is_admin() ) {
 			return $field;
 		}
-		$post_id    = (int) ( acf_get_form_data( 'post_id' ) ?: 0 );
+		$post_id    = (int) ( acf_get_form_data( 'post_id' ) ?: 0 ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		$collection = $post_id > 0 ? self::collection( (string) get_post_type( $post_id ) ) : null;
 		$col        = $field['spacepress']['name'] ?? null;
 		if ( null === $collection || ! is_string( $col ) ) {
@@ -737,7 +737,7 @@ final class CoreAccess {
 	// ================================================================ writes
 
 	/** Does the update rule, given $data, cover row $pk as it is now? (Admission only; EditorSave decides.) */
-	public static function mayUpdateWith( string $collection, int $pk, array $data, Viewer $viewer ): bool {
+	public static function mayUpdateWith( string $collection, int $pk, array $data, Viewer $viewer ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! isset( Access::collectionRules( self::schema()->collection( $collection ) )['update']['fn'] ) ) {
 			return false;
 		}
@@ -752,7 +752,7 @@ final class CoreAccess {
 	 *
 	 * @return array{array<string, mixed>, list<string>}
 	 */
-	public static function incoming( string $collection, \WP_REST_Request $request, bool $singleSelector = false ): array {
+	public static function incoming( string $collection, \WP_REST_Request $request, bool $singleSelector = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$spec = self::schema()->collection( $collection );
 		$data = array();
 		foreach ( array(
@@ -766,7 +766,7 @@ final class CoreAccess {
 				$data[ $col ] = is_array( $v ) ? ( $v['raw'] ?? null ) : $v;
 			}
 		}
-		if ( ( $spec['drafts'] ?? false ) && is_string( $status = $request->get_param( 'status' ) ) ) {
+		if ( ( $spec['drafts'] ?? false ) && is_string( $status = $request->get_param( 'status' ) ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			$data['status'] = array(
 				'publish' => 'published',
 				'future'  => 'scheduled',
@@ -777,7 +777,7 @@ final class CoreAccess {
 		if ( is_array( $meta ) ) {
 			foreach ( PostMeta::fields( $spec ) as $col => $def ) {
 				if ( array_key_exists( $col, $meta ) ) {
-					if ( $singleSelector && array_key_exists( $col, $data ) ) {
+					if ( $singleSelector && array_key_exists( $col, $data ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						throw new HttpError( 403, 'forbidden', "Submit $col only once", HttpError::seg( (string) $col ) );
 					}
 					// The value as it will be saved (PostMeta::update_value normalizes the same way),
@@ -802,7 +802,7 @@ final class CoreAccess {
 				foreach ( $spec['columns'] as $col => $def ) {
 					$key = $spec['wp']['fieldKeyPrefix'] . $col;
 					if ( $name === $key || $name === $spec['wp']['metaPrefix'] . $col ) {
-						if ( $singleSelector && array_key_exists( $col, $data ) ) {
+						if ( $singleSelector && array_key_exists( $col, $data ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 							throw new HttpError( 403, 'forbidden', "Submit $col only once", HttpError::seg( (string) $col ) );
 						}
 						$data[ (string) $col ] = Scf::fromScf( $def, $value, $key );
@@ -832,12 +832,12 @@ final class CoreAccess {
 	// ================================================================ helpers
 
 	public static function error( HttpError $e ): \WP_Error {
-		return new \WP_Error( $e->errorCode, $e->getMessage(), array( 'status' => $e->status ) + ( null === $e->pointer ? array() : array( 'pointer' => $e->pointer ) ) );
+		return new \WP_Error( $e->errorCode, $e->getMessage(), array( 'status' => $e->status ) + ( null === $e->pointer ? array() : array( 'pointer' => $e->pointer ) ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
-	public static function collection( string $postType ): ?string {
+	public static function collection( string $postType ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		foreach ( self::post_backed() as $name => $spec ) {
-			if ( $spec['wp']['postType'] === $postType ) {
+			if ( $spec['wp']['postType'] === $postType ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				return (string) $name;
 			}
 		}
@@ -846,7 +846,7 @@ final class CoreAccess {
 	}
 
 	/** The taxonomy kind a WordPress taxonomy (`sp_<name>`) is, or null when it isn't SpacePress's. */
-	public static function taxonomyKind( string $taxonomy ): ?string {
+	public static function taxonomyKind( string $taxonomy ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( Plugin::instance()?->schema->taxonomies() ?? array() as $name => $spec ) {
 			if ( $spec['wp']['taxonomy'] === $taxonomy ) {
 				return (string) $name;

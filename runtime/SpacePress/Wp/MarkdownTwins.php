@@ -41,7 +41,7 @@ final class MarkdownTwins {
 	private static array|false|null $negotiated = false;
 
 	/** @param string $mainFile the app plugin's main file, which names it to WordPress/ai */
-	public static function register( string $mainFile ): void {
+	public static function register( string $mainFile ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		// After the app router's handlers (0): a first/app/ route at a `.md` path or `/llms.txt` is the app's.
 		add_filter( 'do_parse_request', array( self::class, 'parseRequest' ), 1 );
 		add_action( 'parse_request', array( self::class, 'parsed' ), PHP_INT_MAX );
@@ -50,7 +50,7 @@ final class MarkdownTwins {
 		add_filter( 'robots_txt', array( self::class, 'robots' ), PHP_INT_MAX );
 		add_filter( 'rest_request_before_callbacks', array( self::class, 'restFields' ), 10, 3 );
 		add_filter( 'rest_pre_serve_request', array( self::class, 'restMarkdown' ), 10, 4 );
-		add_filter( 'wpai_markdown_feeds_conflicting_plugins', static fn ( mixed $plugins ): array => self::conflicting( (array) $plugins, $mainFile ) );
+		add_filter( 'wpai_markdown_feeds_conflicting_plugins', static fn ( mixed $plugins ): array => self::conflicting( (array) $plugins, $mainFile ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/**
@@ -61,12 +61,12 @@ final class MarkdownTwins {
 	 * @param array<string, string> $plugins
 	 * @return array<string, string>
 	 */
-	public static function conflicting( array $plugins, string $mainFile ): array {
+	public static function conflicting( array $plugins, string $mainFile ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ! function_exists( 'get_plugin_data' ) ) {
 			require_once ABSPATH . 'wp-admin/includes/plugin.php';
 		}
-		$name                                    = (string) ( get_plugin_data( $mainFile, false, false )['Name'] ?? '' );
-		$plugins[ plugin_basename( $mainFile ) ] = '' !== $name ? $name : 'SpacePress';
+		$name                                    = (string) ( get_plugin_data( $mainFile, false, false )['Name'] ?? '' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$plugins[ plugin_basename( $mainFile ) ] = '' !== $name ? $name : 'SpacePress'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 		return $plugins;
 	}
@@ -266,20 +266,20 @@ final class MarkdownTwins {
 	}
 
 	/** The `Content-Signal` value (contentsignals.org); the `sp_content_signal` filter changes it, '' sends none. */
-	public static function contentSignal(): string {
+	public static function contentSignal(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return (string) apply_filters( 'sp_content_signal', self::CONTENT_SIGNAL );
 	}
 
 	// ================================================================ hooks
 
 	/** do_parse_request: `/llms.txt` answers here; a `.md` URI is parsed as its HTML URL. */
-	public static function parseRequest( bool $parse ): bool {
+	public static function parseRequest( bool $parse ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! $parse || false !== self::$negotiated || is_admin() || ! in_array( self::method(), array( 'GET', 'HEAD' ), true ) ) {
 			return $parse;
 		}
 		$uri  = (string) ( $_SERVER['REQUEST_URI'] ?? '/' );
 		$path = (string) ( wp_parse_url( $uri, PHP_URL_PATH ) ?? '/' );
-		if ( $path === self::base() . '/llms.txt' ) {
+		if ( $path === self::base() . '/llms.txt' ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			self::emit( 200, array( 'Content-Type' => 'text/plain; charset=UTF-8' ) + self::headers(), self::llms() );
 		}
 		$html = self::html_path( $path );
@@ -368,7 +368,7 @@ final class MarkdownTwins {
 	 * core builds no `content.rendered` or `excerpt.rendered` (two the_content runs) that
 	 * restMarkdown() would throw away. Core's route still runs, permission check included.
 	 */
-	public static function restFields( mixed $response, array $handler, \WP_REST_Request $request ): mixed {
+	public static function restFields( mixed $response, array $handler, \WP_REST_Request $request ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $request->get_param( 'format' ) === 'md' && in_array( $request->get_method(), array( 'GET', 'HEAD' ), true ) && self::item_route_post( $request ) !== null ) {
 			$request->set_param( '_fields', 'id' );
 		}
@@ -390,8 +390,8 @@ final class MarkdownTwins {
 			return null;
 		}
 		$type      = get_post_type_object( $post->post_type );
-		$base      = $type?->rest_base ?: $post->post_type;
-		$namespace = $type?->rest_namespace ?: 'wp/v2';
+		$base      = $type?->rest_base ?: $post->post_type; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
+		$namespace = $type?->rest_namespace ?: 'wp/v2'; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 
 		return $request->get_route() === '/' . $namespace . '/' . $base . '/' . $post->ID ? $post : null;
 	}
@@ -404,7 +404,7 @@ final class MarkdownTwins {
 	 * an editor in the edit context). The item renders as the asking user, as core's own
 	 * `content.rendered` does.
 	 */
-	public static function restMarkdown( bool $served, \WP_HTTP_Response $result, \WP_REST_Request $request, \WP_REST_Server $server ): bool {
+	public static function restMarkdown( bool $served, \WP_HTTP_Response $result, \WP_REST_Request $request, \WP_REST_Server $server ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $served || $request->get_param( 'format' ) !== 'md' || ! in_array( $request->get_method(), array( 'GET', 'HEAD' ), true ) || $result->get_status() !== 200 ) {
 			return $served;
 		}
@@ -450,7 +450,7 @@ final class MarkdownTwins {
 	}
 
 	/** wp_head: the `<link rel="alternate" type="text/markdown">` matching the `Link` header. */
-	public static function linkTag(): void {
+	public static function linkTag(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! AppRouter::instance()?->serves( self::html_url() ) && self::kind() === null ) {
 			return;
 		}
@@ -507,7 +507,7 @@ final class MarkdownTwins {
 		}
 		$entries = array();
 		foreach ( $wp_query instanceof \WP_Query ? $wp_query->posts : array() as $post ) {
-			if ( $post instanceof \WP_Post && ( $entry = self::entry( $post ) ) !== null ) {
+			if ( $post instanceof \WP_Post && ( $entry = self::entry( $post ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				$entries[] = $entry;
 			}
 		}
@@ -550,7 +550,7 @@ final class MarkdownTwins {
 		if ( self::guarded( $url, $post->post_type ) ) {
 			return null;
 		}
-		$line = '- ' . self::link( self::plain( $post->post_title ) ?: '(untitled)', self::twin( $url ) );
+		$line = '- ' . self::link( self::plain( $post->post_title ) ?: '(untitled)', self::twin( $url ) ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		if ( '' !== $post->post_password ) {
 			return $line;
 		}
@@ -637,10 +637,10 @@ final class MarkdownTwins {
 	}
 
 	/** Whether an app guard covers this WordPress URL, including kind items listed by /llms.txt. */
-	private static function guarded( string $url, string $postType = '' ): bool {
+	private static function guarded( string $url, string $postType = '' ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$router = AppRouter::instance();
 		$path   = self::relative( (string) wp_parse_url( $url, PHP_URL_PATH ) );
-		return null !== $router && ( '/' !== $path || ! AppRouter::wordPressHomeQuery( $url ) ) && $router->guarded( $path, $postType );
+		return null !== $router && ( '/' !== $path || ! AppRouter::wordPressHomeQuery( $url ) ) && $router->guarded( $path, $postType ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/**
@@ -714,7 +714,7 @@ final class MarkdownTwins {
 
 	/** The HTML page a twin stands for, as WordPress spells it (permalink, trailing slash). */
 	private static function canonical(): string {
-		if ( is_singular() && ( $object = get_queried_object() ) instanceof \WP_Post ) {
+		if ( is_singular() && ( $object = get_queried_object() ) instanceof \WP_Post ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return (string) get_permalink( $object );
 		}
 		$uri   = self::relative( self::request_uri() );
@@ -733,7 +733,7 @@ final class MarkdownTwins {
 	private static function relative( string $uri ): string {
 		$base = self::base();
 
-		return '' !== $base && str_starts_with( $uri, $base ) ? ( substr( $uri, strlen( $base ) ) ?: '/' ) : $uri;
+		return '' !== $base && str_starts_with( $uri, $base ) ? ( substr( $uri, strlen( $base ) ) ?: '/' ) : $uri; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 	}
 
 	/** The home URL's path without its trailing slash ('' at the domain root). */

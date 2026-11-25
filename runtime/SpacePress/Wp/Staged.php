@@ -462,8 +462,8 @@ final class Staged {
 		$plugin = Plugin::instance();
 		$post   = get_post( is_object( $revision ) ? $revision : (int) $revision );
 		if ( null === $plugin || ! $post instanceof \WP_Post || 'revision' !== $post->post_type
-			|| $post->post_name !== WpPostStore::stagedName( (int) $post->post_parent )
-			|| ( $collection = CoreAccess::collection( (string) get_post_type( $post->post_parent ) ) ) === null
+			|| $post->post_name !== WpPostStore::stagedName( (int) $post->post_parent ) // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
+			|| ( $collection = CoreAccess::collection( (string) get_post_type( $post->post_parent ) ) ) === null // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			|| ! self::enabled( $plugin->schema->collection( $collection ) ) ) {
 			return;
 		}
@@ -527,7 +527,7 @@ final class Staged {
 	 * exists or ever existed: a discard leaves the links as they were, a promote moves them as one
 	 * update does.
 	 */
-	public static function restLinks( mixed $response, mixed $post ): mixed {
+	public static function restLinks( mixed $response, mixed $post ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$history = $response instanceof \WP_REST_Response && $post instanceof \WP_Post ? ( $response->get_links()['version-history'][0] ?? null ) : null;
 		$store   = is_array( $history ) ? Plugin::instance()?->db()->store() : null;
 		if ( ! $store instanceof CompositeStore ) {
@@ -573,7 +573,7 @@ final class Staged {
 	 * reads the staged row from the token's `api` URL instead ({@see preview()} gives no page URL
 	 * for a `sp/app` page).
 	 */
-	public static function previewPage(): void {
+	public static function previewPage(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		global $wp_query, $post;
 		$token    = $_GET[ self::PREVIEW_PARAM ] ?? null;
 		$shown    = $wp_query instanceof \WP_Query && $wp_query->is_singular() ? ( $wp_query->posts[0] ?? null ) : null;
@@ -607,7 +607,7 @@ final class Staged {
 				$staged->$native = $revision->$native;
 			}
 		}
-		$wp_query->posts[0]  = $wp_query->post = $wp_query->queried_object = $post = $staged;
+		$wp_query->posts[0]  = $wp_query->post = $wp_query->queried_object = $post = $staged; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		[$id, $rid, $prefix] = array( $claim['id'], $claim['revision'], (string) $spec['wp']['metaPrefix'] );
 		$columns             = array_map( 'strval', array_keys( $spec['columns'] ) );
 		usort( $columns, static fn ( string $a, string $b ): int => strlen( $b ) <=> strlen( $a ) );
@@ -615,7 +615,7 @@ final class Staged {
 		// structured field's parts under `<prefix><field>_…`: the longest field name that fits owns the key.
 		add_filter(
 			'get_post_metadata',
-			static function ( mixed $value, mixed $object, mixed $key ) use ( $id, $rid, $prefix, $columns, $fields, $masked ): mixed {
+			static function ( mixed $value, mixed $object, mixed $key ) use ( $id, $rid, $prefix, $columns, $fields, $masked ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.objectFound -- Preserve the existing PHP parameter name.
 				if ( (int) $object !== $id || ! is_string( $key ) || ! str_starts_with( ltrim( $key, '_' ), $prefix ) ) {
 					return $value;
 				}
@@ -654,12 +654,12 @@ final class Staged {
 	 * rule covers no row of that kind, before core pages the list, so a read-only caller never sees
 	 * it offered. Running one is refused for them as it always was.
 	 */
-	public static function listed( mixed $include, mixed $ability ): mixed {
+	public static function listed( mixed $include, mixed $ability ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.includeFound -- Preserve the existing PHP parameter name.
 		return $include && $ability instanceof \WP_Ability && get_current_user_id() !== 0 ? self::offered( $ability->get_name() ) : $include;
 	}
 
 	/** One ability's description (`GET /wp-abilities/v1/abilities/<name>`): the same rule, as a 404. */
-	public static function abilityItem( mixed $response, mixed $handler, mixed $request ): mixed {
+	public static function abilityItem( mixed $response, mixed $handler, mixed $request ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $response instanceof \WP_REST_Response && ! $response->is_error() && $request instanceof \WP_REST_Request && $request->get_method() === 'GET'
 			&& preg_match( '#^/wp-abilities/v1/abilities/(.+)$#', $request->get_route(), $m ) && ! str_ends_with( $m[1], '/run' ) && ! self::offered( urldecode( $m[1] ) ) ) {
 			return new \WP_Error( 'rest_ability_not_found', __( 'Ability not found.' ), array( 'status' => 404 ) );
@@ -669,7 +669,7 @@ final class Staged {
 	}
 
 	/** `mcp_adapter_tools_list`: the same rule for the app's MCP tools. */
-	public static function toolList( mixed $tools ): mixed {
+	public static function toolList( mixed $tools ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_array( $tools ) ) {
 			return $tools;
 		}
@@ -973,7 +973,7 @@ final class Staged {
 			return null;
 		}
 		$revision = get_post( $claim[2] );
-		if ( ! $revision instanceof \WP_Post || (int) $revision->post_parent !== $claim[1] || $revision->post_name !== WpPostStore::stagedName( $claim[1] ) ) {
+		if ( ! $revision instanceof \WP_Post || (int) $revision->post_parent !== $claim[1] || $revision->post_name !== WpPostStore::stagedName( $claim[1] ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return null;
 		}
 
@@ -993,7 +993,7 @@ final class Staged {
 	 */
 	private static function rest_hooks( array $spec, int $id, array $patch ): void {
 		$type    = (string) $spec['wp']['postType'];
-		$request = new \WP_REST_Request( 'POST', '/wp/v2/' . ( get_post_type_object( $type )?->rest_base ?: $type ) . '/' . $id );
+		$request = new \WP_REST_Request( 'POST', '/wp/v2/' . ( get_post_type_object( $type )?->rest_base ?: $type ) . '/' . $id ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		$request->set_url_params( array( 'id' => $id ) );
 		$request->set_body_params(
 			Kinds::input(
@@ -1006,7 +1006,7 @@ final class Staged {
 			)
 		);
 		clean_post_cache( $id );
-		$post = get_post( $id ) ?: throw new \LogicException( "Post $id vanished" );
+		$post = get_post( $id ) ?: throw new \LogicException( "Post $id vanished" ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		do_action( "rest_insert_$type", $post, $request, false );
 		do_action( "rest_after_insert_$type", get_post( $id ), $request, false );
 	}

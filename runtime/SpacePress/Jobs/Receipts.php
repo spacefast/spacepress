@@ -29,7 +29,7 @@ final class Receipts {
 	 * CLI) bind to the key alone, so their keys must name what they guard (e.g. include the row id).
 	 */
 	/** Run $fn with once() bound to this input: the action/create body, or the job's input. */
-	public static function withFingerprint( string $hash, callable $fn ): mixed {
+	public static function withFingerprint( string $hash, callable $fn ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		$previous          = self::$fingerprint;
 		self::$fingerprint = $hash;
 		try {
@@ -40,7 +40,7 @@ final class Receipts {
 	}
 
 	/** `once(key, fn)`: scope 'fn', keyed per calling user, bound to the current operation's input. */
-	public static function once( string $scope, mixed $key, \Closure $fn ): mixed {
+	public static function once( string $scope, mixed $key, \Closure $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		if ( ! is_string( $key ) ) {
 			throw new \SpacePress\JsError( 'once key must be a string', 'TypeError' );
 		}
@@ -48,7 +48,7 @@ final class Receipts {
 			$scope,
 			self::key( $key, '' ),
 			(int) ( db()->actor()['id'] ?? 0 ),
-			self::$fingerprint ?: hash( 'sha256', '' ),
+			self::$fingerprint ?: hash( 'sha256', '' ), // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			static fn (): array => array( 'data' => $fn() ),
 			snapshot: static fn ( array $result ): array => Js::clone( $result )
 		);
@@ -57,9 +57,9 @@ final class Receipts {
 	}
 
 	/** Extensions::aroundOperation: creates always, actions when `idempotent: true`. */
-	public static function around( string $scope, array $spec, string $rawBody, array $headers, ?Viewer $viewer, callable $next ): Response {
+	public static function around( string $scope, array $spec, string $rawBody, array $headers, ?Viewer $viewer, callable $next ): Response { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$key  = $headers['idempotency-key'] ?? null;
-		$next = static fn (): Response => self::withFingerprint( hash( 'sha256', $rawBody ), $next );
+		$next = static fn (): Response => self::withFingerprint( hash( 'sha256', $rawBody ), $next ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === $key || ( str_starts_with( $scope, 'action:' ) && ! ( $spec['idempotent'] ?? false ) ) ) {
 			return $next();
 		}
@@ -68,7 +68,7 @@ final class Receipts {
 			$scope,
 			self::key( $key, '/Idempotency-Key' ),
 			(int) ( $viewer?->user['id'] ?? 0 ),
-			hash( 'sha256', $rawBody ),
+			hash( 'sha256', $rawBody ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			static function () use ( $next ): array {
 				$response = $next();
 

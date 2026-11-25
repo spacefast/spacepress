@@ -141,7 +141,7 @@ final class Module {
 	}
 
 	/** Hidden columns never reach a query, at any depth (`where`, relation filters, `orderBy`, `columns`, `with`). */
-	public static function guardQuery( string $collection, array &$opts, ?Viewer $viewer, string $pointer ): void {
+	public static function guardQuery( string $collection, array &$opts, ?Viewer $viewer, string $pointer ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null === $viewer ) {
 			return;
 		}
@@ -195,7 +195,7 @@ final class Module {
 	 * stays visible to trusted internal reads that maintain it.
 	 */
 	public static function strip( array $rows, string $collection, ?Viewer $viewer ): array {
-		$is_auth = $collection === ( db()->schema()->auth()['collection'] ?? null );
+		$is_auth = $collection === ( db()->schema()->auth()['collection'] ?? null ); // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 		$hidden  = null !== $viewer || $is_auth ? self::hidden( $collection ) : array();
 		if ( null === $viewer && $is_auth ) {
 			$hidden = array_intersect_key( $hidden, array_flip( array( 'passwordHash', 'suspendedAt', 'guest' ) ) );
@@ -209,7 +209,7 @@ final class Module {
 
 	/** The virtual `password` input on the auth collection: kept for wp_set_password. */
 	public static function password( string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided ): void {
-		if ( 'delete' === $op || $collection !== ( db()->schema()->auth()['collection'] ?? null ) || ! array_key_exists( 'password', $data ) ) {
+		if ( 'delete' === $op || $collection !== ( db()->schema()->auth()['collection'] ?? null ) || ! array_key_exists( 'password', $data ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return;
 		}
 		$password = $data['password'];
@@ -221,8 +221,8 @@ final class Module {
 	}
 
 	/** API writes never set system columns of the auth collection directly, and only admins change `role`. */
-	public static function guardWrite( string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided ): void {
-		if ( null === $viewer || 'delete' === $op || $collection !== ( db()->schema()->auth()['collection'] ?? null ) ) {
+	public static function guardWrite( string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		if ( null === $viewer || 'delete' === $op || $collection !== ( db()->schema()->auth()['collection'] ?? null ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return;
 		}
 		foreach ( array_keys( self::hidden( $collection ) ) as $col ) {

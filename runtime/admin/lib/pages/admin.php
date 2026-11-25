@@ -115,7 +115,7 @@ foreach ( \SpacePress\Wp\Runtime::plugin()->schema->collections() as $name => $c
 			$target   = \SpacePress\Wp\Runtime::plugin()->schema->collection( $def['references']['collection'] );
 			$taxonomy = get_taxonomy( $target['wp']['taxonomy'] );
 			if ( $taxonomy && $taxonomy->show_in_rest ) {
-				$terms[ $column ] = $taxonomy->rest_base ?: $taxonomy->name;
+				$terms[ $column ] = $taxonomy->rest_base ?: $taxonomy->name; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			} else {
 				// Keep this collection on SpacePress's form/API: core REST cannot
 				// represent every assignment, and terms are never post meta.
@@ -129,7 +129,7 @@ foreach ( \SpacePress\Wp\Runtime::plugin()->schema->collections() as $name => $c
 		$sp_admin_native[ $name ] = array(
 			'postType' => $type->name,
 			'terms'    => $terms,
-			'path'     => '/' . ( $type->rest_namespace ?: 'wp/v2' ) . '/' . ( $type->rest_base ?: $type->name ),
+			'path'     => '/' . ( $type->rest_namespace ?: 'wp/v2' ) . '/' . ( $type->rest_base ?: $type->name ), // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		);
 	}
 }

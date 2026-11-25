@@ -23,7 +23,7 @@ final class OidcClient {
 
 	public function __construct(
 		private string $issuer,
-		private string $clientId,
+		private string $clientId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		private string $secret,
 		private string $redirect,
 		private ?array $discovery = null,
@@ -43,7 +43,7 @@ final class OidcClient {
 		);
 		$query    = array(
 			'response_type'         => 'code',
-			'client_id'             => $this->clientId,
+			'client_id'             => $this->clientId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			'redirect_uri'          => $this->redirect,
 			'scope'                 => 'openid email profile',
 			'state'                 => $store['state'],
@@ -82,7 +82,7 @@ final class OidcClient {
 						'grant_type'    => 'authorization_code',
 						'code'          => $query['code'],
 						'redirect_uri'  => $this->redirect,
-						'client_id'     => $this->clientId,
+						'client_id'     => $this->clientId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 						'code_verifier' => $store['verifier'],
 					) + ( '' === $this->secret ? array() : array( 'client_secret' => $this->secret ) ),
 				)
@@ -114,7 +114,7 @@ final class OidcClient {
 		);
 	}
 
-	private function verify( string $jwt, string $accessToken, string $nonce ): array {
+	private function verify( string $jwt, string $accessToken, string $nonce ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$parts  = explode( '.', $jwt );
 		$header = count( $parts ) === 3 ? json_decode( JWT::urlsafeB64Decode( $parts[0] ), true ) : null;
 		if (
@@ -154,9 +154,9 @@ final class OidcClient {
 		$aud       = $claims['aud'] ?? null;
 		$audiences = is_string( $aud ) ? array( $aud ) : ( is_array( $aud ) ? $aud : array() );
 		if (
-			! in_array( $this->clientId, $audiences, true ) ||
-			( count( $audiences ) > 1 && ( $claims['azp'] ?? null ) !== $this->clientId ) ||
-			( isset( $claims['azp'] ) && $claims['azp'] !== $this->clientId ) ||
+			! in_array( $this->clientId, $audiences, true ) || // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			( count( $audiences ) > 1 && ( $claims['azp'] ?? null ) !== $this->clientId ) || // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			( isset( $claims['azp'] ) && $claims['azp'] !== $this->clientId ) || // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			! is_string( $claims['iss'] ?? null ) || ! hash_equals( $this->issuer, $claims['iss'] ) ||
 			! is_string( $claims['sub'] ?? null ) || '' === $claims['sub'] ||
 			! is_int( $claims['exp'] ?? null ) || ! is_int( $claims['iat'] ?? null ) ||
@@ -166,7 +166,7 @@ final class OidcClient {
 		}
 		if ( isset( $claims['at_hash'] ) ) {
 			// The left half of the hash the signature algorithm uses: SHA-256 for RS256, SHA-512 for Ed25519.
-			$hash = hash( 'EdDSA' === $this->algorithm ? 'sha512' : 'sha256', $accessToken, true );
+			$hash = hash( 'EdDSA' === $this->algorithm ? 'sha512' : 'sha256', $accessToken, true ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			if ( ! is_string( $claims['at_hash'] ) || ! hash_equals( JWT::urlsafeB64Encode( substr( $hash, 0, intdiv( strlen( $hash ), 2 ) ) ), $claims['at_hash'] ) ) {
 				throw new \RuntimeException( 'at_hash mismatch' );
 			}

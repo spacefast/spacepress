@@ -192,7 +192,7 @@ final class Surfaces {
 	 * for: otherwise a denied password could mint a fresh one (for its own user, or, being an
 	 * administrator's, for another user) through core's route and apply with that.
 	 */
-	public static function inheritDeny( int $userId, array $item ): void {
+	public static function inheritDeny( int $userId, array $item ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$plugin = Runtime::plugin();
 		if ( null === $plugin || SchemaVersions::of( $plugin ) === null ) {
 			return;
@@ -205,7 +205,7 @@ final class Surfaces {
 		foreach ( $denied as $entry ) {
 			if ( self::covers( $entry, get_current_user_id(), $signed ) ) {
 				$denied[] = array(
-					'user'     => $userId,
+					'user'     => $userId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					'password' => (string) $item['uuid'],
 				);
 				update_option( self::denied_option(), $denied, false );
@@ -393,7 +393,7 @@ final class Surfaces {
 	}
 
 	/** `wp spacepress schema …` as WP-CLI runs it: one JSON document, `{data}` or `{error}`, and the exit code. */
-	public static function wpCli( array $args, array $flags ): int {
+	public static function wpCli( array $args, array $flags ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		try {
 			[$code, $out] = array( 0, array( 'data' => self::cli( $args, $flags ) ) );
 		} catch ( \Throwable $e ) {

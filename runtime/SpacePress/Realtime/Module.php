@@ -113,7 +113,7 @@ final class Module {
 	 */
 	public static function changed( string $key, string $op ): void {
 		foreach ( db()->schema()->collections() as $table => $spec ) {
-			if ( $key === (string) $table || $key === (string) ( $spec['key'] ?? $table ) ) {
+			if ( $key === (string) $table || $key === (string) ( $spec['key'] ?? $table ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				throw new \LogicException( "'$key' is an app collection: its writes are announced by written()" );
 			}
 		}
@@ -221,7 +221,7 @@ final class Module {
 		foreach ( $notice['changes'] as $i => $change ) {
 			$spec   = $by_key[ $change['collection'] ] ?? null;
 			$public = null !== $spec && ! ( $spec['drafts'] ?? false )
-				&& \SpacePress\Access::collectionRules( $spec )['read'] === array( 'role' => 'anyone' );
+				&& \SpacePress\Access::collectionRules( $spec )['read'] === array( 'role' => 'anyone' ); // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			if ( ! $public ) {
 				$notice['changes'][ $i ]['ids'] = null;
 			}

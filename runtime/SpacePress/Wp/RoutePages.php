@@ -66,7 +66,7 @@ final class RoutePages {
 		if ( array() === $routes ) {
 			return;
 		}
-		$self = self::$instance = new self( $plugin, $routes );
+		$self = self::$instance = new self( $plugin, $routes ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		// After the app's post types (0) and its migrations (1), beside ContentPages (2). A managed
 		// build reconciles from initialize ({@see install()}); its edit protection below is registered
 		// on every request either way.
@@ -76,7 +76,7 @@ final class RoutePages {
 		// A route's Page trashed, restored or deleted by hand: the next request checks the Pages again.
 		if ( ! Runtime::managed() ) {
 			$changed = static fn ( int $id ) => $self->routeOf( $id ) !== null && InstallMarker::forget();
-			add_action( 'transition_post_status', static fn ( string $new, string $old, \WP_Post $post ) => $new !== $old && $changed( $post->ID ), 10, 3 );
+			add_action( 'transition_post_status', static fn ( string $new, string $old, \WP_Post $post ) => $new !== $old && $changed( $post->ID ), 10, 3 ); // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.newFound -- Preserve the existing PHP parameter name.
 			add_action( 'deleted_post', $changed, 10, 1 );
 		}
 		add_filter( 'page_link', array( $self, 'link' ), 10, 2 );
@@ -140,7 +140,7 @@ final class RoutePages {
 		return $this->state()['pages'];
 	}
 
-	public function routeOf( int $post ): ?string {
+	public function routeOf( int $post ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$route = array_search( $post, $this->pages(), true );
 
 		return is_string( $route ) && isset( $this->routes[ $route ] ) ? $route : null;
@@ -343,7 +343,7 @@ final class RoutePages {
 	}
 
 	/** Another published Page at this path, or a front page the site chose that isn't this app's. */
-	private function foreignOwner( string $pattern, ?int $mine ): ?int {
+	private function foreignOwner( string $pattern, ?int $mine ): ?int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$ours = array_values( $this->state()['pages'] );
 		if ( null !== $mine ) {
 			$ours[] = $mine;
@@ -390,7 +390,7 @@ final class RoutePages {
 		return $data;
 	}
 
-	public function hideFromAdmin( \WP_Query $query ): void {
+	public function hideFromAdmin( \WP_Query $query ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_admin() || self::$writing || $query->get( 'post_type' ) !== 'page' || $this->pages() === array() ) {
 			return;
 		}
@@ -398,7 +398,7 @@ final class RoutePages {
 	}
 
 	/** @param array<string, mixed> $args */
-	public function hideFromRest( array $args, \WP_REST_Request $request ): array {
+	public function hideFromRest( array $args, \WP_REST_Request $request ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $request->get_param( 'context' ) === 'edit' && $this->pages() !== array() ) {
 			$args['post__not_in'] = array( ...( $args['post__not_in'] ?? array() ), ...array_values( $this->pages() ) );
 		}
@@ -441,7 +441,7 @@ final class RoutePages {
 		return null === $route ? $link : home_url( AppRouter::address( $this->routes[ $route ]['pattern'] ) );
 	}
 
-	public function canonicalUrl( string|false $url, \WP_Post $post ): string|false {
+	public function canonicalUrl( string|false $url, \WP_Post $post ): string|false { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$route = $this->routeOf( $post->ID );
 
 		return null === $route ? $url : home_url( AppRouter::address( $this->routes[ $route ]['pattern'] ) );
@@ -465,7 +465,7 @@ final class RoutePages {
 				'pagename' => 1,
 			)
 		);
-		if ( rawurldecode( rtrim( $path, '/' ) ?: '/' ) === $this->routes[ $route ]['pattern'] && array() === $own ) {
+		if ( rawurldecode( rtrim( $path, '/' ) ?: '/' ) === $this->routes[ $route ]['pattern'] && array() === $own ) { // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			return;
 		}
 		wp_safe_redirect( add_query_arg( urlencode_deep( array_diff_key( $query, $own ) ), home_url( AppRouter::address( $this->routes[ $route ]['pattern'] ) ) ), 301 );

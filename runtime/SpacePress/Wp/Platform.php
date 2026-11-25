@@ -96,7 +96,7 @@ final class Platform {
 			// Action Scheduler registers its version on plugins_loaded. A plugin activated after that hook
 			// fired (several activated in one WP-CLI call) never registers in that request, so the registry
 			// is empty; read the plugin's header instead.
-			'actionScheduler' => class_exists( 'ActionScheduler_Versions' ) ? ( \ActionScheduler_Versions::instance()->latest_version() ?: self::header_version( 'action-scheduler' ) ) : null,
+			'actionScheduler' => class_exists( 'ActionScheduler_Versions' ) ? ( \ActionScheduler_Versions::instance()->latest_version() ?: self::header_version( 'action-scheduler' ) ) : null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			'mcpAdapter'      => in_array( 'mcp-adapter/mcp-adapter.php', (array) get_option( 'active_plugins', array() ), true ) || isset( get_site_option( 'active_sitewide_plugins', array() )['mcp-adapter/mcp-adapter.php'] ) ? ( defined( 'MCP_ADAPTER_VERSION' ) ? MCP_ADAPTER_VERSION : self::header_version( 'mcp-adapter' ) ) : null,
 			'twoFactor'       => defined( 'TWO_FACTOR_VERSION' ) ? TWO_FACTOR_VERSION : null,
 			'polylang'        => defined( 'POLYLANG_VERSION' ) ? POLYLANG_VERSION : null,
@@ -110,12 +110,12 @@ final class Platform {
 	}
 
 	/** True when $version (a `$wp_version`) is at or above the floor. */
-	public static function wordpressSupported( string $version ): bool {
+	public static function wordpressSupported( string $version ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return version_compare( $version, self::WORDPRESS, '>=' );
 	}
 
 	/** True when comment creates are spam-checked: Akismet is loaded and has an API key. */
-	public static function spamChecks(): bool {
+	public static function spamChecks(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return class_exists( 'Akismet' ) && method_exists( 'Akismet', 'get_api_key' ) && '' !== (string) \Akismet::get_api_key();
 	}
 

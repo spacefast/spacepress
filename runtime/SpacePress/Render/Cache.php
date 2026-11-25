@@ -103,35 +103,35 @@ final class Cache {
 	 * `no-cache` keeps it from storing one whatever else says it may; other hosts ignore the header.
 	 * Derived from the `Cache-Control` sent, so the two never disagree.
 	 */
-	public static function send( string $cacheControl ): void {
+	public static function send( string $cacheControl ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		// A response that sets a cookie is this visitor's (Batcache refuses to keep one too).
-		if ( str_starts_with( $cacheControl, 'public' ) && preg_grep( '/^set-cookie:/i', headers_list() ) !== array() ) {
-			$cacheControl = self::PRIVATE;
+		if ( str_starts_with( $cacheControl, 'public' ) && preg_grep( '/^set-cookie:/i', headers_list() ) !== array() ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$cacheControl = self::PRIVATE; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
-		header( 'Cache-Control: ' . $cacheControl );
-		header( self::EDGE_HEADER . ': ' . ( str_starts_with( $cacheControl, 'public' ) ? 'cache' : 'no-cache' ) );
+		header( 'Cache-Control: ' . $cacheControl ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		header( self::EDGE_HEADER . ': ' . ( str_starts_with( $cacheControl, 'public' ) ? 'cache' : 'no-cache' ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		// Batcache reads only `max-age`, so it would keep this response for its default window.
-		if ( ! str_starts_with( $cacheControl, 'public' ) && function_exists( 'batcache_cancel' ) ) {
+		if ( ! str_starts_with( $cacheControl, 'public' ) && function_exists( 'batcache_cancel' ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			batcache_cancel();
 		}
 	}
 
 	/** Recheck headers after wp_head, block templates, wp_body_open and wp_footer. */
-	public static function finishPage( string $cacheControl, int $status ): void {
+	public static function finishPage( string $cacheControl, int $status ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		foreach ( headers_list() as $header ) {
 			if ( stripos( $header, 'Cache-Control:' ) === 0 ) {
 				$policy = trim( substr( $header, strlen( 'Cache-Control:' ) ) );
 				if ( preg_match( '/(?:private|no-store|no-cache)/i', $policy ) === 1 ) {
-					$cacheControl = self::PRIVATE;
+					$cacheControl = self::PRIVATE; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					break;
 				}
-				$cacheControl = $policy;
+				$cacheControl = $policy; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 		}
 		if ( http_response_code() !== $status || Forms::marked() || LoginView::private() || SearchView::marked() ) {
-			$cacheControl = self::PRIVATE;
+			$cacheControl = self::PRIVATE; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
-		self::send( $cacheControl );
+		self::send( $cacheControl ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/** The WP Cloud edge's per-response cache switch. */
@@ -143,7 +143,7 @@ final class Cache {
 	 * sign-in, an unlocked password-protected post, a comment author's saved name and email, a login
 	 * language. Such a request is never given, or served, a shared copy, whoever WordPress says it is.
 	 */
-	public static function viewerCookie(): bool {
+	public static function viewerCookie(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( array_keys( $_COOKIE ) as $name ) {
 			if ( preg_match( '/^(wordpress_logged_in_|wordpress_sec_|wp-postpass_|comment_author_|wp_lang$|zi_session$|__Host-zi_session$)/', (string) $name ) === 1 ) {
 				return true;
@@ -317,7 +317,7 @@ final class Cache {
 	 * all of which save its fields as options): the URLs whose render read it join the write's
 	 * announcement, after the commit like a row's.
 	 */
-	public static function globalWritten( string $name ): void {
+	public static function globalWritten( string $name ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! self::listening() ) {
 			return;
 		}
@@ -325,7 +325,7 @@ final class Cache {
 	}
 
 	/** A compiled WordPress option was added, changed or deleted. */
-	public static function optionWritten( string $name ): void {
+	public static function optionWritten( string $name ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( self::listening() ) {
 			self::dependency_written( 'option:' . $name );
 		}
@@ -371,7 +371,7 @@ final class Cache {
 	 *
 	 * @return list<string> absolute URLs, each recorded page at its one address
 	 */
-	public static function itemUrls( string $collection, int|string $id ): array {
+	public static function itemUrls( string $collection, int|string $id ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! self::listening() ) {
 			return array();
 		}
@@ -402,7 +402,7 @@ final class Cache {
 		$path  = \SpacePress\Wp\AppRouter::requestPath( $uri );
 		$query = (string) ( wp_parse_url( $uri, PHP_URL_QUERY ) ?? '' );
 		if ( '' !== $base && str_starts_with( $path, $base ) ) {
-			$path = substr( $path, strlen( $base ) ) ?: '/';
+			$path = substr( $path, strlen( $base ) ) ?: '/'; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		}
 		return \SpacePress\Wp\AppRouter::address( $path ) . ( '' !== $query ? '?' . $query : '' );
 	}

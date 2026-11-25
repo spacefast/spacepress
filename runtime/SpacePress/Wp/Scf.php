@@ -54,7 +54,7 @@ final class Scf {
 	private static array $field_filters = array();
 
 	/** @param callable(array $field, array $def, string $col, array $spec): array $fn */
-	public static function fieldFilter( callable $fn ): void {
+	public static function fieldFilter( callable $fn ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		self::$field_filters[] = $fn;
 	}
 
@@ -162,7 +162,7 @@ final class Scf {
 		}
 	}
 
-	public static function registerFilters(): void {
+	public static function registerFilters(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		add_filter( 'acf/validate_value', array( self::class, 'validateValue' ), 20, 4 );
 		foreach ( self::SCF_TYPES as $type ) {
 			add_filter( "acf/validate_rest_value/type=$type", array( self::class, 'validateRestValue' ), 20, 3 );
@@ -179,7 +179,7 @@ final class Scf {
 	}
 
 	/** One generated SCF field (rules, validation metadata, field filters), for other field groups (user forms, §6.2). */
-	public static function fieldFor( Schema $schema, string $key, string $name, string $col, array $def, array $spec ): array {
+	public static function fieldFor( Schema $schema, string $key, string $name, string $col, array $def, array $spec ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return array( 'sp_top' => true ) + self::field( $schema, $key, $name, $col, $def, $spec );
 	}
 
@@ -396,7 +396,7 @@ final class Scf {
 	// ================================================================ filters
 
 	/** wp-admin form saves: run SpacePress's codec + rules; a string return is SCF's error message. */
-	public static function validateValue( mixed $valid, mixed $value, mixed $field, mixed $input ): mixed {
+	public static function validateValue( mixed $valid, mixed $value, mixed $field, mixed $input ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_array( $field ) || empty( $field['sp_top'] ) || false === $valid ) {
 			return $valid;
 		}
@@ -406,7 +406,7 @@ final class Scf {
 	}
 
 	/** Core REST saves (`acf` in /wp/v2/<type>): same check, reported as a WP_Error (400). */
-	public static function validateRestValue( mixed $valid, mixed $value, mixed $field ): mixed {
+	public static function validateRestValue( mixed $valid, mixed $value, mixed $field ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_array( $field ) || ! isset( $field['spacepress'] ) ) {
 			return $valid;
 		}
@@ -419,7 +419,7 @@ final class Scf {
 			return $valid;
 		}
 		if ( empty( $field['sp_top'] ) ) {
-			$field = acf_get_field( $field['key'] ) ?: $field;
+			$field = acf_get_field( $field['key'] ) ?: $field; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			if ( empty( $field['sp_top'] ) ) {
 				return $valid;
 			}
@@ -458,7 +458,7 @@ final class Scf {
 	}
 
 	/** SCF's structured writers use isset(), so explicit nullable toggles need a stored empty value. */
-	public static function prepareValue( mixed $value, mixed $postId, mixed $field ): mixed {
+	public static function prepareValue( mixed $value, mixed $postId, mixed $field ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$def = is_array( $field ) ? ( $field['spacepress'] ?? null ) : null;
 		if ( ! is_array( $def ) || ! is_array( $value ) ) {
 			return $value;
@@ -498,7 +498,7 @@ final class Scf {
 		return $row;
 	}
 
-	public static function updateValue( mixed $value, mixed $postId, mixed $field ): mixed {
+	public static function updateValue( mixed $value, mixed $postId, mixed $field ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$def = is_array( $field ) ? ( $field['spacepress'] ?? null ) : null;
 		// WordPress serializes PHP false as '', which is also SCF's nullable
 		// sub-field representation. Keep booleans in SCF's numeric storage form.
@@ -522,7 +522,7 @@ final class Scf {
 		return $value;
 	}
 
-	public static function loadValue( mixed $value, mixed $postId, mixed $field ): mixed {
+	public static function loadValue( mixed $value, mixed $postId, mixed $field ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$def = is_array( $field ) ? ( $field['spacepress'] ?? null ) : null;
 		if ( is_array( $def ) && 'timestamp' === $def['type'] && is_string( $value ) && '' !== $value && 0 === self::$io ) {
 			return get_date_from_gmt( $value, 'Y-m-d H:i:s' );
@@ -532,19 +532,19 @@ final class Scf {
 	}
 
 	/** The post and many-ref column an SCF value is for, or null. @return ?array{string, int, array, string} */
-	private static function links_field( mixed $postId, mixed $field ): ?array {
+	private static function links_field( mixed $postId, mixed $field ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$def = is_array( $field ) ? ( $field['spacepress'] ?? null ) : null;
-		if ( ! is_array( $def ) || ( $def['type'] ?? null ) !== 'refList' || empty( $field['sp_top'] ) || ! is_numeric( $postId )
-			|| ( $collection = CoreAccess::collection( (string) get_post_type( (int) $postId ) ) ) === null ) {
+		if ( ! is_array( $def ) || ( $def['type'] ?? null ) !== 'refList' || empty( $field['sp_top'] ) || ! is_numeric( $postId ) // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			|| ( $collection = CoreAccess::collection( (string) get_post_type( (int) $postId ) ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Keep the assignment and its test together. Preserve the existing PHP variable name.
 			return null;
 		}
 
-		return array( $collection, (int) $postId, $def, (string) $def['name'] );
+		return array( $collection, (int) $postId, $def, (string) $def['name'] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/** acf/pre_load_value: the editor shows the post's links, in position order. */
-	public static function loadLinks( mixed $value, mixed $postId, mixed $field ): mixed {
-		if ( null !== $value || ( $at = self::links_field( $postId, $field ) ) === null ) {
+	public static function loadLinks( mixed $value, mixed $postId, mixed $field ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		if ( null !== $value || ( $at = self::links_field( $postId, $field ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Keep the assignment and its test together. Preserve the existing PHP variable name.
 			return $value;
 		}
 		[$collection, $id, $def] = $at;
@@ -561,8 +561,8 @@ final class Scf {
 	 * acf/pre_update_value: an editor save of a many-ref replaces the post's links. The ids are checked
 	 * as every write checks them (existence, and visibility to a signed-in editor); SCF writes no meta.
 	 */
-	public static function updateLinks( mixed $check, mixed $value, mixed $postId, mixed $field ): mixed {
-		if ( null !== $check || self::$io > 0 || ( $at = self::links_field( $postId, $field ) ) === null ) {
+	public static function updateLinks( mixed $check, mixed $value, mixed $postId, mixed $field ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		if ( null !== $check || self::$io > 0 || ( $at = self::links_field( $postId, $field ) ) === null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Keep the assignment and its test together. Preserve the existing PHP variable name.
 			return $check;
 		}
 		[$collection, $id, $def, $col] = $at;
@@ -579,7 +579,7 @@ final class Scf {
 		return true;
 	}
 
-	public static function restSchema( mixed $schema, mixed $field ): mixed {
+	public static function restSchema( mixed $schema, mixed $field ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_array( $schema ) || ! is_array( $field ) || ! isset( $field['spacepress'] ) ) {
 			return $schema;
 		}
@@ -601,17 +601,17 @@ final class Scf {
 	// ================================================================ value forms
 
 	/** Storage form (§3.4) → SCF unformatted form, for update_field. */
-	public static function toScf( array $def, int|float|string|null $stored, string $key ): mixed {
+	public static function toScf( array $def, int|float|string|null $stored, string $key ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return null === $stored ? null : self::scf_value( $def, Schema::decode( $def, $stored ), $key );
 	}
 
 	/** SCF unformatted value → storage form. */
-	public static function toStorage( array $def, mixed $raw, string $key ): int|float|string|null {
+	public static function toStorage( array $def, mixed $raw, string $key ): int|float|string|null { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return Schema::store( $def, self::fromScf( $def, $raw, $key ) );
 	}
 
 	/** Storage form → the string SCF keeps in a scalar meta row (unique checks compare against it). */
-	public static function metaScalar( array $def, int|float|string $stored ): string {
+	public static function metaScalar( array $def, int|float|string $stored ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$v = self::scf_value( $def, Schema::decode( $def, $stored ), '' );
 
 		return is_float( $v ) ? Js::numStr( $v ) : (string) $v;
@@ -661,14 +661,14 @@ final class Scf {
 	 * reads as null. Shapes SpacePress can't interpret are passed through so Schema::normalize reports them.
 	 * $strictJson: throw JsonException on an unparsable json field (validation) instead of passing it.
 	 */
-	public static function fromScf( array $def, mixed $v, string $key, bool $strictJson = false ): mixed {
+	public static function fromScf( array $def, mixed $v, string $key, bool $strictJson = false ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		$type = $def['type'];
 		if ( null === $v || '' === $v || ( false === $v && 'boolean' !== $type ) ) {
 			return in_array( $type, array( 'select', 'mediaList', 'refList' ), true ) && ( $def['notNull'] ?? false ) || 'refList' === $type ? array() : null;
 		}
 
 		return match ( $type ) {
-			'integer', 'media', 'file' => is_numeric( $v ) && (float) $v === (float) (int) $v ? (int) $v : $v,
+			'integer', 'media', 'file' => is_numeric( $v ) && (float) $v === (float) (int) $v ? (int) $v : $v, // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			'real' => is_numeric( $v ) ? (float) $v : $v,
 			'boolean' => match ( true ) {
 				is_bool( $v ) => $v,
@@ -678,7 +678,7 @@ final class Scf {
 			},
 			'date' => is_string( $v ) && preg_match( '/^(\d{4})(\d{2})(\d{2})$/D', $v, $m ) ? "$m[1]-$m[2]-$m[3]" : $v,
 			'timestamp' => is_string( $v ) && preg_match( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/D', $v ) ? str_replace( ' ', 'T', $v ) . '.000Z' : $v,
-			'json' => is_string( $v ) ? self::json( $v, $strictJson ) : $v,
+			'json' => is_string( $v ) ? self::json( $v, $strictJson ) : $v, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			'select' => is_array( $v ) ? array_values( array_map( 'strval', $v ) ) : ( is_string( $v ) && is_serialized( $v ) ? array_values( (array) unserialize( $v, array( 'allowed_classes' => false ) ) ) : array( $v ) ),
 			'mediaList' => is_array( $v ) ? array_values( array_map( 'intval', $v ) ) : $v,
 			// post_object (multiple) posts a list of ids; the text field a comma-separated one.

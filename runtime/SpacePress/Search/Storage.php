@@ -50,7 +50,7 @@ final class Storage {
 	}
 
 	/** Deletes the entries of a kind's rows that no longer exist (a rebuild's last step). */
-	public static function removeMissing( string $kind, array $spec ): void {
+	public static function removeMissing( string $kind, array $spec ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$known = array();
 		foreach ( self::run( 'SELECT DISTINCT "item" FROM {search} WHERE "kind" = ?', array( self::bytes( $kind ) ) ) as $row ) {
 			$known[] = (string) $row['item'];
@@ -98,7 +98,7 @@ final class Storage {
 		try {
 			$store->db->run( 'SELECT 1 FROM ' . self::table() . ' LIMIT 1' );
 
-			return self::$ready = true;
+			return self::$ready = true; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		} catch ( \Throwable ) {
 			return false;
 		}
@@ -109,7 +109,7 @@ final class Storage {
 	 * as bytes; the SQLite translator turns `CAST(… AS BINARY)` into text, which never equals a
 	 * BLOB, so there the stored bytes are read as text instead (SQLite's `=` on text is binary).
 	 */
-	public static function itemIs( string $key ): string {
+	public static function itemIs( string $key ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::translated() ? "CAST(s.`item` AS CHAR) = $key" : "s.`item` = CAST($key AS BINARY)";
 	}
 

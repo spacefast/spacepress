@@ -29,7 +29,7 @@ final class WpTableStore implements Store, Links {
 	) {
 	}
 
-	public function afterCommit( callable $fn ): void {
+	public function afterCommit( callable $fn ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$this->db->afterCommit( $fn );
 	}
 
@@ -37,7 +37,7 @@ final class WpTableStore implements Store, Links {
 		$this->db->applySystemStatements( $statements );
 	}
 
-	public function transaction( callable $fn ): mixed {
+	public function transaction( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		return $this->db->transaction( $fn );
 	}
 
@@ -78,7 +78,7 @@ final class WpTableStore implements Store, Links {
 		return false;
 	}
 
-	public function readGuards( string $collection, \SpacePress\Viewer $viewer, bool $forSelect = false ): array {
+	public function readGuards( string $collection, \SpacePress\Viewer $viewer, bool $forSelect = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return array();
 	}
 
@@ -122,13 +122,13 @@ final class WpTableStore implements Store, Links {
 		$this->db->run( 'DELETE FROM ' . $q( $this->table( $collection ) ) . ' WHERE ' . $q( $pk_col ) . ' = ?', array( $pk ) );
 	}
 
-	public function softDelete( string $collection, int|string $pk, string $at, ?int $userId, ?string $group ): void {
+	public function softDelete( string $collection, int|string $pk, string $at, ?int $userId, ?string $group ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$this->update(
 			$collection,
 			$pk,
 			array(
 				'deletedAt'    => $at,
-				'deletedBy'    => $userId,
+				'deletedBy'    => $userId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				'deletedGroup' => $group,
 				'_live'        => null,
 			)
@@ -154,14 +154,14 @@ final class WpTableStore implements Store, Links {
 		return $this->dialect->quote( $this->db->prefix() . 'sp__join_' . $join );
 	}
 
-	public function links( string $join, string $by, array $ids, bool $forUpdate = false ): array {
+	public function links( string $join, string $by, array $ids, bool $forUpdate = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( array() === $ids ) {
 			return array();
 		}
 		$by   = 'target_id' === $by ? 'target_id' : 'owner_id';
 		$rows = $this->db->run(
 			'SELECT `owner_id`, `target_id`, `position` FROM ' . $this->linkTable( $join ) . " WHERE `$by` IN (" . implode( ', ', array_fill( 0, count( $ids ), '?' ) ) . ') ORDER BY `owner_id`, `position`'
-			. ( $forUpdate ? $this->dialect->writeLock() : '' ),
+			. ( $forUpdate ? $this->dialect->writeLock() : '' ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			array_values( array_map( 'intval', $ids ) ),
 		);
 
@@ -203,15 +203,15 @@ final class WpTableStore implements Store, Links {
 	 */
 	public function globalRead( string $name ): ?array {
 		$g      = $this->schema->global( $name );
-		$postId = $g['wp']['postId'];
-		wp_prime_option_caches( array_map( static fn ( $field ) => $postId . '_' . $field, array_keys( $g['fields'] ) ) );
+		$postId = $g['wp']['postId']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		wp_prime_option_caches( array_map( static fn ( $field ) => $postId . '_' . $field, array_keys( $g['fields'] ) ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$out = array();
 		foreach ( $g['fields'] as $field => $col ) {
 			$field_key = $g['wp']['fieldKeyPrefix'] . $field;
-			if ( get_option( $postId . '_' . $field, null ) === null ) {
+			if ( get_option( $postId . '_' . $field, null ) === null ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				continue;
 			}
-			$out[ $field ] = Scf::toStorage( $col, get_field( $field_key, $postId, false ), $field_key );
+			$out[ $field ] = Scf::toStorage( $col, get_field( $field_key, $postId, false ), $field_key ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 
 		return array() === $out ? null : $out;
@@ -219,12 +219,12 @@ final class WpTableStore implements Store, Links {
 
 	public function globalWrite( string $name, array $values ): void {
 		$g      = $this->schema->global( $name );
-		$postId = $g['wp']['postId'];
+		$postId = $g['wp']['postId']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		foreach ( $values as $field => $stored ) {
 			$col       = $g['fields'][ $field ];
 			$field_key = $g['wp']['fieldKeyPrefix'] . $field;
-			$this->db->touchOption( $postId . '_' . $field );
-			$this->db->core( static fn () => update_field( $field_key, Scf::toScf( $col, $stored, $field_key ), $postId ) );
+			$this->db->touchOption( $postId . '_' . $field ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$this->db->core( static fn () => update_field( $field_key, Scf::toScf( $col, $stored, $field_key ), $postId ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 	}
 
@@ -264,7 +264,7 @@ final class WpTableStore implements Store, Links {
 		return array_map( self::revision_row( ... ), $rows );
 	}
 
-	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void {
+	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$table = '`' . $this->db->prefix() . 'sp__revisions`';
 		// The insert owns its newly allocated key. A locking read of its revision history can lock
 		// the gap around that key and deadlock with another insert allocating a different key.
@@ -272,21 +272,21 @@ final class WpTableStore implements Store, Links {
 		$max             = $this->db->run( "SELECT MAX(`version`) AS v FROM $table WHERE `collection` = ? AND `pk` = ?$for_update", array( $collection, (string) $pk ) );
 		$version         = ( (int) ( $max[0]['v'] ?? 0 ) ) + 1;
 		$op              = (string) ( $meta['op'] ?? 'update' );
-		$schemaMigration = is_string( $meta['schemaMigration'] ?? null ) && '' !== $meta['schemaMigration'] ? $meta['schemaMigration'] : null;
+		$schemaMigration = is_string( $meta['schemaMigration'] ?? null ) && '' !== $meta['schemaMigration'] ? $meta['schemaMigration'] : null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$changed         = array_key_exists( 'changed', $meta ) && is_array( $meta['changed'] ) ? Js::jsonStringify( array_values( $meta['changed'] ) ) : null;
 		$this->db->run(
 			"INSERT INTO $table (`collection`, `pk`, `version`, `op`, `at`, `userId`, `schemaMigration`, `row`, `changed`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			array( $collection, (string) $pk, $version, $op, Js::iso( Js::now() ), $userId, $schemaMigration, Js::jsonStringify( $encodedRow ), $changed ),
+			array( $collection, (string) $pk, $version, $op, Js::iso( Js::now() ), $userId, $schemaMigration, Js::jsonStringify( $encodedRow ), $changed ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		);
 	}
 
-	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array {
+	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$table    = '`' . $this->db->prefix() . 'sp__revisions`';
-		$primary  = $byVersion ? 'version' : 'id';
-		$fallback = $byVersion ? 'id' : 'version';
-		$rows     = $this->db->run( "SELECT * FROM $table WHERE `collection` = ? AND `pk` = ? AND `$primary` = ? LIMIT 1", array( $collection, (string) $pk, $revisionId ) );
+		$primary  = $byVersion ? 'version' : 'id'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$fallback = $byVersion ? 'id' : 'version'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$rows     = $this->db->run( "SELECT * FROM $table WHERE `collection` = ? AND `pk` = ? AND `$primary` = ? LIMIT 1", array( $collection, (string) $pk, $revisionId ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( array() === $rows ) {
-			$rows = $this->db->run( "SELECT * FROM $table WHERE `collection` = ? AND `pk` = ? AND `$fallback` = ? LIMIT 1", array( $collection, (string) $pk, $revisionId ) );
+			$rows = $this->db->run( "SELECT * FROM $table WHERE `collection` = ? AND `pk` = ? AND `$fallback` = ? LIMIT 1", array( $collection, (string) $pk, $revisionId ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 
 		return array() === $rows ? null : self::revision_row( $rows[0] );
@@ -307,13 +307,13 @@ final class WpTableStore implements Store, Links {
 		);
 	}
 
-	public function promoteDue( string $collection, string $nowIso ): array {
+	public function promoteDue( string $collection, string $nowIso ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$table = $this->dialect->quote( $this->table( $collection ) );
 		$pk    = $this->dialect->quote( $this->schema->collection( $collection )['primaryKey'] );
 		$where = " WHERE `status` = 'scheduled' AND `publishedAt` <= ?";
-		$pks   = array_column( $this->db->run( "SELECT $pk AS pk FROM $table$where", array( $nowIso ) ), 'pk' );
+		$pks   = array_column( $this->db->run( "SELECT $pk AS pk FROM $table$where", array( $nowIso ) ), 'pk' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( array() !== $pks ) {
-			$this->db->run( "UPDATE $table SET `status` = 'published'$where", array( $nowIso ) );
+			$this->db->run( "UPDATE $table SET `status` = 'published'$where", array( $nowIso ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 
 		return $pks;

@@ -37,7 +37,7 @@ final class JsPromise {
 	}
 
 	/** CreateResolvingFunctions: the first call wins; later calls are ignored. */
-	public function resolvingFunctions(): array {
+	public function resolvingFunctions(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$done    = false;
 		$resolve = function ( mixed $value = JsUndefined::Value ) use ( &$done ): JsUndefined {
 			if ( $done ) {
@@ -145,9 +145,9 @@ final class JsPromise {
 	}
 
 	/** PerformPromiseThen. A null derived promise is an internal reaction (await, combinators). */
-	public function then( ?\Closure $onFulfilled = null, ?\Closure $onRejected = null, bool $derive = true ): ?self {
+	public function then( ?\Closure $onFulfilled = null, ?\Closure $onRejected = null, bool $derive = true ): ?self { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$derived  = $derive ? new self() : null;
-		$reaction = array( $onFulfilled, $onRejected, $derived, Seam::viewer() );
+		$reaction = array( $onFulfilled, $onRejected, $derived, Seam::viewer() ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( self::REJECTED === $this->state && ! $this->handled ) {
 			JsJobs::untrackRejection( $this );
 		}
@@ -180,10 +180,10 @@ final class JsPromise {
 		$callable = static fn ( mixed $value ): ?\Closure => $value instanceof \Closure ? $value : null;
 		return match ( $method ) {
 			'then' => $this->then(
-				( $f = $callable( $args[0] ?? null ) ) === null ? null : static fn ( $v ) => $f( $v ),
-				( $r = $callable( $args[1] ?? null ) ) === null ? null : static fn ( $v ) => $r( $v ),
+				( $f = $callable( $args[0] ?? null ) ) === null ? null : static fn ( $v ) => $f( $v ), // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
+				( $r = $callable( $args[1] ?? null ) ) === null ? null : static fn ( $v ) => $r( $v ), // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 			),
-			'catch' => $this->then( null, ( $r = $callable( $args[0] ?? null ) ) === null ? null : static fn ( $v ) => $r( $v ) ),
+			'catch' => $this->then( null, ( $r = $callable( $args[0] ?? null ) ) === null ? null : static fn ( $v ) => $r( $v ) ), // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 			'finally' => $this->finally( $callable( $args[0] ?? null ) ),
 			default => throw new JsError( $method . ' is not a function', 'TypeError' ),
 		};
@@ -217,7 +217,7 @@ final class JsPromise {
 		};
 	}
 
-	private static function withResolvers(): JsObject {
+	private static function withResolvers(): JsObject { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$promise            = new self();
 		[$resolve, $reject] = $promise->resolvingFunctions();
 		return new JsObject(
@@ -230,7 +230,7 @@ final class JsPromise {
 	}
 
 	/** PerformPromiseAll / AllSettled / Any. Each element goes through Promise.resolve, then `then`. */
-	private static function combine( string $method, mixed $iterable ): self {
+	private static function combine( string $method, mixed $iterable ): self { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.iterableFound -- Preserve the existing PHP parameter name.
 		$result = new self();
 		try {
 			$items = Js::dynamicIterable( $iterable )->a;
@@ -296,7 +296,7 @@ final class JsPromise {
 		return $result;
 	}
 
-	private static function race( mixed $iterable ): self {
+	private static function race( mixed $iterable ): self { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.iterableFound -- Preserve the existing PHP parameter name.
 		$result = new self();
 		try {
 			$items = Js::dynamicIterable( $iterable )->a;

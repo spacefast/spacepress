@@ -128,7 +128,7 @@ final class Sitemap {
 		// reads, a users-kind field) still purges the files that list its kind.
 		\SpacePress\Extensions::onWritten(
 			static function ( string $op, string $collection ): void {
-				if ( has_action( 'sp_purge_urls' ) !== false && ( $files = self::filesForKind( $collection ) ) !== array() ) {
+				if ( has_action( 'sp_purge_urls' ) !== false && ( $files = self::filesForKind( $collection ) ) !== array() ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 					Purges::announce( $files );
 				}
 			}
@@ -170,7 +170,7 @@ final class Sitemap {
 	 *
 	 * @return list<string>
 	 */
-	public static function filesFor( \WP_Post $post ): array {
+	public static function filesFor( \WP_Post $post ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$plugin = Plugin::instance();
 		if ( null === $plugin || $plugin->schema->frontend() === false ) {
 			return array();
@@ -193,7 +193,7 @@ final class Sitemap {
 	}
 
 	/** The files of SpacePress's sub-sitemap a write to a row of $collection may change (`onWritten`). */
-	public static function filesForKind( string $collection ): array {
+	public static function filesForKind( string $collection ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$plugin = Plugin::instance();
 		if ( null === $plugin || $plugin->schema->frontend() === false || ! function_exists( 'get_sitemap_url' ) ) {
 			return array();
@@ -326,7 +326,7 @@ final class Sitemap {
 	// ================================================================ users
 
 	/** Core's author query, narrowed to the users whose row the users kind's read rule shows a visitor. */
-	private static function readableUsers( Plugin $plugin, array $args ): array {
+	private static function readableUsers( Plugin $plugin, array $args ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$collection = $plugin->schema->auth()['collection'] ?? null;
 		// `publicAuthors`, or a kind anyone may read: every author, as WordPress ships it.
 		if ( ! is_string( $collection ) || Authors::public( $plugin->schema ) ) {
@@ -376,7 +376,7 @@ final class Sitemap {
 		$pk      = $spec['primaryKey'];
 		$visitor = new Viewer( null );
 		if ( ! KindUrls::patternReadable( $spec, $visitor ) ) {
-			return self::$listed[ $kind ] = array();
+			return self::$listed[ $kind ] = array(); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		}
 		try {
 			$rows = $plugin->db()->findMany(
@@ -388,7 +388,7 @@ final class Sitemap {
 				$visitor
 			);
 		} catch ( \SpacePress\HttpError ) {
-			return self::$listed[ $kind ] = array(); // the read rule refuses signed-out visitors outright
+			/* phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together. */ return self::$listed[ $kind ] = array(); // the read rule refuses signed-out visitors outright
 		}
 		$ids = array_map( static fn ( array $row ): int => (int) $row[ $pk ], $rows );
 		// The posts, and their meta when the kind's URL holds a field: one read each, not one per item.
@@ -408,7 +408,7 @@ final class Sitemap {
 			$out[] = $id;
 		}
 
-		return self::$listed[ $kind ] = $out;
+		return self::$listed[ $kind ] = $out; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 	}
 
 	/** @return list<array{loc: string, lastmod: string}> the listed items' entries, in id order */
@@ -428,14 +428,14 @@ final class Sitemap {
 	}
 
 	/** Every translation has its own URL, so a localized kind lists the rows of every locale. */
-	private static function everyLocale( Plugin $plugin, string $kind ): array {
+	private static function everyLocale( Plugin $plugin, string $kind ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $plugin->schema->locales() !== null && ( $plugin->schema->collection( $kind )['localized'] ?? false ) ? array( 'locale' => '*' ) : array();
 	}
 
 	// ================================================================ app pages
 
 	/** @var ?list<array{loc: string}> the app's listed pages, once per request (finding them renders each) */
-	private static ?array $appPages = null;
+	private static ?array $appPages = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	/**
 	 * The app's public pages, in route order: the ones `/llms.txt` lists, less the home page (core's
@@ -443,9 +443,9 @@ final class Sitemap {
 	 *
 	 * @return list<array{loc: string}>
 	 */
-	private static function appPages( Plugin $plugin ): array {
-		if ( null !== self::$appPages ) {
-			return self::$appPages;
+	private static function appPages( Plugin $plugin ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		if ( null !== self::$appPages ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			return self::$appPages; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		$out = array();
 		if ( $plugin->unavailable() === null ) {
@@ -456,7 +456,7 @@ final class Sitemap {
 			}
 		}
 
-		return self::$appPages = $out;
+		return self::$appPages = $out; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase, Squiz.PHP.DisallowMultipleAssignments.Found -- Preserve the existing PHP property name. Keep the assignment and its test together.
 	}
 
 	/** Whether a parameterless page asks to be indexed: its layouts' and its own `metadata.robots`. */

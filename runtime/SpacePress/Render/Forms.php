@@ -69,7 +69,7 @@ final class Forms {
 		$from = $_SERVER['HTTP_X_SP_TEMPLATE'] ?? null;
 		$page = $_SERVER['HTTP_X_SP_FROM'] ?? null;
 		if ( is_string( $from ) && '' !== $from && null !== $template && $from !== $template
-			&& is_string( $page ) && $page !== self::without_marker( (string) ( $_SERVER['REQUEST_URI'] ?? '/' ) ) ) {
+			&& is_string( $page ) && $page !== self::without_marker( (string) ( $_SERVER['REQUEST_URI'] ?? '/' ) ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return;
 		}
 		header( 'Set-Cookie: ' . $name . '=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax' . ( is_ssl() ? '; Secure' : '' ), false );
@@ -103,7 +103,7 @@ final class Forms {
 		// A flash of a post without the field (a form rendered before it existed) is the first form's.
 		$form = (int) ( $flash['form'] ?? 1 );
 
-		return $form === ( self::$opened[ $action ] ?? 0 ) ? $flash : null;
+		return $form === ( self::$opened[ $action ] ?? 0 ) ? $flash : null; // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 	}
 
 	/**

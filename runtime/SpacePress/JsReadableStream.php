@@ -18,25 +18,25 @@ final class JsReadableStream {
 	private const ERRORED  = 2;
 
 	private int $state         = self::READABLE;
-	private mixed $storedError = JsUndefined::Value;
+	private mixed $storedError = JsUndefined::Value; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** @var list<mixed> */
 	private array $queue = array();
 	/** @var list<JsPromise> pending read requests */
 	private array $reads         = array();
-	private bool $closeRequested = false;
+	private bool $closeRequested = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	private bool $started        = false;
 	private bool $pulling        = false;
-	private bool $pullAgain      = false;
+	private bool $pullAgain      = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	public ?JsObject $reader     = null;
 	private ?JsPromise $closed   = null;
 	private JsObject $controller;
 	private mixed $source;
-	private int|float $highWaterMark;
+	private int|float $highWaterMark; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	public function __construct( mixed $source = JsUndefined::Value, mixed $strategy = JsUndefined::Value ) {
 		$this->source        = Js::isNullish( $source ) ? new JsObject() : $source;
 		$hwm                 = Js::isNullish( $strategy ) ? JsUndefined::Value : Js::dynamicGet( $strategy, 'highWaterMark' );
-		$this->highWaterMark = JsUndefined::Value === $hwm ? 1 : Js::toNumber( $hwm );
+		$this->highWaterMark = JsUndefined::Value === $hwm ? 1 : Js::toNumber( $hwm ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( ! Js::isNullish( $strategy ) && ! Js::isNullish( Js::dynamicGet( $strategy, 'size' ) ) ) {
 			throw new JsError( 'ReadableStream size() strategies are not supported', 'TypeError' );
 		}
@@ -67,14 +67,14 @@ final class JsReadableStream {
 	}
 
 	/** A stream over a PHP stream resource (`fopen`, `php://temp`, upload temp files). */
-	public static function fromResource( mixed $handle, int $chunkSize = 65536 ): self {
+	public static function fromResource( mixed $handle, int $chunkSize = 65536 ): self { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		if ( ! is_resource( $handle ) ) {
 			throw new \InvalidArgumentException( 'fromResource needs an open stream resource' ); }
 		return new self(
 			new JsObject(
 				array(
-					'pull'   => static function ( $controller ) use ( $handle, $chunkSize ) {
-						$bytes = fread( $handle, $chunkSize );
+					'pull'   => static function ( $controller ) use ( $handle, $chunkSize ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+						$bytes = fread( $handle, $chunkSize ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						if ( false === $bytes ) {
 							throw new JsError( 'The stream resource could not be read', 'TypeError' ); }
 						if ( '' !== $bytes ) {
@@ -102,7 +102,7 @@ final class JsReadableStream {
 	}
 
 	/** Reads the whole stream into a PHP resource (php://temp), chunk by chunk, driving the job queue. */
-	public function toResource(): mixed {
+	public function toResource(): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$out    = fopen( 'php://temp', 'w+b' );
 		$reader = $this->getReader();
 		while ( true ) {
@@ -142,16 +142,16 @@ final class JsReadableStream {
 		}
 	}
 
-	public function desiredSize(): int|float|null {
+	public function desiredSize(): int|float|null { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return match ( $this->state ) {
 			self::ERRORED => null,
 			self::CLOSED => 0,
-			default => $this->highWaterMark - count( $this->queue ),
+			default => $this->highWaterMark - count( $this->queue ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		};
 	}
 
 	private function enqueue( mixed $chunk ): JsUndefined {
-		if ( $this->closeRequested || self::READABLE !== $this->state ) {
+		if ( $this->closeRequested || self::READABLE !== $this->state ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			throw new JsError( 'Cannot enqueue a chunk into a closed or errored stream', 'TypeError' );
 		}
 		if ( array() !== $this->reads ) {
@@ -164,10 +164,10 @@ final class JsReadableStream {
 	}
 
 	private function request_close(): JsUndefined {
-		if ( $this->closeRequested || self::READABLE !== $this->state ) {
+		if ( $this->closeRequested || self::READABLE !== $this->state ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			throw new JsError( 'Cannot close a closed or errored stream', 'TypeError' );
 		}
-		$this->closeRequested = true;
+		$this->closeRequested = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( array() === $this->queue ) {
 			$this->finish_close(); }
 		return JsUndefined::Value;
@@ -185,7 +185,7 @@ final class JsReadableStream {
 		if ( self::READABLE !== $this->state ) {
 			return JsUndefined::Value; }
 		$this->state       = self::ERRORED;
-		$this->storedError = $reason;
+		$this->storedError = $reason; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$this->queue       = array();
 		foreach ( $this->reads as $read ) {
 			$read->reject( $reason ); }
@@ -199,12 +199,12 @@ final class JsReadableStream {
 
 	/** ReadableStreamDefaultControllerCallPullIfNeeded. */
 	private function pull_if_needed(): void {
-		if ( ! $this->started || $this->closeRequested || self::READABLE !== $this->state ) {
+		if ( ! $this->started || $this->closeRequested || self::READABLE !== $this->state ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			return; }
 		if ( array() === $this->reads && $this->desiredSize() <= 0 ) {
 			return; }
 		if ( $this->pulling ) {
-			$this->pullAgain = true;
+			$this->pullAgain = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			return; }
 		$pull = $this->source_method( 'pull' );
 		if ( null === $pull ) {
@@ -213,8 +213,8 @@ final class JsReadableStream {
 		JsPromise::from( $this->call_source( $pull, array( $this->controller ) ) )->then(
 			function (): JsUndefined {
 				$this->pulling = false;
-				if ( $this->pullAgain ) {
-					$this->pullAgain = false;
+				if ( $this->pullAgain ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+					$this->pullAgain = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 					$this->pull_if_needed();
 				}
 				return JsUndefined::Value;
@@ -229,10 +229,10 @@ final class JsReadableStream {
 
 	public function read(): JsPromise {
 		if ( self::ERRORED === $this->state ) {
-			return JsPromise::rejected( $this->storedError ); }
+			return JsPromise::rejected( $this->storedError ); } // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( array() !== $this->queue ) {
 			$chunk = array_shift( $this->queue );
-			if ( $this->closeRequested && array() === $this->queue ) {
+			if ( $this->closeRequested && array() === $this->queue ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				$this->finish_close();
 			} else {
 				$this->pull_if_needed(); }
@@ -250,9 +250,9 @@ final class JsReadableStream {
 		if ( self::CLOSED === $this->state ) {
 			return JsPromise::from( JsUndefined::Value ); }
 		if ( self::ERRORED === $this->state ) {
-			return JsPromise::rejected( $this->storedError ); }
+			return JsPromise::rejected( $this->storedError ); } // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$this->queue          = array();
-		$this->closeRequested = true;
+		$this->closeRequested = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$this->finish_close();
 		$cancel = $this->source_method( 'cancel' );
 		$result = null === $cancel ? JsUndefined::Value : $this->call_source( $cancel, array( $reason ) );
@@ -264,7 +264,7 @@ final class JsReadableStream {
 	}
 
 	/** A default reader. Locking is enforced, as in JavaScript. */
-	public function getReader( mixed $options = JsUndefined::Value ): JsObject {
+	public function getReader( mixed $options = JsUndefined::Value ): JsObject { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! Js::isNullish( $options ) && ! Js::isNullish( Js::dynamicGet( $options, 'mode' ) ) ) {
 			throw new JsError( 'BYOB readers are not supported', 'TypeError' );
 		}
@@ -274,7 +274,7 @@ final class JsReadableStream {
 		if ( self::CLOSED === $this->state ) {
 			$this->closed->resolve( JsUndefined::Value ); }
 		if ( self::ERRORED === $this->state ) {
-			$this->closed->reject( $this->storedError );
+			$this->closed->reject( $this->storedError ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$this->closed->then( null, null, false ); }
 		$released     = false;
 		$guard        = static function () use ( &$released ): void {
@@ -297,7 +297,7 @@ final class JsReadableStream {
 				foreach ( $this->reads as $read ) {
 					$read->reject( new JsError( 'Reader was released', 'TypeError' ) ); }
 				$this->reads = array();
-				if ( $closed->state === JsPromise::PENDING ) {
+				if ( $closed->state === JsPromise::PENDING ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 					$closed->reject( new JsError( 'Reader was released', 'TypeError' ) );
 					$closed->then( null, null, false );
 				}
@@ -313,7 +313,7 @@ final class JsReadableStream {
 
 	/** Async iteration (`for await`, `values()`): reads until done; an early exit cancels the stream. */
 	public function values( mixed $options = JsUndefined::Value ): JsObject {
-		$preventCancel = ! Js::isNullish( $options ) && Js::truthy( Js::dynamicGet( $options, 'preventCancel' ) );
+		$preventCancel = ! Js::isNullish( $options ) && Js::truthy( Js::dynamicGet( $options, 'preventCancel' ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$reader        = $this->getReader();
 		return new JsObject(
 			array(
@@ -326,12 +326,12 @@ final class JsReadableStream {
 						}
 					);
 				},
-				'return' => function ( mixed $value = JsUndefined::Value ) use ( $reader, $preventCancel ) {
+				'return' => function ( mixed $value = JsUndefined::Value ) use ( $reader, $preventCancel ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					$done = static function () use ( $reader, $value ) {
 						Js::dynamicCallMethod( $reader, 'releaseLock', new JsArray() );
 						return JsGenerator::result( $value, true );
 					};
-					if ( $preventCancel ) {
+					if ( $preventCancel ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						return JsPromise::from( JsUndefined::Value )->then( $done ); }
 					return Js::dynamicCallMethod( $reader, 'cancel', new JsArray( array( $value ) ) )->then( $done );
 				},
@@ -388,7 +388,7 @@ final class JsReadableStream {
 	}
 
 	/** ReadableStreamPipeTo with the default options (and preventClose/preventAbort/preventCancel). */
-	public function pipeTo( mixed $destination, mixed $options = JsUndefined::Value ): JsPromise {
+	public function pipeTo( mixed $destination, mixed $options = JsUndefined::Value ): JsPromise { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! $destination instanceof JsWritableStream ) {
 			return JsPromise::rejected( new JsError( 'pipeTo needs a WritableStream', 'TypeError' ) );
 		}
@@ -430,7 +430,7 @@ final class JsReadableStream {
 		);
 	}
 
-	public function pipeThrough( mixed $transform, mixed $options = JsUndefined::Value ): mixed {
+	public function pipeThrough( mixed $transform, mixed $options = JsUndefined::Value ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$writable = Js::dynamicGet( $transform, 'writable' );
 		$readable = Js::dynamicGet( $transform, 'readable' );
 		$this->pipeTo( $writable, $options )->then( null, null, false );

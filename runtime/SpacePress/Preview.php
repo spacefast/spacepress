@@ -27,7 +27,7 @@ final class Preview {
 	}
 
 	/** Run the seed's writes; on a preview they are {@see quiet()} meanwhile. */
-	public static function seeding( callable $fn ): mixed {
+	public static function seeding( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$was           = self::$seeding;
 		self::$seeding = true;
 		try {

@@ -58,7 +58,7 @@ final class Passkeys {
 			}
 			$options = PublicKeyCredentialCreationOptions::create(
 				PublicKeyCredentialRpEntity::create(
-					get_bloginfo( 'name' ) ?: 'Identity',
+					get_bloginfo( 'name' ) ?: 'Identity', // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 					$this->host,
 				),
 				PublicKeyCredentialUserEntity::create(
@@ -186,7 +186,7 @@ final class Passkeys {
 					$this->db->insert(
 						'passkeys',
 						array(
-							'id'         => hash( 'sha256', $record->publicKeyCredentialId ),
+							'id'         => hash( 'sha256', $record->publicKeyCredentialId ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 							'wp_user_id' => $uid,
 							'record'     => $this->serializer->serialize( $record, 'json' ),
 							'created_at' => time(),
@@ -205,7 +205,7 @@ final class Passkeys {
 				401,
 			);
 		}
-		$key = hash( 'sha256', $public->rawId );
+		$key = hash( 'sha256', $public->rawId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		$row = $this->db->row(
 			"SELECT wp_user_id FROM {$this->db->prefix}passkeys WHERE id=%s",
 			$key,

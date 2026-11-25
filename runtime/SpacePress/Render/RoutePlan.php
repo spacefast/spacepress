@@ -11,7 +11,7 @@ use SpacePress\Wp\Plugin;
 /** The compiler's cache upper bound and the fixed paths that a write can invalidate directly. */
 final class RoutePlan {
 
-	public static function publicRequest(): bool {
+	public static function publicRequest(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return in_array( $_SERVER['REQUEST_METHOD'] ?? 'GET', array( 'GET', 'HEAD' ), true )
 			&& ( $_SERVER['HTTP_AUTHORIZATION'] ?? '' ) === '' && ( $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '' ) === ''
 			&& ! isset( $_SERVER['PHP_AUTH_USER'] )
@@ -19,7 +19,7 @@ final class RoutePlan {
 			&& (int) get_option( 'blog_public', 1 ) >= 0 && ! get_option( 'wpcom_public_coming_soon' ) && ! get_option( 'wpcom_coming_soon' );
 	}
 
-	public static function requestAllowsSharing( Plugin $plugin ): bool {
+	public static function requestAllowsSharing( Plugin $plugin ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::publicRequest() && ! Commerce::privateRequest( $plugin ) && ! Commerce::cartSession( $plugin );
 	}
 
@@ -31,7 +31,7 @@ final class RoutePlan {
 
 	/** Does the plan already cover every observed dependency at this exact, query-free URL? */
 	public static function covers( array $plan, string $pattern, string $uri, array $reads, array $also ): bool {
-		if ( ! ( $plan['fixedPurge'] ?? false ) || $uri !== wp_parse_url( home_url( AppRouter::address( $pattern ) ), PHP_URL_PATH ) ) {
+		if ( ! ( $plan['fixedPurge'] ?? false ) || $uri !== wp_parse_url( home_url( AppRouter::address( $pattern ) ), PHP_URL_PATH ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return false;
 		}
 		$kinds = array();

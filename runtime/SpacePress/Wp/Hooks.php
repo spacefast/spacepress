@@ -43,7 +43,7 @@ final class Hooks {
 	 *
 	 * @param array<string, list<string>> $views
 	 */
-	public static function toJs( mixed $value, array $views ): mixed {
+	public static function toJs( mixed $value, array $views ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$class = is_object( $value ) ? $value::class : null;
 		return match ( true ) {
 			null !== $class && isset( $views[ $class ] ) => new JsObject(
@@ -67,8 +67,8 @@ final class Hooks {
 	private static function query( \WP_Query $query, array $views ): JsObject {
 		return new JsObject(
 			array(
-				'get'           => static fn ( string $var ): mixed => self::toJs( $query->get( $var ), $views ),
-				'set'           => static function ( string $var, mixed $value ) use ( $query ): void {
+				'get'           => static fn ( string $var ): mixed => self::toJs( $query->get( $var ), $views ), // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.varFound -- Preserve the existing PHP parameter name.
+				'set'           => static function ( string $var, mixed $value ) use ( $query ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.varFound -- Preserve the existing PHP parameter name.
 					$query->set( $var, $value instanceof JsArray ? $value->a : $value );
 				},
 				'is_main_query' => static fn (): bool => $query->is_main_query(),
@@ -77,7 +77,7 @@ final class Hooks {
 	}
 
 	/** A filter's result back in the shape WordPress handed over (a list stays a PHP list). */
-	private static function toPhp( mixed $result, mixed $given ): mixed {
+	private static function toPhp( mixed $result, mixed $given ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$plain = \SpacePress\Seam::toPhp( $result );
 
 		return is_array( $given ) && is_array( $plain ) && array_is_list( $given ) ? array_values( $plain ) : $plain;

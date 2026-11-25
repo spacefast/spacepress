@@ -42,32 +42,32 @@ final class App {
 	}
 
 	/** Boot an app root (`sp/app/{schema.php,functions.php}`) on the services the plugin provides. */
-	public static function boot( string $appRoot, Schema $schema, Store $store, Auth $auth, Media $media ): self {
-		$functions = $appRoot . '/sp/app/functions.php';
+	public static function boot( string $appRoot, Schema $schema, Store $store, Auth $auth, Media $media ): self { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$functions = $appRoot . '/sp/app/functions.php'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( is_file( $functions ) ) {
 			require_once $functions;
 		}
 		$db = new Db( $store, $schema, $media );
 		Db::setInstance( $db );
 
-		return new self( $appRoot, $schema, $db, $store, $auth );
+		return new self( $appRoot, $schema, $db, $store, $auth ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/** Validate input against an action's schema, check its access, run its handler. */
-	private function action( string $name, string $rawBody, array $headers = array(), ?Viewer $viewer = null ): Response {
-		$input  = self::parse_body( $rawBody );
+	private function action( string $name, string $rawBody, array $headers = array(), ?Viewer $viewer = null ): Response { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$input  = self::parse_body( $rawBody ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$action = $this->schema->action( $name );
 		if ( null !== $viewer && ( $action['signature'] ?? null ) !== null ) {
 			// A `signature` action authenticates by HMAC in the beforeAction seam instead of an access
 			// rule (§6.1): whoever is logged in, the verified caller is anonymous for everything after.
-			Extensions::action( $action, $name, $rawBody, array_change_key_case( $headers, CASE_LOWER ), $viewer );
+			Extensions::action( $action, $name, $rawBody, array_change_key_case( $headers, CASE_LOWER ), $viewer ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$viewer = new Viewer( null );
 			$this->db->setActor( null );
 		} else {
 			if ( null !== $viewer ) {
 				$this->db->current( static fn () => Access::require( $action['access'] ?? Access::DEFAULT_WRITE, $viewer, 'create', null, "run $name" ) );
 			}
-			Extensions::action( $action, $name, $rawBody, array_change_key_case( $headers, CASE_LOWER ), $viewer );
+			Extensions::action( $action, $name, $rawBody, array_change_key_case( $headers, CASE_LOWER ), $viewer ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		if ( isset( $action['rateLimit'] ) ) {
 			RateLimit::check( $name, $action['rateLimit'], $viewer?->user );
@@ -88,7 +88,7 @@ final class App {
 		return Extensions::execute(
 			'action:' . $name,
 			$action,
-			$rawBody,
+			$rawBody, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			array_change_key_case( $headers, CASE_LOWER ),
 			$viewer,
 			static fn (): Response => Response::json( JsBinary::refuseWire( Seam::asVisitor( $visitor, static fn (): mixed => Timers::run( static fn (): mixed => $fn( $input, $ctx ) ) ), 'action ' . $name ) )
@@ -102,7 +102,7 @@ final class App {
 	 *
 	 * @return array{int, array<string, string>, string}
 	 */
-	public function serveRoute( array $match, string $method, string $path, string $query, string $body, array $headers, ?array $user, string $url ): array {
+	public function serveRoute( array $match, string $method, string $path, string $query, string $body, array $headers, ?array $user, string $url ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.matchFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		$headers = array_change_key_case( $headers, CASE_LOWER );
 		try {
 			$run      = in_array( $method, array( 'GET', 'HEAD' ), true ) ? $this->db->reading( ... ) : $this->db->transaction( ... );
@@ -191,7 +191,7 @@ final class App {
 	}
 
 	/** invoke(), with the operation's status and headers (`Idempotent-Replayed`) for a transport to pass on. */
-	public function invokeResponse( string $method, string $path, array $query, mixed $body, Viewer $viewer, array $headers = array() ): Response {
+	public function invokeResponse( string $method, string $path, array $query, mixed $body, Viewer $viewer, array $headers = array() ): Response { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$raw = is_string( $body ) ? $body : ( null === $body ? '' : ( Js::jsonStringify( $body ) ?? '' ) );
 
 		return $this->dispatch( $method, $path, $query, $raw, $viewer, $headers );
@@ -254,9 +254,9 @@ final class App {
 		$segments = array_map( 'rawurldecode', array_values( array_filter( explode( '/', $path ), static fn ( $s ) => '' !== $s ) ) );
 		$n        = count( $segments );
 		$name     = $segments[0] ?? '';
-		$notFound = static fn () => HttpError::notFound( "No route for $path" );
+		$notFound = static fn () => HttpError::notFound( "No route for $path" ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
-		if ( ( $handler = Extensions::routeHandler( $name ) ) !== null ) {
+		if ( ( $handler = Extensions::routeHandler( $name ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return $handler( $method, $segments, $query, $body, $viewer, $files, $form, $headers );
 		}
 		switch ( true ) {
@@ -281,7 +281,7 @@ final class App {
 		}
 
 		if ( $n < 1 || $n > 5 ) {
-			throw $notFound();
+			throw $notFound(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 
 		if ( ! $this->schema->hasCollection( $name ) ) {
@@ -376,7 +376,7 @@ final class App {
 		}
 
 		if ( 'revisions' !== $segments[2] ) {
-			throw $notFound();
+			throw $notFound(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		$this->gate( $spec, 'update' );
 		if ( 3 === $n ) {
@@ -390,7 +390,7 @@ final class App {
 						'version'         => $r['version'],
 						'op'              => $r['op'],
 						'at'              => $r['at'],
-						'user'            => null === $r['userId'] ? null : ( ( $u = $this->auth->user( $r['userId'] ) ) === null ? null : array(
+						'user'            => null === $r['userId'] ? null : ( ( $u = $this->auth->user( $r['userId'] ) ) === null ? null : array( // phpcs:ignore WordPress.CodeAnalysis.AssignmentInTernaryCondition.FoundInTernaryCondition, Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 							'id'   => $u['id'],
 							'name' => $u['name'],
 						) ),
@@ -418,7 +418,7 @@ final class App {
 			return array( 200, $this->db->revision( $name, $pk, $rid, $viewer ) );
 		}
 		if ( 'restore' !== $segments[4] ) {
-			throw $notFound();
+			throw $notFound(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		self::allow( $method, array( 'POST' ) );
 
@@ -449,7 +449,7 @@ final class App {
 		return (int) $id;
 	}
 
-	public static function listOptions( array $query ): array {
+	public static function listOptions( array $query ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$opts = array( 'limit' => min( self::query_int( $query, 'limit' ) ?? self::LIST_LIMIT, self::MAX_LIST_LIMIT ) );
 		if ( isset( $query['where'] ) ) {
 			$opts['where'] = self::query_json( $query['where'], '/where' );
@@ -468,7 +468,7 @@ final class App {
 				}
 			}
 		}
-		if ( ( $offset = self::query_int( $query, 'offset' ) ) !== null ) {
+		if ( ( $offset = self::query_int( $query, 'offset' ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			$opts['offset'] = $offset;
 		}
 		if ( isset( $query['with'] ) ) {
@@ -548,7 +548,7 @@ final class App {
 	/** RFC 9457 problem document for any throwable. */
 	public static function problem( \Throwable $e ): array {
 		[$status, $code, $detail, $pointer] = match ( true ) {
-			$e instanceof HttpError => array( $e->status, $e->errorCode, $e->getMessage(), $e->pointer ),
+			$e instanceof HttpError => array( $e->status, $e->errorCode, $e->getMessage(), $e->pointer ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$e instanceof JsError => array( 422, 'rejected', $e->getMessage(), null ),
 			default => array( 500, 'internal', getenv( 'SP_DEBUG' ) === '1' ? $e->getMessage() : 'Internal server error', null ),
 		};
@@ -625,7 +625,7 @@ final class App {
 				if ( 'publish-due' === $cmd ) {
 					return array( 'promoted' => (object) $promoted );
 				}
-				if ( ( $handler = Extensions::cliHandler( $cmd ) ) !== null ) {
+				if ( ( $handler = Extensions::cliHandler( $cmd ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 					return $handler( array_slice( $pos, 1 ), $flags );
 				}
 				$sub = $pos[1] ?? null;

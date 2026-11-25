@@ -106,7 +106,7 @@ final class Index {
 	}
 
 	/** The runtime-native job that rebuilds one kind's entries, a batch per run (Action Scheduler). */
-	public static function jobSpec(): array {
+	public static function jobSpec(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return array(
 			'input'   => array(
 				'kind'       => array(
@@ -147,7 +147,7 @@ final class Index {
 		$out = array();
 		foreach ( $spec['columns'] as $name => $col ) {
 			$name       = (string) $name;
-			$designated = $name === ( $spec['title'] ?? null ) || $name === ( $spec['content'] ?? null );
+			$designated = $name === ( $spec['title'] ?? null ) || $name === ( $spec['content'] ?? null ); // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			if ( ( $col['hidden'] ?? false ) || ( $col['system'] ?? false ) && ! $designated ) {
 				continue;
 			}
@@ -294,7 +294,7 @@ final class Index {
 		$fields     = self::fields( $spec );
 		$after      = $input['after'] ?? null;
 		$generation = (string) ( $input['generation'] ?? self::generation( $kind, $fields ) );
-		if ( $generation !== self::generation( $kind, $fields ) ) {
+		if ( $generation !== self::generation( $kind, $fields ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return; // a newer build's rebuild of this kind has taken over
 		}
 		db()->transaction(
@@ -346,7 +346,7 @@ final class Index {
 	 * Whether {@see reindexChanged()} would write once storage matches the build: the stored search
 	 * shape is not this build's. Read without writing (the app boots in memory to read its schema).
 	 */
-	public static function shapeChanged(): bool {
+	public static function shapeChanged(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$plugin = \SpacePress\Wp\Plugin::instance();
 		if ( null === $plugin ) {
 			return false;
@@ -373,7 +373,7 @@ final class Index {
 	 * After a build (the plugin's first request on a new schema): each kind whose searchable fields
 	 * changed is rebuilt by a job, once. Nothing runs when nothing changed.
 	 */
-	public static function reindexChanged(): void {
+	public static function reindexChanged(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$plugin = \SpacePress\Wp\Plugin::instance();
 		if ( null === $plugin || $plugin->unavailable() !== null ) {
 			return;

@@ -20,7 +20,7 @@ use SpacePress\Schema;
 final class Retention {
 
 	/** Effective retention in seconds for soft-deleted rows of $collection, or null for `"forever"`. */
-	public static function deletedSeconds( Schema $schema, string $collection ): ?int {
+	public static function deletedSeconds( Schema $schema, string $collection ): ?int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$spec = $schema->hasCollection( $collection ) ? $schema->collection( $collection ) : null;
 		if ( null !== $spec && array_key_exists( 'retention', $spec ) && is_array( $spec['retention'] ) ) {
 			$sec = $spec['retention']['deletedSeconds'] ?? null;
@@ -43,7 +43,7 @@ final class Retention {
 	 *
 	 * @return ?array{keepLast: ?int, maxAgeSeconds: ?int}
 	 */
-	public static function revisionsPolicy( Schema $schema, string $collection ): ?array {
+	public static function revisionsPolicy( Schema $schema, string $collection ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$spec = $schema->hasCollection( $collection ) ? $schema->collection( $collection ) : null;
 		if ( null !== $spec && array_key_exists( 'retention', $spec ) && is_array( $spec['retention'] ) ) {
 			return is_array( $spec['retention']['revisions'] ?? null ) ? $spec['retention']['revisions'] : null;
@@ -61,9 +61,9 @@ final class Retention {
 	 * Any SpacePress post type with `softDelete: true` is governed by SpacePress's retention policy
 	 * (default `"forever"`), never WordPress's hardcoded 30-day trash timer.
 	 */
-	public static function blocksWpScheduledDelete( Schema $schema, string $postType ): bool {
+	public static function blocksWpScheduledDelete( Schema $schema, string $postType ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		foreach ( $schema->collections() as $spec ) {
-			if ( ( $spec['wp']['postType'] ?? null ) === $postType && ( $spec['softDelete'] ?? false ) ) {
+			if ( ( $spec['wp']['postType'] ?? null ) === $postType && ( $spec['softDelete'] ?? false ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				return true;
 			}
 		}
@@ -76,14 +76,14 @@ final class Retention {
 	 *
 	 * @return array{purged: int, revisionsPruned: int}
 	 */
-	public static function sweep( Plugin $plugin, int $batchSize = 100 ): array {
+	public static function sweep( Plugin $plugin, int $batchSize = 100 ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$schema          = $plugin->schema;
 		$db              = $plugin->db();
 		$now_ms          = Js::now();
 		$purged          = 0;
-		$revisionsPruned = 0;
+		$revisionsPruned = 0; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
-		$budget = max( 1, $batchSize );
+		$budget = max( 1, $batchSize ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 		foreach ( $schema->collections() as $name => $spec ) {
 			if ( $purged >= $budget ) {
@@ -93,11 +93,11 @@ final class Retention {
 			if ( ! ( $spec['softDelete'] ?? false ) ) {
 				continue;
 			}
-			$deletedSeconds = self::deletedSeconds( $schema, $name );
-			if ( null === $deletedSeconds ) {
+			$deletedSeconds = self::deletedSeconds( $schema, $name ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			if ( null === $deletedSeconds ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				continue;
 			}
-			$cutoff    = Js::iso( $now_ms - ( $deletedSeconds * 1000 ) );
+			$cutoff    = Js::iso( $now_ms - ( $deletedSeconds * 1000 ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$pk        = $spec['primaryKey'];
 			$remaining = $budget - $purged;
 			$expired   = $db->findMany(
@@ -140,7 +140,7 @@ final class Retention {
 		$posts_table    = '`' . $conn->wpdb()->posts . '`';
 
 		foreach ( $schema->collections() as $name => $spec ) {
-			if ( $revisionsPruned >= $budget ) {
+			if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				break;
 			}
 			$name   = (string) $name;
@@ -149,45 +149,45 @@ final class Retention {
 				continue;
 			}
 			if ( isset( $spec['wp']['postType'] ) ) {
-				$postType = (string) $spec['wp']['postType'];
+				$postType = (string) $spec['wp']['postType']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( is_int( $policy['maxAgeSeconds'] ?? null ) ) {
-					$remaining    = $budget - $revisionsPruned;
+					$remaining    = $budget - $revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					$cutoff_mysql = gmdate( 'Y-m-d H:i:s', (int) floor( ( $now_ms - ( $policy['maxAgeSeconds'] * 1000 ) ) / 1000 ) );
 					$old          = $conn->run(
 						"SELECT r.ID FROM $posts_table r JOIN $posts_table p ON p.ID = r.post_parent WHERE p.post_type = ? AND r.post_type = 'revision' AND r.post_status = 'inherit' AND r.post_name NOT LIKE '%autosave%' AND r.post_date_gmt <> '0000-00-00 00:00:00' AND r.post_date_gmt <= ? LIMIT $remaining",
-						array( $postType, $cutoff_mysql ),
+						array( $postType, $cutoff_mysql ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					);
 					foreach ( $old as $r ) {
-						if ( $revisionsPruned >= $budget ) {
+						if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 							break;
 						}
 						if ( $conn->core( static fn () => wp_delete_post_revision( (int) $r['ID'] ) ) ) {
-							++$revisionsPruned;
+							++$revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						}
 					}
 				}
-				if ( $revisionsPruned < $budget && is_int( $policy['keepLast'] ?? null ) && $policy['keepLast'] >= 1 ) {
+				if ( $revisionsPruned < $budget && is_int( $policy['keepLast'] ?? null ) && $policy['keepLast'] >= 1 ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					$keep      = (int) $policy['keepLast'];
-					$remaining = $budget - $revisionsPruned;
+					$remaining = $budget - $revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					$parents   = $conn->run(
 						"SELECT r.post_parent FROM $posts_table r JOIN $posts_table p ON p.ID = r.post_parent WHERE p.post_type = ? AND r.post_type = 'revision' AND r.post_status = 'inherit' AND r.post_name NOT LIKE '%autosave%' GROUP BY r.post_parent HAVING COUNT(*) > ? LIMIT $remaining",
-						array( $postType, $keep ),
+						array( $postType, $keep ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					);
 					foreach ( $parents as $parent ) {
-						if ( $revisionsPruned >= $budget ) {
+						if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 							break;
 						}
-						$rem  = $budget - $revisionsPruned;
+						$rem  = $budget - $revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						$rows = $conn->run(
 							"SELECT ID FROM $posts_table WHERE post_type = 'revision' AND post_parent = ? AND post_status = 'inherit' AND post_name NOT LIKE '%autosave%' ORDER BY ID DESC LIMIT $rem OFFSET $keep",
 							array( (int) $parent['post_parent'] ),
 						);
 						foreach ( $rows as $r ) {
-							if ( $revisionsPruned >= $budget ) {
+							if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 								break;
 							}
 							if ( $conn->core( static fn () => wp_delete_post_revision( (int) $r['ID'] ) ) ) {
-								++$revisionsPruned;
+								++$revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 							}
 						}
 					}
@@ -198,33 +198,33 @@ final class Retention {
 				continue;
 			}
 			if ( is_int( $policy['maxAgeSeconds'] ?? null ) ) {
-				$remaining = $budget - $revisionsPruned;
+				$remaining = $budget - $revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$cutoff    = Js::iso( $now_ms - ( $policy['maxAgeSeconds'] * 1000 ) );
 				$old       = $conn->run( "SELECT `id` FROM $rev_table WHERE `collection` = ? AND `at` <= ? LIMIT $remaining", array( $name, $cutoff ) );
 				foreach ( $old as $r ) {
-					if ( $revisionsPruned >= $budget ) {
+					if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						break;
 					}
 					$conn->run( "DELETE FROM $rev_table WHERE `id` = ?", array( (int) $r['id'] ) );
-					++$revisionsPruned;
+					++$revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				}
 			}
-			if ( $revisionsPruned < $budget && is_int( $policy['keepLast'] ?? null ) && $policy['keepLast'] >= 1 ) {
+			if ( $revisionsPruned < $budget && is_int( $policy['keepLast'] ?? null ) && $policy['keepLast'] >= 1 ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$keep      = (int) $policy['keepLast'];
-				$remaining = $budget - $revisionsPruned;
+				$remaining = $budget - $revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$pks       = $conn->run( "SELECT `pk` FROM $rev_table WHERE `collection` = ? GROUP BY `pk` HAVING COUNT(*) > ? LIMIT $remaining", array( $name, $keep ) );
 				foreach ( $pks as $p ) {
-					if ( $revisionsPruned >= $budget ) {
+					if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						break;
 					}
-					$rem  = $budget - $revisionsPruned;
+					$rem  = $budget - $revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					$rows = $conn->run( "SELECT `id` FROM $rev_table WHERE `collection` = ? AND `pk` = ? ORDER BY `id` DESC LIMIT $rem OFFSET $keep", array( $name, (string) $p['pk'] ) );
 					foreach ( $rows as $r ) {
-						if ( $revisionsPruned >= $budget ) {
+						if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 							break;
 						}
 						$conn->run( "DELETE FROM $rev_table WHERE `id` = ?", array( (int) $r['id'] ) );
-						++$revisionsPruned;
+						++$revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					}
 				}
 			}
@@ -232,7 +232,7 @@ final class Retention {
 
 		return array(
 			'purged'          => $purged,
-			'revisionsPruned' => $revisionsPruned,
+			'revisionsPruned' => $revisionsPruned, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		);
 	}
 }

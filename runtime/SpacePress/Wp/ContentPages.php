@@ -42,7 +42,7 @@ final class ContentPages {
 
 	private static ?self $instance = null;
 	/** @var array<int, string> post id => route id, for this build's routes */
-	private ?array $byPost = null;
+	private ?array $byPost = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	/** @param array<string, array{path: string, slug: string, title: string, description: ?string, status: string, digest: string}> $pages */
 	private function __construct( private readonly Plugin $plugin, private readonly array $pages ) {
@@ -53,7 +53,7 @@ final class ContentPages {
 		if ( array() === $pages || null !== self::$instance ) {
 			return;
 		}
-		$self = self::$instance = new self( $plugin, $pages );
+		$self = self::$instance = new self( $plugin, $pages ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		// After the app's post types (0) and its migrations (1). A managed build stores them from
 		// initialize ({@see install()}): booting it writes nothing.
 		if ( Runtime::installs() ) {
@@ -145,7 +145,7 @@ final class ContentPages {
 			fn (): bool => in_array( $this->build(), $this->state( true )['builds'], true ),
 			fn () => $this->apply(),
 		);
-		$this->byPost = null;
+		$this->byPost = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	private function apply(): void {
@@ -288,21 +288,21 @@ final class ContentPages {
 
 	// ------------------------------------------------------------------ lookups
 
-	private function routeOf( int $post ): ?string {
-		if ( null === $this->byPost ) {
-			$this->byPost = array();
+	private function routeOf( int $post ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		if ( null === $this->byPost ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$this->byPost = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			foreach ( $this->state()['pages'] as $route => $entry ) {
 				if ( isset( $this->pages[ $route ] ) ) {
-					$this->byPost[ (int) $entry['post'] ] = (string) $route;
+					$this->byPost[ (int) $entry['post'] ] = (string) $route; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				}
 			}
 		}
 
-		return $this->byPost[ $post ] ?? null;
+		return $this->byPost[ $post ] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	/** The real Page identity behind a content route, also needed by native block integrations. */
-	public static function pageId( string $route ): ?int {
+	public static function pageId( string $route ): ?int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::$instance?->post( $route )?->ID;
 	}
 
@@ -426,7 +426,7 @@ final class ContentPages {
 		// Core found the Page by its slug (`/colophon`): if one of the app's own page routes
 		// serves that path, the path is that route's, whatever Page core resolved it to.
 		$base = rtrim( (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH ), '/' );
-		$path = '' !== $base && str_starts_with( $have, $base ) ? ( substr( $have, strlen( $base ) ) ?: '/' ) : $have;
+		$path = '' !== $base && str_starts_with( $have, $base ) ? ( substr( $have, strlen( $base ) ) ?: '/' ) : $have; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		if ( array() === $own && \SpacePress\Commerce\Module::routePath( $this->plugin, $path ) !== $path ) {
 			return;
 		}

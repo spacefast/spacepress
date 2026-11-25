@@ -1522,7 +1522,7 @@
       "sha256": "4ee77e2840097e35aaf3e71552ec27f95995df31fca41766e9fadf05cc155c84",
       "path": "lib/pages/admin.php",
       "adaptation": "SpacePress admin boot and native collection transport, including taxonomy REST field names",
-      "adaptedSha256": "95febee9b0292c45316ee40d710b0a68eefc817d06849194f34e9cb975c66800",
+      "adaptedSha256": "165cdfa44d0df0f1663e7726c80bc7189917cbd2ca44f1d8eac4c34cbd185311",
       "normalizedSha256": "a52a5f84bd89933a49bbfcac90a69d8fee37d8a47c3eb2f23ca073e3aa09c81f",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/pages/admin.php"
     },

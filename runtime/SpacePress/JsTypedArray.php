@@ -29,11 +29,11 @@ final class JsTypedArray {
 	}
 
 	/** A Uint8Array over its own copy of these bytes. */
-	public static function fromBytes( string $bytes ): self {
+	public static function fromBytes( string $bytes ): self { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return new self( 'Uint8Array', new JsArrayBuffer( $bytes ), 0, strlen( $bytes ) );
 	}
 
-	public static function isKind( mixed $name ): bool {
+	public static function isKind( mixed $name ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return is_string( $name ) && array_key_exists( $name, self::KINDS ); }
 
 	public static function allocate( string $kind, int $length ): self {
@@ -51,16 +51,16 @@ final class JsTypedArray {
 			$offset = JsArrayBuffer::byteCount( $a[1] ?? JsUndefined::Value );
 			if ( 0 !== $offset % $size ) {
 				throw new JsError( 'start offset of ' . $kind . ' should be a multiple of ' . $size, 'RangeError' ); }
-			$byteLength = $first->byteLength();
+			$byteLength = $first->byteLength(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			if ( ( $a[2] ?? JsUndefined::Value ) === JsUndefined::Value ) {
-				if ( 0 !== $byteLength % $size ) {
+				if ( 0 !== $byteLength % $size ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					throw new JsError( 'byte length of ' . $kind . ' should be a multiple of ' . $size, 'RangeError' ); }
-				if ( $offset > $byteLength ) {
+				if ( $offset > $byteLength ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					throw new JsError( 'Start offset ' . $offset . ' is outside the bounds of the buffer', 'RangeError' ); }
-				return new self( $kind, $first, $offset, intdiv( $byteLength - $offset, $size ) );
+				return new self( $kind, $first, $offset, intdiv( $byteLength - $offset, $size ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 			$length = JsArrayBuffer::byteCount( $a[2] );
-			if ( $offset + $length * $size > $byteLength ) {
+			if ( $offset + $length * $size > $byteLength ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				throw new JsError( 'Invalid typed array length: ' . $length, 'RangeError' ); }
 			return new self( $kind, $first, $offset, $length );
 		}
@@ -119,7 +119,7 @@ final class JsTypedArray {
 		return $out;
 	}
 
-	public function byteLength(): int {
+	public function byteLength(): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->length * $this->size; }
 	public function bytes(): string {
 		return substr( $this->buffer->bytes, $this->offset, $this->length * $this->size ); }
@@ -196,7 +196,7 @@ final class JsTypedArray {
 
 	/** Relative start/end against a length, as for slice/subarray/fill. */
 	public static function range( mixed $start, mixed $end, int $length ): array {
-		$rel = static function ( mixed $value, int $default ) use ( $length ): int {
+		$rel = static function ( mixed $value, int $default ) use ( $length ): int { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.defaultFound -- Preserve the existing PHP parameter name.
 			if ( JsUndefined::Value === $value ) {
 				return $default; }
 			$n = Js::toInteger( Js::toNumber( $value ) );
@@ -206,7 +206,7 @@ final class JsTypedArray {
 	}
 
 	/** A canonical numeric index string (CanonicalNumericIndexString), or null for an ordinary key. */
-	public static function numericIndex( string $key ): int|float|null {
+	public static function numericIndex( string $key ): int|float|null { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( '-0' === $key ) {
 			return -0.0; }
 		if ( preg_match( '/^(?:0|[1-9][0-9]{0,15})$/D', $key ) ) {
@@ -251,7 +251,7 @@ final class JsTypedArray {
 	}
 
 	/** %TypedArray%.prototype.set(source, offset): overlapping same-buffer sources are copied first. */
-	public function setFrom( mixed $source, mixed $offset ): void {
+	public function setFrom( mixed $source, mixed $offset ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$target = Js::toInteger( Js::toNumber( JsUndefined::Value === $offset ? 0 : $offset ) );
 		if ( $target < 0 ) {
 			throw new JsError( 'offset is out of bounds', 'RangeError' ); }

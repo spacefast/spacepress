@@ -141,7 +141,7 @@ final class Invoke {
 
 	/** Refuse GET input that core couldn't type; `where` and `with` accept JSON strings instead, as REST's query does. */
 	private static function require_typed( array $op, array $input ): void {
-		if ( ( $reason = Register::untypedReason() ) !== null ) {
+		if ( ( $reason = Register::untypedReason() ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			// Core typed none of it, so every value is still a string; a filter would read "false" as true.
 			preg_match( '/input((?:\[[^\]]*\])+)/', $reason, $m );
 			$pointer = isset( $m[1] ) ? implode( '', array_map( HttpError::seg( ... ), explode( '][', trim( $m[1], '[]' ) ) ) ) : '';
@@ -201,7 +201,7 @@ final class Invoke {
 	 * `status`, unknown ones) pass through as REST would receive them, so SpacePress accepts or rejects
 	 * them exactly as it does there.
 	 */
-	public static function listQuery( array $input ): array {
+	public static function listQuery( array $input ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$q = array();
 		foreach ( $input as $k => $v ) {
 			$k = (string) $k;

@@ -58,7 +58,7 @@ final class Timers {
 		return count( self::$pending ); }
 
 	/** Waits for the earliest timer, runs exactly that callback, and reports whether one ran. */
-	public static function runNext(): bool {
+	public static function runNext(): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( array() === self::$pending ) {
 			return false; }
 		$id = null;
@@ -84,7 +84,7 @@ final class Timers {
 	}
 
 	/** Handler end: a pending user timer would fire after the response in Node; PHP ends first. */
-	public static function assertNonePending(): void {
+	public static function assertNonePending(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( self::$pending as $id => $timer ) {
 			if ( ! $timer['internal'] ) {
 				self::reset();

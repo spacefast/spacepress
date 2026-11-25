@@ -12,6 +12,7 @@ final class Failure extends \RuntimeException {
 }
 
 /** Restricted local filesystem boundary, shared by artifact inspection and backup archives. */
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- Keep the existing autoload and declaration layout.
 final class Files {
 
 	public const MAX_BYTES = 8_589_934_592;
@@ -44,7 +45,7 @@ final class Files {
 			$cursor .= '/' . $part;
 			self::require( ! is_link( $cursor ) && is_dir( $cursor ), 'unsafe_path', 'Directory paths must exist and contain no symbolic links.' );
 		}
-		return realpath( $absolute ) ?: throw new Failure( 'unsafe_path', 'Directory is unavailable.' );
+		return realpath( $absolute ) ?: throw new Failure( 'unsafe_path', 'Directory is unavailable.' ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 	}
 
 	public static function fresh( string $path ): string {
@@ -89,7 +90,7 @@ final class Files {
 		return $files;
 	}
 
-	public static function writeJson( string $path, array $value ): void {
+	public static function writeJson( string $path, array $value ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$temp = $path . '.' . bin2hex( random_bytes( 12 ) ) . '.tmp';
 		$file = fopen( $temp, 'x' );
 		self::require( false !== $file, 'write_failed', 'Could not create private metadata.' );
@@ -132,6 +133,7 @@ final class Files {
 }
 
 /** Inspects bytes and compiler-emitted literal env references, without evaluating uploaded PHP. */
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- Keep the existing autoload and declaration layout.
 final class Artifact {
 
 	public static function inspect( string $root ): array {

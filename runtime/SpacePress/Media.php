@@ -21,7 +21,7 @@ namespace SpacePress;
 interface Media {
 
 	/** Store an uploaded file ($tmpPath is consumed). Returns the media row. */
-	public function upload( string $tmpPath, string $filename, ?array $user, ?string $alt = null ): array;
+	public function upload( string $tmpPath, string $filename, ?array $user, ?string $alt = null ): array; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 	public function get( int $id ): ?array;
 
@@ -29,7 +29,7 @@ interface Media {
 	 * @param list<int> $ids
 	 * @return array<int, array> media rows keyed by id (missing ids absent)
 	 */
-	public function getMany( array $ids ): array;
+	public function getMany( array $ids ): array; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
 	/**
 	 * `GET /media`: $opts holds where/orderBy/limit/offset over the media row fields

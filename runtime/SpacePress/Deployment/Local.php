@@ -125,7 +125,7 @@ final class Local {
 		return realpath( $path );
 	}
 
-	private static function create_workspace( string $path, string $wpCli ): array {
+	private static function create_workspace( string $path, string $wpCli ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$root = Files::fresh( $path );
 		Files::require( mkdir( $root, 0700 ), 'write_failed', 'Could not create workspace.' );
 		$owner = array(
@@ -133,7 +133,7 @@ final class Local {
 			'adapter' => self::ADAPTER,
 			'id'      => bin2hex( random_bytes( 16 ) ),
 			'path'    => $root,
-			'wpCli'   => $wpCli,
+			'wpCli'   => $wpCli, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			'phase'   => 'initializing',
 		);
 		Files::writeJson( $root . '/owner.json', $owner );
@@ -234,12 +234,12 @@ final class Local {
 	}
 
 	private static function init( array $options ): array {
-		$wpCli     = self::executable( self::option( $options, 'wp-cli' ) );
-		$wordpress = Files::directory( self::option( $options, 'wordpress' ) );
+		$wpCli     = self::executable( self::option( $options, 'wp-cli' ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$wordpress = Files::directory( self::option( $options, 'wordpress' ) ); // phpcs:ignore WordPress.WP.CapitalPDangit.MisspelledInText -- Keep the published command option spelling.
 		$sqlite    = Files::directory( self::option( $options, 'sqlite' ) );
 		Files::require( is_file( $wordpress . '/wp-load.php' ) && is_file( $sqlite . '/db.copy' ), 'invalid_source', 'Provide trusted unpacked WordPress core and SQLite Database Integration sources.' );
 		$artifact       = isset( $options['artifact'] ) ? Artifact::inspect( $options['artifact'] ) : null;
-		[$root, $owner] = self::create_workspace( self::option( $options, 'workspace' ), $wpCli );
+		[$root, $owner] = self::create_workspace( self::option( $options, 'workspace' ), $wpCli ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$operation      = self::operation( $root, 'initialize' );
 		mkdir( $root . '/site', 0700 );
 		foreach ( array( 'wp-admin', 'wp-includes' ) as $directory ) {
@@ -327,7 +327,7 @@ final class Local {
 	private static function rows( \SQLite3 $db, string $sql ): array {
 		$result = $db->query( $sql );
 		$rows   = array();
-		while ( $row = $result->fetchArray( SQLITE3_ASSOC ) ) {
+		while ( $row = $result->fetchArray( SQLITE3_ASSOC ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.FoundInWhileCondition -- Keep the assignment and its test together.
 			$rows[] = $row;
 		}
 		return $rows;
@@ -499,7 +499,7 @@ final class Local {
 		Files::directory( dirname( $archive ) );
 		Files::require( is_file( $archive ) && ! is_link( $archive ) && ( fileperms( $archive ) & 0077 ) === 0, 'insecure_archive', 'Backups may contain secrets; require a regular local archive with mode 0600.' );
 		$destination = Files::fresh( self::option( $options, 'workspace' ) );
-		$wpCli       = self::executable( self::option( $options, 'wp-cli' ) );
+		$wpCli       = self::executable( self::option( $options, 'wp-cli' ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$zip         = new \ZipArchive();
 		Files::require( $zip->open( $archive, \ZipArchive::RDONLY ) === true, 'invalid_archive', 'Backup is not a readable ZIP archive.' );
 		$open    = true;
@@ -562,7 +562,7 @@ final class Local {
 			$open = false;
 			Files::require( self::diagnostics( $scratch )['sqliteIntegrity'], 'database_corrupt', 'Restored database failed integrity verification.' );
 			// mkdir reserves the destination without overwriting a racing file/directory.
-			[$root, $owner] = self::create_workspace( $destination, $wpCli );
+			[$root, $owner] = self::create_workspace( $destination, $wpCli ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$operation      = self::operation( $root, 'restore' );
 			rename( $scratch . '/site', $root . '/site' );
 			if ( is_array( $metadata['artifact'] ?? null ) ) {

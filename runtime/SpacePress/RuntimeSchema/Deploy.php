@@ -25,7 +25,7 @@ final class Deploy {
 	 * @return array{kept: list<string>, changed: list<string>, refusals: list<array{code: string, name: string, message: string, fix: string}>}
 	 */
 	public static function check( array $compiled, array $state ): array {
-		$kept    = $changed = $refusals = array();
+		$kept    = $changed = $refusals = array(); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		$compare = static function ( string $name, array $site, array $built ) use ( &$changed, &$refusals ): void {
 			$why = self::stored( $site, $built );
 			if ( null !== $why ) {
@@ -52,7 +52,7 @@ final class Deploy {
 				foreach ( $entry[ $inner ] ?? array() as $field => $definition ) {
 					$built                           = $compiled[ $section ][ $kind ][ $inner ][ $field ] ?? null;
 					null === $built ? $kept[]        = "$kind.$field" : $compare( "$kind.$field", $definition, $built );
-					$built ?? $runtime[ $section ][] = array( (string) $kind, (string) $field, $definition );
+					$built ?? $runtime[ $section ][] = array( (string) $kind, (string) $field, $definition ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 				}
 			}
 			foreach ( $state['added'][ $section ] ?? array() as $kind => $stored ) {
@@ -238,7 +238,7 @@ final class Deploy {
 	}
 
 	/** A list in one order, so two that hold the same values compare equal: order changes no stored value. */
-	private static function sorted( ?array $list ): ?array {
+	private static function sorted( ?array $list ): ?array { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.listFound -- Preserve the existing PHP parameter name.
 		if ( null !== $list ) {
 			sort( $list );
 		}

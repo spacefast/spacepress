@@ -67,7 +67,7 @@ final class WpFiles implements FileStorage {
 		}
 		Runtime::plugin()?->app(); // editor saves run before any First request has booted the app
 		foreach ( $refs as [$id, $bucket] ) {
-			if ( ( $message = Files::missing( $id, $bucket ) ) !== null ) {
+			if ( ( $message = Files::missing( $id, $bucket ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				return $rest ? new \WP_Error( 'rest_invalid_param', $message, array( 'status' => 400 ) ) : $message;
 			}
 		}
@@ -209,12 +209,12 @@ final class WpFiles implements FileStorage {
 		return 'private files are reachable at ' . self::url( '' ) . '; deny ' . (string) wp_parse_url( self::url( '' ), PHP_URL_PATH ) . ' in your web server config';
 	}
 
-	public function store( string $tmpPath, string $rel ): void {
+	public function store( string $tmpPath, string $rel ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( Uploads::active() ) {
 			$key = Uploads::fileKey( $rel );
-			Uploads::store()->put( $key, $tmpPath, ( new \finfo( FILEINFO_MIME_TYPE ) )->file( $tmpPath ) ?: 'application/octet-stream' );
+			Uploads::store()->put( $key, $tmpPath, ( new \finfo( FILEINFO_MIME_TYPE ) )->file( $tmpPath ) ?: 'application/octet-stream' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, Universal.Operators.DisallowShortTernary.Found -- Preserve the existing PHP variable name. Keep the existing falsey fallback.
 			$this->db->onRollback( static fn () => Uploads::discard( $key ) );
-			@unlink( $tmpPath );
+			@unlink( $tmpPath ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return;
 		}
 		self::protect();
@@ -222,7 +222,7 @@ final class WpFiles implements FileStorage {
 		if ( ! is_dir( dirname( $dest ) ) && ! wp_mkdir_p( dirname( $dest ) ) ) {
 			throw new \RuntimeException( 'Cannot create the private files directory' );
 		}
-		if ( ! ( is_uploaded_file( $tmpPath ) ? move_uploaded_file( $tmpPath, $dest ) : rename( $tmpPath, $dest ) ) ) {
+		if ( ! ( is_uploaded_file( $tmpPath ) ? move_uploaded_file( $tmpPath, $dest ) : rename( $tmpPath, $dest ) ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			throw new \RuntimeException( 'Cannot store the uploaded file' );
 		}
 		$this->db->onRollback( static fn () => @unlink( $dest ) );
@@ -308,7 +308,7 @@ final class WpFiles implements FileStorage {
 		}
 		return array(
 			'protected' => get_option( self::OK ) === '1',
-			'checkedAt' => (int) get_option( self::CHECKED, 0 ) ?: null,
+			'checkedAt' => (int) get_option( self::CHECKED, 0 ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		);
 	}
 

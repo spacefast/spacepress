@@ -41,7 +41,7 @@ final class WpTermStore implements Store, Links {
 	) {
 	}
 
-	public function afterCommit( callable $fn ): void {
+	public function afterCommit( callable $fn ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$this->db->afterCommit( $fn );
 	}
 
@@ -49,7 +49,7 @@ final class WpTermStore implements Store, Links {
 		$this->db->applySystemStatements( $statements );
 	}
 
-	public function transaction( callable $fn ): mixed {
+	public function transaction( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		return $this->db->transaction( $fn );
 	}
 
@@ -140,7 +140,8 @@ final class WpTermStore implements Store, Links {
 		}
 		$wpdb    = $this->db->wpdb();
 		$ids_sql = implode( ',', array_map( 'intval', $missing ) );
-		$terms   = $wpdb->get_results(
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The IN list contains only integers.
+		$terms = $wpdb->get_results(
 			"SELECT t.*, tt.* FROM $wpdb->terms t
             INNER JOIN $wpdb->term_taxonomy tt ON t.term_id = tt.term_id
             WHERE t.term_id IN ($ids_sql) AND NOT EXISTS (
@@ -148,6 +149,7 @@ final class WpTermStore implements Store, Links {
                 WHERE other.term_id = t.term_id AND other.taxonomy <> tt.taxonomy
             )"
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		update_term_cache( $terms );
 	}
 
@@ -155,7 +157,7 @@ final class WpTermStore implements Store, Links {
 		return false;
 	}
 
-	public function readGuards( string $collection, \SpacePress\Viewer $viewer, bool $forSelect = false ): array {
+	public function readGuards( string $collection, \SpacePress\Viewer $viewer, bool $forSelect = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return array();
 	}
 
@@ -233,7 +235,7 @@ final class WpTermStore implements Store, Links {
 	}
 
 	/** Managed term UIDs have the same transaction-scoped ownership check as post-backed UIDs. */
-	private function checkUid( array $spec, array $values, int $self ): void {
+	private function checkUid( array $spec, array $values, int $self ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.selfFound -- Preserve the existing PHP parameter name.
 		if ( ! isset( $values['uid'] ) || ! ( $spec['columns']['uid']['system'] ?? false ) ) {
 			return;
 		}
@@ -304,7 +306,7 @@ final class WpTermStore implements Store, Links {
 			. " JOIN `{$wpdb->term_taxonomy}` tt ON tt.term_taxonomy_id = tr.term_taxonomy_id WHERE tt.taxonomy = '$taxonomy')";
 	}
 
-	public function links( string $join, string $by, array $ids, bool $forUpdate = false ): array {
+	public function links( string $join, string $by, array $ids, bool $forUpdate = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( array() === $ids ) {
 			return array();
 		}
@@ -312,7 +314,7 @@ final class WpTermStore implements Store, Links {
 		$rows   = $this->db->run(
 			'SELECT l.`owner_id`, l.`target_id`, l.`position` FROM ' . $this->linkTable( $join ) . " l WHERE $column IN ("
 			. implode( ', ', array_fill( 0, count( $ids ), '?' ) ) . ') ORDER BY l.`owner_id`, l.`position`, l.`target_id`'
-			. ( $forUpdate ? $this->dialect->writeLock() : '' ),
+			. ( $forUpdate ? $this->dialect->writeLock() : '' ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			array_values( array_map( 'intval', $ids ) ),
 		);
 
@@ -380,14 +382,14 @@ final class WpTermStore implements Store, Links {
 		return array(); // taxonomies keep no revisions
 	}
 
-	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void {
+	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
-	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array {
+	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return null;
 	}
 
-	public function promoteDue( string $collection, string $nowIso ): array {
+	public function promoteDue( string $collection, string $nowIso ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return array(); // terms have no drafts
 	}
 

@@ -39,7 +39,7 @@ final class SearchView {
 	}
 
 	/** The search form. */
-	public static function form( ?string $action, mixed $label, mixed $placeholder, mixed $class ): Html {
+	public static function form( ?string $action, mixed $label, mixed $placeholder, mixed $class ): Html { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP parameter name.
 		$label = is_string( $label ) && '' !== $label ? $label : __( 'Search' );
 		$q     = self::query();
 		$id    = 'spacepress-search-q';
@@ -74,7 +74,7 @@ final class SearchView {
 	 * build time; the site-wide search's `kind=` narrows to one kind (one the search doesn't cover
 	 * gives no results, as the API does).
 	 */
-	public static function results( ?string $kind, mixed $q, mixed $page, mixed $perPage, mixed $class ): Html {
+	public static function results( ?string $kind, mixed $q, mixed $page, mixed $perPage, mixed $class ): Html { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP variable name. Preserve the existing PHP parameter name.
 		$q = is_string( $q ) ? trim( $q ) : '';
 		if ( '' === $q ) {
 			return Html::raw( '' );
@@ -85,7 +85,7 @@ final class SearchView {
 			/* translators: %d: Maximum search length in characters. */
 			return Html::element( 'section', array( 'className' => $class ), Html::element( 'p', array( 'className' => 'spacepress-search-too-long' ), sprintf( __( 'Searches are at most %d characters.' ), Index::MAX_QUERY ) ) );
 		}
-		$perPage = is_int( $perPage ) || is_float( $perPage ) ? max( 1, min( 50, (int) $perPage ) ) : self::PER_PAGE;
+		$perPage = is_int( $perPage ) || is_float( $perPage ) ? max( 1, min( 50, (int) $perPage ) ) : self::PER_PAGE; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$viewer  = \SpacePress\Wp\CoreAccess::viewer();
 		if ( null === $viewer ) {
 			return Html::raw( '' );
@@ -95,8 +95,8 @@ final class SearchView {
 			$one            = $kind ?? (string) $narrow;
 			$covered        = null !== $kind || ( in_array( $one, self::kinds(), true ) );
 			$page           = is_int( $page ) || is_float( $page ) ? max( 1, (int) $page ) : max( 1, (int) ( $_GET[ self::PAGE ] ?? 1 ) );
-			[$rows, $total] = $covered ? self::read( $one, $q, $perPage, ( $page - 1 ) * $perPage, $viewer ) : array( array(), 0 );
-			$pages          = (int) ceil( $total / $perPage );
+			[$rows, $total] = $covered ? self::read( $one, $q, $perPage, ( $page - 1 ) * $perPage, $viewer ) : array( array(), 0 ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$pages          = (int) ceil( $total / $perPage ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 			return Html::element(
 				'section',
@@ -120,12 +120,12 @@ final class SearchView {
 		$groups = array();
 		$found  = 0;
 		foreach ( self::kinds() as $one ) {
-			[$rows, $total] = self::read( $one, $q, $perPage, 0, $viewer );
+			[$rows, $total] = self::read( $one, $q, $perPage, 0, $viewer ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			if ( 0 === $total ) {
 				continue;
 			}
-			$found   += $total;
-			$more     = $total > count( $rows )
+			$found += $total;
+			$more   = $total > count( $rows )
 				/* translators: %1$d: Number of results. %2$s: Name of the result category. */
 				? Html::element( 'p', array( 'className' => 'spacepress-search-more' ), Markup::link( array( 'href' => self::narrowed( $one ) ), sprintf( __( 'All %1$d in %2$s' ), $total, self::label( $one ) ) ) )
 				: null;

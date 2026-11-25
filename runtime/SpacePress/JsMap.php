@@ -89,17 +89,17 @@ final class JsMap {
 		return array_values( array_filter( $this->slots, static fn ( $slot ) => null !== $slot ) );
 	}
 
-	public function entriesIterator(): \Generator {
+	public function entriesIterator(): \Generator { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( $this->iterate() as $entry ) {
 			yield new JsArray( $entry ); } }
-	public function keysIterator(): \Generator {
+	public function keysIterator(): \Generator { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( $this->iterate() as [$key] ) {
 			yield $key; } }
-	public function valuesIterator(): \Generator {
+	public function valuesIterator(): \Generator { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( $this->iterate() as [, $value] ) {
 			yield $value; } }
 
-	public function forEach( \Closure $callback ): void {
+	public function forEach( \Closure $callback ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		foreach ( $this->iterate() as [$key, $value] ) {
 			$callback( $value, $key, $this ); }
 	}

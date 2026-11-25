@@ -135,7 +135,7 @@ final class Kinds {
 	private static function post_route( string $type ): string {
 		$object = get_post_type_object( $type );
 
-		return '/' . ( $object?->rest_namespace ?: 'wp/v2' ) . '/' . ( $object?->rest_base ?: $type );
+		return '/' . ( $object?->rest_namespace ?: 'wp/v2' ) . '/' . ( $object?->rest_base ?: $type ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 	}
 
 	private static function term_route( string $taxonomy ): ?string {
@@ -144,7 +144,7 @@ final class Kinds {
 			return null;
 		}
 
-		return '/' . ( $object->rest_namespace ?: 'wp/v2' ) . '/' . ( $object->rest_base ?: $taxonomy );
+		return '/' . ( $object->rest_namespace ?: 'wp/v2' ) . '/' . ( $object->rest_base ?: $taxonomy ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 	}
 
 	/** Whether the kind is one SpacePress's own pipeline answers (its rules, `where`, `with`), not core alone. */
@@ -168,7 +168,7 @@ final class Kinds {
 			} )(),
 			// SpacePress's row for this viewer, or null: core may list a user SpacePress's read rule hides.
 			// `with` wins: a media column loaded with `with` replaces its id with the media row.
-			'users', 'post', 'taxonomy' => ( $first = $item[ self::ROW ] ?? null ) === null ? null : array_replace( is_object( $first ) ? get_object_vars( $first ) : (array) $first, $with ),
+			'users', 'post', 'taxonomy' => ( $first = $item[ self::ROW ] ?? null ) === null ? null : array_replace( is_object( $first ) ? get_object_vars( $first ) : (array) $first, $with ), // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 			'wp-post' => self::wp_post_row( $kind, $item ),
 			'wp-users' => self::user_row( $item ),
 			'comments' => self::comment_row( $item ),
@@ -188,7 +188,7 @@ final class Kinds {
 			'status'      => self::status( (string) ( $item['status'] ?? '' ) ),
 			'publishedAt' => self::publishedAt( $item ),
 			'url'         => $item['link'] ?? null,
-			'author'      => ( $item['author'] ?? 0 ) ?: null,
+			'author'      => ( $item['author'] ?? 0 ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			'createdAt'   => self::gmt( $item['date_gmt'] ?? null ),
 			'updatedAt'   => self::gmt( $item['modified_gmt'] ?? null ),
 		);
@@ -198,11 +198,11 @@ final class Kinds {
 				'excerpt'       => self::text( $item['excerpt'] ?? null ),
 				'categories'    => $item['categories'] ?? array(),
 				'tags'          => $item['tags'] ?? array(),
-				'featuredImage' => ( $item['featured_media'] ?? 0 ) ?: null,
+				'featuredImage' => ( $item['featured_media'] ?? 0 ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 				'sticky'        => (bool) ( $item['sticky'] ?? false ),
 			),
 			'page' => array(
-				'parent'   => ( $item['parent'] ?? 0 ) ?: null,
+				'parent'   => ( $item['parent'] ?? 0 ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 				'order'    => (int) ( $item['menu_order'] ?? 0 ),
 				'template' => (string) ( $item['template'] ?? '' ),
 			),
@@ -219,8 +219,8 @@ final class Kinds {
 				'name'      => $item['name'] ?? null,
 				'username'  => $item['username'] ?? null,
 				'roles'     => $item['roles'] ?? null,
-				'avatar'    => is_array( $item['avatar_urls'] ?? null ) ? ( end( $item['avatar_urls'] ) ?: null ) : null,
-				'url'       => ( $item['url'] ?? '' ) ?: null,
+				'avatar'    => is_array( $item['avatar_urls'] ?? null ) ? ( end( $item['avatar_urls'] ) ?: null ) : null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
+				'url'       => ( $item['url'] ?? '' ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 				'locale'    => $item['locale'] ?? null,
 				'createdAt' => isset( $item['registered_date'] ) ? self::iso( (string) $item['registered_date'] ) : null,
 			),
@@ -232,11 +232,11 @@ final class Kinds {
 	private static function comment_row( array $item ): array {
 		return array(
 			'id'          => $item['id'] ?? null,
-			'on'          => ( $item['post'] ?? 0 ) ?: null,
-			'parent'      => ( $item['parent'] ?? 0 ) ?: null,
-			'author'      => ( $item['author'] ?? 0 ) ?: null,
+			'on'          => ( $item['post'] ?? 0 ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
+			'parent'      => ( $item['parent'] ?? 0 ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
+			'author'      => ( $item['author'] ?? 0 ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			'authorName'  => $item['author_name'] ?? null,
-			'authorEmail' => ( $item['author_email'] ?? '' ) ?: null,
+			'authorEmail' => ( $item['author_email'] ?? '' ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			'content'     => self::text( $item['content'] ?? null ),
 			'status'      => match ( $item['status'] ?? null ) {
 				'approved', 'approve', '1' => 'approved',
@@ -291,14 +291,14 @@ final class Kinds {
 		return ( is_array( $first ) ? $first : array() ) + array(
 			'id'        => $item['id'] ?? null,
 			'url'       => $item['source_url'] ?? null,
-			'alt'       => ( $item['alt_text'] ?? '' ) ?: null,
+			'alt'       => ( $item['alt_text'] ?? '' ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			'caption'   => self::text( $item['caption'] ?? null ),
 			'mime'      => $item['mime_type'] ?? null,
 			'width'     => isset( $details['width'] ) ? (int) $details['width'] : null,
 			'height'    => isset( $details['height'] ) ? (int) $details['height'] : null,
 			'sizes'     => array() === $sizes ? new \stdClass() : $sizes,
 			'focal'     => $item['sp_focal'] ?? null,
-			'author'    => ( $item['author'] ?? 0 ) ?: null,
+			'author'    => ( $item['author'] ?? 0 ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			'createdAt' => self::gmt( $item['date_gmt'] ?? null ),
 		);
 	}
@@ -309,7 +309,7 @@ final class Kinds {
 			'name'        => $item['name'] ?? null,
 			'slug'        => $item['slug'] ?? null,
 			'description' => (string) ( $item['description'] ?? '' ),
-			'parent'      => ( $item['parent'] ?? 0 ) ?: null,
+			'parent'      => ( $item['parent'] ?? 0 ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			'count'       => (int) ( $item['count'] ?? 0 ),
 			'url'         => $item['link'] ?? null,
 		);
@@ -406,10 +406,10 @@ final class Kinds {
 	}
 
 	/** A field another plugin registered on $postType's REST route with register_rest_field, writable. */
-	private static function rest_field( string $postType, string $field ): bool {
+	private static function rest_field( string $postType, string $field ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		rest_get_server(); // fires rest_api_init once, where plugins register their fields
 
-		return isset( $GLOBALS['wp_rest_additional_fields'][ $postType ][ $field ]['update_callback'] );
+		return isset( $GLOBALS['wp_rest_additional_fields'][ $postType ][ $field ]['update_callback'] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	private static function sp_input( array $kind, array $data, bool $create ): array {
@@ -507,7 +507,7 @@ final class Kinds {
 	}
 
 	/** @param list<array> $items core menu items, flat */
-	private static function tree( array $items, int $parent = 0 ): array {
+	private static function tree( array $items, int $parent = 0 ): array { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.parentFound -- Preserve the existing PHP parameter name.
 		$out = array();
 		usort( $items, static fn ( array $a, array $b ) => ( $a['menu_order'] ?? 0 ) <=> ( $b['menu_order'] ?? 0 ) );
 		foreach ( $items as $item ) {
@@ -533,17 +533,17 @@ final class Kinds {
 		return array(
 			'title'     => $settings['title'] ?? $index['name'] ?? '',
 			'tagline'   => $settings['description'] ?? $index['description'] ?? '',
-			'timezone'  => ( $settings['timezone'] ?? $index['timezone_string'] ?? '' ) ?: 'UTC',
+			'timezone'  => ( $settings['timezone'] ?? $index['timezone_string'] ?? '' ) ?: 'UTC', // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			'locale'    => $settings['language'] ?? str_replace( '-', '_', (string) get_bloginfo( 'language' ) ),
-			'icon'      => ( (int) ( $settings['site_icon'] ?? $index['site_icon'] ?? 0 ) ) ?: null,
-			'logo'      => ( (int) ( $settings['site_logo'] ?? $index['site_logo'] ?? 0 ) ) ?: null,
+			'icon'      => ( (int) ( $settings['site_icon'] ?? $index['site_icon'] ?? 0 ) ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
+			'logo'      => ( (int) ( $settings['site_logo'] ?? $index['site_logo'] ?? 0 ) ) ?: null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			'frontPage' => ( $settings['show_on_front'] ?? get_option( 'show_on_front' ) ) === 'page'
-				? ( ( (int) ( $settings['page_on_front'] ?? get_option( 'page_on_front' ) ) ) ?: null ) : null,
+				? ( ( (int) ( $settings['page_on_front'] ?? get_option( 'page_on_front' ) ) ) ?: null ) : null, // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		);
 	}
 
 	/** `settings` input → core's `/wp/v2/settings` body (admins only, by core's rules). */
-	public static function settingsInput( array $data ): array {
+	public static function settingsInput( array $data ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::rename(
 			$data,
 			array(
@@ -627,7 +627,7 @@ final class Kinds {
 		};
 	}
 
-	private static function publishedAt( array $item ): ?string {
+	private static function publishedAt( array $item ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return in_array( $item['status'] ?? null, array( 'publish', 'future' ), true ) && is_string( $item['date_gmt'] ?? null ) ? $item['date_gmt'] . '.000Z' : null;
 	}
 

@@ -21,7 +21,7 @@ use SpacePress\Store;
  */
 final class WpUserStore implements Store {
 
-	public function readGuards( string $collection, \SpacePress\Viewer $viewer, bool $forSelect = false ): array {
+	public function readGuards( string $collection, \SpacePress\Viewer $viewer, bool $forSelect = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return array();
 	}
 
@@ -105,11 +105,11 @@ final class WpUserStore implements Store {
 	 * WordPress users created outside SpacePress (hosted sign-up, wp-admin, other plugins) get the member
 	 * columns' declared defaults, as a SpacePress create would give them (§6.2: rows are users).
 	 */
-	public static function fillDefaults( Schema $schema, int $userId ): void {
-		\SpacePress\Js::atInstant( static fn () => self::fill_defaults_at( $schema, $userId ) );
+	public static function fillDefaults( Schema $schema, int $userId ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		\SpacePress\Js::atInstant( static fn () => self::fill_defaults_at( $schema, $userId ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
-	private static function fill_defaults_at( Schema $schema, int $userId ): void {
+	private static function fill_defaults_at( Schema $schema, int $userId ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$collection = $schema->auth()['collection'] ?? null;
 		if ( null === $collection ) {
 			return;
@@ -117,7 +117,7 @@ final class WpUserStore implements Store {
 		foreach ( $schema->collection( $collection )['columns'] as $col => $def ) {
 			$col = (string) $col;
 			if ( ( $def['system'] ?? false ) || ! isset( $def['default'] ) || in_array( $col, array( 'id', 'email', 'name' ), true )
-				|| metadata_exists( 'user', $userId, self::META . $col ) ) {
+				|| metadata_exists( 'user', $userId, self::META . $col ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				continue;
 			}
 			$stored = Schema::store( $def, Schema::generate( $def['default'], $def ) );
@@ -125,7 +125,7 @@ final class WpUserStore implements Store {
 				continue;
 			}
 			$value = self::metaForm( $def, $stored );
-			update_user_meta( $userId, self::META . $col, wp_slash( $value ) );
+			update_user_meta( $userId, self::META . $col, wp_slash( $value ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 	}
 
@@ -147,34 +147,34 @@ final class WpUserStore implements Store {
 	 * and recomputed from WP_User::has_cap (WordPress's own ordered role/capability merge, exactly
 	 * what authentication uses) whenever a user's roles or capabilities change.
 	 */
-	public static function syncRole( int $userId ): void {
-		$user = get_userdata( $userId );
+	public static function syncRole( int $userId ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$user = get_userdata( $userId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( $user instanceof \WP_User ) {
-			update_user_meta( $userId, self::ROLE_META, WpAuth::map( $user )['role'] );
+			update_user_meta( $userId, self::ROLE_META, WpAuth::map( $user )['role'] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 	}
 
 	/** Keep `sp_role` current: role changes, capability edits, new users; backfill on activation. */
 	public static function trackRoles(): void {
-		$sync = static fn ( $userId ) => self::syncRole( (int) $userId );
+		$sync = static fn ( $userId ) => self::syncRole( (int) $userId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		add_action( 'set_user_role', $sync );
 		add_action( 'add_user_role', $sync );
 		add_action( 'remove_user_role', $sync );
 		add_action( 'user_register', $sync, 20 );
 		add_action( 'profile_update', $sync );
 		// Direct capability edits write wp_capabilities; follow that meta key on any write path.
-		$onMeta = static function ( $metaId, $userId, $key ) use ( $sync ): void {
+		$onMeta = static function ( $metaId, $userId, $key ) use ( $sync ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			if ( str_ends_with( (string) $key, 'capabilities' ) ) {
-				$sync( $userId );
+				$sync( $userId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 		};
-		add_action( 'added_user_meta', $onMeta, 10, 3 );
-		add_action( 'updated_user_meta', $onMeta, 10, 3 );
+		add_action( 'added_user_meta', $onMeta, 10, 3 ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		add_action( 'updated_user_meta', $onMeta, 10, 3 ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		add_action(
 			'deleted_user_meta',
-			static function ( $metaIds, $userId, $key ) use ( $sync ): void {
+			static function ( $metaIds, $userId, $key ) use ( $sync ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( str_ends_with( (string) $key, 'capabilities' ) ) {
-					$sync( $userId ); // remove_all_caps()
+					/* phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name. */ $sync( $userId ); // remove_all_caps()
 				}
 			},
 			10,
@@ -212,8 +212,8 @@ final class WpUserStore implements Store {
 	}
 
 	/** The SpacePress role a WordPress role maps to (contributor is author), or null for any other role. */
-	public static function firstRole( string $wpRole ): ?string {
-		return 'contributor' === $wpRole ? 'author' : ( array_search( $wpRole, self::ROLES, true ) ?: null );
+	public static function firstRole( string $wpRole ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		return 'contributor' === $wpRole ? 'author' : ( array_search( $wpRole, self::ROLES, true ) ?: null ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, Universal.Operators.DisallowShortTernary.Found -- Preserve the existing PHP variable name. Keep the existing falsey fallback.
 	}
 
 	/** A member's login, as core's `username` asks (SpacePress generates one otherwise). Validated as core does. */
@@ -439,7 +439,7 @@ final class WpUserStore implements Store {
 	}
 
 	/** Declared unique usermeta columns hold no duplicate (email is wp_users' own, checked apart). */
-	private function check_unique( array $spec, array $values, int $self ): void {
+	private function check_unique( array $spec, array $values, int $self ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.selfFound -- Preserve the existing PHP parameter name.
 		foreach ( $values as $col => $stored ) {
 			$col = (string) $col;
 			if ( null === $stored || 'email' === $col || ! ( $spec['columns'][ $col ]['unique'] ?? false ) || in_array( $col, array( $spec['primaryKey'], 'role' ), true ) ) {
@@ -457,7 +457,7 @@ final class WpUserStore implements Store {
 		}
 	}
 
-	private function check_email( string $email, int $self ): void {
+	private function check_email( string $email, int $self ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.selfFound -- Preserve the existing PHP parameter name.
 		$hit = $this->db->run( 'SELECT ID FROM `' . $this->db->wpdb()->users . '` WHERE user_email = ? AND ID <> ? LIMIT 1 FOR UPDATE', array( $email, $self ) );
 		if ( array() !== $hit ) {
 			throw new HttpError( 409, 'unique_violation', 'A row with this email already exists', '/email' );
@@ -466,11 +466,11 @@ final class WpUserStore implements Store {
 
 	// ================================================================ the rest is shared with the custom-table store
 
-	public function transaction( callable $fn ): mixed {
+	public function transaction( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		return $this->db->transaction( $fn );
 	}
 
-	public function afterCommit( callable $fn ): void {
+	public function afterCommit( callable $fn ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$this->db->afterCommit( $fn );
 	}
 
@@ -494,14 +494,14 @@ final class WpUserStore implements Store {
 		return array();
 	}
 
-	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void {
+	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
-	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array {
+	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return null;
 	}
 
-	public function promoteDue( string $collection, string $nowIso ): array {
+	public function promoteDue( string $collection, string $nowIso ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return array();
 	}
 

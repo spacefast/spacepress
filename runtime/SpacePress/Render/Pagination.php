@@ -23,7 +23,7 @@ final class Pagination {
 	/** Pages shown either side of the current one before collapsing. */
 	private const AROUND = 2;
 
-	public static function render( int|float $page, int|float $pages, string $param, mixed $class, mixed $label ): Html {
+	public static function render( int|float $page, int|float $pages, string $param, mixed $class, mixed $label ): Html { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP parameter name.
 		$page  = (int) $page;
 		$pages = (int) $pages;
 		$class = is_string( $class ) ? $class : null;
@@ -119,7 +119,7 @@ final class Pagination {
 		$kept           = array();
 		foreach ( \SpacePress\QueryString::parse( $query ) as [$name, $value] ) {
 			// A form's flash marker is this visitor's alone: never carried into another URL.
-			if ( $name !== $param && $name !== Forms::MARKER ) {
+			if ( $name !== $param && $name !== Forms::MARKER ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				$kept[] = rawurlencode( $name ) . '=' . rawurlencode( $value );
 			}
 		}

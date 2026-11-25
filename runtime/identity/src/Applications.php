@@ -46,8 +46,8 @@ final class Applications {
 				if ( $existing ) {
 					if (
 					$existing['name'] !== $name ||
-					$existing['redirects'] !== wp_json_encode( array( $redirect ) ) ||
-					$existing['origins'] !== wp_json_encode( array( $origin ) )
+					$existing['redirects'] !== wp_json_encode( array( $redirect ) ) || // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
+					$existing['origins'] !== wp_json_encode( array( $origin ) ) // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 					) {
 						throw new Failure( 'idempotency_conflict', 'This request key was already used.', 409 );
 					}

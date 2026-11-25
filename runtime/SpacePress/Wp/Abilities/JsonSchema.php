@@ -189,7 +189,7 @@ final class JsonSchema {
 	}
 
 	/** The media library's filterable columns (§4.6). */
-	public static function mediaWhere(): array {
+	public static function mediaWhere(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return self::filter_object(
 			array(
 				'id'        => array( 'type' => 'integer' ),
@@ -205,7 +205,7 @@ final class JsonSchema {
 	private static function filter_object( array $columns, int $depth, array $relations = array() ): array {
 		$props = array();
 		foreach ( $columns as $name => $col ) {
-			if ( ! ( $col['hidden'] ?? false ) && ( $f = self::filter( $col ) ) !== null ) {
+			if ( ! ( $col['hidden'] ?? false ) && ( $f = self::filter( $col ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 				$props[ (string) $name ] = $f;
 			}
 		}
@@ -232,7 +232,7 @@ final class JsonSchema {
 	}
 
 	/** `orderBy`: `{ column: "asc" | "desc" }` in priority order, or REST's `"title,-id"`. */
-	public static function orderBy( array $columns ): array {
+	public static function orderBy( array $columns ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$props = array();
 		foreach ( $columns as $name ) {
 			$props[ $name ] = array(

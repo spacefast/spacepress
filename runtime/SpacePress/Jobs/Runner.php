@@ -119,17 +119,17 @@ final class Runner {
 		$error   = mb_substr( $e::class . ': ' . $e->getMessage(), 0, 2000, 'UTF-8' );
 		$retries = self::retries( (string) $row['job'] );
 		$dead    = $attempt >= $retries;
-		$runAt   = Js::iso( Js::now() + 1000 * self::BACKOFF[ min( $attempt, count( self::BACKOFF ) ) - 1 ] );
+		$runAt   = Js::iso( Js::now() + 1000 * self::BACKOFF[ min( $attempt, count( self::BACKOFF ) ) - 1 ] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		db()->transaction(
-			static function () use ( $id, $attempt, $error, $dead, $runAt ): void {
+			static function () use ( $id, $attempt, $error, $dead, $runAt ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				Storage::run(
 					$dead
 					? 'UPDATE {jobs} SET "state" = \'dead\', "attempts" = ?, "lastError" = ?, "dedupe" = NULL, "lockedAt" = NULL, "doneAt" = ? WHERE "id" = ?'
 					: 'UPDATE {jobs} SET "state" = \'failed\', "attempts" = ?, "lastError" = ?, "runAt" = ?, "dedupe" = NULL, "lockedAt" = NULL WHERE "id" = ?',
-					array( $attempt, $error, $dead ? Js::iso( Js::now() ) : $runAt, $id ),
+					array( $attempt, $error, $dead ? Js::iso( Js::now() ) : $runAt, $id ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				);
 				if ( ! $dead ) {
-					ActionSchedulerQueue::schedule( $id, $runAt );
+					ActionSchedulerQueue::schedule( $id, $runAt ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				}
 			}
 		);
@@ -171,7 +171,7 @@ final class Runner {
 	}
 
 	/** Gives waiting job $id its action at its runAt unless it has one, under its row lock: 1 if it did. */
-	public static function ensureDelivery( string $id ): int {
+	public static function ensureDelivery( string $id ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return db()->transaction(
 			static function () use ( $id ): int {
 				$job = Storage::run( 'SELECT "runAt" FROM {jobs} WHERE "id" = ? AND ' . self::orphan() . Storage::forUpdate(), array( $id, ...self::ORPHAN_ARGS ) )[0] ?? null;

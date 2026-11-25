@@ -24,7 +24,7 @@ final class Response {
 		return new self( $status, null, $headers, $body );
 	}
 
-	public function withHeaders( array $headers ): self {
+	public function withHeaders( array $headers ): self { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return new self( $this->status, $this->data, self::mergeHeaders( $this->headers, $headers ), $this->body );
 	}
 
@@ -38,7 +38,7 @@ final class Response {
 	}
 
 	/** Case-insensitive names; later sets win, including explicit overrides of transport defaults. */
-	public static function mergeHeaders( array ...$sets ): array {
+	public static function mergeHeaders( array ...$sets ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$out   = array();
 		$names = array();
 		foreach ( $sets as $headers ) {

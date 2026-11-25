@@ -13,7 +13,7 @@ final class Uid {
 		return 'zr_' . substr( hash( 'sha256', random_bytes( 16 ) ), 0, 20 );
 	}
 
-	public static function forFile( string $collection, string $basename ): string {
+	public static function forFile( string $collection, string $basename ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return 'zr_' . substr( hash( 'sha256', "zero-sync-file\0" . $collection . "\0" . $basename ), 0, 20 );
 	}
 

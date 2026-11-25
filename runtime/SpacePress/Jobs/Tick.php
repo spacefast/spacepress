@@ -35,9 +35,9 @@ final class Tick {
 	public const DEFAULT_BUDGET_MS = 45_000;
 
 	/** @return array{processed: int, failures: int, requeued: int, receiptsExpired: int, remaining: bool} */
-	public static function run( int $limit = self::DEFAULT_LIMIT, int $budgetMs = self::DEFAULT_BUDGET_MS ): array {
+	public static function run( int $limit = self::DEFAULT_LIMIT, int $budgetMs = self::DEFAULT_BUDGET_MS ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$limit     = max( 1, min( self::MAX_LIMIT, $limit ) );
-		$deadline  = microtime( true ) + max( 1, $budgetMs ) / 1000;
+		$deadline  = microtime( true ) + max( 1, $budgetMs ) / 1000; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$left      = static fn ( int $used ): int => microtime( true ) >= $deadline ? 0 : max( 0, $limit - $used );
 		$processed = 0;
 		$failures  = 0;

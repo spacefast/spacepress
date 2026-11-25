@@ -21,7 +21,7 @@ define( 'SP_PLUGIN_FILE', __FILE__ );
 // WordPress invokes these callbacks on separate request paths. Only the live mount is needed
 // on an ordinary page. The receiver also defines its Refusal exception in the same file.
 spl_autoload_register(
-	static function ( string $class ): void {
+	static function ( string $class ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP parameter name.
 		static $files = array(
 			'spacepressplugin\\site'         => 'Site',
 			'spacepressplugin\\mount'        => 'Mount',

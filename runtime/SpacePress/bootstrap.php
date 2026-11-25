@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 spl_autoload_register(
-	static function ( string $class ): void {
+	static function ( string $class ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP parameter name.
 		if ( str_starts_with( $class, 'SpacePress\\Vendor\\' ) || str_starts_with( $class, 'SpacePress_Vendor_' ) ) {
 			static $vendor = null;
 			$vendor      ??= require __DIR__ . '/vendor-prefixed/autoload.php';

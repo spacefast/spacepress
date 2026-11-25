@@ -10,7 +10,7 @@ final class JsWeakMap {
 	public function __construct() {
 		$this->entries = new \WeakMap(); }
 
-	public static function canBeHeldWeakly( mixed $value ): bool {
+	public static function canBeHeldWeakly( mixed $value ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return is_object( $value ) && ! $value instanceof JsUndefined && ! ( $value instanceof JsSymbol && $value->registered() );
 	}
 

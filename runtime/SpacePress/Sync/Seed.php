@@ -31,8 +31,8 @@ final class Seed {
 	 *
 	 * $wait is how long to wait for a request that holds the seed lock, in seconds.
 	 */
-	public static function install( Plugin $plugin, string $versionFile, int $wait = 30 ): ?string {
-		$version = require $versionFile;
+	public static function install( Plugin $plugin, string $versionFile, int $wait = 30 ): ?string { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$version = require $versionFile; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ! is_array( $version ) ) {
 			throw new \RuntimeException( 'Invalid seed version' );
 		}
@@ -73,7 +73,7 @@ final class Seed {
 						try {
 							self::run( $plugin, $seed, false, $version );
 						} catch ( HttpError | JsError $error ) {
-							if ( $error instanceof HttpError && ( $error->status >= 500 || 'sync_stale' === $error->errorCode ) ) {
+							if ( $error instanceof HttpError && ( $error->status >= 500 || 'sync_stale' === $error->errorCode ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 								throw $error;
 							}
 							$problem = 'Seed refused: ' . $error->getMessage() . '. Fix it and build again: the seed runs on the new build, or when the plugin is activated again.';
@@ -113,9 +113,9 @@ final class Seed {
 		return 'sp_' . $plugin->schema->name() . '_seed';
 	}
 
-	public static function wpCli( Plugin $plugin, array $args, array $flags ): int {
+	public static function wpCli( Plugin $plugin, array $args, array $flags ): int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		try {
-			if ( $args !== array( 'seed' ) || array_diff( array_keys( $flags ), array( 'records', 'dry-run' ) ) !== array()
+			if ( $args !== array( 'seed' ) || array_diff( array_keys( $flags ), array( 'records', 'dry-run' ) ) !== array() // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				|| ! is_string( $flags['records'] ?? null ) || '' === $flags['records']
 				|| ( isset( $flags['dry-run'] ) && true !== $flags['dry-run'] ) ) {
 				throw new HttpError( 400, 'invalid_command', 'Usage: seed --records=<dir> [--dry-run]' );
@@ -140,7 +140,7 @@ final class Seed {
 		}
 	}
 
-	public static function run( Plugin $plugin, string $directory, bool $dry = false, ?array $expectedHashes = null ): array {
+	public static function run( Plugin $plugin, string $directory, bool $dry = false, ?array $expectedHashes = null ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ! is_dir( $directory ) ) {
 			throw new HttpError( 400, 'invalid_command', 'Seed records directory does not exist.', '/records' );
 		}
@@ -156,13 +156,13 @@ final class Seed {
 			}
 		}
 		sort( $files, SORT_STRING );
-		if ( null !== $expectedHashes ) {
+		if ( null !== $expectedHashes ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$actual = array();
 			foreach ( $files as $file ) {
 				$actual[ basename( $file ) ] = hash_file( 'sha256', $file ); }
 			$mismatched = array();
-			foreach ( array_keys( $expectedHashes + $actual ) as $name ) {
-				if ( ! isset( $expectedHashes[ $name ], $actual[ $name ] ) || $actual[ $name ] !== $expectedHashes[ $name ] ) {
+			foreach ( array_keys( $expectedHashes + $actual ) as $name ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				if ( ! isset( $expectedHashes[ $name ], $actual[ $name ] ) || $actual[ $name ] !== $expectedHashes[ $name ] ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					$mismatched[] = $name;
 				}
 			}
@@ -236,8 +236,8 @@ final class Seed {
 								}
 
 								throw $e instanceof HttpError
-								? new HttpError( $e->status, $e->errorCode, $path . ': ' . $e->getMessage(), $e->pointer )
-								: new JsError( $path . ': ' . $e->getMessage(), $e->jsName );
+								? new HttpError( $e->status, $e->errorCode, $path . ': ' . $e->getMessage(), $e->pointer ) // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+								: new JsError( $path . ': ' . $e->getMessage(), $e->jsName ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 							}
 						}
 						return $counts;
@@ -275,7 +275,7 @@ final class Seed {
 		$active  = array();
 		$ordered = array();
 		$visit   = static function ( string $name ) use ( &$visit, &$indices, &$low, &$stack, &$active, &$ordered, $dependencies, $files ): void {
-			$indices[ $name ] = $low[ $name ] = count( $indices );
+			$indices[ $name ] = $low[ $name ] = count( $indices ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 			$stack[]          = $name;
 			$active[ $name ]  = true;
 			foreach ( $dependencies[ $name ] as $target ) {
@@ -306,6 +306,7 @@ final class Seed {
 	}
 }
 
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- Keep the existing autoload and declaration layout.
 final class SeedDryRun extends \RuntimeException {
 
 	public function __construct( public readonly array $counts ) {

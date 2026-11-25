@@ -268,6 +268,7 @@ final class Rest {
 }
 
 /** Preserve core's original error object while using a throwable to roll back the operation. */
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- Keep the existing autoload and declaration layout.
 final class Refused extends \RuntimeException {
 
 	public function __construct( public readonly \WP_Error $error ) {

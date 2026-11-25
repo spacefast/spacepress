@@ -53,14 +53,14 @@ final class Changes {
 	 * @return array{changes: list<array>, state: array} the changes in stored form and the state after them
 	 * @throws Refused
 	 */
-	public static function resolve( array $compiled, array $state, mixed $changeSet, ?array $references = null, array $declared = array() ): array {
-		if ( ! is_array( $changeSet ) || ( $changeSet['format'] ?? null ) !== Loader::FORMAT ) {
+	public static function resolve( array $compiled, array $state, mixed $changeSet, ?array $references = null, array $declared = array() ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( ! is_array( $changeSet ) || ( $changeSet['format'] ?? null ) !== Loader::FORMAT ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			throw new Refused( 'schema_format', 'A change set is { "format": ' . Loader::FORMAT . ', "changes": [...] }; this runtime reads format ' . Loader::FORMAT, null, '/format' );
 		}
-		if ( array_diff( array_keys( $changeSet ), array( 'format', 'changes' ) ) !== array() ) {
-			throw new Refused( 'schema_format', 'A change set has `format` and `changes` only', null, \SpacePress\HttpError::seg( (string) array_values( array_diff( array_keys( $changeSet ), array( 'format', 'changes' ) ) )[0] ) );
+		if ( array_diff( array_keys( $changeSet ), array( 'format', 'changes' ) ) !== array() ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			throw new Refused( 'schema_format', 'A change set has `format` and `changes` only', null, \SpacePress\HttpError::seg( (string) array_values( array_diff( array_keys( $changeSet ), array( 'format', 'changes' ) ) )[0] ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
-		$changes = $changeSet['changes'] ?? null;
+		$changes = $changeSet['changes'] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ! is_array( $changes ) || ! array_is_list( $changes ) || array() === $changes ) {
 			throw new Refused( 'schema_format', '`changes` must be a list with at least one change', null, '/changes' );
 		}
@@ -77,7 +77,7 @@ final class Changes {
 				$one = self::one( Loader::apply( $compiled, $state, $references ), $compiled, $state, $change, $pointer, $references, $declared );
 			} catch ( Refused $refused ) {
 				// A rule from the validator has no pointer of its own: it is about this change's definition.
-				throw null !== $refused->pointer ? $refused : new Refused( $refused->errorCode, $refused->getMessage(), $refused->diagnostic, "$pointer/definition" );
+				throw null !== $refused->pointer ? $refused : new Refused( $refused->errorCode, $refused->getMessage(), $refused->diagnostic, "$pointer/definition" ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			}
 			$resolved[] = $one;
 			$state      = self::fold( $state, array( $one ) );
@@ -291,7 +291,7 @@ final class Changes {
 	 * The compiled-plus-runtime kind, or the compiler's refusal for a name that isn't one. A table()
 	 * kind is build-only, its label and presentation included (the decision record's scope).
 	 */
-	private static function declared( array $schema, bool $global, string $kind, string $pointer, bool $clearing = false ): array {
+	private static function declared( array $schema, bool $global, string $kind, string $pointer, bool $clearing = false ): array { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.globalFound -- Preserve the existing PHP parameter name.
 		$spec = $schema[ $global ? 'globals' : 'collections' ][ $kind ]
 			?? throw new Refused( 'schema_invalid', "$kind: this app declares no " . ( $global ? 'global' : 'collection' ) . ' with that name', 'F3001', $pointer . ( $global ? '/global' : '/kind' ) );
 		if ( ! $global && ! $clearing && ! isset( $spec['wp']['postType'] ) ) {
@@ -302,7 +302,7 @@ final class Changes {
 	}
 
 	/** The running site's own rules for a field joining a kind that exists. */
-	private static function addable( array $schema, array $compiled, array $state, bool $global, string $kind, string $field, array $stored, string $pointer, array $declared ): void {
+	private static function addable( array $schema, array $compiled, array $state, bool $global, string $kind, string $field, array $stored, string $pointer, array $declared ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.globalFound -- Preserve the existing PHP parameter name.
 		[$section, $inner] = $global ? array( 'globals', 'fields' ) : array( 'collections', 'columns' );
 		$spec              = $schema[ $section ][ $kind ];
 		if ( isset( $spec[ $inner ][ $field ] ) ) {
@@ -350,7 +350,7 @@ final class Changes {
 	 *
 	 * @param array<string, array> $fields the new fields, by name
 	 */
-	private static function storable( array $schema, array $compiled, array $state, array $declared, bool $global, string $kind, array $fields, string $pointer ): void {
+	private static function storable( array $schema, array $compiled, array $state, array $declared, bool $global, string $kind, array $fields, string $pointer ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.globalFound -- Preserve the existing PHP parameter name.
 		$existing = array();
 		$known    = static function ( string $owner, string $field, array $keys ) use ( &$existing, $fields, $kind ): void {
 			if ( $owner !== $kind || ! array_key_exists( $field, $fields ) ) {

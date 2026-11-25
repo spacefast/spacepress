@@ -61,9 +61,9 @@ final class ActionSchedulerQueue {
 					// A delivery scheduled for before its job's time is an older one: a failed attempt moved
 					// the job later and scheduled its own delivery for then, so running now would skip the
 					// backoff. The job's current delivery runs even if someone runs it early by hand.
-					$runAt = \SpacePress\Jobs\Storage::run( 'SELECT "runAt" FROM {jobs} WHERE "id" = ?', array( $id ) )[0]['runAt'] ?? null;
-					if ( is_string( $runAt ) && null !== self::$scheduled && \SpacePress\Js::date( $runAt ) > \SpacePress\Js::now()
-					&& self::$scheduled < intdiv( (int) \SpacePress\Js::date( $runAt ), 1000 ) ) {
+					$runAt = \SpacePress\Jobs\Storage::run( 'SELECT "runAt" FROM {jobs} WHERE "id" = ?', array( $id ) )[0]['runAt'] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					if ( is_string( $runAt ) && null !== self::$scheduled && \SpacePress\Js::date( $runAt ) > \SpacePress\Js::now() // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					&& self::$scheduled < intdiv( (int) \SpacePress\Js::date( $runAt ), 1000 ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						return;
 					}
 					Runner::run( $id );
@@ -94,7 +94,7 @@ final class ActionSchedulerQueue {
 					return; // no app, or storage behind the build: the schedule fires again
 				}
 				// Another app's schedule (a site that ran another SpacePress app) never runs this one's job.
-				if ( self::$group !== self::group( $plugin ) ) {
+				if ( self::$group !== self::group( $plugin ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 					return;
 				}
 				if ( ( self::wanted( $plugin )[ $job ] ?? null ) !== $schedule ) {
@@ -417,7 +417,7 @@ final class ActionSchedulerQueue {
 	}
 
 	/** One delivery of job $id at $runAtIso (never in the past), in the caller's transaction when one is open. */
-	public static function schedule( string $id, string $runAtIso ): void {
+	public static function schedule( string $id, string $runAtIso ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( ! \ActionScheduler::is_initialized() ) {
 			// Before `init` (a wp-hooks handler at priority 0): Action Scheduler can't write yet. The job
 			// row commits; its action follows once Action Scheduler is ready, and if this request dies
@@ -433,7 +433,7 @@ final class ActionSchedulerQueue {
 			return;
 		}
 		$app = Runtime::plugin()?->schema->name() ?? 'app';
-		$at  = (int) floor( \SpacePress\Js::date( $runAtIso ) / 1000 );
+		$at  = (int) floor( \SpacePress\Js::date( $runAtIso ) / 1000 ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( as_schedule_single_action( max( $at, time() ), self::HOOK, array( 'id' => $id ), 'spacepress-' . $app, false ) === 0 ) {
 			throw new \RuntimeException( "Action Scheduler refused to schedule job $id" );
 		}

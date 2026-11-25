@@ -48,8 +48,8 @@ final class IdentityBridge implements Issuer {
 		add_filter( 'sp_identity_bearer_error', static fn ( $error ) => Facade::path() !== null ? null : $error );
 	}
 
-	public static function suspended( int $userId ): bool {
-		return self::available() && in_array( \SpacePress\Identity\Plugin::$accounts->status( $userId ), array( 'suspended', 'deletion_requested', 'deleted' ), true );
+	public static function suspended( int $userId ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		return self::available() && in_array( \SpacePress\Identity\Plugin::$accounts->status( $userId ), array( 'suspended', 'deletion_requested', 'deleted' ), true ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/** The `sp_guest` role and the guest client exist (idempotent; activation and first use). */
@@ -66,7 +66,7 @@ final class IdentityBridge implements Issuer {
 				'applications',
 				array(
 					'id'        => self::GUEST_CLIENT,
-					'name'      => get_bloginfo( 'name' ) ?: 'Guests',
+					'name'      => get_bloginfo( 'name' ) ?: 'Guests', // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 					'redirects' => '[]',
 					'origins'   => '[]',
 				)

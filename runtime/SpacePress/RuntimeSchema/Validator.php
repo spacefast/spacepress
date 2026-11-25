@@ -37,13 +37,13 @@ final class Validator {
 	 * @return array the stored definition
 	 * @throws Refused
 	 */
-	public static function field( string $kindName, ?array $kind, string $name, mixed $definition ): array {
-		$at = "$kindName.$name";
+	public static function field( string $kindName, ?array $kind, string $name, mixed $definition ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$at = "$kindName.$name"; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.InterpolatedVariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === $kind ) {
-			throw Refused::rule( 'F3001', $kindName, 'this app declares no collection with that name' );
+			throw Refused::rule( 'F3001', $kindName, 'this app declares no collection with that name' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		if ( ! ( $kind['editor'] ?? false ) || ( $kind['wp'] ?? null ) === null ) {
-			throw Refused::rule( 'F3001', $kindName, 'runtime fields belong to collection() kinds; this one stores its rows elsewhere. Add the field in source and deploy a build' );
+			throw Refused::rule( 'F3001', $kindName, 'runtime fields belong to collection() kinds; this one stores its rows elsewhere. Add the field in source and deploy a build' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		if ( in_array( $name, array( 'title', 'content', 'slug' ), true ) ) {
 			throw Refused::rule( 'F3001', $at, "`$name` names a designated field; declare it in source" );
@@ -125,7 +125,7 @@ final class Validator {
 			throw Refused::rule( 'F3001', $at, "`$type` fields can't be added at runtime; declare it in source" );
 		}
 		$multiline = $flag( 'multiline' );
-		$notNull   = $flag( 'notNull' );
+		$notNull   = $flag( 'notNull' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$fields    = static function ( mixed $fields, string $at ): array {
 			if ( ! is_array( $fields ) || array() === $fields || array_is_list( $fields ) ) {
 				throw Refused::rule( 'F3001', $at, 'needs at least one field' );
@@ -162,7 +162,7 @@ final class Validator {
 			}
 			$out['accept'] = $accept;
 		}
-		$sub_fields = $layouts = null;
+		$sub_fields = $layouts = null; // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		if ( 'group' === $type || 'repeater' === $type ) {
 			$sub_fields = $fields( $def['fields'] ?? null, $at );
 		}
@@ -178,7 +178,7 @@ final class Validator {
 		}
 
 		// The modifiers, in the order the compiler applies them: optional, min, max, default, ui.
-		if ( $notNull ) {
+		if ( $notNull ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$out['notNull'] = true;
 		}
 		if ( null !== $enum && 'select' !== $type ) {
@@ -201,7 +201,7 @@ final class Validator {
 				if ( in_array( $type, self::UNBOUNDED, true ) ) {
 					throw Refused::rule( 'F2001', $at, "`.$key()` isn't valid on a $type field" );
 				}
-				if ( ! in_array( $type, array( 'integer', 'real' ), true ) && ( $n < 0 || (float) $n !== floor( (float) $n ) ) ) {
+				if ( ! in_array( $type, array( 'integer', 'real' ), true ) && ( $n < 0 || (float) $n !== floor( (float) $n ) ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 					throw Refused::rule( 'F2001', $at, "`.$key()` here is a length or count, so it needs a whole number ≥ 0" );
 				}
 				$rules[ $key ] = self::number( $n );
@@ -216,7 +216,7 @@ final class Validator {
 					throw Refused::rule( 'F2001', $at, "`.default()` isn't valid on a media field; media fields start empty" );
 				}
 				$default = array( 'value' => is_float( $value ) ? self::number( $value ) : $value );
-			} elseif ( is_array( $given ) && $given === array( 'now' => true ) ) {
+			} elseif ( is_array( $given ) && $given === array( 'now' => true ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				if ( 'timestamp' !== $type && 'date' !== $type ) {
 					throw Refused::rule( 'F2001', $at, "`.defaultNow()` only works on timestamp and date fields, not $type" );
 				}
@@ -290,7 +290,7 @@ final class Validator {
 		$shown = is_string( $value ) ? '"' . $value . '"' : Js::str( $value );
 		$bad   = static fn ( string $what ): Refused => Refused::rule( 'F3001', $at, "`$name` defaults to $shown, but it's $what" );
 		match ( $field['type'] ) {
-			'integer' => is_int( $value ) || ( is_float( $value ) && is_finite( $value ) && $value === floor( $value ) ) ? true : throw $bad( 'an integer field' ),
+			'integer' => is_int( $value ) || ( is_float( $value ) && is_finite( $value ) && $value === floor( $value ) ) ? true : throw $bad( 'an integer field' ), // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			'real' => is_int( $value ) || ( is_float( $value ) && is_finite( $value ) ) ? true : throw $bad( 'a number field' ),
 			'boolean' => is_bool( $value ) ? true : throw $bad( 'a boolean field' ),
 			'text' => match ( true ) {
@@ -336,7 +336,7 @@ final class Validator {
 		}
 		if ( array_key_exists( 'width', $ui ) ) {
 			$width = $ui['width'];
-			if ( ! ( is_int( $width ) || ( is_float( $width ) && $width === floor( $width ) ) ) || $width < 1 || $width > 100 ) {
+			if ( ! ( is_int( $width ) || ( is_float( $width ) && $width === floor( $width ) ) ) || $width < 1 || $width > 100 ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				throw Refused::rule( 'F3101', $at, 'ui width must be an integer from 1 to 100' );
 			}
 			$out['width'] = (int) $width;
@@ -347,6 +347,6 @@ final class Validator {
 
 	/** A number as the compiler stores it: an integer when it is one. */
 	private static function number( int|float $n ): int|float {
-		return is_float( $n ) && $n === floor( $n ) && abs( $n ) <= 9007199254740991 && ! ( 0.0 === $n && fdiv( 1, $n ) < 0 ) ? (int) $n : $n;
+		return is_float( $n ) && $n === floor( $n ) && abs( $n ) <= 9007199254740991 && ! ( 0.0 === $n && fdiv( 1, $n ) < 0 ) ? (int) $n : $n; // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 	}
 }

@@ -15,7 +15,7 @@ final class JsWritableStream {
 	private const ERRORED  = 2;
 
 	private int $state         = self::WRITABLE;
-	private mixed $storedError = JsUndefined::Value;
+	private mixed $storedError = JsUndefined::Value; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	private JsPromise $tail;
 	private bool $closing     = false;
 	private ?JsObject $writer = null;
@@ -41,7 +41,7 @@ final class JsWritableStream {
 	}
 
 	/** A stream into a PHP stream resource: each chunk is written as bytes. */
-	public static function toResource( mixed $handle ): self {
+	public static function toResource( mixed $handle ): self { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return new self(
 			new JsObject(
 				array(
@@ -77,7 +77,7 @@ final class JsWritableStream {
 		if ( self::WRITABLE !== $this->state ) {
 			return JsUndefined::Value; }
 		$this->state       = self::ERRORED;
-		$this->storedError = $reason;
+		$this->storedError = $reason; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		return JsUndefined::Value;
 	}
 
@@ -86,7 +86,7 @@ final class JsWritableStream {
 		$next       = $this->tail->then(
 			function () use ( $operation ) {
 				if ( self::ERRORED === $this->state ) {
-					throw Js::throwable( $this->storedError ); }
+					throw Js::throwable( $this->storedError ); } // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				return $operation();
 			}
 		);
@@ -104,7 +104,7 @@ final class JsWritableStream {
 
 	public function write( mixed $chunk ): JsPromise {
 		if ( self::ERRORED === $this->state ) {
-			return JsPromise::rejected( $this->storedError ); }
+			return JsPromise::rejected( $this->storedError ); } // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( $this->closing || self::CLOSED === $this->state ) {
 			return JsPromise::rejected( new JsError( 'Cannot write to a closing or closed stream', 'TypeError' ) ); }
 		return $this->chain(
@@ -117,7 +117,7 @@ final class JsWritableStream {
 
 	public function close(): JsPromise {
 		if ( self::ERRORED === $this->state ) {
-			return JsPromise::rejected( $this->storedError ); }
+			return JsPromise::rejected( $this->storedError ); } // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( $this->closing || self::CLOSED === $this->state ) {
 			return JsPromise::rejected( new JsError( 'The stream is already closing or closed', 'TypeError' ) ); }
 		$this->closing = true;
@@ -144,7 +144,7 @@ final class JsWritableStream {
 		return JsPromise::from( $result )->then( static fn () => JsUndefined::Value );
 	}
 
-	public function getWriter(): JsObject {
+	public function getWriter(): JsObject { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( null !== $this->writer ) {
 			throw new JsError( 'WritableStream is locked to a writer', 'TypeError' ); }
 		$released     = false;

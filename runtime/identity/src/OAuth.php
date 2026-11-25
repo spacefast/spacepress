@@ -160,10 +160,10 @@ final class OAuth {
 		return $result;
 	}
 
-	private function exchange( array $body, string $clientId ): array|OAuthError {
+	private function exchange( array $body, string $clientId ): array|OAuthError { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$grant = $this->codes->redeem(
 			(string) ( $body['code'] ?? '' ),
-			$clientId,
+			$clientId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			(string) ( $body['redirect_uri'] ?? '' ),
 			(string) ( $body['code_verifier'] ?? '' ),
 		);
@@ -176,11 +176,11 @@ final class OAuth {
 		}
 		$family = bin2hex( random_bytes( 16 ) );
 		$this->codes->bind( $grant['id'], $family );
-		$tokens = $this->mint( $uid, $clientId, $grant['session_id'], $grant['scope'], $family );
+		$tokens = $this->mint( $uid, $clientId, $grant['session_id'], $grant['scope'], $family ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( in_array( 'openid', explode( ' ', $grant['scope'] ), true ) ) {
 			$claims = array(
 				'iss'       => self::issuer(),
-				'aud'       => $clientId,
+				'aud'       => $clientId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				'sub'       => (string) $uid,
 				'iat'       => time(),
 				'exp'       => time() + self::ACCESS_TTL,
@@ -197,7 +197,7 @@ final class OAuth {
 	}
 
 	/** Rotate a refresh token. Presenting one that was already used revokes its whole family. */
-	private function refresh( string $token, string $clientId ): array|OAuthError {
+	private function refresh( string $token, string $clientId ): array|OAuthError { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$invalid = new OAuthError( 'invalid_grant', 'The refresh token is invalid, expired or revoked.' );
 		if ( ! preg_match( '/^zr_[A-Za-z0-9_-]{43}$/D', $token ) ) {
 			return $invalid;
@@ -206,18 +206,18 @@ final class OAuth {
 			"SELECT * FROM {$this->db->prefix}tokens WHERE id=%s AND kind='refresh' FOR UPDATE",
 			self::digest( $token ),
 		);
-		if ( ! $row || ! hash_equals( $row['client_id'], $clientId ) ) {
+		if ( ! $row || ! hash_equals( $row['client_id'], $clientId ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return $invalid;
 		}
 		if ( null !== $row['used_at'] ) {
 			$this->revoke_family( $row['family'] );
-			Plugin::$security->event( (int) $row['wp_user_id'], 'token.reuse_detected', array( 'client_id' => $clientId ) );
+			Plugin::$security->event( (int) $row['wp_user_id'], 'token.reuse_detected', array( 'client_id' => $clientId ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return $invalid;
 		}
 		if ( (int) $row['revoked'] || (int) $row['expires_at'] <= time() || ! $this->live( (int) $row['wp_user_id'], $row['session_id'], false ) ) {
 			return $invalid;
 		}
-		$tokens = $this->mint( (int) $row['wp_user_id'], $clientId, $row['session_id'], $row['scope'], $row['family'] );
+		$tokens = $this->mint( (int) $row['wp_user_id'], $clientId, $row['session_id'], $row['scope'], $row['family'] ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$this->db->run(
 			"UPDATE {$this->db->prefix}tokens SET used_at=UTC_TIMESTAMP(), replaced_by=%s WHERE id=%s",
 			self::digest( $tokens['refresh_token'] ),
@@ -230,24 +230,24 @@ final class OAuth {
 	 * Mint a session + token pair for a WordPress user without a browser flow (guests, §6.2).
 	 * Only the SpacePress runtime may call it, and only after it has loaded.
 	 */
-	public function issueForUser( int $uid, string $clientId ): array {
+	public function issueForUser( int $uid, string $clientId ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		if ( ! did_action( 'sp_runtime_loaded' ) ) {
 			throw new \LogicException( 'issueForUser is reserved for the SpacePress runtime' );
 		}
 		return $this->db->transaction(
-			function () use ( $uid, $clientId ) {
-				if ( ! $this->client( $clientId ) ) {
+			function () use ( $uid, $clientId ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				if ( ! $this->client( $clientId ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					throw new Failure( 'invalid_client', 'Unknown or disabled client.', 400 );
 				}
 				$this->accounts->ensure( $uid );
 				$session = Plugin::$sessions->create( $uid )['session'];
-				return $this->mint( $uid, $clientId, $session['id'], 'openid profile email', bin2hex( random_bytes( 16 ) ) );
+				return $this->mint( $uid, $clientId, $session['id'], 'openid profile email', bin2hex( random_bytes( 16 ) ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 		);
 	}
 
 	/** @return array{access_token: string, token_type: string, expires_in: int, refresh_token: string, scope: string} */
-	private function mint( int $uid, string $clientId, string $sessionId, string $scope, string $family ): array {
+	private function mint( int $uid, string $clientId, string $sessionId, string $scope, string $family ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$jti     = bin2hex( random_bytes( 20 ) );
 		$now     = time();
 		$refresh = 'zr_' . Security::token( 32 );
@@ -271,8 +271,8 @@ final class OAuth {
 				$row + array(
 					'family'     => $family,
 					'wp_user_id' => $uid,
-					'session_id' => $sessionId,
-					'client_id'  => $clientId,
+					'session_id' => $sessionId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					'client_id'  => $clientId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					'scope'      => $scope,
 				)
 			);
@@ -281,10 +281,10 @@ final class OAuth {
 			'access_token'  => Keys::sign(
 				array(
 					'iss'   => self::issuer(),
-					'aud'   => $clientId,
+					'aud'   => $clientId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					'sub'   => (string) $uid,
 					'jti'   => $jti,
-					'sid'   => $sessionId,
+					'sid'   => $sessionId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					'iat'   => $now,
 					'nbf'   => $now,
 					'exp'   => $now + self::ACCESS_TTL,
@@ -318,7 +318,7 @@ final class OAuth {
 			$claims['jti'],
 			time(),
 		);
-		if ( ! $row || $row['client_id'] !== ( $claims['aud'] ?? null ) || (string) $row['wp_user_id'] !== $claims['sub'] ) {
+		if ( ! $row || $row['client_id'] !== ( $claims['aud'] ?? null ) || (string) $row['wp_user_id'] !== $claims['sub'] ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return null;
 		}
 		if ( ! Sessions::linked(
@@ -348,25 +348,25 @@ final class OAuth {
 	 * RFC 7009: a refresh token revokes its family, an access token its own `jti`. Unknown tokens
 	 * and other clients' tokens succeed silently.
 	 */
-	public function revoke( string $token, string $clientId ): void {
+	public function revoke( string $token, string $clientId ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$this->db->transaction(
-			function () use ( $token, $clientId ) {
+			function () use ( $token, $clientId ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( str_starts_with( $token, 'zr_' ) ) {
 					$row = $this->db->row(
 						"SELECT family,client_id FROM {$this->db->prefix}tokens WHERE id=%s AND kind='refresh'",
 						self::digest( $token ),
 					);
-					if ( $row && hash_equals( $row['client_id'], $clientId ) ) {
+					if ( $row && hash_equals( $row['client_id'], $clientId ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						$this->revoke_family( $row['family'] );
 					}
 					return;
 				}
 				$claims = Keys::verify( $token );
-				if ( null !== $claims && ( $claims['aud'] ?? null ) === $clientId && is_string( $claims['jti'] ?? null ) ) {
+				if ( null !== $claims && ( $claims['aud'] ?? null ) === $clientId && is_string( $claims['jti'] ?? null ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					$this->db->run(
 						"UPDATE {$this->db->prefix}tokens SET revoked=1 WHERE id=%s AND kind='access' AND client_id=%s",
 						$claims['jti'],
-						$clientId,
+						$clientId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					);
 				}
 			}
@@ -401,7 +401,7 @@ final class OAuth {
 	}
 
 	/** Consume a handoff and open an identity session for its still-live guest; returns the session. */
-	public function redeemHandoff( string $handoff ): array {
+	public function redeemHandoff( string $handoff ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		[$id, $secret] = array_pad( explode( '.', $handoff, 2 ), 2, '' );
 		return $this->db->transaction(
 			function () use ( $id, $secret ) {
@@ -424,7 +424,7 @@ final class OAuth {
 	}
 
 	/** End the application sign-in an access token belongs to (its whole family). */
-	public function endFamily( string $family ): void {
+	public function endFamily( string $family ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$this->revoke_family( $family );
 	}
 
@@ -436,7 +436,7 @@ final class OAuth {
 	 *
 	 * @return array{target: string, claims: ?array}
 	 */
-	public function logoutRequest( array $query ): array {
+	public function logoutRequest( array $query ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		$hint   = (string) ( $query['id_token_hint'] ?? '' );
 		$target = (string) ( $query['post_logout_redirect_uri'] ?? '' );
 		$claims = '' === $hint ? null : Keys::verify( $hint, true );
@@ -465,7 +465,7 @@ final class OAuth {
 	 * Revokes the identity session a checked logout's hint names (its `sid`, for its `sub`). With
 	 * `$withWordPress` false, a WordPress session that identity session came from stays signed in.
 	 */
-	public function endLogout( ?array $claims, bool $withWordPress = true ): void {
+	public function endLogout( ?array $claims, bool $withWordPress = true ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		if ( null === $claims || ! is_string( $claims['sid'] ?? null ) ) {
 			return;
 		}
@@ -473,8 +473,8 @@ final class OAuth {
 			"SELECT wp_user_id FROM {$this->db->prefix}sessions WHERE id=%s",
 			$claims['sid'],
 		);
-		if ( $session && (string) $session['wp_user_id'] === ( $claims['sub'] ?? null ) ) {
-			Plugin::$sessions->revoke( (int) $session['wp_user_id'], $claims['sid'], $withWordPress );
+		if ( $session && (string) $session['wp_user_id'] === ( $claims['sub'] ?? null ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
+			Plugin::$sessions->revoke( (int) $session['wp_user_id'], $claims['sid'], $withWordPress ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 	}
 
@@ -495,12 +495,12 @@ final class OAuth {
 	}
 
 	/** Enabled applications whose origins may call the token, revoke and account endpoints. */
-	public static function allowedOrigin( DB $db, string $origin ): bool {
+	public static function allowedOrigin( DB $db, string $origin ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( '' === $origin || self::origin( $origin ) !== $origin ) {
 			return false;
 		}
 		foreach ( $db->rows( "SELECT origins FROM {$db->prefix}applications WHERE enabled=1" ) as $row ) {
-			if ( in_array( $origin, json_decode( $row['origins'], true ) ?: array(), true ) ) {
+			if ( in_array( $origin, json_decode( $row['origins'], true ) ?: array(), true ) ) { // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 				return true;
 			}
 		}
@@ -522,21 +522,21 @@ final class OAuth {
 	 * expiry governs the identity cookie only: an application sign-in lives as long as its
 	 * refresh family, until the session is revoked (sign-out, suspension, password change).
 	 */
-	private function live( int $uid, string $sessionId, bool $throw ): bool {
+	private function live( int $uid, string $sessionId, bool $throw ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, Universal.NamingConventions.NoReservedKeywordParameterNames.throwFound -- Preserve the existing PHP variable name. Preserve the existing PHP parameter name.
 		$account = $this->db->row(
 			"SELECT status FROM {$this->db->prefix}accounts WHERE wp_user_id=%d FOR UPDATE",
 			$uid,
 		);
 		$session = $this->db->row(
 			"SELECT id, wp_user_id, wp_token FROM {$this->db->prefix}sessions WHERE id=%s AND wp_user_id=%d AND revoked_at IS NULL FOR UPDATE",
-			$sessionId,
+			$sessionId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$uid,
 		);
 		// A session opened from a WordPress sign-in lives only as long as that WordPress session:
 		// signing out of WordPress, or ending its sessions, ends the apps' too.
 		if ( $session && ! Sessions::linked( $session ) ) {
-			$this->db->run( "UPDATE {$this->db->prefix}sessions SET revoked_at=%d WHERE id=%s", time(), $sessionId );
-			$this->db->run( "UPDATE {$this->db->prefix}tokens SET revoked=1 WHERE session_id=%s", $sessionId );
+			$this->db->run( "UPDATE {$this->db->prefix}sessions SET revoked_at=%d WHERE id=%s", time(), $sessionId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$this->db->run( "UPDATE {$this->db->prefix}tokens SET revoked=1 WHERE session_id=%s", $sessionId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$session = null;
 		}
 		$ok = $account && 'active' === $account['status'] && $session;

@@ -12,7 +12,7 @@ final class JsSymbol {
 	private static array $registry   = array();
 	private static array $well_known = array();
 
-	private function __construct( public readonly string|JsUndefined $description, public readonly ?string $registryKey = null, public readonly bool $isWellKnown = false ) {}
+	private function __construct( public readonly string|JsUndefined $description, public readonly ?string $registryKey = null, public readonly bool $isWellKnown = false ) {} // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 	/** `Symbol(description)`: a fresh symbol each call. */
 	public static function create( JsArray $args ): self {
@@ -26,10 +26,10 @@ final class JsSymbol {
 		return self::$registry[ $key ] ??= new self( $key, $key );
 	}
 
-	public static function keyFor( mixed $symbol ): string|JsUndefined {
+	public static function keyFor( mixed $symbol ): string|JsUndefined { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! $symbol instanceof self ) {
 			throw new JsError( Js::typeOf( $symbol ) . ' is not a symbol', 'TypeError' ); }
-		return $symbol->registryKey ?? JsUndefined::Value;
+		return $symbol->registryKey ?? JsUndefined::Value; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the method name used by compiled PHP.
@@ -41,10 +41,10 @@ final class JsSymbol {
 
 	/** Registered symbols are not weakly held, so they can't be weak collection keys. */
 	public function registered(): bool {
-		return null !== $this->registryKey; }
+		return null !== $this->registryKey; } // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	/** `String(symbol)` and `symbol.toString()`; implicit conversion throws instead. */
-	public function descriptiveString(): string {
+	public function descriptiveString(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return 'Symbol(' . ( JsUndefined::Value === $this->description ? '' : $this->description ) . ')';
 	}
 }

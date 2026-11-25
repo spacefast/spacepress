@@ -129,7 +129,7 @@ final class Webhooks {
 	}
 
 	/** Extensions::beforeAction: `signature` replaces the access check; the verified caller is anonymous. */
-	public static function verify( array $spec, string $name, string $rawBody, array $headers, ?Viewer $viewer ): void {
+	public static function verify( array $spec, string $name, string $rawBody, array $headers, ?Viewer $viewer ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$signature = $spec['signature'] ?? null;
 		if ( null === $signature || null === $viewer ) {
 			return; // no signature option, or the trusted CLI
@@ -141,8 +141,8 @@ final class Webhooks {
 			throw self::invalid();
 		}
 		if ( ! is_string( $given ) || ! match ( $signature['scheme'] ) {
-			'spacepress' => self::verify_zero( $secret, $given, $rawBody ),
-			'hmac-sha256' => self::verify_hmac( $secret, $given, $rawBody ),
+			'spacepress' => self::verify_zero( $secret, $given, $rawBody ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			'hmac-sha256' => self::verify_hmac( $secret, $given, $rawBody ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			default => false,
 		}) {
 			throw self::invalid();
@@ -154,7 +154,7 @@ final class Webhooks {
 	 * base64 (WooCommerce, Shopify). Either is decoded to the 32 digest bytes and compared in
 	 * constant time with the expected digest.
 	 */
-	private static function verify_hmac( string $secret, string $header, string $rawBody ): bool {
+	private static function verify_hmac( string $secret, string $header, string $rawBody ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$given = trim( $header );
 		if ( strncasecmp( $given, 'sha256=', 7 ) === 0 ) {
 			$given = substr( $given, 7 );
@@ -165,11 +165,11 @@ final class Webhooks {
 			default => false,
 		};
 
-		return is_string( $digest ) && hash_equals( hash_hmac( 'sha256', $rawBody, $secret, true ), $digest );
+		return is_string( $digest ) && hash_equals( hash_hmac( 'sha256', $rawBody, $secret, true ), $digest ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/** `t=<unix>,v1=<hex>[,v1=<hex>]`: fresh timestamp and any matching v1 (secret rotation). */
-	private static function verify_zero( string $secret, string $header, string $rawBody ): bool {
+	private static function verify_zero( string $secret, string $header, string $rawBody ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$t          = null;
 		$candidates = array();
 		foreach ( explode( ',', $header ) as $part ) {
@@ -183,7 +183,7 @@ final class Webhooks {
 		if ( null === $t || abs( intdiv( Js::now(), 1000 ) - $t ) > self::TOLERANCE_S ) {
 			return false;
 		}
-		$expected = self::sign( $secret, $t . '.' . $rawBody );
+		$expected = self::sign( $secret, $t . '.' . $rawBody ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		foreach ( $candidates as $candidate ) {
 			if ( hash_equals( $expected, $candidate ) ) {
 				return true;

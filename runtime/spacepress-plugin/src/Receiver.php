@@ -67,7 +67,7 @@ final class Receiver {
 	 * this one `app_id` the form gets no scope choices, and the credential is left as WordPress makes
 	 * it: everything its user can do. The screen says so.
 	 */
-	public static function authorizeCli(): void {
+	public static function authorizeCli(): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		// Only for someone who may deploy: anyone else approving this link gets the scoped
 		// credential every other approval gets, and the receiver turns it away.
 		$callback = wp_parse_url( (string) wp_unslash( $_REQUEST['success_url'] ?? '' ) );
@@ -87,7 +87,7 @@ final class Receiver {
 	}
 
 	/** The CLI approval runs after the app has scoped a newly created credential. */
-	public static function createdPassword( mixed $user, mixed $item, mixed $password, mixed $args ): void {
+	public static function createdPassword( mixed $user, mixed $item, mixed $password, mixed $args ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_array( $item ) || ! is_array( $args ) || ( $args['app_id'] ?? null ) !== Site::CLI || array_key_exists( 'sp_scope', $args ) || ! Site::deployer( (int) $user ) ) {
 			return;
 		}
@@ -191,14 +191,14 @@ final class Receiver {
 			// Never an older build instead: the database is at this one's schema.
 			throw new Refusal(
 				'sp_unknown_build',
-				$request['build'] === Site::baseline()
+				$request['build'] === Site::baseline() // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				? 'The build this site deployed last is no longer in its build store, so the next build has nothing to be compared with. Restore the store directory from a backup.'
 				: 'This site has no such build.',
 				404
 			);
 		}
 		$migrations = array();
-		foreach ( scandir( $app . '/migrations' ) ?: array() as $entry ) {
+		foreach ( scandir( $app . '/migrations' ) ?: array() as $entry ) { // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			if ( '.' === $entry || '..' === $entry ) {
 				continue;
 			}
@@ -413,7 +413,7 @@ final class Receiver {
 	private static function store( string $root, string $parts, array $deployment, string $kind, int $index, int $total, string $sha, string $body ): array {
 		wp_mkdir_p( $parts );
 		$held = 0;
-		foreach ( scandir( $parts ) ?: array() as $name ) {
+		foreach ( scandir( $parts ) ?: array() as $name ) { // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			if ( ctype_digit( $name ) && (int) $name !== $index ) {
 				$held += (int) filesize( "$parts/$name" );
 			}
@@ -515,12 +515,12 @@ final class Receiver {
 				static function () use ( $root, $build, $deployment, $id ): array {
 					self::current( $deployment['manifest'] );
 					$receipt       = \SpacePress\Loader\Loader::initialize( $root, $build );
-					$canSyncPublic = class_exists( \SpacePress\Wp\PublicFiles::class ) && \SpacePress\Wp\Runtime::plugin() !== null;
-					if ( $canSyncPublic && ! method_exists( \SpacePress\Wp\PublicFiles::class, 'syncSymlinks' ) ) {
+					$canSyncPublic = class_exists( \SpacePress\Wp\PublicFiles::class ) && \SpacePress\Wp\Runtime::plugin() !== null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					if ( $canSyncPublic && ! method_exists( \SpacePress\Wp\PublicFiles::class, 'syncSymlinks' ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						throw new \RuntimeException( 'Active runtime cannot synchronize public files during activation.' );
 					}
 					Site::makeLive( $build, $deployment['manifest'], 'deploy' );
-					if ( $canSyncPublic ) {
+					if ( $canSyncPublic ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						\SpacePress\Wp\PublicFiles::syncSymlinks( \SpacePress\Wp\Runtime::plugin() );
 					}
 					$pending = Site::pending();
@@ -573,17 +573,17 @@ final class Receiver {
 				foreach ( array( 'runtime', 'app' ) as $kind ) {
 					Trees::mirror( $root, Site::assets(), $kind, $manifest[ $kind ] );
 				}
-				$canSyncPublic = class_exists( \SpacePress\Wp\PublicFiles::class ) && class_exists( \SpacePress\Schema::class );
-				if ( $canSyncPublic && ! method_exists( \SpacePress\Wp\PublicFiles::class, 'syncSymlinksForDir' ) ) {
+				$canSyncPublic = class_exists( \SpacePress\Wp\PublicFiles::class ) && class_exists( \SpacePress\Schema::class ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				if ( $canSyncPublic && ! method_exists( \SpacePress\Wp\PublicFiles::class, 'syncSymlinksForDir' ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					throw new \RuntimeException( 'Active runtime cannot synchronize public files during rollback.' );
 				}
 				Site::makeLive( $build, $manifest, 'rollback' );
-				if ( $canSyncPublic ) {
-					$appDir     = $root . '/app/' . $manifest['app'] . '/plugins/spacepress-app-' . $manifest['name'];
-					$schemaFile = $appDir . '/sp/app/schema.php';
-					if ( is_file( $schemaFile ) ) {
-						$assetsPublic = Site::assets() . '/app/' . $manifest['app'] . '/plugins/spacepress-app-' . $manifest['name'] . '/public';
-						\SpacePress\Wp\PublicFiles::syncSymlinksForDir( $appDir, $assetsPublic, \SpacePress\Schema::load( $schemaFile ) );
+				if ( $canSyncPublic ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					$appDir     = $root . '/app/' . $manifest['app'] . '/plugins/spacepress-app-' . $manifest['name']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					$schemaFile = $appDir . '/sp/app/schema.php'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					if ( is_file( $schemaFile ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+						$assetsPublic = Site::assets() . '/app/' . $manifest['app'] . '/plugins/spacepress-app-' . $manifest['name'] . '/public'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+						\SpacePress\Wp\PublicFiles::syncSymlinksForDir( $appDir, $assetsPublic, \SpacePress\Schema::load( $schemaFile ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					}
 				}
 			}
@@ -592,6 +592,7 @@ final class Receiver {
 }
 
 /** A deploy request the site refuses, as a REST error with a status. */
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- Keep the existing autoload and declaration layout.
 final class Refusal extends \RuntimeException {
 
 	public function __construct( public readonly string $problem, string $message, public readonly int $status, public readonly array $detail = array() ) {

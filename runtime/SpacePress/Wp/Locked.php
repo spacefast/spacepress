@@ -11,7 +11,7 @@ namespace SpacePress\Wp;
  */
 final class Locked extends \SpacePress\HttpError {
 
-	public function __construct( public readonly int $holderId, public readonly string $holder ) {
+	public function __construct( public readonly int $holderId, public readonly string $holder ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		parent::__construct( 409, 'locked', ( '' === $holder ? 'Another user' : $holder ) . ' is editing this item; retry later, or send takeover: true to take over' );
 	}
 
@@ -19,7 +19,7 @@ final class Locked extends \SpacePress\HttpError {
 	public function details(): array {
 		return array(
 			'holder' => array(
-				'id'   => $this->holderId,
+				'id'   => $this->holderId, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				'name' => $this->holder,
 			),
 		);

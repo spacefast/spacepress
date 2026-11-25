@@ -54,9 +54,9 @@ final class SchemaVersions {
 	 * @return array{parent: int, changes: list<array>, effects: list<array>}
 	 * @throws Refused
 	 */
-	public function propose( mixed $changeSet ): array {
+	public function propose( mixed $changeSet ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$state    = Loader::state( $this->plugin->schema->name() );
-		$resolved = Changes::resolve( $this->compiled(), $state, $changeSet, Loader::references(), Loader::declared( $this->plugin->schema->name() ) );
+		$resolved = Changes::resolve( $this->compiled(), $state, $changeSet, Loader::references(), Loader::declared( $this->plugin->schema->name() ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
 		return array(
 			'parent'  => (int) $state['version'],
@@ -72,7 +72,7 @@ final class SchemaVersions {
 	 * @return array the stored version ({@see row()})
 	 * @throws Refused 409 `schema_conflict` when `$parent` is no longer the newest version
 	 */
-	public function apply( int $parent, mixed $changeSet, array $actor ): array {
+	public function apply( int $parent, mixed $changeSet, array $actor ): array { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.parentFound, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP parameter name. Preserve the existing PHP variable name.
 		$db = $this->plugin->connection();
 		if ( $db->inTransaction() ) {
 			throw new \LogicException( 'A schema version is applied outside a SpacePress transaction' );
@@ -83,7 +83,7 @@ final class SchemaVersions {
 		return Migrator::locked(
 			$db,
 			$this->plugin->schemaLock(),
-			function () use ( $db, $app, $parent, $changeSet, $actor ): array {
+			function () use ( $db, $app, $parent, $changeSet, $actor ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				if ( ! $this->plugin->buildIsCurrent() ) {
 					// A deploy replaced the build while this request waited: the change was checked against
 					// the old one. The next request runs the new build; propose the change there.
@@ -105,7 +105,7 @@ final class SchemaVersions {
 				if ( (int) ( $state['version'] ?? 0 ) !== $newest['version'] || ( $state['format'] ?? null ) !== Loader::FORMAT || ( $state['seal'] ?? null ) !== Loader::seal( $state ) ) {
 					$state = $this->replay( $rows );
 				}
-				$resolved    = Changes::resolve( $this->compiled(), $state, $changeSet, Loader::references(), Loader::declared( $this->plugin->schema->name() ) );
+				$resolved    = Changes::resolve( $this->compiled(), $state, $changeSet, Loader::references(), Loader::declared( $this->plugin->schema->name() ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$row         = array(
 					'app'       => $app,
 					'version'   => $parent + 1,
@@ -158,10 +158,10 @@ final class SchemaVersions {
 	 * A version's hash: its parent's hash and every other stored value of the row. Changing or
 	 * removing an earlier version changes every hash after it.
 	 */
-	public static function hashOf( string $parentHash, array $row ): string {
+	public static function hashOf( string $parentHash, array $row ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 		unset( $row['hash'] );
 
-		return hash( 'sha256', $parentHash . "\n" . self::json( $row ) );
+		return hash( 'sha256', $parentHash . "\n" . self::json( $row ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	/** The build this request runs, as compiled: what every change is checked against. */
@@ -189,12 +189,12 @@ final class SchemaVersions {
 	private function verified(): array {
 		// A table that is gone holds no versions, which the sealed option then says is wrong.
 		$rows       = $this->exists() ? $this->rows() : array();
-		$parentHash = '';
+		$parentHash = ''; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		foreach ( $rows as $i => $row ) {
-			if ( $row['version'] !== $i + 1 || $row['parent'] !== $i || self::hashOf( $parentHash, $row ) !== $row['hash'] ) {
+			if ( $row['version'] !== $i + 1 || $row['parent'] !== $i || self::hashOf( $parentHash, $row ) !== $row['hash'] ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				throw self::broken( $row['version'] );
 			}
-			$parentHash = $row['hash'];
+			$parentHash = $row['hash']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		// The option apply sealed names the newest version and its hash; rows can't end before it.
 		$state   = $this->sealed_state();
@@ -313,7 +313,7 @@ final class SchemaVersions {
 	private function replay( array $rows ): array {
 		$state = Loader::EMPTY;
 		foreach ( $rows as $row ) {
-			if ( $row['format'] !== Loader::FORMAT ) {
+			if ( $row['format'] !== Loader::FORMAT ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				throw new HttpError( 409, 'schema_format', "Schema version {$row['version']} is stored in format {$row['format']}; this runtime reads format " . Loader::FORMAT . '. Update the SpacePress runtime before changing the schema' );
 			}
 			$state = array(
@@ -359,7 +359,7 @@ final class SchemaVersions {
 	 *
 	 * @return array{site: array{version: int, hash: string}, build: array{version: int, hash: string}, kept: list<string>, changed: list<string>, restored: list<string>, refusals: list<array{code: string, name: string, message: string, fix: string}>}
 	 */
-	public function deployCheck(): array {
+	public function deployCheck(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		return $this->compare( $this->list() );
 	}
 
@@ -446,10 +446,10 @@ final class SchemaVersions {
 	private function effects( array $changes, array $after ): array {
 		$schema = Loader::apply( $this->compiled(), $after, Loader::references() );
 		// Counted by type name, so a collection that isn't registered (not added yet, or removed) is counted too.
-		$items   = static fn ( string $postType ): int => (int) $GLOBALS['wpdb']->get_var(
+		$items   = static fn ( string $postType ): int => (int) $GLOBALS['wpdb']->get_var( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$GLOBALS['wpdb']->prepare(
 				"SELECT COUNT(*) FROM {$GLOBALS['wpdb']->posts} WHERE post_type = %s AND post_status NOT IN ('auto-draft', 'inherit')",
-				$postType
+				$postType // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			)
 		);
 		$effects = array();
@@ -465,7 +465,7 @@ final class SchemaVersions {
 					'field'  => 1,
 				)
 			);
-			$postType  = "sp_$kind";
+			$postType  = "sp_$kind"; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$effects[] = $effect + match ( $change['op'] ) {
 				'addField' => array(
 					'storage'       => 'post meta ' . $schema['collections'][ $kind ]['wp']['metaPrefix'] . $change['field'] . ' on ' . $schema['collections'][ $kind ]['wp']['postType'],
@@ -477,8 +477,8 @@ final class SchemaVersions {
 					'note'    => 'reads the default, or null, until it is set',
 				),
 				'addCollection' => array(
-					'storage'       => "post type $postType",
-					'existingItems' => $items( $postType ),
+					'storage'       => "post type $postType", // phpcs:ignore WordPress.NamingConventions.ValidVariableName.InterpolatedVariableNotSnakeCase -- Preserve the existing PHP variable name.
+					'existingItems' => $items( $postType ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					'note'          => 'no SQL table is created; items are posts',
 				),
 				'addGlobal' => array(
@@ -488,8 +488,8 @@ final class SchemaVersions {
 				'setLabel', 'setFieldUi' => array( 'note' => 'presentation only; no stored data changes' ),
 				'removeField' => array( 'note' => 'hidden from the schema; stored values are kept and come back if the field is added again as ' . $change['was'] ),
 				'removeCollection' => array(
-					'existingItems' => $items( $postType ),
-					'note'          => "hidden from the schema; its items stay in post type $postType and come back if the collection is added again",
+					'existingItems' => $items( $postType ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					'note'          => "hidden from the schema; its items stay in post type $postType and come back if the collection is added again", // phpcs:ignore WordPress.NamingConventions.ValidVariableName.InterpolatedVariableNotSnakeCase -- Preserve the existing PHP variable name.
 				),
 				'removeGlobal' => array( 'note' => 'hidden from the schema; its stored values are kept' ),
 			};

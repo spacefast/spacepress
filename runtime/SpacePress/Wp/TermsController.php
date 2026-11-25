@@ -86,8 +86,8 @@ final class TermsController extends \WP_REST_Terms_Controller {
 	/** A term row: core's, with `url` as SpacePress builds it and SpacePress's own row for the facade. */
 	public function prepare_item_for_response( $item, $request ) {
 		$response = parent::prepare_item_for_response( $item, $request );
-		if ( Facade::dispatching() && $response instanceof \WP_REST_Response && is_array( $data = $response->get_data() )
-			&& ( $viewer = CoreAccess::viewer() ) !== null && $item instanceof \WP_Term ) {
+		if ( Facade::dispatching() && $response instanceof \WP_REST_Response && is_array( $data = $response->get_data() ) // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
+			&& ( $viewer = CoreAccess::viewer() ) !== null && $item instanceof \WP_Term ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			$db                 = Plugin::instance()?->db() ?? throw new \LogicException( 'No SpacePress app' );
 			$row                = $db->findFirst( $this->collection, array( 'where' => array( 'id' => $item->term_id ) ), $viewer );
 			$data[ Kinds::ROW ] = null === $row ? null : (object) PostMeta::values( $this->collection, $row, array_map( 'strval', array_keys( $row ) ) );
@@ -184,7 +184,7 @@ final class TermsController extends \WP_REST_Terms_Controller {
 			$data += array_intersect_key( $meta, TermMeta::fields( $spec ) );
 		}
 		// The API's other fields (one the kind doesn't have, a read-only one): SpacePress refuses them.
-		if ( is_array( $extra = \SpacePress\Seam::container( $sent['spacepress'] ?? null ) ) ) {
+		if ( is_array( $extra = \SpacePress\Seam::container( $sent['spacepress'] ?? null ) ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			$data += $extra;
 		}
 		$row = $this->pipeline(
@@ -212,7 +212,7 @@ final class TermsController extends \WP_REST_Terms_Controller {
 	}
 
 	/** One write as the viewer in one transaction; SpacePress's refusals as core's errors. */
-	private function pipeline( callable $fn ): mixed {
+	private function pipeline( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$plugin = Plugin::instance() ?? throw new \LogicException( 'No SpacePress app' );
 		if ( $plugin->unavailable() !== null ) {
 			return new \WP_Error( 'sp_unavailable', Plugin::UNAVAILABLE, array( 'status' => 503 ) );

@@ -32,10 +32,10 @@ final class FileRoutes {
 				throw HttpError::invalidInput( 'Send the file as multipart/form-data field "file"', '/file' );
 			}
 			$err = (int) ( $file['error'] ?? UPLOAD_ERR_NO_FILE );
-			if ( $err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE ) {
+			if ( $err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				throw new HttpError( 413, 'payload_too_large', 'The upload is larger than this server accepts' );
 			}
-			if ( $err !== UPLOAD_ERR_OK ) {
+			if ( $err !== UPLOAD_ERR_OK ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				throw HttpError::invalidInput( 'The upload failed (error ' . $err . ')', '/file' );
 			}
 

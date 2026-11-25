@@ -32,17 +32,17 @@ final class WpPostStore implements Store {
 	/** @var array<string, Source> */
 	private array $sources = array();
 	/** Trashed posts are read too ({@see withTrash()}). */
-	private bool $trashVisible = false;
+	private bool $trashVisible = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** While set, password visibility is decided in SQL only ({@see withSqlVisibility()}). */
-	private bool $sqlVisibility = false;
+	private bool $sqlVisibility = false; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** @var array<string, array{sql: string, params: list<mixed>}> the posts a SQL-only check is about */
-	private array $sqlScope = array();
+	private array $sqlScope = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	/** @var array<string, array> Request-local SQL visibility guards. */
 	private array $visibility         = array();
-	private int $visibilityGeneration = -1;
+	private int $visibilityGeneration = -1; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	/** @var ?array{collection: string, viewer: \SpacePress\Viewer, password: string} */
-	private ?array $readPassword = null;
+	private ?array $readPassword = null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 	/** What follows the item's id in the name of its staged revision ({@see stagedName()}). */
 	public const STAGED_SUFFIX = '-autosave-staged-v1';
@@ -57,7 +57,7 @@ final class WpPostStore implements Store {
 		$this->db->watchPostWrites();
 	}
 
-	public function afterCommit( callable $fn ): void {
+	public function afterCommit( callable $fn ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$this->db->afterCommit( $fn );
 	}
 
@@ -65,7 +65,7 @@ final class WpPostStore implements Store {
 		$this->db->applySystemStatements( $statements );
 	}
 
-	public function transaction( callable $fn ): mixed {
+	public function transaction( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		return $this->db->transaction( $fn );
 	}
 
@@ -76,26 +76,26 @@ final class WpPostStore implements Store {
 	// ================================================================ reads
 
 	public function source( string $collection ): Source {
-		$key    = $this->db->prefix() . ':' . $collection . ( $this->trashVisible ? ':trash' : '' );
-		$source = $this->sources[ $key ] ??= $this->build_source( $collection, $this->trashVisible );
-		if ( ! $this->trashVisible ) {
+		$key    = $this->db->prefix() . ':' . $collection . ( $this->trashVisible ? ':trash' : '' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		$source = $this->sources[ $key ] ??= $this->build_source( $collection, $this->trashVisible ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		if ( ! $this->trashVisible ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			return $source;
 		}
 
-		return new Source( $source->table, str_replace( "NOT IN ('trash', ", 'NOT IN (', $source->baseWhere ), $source->columns );
+		return new Source( $source->table, str_replace( "NOT IN ('trash', ", 'NOT IN (', $source->baseWhere ), $source->columns ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	/**
 	 * Run $fn with trashed posts readable: what wp-admin's own trash, untrash and permanent delete
 	 * need to know of the row (its status reads as `draft`). Every other read leaves the trash out.
 	 */
-	public function withTrash( callable $fn ): mixed {
-		$previous           = $this->trashVisible;
-		$this->trashVisible = true;
+	public function withTrash( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
+		$previous           = $this->trashVisible; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		$this->trashVisible = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		try {
 			return $fn();
 		} finally {
-			$this->trashVisible = $previous;
+			$this->trashVisible = $previous; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 	}
 
@@ -113,30 +113,30 @@ final class WpPostStore implements Store {
 	 *
 	 * @param array<string, array{sql: string, params: list<mixed>}> $scope
 	 */
-	public function withSqlVisibility( callable $fn, array $scope = array() ): mixed {
-		$previous            = array( $this->sqlVisibility, $this->sqlScope );
-		$this->sqlVisibility = true;
-		$this->sqlScope      = $scope;
+	public function withSqlVisibility( callable $fn, array $scope = array() ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
+		$previous            = array( $this->sqlVisibility, $this->sqlScope ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		$this->sqlVisibility = true; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		$this->sqlScope      = $scope; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		try {
 			return $fn();
 		} finally {
-			[$this->sqlVisibility, $this->sqlScope] = $previous;
+			[$this->sqlVisibility, $this->sqlScope] = $previous; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 	}
 
-	public function readGuards( string $collection, \SpacePress\Viewer $viewer, bool $forSelect = false ): array {
-		if ( $this->sqlVisibility ) {
+	public function readGuards( string $collection, \SpacePress\Viewer $viewer, bool $forSelect = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( $this->sqlVisibility ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$spec   = $this->schema->collection( $collection );
 			$native = ( $spec['native'] ?? false ) ? NativePosts::readGuard( $this->db, $viewer ) : null;
-			$guard  = $this->password_guard( $collection, $viewer, $spec, $this->sqlScope[ $collection ] ?? false );
+			$guard  = $this->password_guard( $collection, $viewer, $spec, $this->sqlScope[ $collection ] ?? false ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 
 			return null === $native ? array( $guard ) : array( $native, $guard );
 		}
-		if ( $this->visibilityGeneration !== CoreAccess::generation() ) {
+		if ( $this->visibilityGeneration !== CoreAccess::generation() ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase, WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing PHP property name. Preserve the existing comparison order.
 			$this->visibility           = array();
-			$this->visibilityGeneration = CoreAccess::generation();
+			$this->visibilityGeneration = CoreAccess::generation(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
-		$key = serialize( array( $collection, $viewer->user, $_COOKIE[ 'wp-postpass_' . COOKIEHASH ] ?? null, $this->readPassword, $forSelect, $this->trashVisible ) );
+		$key = serialize( array( $collection, $viewer->user, $_COOKIE[ 'wp-postpass_' . COOKIEHASH ] ?? null, $this->readPassword, $forSelect, $this->trashVisible ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP property name. Preserve the existing PHP variable name.
 		if ( array_key_exists( $key, $this->visibility ) ) {
 			return $this->visibility[ $key ];
 		}
@@ -146,26 +146,26 @@ final class WpPostStore implements Store {
 		if ( $spec['native'] ?? false ) {
 			$native = NativePosts::readGuard( $this->db, $viewer );
 			if ( null !== $native ) {
-				return $this->visibility[ $key ] = array( $native, ...$this->password_guards( $collection, $viewer, $spec, $forSelect ) );
+				return $this->visibility[ $key ] = array( $native, ...$this->password_guards( $collection, $viewer, $spec, $forSelect ) ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Keep the assignment and its test together. Preserve the existing PHP variable name.
 			}
 		}
-		return $this->visibility[ $key ] = $this->password_guards( $collection, $viewer, $spec, $forSelect );
+		return $this->visibility[ $key ] = $this->password_guards( $collection, $viewer, $spec, $forSelect ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Keep the assignment and its test together. Preserve the existing PHP variable name.
 	}
 
 	/** @return list<array|\SpacePress\SqlPredicate> the password-protection guards of a post kind for $viewer */
-	private function password_guards( string $collection, \SpacePress\Viewer $viewer, array $spec, bool $forSelect ): array {
-		$statusFilter = $this->trashVisible
+	private function password_guards( string $collection, \SpacePress\Viewer $viewer, array $spec, bool $forSelect ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$statusFilter = $this->trashVisible // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP variable name. Preserve the existing PHP property name.
 			? "post_status NOT IN ('auto-draft', 'inherit')"
 			: "post_status NOT IN ('trash', 'auto-draft', 'inherit')";
 		$type         = (string) $spec['wp']['postType'];
 		if ( null === $viewer->user ) {
 			$guard = $this->password_guard( $collection, $viewer, $spec );
-			if ( $forSelect ) {
+			if ( $forSelect ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				return array( $guard );
 			}
 			// An empty scope certifies that even consumers which run their own query can see every row.
 			$hidden = $this->db->run(
-				'SELECT 1 FROM `' . $this->db->wpdb()->posts . '` p WHERE p.post_type = ? AND p.' . $statusFilter . ' AND NOT ('
+				'SELECT 1 FROM `' . $this->db->wpdb()->posts . '` p WHERE p.post_type = ? AND p.' . $statusFilter . ' AND NOT (' // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				. str_replace( '{a}', 'p', $guard->sql ) . ') LIMIT 1',
 				array( $type, ...$guard->params ),
 			);
@@ -175,9 +175,9 @@ final class WpPostStore implements Store {
 		$public = self::password_predicate( array( '', '30' ) );
 		$stamp  = null;
 		$key    = "spacepress-unprotected:$type";
-		if ( $forSelect && ! $this->db->inTransaction() ) {
+		if ( $forSelect && ! $this->db->inTransaction() ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$cached = wp_cache_get_multiple( array( 'last_changed', $key ), 'posts' );
-			$stamp  = ( $cached['last_changed'] ?? false ) ?: wp_cache_get_last_changed( 'posts' );
+			$stamp  = ( $cached['last_changed'] ?? false ) ?: wp_cache_get_last_changed( 'posts' ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			if ( ( $cached[ $key ] ?? false ) === $stamp ) {
 				// A concurrent write can invalidate this hint after it is read. The row query still
 				// tests the actual password. A cached absence cannot make a protected row readable.
@@ -186,9 +186,9 @@ final class WpPostStore implements Store {
 		}
 		$hidden            = array();
 		$editable          = array();
-		$acceptedPasswords = array();
+		$acceptedPasswords = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$posts             = $this->db->run(
-			'SELECT ID, post_password FROM `' . $this->db->wpdb()->posts . '` WHERE post_type = ? AND ' . $statusFilter . ' AND HEX(post_password) NOT IN (?, ?)',
+			'SELECT ID, post_password FROM `' . $this->db->wpdb()->posts . '` WHERE post_type = ? AND ' . $statusFilter . ' AND HEX(post_password) NOT IN (?, ?)', // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			array( $type, ...$public->params ),
 		);
 		if ( array() === $posts && null !== $stamp ) {
@@ -203,7 +203,7 @@ final class WpPostStore implements Store {
 			}
 			$password = (string) $row['post_password'];
 			$hex      = strtoupper( bin2hex( $password ) );
-			if ( $acceptedPasswords[ $hex ] ??= $this->password_accepted( $password, $collection, $viewer ) ) {
+			if ( $acceptedPasswords[ $hex ] ??= $this->password_accepted( $password, $collection, $viewer ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, Generic.CodeAnalysis.AssignmentInCondition.Found -- Preserve the existing PHP variable name. Keep the assignment and its test together.
 				continue;
 			}
 			if ( user_can( $viewer->user['id'], 'edit_post', $id ) ) {
@@ -212,12 +212,12 @@ final class WpPostStore implements Store {
 				$hidden[] = $id;
 			}
 		}
-		if ( ! $forSelect ) {
+		if ( ! $forSelect ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return array() === $hidden ? array() : array( array( $spec['primaryKey'] => array( 'notIn' => $hidden ) ) );
 		}
 		// A password proof still has to match the row when SQL reads it. Editors may read the
 		// rows they can edit independently of which password those rows hold.
-		$passwords = self::password_predicate( array( ...$public->params, ...array_map( 'strval', array_keys( array_filter( $acceptedPasswords ) ) ) ) );
+		$passwords = self::password_predicate( array( ...$public->params, ...array_map( 'strval', array_keys( array_filter( $acceptedPasswords ) ) ) ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( array() === $editable ) {
 			return array( $passwords );
 		}
@@ -234,12 +234,12 @@ final class WpPostStore implements Store {
 		// HEX preserves byte equality, including case and trailing spaces, on both MySQL
 		// and the SQLite translator. The site's text collation must not unlock a password.
 		$accepted = array( '', '30' ); // WordPress treats exactly '' and '0' as public.
-		$proof    = $this->readPassword;
+		$proof    = $this->readPassword; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( null !== $proof && $proof['collection'] === $collection && $proof['viewer']->user === $viewer->user ) {
 			$accepted[] = strtoupper( bin2hex( $proof['password'] ) );
 		}
 		$cookie = $_COOKIE[ 'wp-postpass_' . COOKIEHASH ] ?? null;
-		if ( false !== $scope && is_string( $cookie ) && str_starts_with( $hash = wp_unslash( $cookie ), '$P$B' ) ) {
+		if ( false !== $scope && is_string( $cookie ) && str_starts_with( $hash = wp_unslash( $cookie ), '$P$B' ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			require_once ABSPATH . WPINC . '/class-phpass.php';
 			$hasher    = new \PasswordHash( 8, true );
 			$passwords = $this->db->run(
@@ -263,8 +263,8 @@ final class WpPostStore implements Store {
 
 	/** Native REST's password proof belongs only to its collection and explicit viewer, including nested dispatches. */
 	public function withReadPassword( string $collection, \SpacePress\Viewer $viewer, ?string $password, callable $read ): mixed {
-		$previous           = $this->readPassword;
-		$this->readPassword = null === $password ? null : array(
+		$previous           = $this->readPassword; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		$this->readPassword = null === $password ? null : array( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			'collection' => $collection,
 			'viewer'     => $viewer,
 			'password'   => $password,
@@ -273,20 +273,20 @@ final class WpPostStore implements Store {
 		try {
 			return $read();
 		} finally {
-			$this->readPassword = $previous;
+			$this->readPassword = $previous; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			CoreAccess::flush();
 		}
 	}
 
 	private function password_accepted( string $password, string $collection, \SpacePress\Viewer $viewer ): bool {
-		$proof = $this->readPassword;
+		$proof = $this->readPassword; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( null !== $proof && $proof['collection'] === $collection && $proof['viewer']->user === $viewer->user
 			&& hash_equals( $password, $proof['password'] ) ) {
 			return true;
 		}
 		// Match WordPress's post-password cookie, without its REST filter borrowing the ambient user's edit authority.
 		$cookie = $_COOKIE[ 'wp-postpass_' . COOKIEHASH ] ?? null;
-		if ( ! is_string( $cookie ) || ! str_starts_with( $hash = wp_unslash( $cookie ), '$P$B' ) ) {
+		if ( ! is_string( $cookie ) || ! str_starts_with( $hash = wp_unslash( $cookie ), '$P$B' ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
 			return false;
 		}
 		require_once ABSPATH . WPINC . '/class-phpass.php';
@@ -294,7 +294,7 @@ final class WpPostStore implements Store {
 		return ( new \PasswordHash( 8, true ) )->CheckPassword( $password, $hash );
 	}
 
-	private function build_source( string $collection, bool $includeDeleted = false ): Source {
+	private function build_source( string $collection, bool $includeDeleted = false ): Source { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$spec     = $this->schema->collection( $collection );
 		$postmeta = $this->db->wpdb()->postmeta;
 		$prefix   = $spec['wp']['metaPrefix'];
@@ -308,10 +308,10 @@ final class WpPostStore implements Store {
 			$refs[ $col ] = match ( true ) {
 				$system && in_array( $col, array( 'locale', 'translations' ), true ) => Polylang::ref( $col, $this->db->prefix(), $this->schema->locales()['all'] ?? array() ),
 				$col === $spec['primaryKey'] => new ColumnRef( '{a}.ID', '', '', 'scalar' ),
-				$col === ( $spec['title'] ?? null ) => new ColumnRef( '{a}.post_title', '', '', 'scalar' ),
-				$col === ( $spec['content'] ?? null ) => new ColumnRef( '{a}.post_content', '', '', 'scalar' ),
-				$col === ( $spec['slug'] ?? null ) => new ColumnRef( '{a}.post_name', '', '', 'scalar' ),
-				$col === ( $spec['excerpt'] ?? null ) => new ColumnRef( "NULLIF({a}.post_excerpt, '')", '', "NULLIF({a}.post_excerpt, '')", 'scalar' ),
+				$col === ( $spec['title'] ?? null ) => new ColumnRef( '{a}.post_title', '', '', 'scalar' ), // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
+				$col === ( $spec['content'] ?? null ) => new ColumnRef( '{a}.post_content', '', '', 'scalar' ), // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
+				$col === ( $spec['slug'] ?? null ) => new ColumnRef( '{a}.post_name', '', '', 'scalar' ), // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
+				$col === ( $spec['excerpt'] ?? null ) => new ColumnRef( "NULLIF({a}.post_excerpt, '')", '', "NULLIF({a}.post_excerpt, '')", 'scalar' ), // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				$system && 'parent' === $col && ( $spec['hierarchical'] ?? false ) => new ColumnRef( 'NULLIF({a}.post_parent, 0)', '', 'NULLIF({a}.post_parent, 0)', 'scalar' ),
 				$system && 'order' === $col && ( $spec['hierarchical'] ?? false ) => new ColumnRef( '{a}.menu_order', '', '{a}.menu_order', 'scalar' ),
 				$system && 'status' === $col => new ColumnRef( "CASE {a}.post_status WHEN 'publish' THEN 'published' WHEN 'future' THEN 'scheduled' ELSE 'draft' END", '', '', 'scalar' ),
@@ -329,7 +329,7 @@ final class WpPostStore implements Store {
 					"CASE WHEN {a}.post_modified_gmt <> '0000-00-00 00:00:00' THEN {a}.post_modified_gmt ELSE {a}.post_modified END",
 					'scalar',
 				),
-				$system && 'deletedAt' === $col => $includeDeleted
+				$system && 'deletedAt' === $col => $includeDeleted // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					? new ColumnRef(
 						$v,
 						"LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::DELETED_AT_META . "'",
@@ -337,7 +337,7 @@ final class WpPostStore implements Store {
 						'scalar',
 					)
 					: new ColumnRef( 'NULL', '', '', 'scalar' ),
-				$system && 'deletedBy' === $col => $includeDeleted
+				$system && 'deletedBy' === $col => $includeDeleted // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					? new ColumnRef(
 						$v,
 						"LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::DELETED_BY_META . "'",
@@ -345,7 +345,7 @@ final class WpPostStore implements Store {
 						'scalar',
 					)
 					: new ColumnRef( 'NULL', '', '', 'scalar' ),
-				$system && 'deletedGroup' === $col => $includeDeleted
+				$system && 'deletedGroup' === $col => $includeDeleted // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					? new ColumnRef(
 						$v,
 						"LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::DELETED_GROUP_META . "'",
@@ -402,7 +402,7 @@ final class WpPostStore implements Store {
 		}
 		$spec  = $this->schema->collection( $collection );
 		$pk    = $spec['primaryKey'];
-		$lists = $nested = array();
+		$lists = $nested = array(); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		foreach ( $spec['columns'] as $col => $def ) {
 			// A read that selected some columns (`columns`) finishes only those.
 			if ( $this->isMeta( $spec, (string) $col ) && array_key_exists( $col, $rows[0] ) ) {
@@ -431,8 +431,8 @@ final class WpPostStore implements Store {
 							$row[ $col ] = null;
 							continue;
 						}
-						$fieldKey    = $spec['wp']['fieldKeyPrefix'] . $col;
-						$row[ $col ] = Schema::store( $def, Scf::fromScf( $def, get_field( $fieldKey, $id, false ), $fieldKey ) ?? ( 'group' === $def['type'] ? null : array() ) );
+						$fieldKey    = $spec['wp']['fieldKeyPrefix'] . $col; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+						$row[ $col ] = Schema::store( $def, Scf::fromScf( $def, get_field( $fieldKey, $id, false ), $fieldKey ) ?? ( 'group' === $def['type'] ? null : array() ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					}
 				}
 				unset( $row );
@@ -441,7 +441,7 @@ final class WpPostStore implements Store {
 			}
 		}
 
-		if ( $this->trashVisible && array_key_exists( 'deletedAt', $rows[0] ) ) {
+		if ( $this->trashVisible && array_key_exists( 'deletedAt', $rows[0] ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$missing = array();
 			foreach ( $rows as $i => $row ) {
 				if ( ( $row['deletedAt'] ?? null ) === null && isset( $row[ $pk ] ) ) {
@@ -458,9 +458,9 @@ final class WpPostStore implements Store {
 				}
 			}
 		}
-		$needsGmtCheck = ( array_key_exists( 'createdAt', $rows[0] ) || array_key_exists( 'updatedAt', $rows[0] ) )
+		$needsGmtCheck = ( array_key_exists( 'createdAt', $rows[0] ) || array_key_exists( 'updatedAt', $rows[0] ) ) // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			&& ( '' !== (string) get_option( 'timezone_string', '' ) || 0.0 !== (float) get_option( 'gmt_offset', 0 ) );
-		if ( $needsGmtCheck ) {
+		if ( $needsGmtCheck ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$ids = array_values( array_unique( array_map( 'intval', array_column( $rows, $pk ) ) ) );
 			if ( array() !== $ids ) {
 				$in   = implode( ', ', array_fill( 0, count( $ids ), '?' ) );
@@ -469,12 +469,12 @@ final class WpPostStore implements Store {
 					$ids,
 				);
 				if ( array() !== $zero ) {
-					$byId = array();
+					$byId = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					foreach ( $zero as $z ) {
-						$byId[ (int) $z['ID'] ] = $z;
+						$byId[ (int) $z['ID'] ] = $z; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					}
 					foreach ( $rows as &$row ) {
-						$z = $byId[ (int) ( $row[ $pk ] ?? 0 ) ] ?? null;
+						$z = $byId[ (int) ( $row[ $pk ] ?? 0 ) ] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 						if ( null === $z ) {
 							continue;
 						}
@@ -514,7 +514,7 @@ final class WpPostStore implements Store {
 	 */
 	private function rows_where( string $collection, string $where, array $params ): array {
 		$src    = $this->source( $collection );
-		$select = $joins = array();
+		$select = $joins = array(); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		$i      = 0;
 		foreach ( $src->columns as $name => $ref ) {
 			$sub      = array(
@@ -549,7 +549,7 @@ final class WpPostStore implements Store {
 		$this->db->touchPost( $id );
 		$this->write_meta( $spec, $id, $values );
 		if ( isset( $values['locale'] ) && ( $spec['localized'] ?? false ) ) {
-			$group = json_decode( (string) ( $values['translations'] ?? '{}' ), true ) ?: array();
+			$group = json_decode( (string) ( $values['translations'] ?? '{}' ), true ) ?: array(); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			$this->db->core( fn () => Polylang::assign( $this->db, $id, (string) $values['locale'], $group ) );
 		}
 		clean_post_cache( $id );
@@ -566,8 +566,8 @@ final class WpPostStore implements Store {
 		if ( array() !== $post ) {
 			$publishing   = ! in_array( get_post_status( $id ), array( 'publish', 'future', 'private' ), true )
 				&& in_array( $post['post_status'] ?? null, array( 'publish', 'future', 'private' ), true );
-			$preserveSlug = isset( $spec['slug'] ) && ! array_key_exists( 'post_name', $post ) && ! $publishing;
-			if ( $preserveSlug ) {
+			$preserveSlug = isset( $spec['slug'] ) && ! array_key_exists( 'post_name', $post ) && ! $publishing; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			if ( $preserveSlug ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				// An omitted/unchanged slug is not input. Native title edits must not repair it
 				// against competitors that the caller may not be allowed to read.
 				$post['post_name'] = (string) get_post_field( 'post_name', $id, 'raw' );
@@ -575,7 +575,7 @@ final class WpPostStore implements Store {
 			$post['ID'] = $id;
 			// SpacePress writes the revision itself after the meta is saved (Db::updateOne → revisionWrite);
 			// core's own post-update revision would be a second, meta-less one.
-			$r = $this->db->core( fn () => $this->without_core_revision( fn () => $this->with_status( $post, fn ( array $post ) => $this->with_slug( $post, static fn () => wp_update_post( wp_slash( $post ), true ), $preserveSlug ) ) ) );
+			$r = $this->db->core( fn () => $this->without_core_revision( fn () => $this->with_status( $post, fn ( array $post ) => $this->with_slug( $post, static fn () => wp_update_post( wp_slash( $post ), true ), $preserveSlug ) ) ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			if ( $r instanceof \WP_Error ) {
 				throw new \RuntimeException( 'wp_update_post failed: ' . $r->get_error_message() );
 			}
@@ -589,7 +589,7 @@ final class WpPostStore implements Store {
 		$this->db->core( static fn () => wp_delete_post( (int) $pk, true ) );
 	}
 
-	public function softDelete( string $collection, int|string $pk, string $at, ?int $userId, ?string $group ): void {
+	public function softDelete( string $collection, int|string $pk, string $at, ?int $userId, ?string $group ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( defined( 'EMPTY_TRASH_DAYS' ) && ! EMPTY_TRASH_DAYS ) {
 			throw new HttpError(
 				409,
@@ -620,10 +620,10 @@ final class WpPostStore implements Store {
 			throw new \RuntimeException( "Could not soft-delete $collection post $id (WordPress Trash refused or did not transition status to trash)" );
 		}
 		$this->db->core(
-			static function () use ( $id, $at, $userId, $group ): void {
+			static function () use ( $id, $at, $userId, $group ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				update_post_meta( $id, self::DELETED_AT_META, $at );
-				if ( null !== $userId ) {
-					update_post_meta( $id, self::DELETED_BY_META, (string) $userId );
+				if ( null !== $userId ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					update_post_meta( $id, self::DELETED_BY_META, (string) $userId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				} else {
 					delete_post_meta( $id, self::DELETED_BY_META );
 				}
@@ -646,16 +646,16 @@ final class WpPostStore implements Store {
 		}
 		// Check active-row uniqueness before untrashing (restoring desired slug if WordPress suffixed `__trashed`).
 		$check   = array();
-		$slugCol = $spec['slug'] ?? null;
-		if ( null !== $slugCol ) {
+		$slugCol = $spec['slug'] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( null !== $slugCol ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			$desired           = get_post_meta( $id, '_wp_desired_post_slug', true );
-			$check[ $slugCol ] = is_string( $desired ) && '' !== $desired
+			$check[ $slugCol ] = is_string( $desired ) && '' !== $desired // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				? $desired
 				: (string) preg_replace( '/__trashed$/', '', (string) $post->post_name );
 		}
-		$titleCol = $spec['title'] ?? null;
-		if ( null !== $titleCol && ( $spec['columns'][ $titleCol ]['unique'] ?? false ) ) {
-			$check[ $titleCol ] = (string) $post->post_title;
+		$titleCol = $spec['title'] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( null !== $titleCol && ( $spec['columns'][ $titleCol ]['unique'] ?? false ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$check[ $titleCol ] = (string) $post->post_title; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		foreach ( $spec['columns'] as $col => $def ) {
 			if ( ( $def['unique'] ?? false ) && $this->isMeta( $spec, (string) $col ) ) {
@@ -667,12 +667,12 @@ final class WpPostStore implements Store {
 		}
 		$this->check_unique( $collection, $check, $id );
 		$this->db->touchPost( $id );
-		$prevStatus = get_post_meta( $id, '_wp_trash_meta_status', true );
+		$prevStatus = get_post_meta( $id, '_wp_trash_meta_status', true ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$untrashed  = $this->db->core(
-			static function () use ( $id, $prevStatus ): mixed {
-				$filter = static fn ( string $newStatus, int $postId, string $previous ): string => $postId === $id && is_string( $prevStatus ) && '' !== $prevStatus
-				? $prevStatus
-				: ( $postId === $id && '' !== $previous ? $previous : $newStatus );
+			static function () use ( $id, $prevStatus ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$filter = static fn ( string $newStatus, int $postId, string $previous ): string => $postId === $id && is_string( $prevStatus ) && '' !== $prevStatus // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				? $prevStatus // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				: ( $postId === $id && '' !== $previous ? $previous : $newStatus ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				add_filter( 'wp_untrash_post_status', $filter, PHP_INT_MAX, 3 );
 				try {
 					return wp_untrash_post( $id );
@@ -748,7 +748,7 @@ final class WpPostStore implements Store {
 	}
 
 	/** wp_save_post_revision bails when the post type keeps 0 revisions. */
-	private function without_core_revision( callable $fn ): mixed {
+	private function without_core_revision( callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$none = static fn () => 0;
 		add_filter( 'wp_revisions_to_keep', $none, PHP_INT_MAX );
 		try {
@@ -763,13 +763,13 @@ final class WpPostStore implements Store {
 	 * `future` within a minute into `publish`; keep the status SpacePress asked for (or the post already has). Only this write's
 	 * postarr (marked with `_sp_status`) is affected, not posts a save hook writes meanwhile.
 	 */
-	private function with_status( array $post, callable $fn ): mixed {
+	private function with_status( array $post, callable $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 		$status = $post['post_status'] ?? ( isset( $post['ID'] ) ? get_post_status( (int) $post['ID'] ) : null );
 		if ( ! in_array( $status, array( 'publish', 'future' ), true ) ) {
 			return $fn( $post );
 		}
 		$post['post_status'] = $status;
-		$marker              = $post['_sp_status'] = bin2hex( random_bytes( 8 ) );
+		$marker              = $post['_sp_status'] = bin2hex( random_bytes( 8 ) ); // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.Found -- Keep the assignment and its test together.
 		$filter              = static function ( array $data, array $postarr, array $unsanitized ) use ( $marker, $status ): array {
 			if ( ( $unsanitized['_sp_status'] ?? null ) === $marker ) {
 				$data['post_status'] = $status;
@@ -786,8 +786,8 @@ final class WpPostStore implements Store {
 	}
 
 	/** Pass the slug through verbatim (SpacePress already checked it is unique in this post type). */
-	private function with_slug( array $post, callable $fn, bool $preserveEmpty = false ): mixed {
-		if ( ! isset( $post['post_name'] ) || ( '' === $post['post_name'] && ! $preserveEmpty ) ) {
+	private function with_slug( array $post, callable $fn, bool $preserveEmpty = false ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP parameter name. Preserve the existing PHP variable name.
+		if ( ! isset( $post['post_name'] ) || ( '' === $post['post_name'] && ! $preserveEmpty ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return $fn();
 		}
 		// A `wp.posts` kind's slug is WordPress's: it has no unique check of SpacePress's, so core's
@@ -795,12 +795,12 @@ final class WpPostStore implements Store {
 		// (an update that doesn't change it) is passed through as before.
 		$collection = CoreAccess::collection( (string) ( $post['post_type'] ?? get_post_type( (int) ( $post['ID'] ?? 0 ) ) ) );
 		$spec       = null === $collection ? null : $this->schema->collection( $collection );
-		if ( null !== $spec && isset( $spec['excerpt'] ) && ! $preserveEmpty ) {
+		if ( null !== $spec && isset( $spec['excerpt'] ) && ! $preserveEmpty ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			return $fn();
 		}
 		$slug   = $post['post_name'];
 		$id     = (int) ( $post['ID'] ?? 0 );
-		$filter = static fn ( $override, $_slug, $postId ) => $postId === $id ? $slug : $override;
+		$filter = static fn ( $override, $_slug, $postId ) => $postId === $id ? $slug : $override; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		add_filter( 'pre_wp_unique_post_slug', $filter, 10, 3 );
 		try {
 			return $fn();
@@ -827,9 +827,9 @@ final class WpPostStore implements Store {
 					continue;
 				}
 				$def      = $spec['columns'][ $col ];
-				$fieldKey = $spec['wp']['fieldKeyPrefix'] . $col;
-				$scf      = Scf::toScf( $def, $stored, $fieldKey );
-				$this->db->core( static fn () => update_field( $fieldKey, null === $scf ? null : wp_slash( $scf ), $id ) );
+				$fieldKey = $spec['wp']['fieldKeyPrefix'] . $col; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$scf      = Scf::toScf( $def, $stored, $fieldKey ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$this->db->core( static fn () => update_field( $fieldKey, null === $scf ? null : wp_slash( $scf ), $id ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 		} finally {
 			--Scf::$io;
@@ -838,7 +838,7 @@ final class WpPostStore implements Store {
 
 	/** True when the column lives in postmeta (an SCF field), not in a wp_posts column. */
 	public function isMeta( array $spec, string $col ): bool {
-		if ( $col === $spec['primaryKey'] || $col === ( $spec['title'] ?? null ) || $col === ( $spec['content'] ?? null ) || $col === ( $spec['slug'] ?? null ) || $col === ( $spec['excerpt'] ?? null ) ) {
+		if ( $col === $spec['primaryKey'] || $col === ( $spec['title'] ?? null ) || $col === ( $spec['content'] ?? null ) || $col === ( $spec['slug'] ?? null ) || $col === ( $spec['excerpt'] ?? null ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 			return false;
 		}
 
@@ -850,7 +850,7 @@ final class WpPostStore implements Store {
 	 * unique() on a post-backed column (§3.5.1): no SQL UNIQUE exists on meta, so check inside the
 	 * request transaction, locking what matched, and raise the same unique_violation.
 	 */
-	private function check_unique( string $collection, array $values, int $self ): void {
+	private function check_unique( string $collection, array $values, int $self ): void { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.selfFound -- Preserve the existing PHP parameter name.
 		$spec = $this->schema->collection( $collection );
 		$wpdb = $this->db->wpdb();
 		$live = "p.post_type = ? AND p.post_status NOT IN ('trash', 'auto-draft', 'inherit') AND p.ID <> ?";
@@ -861,8 +861,8 @@ final class WpPostStore implements Store {
 				continue;
 			}
 			$hit = match ( true ) {
-				$col === ( $spec['slug'] ?? null ) => $this->db->run( "SELECT p.ID FROM `{$wpdb->posts}` p WHERE p.post_name = ? AND $live LIMIT 1 FOR UPDATE", array( (string) $v, $spec['wp']['postType'], $self ) ),
-				$col === ( $spec['title'] ?? null ) => $this->db->run( "SELECT p.ID FROM `{$wpdb->posts}` p WHERE p.post_title = ? AND $live LIMIT 1 FOR UPDATE", array( (string) $v, $spec['wp']['postType'], $self ) ),
+				$col === ( $spec['slug'] ?? null ) => $this->db->run( "SELECT p.ID FROM `{$wpdb->posts}` p WHERE p.post_name = ? AND $live LIMIT 1 FOR UPDATE", array( (string) $v, $spec['wp']['postType'], $self ) ), // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
+				$col === ( $spec['title'] ?? null ) => $this->db->run( "SELECT p.ID FROM `{$wpdb->posts}` p WHERE p.post_title = ? AND $live LIMIT 1 FOR UPDATE", array( (string) $v, $spec['wp']['postType'], $self ) ), // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				// A trashed post keeps its uid and can be restored, so it still owns it.
 				'uid' === $col && ( $def['system'] ?? false ) => $this->db->run(
 					"SELECT m.post_id FROM `{$wpdb->postmeta}` m JOIN `{$wpdb->posts}` p ON p.ID = m.post_id WHERE m.meta_key = ? AND m.meta_value = ? AND p.post_type = ? AND p.post_status NOT IN ('auto-draft', 'inherit') AND p.ID <> ? LIMIT 1 FOR UPDATE",
@@ -908,15 +908,15 @@ final class WpPostStore implements Store {
 		return $entries;
 	}
 
-	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array {
-		if ( $byVersion ) {
+	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( $byVersion ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			foreach ( $this->revisions( $collection, $pk ) as $entry ) {
-				if ( $entry['version'] === $revisionId ) {
+				if ( $entry['version'] === $revisionId ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					return $entry;
 				}
 			}
 		}
-		$rows = $this->rows_where( $collection, "r.post_type = 'revision' AND r.post_parent = ? AND r.ID = ?", array( (int) $pk, $revisionId ) );
+		$rows = $this->rows_where( $collection, "r.post_type = 'revision' AND r.post_parent = ? AND r.ID = ?", array( (int) $pk, $revisionId ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( array() !== $rows ) {
 			$entry = $this->revision_entry( $collection, (int) $pk, $rows[0] );
 			if ( 0 === $entry['version'] ) {
@@ -930,9 +930,9 @@ final class WpPostStore implements Store {
 
 			return $entry;
 		}
-		if ( ! $byVersion ) {
+		if ( ! $byVersion ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			foreach ( $this->revisions( $collection, $pk ) as $entry ) {
-				if ( $entry['version'] === $revisionId ) {
+				if ( $entry['version'] === $revisionId ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					return $entry;
 				}
 			}
@@ -967,7 +967,7 @@ final class WpPostStore implements Store {
 			}
 		}
 		if ( $spec['localized'] ?? false ) { // a revision post has no language: its group is the parent's
-			$row['translations'] = Js::jsonStringify( Polylang::group( $pk, $this->schema->locales()['all'] ?? array() ) ?: new \stdClass() );
+			$row['translations'] = Js::jsonStringify( Polylang::group( $pk, $this->schema->locales()['all'] ?? array() ) ?: new \stdClass() ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 		}
 		$row[ $spec['primaryKey'] ] = $pk;
 		$at                         = $post instanceof \WP_Post && '0000-00-00 00:00:00' !== $post->post_date_gmt ? $post->post_date_gmt : $post?->post_date;
@@ -985,10 +985,10 @@ final class WpPostStore implements Store {
 	}
 
 	/** True when the post's row differs from the revision's, ignoring `onUpdate` columns. */
-	public function revisionDiffers( string $collection, int $pk, int $revisionId ): bool {
+	public function revisionDiffers( string $collection, int $pk, int $revisionId ): bool { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$spec = $this->schema->collection( $collection );
 		$live = $this->rows_where( $collection, 'r.ID = ?', array( $pk ) )[0] ?? null;
-		$rev  = $this->revision( $collection, $pk, $revisionId )['row'] ?? null;
+		$rev  = $this->revision( $collection, $pk, $revisionId )['row'] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		if ( null === $live || null === $rev ) {
 			return true;
 		}
@@ -1020,46 +1020,46 @@ final class WpPostStore implements Store {
 	}
 
 	/** A WP revision of the post as it is now (snapshotRevision fills in its fields, keep-all, §4.7). */
-	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void {
+	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$id  = (int) $pk;
 		$seq = (int) get_metadata( 'post', $id, self::REV_SEQ_META, true );
 		if ( $seq <= 0 ) {
-			$countRows = $this->db->run(
+			$countRows = $this->db->run( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				"SELECT COUNT(*) AS n FROM `{$this->db->wpdb()->posts}` WHERE post_type = 'revision' AND post_parent = ? AND post_status = 'inherit' AND post_name NOT LIKE '%autosave%'",
 				array( $id ),
 			);
-			$seq       = (int) ( $countRows[0]['n'] ?? 0 );
+			$seq       = (int) ( $countRows[0]['n'] ?? 0 ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
-		$nextVersion = $seq + 1;
+		$nextVersion = $seq + 1; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$rid         = $this->db->core( static fn () => _wp_put_post_revision( $id ) );
 		if ( $rid instanceof \WP_Error || ! $rid ) {
 			throw new \RuntimeException( 'Could not save a revision of post ' . $id );
 		}
 		$rid = (int) $rid;
 		$this->db->touchPost( $rid );
-		if ( null !== $userId ) {
-			$this->db->run( 'UPDATE `' . $this->db->wpdb()->posts . '` SET post_author = ? WHERE ID = ?', array( $userId, $rid ) );
+		if ( null !== $userId ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$this->db->run( 'UPDATE `' . $this->db->wpdb()->posts . '` SET post_author = ? WHERE ID = ?', array( $userId, $rid ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		$spec  = $this->schema->collection( $collection );
 		$links = array();
 		foreach ( $spec['columns'] as $col => $def ) {
-			if ( ( $def['type'] ?? null ) === 'refList' && array_key_exists( $col, $encodedRow ) ) {
-				$links[ $col ] = $encodedRow[ $col ];
+			if ( ( $def['type'] ?? null ) === 'refList' && array_key_exists( $col, $encodedRow ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$links[ $col ] = $encodedRow[ $col ]; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 		}
-		$revMeta = array(
-			'version'         => $nextVersion,
+		$revMeta = array( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			'version'         => $nextVersion, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			'op'              => (string) ( $meta['op'] ?? 'update' ),
 			'schemaMigration' => is_string( $meta['schemaMigration'] ?? null ) ? $meta['schemaMigration'] : null,
 			'changed'         => array_key_exists( 'changed', $meta ) && is_array( $meta['changed'] ) ? array_values( $meta['changed'] ) : null,
 		);
 		if ( array() !== $links ) {
-			$revMeta['links'] = $links;
+			$revMeta['links'] = $links; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		}
 		$this->db->core(
-			static function () use ( $id, $rid, $revMeta, $nextVersion ): void {
-				update_metadata( 'post', $rid, self::REV_META, wp_slash( Js::jsonStringify( $revMeta ) ) );
-				update_metadata( 'post', $id, self::REV_SEQ_META, (string) $nextVersion );
+			static function () use ( $id, $rid, $revMeta, $nextVersion ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				update_metadata( 'post', $rid, self::REV_META, wp_slash( Js::jsonStringify( $revMeta ) ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				update_metadata( 'post', $id, self::REV_SEQ_META, (string) $nextVersion ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			}
 		);
 		clean_post_cache( $rid );
@@ -1070,11 +1070,11 @@ final class WpPostStore implements Store {
 	 * meta onto the new revision, plus the columns the revision post can't carry, so every revision
 	 * reads back as the full row it was.
 	 */
-	public function snapshotRevision( string $collection, int $revisionId, int $postId ): void {
-		$this->db->touchPost( $revisionId );
-		acf_copy_metadata( $postId, $revisionId );
-		$parent = array_intersect_key( $this->rows_where( $collection, 'r.ID = ?', array( $postId ) )[0] ?? array(), $this->snapshot_keys( $this->schema->collection( $collection ) ) );
-		update_metadata( 'post', $revisionId, '_sp_system', wp_slash( Js::jsonStringify( $parent ) ) );
+	public function snapshotRevision( string $collection, int $revisionId, int $postId ): void { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$this->db->touchPost( $revisionId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		acf_copy_metadata( $postId, $revisionId ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$parent = array_intersect_key( $this->rows_where( $collection, 'r.ID = ?', array( $postId ) )[0] ?? array(), $this->snapshot_keys( $this->schema->collection( $collection ) ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		update_metadata( 'post', $revisionId, '_sp_system', wp_slash( Js::jsonStringify( $parent ) ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 	}
 
 	// ================================================================ staged versions ({@see Staged})
@@ -1128,7 +1128,7 @@ final class WpPostStore implements Store {
 		}
 		$out = array();
 		foreach ( $rows as $row ) {
-			if ( $row['post_name'] === self::stagedName( (int) $row['post_parent'] ) ) {
+			if ( $row['post_name'] === self::stagedName( (int) $row['post_parent'] ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
 				$out[ (int) $row['post_parent'] ] = (int) $row['ID'];
 			}
 		}
@@ -1150,7 +1150,7 @@ final class WpPostStore implements Store {
 			$item     = $this->db->run( "SELECT * FROM `$posts` WHERE ID = ?$lock", array( $pk ) );
 			// The item's SpacePress fields live in its meta: a write of only those leaves the post row as it was.
 			$prefix   = $this->db->wpdb()->esc_like( $this->schema->collection( (string) CoreAccess::collection( (string) get_post_type( $pk ) ) )['wp']['metaPrefix'] ?? 'sp_' );
-			$itemMeta = $this->db->run(
+			$itemMeta = $this->db->run( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				"SELECT meta_id, meta_key, meta_value FROM `$postmeta` WHERE post_id = ? AND (meta_key LIKE ? OR meta_key LIKE ?) ORDER BY meta_id$lock",
 				array( $pk, $prefix . '%', '\\_' . $prefix . '%' ),
 			);
@@ -1163,7 +1163,7 @@ final class WpPostStore implements Store {
 				$staged
 			);
 
-			return array( $item, $itemMeta, $staged, $meta );
+			return array( $item, $itemMeta, $staged, $meta ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		};
 		$seen = $read( '' );
 		$now  = $read( ' FOR UPDATE' );
@@ -1183,7 +1183,7 @@ final class WpPostStore implements Store {
 	 *
 	 * @param array<string, int|float|string|null> $values
 	 */
-	public function stagedWrite( string $collection, int $pk, ?int $rid, array $values, ?int $userId ): int {
+	public function stagedWrite( string $collection, int $pk, ?int $rid, array $values, ?int $userId ): int { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$spec   = $this->schema->collection( $collection );
 		$live   = $this->rows_where( $collection, 'r.ID = ?', array( $pk ) )[0] ?? null;
 		$parent = get_post( $pk );
@@ -1201,7 +1201,7 @@ final class WpPostStore implements Store {
 			'post_title'    => $field( 'title', 'post_title' ),
 			'post_content'  => $field( 'content', 'post_content' ),
 			'post_excerpt'  => $field( 'excerpt', 'post_excerpt' ),
-			'post_author'   => $userId ?? 0,
+			'post_author'   => $userId ?? 0, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 			'post_date'     => current_time( 'mysql' ),
 			'post_date_gmt' => current_time( 'mysql', true ),
 		) + ( null === $rid ? array() : array( 'ID' => $rid ) );
@@ -1235,7 +1235,7 @@ final class WpPostStore implements Store {
 	}
 
 	/** WP cron publishes `future` posts (§6.3); reads see the new status through the CASE mapping. */
-	public function promoteDue( string $collection, string $nowIso ): array {
+	public function promoteDue( string $collection, string $nowIso ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		return array();
 	}
 

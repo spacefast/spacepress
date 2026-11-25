@@ -143,7 +143,7 @@ final class Sealed {
 	 * @param array<string, string> $links
 	 * @return array<string, string>
 	 */
-	public static function actionLinks( mixed $links, mixed $plugin ): mixed {
+	public static function actionLinks( mixed $links, mixed $plugin ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! is_array( $links ) || ! is_string( $plugin ) ) {
 			return $links;
 		}
@@ -229,7 +229,7 @@ final class Sealed {
 			if ( is_file( $dir . '/functions.php' ) ) {
 				$found[] = basename( $dir ) . '/functions.php';
 			}
-			$patterns = count( glob( $dir . '/patterns/*.php' ) ?: array() );
+			$patterns = count( glob( $dir . '/patterns/*.php' ) ?: array() ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
 			if ( $patterns > 0 ) {
 				$found[] = basename( $dir ) . "/patterns/*.php ($patterns)";
 			}

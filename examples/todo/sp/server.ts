@@ -12,10 +12,14 @@ import {
 import { buckets, tasks } from "spacepress:db";
 import {
   appendBucketUnique,
+  asBoardGroup,
   asBucketKind,
+  asOptionalPriority,
   asOptionalStatusSlug,
   asPriority,
   asStatusSlug,
+  asVisibility,
+  bucketIdsForKind,
   computeNextOccurrenceIso,
   computeScheduleDelaySeconds,
   computeSnoozeIso,
@@ -27,9 +31,11 @@ import {
   normalizeTaskTitle,
   parseDateInputToIso,
   removeBucketId,
+  replaceKindBucket,
   replaceStatusBucket,
   statusBucketIds,
   type TodoBucket,
+  type TodoChecklistItem,
   type TodoStatusSlug,
   type TodoTask,
 } from "./lib/todo";
@@ -128,7 +134,7 @@ async function runCompletionSideEffects(
     recurringDays: allowRecurrence ? task.recurringDays : 0,
   });
 
-  // 1. Spawn the next recurring occurrence when configured (kept out of its active target status until due).
+  // 1. Spawn the next recurring occurrence when configured (kept out of active target status until due).
   let nextTaskId: number | null = null;
   if (allowRecurrence && task.recurringDays > 0) {
     const destSlug = asStatusSlug(task.pendingBucket, "now");
@@ -138,6 +144,10 @@ async function runCompletionSideEffects(
     if (laterBucket) {
       nextBuckets = replaceStatusBucket(nextBuckets, statusIds, laterBucket.id);
     }
+    const resetChecklist: TodoChecklistItem[] = (task.checklist ?? []).map((entry) => ({
+      label: entry.label,
+      done: false,
+    }));
     const nextScheduledAt = computeNextOccurrenceIso(nowIso, task.recurringDays);
     const created = await tasks.create({
       title: task.title,
@@ -145,6 +155,9 @@ async function runCompletionSideEffects(
       details: task.details,
       url: task.url,
       priority: task.priority,
+      visibility: task.visibility,
+      assigneeId: task.assigneeId,
+      checklist: resetChecklist,
       bucketIds: nextBuckets,
       scheduledAt: nextScheduledAt,
       pendingBucket: destSlug,
@@ -179,16 +192,21 @@ async function runCompletionSideEffects(
 
 export const createTask = mutation(
   { access: "authenticated" },
-  async (input: {
-    title: string;
-    notes?: string;
-    url?: string;
-    priority?: string;
-    statusBucket?: string;
-    paraBucketId?: string | number;
-    scheduledDate?: string;
-    recurringDays?: string | number;
-  }) => {
+  async (
+    input: {
+      title: string;
+      notes?: string;
+      url?: string;
+      priority?: string;
+      visibility?: string;
+      assigneeId?: string | number;
+      statusBucket?: string;
+      paraBucketId?: string | number;
+      scheduledDate?: string;
+      recurringDays?: string | number;
+    },
+    ctx,
+  ) => {
     const title = normalizeTaskTitle(input.title ?? "");
     if (title === "") {
       throw new HttpError(422, "invalid_input", "Enter a task title.", "/title");
@@ -204,6 +222,8 @@ export const createTask = mutation(
     }
 
     const priority = asPriority(input.priority, "none");
+    const visibility = asVisibility(input.visibility, "private");
+    const assigneeId = parseOptionalInt(input.assigneeId) ?? (visibility === "team" && ctx.user ? ctx.user.id : null);
     const statusSlug = asStatusSlug(input.statusBucket, "inbox");
     const scheduledAt = parseDateInputToIso(input.scheduledDate);
     const recurring = parseOptionalInt(input.recurringDays) ?? 0;
@@ -224,6 +244,8 @@ export const createTask = mutation(
       notes: normalizeOptionalText(input.notes),
       url: cleanUrl,
       priority,
+      visibility,
+      assigneeId,
       bucketIds,
       scheduledAt,
       pendingBucket: scheduledAt !== null || recurring > 0 ? "now" : null,
@@ -291,6 +313,119 @@ export const moveTaskBucket = mutation(
   },
 );
 
+// Generic Kanban column transition — works for any taxonomy kind (status, project, area, resource),
+// priority, or the optional Completed column.
+export const moveTaskColumn = mutation(
+  { access: "authenticated" },
+  async (input: {
+    id: number | string;
+    groupBy: string;
+    targetBucketId?: number | string | null;
+    targetPriority?: string | null;
+    complete?: boolean;
+  }) => {
+    const taskId = parseOptionalInt(input.id);
+    if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
+    const task = await tasks.get(taskId);
+    if (!task) throw new HttpError(404, "not_found", "Task not found.");
+
+    if (input.complete === true) {
+      if (task.completedAt === null) {
+        await runCompletionSideEffects(task.id, true);
+      }
+      return { id: task.id, completed: true };
+    }
+
+    const group = asBoardGroup(input.groupBy, "status");
+    if (group === "priority") {
+      const nextPriority = asOptionalPriority(input.targetPriority);
+      if (nextPriority === null) {
+        throw new HttpError(422, "invalid_input", "Invalid target priority.", "/targetPriority");
+      }
+      await tasks.update(task.id, { priority: nextPriority, completedAt: null });
+      return { id: task.id, completed: false };
+    }
+
+    const bucketKind = asBucketKind(group);
+    if (bucketKind === null) {
+      throw new HttpError(422, "invalid_input", "Unsupported board group.", "/groupBy");
+    }
+    const allBuckets = await loadBuckets();
+    const kindIds = bucketIdsForKind(allBuckets, bucketKind);
+    const nextBucketId = parseOptionalInt(input.targetBucketId);
+    if (nextBucketId !== null && !kindIds.includes(nextBucketId)) {
+      throw new HttpError(422, "invalid_input", "Target bucket does not match this board group.", "/targetBucketId");
+    }
+    const nextBucketIds = replaceKindBucket(task.bucketIds, kindIds, nextBucketId);
+    await tasks.update(task.id, { bucketIds: nextBucketIds, completedAt: null });
+    return { id: task.id, completed: false };
+  },
+);
+
+export const toggleChecklistItem = mutation(
+  { access: "authenticated" },
+  async ({ id, index }: { id: number | string; index: number | string }) => {
+    const taskId = parseOptionalInt(id);
+    const itemIndex = typeof index === "number" ? index : Number.parseInt(index, 10);
+    if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
+    const task = await tasks.get(taskId);
+    if (!task) throw new HttpError(404, "not_found", "Task not found.");
+    const list = task.checklist ?? [];
+    if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= list.length) {
+      throw new HttpError(422, "invalid_input", "Checklist item not found.", "/index");
+    }
+    const next: TodoChecklistItem[] = list.map((entry, idx) =>
+      idx === itemIndex ? { label: entry.label, done: !entry.done } : { label: entry.label, done: entry.done },
+    );
+    await tasks.update(task.id, { checklist: next });
+    return { id: task.id, checklist: next };
+  },
+);
+
+export const addChecklistItem = mutation(
+  { access: "authenticated" },
+  async ({ id, label }: { id: number | string; label: string }) => {
+    const taskId = parseOptionalInt(id);
+    if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
+    const clean = normalizeTaskTitle(label ?? "");
+    if (clean === "") throw new HttpError(422, "invalid_input", "Enter a subtask label.", "/label");
+    if (clean.length > 200) throw new HttpError(422, "invalid_input", "Subtask is too long.", "/label");
+    const task = await tasks.get(taskId);
+    if (!task) throw new HttpError(404, "not_found", "Task not found.");
+    const list = task.checklist ?? [];
+    const next: TodoChecklistItem[] = [
+      ...list.map((entry) => ({ label: entry.label, done: entry.done })),
+      { label: clean, done: false },
+    ];
+    await tasks.update(task.id, { checklist: next });
+    return { id: task.id, checklist: next };
+  },
+);
+
+export const removeChecklistItem = mutation(
+  { access: "authenticated" },
+  async ({ id, index }: { id: number | string; index: number | string }) => {
+    const taskId = parseOptionalInt(id);
+    const itemIndex = typeof index === "number" ? index : Number.parseInt(index, 10);
+    if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
+    const task = await tasks.get(taskId);
+    if (!task) throw new HttpError(404, "not_found", "Task not found.");
+    const list = task.checklist ?? [];
+    if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= list.length) {
+      throw new HttpError(422, "invalid_input", "Checklist item not found.", "/index");
+    }
+    const next: TodoChecklistItem[] = [];
+    for (let i = 0; i < list.length; i += 1) {
+      if (i !== itemIndex) {
+        const entry = list[i]!;
+        next.push({ label: entry.label, done: entry.done });
+      }
+    }
+    await tasks.update(task.id, { checklist: next });
+    return { id: task.id, checklist: next };
+  },
+);
+
 export const snoozeTask = mutation(
   { access: "authenticated" },
   async ({ id, days }: { id: number | string; days: number | string }) => {
@@ -326,6 +461,8 @@ export const updateTask = mutation(
     details?: string;
     url?: string;
     priority?: string;
+    visibility?: string;
+    assigneeId?: string | number;
     statusBucket?: string;
     paraBucketIds?: string;
     scheduledDate?: string;
@@ -350,6 +487,9 @@ export const updateTask = mutation(
     }
 
     const priority = asPriority(input.priority, existing.priority);
+    const visibility = asVisibility(input.visibility, existing.visibility);
+    const assigneeId =
+      input.assigneeId !== undefined ? parseOptionalInt(input.assigneeId) : existing.assigneeId;
     const statusSlug = asStatusSlug(input.statusBucket, "inbox");
     const allBuckets = await loadBuckets();
     const statusBucket = findBucketBySlug(allBuckets, statusSlug);
@@ -384,6 +524,8 @@ export const updateTask = mutation(
       details: normalizeOptionalText(input.details),
       url: cleanUrl,
       priority,
+      visibility,
+      assigneeId,
       bucketIds: nextBucketIds,
       scheduledAt,
       pendingBucket: pendingBucket ?? (scheduledAt !== null || recurringDays > 0 || blockedBy !== null ? "now" : null),
@@ -414,19 +556,21 @@ export const createBucket = mutation(
       throw new HttpError(422, "invalid_input", "Enter a bucket name.", "/name");
     }
     const validKind = asBucketKind(kind);
-    if (validKind === null || validKind === "status") {
-      throw new HttpError(422, "invalid_input", "Choose project, area, or resource.", "/kind");
+    if (validKind === null) {
+      throw new HttpError(422, "invalid_input", "Choose status, project, area, or resource.", "/kind");
     }
     const allBuckets = await loadBuckets();
     const parent = findBucketBySlug(allBuckets, validKind);
     const cleanColor =
       color && /^#[0-9a-fA-F]{6}$/.test(color.trim())
         ? color.trim()
-        : validKind === "project"
-          ? "#3b82f6"
-          : validKind === "area"
-            ? "#10b981"
-            : "#8b5cf6";
+        : validKind === "status"
+          ? "#f59e0b"
+          : validKind === "project"
+            ? "#3b82f6"
+            : validKind === "area"
+              ? "#10b981"
+              : "#8b5cf6";
 
     const created = await buckets.create({
       name: cleanName,
@@ -459,6 +603,9 @@ export const todoMetrics = query({ access: "authenticated" }, async () => {
     details: row.details ?? null,
     url: row.url ?? null,
     priority: row.priority,
+    visibility: row.visibility,
+    assigneeId: row.assigneeId ?? null,
+    checklist: row.checklist ?? [],
     bucketIds: row.bucketIds,
     ownerId: row.ownerId,
     completedAt: row.completedAt ?? null,
@@ -483,13 +630,14 @@ export const todoAdminScreen = adminScreen({
     fields: {
       title: { label: "Task" },
       priority: { label: "Priority" },
+      visibility: { label: "Visibility" },
       scheduledAt: { label: "Scheduled" },
       recurringDays: { label: "Repeat (days)" },
     },
     layout: {
       type: "table",
       titleField: "title",
-      fields: ["priority", "scheduledAt", "recurringDays"],
+      fields: ["priority", "visibility", "scheduledAt", "recurringDays"],
     },
   },
   actions: [
@@ -506,15 +654,15 @@ export const todoAdminScreen = adminScreen({
 });
 
 export const todoSummaryWidget = adminWidget({
-  title: "Personal TODO",
-  description: "Live GTD counts across your workspace.",
+  title: "Todo Summary",
+  description: "Live counts across your workspace.",
   access: "authenticated",
   action: todoMetrics,
   display: "metrics",
   metrics: [
     { id: "now", label: "Now", path: "now" },
     { id: "inbox", label: "Inbox", path: "inbox" },
-    { id: "followUp", label: "Follow-up", path: "followUp" },
+    { id: "team", label: "Team", path: "team" },
     { id: "blocked", label: "Blocked", path: "blocked" },
   ],
   width: 2,
@@ -523,8 +671,8 @@ export const todoSummaryWidget = adminWidget({
 });
 
 export const todoDashboard = adminDashboard({
-  title: "TODO Overview",
-  description: "Active focus, inbox triage, and recent activity.",
+  title: "Todo Overview",
+  description: "Active focus, inbox triage, team tasks, and recent activity.",
   access: "authenticated",
   menu: { icon: "check" },
   widgets: [

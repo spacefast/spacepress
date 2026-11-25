@@ -6,8 +6,8 @@ import "./todo.css";
 export const template = "blank";
 
 export const metadata = {
-  title: { default: "Personal TODO", template: "%s · Personal TODO" },
-  description: "GTD + PARA personal task workspace powered by @spacepress/todo and SpacePress.",
+  title: { default: "Todo", template: "%s · Todo" },
+  description: "Tasks, checklists, and taxonomy-driven Kanban boards powered by @spacepress/todo and SpacePress.",
 };
 
 export default async function RootLayout({ children }: LayoutProps) {
@@ -26,12 +26,15 @@ export default async function RootLayout({ children }: LayoutProps) {
           <span className="sp-topbar__tagline">{settings.tagline}</span>
         </div>
         <nav className="sp-topbar__actions" aria-label="Workspace utilities">
-          <Link href="/?view=inbox" className="sp-topbar__link sp-topbar__link--desktop">Inbox</Link>
-          <Link href="/?view=now" className="sp-topbar__link sp-topbar__link--desktop">Now</Link>
-          <Link href="/?view=scheduled" className="sp-topbar__link sp-topbar__link--desktop">Scheduled</Link>
+          <Link href="/?view=now&layout=list" className="sp-topbar__link sp-topbar__link--desktop">List</Link>
+          <Link href="/?view=all&layout=board" className="sp-topbar__link sp-topbar__link--desktop">Board</Link>
+          <Link href="/?view=team" className="sp-topbar__link sp-topbar__link--desktop">Team</Link>
           <a href="/wp-admin/new/" className="sp-topbar__link">Admin</a>
           {account !== false ? (
-            <span className="sp-topbar__link">{account.display_name}</span>
+            <span className="sp-topbar__user" title={account.user_email}>
+              <span className="avatar-badge">{account.display_name.slice(0, 2).toUpperCase()}</span>
+              <span className="sp-topbar__link--desktop">{account.display_name}</span>
+            </span>
           ) : (
             <a href={wp_login_url(home_url("/"))} className="sp-topbar__link">Sign in</a>
           )}

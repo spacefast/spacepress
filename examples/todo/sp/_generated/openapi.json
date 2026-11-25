@@ -69,7 +69,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `title`, `slug`, `notes`, `details`, `url`, `priority`, `bucketIds`, `ownerId`, `completedAt`, `scheduledAt`, `pendingBucket`, `blockedBy`, `recurringDays`, `createdAt`, `updatedAt`, `status`, `publishedAt`, `author`, `deletedAt`, `deletedBy`, `uid`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `title`, `slug`, `notes`, `details`, `url`, `priority`, `visibility`, `assigneeId`, `checklist`, `bucketIds`, `ownerId`, `completedAt`, `scheduledAt`, `pendingBucket`, `blockedBy`, `recurringDays`, `createdAt`, `updatedAt`, `status`, `publishedAt`, `author`, `deletedAt`, `deletedBy`, `uid`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -2046,7 +2046,7 @@
       "get": {
         "tags": ["Globals"],
         "operationId": "globals.settings.get",
-        "summary": "Read TODO Settings",
+        "summary": "Read Todo Settings",
         "x-spacepress-access": "anyone",
         "security": [
           {},
@@ -2076,7 +2076,7 @@
       "patch": {
         "tags": ["Globals"],
         "operationId": "globals.settings.update",
-        "summary": "Update TODO Settings",
+        "summary": "Update Todo Settings",
         "x-spacepress-access": "admin",
         "description": "Changes the fields sent and returns every value.\n\nAccess: Users with the `admin` role or a higher one may do this.",
         "requestBody": {
@@ -2130,6 +2130,8 @@
                   "notes": { "type": "string" },
                   "url": { "type": "string" },
                   "priority": { "type": "string" },
+                  "visibility": { "type": "string" },
+                  "assigneeId": { "type": ["string", "number"] },
                   "statusBucket": { "type": "string" },
                   "paraBucketId": { "type": ["string", "number"] },
                   "scheduledDate": { "type": "string" },
@@ -2322,6 +2324,244 @@
         }
       }
     },
+    "/actions/moveTaskColumn": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.moveTaskColumn",
+        "summary": "Call moveTaskColumn",
+        "x-spacepress-access": "authenticated",
+        "description": "Runs the `moveTaskColumn` action with the input sent and returns its result.\n\nAccess: Any signed-in user may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": ["number", "string"] },
+                  "groupBy": { "type": "string" },
+                  "targetBucketId": { "type": ["number", "string", "null"] },
+                  "targetPriority": { "type": ["string", "null"] },
+                  "complete": { "type": "boolean" }
+                },
+                "required": ["id", "groupBy"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {}
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/actions/toggleChecklistItem": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.toggleChecklistItem",
+        "summary": "Call toggleChecklistItem",
+        "x-spacepress-access": "authenticated",
+        "description": "Runs the `toggleChecklistItem` action with the input sent and returns its result.\n\nAccess: Any signed-in user may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": ["number", "string"] },
+                  "index": { "type": ["number", "string"] }
+                },
+                "required": ["id", "index"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": ["number", "null"] },
+                        "checklist": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "label": { "type": "string" },
+                              "done": { "type": "boolean" }
+                            },
+                            "required": ["label", "done"]
+                          }
+                        }
+                      },
+                      "required": ["id", "checklist"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/actions/addChecklistItem": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.addChecklistItem",
+        "summary": "Call addChecklistItem",
+        "x-spacepress-access": "authenticated",
+        "description": "Runs the `addChecklistItem` action with the input sent and returns its result.\n\nAccess: Any signed-in user may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": ["number", "string"] },
+                  "label": { "type": "string" }
+                },
+                "required": ["id", "label"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": ["number", "null"] },
+                        "checklist": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "label": { "type": "string" },
+                              "done": { "type": "boolean" }
+                            },
+                            "required": ["label", "done"]
+                          }
+                        }
+                      },
+                      "required": ["id", "checklist"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/actions/removeChecklistItem": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.removeChecklistItem",
+        "summary": "Call removeChecklistItem",
+        "x-spacepress-access": "authenticated",
+        "description": "Runs the `removeChecklistItem` action with the input sent and returns its result.\n\nAccess: Any signed-in user may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": ["number", "string"] },
+                  "index": { "type": ["number", "string"] }
+                },
+                "required": ["id", "index"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": ["number", "null"] },
+                        "checklist": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "label": { "type": "string" },
+                              "done": { "type": "boolean" }
+                            },
+                            "required": ["label", "done"]
+                          }
+                        }
+                      },
+                      "required": ["id", "checklist"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
     "/actions/snoozeTask": {
       "post": {
         "tags": ["Actions"],
@@ -2396,6 +2636,8 @@
                   "details": { "type": "string" },
                   "url": { "type": "string" },
                   "priority": { "type": "string" },
+                  "visibility": { "type": "string" },
+                  "assigneeId": { "type": ["string", "number"] },
                   "statusBucket": { "type": "string" },
                   "paraBucketIds": { "type": "string" },
                   "scheduledDate": { "type": "string" },
@@ -2568,69 +2810,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "rows": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "id": { "type": ["number", "null"] },
-                              "title": { "type": "string" },
-                              "slug": { "type": ["string", "null"] },
-                              "notes": { "type": ["string", "null"] },
-                              "details": { "type": ["string", "null"] },
-                              "url": { "type": ["string", "null"] },
-                              "priority": { "type": ["string"], "enum": ["none", "low", "medium", "high"] },
-                              "bucketIds": {
-                                "type": "array",
-                                "items": { "type": ["number", "null"] }
-                              },
-                              "ownerId": { "type": ["number", "null"] },
-                              "completedAt": { "type": ["string", "null"] },
-                              "scheduledAt": { "type": ["string", "null"] },
-                              "pendingBucket": { "type": ["string", "null"], "enum": ["inbox", "now", "later", "follow-up", null] },
-                              "blockedBy": { "type": ["number", "null"] },
-                              "recurringDays": { "type": ["number", "null"] },
-                              "createdAt": { "type": "string" },
-                              "updatedAt": { "type": "string" },
-                              "status": { "type": ["string"], "enum": ["draft", "published", "scheduled"] },
-                              "publishedAt": { "type": ["string", "null"] },
-                              "author": { "type": ["number", "null"] },
-                              "deletedAt": { "type": ["string", "null"] },
-                              "deletedBy": { "type": ["number", "null"] },
-                              "uid": { "type": "string" }
-                            },
-                            "required": [
-                              "id",
-                              "title",
-                              "slug",
-                              "notes",
-                              "details",
-                              "url",
-                              "priority",
-                              "bucketIds",
-                              "ownerId",
-                              "completedAt",
-                              "scheduledAt",
-                              "pendingBucket",
-                              "blockedBy",
-                              "recurringDays",
-                              "createdAt",
-                              "updatedAt",
-                              "status",
-                              "publishedAt",
-                              "author",
-                              "deletedAt",
-                              "deletedBy",
-                              "uid"
-                            ]
-                          }
-                        }
-                      },
-                      "required": ["rows"]
-                    }
+                    "data": {}
                   },
                   "required": ["data"]
                 }
@@ -2670,69 +2850,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "rows": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "id": { "type": ["number", "null"] },
-                              "title": { "type": "string" },
-                              "slug": { "type": ["string", "null"] },
-                              "notes": { "type": ["string", "null"] },
-                              "details": { "type": ["string", "null"] },
-                              "url": { "type": ["string", "null"] },
-                              "priority": { "type": ["string"], "enum": ["none", "low", "medium", "high"] },
-                              "bucketIds": {
-                                "type": "array",
-                                "items": { "type": ["number", "null"] }
-                              },
-                              "ownerId": { "type": ["number", "null"] },
-                              "completedAt": { "type": ["string", "null"] },
-                              "scheduledAt": { "type": ["string", "null"] },
-                              "pendingBucket": { "type": ["string", "null"], "enum": ["inbox", "now", "later", "follow-up", null] },
-                              "blockedBy": { "type": ["number", "null"] },
-                              "recurringDays": { "type": ["number", "null"] },
-                              "createdAt": { "type": "string" },
-                              "updatedAt": { "type": "string" },
-                              "status": { "type": ["string"], "enum": ["draft", "published", "scheduled"] },
-                              "publishedAt": { "type": ["string", "null"] },
-                              "author": { "type": ["number", "null"] },
-                              "deletedAt": { "type": ["string", "null"] },
-                              "deletedBy": { "type": ["number", "null"] },
-                              "uid": { "type": "string" }
-                            },
-                            "required": [
-                              "id",
-                              "title",
-                              "slug",
-                              "notes",
-                              "details",
-                              "url",
-                              "priority",
-                              "bucketIds",
-                              "ownerId",
-                              "completedAt",
-                              "scheduledAt",
-                              "pendingBucket",
-                              "blockedBy",
-                              "recurringDays",
-                              "createdAt",
-                              "updatedAt",
-                              "status",
-                              "publishedAt",
-                              "author",
-                              "deletedAt",
-                              "deletedBy",
-                              "uid"
-                            ]
-                          }
-                        }
-                      },
-                      "required": ["rows"]
-                    }
+                    "data": {}
                   },
                   "required": ["data"]
                 }
@@ -2780,10 +2898,11 @@
                         "later": { "type": ["number", "null"] },
                         "scheduled": { "type": ["number", "null"] },
                         "blocked": { "type": ["number", "null"] },
+                        "team": { "type": ["number", "null"] },
                         "all": { "type": ["number", "null"] },
                         "done": { "type": ["number", "null"] }
                       },
-                      "required": ["now", "inbox", "followUp", "later", "scheduled", "blocked", "all", "done"]
+                      "required": ["now", "inbox", "followUp", "later", "scheduled", "blocked", "team", "all", "done"]
                     }
                   },
                   "required": ["data"]
@@ -2833,10 +2952,11 @@
                         "later": { "type": ["number", "null"] },
                         "scheduled": { "type": ["number", "null"] },
                         "blocked": { "type": ["number", "null"] },
+                        "team": { "type": ["number", "null"] },
                         "all": { "type": ["number", "null"] },
                         "done": { "type": ["number", "null"] }
                       },
-                      "required": ["now", "inbox", "followUp", "later", "scheduled", "blocked", "all", "done"]
+                      "required": ["now", "inbox", "followUp", "later", "scheduled", "blocked", "team", "all", "done"]
                     }
                   },
                   "required": ["data"]
@@ -5152,6 +5272,18 @@
           "details": { "type": ["string", "null"] },
           "url": { "type": ["string", "null"], "format": "uri" },
           "priority": { "type": "string", "enum": ["none", "low", "medium", "high"] },
+          "visibility": { "type": "string", "enum": ["private", "team"] },
+          "assigneeId": { "type": ["integer", "null"] },
+          "checklist": {
+            "type": ["array", "null"],
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+                "done": { "type": "boolean" }
+              }
+            }
+          },
           "bucketIds": {
             "anyOf": [
               {
@@ -5212,6 +5344,19 @@
           "details": { "type": ["string", "null"] },
           "url": { "type": ["string", "null"] },
           "priority": { "type": "string", "enum": ["none", "low", "medium", "high"] },
+          "visibility": { "type": "string", "enum": ["private", "team"] },
+          "assigneeId": { "type": ["integer", "null"] },
+          "checklist": {
+            "type": ["array", "null"],
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+                "done": { "type": "boolean" }
+              },
+              "required": ["label"]
+            }
+          },
           "bucketIds": {
             "type": "array",
             "items": { "type": "integer" },
@@ -5239,6 +5384,19 @@
           "details": { "type": ["string", "null"] },
           "url": { "type": ["string", "null"] },
           "priority": { "type": "string", "enum": ["none", "low", "medium", "high"] },
+          "visibility": { "type": "string", "enum": ["private", "team"] },
+          "assigneeId": { "type": ["integer", "null"] },
+          "checklist": {
+            "type": ["array", "null"],
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+                "done": { "type": "boolean" }
+              },
+              "required": ["label"]
+            }
+          },
           "bucketIds": {
             "type": "array",
             "items": { "type": "integer" },
@@ -5364,6 +5522,8 @@
           "details": { "$ref": "#/components/schemas/StringFilter" },
           "url": { "$ref": "#/components/schemas/StringFilter" },
           "priority": { "$ref": "#/components/schemas/StringFilter" },
+          "visibility": { "$ref": "#/components/schemas/StringFilter" },
+          "assigneeId": { "$ref": "#/components/schemas/IntegerFilter" },
           "bucketIds": { "$ref": "#/components/schemas/IntegerListFilter" },
           "ownerId": { "$ref": "#/components/schemas/IntegerFilter" },
           "completedAt": { "$ref": "#/components/schemas/StringFilter" },
@@ -5469,6 +5629,8 @@
         "properties": {
           "workspaceName": { "type": "string" },
           "tagline": { "type": "string" },
+          "defaultLayout": { "type": "string", "enum": ["list", "board"] },
+          "defaultBoardGroup": { "type": "string", "enum": ["status", "project", "area", "resource", "priority"] },
           "showCompletedInSidebar": { "type": "boolean" }
         }
       },
@@ -5477,6 +5639,8 @@
         "properties": {
           "workspaceName": { "type": "string" },
           "tagline": { "type": "string" },
+          "defaultLayout": { "type": "string", "enum": ["list", "board"] },
+          "defaultBoardGroup": { "type": "string", "enum": ["status", "project", "area", "resource", "priority"] },
           "showCompletedInSidebar": { "type": "boolean" }
         }
       },

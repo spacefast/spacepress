@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   appendBucketUnique,
+  buildKanbanColumns,
+  checklistProgress,
   computeNextOccurrenceIso,
   computeScheduleDelaySeconds,
   computeTodoViewCounts,
@@ -10,9 +12,11 @@ import {
   isScheduleOverdue,
   parseDateInputToIso,
   removeBucketId,
+  replaceKindBucket,
   replaceStatusBucket,
   statusBucketIds,
   taskStatusSlug,
+  userInitials,
 } from "../src/domain.ts";
 
 const buckets = [
@@ -23,6 +27,7 @@ const buckets = [
   { id: 5, name: "Later", slug: "later", parent: 1, kind: "status", color: "#64748b", sortOrder: 4 },
   { id: 10, name: "Projects", slug: "project", parent: 0, kind: "project", color: null, sortOrder: 10 },
   { id: 11, name: "SpacePress", slug: "spacepress", parent: 10, kind: "project", color: "#10b981", sortOrder: 11 },
+  { id: 12, name: "Home Studio", slug: "home-studio", parent: 10, kind: "project", color: "#7c3aed", sortOrder: 12 },
 ];
 
 const tasks = [
@@ -34,6 +39,12 @@ const tasks = [
     details: null,
     url: "https://spacepress.dev",
     priority: "high",
+    visibility: "team",
+    assigneeId: 1,
+    checklist: [
+      { label: "Write schema", done: true },
+      { label: "Add Kanban board", done: false },
+    ],
     bucketIds: [3, 11],
     ownerId: 1,
     completedAt: null,
@@ -52,6 +63,9 @@ const tasks = [
     details: null,
     url: null,
     priority: "medium",
+    visibility: "private",
+    assigneeId: null,
+    checklist: [],
     bucketIds: [5, 11],
     ownerId: 1,
     completedAt: null,
@@ -70,6 +84,9 @@ const tasks = [
     details: null,
     url: null,
     priority: "none",
+    visibility: "private",
+    assigneeId: null,
+    checklist: [],
     bucketIds: [3],
     ownerId: 1,
     completedAt: "2026-11-23T18:00:00.000Z",
@@ -82,17 +99,18 @@ const tasks = [
   },
 ];
 
-test("replaceStatusBucket swaps status while preserving PARA buckets", () => {
+test("replaceKindBucket and replaceStatusBucket swap terms within a taxonomy kind", () => {
   const statusIds = statusBucketIds(buckets);
   assert.deepEqual(statusIds, [2, 3, 4, 5]);
   assert.deepEqual(replaceStatusBucket([3, 11], statusIds, 4), [4, 11]);
   assert.deepEqual(replaceStatusBucket([3, 11], statusIds, null), [11]);
+  assert.deepEqual(replaceKindBucket([3, 11], [11, 12], 12), [12, 3]);
   assert.deepEqual(appendBucketUnique([11], 3), [11, 3]);
   assert.deepEqual(removeBucketId([3, 11], 3), [11]);
   assert.equal(taskStatusSlug(tasks[0], buckets), "now");
 });
 
-test("computeTodoViewCounts and filterTasksForView classify tasks accurately", () => {
+test("computeTodoViewCounts, filters, and checklist/user helpers", () => {
   const counts = computeTodoViewCounts(tasks, buckets);
   assert.deepEqual(counts, {
     now: 1,
@@ -101,29 +119,60 @@ test("computeTodoViewCounts and filterTasksForView classify tasks accurately", (
     later: 1,
     scheduled: 1,
     blocked: 1,
+    team: 1,
     all: 2,
     done: 1,
   });
 
   assert.deepEqual(
-    filterTasksForView(tasks, buckets, "now", null, null).map((t) => t.id),
+    filterTasksForView(tasks, buckets, "all", null, null, "high", null).map((t) => t.id),
+    [101],
+  );
+  assert.deepEqual(
+    filterTasksForView(tasks, buckets, "all", null, null, null, "team").map((t) => t.id),
     [101],
   );
   assert.deepEqual(
     filterTasksForView(tasks, buckets, "blocked", null, null).map((t) => t.id),
     [102],
   );
+  assert.deepEqual(checklistProgress(tasks[0].checklist), { done: 1, total: 2 });
+  assert.equal(userInitials("Artur Piszek"), "AP");
+  assert.equal(userInitials("admin"), "AD");
+});
+
+test("buildKanbanColumns dynamically groups by any taxonomy kind or priority", () => {
+  const byStatus = buildKanbanColumns(tasks, buckets, "status", true);
   assert.deepEqual(
-    filterTasksForView(tasks, buckets, "done", null, null).map((t) => t.id),
-    [103],
+    byStatus.map((c) => [c.label, c.tasks.length]),
+    [
+      ["Inbox", 0],
+      ["Now", 1],
+      ["Follow-up", 0],
+      ["Later", 1],
+      ["Completed", 1],
+    ],
   );
+
+  const byProject = buildKanbanColumns(tasks, buckets, "project", false);
   assert.deepEqual(
-    filterTasksForView(tasks, buckets, "now", "spacepress", null).map((t) => t.id),
-    [101, 102],
+    byProject.map((c) => [c.label, c.tasks.length]),
+    [
+      ["SpacePress", 2],
+      ["Home Studio", 0],
+      ["No project", 0],
+    ],
   );
+
+  const byPriority = buildKanbanColumns(tasks, buckets, "priority", false);
   assert.deepEqual(
-    filterTasksForView(tasks, buckets, "all", null, "release").map((t) => t.id),
-    [102],
+    byPriority.map((c) => [c.label, c.tasks.length]),
+    [
+      ["High priority", 1],
+      ["Medium", 1],
+      ["Low", 0],
+      ["No priority", 0],
+    ],
   );
 });
 
@@ -134,7 +183,7 @@ test("schedule and recurrence helpers compute timestamps and labels", () => {
     "2026-12-02T10:00:00.000Z",
   );
   assert.equal(
-    computeScheduleDelaySeconds("2026-11-25T10:05:00.000Z", Date.parse("2026-11-25T10:00:00.000Z")),
+    computeScheduleDelaySeconds("2026-11-25T10:05:00.000Z", new Date("2026-11-25T10:00:00.000Z").getTime()),
     300,
   );
   assert.equal(formatScheduleLabel("2026-11-25T09:00:00.000Z", "2026-11-25"), "Today");

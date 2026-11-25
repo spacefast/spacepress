@@ -1,17 +1,18 @@
-# SpacePress Personal TODO Example
+# SpacePress Todo Example
 
-A full-stack GTD + PARA task workspace built as a thin SpacePress shell importing the reusable [`@spacepress/todo`](../../packages/todo) package, inspired by [PersonalOS TODO](https://personalos.net/).
+A full-stack personal & team task workspace built as a thin SpacePress shell importing the reusable [`@spacepress/todo`](../../packages/todo) package.
 
 ## What it demonstrates
 
-- **Reusable module architecture:** [`packages/todo`](../../packages/todo) owns the `collection()`, hierarchical `taxonomy()`, global settings, and pure GTD/PARA domain logic; `examples/todo` is the host shell that mounts it.
+- **Reusable module architecture:** [`packages/todo`](../../packages/todo) owns the `collection()`, hierarchical `taxonomy()`, global settings, and pure GTD/PARA/Kanban domain logic; `examples/todo` is the host shell that mounts it.
 - **WordPress-native storage:**
-  - `tasks` as a WordPress `collection()` with `revisions`, `softDelete`, `url: "/tasks/:slug"`, owner-scoped private `access`, self-referencing `blockedBy`, scheduling (`scheduledAt` + `pendingBucket`), and recurrence (`recurringDays`).
-  - `buckets` as a hierarchical WordPress `taxonomy()` combining GTD status (`inbox`, `now`, `follow-up`, `later`) and PARA organization (`project`, `area`, `resource`).
-  - Native WordPress comments (`<Comments for={task} />`) for task notes & history.
+  - `tasks` as a WordPress `collection()` with `revisions`, `softDelete`, `url: "/tasks/:slug"`, private-by-default or team-shared `access`, optional `assigneeId`, `repeater()` subtask `checklist`, self-referencing `blockedBy`, scheduling (`scheduledAt` + `pendingBucket`), and recurrence (`recurringDays`).
+  - `buckets` as a hierarchical WordPress `taxonomy()` combining workflow statuses (`inbox`, `now`, `follow-up`, `later`) and PARA organization (`project`, `area`, `resource`) — any taxonomy group can also drive the Kanban board's columns.
+  - Native WordPress comments (`<Comments for={task} />`) for task discussion and history, with live comment count badges.
+- **List + Taxonomy-Driven Kanban Board:** switch seamlessly between **List** and **Board** views (`?layout=board`), group Kanban columns by **any taxonomy kind** (`Status`, `Project`, `Area`, `Resource`) or `Priority`, toggle an optional `Completed` column, drag-and-drop cards between columns, or add cards directly into any column.
 - **Server logic & automation:** `mutation()` actions (automatically exposed via REST & WordPress Abilities), delayed Action Scheduler `job()` (`promoteScheduledTask`), and a 15-minute `cron()` safety sweep.
 - **SpacePress Admin:** custom `adminScreen()` DataViews table, `adminWidget()` metrics card, and `adminDashboard()` at `/wp-admin/new/`.
-- **Things 3 / Linear UX:** progressive zero-JS `<form action={...}>` with `useFormState()`, `<Live>` regions, `"use client"` Interactivity API islands (`useState`, `useLive`, `useMount`, `useEvent`, `useRef`, `sharedState`), URL-addressable slide-over inspector (`/?task=<id>`), keyboard shortcuts (`N`, `/`, `J`/`K`, `X`, `Enter`, `Esc`, `?`), light & dark mode, and starter Markdown seed data (`seed: true`).
+- **Calm, keyboard-first UX:** progressive zero-JS `<form action={...}>` with `useFormState()`, `<Live>` regions, `"use client"` Interactivity API islands (`TaskCheckButton`, `LiveWorkspacePulse`, `ParaBucketPicker`, `ChecklistEditor`, `KanbanDragController`, `TodoShortcuts`), URL-addressable slide-over inspector (`/?task=<id>`), priority/flag filter pills, keyboard shortcuts (`N`, `/`, `J`/`K`, `X`, `Enter`, `Esc`, `?`), light & dark mode, and starter Markdown seed data (`seed: true`).
 
 ## Running locally
 
@@ -26,14 +27,14 @@ Open the printed URL and sign in with the local dev credentials (`admin` / `spac
 
 ## Screenshots
 
-| Light Workspace | Slide-over Inspector (Light) |
+| List Workspace (Light) | Kanban Board by Status (Light) |
 | --- | --- |
-| ![Workspace light](screenshots/01-workspace-light.png) | ![Inspector light](screenshots/02-inspector-light.png) |
+| ![List workspace light](screenshots/01-workspace-light.png) | ![Kanban board by status](screenshots/02-kanban-status-light.png) |
 
-| Dark Mode Inspector | Full Task Page & Native Comments |
+| Kanban Board by Project (Dark) | Slide-over Inspector & Checklists |
 | --- | --- |
-| ![Inspector dark](screenshots/03-inspector-dark.png) | ![Task detail](screenshots/04-task-detail.png) |
+| ![Kanban board by project dark](screenshots/03-kanban-project-dark.png) | ![Inspector and checklist](screenshots/04-inspector-light.png) |
 
-| SpacePress Admin Dashboard | Admin DataViews Screen | Mobile (390px) |
+| Full Task Page & Native Comments | SpacePress Admin Overview | Mobile (390px) |
 | --- | --- | --- |
-| ![Admin dashboard](screenshots/05-admin-dashboard.png) | ![Admin DataViews](screenshots/06-admin-dataviews.png) | ![Mobile view](screenshots/07-mobile.png) |
+| ![Task detail](screenshots/05-task-detail.png) | ![Admin dashboard](screenshots/06-admin-dashboard.png) | ![Mobile view](screenshots/07-mobile.png) |

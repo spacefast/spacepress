@@ -1,7 +1,9 @@
+import { get_post, get_userdata } from "php/wordpress";
 import { buckets, tasks } from "spacepress:db";
 import { Comments, Content, Link, notFound, type PageProps } from "spacepress/app";
+import { ChecklistEditor } from "../../../components/ChecklistEditor";
 import { TaskCheckButton } from "../../../components/TaskCheckButton";
-import { decodeWpText } from "../../../lib/todo";
+import { decodeWpText, userInitials } from "../../../lib/todo";
 import { completeAndStopRecurring, snoozeTask } from "../../../server";
 
 export const guard = "authenticated";
@@ -20,6 +22,14 @@ export default async function TaskDetailPage({ item }: PageProps<"tasks/[slug]">
     where: { blockedBy: item.id, completedAt: { isNull: true } },
     limit: 50,
   });
+  const assignee = item.assigneeId ? get_userdata(item.assigneeId) : false;
+  const wpPost = get_post(item.id);
+  const commentCount = wpPost ? Number.parseInt(wpPost.comment_count, 10) || 0 : 0;
+  const checklistItems = (item.checklist ?? []).map((entry, index) => ({
+    index,
+    label: entry.label,
+    done: entry.done,
+  }));
 
   return (
     <main className="task-detail-page">
@@ -43,6 +53,13 @@ export default async function TaskDetailPage({ item }: PageProps<"tasks/[slug]">
           {item.priority !== "none" && (
             <span className={`chip chip--priority-${item.priority}`}>{item.priority}</span>
           )}
+          {item.visibility === "team" && <span className="chip chip--team">◈ Team</span>}
+          {assignee !== false && (
+            <span className="chip">
+              <span className="avatar-badge avatar-badge--xs">{userInitials(assignee.display_name)}</span>
+              {assignee.display_name}
+            </span>
+          )}
           {assignedBuckets.map((bucket) => (
             <Link
               key={bucket.id}
@@ -58,6 +75,7 @@ export default async function TaskDetailPage({ item }: PageProps<"tasks/[slug]">
           {item.recurringDays > 0 && (
             <span className="chip">↻ Every {item.recurringDays} days</span>
           )}
+          {commentCount > 0 && <span className="chip">💬 {commentCount}</span>}
           {item.url && (
             <a href={item.url} target="_blank" rel="noreferrer" className="chip chip--link">
               Open link ↗
@@ -110,8 +128,10 @@ export default async function TaskDetailPage({ item }: PageProps<"tasks/[slug]">
         </div>
       </article>
 
+      <ChecklistEditor taskId={item.id} initialItems={checklistItems} />
+
       <section className="inspector__comments" aria-label="Task notes and history">
-        <h2>Notes &amp; History (WordPress Comments)</h2>
+        <h2>Notes &amp; Discussion (WordPress Comments)</h2>
         <Comments for={item} />
       </section>
     </main>

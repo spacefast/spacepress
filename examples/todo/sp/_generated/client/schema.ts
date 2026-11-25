@@ -18,6 +18,18 @@ export const SCHEMA = {
       "moveTaskBucket": {
         "ability": "move-task-bucket"
       },
+      "moveTaskColumn": {
+        "ability": "move-task-column"
+      },
+      "toggleChecklistItem": {
+        "ability": "toggle-checklist-item"
+      },
+      "addChecklistItem": {
+        "ability": "add-checklist-item"
+      },
+      "removeChecklistItem": {
+        "ability": "remove-checklist-item"
+      },
       "snoozeTask": {
         "ability": "snooze-task"
       },
@@ -103,6 +115,10 @@ export const SCHEMA = {
     "toggleTask",
     "completeAndStopRecurring",
     "moveTaskBucket",
+    "moveTaskColumn",
+    "toggleChecklistItem",
+    "addChecklistItem",
+    "removeChecklistItem",
     "snoozeTask",
     "updateTask",
     "deleteTask",

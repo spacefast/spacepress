@@ -70,6 +70,12 @@ export interface Task {
 	details: string | null;
 	url: string | null;
 	priority: "none" | "low" | "medium" | "high";
+	visibility: "private" | "team";
+	assigneeId: number | null;
+	checklist: {
+		label: string;
+		done: boolean;
+	}[] | null;
 	bucketIds: Id<"buckets">[];
 	ownerId: number;
 	completedAt: string | null;
@@ -93,6 +99,12 @@ export interface TaskInsert {
 	details?: string | null;
 	url?: string | null;
 	priority?: "none" | "low" | "medium" | "high";
+	visibility?: "private" | "team";
+	assigneeId?: number | null;
+	checklist?: {
+		label: string;
+		done?: boolean;
+	}[] | null;
 	bucketIds?: Id<"buckets">[];
 	ownerId?: number;
 	completedAt?: string | null;
@@ -113,6 +125,12 @@ export interface TaskPatch {
 	details?: string | null;
 	url?: string | null;
 	priority?: "none" | "low" | "medium" | "high";
+	visibility?: "private" | "team";
+	assigneeId?: number | null;
+	checklist?: {
+		label: string;
+		done?: boolean;
+	}[] | null;
 	bucketIds?: number[];
 	ownerId?: number;
 	completedAt?: string | null;
@@ -255,6 +273,49 @@ export interface TaskFilter {
 		ilike?: string;
 		notLike?: string;
 		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	visibility?: "private" | "team" | null | {
+		eq?: "private" | "team" | null;
+		ne?: "private" | "team" | null;
+		gt?: "private" | "team";
+		gte?: "private" | "team";
+		lt?: "private" | "team";
+		lte?: "private" | "team";
+		in?: ("private" | "team")[];
+		notIn?: ("private" | "team")[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	assigneeId?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	checklist?: {
+		label: string;
+		done: boolean;
+	}[] | null | {
+		eq?: {
+			label: string;
+			done: boolean;
+		}[] | null;
+		ne?: {
+			label: string;
+			done: boolean;
+		}[] | null;
 		isNull?: true;
 		isNotNull?: true;
 	};
@@ -450,7 +511,7 @@ export interface TaskFilter {
 	OR?: TaskFilter[];
 	NOT?: TaskFilter;
 }
-export type TaskOrder = Partial<Record<"id" | "title" | "slug" | "notes" | "details" | "url" | "priority" | "ownerId" | "completedAt" | "scheduledAt" | "pendingBucket" | "blockedBy" | "recurringDays" | "createdAt" | "updatedAt" | "status" | "publishedAt" | "author" | "deletedAt" | "deletedBy" | "uid", "asc" | "desc">> | string;
+export type TaskOrder = Partial<Record<"id" | "title" | "slug" | "notes" | "details" | "url" | "priority" | "visibility" | "assigneeId" | "ownerId" | "completedAt" | "scheduledAt" | "pendingBucket" | "blockedBy" | "recurringDays" | "createdAt" | "updatedAt" | "status" | "publishedAt" | "author" | "deletedAt" | "deletedBy" | "uid", "asc" | "desc">> | string;
 export interface Bucket {
 	id: Id<"buckets">;
 	name: string;
@@ -663,11 +724,15 @@ export type BucketOrder = Partial<Record<"id" | "name" | "slug" | "description" 
 export interface Settings {
 	workspaceName: string;
 	tagline: string;
+	defaultLayout: "list" | "board";
+	defaultBoardGroup: "status" | "project" | "area" | "resource" | "priority";
 	showCompletedInSidebar: boolean;
 }
 export interface SettingsPatch {
 	workspaceName?: string;
 	tagline?: string;
+	defaultLayout?: "list" | "board";
+	defaultBoardGroup?: "status" | "project" | "area" | "resource" | "priority";
 	showCompletedInSidebar?: boolean;
 }
 export interface CreateTaskInput {
@@ -675,6 +740,8 @@ export interface CreateTaskInput {
 	notes?: string;
 	url?: string;
 	priority?: string;
+	visibility?: string;
+	assigneeId?: string | number;
 	statusBucket?: string;
 	paraBucketId?: string | number;
 	scheduledDate?: string;
@@ -715,6 +782,53 @@ export type MoveTaskBucketOutput = {
 	id: number;
 	statusBucket: "inbox" | "now" | "later" | "follow-up";
 };
+export interface MoveTaskColumnInput {
+	id: number | string;
+	groupBy: string;
+	targetBucketId?: number | string | null;
+	targetPriority?: string | null;
+	complete?: boolean;
+}
+export type MoveTaskColumnOutput = {
+	id: number;
+	completed: boolean;
+} | {
+	id: number;
+	completed: boolean;
+};
+export interface ToggleChecklistItemInput {
+	id: number | string;
+	index: number | string;
+}
+export type ToggleChecklistItemOutput = {
+	id: number;
+	checklist: ({
+		label: string;
+		done: boolean;
+	})[];
+};
+export interface AddChecklistItemInput {
+	id: number | string;
+	label: string;
+}
+export type AddChecklistItemOutput = {
+	id: number;
+	checklist: ({
+		label: string;
+		done: boolean;
+	})[];
+};
+export interface RemoveChecklistItemInput {
+	id: number | string;
+	index: number | string;
+}
+export type RemoveChecklistItemOutput = {
+	id: number;
+	checklist: ({
+		label: string;
+		done: boolean;
+	})[];
+};
 export interface SnoozeTaskInput {
 	id: number | string;
 	days: number | string;
@@ -730,6 +844,8 @@ export interface UpdateTaskInput {
 	details?: string;
 	url?: string;
 	priority?: string;
+	visibility?: string;
+	assigneeId?: string | number;
 	statusBucket?: string;
 	paraBucketIds?: string;
 	scheduledDate?: string;
@@ -769,6 +885,7 @@ export type TodoMetricsOutput = {
 	later: number;
 	scheduled: number;
 	blocked: number;
+	team: number;
 	all: number;
 	done: number;
 };
@@ -813,6 +930,22 @@ export interface Actions {
 		input: MoveTaskBucketInput;
 		output: MoveTaskBucketOutput;
 	};
+	moveTaskColumn: {
+		input: MoveTaskColumnInput;
+		output: MoveTaskColumnOutput;
+	};
+	toggleChecklistItem: {
+		input: ToggleChecklistItemInput;
+		output: ToggleChecklistItemOutput;
+	};
+	addChecklistItem: {
+		input: AddChecklistItemInput;
+		output: AddChecklistItemOutput;
+	};
+	removeChecklistItem: {
+		input: RemoveChecklistItemInput;
+		output: RemoveChecklistItemOutput;
+	};
 	snoozeTask: {
 		input: SnoozeTaskInput;
 		output: SnoozeTaskOutput;
@@ -854,6 +987,18 @@ export declare const SCHEMA: {
 			};
 			readonly moveTaskBucket: {
 				readonly ability: "move-task-bucket";
+			};
+			readonly moveTaskColumn: {
+				readonly ability: "move-task-column";
+			};
+			readonly toggleChecklistItem: {
+				readonly ability: "toggle-checklist-item";
+			};
+			readonly addChecklistItem: {
+				readonly ability: "add-checklist-item";
+			};
+			readonly removeChecklistItem: {
+				readonly ability: "remove-checklist-item";
 			};
 			readonly snoozeTask: {
 				readonly ability: "snooze-task";
@@ -933,7 +1078,7 @@ export declare const SCHEMA: {
 		};
 	};
 	readonly globals: readonly ["settings"];
-	readonly actions: readonly ["createTask", "toggleTask", "completeAndStopRecurring", "moveTaskBucket", "snoozeTask", "updateTask", "deleteTask", "createBucket", "openTasksForAdmin", "todoMetrics"];
+	readonly actions: readonly ["createTask", "toggleTask", "completeAndStopRecurring", "moveTaskBucket", "moveTaskColumn", "toggleChecklistItem", "addChecklistItem", "removeChecklistItem", "snoozeTask", "updateTask", "deleteTask", "createBucket", "openTasksForAdmin", "todoMetrics"];
 	readonly buckets: readonly [];
 };
 export type SchemaDescriptor = typeof SCHEMA;

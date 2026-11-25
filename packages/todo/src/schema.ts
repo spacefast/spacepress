@@ -1,6 +1,6 @@
 // Reusable SpacePress schema factories for @spacepress/todo.
-// Host apps call createTodoSchema() in sp/schema.ts (or pass their own shared
-// hierarchical Knowledge/PARA taxonomy as `buckets`).
+// Host apps call createTodoBuckets() / createTasksCollection() in sp/schema.ts,
+// or pass their own shared hierarchical taxonomy into createTasksCollection({ buckets }).
 import {
   type AnyCollection,
   boolean,
@@ -9,6 +9,7 @@ import {
   HttpError,
   integer,
   ref,
+  repeater,
   richText,
   select,
   slug,
@@ -18,11 +19,18 @@ import {
   timestamp,
   url,
 } from "spacepress";
-import { TODO_BUCKET_KINDS, TODO_PRIORITIES, TODO_STATUS_SLUGS } from "./domain";
+import {
+  TODO_BOARD_GROUPS,
+  TODO_BUCKET_KINDS,
+  TODO_LAYOUTS,
+  TODO_PRIORITIES,
+  TODO_STATUS_SLUGS,
+  TODO_VISIBILITIES,
+} from "./domain";
 
 export interface TodoBucketsOptions {
   label?: string;
-  sync?: string;
+  sync?: `${string}/*.md` | `${string}/*.json`;
 }
 
 export function createTodoBuckets(options: TodoBucketsOptions = {}) {
@@ -52,7 +60,7 @@ export function createTodoBuckets(options: TodoBucketsOptions = {}) {
 export type TodoBucketsKind = ReturnType<typeof createTodoBuckets>;
 
 export interface TodoTasksOptions<TBuckets = TodoBucketsKind> {
-  /** Hierarchical taxonomy for GTD status (`inbox`/`now`/`later`/`follow-up`) and PARA (`project`/`area`/`resource`). */
+  /** Hierarchical taxonomy for workflow statuses (`inbox`/`now`/`later`/`follow-up`) and PARA (`project`/`area`/`resource`). */
   buckets: TBuckets;
   label?: string;
   url?: `/${string}`;
@@ -70,6 +78,14 @@ export function createTasksCollection<TBuckets extends TodoBucketsKind = TodoBuc
       details: richText().optional().ui({ label: "Details" }),
       url: url().optional().ui({ label: "Action URL" }),
       priority: select(TODO_PRIORITIES).default("none").ui({ label: "Priority" }),
+      visibility: select(TODO_VISIBILITIES).default("private").ui({ label: "Visibility" }),
+      assigneeId: integer().optional().ui({ label: "Assignee" }),
+      checklist: repeater({
+        label: text().min(1).max(200),
+        done: boolean().default(false),
+      })
+        .optional()
+        .ui({ label: "Checklist" }),
       bucketIds: terms(options.buckets).reverse("tasks").ui({ label: "Buckets & tags" }),
       ownerId: integer()
         .default(1)
@@ -101,12 +117,18 @@ export function createTasksCollection<TBuckets extends TodoBucketsKind = TodoBuc
       access: {
         read: (ctx) => {
           if (!ctx.user) return { ownerId: -1 };
-          return ctx.user.role === "admin" ? true : { ownerId: ctx.user.id };
+          if (ctx.user.role === "admin") return true;
+          return {
+            OR: [{ ownerId: ctx.user.id }, { assigneeId: ctx.user.id }, { visibility: "team" }],
+          };
         },
         create: "authenticated",
         update: (ctx) => {
           if (!ctx.user) return { ownerId: -1 };
-          return ctx.user.role === "admin" ? true : { ownerId: ctx.user.id };
+          if (ctx.user.role === "admin") return true;
+          return {
+            OR: [{ ownerId: ctx.user.id }, { assigneeId: ctx.user.id }, { visibility: "team" }],
+          };
         },
         delete: (ctx) => {
           if (!ctx.user) return { ownerId: -1 };
@@ -163,12 +185,14 @@ export function createTasksCollection<TBuckets extends TodoBucketsKind = TodoBuc
 export function createTodoSettings() {
   return global(
     {
-      workspaceName: text().default("Personal TODO"),
-      tagline: text().default("GTD + PARA workspace powered by SpacePress"),
+      workspaceName: text().default("Todo"),
+      tagline: text().default("Tasks, checklists, and boards powered by SpacePress"),
+      defaultLayout: select(TODO_LAYOUTS).default("list"),
+      defaultBoardGroup: select(TODO_BOARD_GROUPS).default("status"),
       showCompletedInSidebar: boolean().default(true),
     },
     {
-      label: "TODO Settings",
+      label: "Todo Settings",
       access: { read: "anyone", update: "admin" },
     },
   );

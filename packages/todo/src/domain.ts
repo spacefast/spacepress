@@ -11,6 +11,18 @@ export type TodoBucketKind = (typeof TODO_BUCKET_KINDS)[number];
 export const TODO_PRIORITIES = ["none", "low", "medium", "high"] as const;
 export type TodoPriority = (typeof TODO_PRIORITIES)[number];
 
+export const TODO_VISIBILITIES = ["private", "team"] as const;
+export type TodoVisibility = (typeof TODO_VISIBILITIES)[number];
+
+export const TODO_LAYOUTS = ["list", "board"] as const;
+export type TodoLayout = (typeof TODO_LAYOUTS)[number];
+
+export const TODO_BOARD_GROUPS = ["status", "project", "area", "resource", "priority"] as const;
+export type TodoBoardGroup = (typeof TODO_BOARD_GROUPS)[number];
+
+export const TODO_FLAG_FILTERS = ["blocked", "recurring", "team", "scheduled"] as const;
+export type TodoFlagFilter = (typeof TODO_FLAG_FILTERS)[number];
+
 export const TODO_VIEWS = [
   "now",
   "inbox",
@@ -18,10 +30,16 @@ export const TODO_VIEWS = [
   "later",
   "scheduled",
   "blocked",
+  "team",
   "all",
   "done",
 ] as const;
 export type TodoView = (typeof TODO_VIEWS)[number];
+
+export interface TodoChecklistItem {
+  label: string;
+  done: boolean;
+}
 
 export interface TodoBucketItem {
   id: number;
@@ -41,6 +59,9 @@ export interface TodoTaskItem {
   details: string | null;
   url: string | null;
   priority: TodoPriority;
+  visibility: TodoVisibility;
+  assigneeId: number | null;
+  checklist: TodoChecklistItem[];
   bucketIds: number[];
   ownerId: number;
   completedAt: string | null;
@@ -59,8 +80,19 @@ export interface TodoViewCounts {
   later: number;
   scheduled: number;
   blocked: number;
+  team: number;
   all: number;
   done: number;
+}
+
+export interface TodoKanbanColumn {
+  key: string;
+  label: string;
+  color: string;
+  bucketId: number | null;
+  priority: TodoPriority | null;
+  isCompleted: boolean;
+  tasks: TodoTaskItem[];
 }
 
 export function isTodoStatusSlug(value: string): value is TodoStatusSlug {
@@ -75,6 +107,10 @@ export function isTodoBucketKind(value: string): value is TodoBucketKind {
   return value === "status" || value === "project" || value === "area" || value === "resource";
 }
 
+export function isTodoVisibility(value: string): value is TodoVisibility {
+  return value === "private" || value === "team";
+}
+
 export function normalizeTodoView(raw: string | null | undefined): TodoView {
   if (
     raw === "now" ||
@@ -83,6 +119,7 @@ export function normalizeTodoView(raw: string | null | undefined): TodoView {
     raw === "later" ||
     raw === "scheduled" ||
     raw === "blocked" ||
+    raw === "team" ||
     raw === "all" ||
     raw === "done"
   ) {
@@ -113,7 +150,6 @@ export function normalizeOptionalUrl(raw: string | null | undefined): string | n
 export function parseDateInputToIso(raw: string | null | undefined): string | null {
   const trimmed = normalizeOptionalText(raw);
   if (trimmed === null) return null;
-  // Accept YYYY-MM-DD (scheduled at 09:00 UTC) or full ISO timestamp.
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     return `${trimmed}T09:00:00.000Z`;
   }
@@ -149,21 +185,29 @@ export function computeScheduleDelaySeconds(scheduledAtIso: string, nowMs: numbe
   return diff > 0 ? diff : 0;
 }
 
+export function replaceKindBucket(
+  currentIds: readonly number[],
+  kindBucketIds: readonly number[],
+  nextBucketId: number | null,
+): number[] {
+  const kept: number[] = [];
+  for (const id of currentIds) {
+    if (!kindBucketIds.includes(id) && !kept.includes(id)) {
+      kept.push(id);
+    }
+  }
+  if (nextBucketId !== null && !kept.includes(nextBucketId)) {
+    return [nextBucketId, ...kept];
+  }
+  return kept;
+}
+
 export function replaceStatusBucket(
   currentIds: readonly number[],
   allStatusIds: readonly number[],
   nextStatusId: number | null,
 ): number[] {
-  const kept: number[] = [];
-  for (const id of currentIds) {
-    if (!allStatusIds.includes(id) && !kept.includes(id)) {
-      kept.push(id);
-    }
-  }
-  if (nextStatusId !== null && !kept.includes(nextStatusId)) {
-    return [nextStatusId, ...kept];
-  }
-  return kept;
+  return replaceKindBucket(currentIds, allStatusIds, nextStatusId);
 }
 
 export function appendBucketUnique(currentIds: readonly number[], bucketId: number): number[] {
@@ -198,14 +242,18 @@ export function findBucketBySlug(buckets: readonly TodoBucketItem[], slug: strin
   return null;
 }
 
-export function statusBucketIds(buckets: readonly TodoBucketItem[]): number[] {
+export function bucketIdsForKind(buckets: readonly TodoBucketItem[], kind: TodoBucketKind): number[] {
   const ids: number[] = [];
   for (const bucket of buckets) {
-    if (bucket.kind === "status" && bucket.parent > 0) {
+    if (bucket.kind === kind && bucket.parent > 0) {
       ids.push(bucket.id);
     }
   }
   return ids;
+}
+
+export function statusBucketIds(buckets: readonly TodoBucketItem[]): number[] {
+  return bucketIdsForKind(buckets, "status");
 }
 
 export function taskStatusSlug(
@@ -261,6 +309,28 @@ export function isTaskBlocked(
   return openTaskIds.includes(task.blockedBy);
 }
 
+export function checklistProgress(checklist: readonly TodoChecklistItem[] | null | undefined): {
+  done: number;
+  total: number;
+} {
+  if (!checklist || checklist.length === 0) return { done: 0, total: 0 };
+  let done = 0;
+  for (const entry of checklist) {
+    if (entry.done) done += 1;
+  }
+  return { done, total: checklist.length };
+}
+
+export function userInitials(displayName: string): string {
+  const clean = displayName.trim();
+  if (clean === "") return "?";
+  const parts = clean.split(/\s+/).filter((p) => p !== "");
+  if (parts.length >= 2) {
+    return `${parts[0]!.slice(0, 1)}${parts[1]!.slice(0, 1)}`.toUpperCase();
+  }
+  return clean.slice(0, 2).toUpperCase();
+}
+
 export function priorityRank(priority: TodoPriority): number {
   if (priority === "high") return 3;
   if (priority === "medium") return 2;
@@ -282,6 +352,7 @@ export function computeTodoViewCounts(
   let later = 0;
   let scheduled = 0;
   let blocked = 0;
+  let team = 0;
   let all = 0;
   let done = 0;
 
@@ -298,9 +369,10 @@ export function computeTodoViewCounts(
     if (status === "later") later += 1;
     if (task.scheduledAt !== null) scheduled += 1;
     if (isTaskBlocked(task, openIds)) blocked += 1;
+    if (task.visibility === "team") team += 1;
   }
 
-  return { now, inbox, followUp, later, scheduled, blocked, all, done };
+  return { now, inbox, followUp, later, scheduled, blocked, team, all, done };
 }
 
 function compareStrings(a: string, b: string): number {
@@ -315,6 +387,8 @@ export function filterTasksForView(
   view: TodoView,
   bucketSlug: string | null,
   query: string | null,
+  priorityFilter: TodoPriority | null = null,
+  flagFilter: TodoFlagFilter | null = null,
 ): TodoTaskItem[] {
   const openIds: number[] = [];
   for (const task of tasks) {
@@ -338,7 +412,14 @@ export function filterTasksForView(
       if (view === "later" && !taskHasBucketSlug(task, buckets, "later")) continue;
       if (view === "scheduled" && task.scheduledAt === null) continue;
       if (view === "blocked" && !isTaskBlocked(task, openIds)) continue;
+      if (view === "team" && task.visibility !== "team") continue;
     }
+
+    if (priorityFilter !== null && task.priority !== priorityFilter) continue;
+    if (flagFilter === "blocked" && !isTaskBlocked(task, openIds)) continue;
+    if (flagFilter === "recurring" && task.recurringDays <= 0) continue;
+    if (flagFilter === "team" && task.visibility !== "team") continue;
+    if (flagFilter === "scheduled" && task.scheduledAt === null) continue;
 
     if (needle !== "") {
       const hay = `${task.title} ${task.notes ?? ""}`.toLowerCase();
@@ -361,6 +442,77 @@ export function filterTasksForView(
   });
 
   return out;
+}
+
+export function buildKanbanColumns(
+  tasks: readonly TodoTaskItem[],
+  buckets: readonly TodoBucketItem[],
+  groupBy: TodoBoardGroup,
+  showDone: boolean,
+): TodoKanbanColumn[] {
+  const openTasks = tasks.filter((t) => t.completedAt === null);
+  const doneTasks = tasks.filter((t) => t.completedAt !== null);
+  const columns: TodoKanbanColumn[] = [];
+
+  if (groupBy === "priority") {
+    const levels: { key: TodoPriority; label: string; color: string }[] = [
+      { key: "high", label: "High priority", color: "#dc2626" },
+      { key: "medium", label: "Medium", color: "#d97706" },
+      { key: "low", label: "Low", color: "#2563eb" },
+      { key: "none", label: "No priority", color: "#64748b" },
+    ];
+    for (const level of levels) {
+      columns.push({
+        key: `priority:${level.key}`,
+        label: level.label,
+        color: level.color,
+        bucketId: null,
+        priority: level.key,
+        isCompleted: false,
+        tasks: openTasks.filter((t) => t.priority === level.key),
+      });
+    }
+  } else {
+    const groupBuckets = buckets.filter((b) => b.kind === groupBy && b.parent > 0);
+    const groupIds = groupBuckets.map((b) => b.id);
+    for (const bucket of groupBuckets) {
+      columns.push({
+        key: `bucket:${bucket.id}`,
+        label: bucket.name,
+        color: bucket.color ?? "#64748b",
+        bucketId: bucket.id,
+        priority: null,
+        isCompleted: false,
+        tasks: openTasks.filter((t) => t.bucketIds.includes(bucket.id)),
+      });
+    }
+    const unassigned = openTasks.filter((t) => !t.bucketIds.some((id) => groupIds.includes(id)));
+    if (groupBy !== "status" || unassigned.length > 0) {
+      columns.push({
+        key: `bucket:none`,
+        label: groupBy === "status" ? "Unsorted" : `No ${groupBy}`,
+        color: "#94a3b8",
+        bucketId: null,
+        priority: null,
+        isCompleted: false,
+        tasks: unassigned,
+      });
+    }
+  }
+
+  if (showDone) {
+    columns.push({
+      key: "completed",
+      label: "Completed",
+      color: "#059669",
+      bucketId: null,
+      priority: null,
+      isCompleted: true,
+      tasks: doneTasks,
+    });
+  }
+
+  return columns;
 }
 
 export function formatScheduleLabel(scheduledAt: string | null, todayYmd: string): string {
@@ -420,10 +572,17 @@ export function viewMeta(view: TodoView): { title: string; subtitle: string; def
       defaultStatus: "later",
     };
   }
+  if (view === "team") {
+    return {
+      title: "Shared with Team",
+      subtitle: "Collaborative tasks visible to signed-in teammates on this WordPress site.",
+      defaultStatus: "now",
+    };
+  }
   if (view === "all") {
     return {
       title: "All Open",
-      subtitle: "Every active task across your GTD buckets and PARA areas.",
+      subtitle: "Every active task across your workflow and PARA buckets.",
       defaultStatus: "inbox",
     };
   }

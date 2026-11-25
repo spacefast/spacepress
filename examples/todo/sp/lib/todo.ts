@@ -1,6 +1,4 @@
 // Local typed adapter over @spacepress/todo.
-// SpacePress compiles installed packages in checked-dynamic mode and erases their TS type exports,
-// so this small module keeps strict static types for sp/server.ts, sp/app/, and sp/components/.
 import {
   appendBucketUnique as rawAppendBucketUnique,
   computeNextOccurrenceIso as rawComputeNextOccurrenceIso,
@@ -13,13 +11,32 @@ import {
   normalizeTaskTitle as rawNormalizeTaskTitle,
   parseDateInputToIso as rawParseDateInputToIso,
   removeBucketId as rawRemoveBucketId,
-  replaceStatusBucket as rawReplaceStatusBucket,
+  replaceKindBucket as rawReplaceKindBucket,
+  userInitials as rawUserInitials,
 } from "@spacepress/todo";
 
 export type TodoStatusSlug = "inbox" | "now" | "later" | "follow-up";
 export type TodoBucketKind = "status" | "project" | "area" | "resource";
 export type TodoPriority = "none" | "low" | "medium" | "high";
-export type TodoView = "now" | "inbox" | "follow-up" | "later" | "scheduled" | "blocked" | "all" | "done";
+export type TodoVisibility = "private" | "team";
+export type TodoLayout = "list" | "board";
+export type TodoBoardGroup = "status" | "project" | "area" | "resource" | "priority";
+export type TodoFlagFilter = "blocked" | "recurring" | "team" | "scheduled";
+export type TodoView =
+  | "now"
+  | "inbox"
+  | "follow-up"
+  | "later"
+  | "scheduled"
+  | "blocked"
+  | "team"
+  | "all"
+  | "done";
+
+export interface TodoChecklistItem {
+  label: string;
+  done: boolean;
+}
 
 export interface TodoBucket {
   id: number;
@@ -39,6 +56,9 @@ export interface TodoTask {
   details: string | null;
   url: string | null;
   priority: TodoPriority;
+  visibility: TodoVisibility;
+  assigneeId: number | null;
+  checklist: TodoChecklistItem[];
   bucketIds: number[];
   ownerId: number;
   completedAt: string | null;
@@ -57,8 +77,19 @@ export interface TodoViewCounts {
   later: number;
   scheduled: number;
   blocked: number;
+  team: number;
   all: number;
   done: number;
+}
+
+export interface TodoKanbanColumn {
+  key: string;
+  label: string;
+  color: string;
+  bucketId: number | null;
+  priority: TodoPriority | null;
+  isCompleted: boolean;
+  tasks: TodoTask[];
 }
 
 function asNumberArray(raw: unknown): number[] {
@@ -110,6 +141,43 @@ export function asPriority(raw: string | null | undefined, fallback: TodoPriorit
   return fallback;
 }
 
+export function asOptionalPriority(raw: string | null | undefined): TodoPriority | null {
+  if (raw === "none") return "none";
+  if (raw === "low") return "low";
+  if (raw === "medium") return "medium";
+  if (raw === "high") return "high";
+  return null;
+}
+
+export function asVisibility(raw: string | null | undefined, fallback: TodoVisibility): TodoVisibility {
+  if (raw === "team") return "team";
+  if (raw === "private") return "private";
+  return fallback;
+}
+
+export function asLayout(raw: string | null | undefined, fallback: TodoLayout): TodoLayout {
+  if (raw === "board") return "board";
+  if (raw === "list") return "list";
+  return fallback;
+}
+
+export function asBoardGroup(raw: string | null | undefined, fallback: TodoBoardGroup): TodoBoardGroup {
+  if (raw === "status") return "status";
+  if (raw === "project") return "project";
+  if (raw === "area") return "area";
+  if (raw === "resource") return "resource";
+  if (raw === "priority") return "priority";
+  return fallback;
+}
+
+export function asOptionalFlagFilter(raw: string | null | undefined): TodoFlagFilter | null {
+  if (raw === "blocked") return "blocked";
+  if (raw === "recurring") return "recurring";
+  if (raw === "team") return "team";
+  if (raw === "scheduled") return "scheduled";
+  return null;
+}
+
 export function asBucketKind(raw: string | null | undefined): TodoBucketKind | null {
   if (raw === "status") return "status";
   if (raw === "project") return "project";
@@ -125,6 +193,7 @@ export function asTodoView(raw: string | null | undefined): TodoView {
   if (raw === "later") return "later";
   if (raw === "scheduled") return "scheduled";
   if (raw === "blocked") return "blocked";
+  if (raw === "team") return "team";
   if (raw === "all") return "all";
   if (raw === "done") return "done";
   return "now";
@@ -165,12 +234,20 @@ export function computeScheduleDelaySeconds(scheduledAtIso: string, nowMs: numbe
   return typeof out === "number" ? out : 0;
 }
 
+export function replaceKindBucket(
+  currentIds: number[],
+  kindBucketIds: number[],
+  nextBucketId: number | null,
+): number[] {
+  return asNumberArray(rawReplaceKindBucket(currentIds, kindBucketIds, nextBucketId));
+}
+
 export function replaceStatusBucket(
   currentIds: number[],
   allStatusIds: number[],
   nextStatusId: number | null,
 ): number[] {
-  return asNumberArray(rawReplaceStatusBucket(currentIds, allStatusIds, nextStatusId));
+  return replaceKindBucket(currentIds, allStatusIds, nextStatusId);
 }
 
 export function appendBucketUnique(currentIds: number[], bucketId: number): number[] {
@@ -191,6 +268,11 @@ export function isScheduleOverdue(scheduledAt: string | null, todayYmd: string):
   return typeof out === "boolean" ? out : false;
 }
 
+export function userInitials(displayName: string): string {
+  const out = rawUserInitials(displayName);
+  return typeof out === "string" ? out : "?";
+}
+
 export function findBucketBySlug(buckets: TodoBucket[], slug: string): TodoBucket | null {
   for (const bucket of buckets) {
     if (bucket.slug === slug) return bucket;
@@ -198,12 +280,16 @@ export function findBucketBySlug(buckets: TodoBucket[], slug: string): TodoBucke
   return null;
 }
 
-export function statusBucketIds(buckets: TodoBucket[]): number[] {
+export function bucketIdsForKind(buckets: TodoBucket[], kind: TodoBucketKind): number[] {
   const ids: number[] = [];
   for (const bucket of buckets) {
-    if (bucket.kind === "status" && bucket.parent > 0) ids.push(bucket.id);
+    if (bucket.kind === kind && bucket.parent > 0) ids.push(bucket.id);
   }
   return ids;
+}
+
+export function statusBucketIds(buckets: TodoBucket[]): number[] {
+  return bucketIdsForKind(buckets, "status");
 }
 
 export function taskStatusSlug(task: TodoTask, buckets: TodoBucket[]): TodoStatusSlug | null {
@@ -245,6 +331,14 @@ export function isTaskBlocked(task: TodoTask, openTaskIds: number[]): boolean {
   return openTaskIds.includes(task.blockedBy);
 }
 
+export function checklistProgress(checklist: TodoChecklistItem[]): { done: number; total: number } {
+  let done = 0;
+  for (const entry of checklist) {
+    if (entry.done) done += 1;
+  }
+  return { done, total: checklist.length };
+}
+
 export function priorityRank(priority: TodoPriority): number {
   if (priority === "high") return 3;
   if (priority === "medium") return 2;
@@ -263,6 +357,7 @@ export function computeTodoViewCounts(tasks: TodoTask[], buckets: TodoBucket[]):
   let later = 0;
   let scheduled = 0;
   let blocked = 0;
+  let team = 0;
   let all = 0;
   let done = 0;
 
@@ -279,9 +374,10 @@ export function computeTodoViewCounts(tasks: TodoTask[], buckets: TodoBucket[]):
     if (status === "later") later += 1;
     if (task.scheduledAt !== null) scheduled += 1;
     if (isTaskBlocked(task, openIds)) blocked += 1;
+    if (task.visibility === "team") team += 1;
   }
 
-  return { now, inbox, followUp, later, scheduled, blocked, all, done };
+  return { now, inbox, followUp, later, scheduled, blocked, team, all, done };
 }
 
 function compareStrings(a: string, b: string): number {
@@ -296,6 +392,8 @@ export function filterTasksForView(
   view: TodoView,
   bucketSlug: string | null,
   query: string | null,
+  priorityFilter: TodoPriority | null,
+  flagFilter: TodoFlagFilter | null,
 ): TodoTask[] {
   const openIds: number[] = [];
   for (const task of tasks) {
@@ -319,7 +417,14 @@ export function filterTasksForView(
       if (view === "later" && !taskHasBucketSlug(task, buckets, "later")) continue;
       if (view === "scheduled" && task.scheduledAt === null) continue;
       if (view === "blocked" && !isTaskBlocked(task, openIds)) continue;
+      if (view === "team" && task.visibility !== "team") continue;
     }
+
+    if (priorityFilter !== null && task.priority !== priorityFilter) continue;
+    if (flagFilter === "blocked" && !isTaskBlocked(task, openIds)) continue;
+    if (flagFilter === "recurring" && task.recurringDays <= 0) continue;
+    if (flagFilter === "team" && task.visibility !== "team") continue;
+    if (flagFilter === "scheduled" && task.scheduledAt === null) continue;
 
     if (needle !== "") {
       const hay = `${task.title} ${task.notes ?? ""}`.toLowerCase();
@@ -342,6 +447,77 @@ export function filterTasksForView(
   });
 
   return out;
+}
+
+export function buildKanbanColumns(
+  tasks: TodoTask[],
+  buckets: TodoBucket[],
+  groupBy: TodoBoardGroup,
+  showDone: boolean,
+): TodoKanbanColumn[] {
+  const openTasks = tasks.filter((t) => t.completedAt === null);
+  const doneTasks = tasks.filter((t) => t.completedAt !== null);
+  const columns: TodoKanbanColumn[] = [];
+
+  if (groupBy === "priority") {
+    const levels: { key: TodoPriority; label: string; color: string }[] = [
+      { key: "high", label: "High priority", color: "#dc2626" },
+      { key: "medium", label: "Medium", color: "#d97706" },
+      { key: "low", label: "Low", color: "#2563eb" },
+      { key: "none", label: "No priority", color: "#64748b" },
+    ];
+    for (const level of levels) {
+      columns.push({
+        key: `priority:${level.key}`,
+        label: level.label,
+        color: level.color,
+        bucketId: null,
+        priority: level.key,
+        isCompleted: false,
+        tasks: openTasks.filter((t) => t.priority === level.key),
+      });
+    }
+  } else {
+    const groupBuckets = buckets.filter((b) => b.kind === groupBy && b.parent > 0);
+    const groupIds = groupBuckets.map((b) => b.id);
+    for (const bucket of groupBuckets) {
+      columns.push({
+        key: `bucket:${bucket.id}`,
+        label: bucket.name,
+        color: bucket.color ?? "#64748b",
+        bucketId: bucket.id,
+        priority: null,
+        isCompleted: false,
+        tasks: openTasks.filter((t) => t.bucketIds.includes(bucket.id)),
+      });
+    }
+    const unassigned = openTasks.filter((t) => !t.bucketIds.some((id) => groupIds.includes(id)));
+    if (groupBy !== "status" || unassigned.length > 0) {
+      columns.push({
+        key: "bucket:none",
+        label: groupBy === "status" ? "Unsorted" : `No ${groupBy}`,
+        color: "#94a3b8",
+        bucketId: null,
+        priority: null,
+        isCompleted: false,
+        tasks: unassigned,
+      });
+    }
+  }
+
+  if (showDone) {
+    columns.push({
+      key: "completed",
+      label: "Completed",
+      color: "#059669",
+      bucketId: null,
+      priority: null,
+      isCompleted: true,
+      tasks: doneTasks,
+    });
+  }
+
+  return columns;
 }
 
 export function viewMeta(view: TodoView): { title: string; subtitle: string; defaultStatus: TodoStatusSlug } {
@@ -380,10 +556,17 @@ export function viewMeta(view: TodoView): { title: string; subtitle: string; def
       defaultStatus: "later",
     };
   }
+  if (view === "team") {
+    return {
+      title: "Shared with Team",
+      subtitle: "Collaborative tasks visible to signed-in teammates on this WordPress site.",
+      defaultStatus: "now",
+    };
+  }
   if (view === "all") {
     return {
       title: "All Open",
-      subtitle: "Every active task across your GTD buckets and PARA areas.",
+      subtitle: "Every active task across your workflow and PARA buckets.",
       defaultStatus: "inbox",
     };
   }

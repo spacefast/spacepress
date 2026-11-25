@@ -6,15 +6,15 @@
 # schema (rollback), and garbage collection removes only what the host's kept builds do not reference.
 # Assertions are on HTTP answers, receipts and the store's directories, never on source text.
 #
-#   TP_WP_PROJECT=typedpress-wp-store TP_WP_PORT=8901 tests/wp/store-run.sh
+#   SP_WP_PROJECT=spacepress-wp-store SP_WP_PORT=8901 tests/wp/store-run.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
-bin="$target/debug/typedpress"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-store}"
-export TP_WP_PORT="${TP_WP_PORT:-8901}"
+bin="$target/debug/spacepress"
+export SP_WP_PROJECT="${SP_WP_PROJECT:-spacepress-wp-store}"
+export SP_WP_PORT="${SP_WP_PORT:-8901}"
 work="$(mktemp -d)"
 cleanup() { "$here/harness.sh" down; rm -rf "$work"; }
 trap cleanup EXIT
@@ -29,17 +29,17 @@ print(v if not isinstance(v,(dict,list,bool)) and v is not None else json.dumps(
 for label in one two; do
   mkdir -p "$work/$label/storelane"
   rsync -a --exclude host.php --exclude contract-host.php "$here/store/" "$work/$label/storelane/"
-  sed -i.bak "s/BUILD_LABEL/$label/" "$work/$label/storelane/typedpress.config.ts" && rm "$work/$label/storelane/typedpress.config.ts.bak"
+  sed -i.bak "s/BUILD_LABEL/$label/" "$work/$label/storelane/spacepress.config.ts" && rm "$work/$label/storelane/spacepress.config.ts.bak"
   "$bin" sources "$work/$label/storelane" --out "$work/$label/sources"
 done
 # The harness installs the pinned platform plugins from a native build's lock; it never serves the build.
 "$bin" build "$work/one/storelane" --quiet >/dev/null
 mkdir -p "$work/content/plugins"
-cp "$here/store/host.php" "$work/content/plugins/typedpress-store-host.php"
-cp "$here/store/contract-host.php" "$work/content/plugins/typedpress-store-contract-host.php"
-cp "$work/one/storelane/tp/dist/wp-content/typedpress-manifest.json" "$work/content/"
-# The store lives in the bind-mounted plugins directory so the container sees it; TP_BUILD_STORE points at it.
-store="$work/content/plugins/typedpress-store"
+cp "$here/store/host.php" "$work/content/plugins/spacepress-store-host.php"
+cp "$here/store/contract-host.php" "$work/content/plugins/spacepress-store-contract-host.php"
+cp "$work/one/storelane/sp/dist/wp-content/spacepress-manifest.json" "$work/content/"
+# The store lives in the bind-mounted plugins directory so the container sees it; SP_BUILD_STORE points at it.
+store="$work/content/plugins/spacepress-store"
 start=$(date +%s%N)
 first=$("$bin" compile-to-store "$work/one/sources" "$store" "$work/one/sources" | json build)
 mid=$(date +%s%N)
@@ -56,17 +56,17 @@ runtime=$(ls "$store/runtime")
 # through the must-use loader, not as WordPress plugins.
 "$here/harness.sh" up --wp-content "$work/content" --platform > "$work/harness.json"
 url=$(json url < "$work/harness.json")
-"$here/harness.sh" compose exec -T wordpress sh -c "mkdir -p /var/www/html/wp-content/mu-plugins && cp /var/www/html/wp-content/plugins/typedpress-store-host.php /var/www/html/wp-content/mu-plugins/typedpress-store-host.php && cp /var/www/html/wp-content/plugins/typedpress-store-contract-host.php /var/www/html/wp-content/mu-plugins/typedpress-store-contract-host.php"
+"$here/harness.sh" compose exec -T wordpress sh -c "mkdir -p /var/www/html/wp-content/mu-plugins && cp /var/www/html/wp-content/plugins/spacepress-store-host.php /var/www/html/wp-content/mu-plugins/spacepress-store-host.php && cp /var/www/html/wp-content/plugins/spacepress-store-contract-host.php /var/www/html/wp-content/mu-plugins/spacepress-store-contract-host.php"
 
-action() { curl -sS -X POST -H 'Content-Type: application/json' -H "X-TypedPress-Build: $1" --data '{}' "$url/wp-json/typedpress/v1/actions/which"; }
+action() { curl -sS -X POST -H 'Content-Type: application/json' -H "X-SpacePress-Build: $1" --data '{}' "$url/wp-json/spacepress/v1/actions/which"; }
 # WP-CLI as the host: select the build before WordPress loads, then call the loader.
-host() { local build="$1"; shift; wp --exec="define('TP_TEST_BUILD', '$build');" eval "$@"; }
-root=/var/www/html/wp-content/plugins/typedpress-store
-inspect() { wp --exec="define('TP_TEST_BUILD', '$1'); define('TP_TEST_INSPECT', true);" eval "echo json_encode(TypedPress\\Loader\\Loader::inspect('$root', '$1')$2);"; }
-initialize() { host "$1" "echo json_encode(TypedPress\\Loader\\Loader::initialize('$root', '$1'));"; }
-gc() { host "$1" "echo json_encode(TypedPress\\Loader\\Store::gc('$root', json_decode('$2'), $3));"; }
+host() { local build="$1"; shift; wp --exec="define('SP_TEST_BUILD', '$build');" eval "$@"; }
+root=/var/www/html/wp-content/plugins/spacepress-store
+inspect() { wp --exec="define('SP_TEST_BUILD', '$1'); define('SP_TEST_INSPECT', true);" eval "echo json_encode(SpacePress\\Loader\\Loader::inspect('$root', '$1')$2);"; }
+initialize() { host "$1" "echo json_encode(SpacePress\\Loader\\Loader::initialize('$root', '$1'));"; }
+gc() { host "$1" "echo json_encode(SpacePress\\Loader\\Store::gc('$root', json_decode('$2'), $3));"; }
 
-status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-TypedPress-Build: $first" --data '{}' "$url/wp-json/typedpress/v1/actions/which")
+status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-SpacePress-Build: $first" --data '{}' "$url/wp-json/spacepress/v1/actions/which")
 [[ $status == 404 ]] || fail "an uninitialized build is not served, got $status"
 ok "a build is not served before it initializes"
 
@@ -77,8 +77,8 @@ ok "a build is not served before it initializes"
 site() {
   local q
   for q in "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ORDER BY 1, 2" \
-    "SELECT option_name, MD5(option_value) FROM wp_options WHERE option_name NOT LIKE '\\_transient%' AND option_name NOT LIKE '\\_site\\_transient%' AND option_name <> 'tp_test_contract' AND option_name NOT LIKE 'action\\_scheduler\\_lock\\_%' ORDER BY 1" \
-    "SELECT * FROM wp_tp__migrations ORDER BY app, id" "SELECT (SELECT COUNT(*) FROM wp_posts), (SELECT MAX(post_modified_gmt) FROM wp_posts), (SELECT COUNT(*) FROM wp_postmeta), (SELECT COUNT(*) FROM wp_usermeta)" "SELECT * FROM wp_tp_notes ORDER BY id"; do
+    "SELECT option_name, MD5(option_value) FROM wp_options WHERE option_name NOT LIKE '\\_transient%' AND option_name NOT LIKE '\\_site\\_transient%' AND option_name <> 'sp_test_contract' AND option_name NOT LIKE 'action\\_scheduler\\_lock\\_%' ORDER BY 1" \
+    "SELECT * FROM wp_sp__migrations ORDER BY app, id" "SELECT (SELECT COUNT(*) FROM wp_posts), (SELECT MAX(post_modified_gmt) FROM wp_posts), (SELECT COUNT(*) FROM wp_postmeta), (SELECT COUNT(*) FROM wp_usermeta)" "SELECT * FROM wp_sp_notes ORDER BY id"; do
     "$here/harness.sh" sql "$q" 2>/dev/null || echo "missing: $q"
   done
   wp cron event list --fields=hook,next_run_gmt --format=csv 2>/dev/null | sort
@@ -104,7 +104,7 @@ assert re.fullmatch(r'[0-9]{14}_[0-9a-hjkmnp-tv-z]{6}_init', migration['id']), m
 assert migration['statements']==[1, 2], migration
 assert len(migration['sql'])==64
 steps=out['systemTables']['steps']
-assert '__tp_jobs' in steps, steps
+assert '__sp_jobs' in steps, steps
 assert out['seed'] is True and out['manifest']['baseline'] is None, out
 PY
 [[ $fresh == "$(site)" ]] || { diff <(echo "$fresh") <(site) >&2; fail "inspecting a fresh site changed it"; }
@@ -115,8 +115,8 @@ receipt=$(initialize "$first")
 [[ $(json seed.notes.created <<< "$receipt") == 1 ]] || fail "the first build seeds one note: $receipt"
 [[ $(action "$first" | json data.build) == one ]] || fail "build one answers"
 [[ $(action "$first" | json data.notes) == 1 ]] || fail "build one reads the seeded note"
-[[ $(wp option get tp_identity_schema_version) == 4 && -n $(wp option get tp_identity_dummy_password_hash) ]] || fail "initialize installs identity's schema and password-check material"
-[[ -n $(wp cron event list --hook=tp_identity_password_inventory --field=hook) ]] || fail "initialize schedules identity's password inventory"
+[[ $(wp option get sp_identity_schema_version) == 4 && -n $(wp option get sp_identity_dummy_password_hash) ]] || fail "initialize installs identity's schema and password-check material"
+[[ -n $(wp cron event list --hook=sp_identity_password_inventory --field=hook) ]] || fail "initialize schedules identity's password inventory"
 ok "initialize migrates, installs identity, seeds and marks build one ready"
 
 
@@ -150,7 +150,7 @@ PY
 [[ $(gc "$first" "[\"$first\"]" false) == "$dry" ]] || fail "gc removes what the dry run listed"
 [[ $(ls "$store/app" | wc -l) -eq 1 && $(ls "$store/build" | wc -l) -eq 1 && $(ls "$store/runtime" | wc -l) -eq 1 ]] || fail "gc keeps the kept build's runtime and app"
 [[ $(action "$first" | json data.build) == one ]] || fail "the kept build still answers after gc"
-status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-TypedPress-Build: $second" --data '{}' "$url/wp-json/typedpress/v1/actions/which")
+status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-SpacePress-Build: $second" --data '{}' "$url/wp-json/spacepress/v1/actions/which")
 [[ $status == 404 ]] || fail "a collected build is gone, got $status"
 ok "gc removes only what the kept builds do not reference"
 
@@ -158,8 +158,8 @@ ok "gc removes only what the kept builds do not reference"
 # leaves every table, option and ledger row as it was.
 mkdir -p "$work/three/storelane"
 rsync -a --exclude host.php --exclude contract-host.php "$here/store/" "$work/three/storelane/"
-sed -i.bak 's/BUILD_LABEL/three/' "$work/three/storelane/typedpress.config.ts" && rm "$work/three/storelane/typedpress.config.ts.bak"
-cat >> "$work/three/storelane/typedpress.config.ts" <<'TS'
+sed -i.bak 's/BUILD_LABEL/three/' "$work/three/storelane/spacepress.config.ts" && rm "$work/three/storelane/spacepress.config.ts.bak"
+cat >> "$work/three/storelane/spacepress.config.ts" <<'TS'
 
 export const ratings = table({ rating: text() }, { existingTable: "wp_missing_ratings" });
 TS
@@ -187,15 +187,15 @@ planned=$(inspect "$first" "")
 ok "inspecting a build that already initialized plans nothing"
 
 # The host contract (docs/host-contract.md): every hook it lists is called by the runtime, and one
-# `wp typedpress jobs tick` runs the queued job, whose mail goes through the host's transport.
-contract() { wp eval "echo wp_json_encode(get_option('tp_test_contract', []));"; }
-added=$(curl -sS -X POST -H 'Content-Type: application/json' -H "X-TypedPress-Build: $first" --data '{"title":"Contract"}' "$url/wp-json/typedpress/v1/actions/add")
+# `wp spacepress jobs tick` runs the queued job, whose mail goes through the host's transport.
+contract() { wp eval "echo wp_json_encode(get_option('sp_test_contract', []));"; }
+added=$(curl -sS -X POST -H 'Content-Type: application/json' -H "X-SpacePress-Build: $first" --data '{"title":"Contract"}' "$url/wp-json/spacepress/v1/actions/add")
 [[ $(json data.added <<< "$added") == Contract ]] || fail "the add action answers: $added"
 seen=$(contract)
-[[ $(json tp_runtime_loaded <<< "$seen") == true ]] || fail "tp_runtime_loaded fired: $seen"
-[[ $(json tp_realtime_changes <<< "$seen") == '["notes"]' ]] || fail "tp_realtime_changes carried the write: $seen"
-[[ $(json 'TypedPress\Realtime\Publisher' <<< "$seen") == 1 ]] || fail "the host's Publisher got the notice: $seen"
-tick=$(host "$first" "WP_CLI::runcommand('typedpress jobs tick --limit=10');")
+[[ $(json sp_runtime_loaded <<< "$seen") == true ]] || fail "sp_runtime_loaded fired: $seen"
+[[ $(json sp_realtime_changes <<< "$seen") == '["notes"]' ]] || fail "sp_realtime_changes carried the write: $seen"
+[[ $(json 'SpacePress\Realtime\Publisher' <<< "$seen") == 1 ]] || fail "the host's Publisher got the notice: $seen"
+tick=$(host "$first" "WP_CLI::runcommand('spacepress jobs tick --limit=10');")
 [[ $(json data.processed <<< "$tick") -ge 1 && $(json data.failures <<< "$tick") == 0 && $(json data.remaining <<< "$tick") == false ]] || fail "a tick runs the queued job: $tick"
-[[ $(json tp_mail_transport <<< "$(contract)") == 'Added Contract' ]] || fail "the job's mail went through tp_mail_transport: $(contract)"
+[[ $(json sp_mail_transport <<< "$(contract)") == 'Added Contract' ]] || fail "the job's mail went through sp_mail_transport: $(contract)"
 ok "the runtime calls the host's hooks, its Publisher, and one jobs tick runs the queue"

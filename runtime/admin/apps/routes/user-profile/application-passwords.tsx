@@ -17,7 +17,7 @@ interface CreatedApplicationPassword extends ApplicationPassword {
 
 function formatDate( value?: string | null ): string {
 	if ( ! value ) {
-		return __( 'Never', 'typedpress-admin' );
+		return __( 'Never', 'spacepress-admin' );
 	}
 	const parsed = new Date( value );
 	if ( Number.isNaN( parsed.getTime() ) ) {
@@ -73,7 +73,7 @@ export function ApplicationPasswordsCard() {
 						? String( ( err as { message: unknown } ).message )
 						: __(
 								'Could not load application passwords.',
-								'typedpress-admin'
+								'spacepress-admin'
 						  )
 				);
 			} );
@@ -116,7 +116,7 @@ export function ApplicationPasswordsCard() {
 					? String( ( err as { message: unknown } ).message )
 					: __(
 							'Could not create application password.',
-							'typedpress-admin'
+							'spacepress-admin'
 					  )
 			);
 		} finally {
@@ -141,7 +141,7 @@ export function ApplicationPasswordsCard() {
 					? String( ( err as { message: unknown } ).message )
 					: __(
 							'Could not revoke application password.',
-							'typedpress-admin'
+							'spacepress-admin'
 					  )
 			);
 		} finally {
@@ -150,13 +150,13 @@ export function ApplicationPasswordsCard() {
 	};
 
 	return (
-		<section className="tp-app-passwords">
-			<div className="tp-app-passwords__header">
-				<h2>{ __( 'Application Passwords', 'typedpress-admin' ) }</h2>
+		<section className="sp-app-passwords">
+			<div className="sp-app-passwords__header">
+				<h2>{ __( 'Application Passwords', 'spacepress-admin' ) }</h2>
 				<p>
 					{ __(
 						'Create revocable credentials for CLI, MCP, and API clients without sharing your main password.',
-						'typedpress-admin'
+						'spacepress-admin'
 					) }
 				</p>
 			</div>
@@ -180,7 +180,7 @@ export function ApplicationPasswordsCard() {
 					<strong>
 						{ __(
 							'New application password (shown once):',
-							'typedpress-admin'
+							'spacepress-admin'
 						) }
 					</strong>{ ' ' }
 					<code>{ createdToken.password }</code>
@@ -188,13 +188,13 @@ export function ApplicationPasswordsCard() {
 			) }
 
 			<form
-				className="tp-app-passwords__form"
+				className="sp-app-passwords__form"
 				onSubmit={ ( e ) => {
 					void createPassword( e );
 				} }
 			>
 				<TextControl
-					label={ __( 'New password name', 'typedpress-admin' ) }
+					label={ __( 'New password name', 'spacepress-admin' ) }
 					value={ name }
 					onChange={ setName }
 					placeholder="SpacePress CLI or MCP agent"
@@ -206,31 +206,31 @@ export function ApplicationPasswordsCard() {
 					disabled={ busy || ! name.trim() }
 					isBusy={ busy }
 				>
-					{ __( 'Add Application Password', 'typedpress-admin' ) }
+					{ __( 'Add Application Password', 'spacepress-admin' ) }
 				</Button>
 			</form>
 
 			{ loading ? (
-				<div className="tp-app-passwords__loading">
+				<div className="sp-app-passwords__loading">
 					<Spinner />
 				</div>
 			) : items.length === 0 ? (
-				<p className="tp-app-passwords__empty">
+				<p className="sp-app-passwords__empty">
 					{ __(
 						'No application passwords created yet.',
-						'typedpress-admin'
+						'spacepress-admin'
 					) }
 				</p>
 			) : (
-				<ul className="tp-app-passwords__list">
+				<ul className="sp-app-passwords__list">
 					{ items.map( ( item ) => (
-						<li key={ item.uuid } className="tp-app-passwords__row">
+						<li key={ item.uuid } className="sp-app-passwords__row">
 							<div>
 								<strong>{ item.name }</strong>
-								<div className="tp-app-passwords__meta">
-									{ __( 'Created:', 'typedpress-admin' ) }{ ' ' }
+								<div className="sp-app-passwords__meta">
+									{ __( 'Created:', 'spacepress-admin' ) }{ ' ' }
 									{ formatDate( item.created ) } ·{ ' ' }
-									{ __( 'Last used:', 'typedpress-admin' ) }{ ' ' }
+									{ __( 'Last used:', 'spacepress-admin' ) }{ ' ' }
 									{ formatDate( item.last_used ) }
 								</div>
 							</div>
@@ -243,7 +243,7 @@ export function ApplicationPasswordsCard() {
 									void revoke( item.uuid );
 								} }
 							>
-								{ __( 'Revoke', 'typedpress-admin' ) }
+								{ __( 'Revoke', 'spacepress-admin' ) }
 							</Button>
 						</li>
 					) ) }

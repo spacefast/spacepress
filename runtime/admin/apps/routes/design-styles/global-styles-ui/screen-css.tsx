@@ -2,7 +2,7 @@ import { __ } from '@wordpress/i18n';
 import { Link } from '@wordpress/ui';
 // @ts-expect-error - WordPress private APIs
 import { privateApis as blockEditorPrivateApis } from '@wordpress/block-editor';
-import { unlock } from '@typedpress-admin/admin-toolkit';
+import { unlock } from '@spacepress-admin/admin-toolkit';
 import { ScreenHeader } from './screen-header';
 import { useStyle } from './hooks';
 
@@ -13,7 +13,7 @@ const { AdvancedPanel: StylesAdvancedPanel } = unlock( blockEditorPrivateApis );
 function ScreenCSS() {
 	const description = __(
 		'Add your own CSS to customize the appearance and layout of your site.',
-		'typedpress-admin'
+		'spacepress-admin'
 	);
 
 	// Get user-only styles (should not decode/encode to preserve raw CSS)
@@ -34,19 +34,19 @@ function ScreenCSS() {
 	return (
 		<>
 			<ScreenHeader
-				title={ __( 'CSS', 'typedpress-admin' ) }
+				title={ __( 'CSS', 'spacepress-admin' ) }
 				description={ description }
 			/>
-			<div className="typedpress-admin-global-styles-screen-css">
+			<div className="spacepress-admin-global-styles-screen-css">
 				<Link
 					href={ __(
 						'https://developer.wordpress.org/advanced-administration/wordpress/css/',
-						'typedpress-admin'
+						'spacepress-admin'
 					) }
 					openInNewTab
-					className="typedpress-admin-global-styles-screen-css-help-link"
+					className="spacepress-admin-global-styles-screen-css-help-link"
 				>
-					{ __( 'Learn more about CSS', 'typedpress-admin' ) }
+					{ __( 'Learn more about CSS', 'spacepress-admin' ) }
 				</Link>
 				<StylesAdvancedPanel
 					value={ style }

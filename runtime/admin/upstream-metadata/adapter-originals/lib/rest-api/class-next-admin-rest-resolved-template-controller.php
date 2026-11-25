@@ -1,11 +1,11 @@
 <?php
 /**
- * REST API: TypedPress_Admin_REST_Resolved_Template_Controller class
+ * REST API: SpacePress_Admin_REST_Resolved_Template_Controller class
  *
  * Resolves a complete template and all its block dependencies (template parts,
  * navigation posts, menus, pages) in a single server-side round-trip.
  *
- * @package TypedPressAdmin
+ * @package SpacePressAdmin
  * @since 1.0.0
  */
 
@@ -20,7 +20,7 @@
  *
  * @see WP_REST_Controller
  */
-class TypedPress_Admin_REST_Resolved_Template_Controller extends WP_REST_Controller {
+class SpacePress_Admin_REST_Resolved_Template_Controller extends WP_REST_Controller {
 
 	/**
 	 * Collected entity records keyed by "{kind}/{name}".
@@ -104,7 +104,7 @@ class TypedPress_Admin_REST_Resolved_Template_Controller extends WP_REST_Control
 		if ( ! current_user_can( 'edit_posts' ) ) {
 			return new WP_Error(
 				'rest_forbidden',
-				__( 'Sorry, you are not allowed to resolve templates.', 'typedpress-admin' ),
+				__( 'Sorry, you are not allowed to resolve templates.', 'spacepress-admin' ),
 				array( 'status' => rest_authorization_required_code() )
 			);
 		}
@@ -124,7 +124,7 @@ class TypedPress_Admin_REST_Resolved_Template_Controller extends WP_REST_Control
 		if ( ! wp_get_theme()->is_block_theme() ) {
 			return new WP_Error(
 				'rest_not_block_theme',
-				__( 'The active theme is not a block theme.', 'typedpress-admin' ),
+				__( 'The active theme is not a block theme.', 'spacepress-admin' ),
 				array( 'status' => 400 )
 			);
 		}
@@ -217,7 +217,7 @@ class TypedPress_Admin_REST_Resolved_Template_Controller extends WP_REST_Control
 		if ( ! $post ) {
 			return new WP_Error(
 				'rest_post_not_found',
-				__( 'Post not found.', 'typedpress-admin' ),
+				__( 'Post not found.', 'spacepress-admin' ),
 				array( 'status' => 404 )
 			);
 		}
@@ -791,6 +791,6 @@ class TypedPress_Admin_REST_Resolved_Template_Controller extends WP_REST_Control
 add_action(
 	'rest_api_init',
 	function () {
-		( new TypedPress_Admin_REST_Resolved_Template_Controller() )->register_routes();
+		( new SpacePress_Admin_REST_Resolved_Template_Controller() )->register_routes();
 	}
 );

@@ -2,7 +2,7 @@
 /**
  * Post type registration overrides and default view configuration.
  *
- * @package TypedPressAdmin
+ * @package SpacePressAdmin
  */
 
 /**
@@ -12,7 +12,7 @@
  * @param string $post_type Post type name.
  * @return array Modified post type arguments.
  */
-function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
+function sp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
 	$default_view = array(
 		'type'       => 'table',
 		'perPage'    => 20,
@@ -66,7 +66,7 @@ function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
 					),
 					array(
 						'id'       => 'status',
-						'label'    => __( 'Status & Visibility', 'typedpress-admin' ),
+						'label'    => __( 'Status & Visibility', 'spacepress-admin' ),
 						'children' => array( 'status', 'password' ),
 					),
 					'author',
@@ -76,7 +76,7 @@ function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
 					'comment_status',
 					array(
 						'id'     => 'template',
-						'label'  => __( 'Template', 'typedpress-admin' ),
+						'label'  => __( 'Template', 'spacepress-admin' ),
 						'layout' => array(
 							'type'          => 'regular',
 							'labelPosition' => 'side',
@@ -117,7 +117,7 @@ function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
 					),
 					array(
 						'id'       => 'status',
-						'label'    => __( 'Status & Visibility', 'typedpress-admin' ),
+						'label'    => __( 'Status & Visibility', 'spacepress-admin' ),
 						'children' => array( 'status', 'password' ),
 					),
 					'author',
@@ -127,7 +127,7 @@ function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
 					'comment_status',
 					array(
 						'id'     => 'template',
-						'label'  => __( 'Template', 'typedpress-admin' ),
+						'label'  => __( 'Template', 'spacepress-admin' ),
 						'layout' => array(
 							'type'          => 'regular',
 							'labelPosition' => 'side',
@@ -223,19 +223,19 @@ function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
 			$tabs = array(
 				array(
 					'media_type' => 'image',
-					'label'      => __( 'Images', 'typedpress-admin' ),
+					'label'      => __( 'Images', 'spacepress-admin' ),
 				),
 				array(
 					'media_type' => 'video',
-					'label'      => __( 'Videos', 'typedpress-admin' ),
+					'label'      => __( 'Videos', 'spacepress-admin' ),
 				),
 				array(
 					'media_type' => 'audio',
-					'label'      => __( 'Audio', 'typedpress-admin' ),
+					'label'      => __( 'Audio', 'spacepress-admin' ),
 				),
 				array(
 					'media_type' => 'application',
-					'label'      => __( 'Files', 'typedpress-admin' ),
+					'label'      => __( 'Files', 'spacepress-admin' ),
 				),
 			);
 
@@ -244,7 +244,7 @@ function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
 					array(
 						'slug'  => 'all',
 						/* translators: Label for showing all posts regardless of status */
-						'label' => __( 'All', 'typedpress-admin' ),
+						'label' => __( 'All', 'spacepress-admin' ),
 						'view'  => $default_view,
 					),
 				),
@@ -275,7 +275,7 @@ function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
 			);
 		}
 	} elseif (
-		// wp_template is registered without a UI (tp_admin_enable_template_show_ui() adds it after this
+		// wp_template is registered without a UI (sp_admin_enable_template_show_ui() adds it after this
 		// ran at registration); it keeps its own settings below.
 		'wp_template' !== $post_type && (
 			( isset( $args['show_ui'] ) && true === $args['show_ui'] ) ||
@@ -296,7 +296,7 @@ function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
 				array(
 					'slug'  => 'all',
 					/* translators: Label for showing all posts regardless of status */
-					'label' => __( 'All', 'typedpress-admin' ),
+					'label' => __( 'All', 'spacepress-admin' ),
 					'view'  => $default_view,
 				),
 			);
@@ -305,7 +305,7 @@ function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
 			// packages/fields/src/fields/status/status-elements.tsx
 			//
 			// DataForm doesn't support custom statuses yet. This is something to solve
-			// across TypedPress Admin and Gutenberg, so let's draw the same limits here.
+			// across SpacePress Admin and Gutenberg, so let's draw the same limits here.
 			$allowed_status_slugs = array(
 				'draft',
 				'future',
@@ -380,7 +380,7 @@ function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
 				),
 				array(
 					'id'       => 'status',
-					'label'    => __( 'Status & Visibility', 'typedpress-admin' ),
+					'label'    => __( 'Status & Visibility', 'spacepress-admin' ),
 					'children' => array( 'status', 'password' ),
 				),
 				'author',
@@ -390,7 +390,7 @@ function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
 				'comment_status',
 				array(
 					'id'     => 'template',
-					'label'  => __( 'Template', 'typedpress-admin' ),
+					'label'  => __( 'Template', 'spacepress-admin' ),
 					'layout' => array(
 						'type'          => 'regular',
 						'labelPosition' => 'side',
@@ -419,22 +419,22 @@ function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
  * @param array $args Post type arguments.
  * @return array Modified post type arguments.
  */
-function tp_admin_enable_template_show_ui( $args ) {
+function sp_admin_enable_template_show_ui( $args ) {
 	$args['show_ui'] = true;
 	return $args;
 }
-add_filter( 'register_wp_template_post_type_args', 'tp_admin_enable_template_show_ui', 10, 1 );
+add_filter( 'register_wp_template_post_type_args', 'sp_admin_enable_template_show_ui', 10, 1 );
 
 
 /**
  * Add explicit support for the duplicate-post DataViews action for post types.
  * The action is not guaranteed to work with all post types, so it should be opt-in.
  */
-function tp_admin_add_duplicate_post_support() {
+function sp_admin_add_duplicate_post_support() {
 	add_post_type_support( 'post', 'duplicate-post' );
 	add_post_type_support( 'page', 'duplicate-post' );
 }
-add_action( 'init', 'tp_admin_add_duplicate_post_support' );
+add_action( 'init', 'sp_admin_add_duplicate_post_support' );
 
 // WordPress 7.2 registers the editor's entity actions on the server. The attachment editor offers
 // neither duplicating nor trashing an attachment; on 7.1 its route unregisters them in the browser.

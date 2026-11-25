@@ -1,7 +1,7 @@
 //! Forward-only schema snapshots, sortable folder migrations (`ops.json` + `migration.sql`),
 //! fold-based baseline reconstruction, and parallel-branch conflict detection.
 //!
-//! Each migration lives in its own immutable directory under `tp/_generated/migrations/`:
+//! Each migration lives in its own immutable directory under `sp/_generated/migrations/`:
 //!   `<YYYYMMDDHHMMSS>_<6char-base32>_<slug>/ops.json`
 //!   `<YYYYMMDDHHMMSS>_<6char-base32>_<slug>/migration.sql`
 //!
@@ -10,13 +10,13 @@
 //! baseline state and catches incompatible parallel edits at build time.
 //!
 //! Core migrations are strictly forward-only:
-//! - Only `table()` definitions get a table, `{prefix}tp_<table>`, plus `{prefix}tp__join_<join>`
-//!   for `ref().many()` join tables and `{prefix}tp__revisions` for revisions.
+//! - Only `table()` definitions get a table, `{prefix}sp_<table>`, plus `{prefix}sp__join_<join>`
+//!   for `ref().many()` join tables and `{prefix}sp__revisions` for revisions.
 //! - Removing a column or table retires it (relaxing NOT NULL / dropping FKs & indexes) instead of
 //!   emitting `DROP COLUMN` or `DROP TABLE`.
 //! - Lossy type narrowing and adding/tightening required columns without a literal default are
 //!   refused at build time.
-//! - Explicit destructive cleanup lives behind the opt-in `typedpress/danger` subpath.
+//! - Explicit destructive cleanup lives behind the opt-in `spacepress/danger` subpath.
 
 use crate::diag::{Code, Diag, Span};
 use crate::schema::{Collection, Column, DefaultKind, Schema};
@@ -25,10 +25,10 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
 pub const BREAKPOINT: &str = "--> statement-breakpoint";
-/// First line of a statement carrying deploy metadata: `-- typedpress-check {json}`.
-pub const CHECK: &str = "-- typedpress-check ";
+/// First line of a statement carrying deploy metadata: `-- spacepress-check {json}`.
+pub const CHECK: &str = "-- spacepress-check ";
 /// Snapshot key of the revisions system table.
-pub const REVISIONS: &str = "tp__revisions";
+pub const REVISIONS: &str = "sp__revisions";
 
 type Map = serde_json::Map<String, Json>;
 
@@ -75,9 +75,9 @@ fn table(t: &str, tables: &Map) -> String {
     if t == REVISIONS {
         format!("`{{prefix}}{t}`")
     } else if tables.get(t).is_some_and(|d| d["join"].is_object()) {
-        format!("`{{prefix}}tp__join_{t}`")
+        format!("`{{prefix}}sp__join_{t}`")
     } else {
-        format!("`{{prefix}}tp_{t}`")
+        format!("`{{prefix}}sp_{t}`")
     }
 }
 
@@ -216,7 +216,7 @@ fn parse_ts_epoch(ts: &str) -> Option<u64> {
 }
 
 fn now_epoch() -> u64 {
-    if let Ok(raw) = std::env::var("TYPEDPRESS_MIGRATION_TIME")
+    if let Ok(raw) = std::env::var("SPACEPRESS_MIGRATION_TIME")
         && let Some(secs) = parse_ts_epoch(&raw)
     {
         return secs;
@@ -358,7 +358,7 @@ fn indexable(c: &Json) -> bool {
     }
 }
 
-/// A `ref().many()` field's join table: `{prefix}tp__join_<owner>_<field>`.
+/// A `ref().many()` field's join table: `{prefix}sp__join_<owner>_<field>`.
 fn join_snapshot(owner: &Collection, r: &crate::schema::Reference, schema: &Schema) -> Json {
     let side = |table: &str| {
         json!({ "type": "integer", "notNull": true, "primaryKey": false, "autoIncrement": false, "unique": false,
@@ -483,7 +483,7 @@ fn revisions_table_def() -> Json {
     json!({ "editor": false, "drafts": false, "system": true, "columns": cols })
 }
 
-/// The SQL tables a snapshot holds: custom tables, join tables, plus `{prefix}tp__revisions` once
+/// The SQL tables a snapshot holds: custom tables, join tables, plus `{prefix}sp__revisions` once
 /// there is any collection.
 fn tables(snap: &Json) -> Map {
     let mut out = Map::new();
@@ -501,7 +501,7 @@ fn tables(snap: &Json) -> Map {
     out
 }
 
-/// SQL tables already recorded inside a `FoldedState` (does not synthesize `tp__revisions` unless
+/// SQL tables already recorded inside a `FoldedState` (does not synthesize `sp__revisions` unless
 /// a prior migration actually created it).
 fn folded_sql_tables(state: &FoldedState) -> Map {
     let mut out = Map::new();
@@ -588,11 +588,11 @@ fn fk_sql(t: &str, name: &str, c: &Json, tables: &Map) -> Option<String> {
 }
 
 fn fk_name(t: &str, col: &str) -> String {
-    let n = format!("tp_{t}_{col}_fk");
+    let n = format!("sp_{t}_{col}_fk");
     n.chars().take(64).collect()
 }
 
-/// Every index the schema's SQL tables get, and why it exists, for `typedpress check --json`.
+/// Every index the schema's SQL tables get, and why it exists, for `spacepress check --json`.
 pub fn index_report(snapshot: &Json) -> Json {
     let tables = tables(snapshot);
     let mut out = Vec::new();
@@ -788,7 +788,7 @@ fn create_table_with_fks(
                 let target_name = tables[target]["existingTable"]
                     .as_str()
                     .map(str::to_owned)
-                    .unwrap_or_else(|| format!("{{prefix}}tp_{target}"));
+                    .unwrap_or_else(|| format!("{{prefix}}sp_{target}"));
                 Some(json!({ "name": fk_name(t, name), "column": name, "table": target_name,
                 "target": r["column"], "onDelete": r["onDelete"].as_str().unwrap_or("restrict").to_uppercase(),
                 "onUpdate": r["onUpdate"].as_str().unwrap_or("restrict").to_uppercase() }))
@@ -797,7 +797,7 @@ fn create_table_with_fks(
         let adoption = json!({ "table": def["existingTable"], "indexes": expected_indexes,
             "foreignKeys": foreign_keys, "integerColumns": integer_columns });
         return format!(
-            "-- typedpress-adopt {adoption}\nSELECT {} FROM {} LIMIT 0;",
+            "-- spacepress-adopt {adoption}\nSELECT {} FROM {} LIMIT 0;",
             cols.keys().map(|n| q(n)).collect::<Vec<_>>().join(", "),
             table(t, tables)
         );
@@ -911,11 +911,49 @@ pub fn default_literal(ty: &str, v: &Json) -> String {
     }
 }
 
+/// The revisions table's key as pre-release compilers wrote it in `ops.json`.
+const LEGACY_REVISIONS: &str = "tp__revisions";
+
+/// `ops.json` with the pre-release key of the revisions table read as [`REVISIONS`]: the table is
+/// the same one (the runtime renames it on the site), so a baseline from a site deployed before the
+/// rename plans nothing new for it. A current app may name its own table `tp__revisions`
+/// (`storageName`): the key is the system table's only while the `createTable` that made it was the
+/// system one (`system: true`), which `system` carries from one migration to the next.
+fn legacy_revisions(doc: &Json, system: &mut bool) -> Json {
+    let mut doc = doc.clone();
+    for op in doc["ops"].as_array_mut().into_iter().flatten() {
+        if op["table"] != LEGACY_REVISIONS {
+            continue;
+        }
+        if op["op"] == "createTable" {
+            *system = op["def"]["system"].as_bool() == Some(true);
+        }
+        if !*system {
+            continue;
+        }
+        op["table"] = REVISIONS.into();
+        if let Some(physical) = op["physicalTable"].as_str()
+            && let Some(rest) = physical.strip_suffix(LEGACY_REVISIONS)
+        {
+            op["physicalTable"] = format!("{rest}{REVISIONS}").into();
+        }
+    }
+    doc
+}
+
 /// Folds a set of `(migration_id, ops_json)` entries in sorted ID order into the baseline
 /// [`FoldedState`], detecting incompatible parallel-branch edits at build time.
 pub fn fold(entries: &[(String, Json)]) -> Result<FoldedState, Diag> {
     let mut sorted: Vec<&(String, Json)> = entries.iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // A site deployed by a pre-release compiler keys its revisions table as that compiler named it.
+    let mut system = false;
+    let current: Vec<(String, Json)> = sorted
+        .iter()
+        .map(|(id, doc)| (id.clone(), legacy_revisions(doc, &mut system)))
+        .collect();
+    let sorted: Vec<&(String, Json)> = current.iter().collect();
 
     let mut state = FoldedState::empty();
     let mut table_origin: BTreeMap<String, String> = BTreeMap::new();
@@ -967,7 +1005,7 @@ pub fn fold(entries: &[(String, Json)]) -> Result<FoldedState, Diag> {
                                 "conflicting parallel migrations: `{prev_id}` retired table `{t}` while `{id}` creates it"
                             ),
                         )
-                        .help("choose a distinct `storageName`, or purge the retired table with `typedpress/danger` (`wp typedpress danger drop-table`) first")
+                        .help("choose a distinct `storageName`, or purge the retired table with `spacepress/danger` (`wp spacepress danger drop-table`) first")
                         .code(Code::Schema));
                     }
                     if let Some(cols) = def["columns"].as_object() {
@@ -1260,7 +1298,7 @@ pub fn plan_forward_only(
                 format!("table `{t}` was retired in an earlier migration and still exists in the database"),
             )
             .help(
-                "give the new table a distinct `storageName`, or purge the retired table first with `typedpress/danger`"
+                "give the new table a distinct `storageName`, or purge the retired table first with `spacepress/danger`"
                     .to_string(),
             )
             .code(Code::Schema));
@@ -1370,7 +1408,7 @@ pub fn plan_forward_only(
                                 ),
                             )
                             .help(format!(
-                                "choose a new physical column name with `.column(\"{k}_v2\")`, or purge the retired column with `typedpress/danger` first"
+                                "choose a new physical column name with `.column(\"{k}_v2\")`, or purge the retired column with `spacepress/danger` first"
                             ))
                             .code(Code::Schema));
                         }
@@ -1424,7 +1462,7 @@ pub fn plan_forward_only(
                                     "narrowing `{t}.{k}` from `{psql}` to `{sql}` can lose or corrupt existing data and is refused by forward-only migrations"
                                 ),
                             )
-                            .help("add a new column and backfill via a data migration, or opt into `typedpress/danger` for an explicit narrowing migration")
+                            .help("add a new column and backfill via a data migration, or opt into `spacepress/danger` for an explicit narrowing migration")
                             .code(Code::Schema));
                         }
                         let tightens = required && prev_col["notNull"] != true;
@@ -1471,7 +1509,7 @@ pub fn plan_forward_only(
                 }
                 ops.push(json!({ "op": "retireColumn", "table": t, "column": k }));
                 warnings.push(format!(
-                    "retiring column \"{t}\".\"{k}\" (data preserved; purge later with typedpress/danger)"
+                    "retiring column \"{t}\".\"{k}\" (data preserved; purge later with spacepress/danger)"
                 ));
             }
         }
@@ -1560,7 +1598,7 @@ pub fn plan_forward_only(
             "physicalTable": physical_table_name(t, &prev_t),
         }));
         warnings.push(format!(
-            "retiring table \"{t}\" (data preserved; purge later with typedpress/danger)"
+            "retiring table \"{t}\" (data preserved; purge later with spacepress/danger)"
         ));
     }
 
@@ -1745,10 +1783,10 @@ mod tests {
         let (m1, _) = apply_step(&mut history, &v1).unwrap().unwrap();
         assert!(is_migration_id(&m1.id), "{}", m1.id);
         assert!(m1.id.ends_with("_init"), "{}", m1.id);
-        let loc_pos = m1.sql.find("CREATE TABLE `{prefix}tp_locations`").unwrap();
-        let item_pos = m1.sql.find("CREATE TABLE `{prefix}tp_items`").unwrap();
+        let loc_pos = m1.sql.find("CREATE TABLE `{prefix}sp_locations`").unwrap();
+        let item_pos = m1.sql.find("CREATE TABLE `{prefix}sp_items`").unwrap();
         assert!(loc_pos < item_pos, "{}", m1.sql);
-        assert!(m1.sql.contains("CREATE TABLE `{prefix}tp__revisions`"), "{}", m1.sql);
+        assert!(m1.sql.contains("CREATE TABLE `{prefix}sp__revisions`"), "{}", m1.sql);
 
         // Rebuild with no changes produces nothing.
         assert!(apply_step(&mut history, &v1).unwrap().is_none());
@@ -1776,7 +1814,7 @@ mod tests {
         let (m3, _) = apply_step(&mut history, &v3).unwrap().unwrap();
         assert!(
             m3.sql
-                .contains("UPDATE `{prefix}tp_items` SET `note` = 'ready' WHERE `note` IS NULL;"),
+                .contains("UPDATE `{prefix}sp_items` SET `note` = 'ready' WHERE `note` IS NULL;"),
             "{}",
             m3.sql
         );
@@ -1795,7 +1833,7 @@ mod tests {
         assert!(!m4.sql.contains("DROP COLUMN"), "{}", m4.sql);
         assert!(!m4.sql.contains("DROP TABLE"), "{}", m4.sql);
         assert!(
-            m4.sql.contains("DROP FOREIGN KEY `tp_items_locationId_fk`"),
+            m4.sql.contains("DROP FOREIGN KEY `sp_items_locationId_fk`"),
             "{}",
             m4.sql
         );
@@ -1850,6 +1888,39 @@ mod tests {
     }
 
     #[test]
+    fn folds_the_pre_release_revisions_key_and_keeps_an_apps_own_table_of_that_name() {
+        let table = |cols: Json| json!({ "editor": false, "drafts": false, "columns": cols });
+        let v1 = snap(json!({ "items": table(json!({ "id": id(), "name": col("text") })) }));
+        let mut history = Vec::new();
+        apply_step(&mut history, &v1).unwrap().unwrap();
+        // A pre-release compiler keyed the system revisions table as `tp__revisions`.
+        let legacy: Vec<(String, Json)> = history
+            .iter()
+            .map(|(id, ops)| {
+                let text = ops.to_string().replace(REVISIONS, LEGACY_REVISIONS);
+                (id.clone(), serde_json::from_str(&text).unwrap())
+            })
+            .collect();
+        assert!(legacy[0].1.to_string().contains(LEGACY_REVISIONS));
+        let folded = fold(&legacy).unwrap();
+        assert!(folded.tables.contains_key(REVISIONS) && !folded.tables.contains_key(LEGACY_REVISIONS));
+        assert!(plan_forward_only(&folded, &v1, &[]).unwrap().is_none());
+
+        // A current app's own table under that name (`storageName: "tp__revisions"`) stays the app's.
+        let own = snap(json!({ "tp__revisions": table(json!({ "id": id(), "note": col("text") })) }));
+        let mut history = Vec::new();
+        apply_step(&mut history, &own).unwrap().unwrap();
+        let folded = fold(&history).unwrap();
+        assert!(folded.tables[LEGACY_REVISIONS]["system"].is_null());
+        assert_eq!(folded.tables[REVISIONS]["system"], true);
+        let mut next = own.clone();
+        next["tables"][LEGACY_REVISIONS]["columns"]["more"] = col("text");
+        let (entry, _) = apply_step(&mut history, &next).unwrap().unwrap();
+        assert_eq!(entry.ops["ops"][0]["table"], LEGACY_REVISIONS, "{}", entry.ops);
+        assert!(apply_step(&mut history, &next).unwrap().is_none());
+    }
+
+    #[test]
     fn parallel_branch_migrations_fold_cleanly_or_report_exact_conflict() {
         let table = |cols: Json| json!({ "editor": false, "drafts": false, "columns": cols });
         let base = snap(json!({ "orders": table(json!({ "id": id() })) }));
@@ -1896,7 +1967,7 @@ mod tests {
     }
 
     #[test]
-    fn join_tables_use_dedicated_tp_join_prefix() {
+    fn join_tables_use_dedicated_sp_join_prefix() {
         let mut tables = Map::new();
         tables.insert(
             "posts_tags".into(),
@@ -1909,7 +1980,7 @@ mod tests {
         );
         assert_eq!(
             physical_table_name("posts_tags", &tables),
-            "{prefix}tp__join_posts_tags"
+            "{prefix}sp__join_posts_tags"
         );
     }
 
@@ -2038,10 +2109,10 @@ mod tests {
         }));
         let mut history = Vec::new();
         let (m1, _) = apply_step(&mut history, &v1).unwrap().unwrap();
-        let ca = m1.sql.find("CREATE TABLE `{prefix}tp_a`").unwrap();
-        let cb = m1.sql.find("CREATE TABLE `{prefix}tp_b`").unwrap();
-        let alt_a = m1.sql.find("ALTER TABLE `{prefix}tp_a` ADD CONSTRAINT").unwrap();
-        let alt_b = m1.sql.find("ALTER TABLE `{prefix}tp_b` ADD CONSTRAINT").unwrap();
+        let ca = m1.sql.find("CREATE TABLE `{prefix}sp_a`").unwrap();
+        let cb = m1.sql.find("CREATE TABLE `{prefix}sp_b`").unwrap();
+        let alt_a = m1.sql.find("ALTER TABLE `{prefix}sp_a` ADD CONSTRAINT").unwrap();
+        let alt_b = m1.sql.find("ALTER TABLE `{prefix}sp_b` ADD CONSTRAINT").unwrap();
         assert!(ca < alt_a && cb < alt_a && ca < alt_b && cb < alt_b, "{}", m1.sql);
     }
 }

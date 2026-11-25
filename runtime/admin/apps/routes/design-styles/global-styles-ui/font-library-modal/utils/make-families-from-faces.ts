@@ -1,4 +1,4 @@
-import { unlock } from '@typedpress-admin/admin-toolkit';
+import { unlock } from '@spacepress-admin/admin-toolkit';
 import { privateApis as componentsPrivateApis } from '@wordpress/components';
 import type { FontFamily, FontFace } from '../types';
 

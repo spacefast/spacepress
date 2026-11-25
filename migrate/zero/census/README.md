@@ -1,10 +1,10 @@
 # Zero 0.8 production census
 
-Measures how many live Zero 0.8 Spaces `typedpress-migrate --from zero app` converts with no human
+Measures how many live Zero 0.8 Spaces `spacepress-migrate --from zero app` converts with no human
 edit, and ranks why the rest are refused. [`migrate/docs/zero-08-parity.md`](../../migrate/docs/zero-08-parity.md#production-census-2026-11-07)
 has the bar, the formula, the export query and the latest numbers.
 
-- `census.mjs` runs one or more `typedpress` binaries over every Space and prints accepted, refused and
+- `census.mjs` runs one or more `spacepress` binaries over every Space and prints accepted, refused and
   not-recoverable counts with ranked reasons. `--json` writes the same summary; it has counts
   only.
 - `reconstruct.mjs` rebuilds a capsule from a stored finalize payload: the server bundle becomes
@@ -19,9 +19,9 @@ has the bar, the formula, the export query and the latest numbers.
 ```sh
 cargo build
 node migrate/zero/census/census.mjs --data <scratch-dir> --users \
-  --zero base=<baseline>/tp --zero head=target/debug/typedpress-migrate --json summary.json
+  --zero base=<baseline>/sp --zero head=target/debug/spacepress-migrate --json summary.json
 node migrate/zero/census/usage.mjs --data <scratch-dir> --json usage.json --markdown usage.md
-TP_BIN=target/debug/typedpress-migrate node --test migrate/zero/census/census.test.mjs migrate/zero/census/usage.test.mjs
+SP_BIN=target/debug/spacepress-migrate node --test migrate/zero/census/census.test.mjs migrate/zero/census/usage.test.mjs
 ```
 
 `<scratch-dir>` holds customer data: one `<version_id>.json` per Space (or under `out/`), the

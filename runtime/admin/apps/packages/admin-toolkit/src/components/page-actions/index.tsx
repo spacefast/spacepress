@@ -3,7 +3,7 @@ import { __ } from '@wordpress/i18n';
 import { moreVertical } from '@wordpress/icons';
 import { DropdownMenu, Modal } from '@wordpress/components';
 import { useRegistry } from '@wordpress/data';
-import type { Action, ActionModal, RenderModalProps } from '@typedpress-admin/dataviews';
+import type { Action, ActionModal, RenderModalProps } from '@spacepress-admin/dataviews';
 
 export type PageActionConfig< Item > = {
 	action: Action< Item >;
@@ -95,7 +95,7 @@ export function PageActions< Item >( {
 	return (
 		<>
 			<DropdownMenu
-				label={ __( 'Actions', 'typedpress-admin' ) }
+				label={ __( 'Actions', 'spacepress-admin' ) }
 				icon={ moreVertical }
 				toggleProps={ { size: 'compact' } }
 				controls={ controls }

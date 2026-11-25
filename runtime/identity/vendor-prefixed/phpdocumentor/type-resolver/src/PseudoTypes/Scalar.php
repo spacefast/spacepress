@@ -11,15 +11,15 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Type;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Boolean;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Compound;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Float_;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Integer;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\String_;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Type;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Boolean;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Compound;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Float_;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Integer;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\String_;
 
 /**
  * Value Object representing the 'scalar' pseudo-type, which is either a string, integer, float or boolean.

@@ -2,12 +2,12 @@
 /**
  * Avatar field definition for core user fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Avatar', 'typedpress-admin' ),
+	'label'              => __( 'Avatar', 'spacepress-admin' ),
 	'enableSorting'      => false,
 	'enableHiding'       => false,
 	'enableGlobalSearch' => false,

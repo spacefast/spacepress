@@ -2,14 +2,14 @@ use crate::config::{Entry, Failure, entry, fail};
 use crate::project;
 use serde::Serialize;
 use serde_json::Value;
+use spacepress::{astro_content, diag, loader::Disk, sync::front_matter};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use typedpress::{astro_content, diag, loader::Disk, sync::front_matter};
 
-const USAGE: &str = "usage: typedpress-migrate --from astro app <project> --out <new-dir> [--dry-run]";
-const CONFIG: &str = "import { defineConfig } from \"typedpress\";\nexport default defineConfig({});\n";
+const USAGE: &str = "usage: spacepress-migrate --from astro app <project> --out <new-dir> [--dry-run]";
+const CONFIG: &str = "import { defineConfig } from \"spacepress\";\nexport default defineConfig({});\n";
 
 #[derive(Serialize)]
 struct Report {
@@ -59,16 +59,16 @@ fn candidate(root: &Path, entries: &mut Vec<Entry>) -> Result<BTreeMap<String, V
     if !root.is_dir() {
         return Err(fail("", "input must be an Astro project directory"));
     }
-    let mut source = BTreeMap::from([(PathBuf::from("typedpress.config.ts"), CONFIG.to_owned())]);
+    let mut source = BTreeMap::from([(PathBuf::from("spacepress.config.ts"), CONFIG.to_owned())]);
     let mut assets = BTreeMap::new();
     if let Some((_, schema)) = astro_content::module(&Disk, &root)
         .map_err(|d| fail("/src/content.config.ts", diag::render(&d, &root)).spanned(d.span, &root))?
     {
-        source.insert(PathBuf::from("tp/schema.ts"), schema);
+        source.insert(PathBuf::from("sp/schema.ts"), schema);
         entries.push(entry(
             "/src/content.config.ts",
             "mapped",
-            "collection schemas become tp/schema.ts",
+            "collection schemas become sp/schema.ts",
         ));
     }
     for dirname in ["src/pages", "src/layouts", "src/components", "src/content", "public"] {
@@ -86,7 +86,7 @@ fn candidate(root: &Path, entries: &mut Vec<Entry>) -> Result<BTreeMap<String, V
                     let page = markdown_page(&text, &at)?;
                     let route = relative.strip_prefix("src/pages").expect("page prefix");
                     let stem = route.file_stem().expect("Markdown file stem");
-                    let mut destination = Path::new("tp/app").join(route.parent().expect("page parent"));
+                    let mut destination = Path::new("sp/app").join(route.parent().expect("page parent"));
                     if stem != "index" {
                         destination.push(stem);
                     }
@@ -103,7 +103,7 @@ fn candidate(root: &Path, entries: &mut Vec<Entry>) -> Result<BTreeMap<String, V
                 _ => entries.push(entry(
                     &at,
                     "review",
-                    "port this source file to a TypedPress route, layout or component",
+                    "port this source file to a SpacePress route, layout or component",
                 )),
             }
         }

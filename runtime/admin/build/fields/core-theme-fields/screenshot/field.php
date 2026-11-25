@@ -2,12 +2,12 @@
 /**
  * Screenshot field definition for core theme fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'Screenshot', 'typedpress-admin' ),
+	'label'         => __( 'Screenshot', 'spacepress-admin' ),
 	'enableHiding'  => false,
 	'enableSorting' => false,
 	'filterBy'      => false,

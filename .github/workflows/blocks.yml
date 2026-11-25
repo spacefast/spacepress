@@ -1,4 +1,4 @@
-# The optional @typedpress/blocks package (packages/blocks). Separate from ci.yml and
+# The optional @spacepress/blocks package (packages/blocks). Separate from ci.yml and
 # path-filtered, so a core PR outside these paths never runs it.
 name: Blocks
 

@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadata;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadata;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 
-typedpress_identity_vendor_trigger_deprecation('symfony/serializer', '7.3', 'The "%s" class is deprecated.', CompiledClassMetadataFactory::class);
+spacepress_identity_vendor_trigger_deprecation('symfony/serializer', '7.3', 'The "%s" class is deprecated.', CompiledClassMetadataFactory::class);
 
 /**
  * @author Fabien Bourigault <bourigaultfabien@gmail.com>

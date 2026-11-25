@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\DependencyInjection;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\DependencyInjection;
 
 use Symfony\Component\DependencyInjection\Argument\BoundArgument;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
@@ -17,12 +17,12 @@ use Symfony\Component\DependencyInjection\Compiler\PriorityTaggedServiceTrait;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Exception\RuntimeException;
 use Symfony\Component\DependencyInjection\Reference;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Debug\TraceableEncoder;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Debug\TraceableNormalizer;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Debug\TraceableEncoder;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Debug\TraceableNormalizer;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
 
 /**
  * Adds all services with the tags "serializer.encoder" and "serializer.normalizer" as

@@ -1,4 +1,4 @@
-import { useViewConfig } from '@typedpress-admin/views';
+import { useViewConfig } from '@spacepress-admin/views';
 import { useMemo } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { trash } from '@wordpress/icons';
@@ -6,11 +6,11 @@ import { store as coreStore } from '@wordpress/core-data';
 import { store as noticesStore } from '@wordpress/notices';
 import { dispatch } from '@wordpress/data';
 import type { Term } from '@wordpress/core-data';
-import type { Action } from '@typedpress-admin/dataviews';
+import type { Action } from '@spacepress-admin/dataviews';
 import {
 	createConfirmModal,
 	getNoticeFromSettledResults,
-} from '@typedpress-admin/admin-toolkit';
+} from '@spacepress-admin/admin-toolkit';
 import type { TermWithPermissions } from '../types';
 
 const deleteTermEntities = async ( items: Term[] ) => {
@@ -44,7 +44,7 @@ const permanentlyDeleteTerms = async ( items: Term[] ) => {
 						'"%1$s" has been permanently deleted.',
 						'%2$d terms have been permanently deleted.',
 						count,
-						'typedpress-admin'
+						'spacepress-admin'
 					),
 					items[ 0 ].name,
 					count
@@ -56,7 +56,7 @@ const permanentlyDeleteTerms = async ( items: Term[] ) => {
 						'An error occurred while permanently deleting %d term.',
 						'An error occurred while permanently deleting %d terms.',
 						count,
-						'typedpress-admin'
+						'spacepress-admin'
 					),
 					count
 				),
@@ -85,7 +85,7 @@ export function useDeleteTermAction( taxonomy: string ): Action< Term > | null {
 
 	const confirmModalConfig = createConfirmModal< Term >( {
 		modalHeader: ( items ) =>
-			_n( 'Delete term', 'Delete terms', items.length, 'typedpress-admin' ),
+			_n( 'Delete term', 'Delete terms', items.length, 'spacepress-admin' ),
 		intent: 'delete-permanently',
 		onSubmit: async ( items, setIsLoading ) => {
 			setIsLoading( true );
@@ -97,7 +97,7 @@ export function useDeleteTermAction( taxonomy: string ): Action< Term > | null {
 						// translators: %s: The taxonomy's name.
 						__(
 							'"%s" will be permanently deleted and can’t be restored. Items using this term won’t be affected.',
-							'typedpress-admin'
+							'spacepress-admin'
 						),
 						items[ 0 ].name
 				  )
@@ -105,7 +105,7 @@ export function useDeleteTermAction( taxonomy: string ): Action< Term > | null {
 						// translators: %d: The number of taxonomies (2 or more).
 						__(
 							'%d terms will be permanently deleted and can’t be restored. Items using this term won’t be affected.',
-							'typedpress-admin'
+							'spacepress-admin'
 						),
 						items.length
 				  ),
@@ -118,7 +118,7 @@ export function useDeleteTermAction( taxonomy: string ): Action< Term > | null {
 
 		return {
 			id: 'delete-term',
-			label: __( 'Delete', 'typedpress-admin' ),
+			label: __( 'Delete', 'spacepress-admin' ),
 			isPrimary: false,
 			icon: trash,
 			supportsBulk: true,

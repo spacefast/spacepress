@@ -20,7 +20,7 @@ const notes = (fields = {}, name = "notes", options = "") => {
   return `export const ${name} = table({ ${declarations.join(", ")} }${options});`;
 };
 
-const app = (...parts) => `import { boolean, defineConfig, integer, number, ref, table, text } from "typedpress";
+const app = (...parts) => `import { boolean, defineConfig, integer, number, ref, table, text } from "spacepress";
 ${parts.join("\n")}
 export default defineConfig({ name: "schema-check" });
 `;

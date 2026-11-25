@@ -10,7 +10,7 @@ fn check(checks: &mut Vec<Value>, name: &str, ok: bool, detail: impl Into<String
 
 pub(super) fn run(args: &Args) -> ExitCode {
     let project = args.project.canonicalize().unwrap_or(args.project.clone());
-    let out = args.out.clone().unwrap_or_else(|| project.join("tp/dist/wp-content"));
+    let out = args.out.clone().unwrap_or_else(|| project.join("sp/dist/wp-content"));
     let mut checks = Vec::new();
     let mut manifest = Value::Null;
     check(
@@ -20,7 +20,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
         platform::SERIES,
     );
     {
-        match std::fs::read(out.join("typedpress-manifest.json"))
+        match std::fs::read(out.join("spacepress-manifest.json"))
             .and_then(|bytes| serde_json::from_slice(&bytes).map_err(std::io::Error::other))
         {
             Ok(value) => {
@@ -28,8 +28,8 @@ pub(super) fn run(args: &Args) -> ExitCode {
                 let series = manifest["runtime"].as_str().unwrap_or("missing");
                 check(&mut checks, "built runtime series", series == platform::SERIES, series);
                 for slug in [
-                    "typedpress-runtime".to_string(),
-                    format!("typedpress-app-{}", manifest["app"].as_str().unwrap_or("")),
+                    "spacepress-runtime".to_string(),
+                    format!("spacepress-app-{}", manifest["app"].as_str().unwrap_or("")),
                 ] {
                     check(
                         &mut checks,
@@ -41,7 +41,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
                 check(
                     &mut checks,
                     "identity bundle",
-                    out.join("plugins/typedpress-identity/typedpress-identity.php")
+                    out.join("plugins/spacepress-identity/spacepress-identity.php")
                         .is_file(),
                     "optional identity plugin; runtime availability is reported by the site",
                 );
@@ -50,7 +50,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
                 &mut checks,
                 "wp-content artifact",
                 false,
-                format!("{error}; run typedpress build"),
+                format!("{error}; run spacepress build"),
             ),
         }
     }
@@ -162,7 +162,7 @@ fn remote(
             "site must be the site's URL without a query (https://example.test or https://example.test/blog)".into(),
         );
     }
-    // The facade's schema (spec §3a): `GET /wp-json/typedpress/v1`, below the site's path.
+    // The facade's schema (spec §3a): `GET /wp-json/spacepress/v1`, below the site's path.
     let path = url.path().trim_end_matches('/').to_string();
     let api = crate::sync::client::API;
     url.set_path(&if path.ends_with(api) {
@@ -203,7 +203,7 @@ fn remote(
             if identity == Some(true) {
                 "compatible identity active"
             } else if identity_required {
-                "configured authentication requires a compatible TypedPress Identity"
+                "configured authentication requires a compatible SpacePress Identity"
             } else {
                 "optional identity inactive"
             },
@@ -251,7 +251,7 @@ fn remote(
         );
         // Sealed mode (docs/sealed.md). An active plugin the config doesn't list fails doctor. Must-use
         // plugins, drop-ins and theme PHP can't be listed in any config (a host's own are among
-        // them), so they are shown and never fail. The site reports; TypedPress stops and removes nothing.
+        // them), so they are shown and never fail. The site reports; SpacePress stops and removes nothing.
         let sealed = &versions["sealed"];
         let names = |key: &str| -> Option<Vec<String>> {
             sealed[key]
@@ -269,7 +269,7 @@ fn remote(
                     if unlisted.is_empty() {
                         format!("every active plugin is listed (enforced by {enforced})")
                     } else {
-                        format!("active but not in typedpress.config.ts: {}", unlisted.join(", "))
+                        format!("active but not in spacepress.config.ts: {}", unlisted.join(", "))
                     },
                 );
                 let also: Vec<String> = ["muPlugins", "dropins", "theme"]
@@ -291,7 +291,7 @@ fn remote(
                 checks,
                 "sealed",
                 false,
-                "sign in as an administrator (typedpress login, or TP_APP_PASSWORD / TP_TOKEN) to see what the site loads",
+                "sign in as an administrator (spacepress login, or SP_APP_PASSWORD / SP_TOKEN) to see what the site loads",
             ),
             _ if manifest["sealed"].is_array() => check(
                 checks,

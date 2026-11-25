@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 final class Schema
 {
     public const VERSION = 4;
     public static function ready(): bool
     {
-        return (int) get_option("tp_identity_schema_version", 0) === self::VERSION;
+        return (int) get_option("sp_identity_schema_version", 0) === self::VERSION;
     }
 
     public static function migrate(DB $db): void
@@ -35,16 +35,16 @@ final class Schema
     {
         $installed = $db->row(
             "SELECT option_value FROM {$db->wp->options} WHERE option_name=%s",
-            "tp_identity_schema_version",
+            "sp_identity_schema_version",
         );
         if ($installed !== null && (int) $installed["option_value"] !== self::VERSION) {
             // There is no upgrade between schema versions: the operator picks one of the two ways out.
             $stored = (int) $installed["option_value"];
             throw new Failure(
                 "storage_unavailable",
-                "TypedPress Identity storage on this site is schema version $stored and this build reads only version "
+                "SpacePress Identity storage on this site is schema version $stored and this build reads only version "
                     . self::VERSION
-                    . ". Nothing was changed. Either run the TypedPress build that wrote version $stored, or start identity again: back up and drop this site's tp_identity_* tables, delete the tp_identity_schema_version option, and load the site once. Starting again removes identity's accounts, sessions and sign-in methods; WordPress users stay.",
+                    . ". Nothing was changed. Either run the SpacePress build that wrote version $stored, or start identity again: back up and drop this site's sp_identity_* tables, delete the sp_identity_schema_version option, and load the site once. Starting again removes identity's accounts, sessions and sign-in methods; WordPress users stay.",
                 503,
             );
         }
@@ -89,11 +89,11 @@ final class Schema
         }
         $db->run(
             "INSERT INTO {$db->wp->options} (option_name,option_value,autoload) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE option_value=VALUES(option_value)",
-            "tp_identity_schema_version",
+            "sp_identity_schema_version",
             (string) self::VERSION,
             "off",
         );
-        wp_cache_delete("tp_identity_schema_version", "options");
+        wp_cache_delete("sp_identity_schema_version", "options");
         wp_cache_delete("alloptions", "options");
         wp_cache_delete("notoptions", "options");
     }

@@ -7,10 +7,10 @@ async function signIn(): Promise<string> {
   const site = harness.url;
   const clientId = "app_migration_acceptance";
   const redirect = `${site}/migration-callback`;
-  wp("typedpress", "identity", "app", "add", "--name=Migration acceptance", `--redirect=${redirect}`, `--origin=${site}`, `--id=${clientId}`);
-  const login = await fetch(`${site}/wp-json/typedpress-identity/v1/sign-in/password`, {
+  wp("spacepress", "identity", "app", "add", "--name=Migration acceptance", `--redirect=${redirect}`, `--origin=${site}`, `--id=${clientId}`);
+  const login = await fetch(`${site}/wp-json/spacepress-identity/v1/sign-in/password`, {
     method: "POST", headers: { "Content-Type": "application/json", Origin: site },
-    body: JSON.stringify({ login: "subscriber", password: "typedpress-test-subscriber" }),
+    body: JSON.stringify({ login: "subscriber", password: "spacepress-test-subscriber" }),
   });
   assert.equal(login.status, 200);
   assert.deepEqual(await login.json(), { data: { kind: "signed_in" } });

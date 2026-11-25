@@ -1,8 +1,8 @@
 import { __ } from '@wordpress/i18n';
 // @ts-expect-error - WordPress private APIs
 import { privateApis as blockEditorPrivateApis } from '@wordpress/block-editor';
-import { unlock } from '@typedpress-admin/admin-toolkit';
-import type { GlobalStylesSettings } from '@typedpress-admin/global-styles-engine';
+import { unlock } from '@spacepress-admin/admin-toolkit';
+import type { GlobalStylesSettings } from '@spacepress-admin/global-styles-engine';
 import { ScreenHeader } from './screen-header';
 import DimensionsPanel from './dimensions-panel';
 import { useSetting } from './hooks';
@@ -18,7 +18,7 @@ function ScreenLayout() {
 
 	return (
 		<>
-			<ScreenHeader title={ __( 'Layout', 'typedpress-admin' ) } />
+			<ScreenHeader title={ __( 'Layout', 'spacepress-admin' ) } />
 			{ hasDimensionsPanel && <DimensionsPanel /> }
 		</>
 	);

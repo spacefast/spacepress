@@ -10,12 +10,12 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Composer\Autoload;
+namespace SpacePress\Identity\Vendor\Composer\Autoload;
 
 /**
  * ClassLoader implements a PSR-0, PSR-4 and classmap class loader.
  *
- *     $loader = new TypedPress\Identity\Vendor\Composer\Autoload\ClassLoader();
+ *     $loader = new SpacePress\Identity\Vendor\Composer\Autoload\ClassLoader();
  *
  *     // register classes with namespaces
  *     $loader->add('Symfony\Component', __DIR__.'/component');

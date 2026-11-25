@@ -1,5 +1,5 @@
 //! What a request reads from the database and the object cache, held to a budget on three built
-//! sites: examples/drive-store, www/ and the shop `typedpress add shop` writes, each served by WordPress-on-SQLite with a
+//! sites: examples/drive-store, www/ and the shop `spacepress add shop` writes, each served by WordPress-on-SQLite with a
 //! warm persistent object cache (tests/php/read_budget.php counts; this file builds and asserts).
 //!
 //! A budget is the number measured when it was set. A change that makes a route read more fails
@@ -9,8 +9,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-fn typedpress() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_typedpress"))
+fn spacepress() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_spacepress"))
 }
 
 fn root() -> PathBuf {
@@ -25,7 +25,7 @@ fn copy(from: &Path, to: &Path) {
         // Another build's output and downloads: never part of the source.
         if matches!(
             name.to_str(),
-            Some(".tp" | ".build" | ".showcase" | ".wp-plugins.build.lock" | "node_modules" | "dist")
+            Some(".sp" | ".build" | ".showcase" | ".wp-plugins.build.lock" | "node_modules" | "dist")
         ) {
             continue;
         }
@@ -53,14 +53,14 @@ fn run(command: &mut Command) -> Vec<u8> {
 fn build(work: &Path, source: &str, seeded: bool) -> (PathBuf, Option<PathBuf>) {
     let project = work.join("project");
     if source == "shop" {
-        // The shop is what `typedpress add shop` writes into an empty project.
+        // The shop is what `spacepress add shop` writes into an empty project.
         std::fs::create_dir_all(&project).unwrap();
         std::fs::write(
-            project.join("typedpress.config.ts"),
-            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"shop\" });\n",
+            project.join("spacepress.config.ts"),
+            "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"shop\" });\n",
         )
         .unwrap();
-        run(typedpress().arg("add").arg("shop").arg(&project));
+        run(spacepress().arg("add").arg("shop").arg(&project));
     } else {
         copy(&root().join(source), &project);
     }
@@ -68,18 +68,18 @@ fn build(work: &Path, source: &str, seeded: bool) -> (PathBuf, Option<PathBuf>) 
         // The guide's pages import the text of www/examples/ from a generated module.
         run(Command::new("node").arg(project.join("scripts/sources.mjs")));
     }
-    run(typedpress().arg("build").arg(&project).arg("--quiet"));
+    run(spacepress().arg("build").arg(&project).arg("--quiet"));
     let seed = seeded.then(|| {
         let (sources, compiled) = (work.join("sources"), work.join("compiled"));
-        run(typedpress().arg("sources").arg(&project).arg("--out").arg(&sources));
-        run(typedpress()
+        run(spacepress().arg("sources").arg(&project).arg("--out").arg(&sources));
+        run(spacepress()
             .arg("compile-sources")
             .arg(&sources)
             .arg(&compiled)
             .arg(&project));
         compiled.join("seed")
     });
-    (project.join("tp/dist/wp-content"), seed)
+    (project.join("sp/dist/wp-content"), seed)
 }
 
 fn measure(app: &str, content: &Path, seed: Option<&Path>) -> serde_json::Value {
@@ -88,13 +88,13 @@ fn measure(app: &str, content: &Path, seed: Option<&Path>) -> serde_json::Value 
         .arg(root().join("tests/php/read_budget.php"))
         .arg(app)
         .arg(content)
-        .env("TP_WP_THEMES", "1");
+        .env("SP_WP_THEMES", "1");
     if let Some(seed) = seed {
         php.arg(seed);
     }
     let out = run(&mut php);
     let report = serde_json::from_slice(&out).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out)));
-    if std::env::var_os("TP_READ_BUDGET_REPORT").is_some() {
+    if std::env::var_os("SP_READ_BUDGET_REPORT").is_some() {
         println!("{app} {report}");
     }
     report
@@ -139,7 +139,7 @@ fn drive_store_reads_stay_within_budget() {
     let (content, _) = build(work.path(), "examples/drive-store", false);
     let report = measure("drive-store", &content, None);
     // The drives are native Woo products, so like the shop each request also runs WooCommerce's
-    // own statements. Measured anonymously: the catalog is 4 through $wpdb and 1 of TypedPress's
+    // own statements. Measured anonymously: the catalog is 4 through $wpdb and 1 of SpacePress's
     // own, a product page 4 and 4, an API list of the 4 drives 5 and 4.
     // The API list is a /wp-json/ request since #561, and on one WooCommerce loads its admin
     // features: three more option reads with no persistent cache (Analytics' two refund-data checks
@@ -167,8 +167,8 @@ fn website_reads_stay_within_budget() {
     let report = measure("www", &content, seed.as_deref());
     // A doc page is two statements: the doc, and the navigation tree's rows (one read for the
     // sidebar and the pager). It was 4 (5 signed in), and its sidebar asked the object cache for
-    // each of its 14 docs on its own: 44 round trips, now 32, and still 32 with 23 published docs.
-    // The API list has 23 published rows and costs what drive-store's 4 do. It was 75.
+    // each of its 14 docs on its own: 44 round trips, now 32, and still 32 with 24 published docs.
+    // The API list has 24 published rows and costs what drive-store's 4 do. It was 75.
     // A GET route handler that only reads sends no START TRANSACTION and no COMMIT: 3, now 1.
     hold(
         "www",
@@ -182,7 +182,7 @@ fn website_reads_stay_within_budget() {
             ("api-list/signed-in", 6, 35, 32),
         ],
     );
-    assert_eq!(report["api-list/anonymous"]["rows"], 23, "{report:#}");
+    assert_eq!(report["api-list/anonymous"]["rows"], 24, "{report:#}");
     same_for_everyone("www", &report, "api-list");
     same_for_everyone("www", &report, "route-handler");
 }
@@ -194,7 +194,7 @@ fn shop_reads_stay_within_budget() {
     // Of the catalog's 9 statements, 4 are the page's own (the count, the products, their
     // categories and their tags) and 5 are WooCommerce's on every request: three Action Scheduler
     // lookups for its variation-gallery migration, `ID IN (-1)` from its cache helper, and its
-    // download-directory check. The two this budget removed were TypedPress's own order-storage
+    // download-directory check. The two this budget removed were SpacePress's own order-storage
     // check, which now runs with the install checks.
     // With no persistent cache, Woo's cart, checkout and my-account page ids are read with the other
     // three of its page ids in one statement (Module::shopperPageIds, before Woo's own priming in

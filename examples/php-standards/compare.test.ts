@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 function compare(before: string | null, after: string | null) {
-    const root = mkdtempSync(join(tmpdir(), 'tp-php-compare-'));
+    const root = mkdtempSync(join(tmpdir(), 'sp-php-compare-'));
     try {
         const dirs = ['before', 'after'].map(name => join(root, name));
         dirs.forEach(dir => mkdirSync(dir));

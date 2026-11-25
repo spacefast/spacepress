@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\AttestationStatement;
+namespace SpacePress\Identity\Vendor\Webauthn\AttestationStatement;
 
 use function array_key_exists;
 use function sprintf;
-use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use SpacePress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 class AttestationStatementSupportManager
 {

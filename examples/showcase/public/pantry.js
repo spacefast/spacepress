@@ -9,7 +9,7 @@ const node = (tag, className = "", text) => {
 };
 const request = (input, init = {}) =>
   fetch(input, { ...init, signal: AbortSignal.timeout(15000) });
-const publicClient = createClient({ url: "/wp-json/typedpress/v1", fetch: request });
+const publicClient = createClient({ url: "/wp-json/spacepress/v1", fetch: request });
 let editorClient = null;
 let items = [];
 let shopping = [];
@@ -34,7 +34,7 @@ async function session() {
     const nonce = (await response.text()).trim();
     if (response.ok && /^[a-zA-Z0-9]+$/.test(nonce) && nonce !== "0") {
       const client = createClient({
-        url: "/wp-json/typedpress/v1",
+        url: "/wp-json/spacepress/v1",
         nonce,
         fetch: request,
       });
@@ -57,7 +57,7 @@ async function session() {
   text.append(
     login,
     document.createTextNode(
-      ", then refresh the pantry. Demo: admin / typedpress-test-admin.",
+      ", then refresh the pantry. Demo: admin / spacepress-test-admin.",
     ),
   );
 }

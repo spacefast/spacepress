@@ -1,4 +1,4 @@
-import type { DashboardWidgetType } from '@typedpress-admin/dashboard';
+import type { DashboardWidgetType } from '@spacepress-admin/dashboard';
 import { __ } from '@wordpress/i18n';
 
 type WeatherWidgetType = {
@@ -11,22 +11,22 @@ const widget: Omit<
 	'render_module'
 > = {
 	name: 'core/weather',
-	title: __( 'Weather (example data)', 'typedpress-admin' ),
+	title: __( 'Weather (example data)', 'spacepress-admin' ),
 	attributes: [
 		{
 			id: 'location',
 			type: 'text',
-			label: __( 'Location', 'typedpress-admin' ),
+			label: __( 'Location', 'spacepress-admin' ),
 		},
 		{
 			id: 'unit',
 			type: 'text',
-			label: __( 'Temperature Unit', 'typedpress-admin' ),
+			label: __( 'Temperature Unit', 'spacepress-admin' ),
 			elements: [
-				{ value: 'celsius', label: __( 'Celsius', 'typedpress-admin' ) },
+				{ value: 'celsius', label: __( 'Celsius', 'spacepress-admin' ) },
 				{
 					value: 'fahrenheit',
-					label: __( 'Fahrenheit', 'typedpress-admin' ),
+					label: __( 'Fahrenheit', 'spacepress-admin' ),
 				},
 			],
 		},

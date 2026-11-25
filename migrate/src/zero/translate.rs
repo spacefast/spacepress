@@ -9,11 +9,11 @@ type Object = Map<String, Value>;
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 /// Payload's `defaultMaxTextLength` default; the importer accepts no root override.
 const PAYLOAD_DEFAULT_MAX_TEXT_LENGTH: u32 = 40000;
-/// What timestamp() accepts (runtime/TypedPress/Schema.php `isIsoTimestamp`), stated once for reports.
+/// What timestamp() accepts (runtime/SpacePress/Schema.php `isIsoTimestamp`), stated once for reports.
 const TIMESTAMP_GRAMMAR: &str = "Zero timestamps accept exactly YYYY-MM-DD, or YYYY-MM-DDTHH:MM[:SS[.fraction]] with Z or ±HH:MM, with real calendar and clock values (UTC years 0000-9999), or epoch milliseconds; nothing else.";
 /// How timestamp() keeps a value, unlike sources that stored the given text.
 const TIMESTAMP_STORAGE: &str = "Values are stored as UTC with millisecond precision (finer fractions are truncated); on WordPress post-backed collections they keep whole seconds.";
-/// Payload's email validator (`fields/validations.ts`, pinned commit in docs/typedpress-compatibility.md).
+/// Payload's email validator (`fields/validations.ts`, pinned commit in docs/spacepress-compatibility.md).
 /// Zero's email() accepts quoted local parts and address literals that Payload rejects.
 const PAYLOAD_EMAIL: &str = r"/^(?!.*\.\.)[\w!#$%&'*+/=?^`{|}~-](?:[\w!#$%&'*+/=?^`{|}~.-]*[\w!#$%&'*+/=?^`{|}~-])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i";
 
@@ -133,7 +133,7 @@ pub(crate) fn config(input: Value, source: Source, report: &mut Vec<Entry>) -> R
     }
     let mut names = HashSet::new();
     let mut code = String::from(
-        "import { collection, table, defineConfig, ref, text, integer, number, boolean, timestamp, url, email, json, select, media, type AnyCollection } from \"typedpress\";\n\n",
+        "import { collection, table, defineConfig, ref, text, integer, number, boolean, timestamp, url, email, json, select, media, type AnyCollection } from \"spacepress\";\n\n",
     );
     let mut content = Vec::new();
     let mut tables = Vec::new();

@@ -2,12 +2,12 @@
 /**
  * Excerpt field definition for core post fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Excerpt', 'typedpress-admin' ),
+	'label'              => __( 'Excerpt', 'spacepress-admin' ),
 	'enableSorting'      => false,
 	'enableHiding'       => true,
 	'enableGlobalSearch' => true,

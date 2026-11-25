@@ -39,7 +39,7 @@ export default function TypographyPreview( {
 
 	return (
 		<div
-			className="typedpress-admin-typography-preview"
+			className="spacepress-admin-typography-preview"
 			style={ {
 				fontFamily: fontFamily ?? 'serif',
 				background:

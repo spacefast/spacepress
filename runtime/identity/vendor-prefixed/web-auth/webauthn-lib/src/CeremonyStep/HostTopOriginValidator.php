@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\CeremonyStep;
+namespace SpacePress\Identity\Vendor\Webauthn\CeremonyStep;
 
-use TypedPress\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use SpacePress\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
 
 final readonly class HostTopOriginValidator implements TopOriginValidator
 {

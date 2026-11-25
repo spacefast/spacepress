@@ -1,1 +1,1 @@
-<?php return array('name' => 'theme-list', 'dependencies' => array('wp-core-data', 'wp-data'), 'moduleDependencies' => array('@typedpress-admin/core-data-next', '@typedpress-admin/views'), 'version' => '553a8c78402c5a8eb6aa');
+<?php return array('name' => 'theme-list', 'dependencies' => array('wp-core-data', 'wp-data'), 'moduleDependencies' => array('@spacepress-admin/core-data-next', '@spacepress-admin/views'), 'version' => 'a98bdf8abe3557a93a03');

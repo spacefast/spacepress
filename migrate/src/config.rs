@@ -35,7 +35,7 @@ impl Source {
 pub struct Failure {
     pub(crate) pointer: String,
     pub(crate) reason: String,
-    /// `typedpress migrate app` adds the diagnostic contract (`zero::codes`) before it reports.
+    /// `spacepress migrate app` adds the diagnostic contract (`zero::codes`) before it reports.
     #[serde(flatten)]
     pub(crate) contract: Option<Box<zero::codes::Contract>>,
     /// Where in the 0.8 source the refusal is: capsule-relative file, 1-based line and UTF-16 column.
@@ -68,9 +68,9 @@ impl Failure {
     }
 
     /// Locates the refusal at `span` unless something more precise already did.
-    pub(super) fn spanned(mut self, span: typedpress::diag::Span, root: &Path) -> Failure {
+    pub(super) fn spanned(mut self, span: spacepress::diag::Span, root: &Path) -> Failure {
         if self.location.is_none() {
-            self.location = typedpress::diag::position(span, root).map(Box::new);
+            self.location = spacepress::diag::position(span, root).map(Box::new);
         }
         self
     }
@@ -104,7 +104,7 @@ struct Report<'a> {
     errors: Vec<Failure>,
 }
 
-const USAGE: &str = "usage: typedpress-migrate --from emdash|payload|sanity|zero config <input.ts|input.json> --out <new/typedpress.config.ts> [--dry-run]";
+const USAGE: &str = "usage: spacepress-migrate --from emdash|payload|sanity|zero config <input.ts|input.json> --out <new/spacepress.config.ts> [--dry-run]";
 
 struct Args {
     source: Source,
@@ -201,8 +201,8 @@ fn run(args: &Args, entries: &mut Vec<Entry>) -> Result<(), Failure> {
 pub fn convert(source: Source, path: &Path, text: &str, entries: &mut Vec<Entry>) -> Result<String, Failure> {
     let input = input::parse(path, text, source)?;
     let config = translate::config(input, source, entries)?;
-    let response = typedpress::wasm::compile(
-        &serde_json::json!({"name":"candidate", "files":{"typedpress.config.ts":config}}).to_string(),
+    let response = spacepress::wasm::compile(
+        &serde_json::json!({"name":"candidate", "files":{"spacepress.config.ts":config}}).to_string(),
     );
     let checked: serde_json::Value = serde_json::from_str(&response).expect("compiler response");
     if checked["output"].is_null() {

@@ -5,21 +5,21 @@
  * From the upstream bootstrap (upstream-metadata/next-admin.php), names normalized; the admin page
  * and the user and term routes read them through the view-config route.
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 /**
  * Configure layout views for core WordPress entities.
  */
 add_filter(
-	'tp_admin_entity_view_config_root_user',
+	'sp_admin_entity_view_config_root_user',
 	function ( $config ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
 		// Return complete configuration object for users.
 		return array(
 			'labels'          => array(
-				'title'            => __( 'Users', 'typedpress-admin' ),
-				'description'      => __( 'Manage user accounts and permissions', 'typedpress-admin' ),
-				'add_button_label' => __( 'Add New User', 'typedpress-admin' ),
+				'title'            => __( 'Users', 'spacepress-admin' ),
+				'description'      => __( 'Manage user accounts and permissions', 'spacepress-admin' ),
+				'add_button_label' => __( 'Add New User', 'spacepress-admin' ),
 			),
 			'default_view'    => array(
 				'type'       => 'table',
@@ -64,7 +64,7 @@ add_filter(
 				'fields' => array(
 					array(
 						'id'       => 'user_info',
-						'label'    => __( 'User details', 'typedpress-admin' ),
+						'label'    => __( 'User details', 'spacepress-admin' ),
 						'children' => array(
 							array(
 								'id'       => 'user_email',
@@ -91,7 +91,7 @@ add_filter(
 				'fields' => array(
 					array(
 						'id'       => 'user_info',
-						'label'    => __( 'User details', 'typedpress-admin' ),
+						'label'    => __( 'User details', 'spacepress-admin' ),
 						'children' => array(
 							'avatar',
 							'username',
@@ -113,10 +113,10 @@ add_filter(
 					),
 					array(
 						'id'       => 'admin_preferences',
-						'label'    => __( 'Admin', 'typedpress-admin' ),
-						'children' => ( class_exists( '\\TypedPress\\Wp\\Runtime' ) && \TypedPress\Wp\Runtime::managed() )
+						'label'    => __( 'Admin', 'spacepress-admin' ),
+						'children' => ( class_exists( '\\SpacePress\\Wp\\Runtime' ) && \SpacePress\Wp\Runtime::managed() )
 							? array()
-							: array( 'tp_admin_developer_mode' ),
+							: array( 'sp_admin_developer_mode' ),
 					),
 				),
 			),
@@ -124,12 +124,12 @@ add_filter(
 			'tabs'            => array(
 				array(
 					'slug'    => 'all',
-					'label'   => __( 'All', 'typedpress-admin' ),
+					'label'   => __( 'All', 'spacepress-admin' ),
 					'filters' => array(),
 				),
 				array(
 					'slug'    => 'administrator',
-					'label'   => __( 'Administrator', 'typedpress-admin' ),
+					'label'   => __( 'Administrator', 'spacepress-admin' ),
 					'filters' => array(
 						array(
 							'field'    => 'roles',
@@ -140,7 +140,7 @@ add_filter(
 				),
 				array(
 					'slug'    => 'editor',
-					'label'   => __( 'Editor', 'typedpress-admin' ),
+					'label'   => __( 'Editor', 'spacepress-admin' ),
 					'filters' => array(
 						array(
 							'field'    => 'roles',
@@ -151,7 +151,7 @@ add_filter(
 				),
 				array(
 					'slug'    => 'author',
-					'label'   => __( 'Author', 'typedpress-admin' ),
+					'label'   => __( 'Author', 'spacepress-admin' ),
 					'filters' => array(
 						array(
 							'field'    => 'roles',
@@ -162,7 +162,7 @@ add_filter(
 				),
 				array(
 					'slug'    => 'contributor',
-					'label'   => __( 'Contributor', 'typedpress-admin' ),
+					'label'   => __( 'Contributor', 'spacepress-admin' ),
 					'filters' => array(
 						array(
 							'field'    => 'roles',
@@ -173,7 +173,7 @@ add_filter(
 				),
 				array(
 					'slug'    => 'subscriber',
-					'label'   => __( 'Subscriber', 'typedpress-admin' ),
+					'label'   => __( 'Subscriber', 'spacepress-admin' ),
 					'filters' => array(
 						array(
 							'field'    => 'roles',
@@ -192,7 +192,7 @@ add_filter(
  *
  * @param string $taxonomy Taxonomy slug.
  */
-function tp_admin_register_taxonomy_view_config( $taxonomy ) {
+function sp_admin_register_taxonomy_view_config( $taxonomy ) {
 	static $registered_taxonomy_view_configs = array();
 
 	if ( isset( $registered_taxonomy_view_configs[ $taxonomy ] ) ) {
@@ -202,7 +202,7 @@ function tp_admin_register_taxonomy_view_config( $taxonomy ) {
 	$registered_taxonomy_view_configs[ $taxonomy ] = true;
 
 	add_filter(
-		"tp_admin_entity_view_config_taxonomy_{$taxonomy}",
+		"sp_admin_entity_view_config_taxonomy_{$taxonomy}",
 		function ( $config ) use ( $taxonomy ) {
 			$taxonomy_object = get_taxonomy( $taxonomy );
 
@@ -246,7 +246,7 @@ function tp_admin_register_taxonomy_view_config( $taxonomy ) {
 								'type' => 'card',
 							),
 							/* translators: %s: Taxonomy singular name. */
-							'label'    => sprintf( __( '%s details', 'typedpress-admin' ), $taxonomy_object->labels->singular_name ?? $taxonomy ),
+							'label'    => sprintf( __( '%s details', 'spacepress-admin' ), $taxonomy_object->labels->singular_name ?? $taxonomy ),
 							'children' => array( 'name', 'description', 'parent' ),
 						),
 						array(
@@ -254,7 +254,7 @@ function tp_admin_register_taxonomy_view_config( $taxonomy ) {
 							'layout'   => array(
 								'type' => 'card',
 							),
-							'label'    => __( 'Additional options', 'typedpress-admin' ),
+							'label'    => __( 'Additional options', 'spacepress-admin' ),
 							'children' => array( 'slug' ),
 						),
 					),
@@ -270,7 +270,7 @@ function tp_admin_register_taxonomy_view_config( $taxonomy ) {
 								'type' => 'card',
 							),
 							/* translators: %s: Taxonomy singular name. */
-							'label'    => sprintf( __( '%s details', 'typedpress-admin' ), $taxonomy_object->labels->singular_name ?? $taxonomy ),
+							'label'    => sprintf( __( '%s details', 'spacepress-admin' ), $taxonomy_object->labels->singular_name ?? $taxonomy ),
 							'children' => array( 'name', 'description', 'parent' ),
 						),
 						array(
@@ -278,7 +278,7 @@ function tp_admin_register_taxonomy_view_config( $taxonomy ) {
 							'layout'   => array(
 								'type' => 'card',
 							),
-							'label'    => __( 'Additional options', 'typedpress-admin' ),
+							'label'    => __( 'Additional options', 'spacepress-admin' ),
 							'children' => array( 'slug' ),
 						),
 					),
@@ -298,6 +298,6 @@ add_action(
 	 * @param string $taxonomy Newly registered taxonomy slug.
 	 */
 	function ( $taxonomy ) {
-		tp_admin_register_taxonomy_view_config( $taxonomy );
+		sp_admin_register_taxonomy_view_config( $taxonomy );
 	}
 );

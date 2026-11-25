@@ -1,6 +1,6 @@
-// <tp-play>: full interactive SpacePress Playground component.
+// <sp-play>: full interactive SpacePress Playground component.
 // Edits a real app, compiles it in-browser with compiler.wasm (src/wasm.rs), inspects every generated
-// artifact and diff, shares edits via /__tp/api/v1/actions/share, and boots it in WordPress Playground.
+// artifact and diff, shares edits via /__sp/api/v1/actions/share, and boots it in WordPress Playground.
 import { File, FileDiff } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/edit";
 import { FileTree } from "@pierre/trees";
@@ -14,7 +14,7 @@ const describe = (file, existed) => {
   if (file.endsWith("/schema.php")) return "Your collections, tables, fields, access rules, and routes as PHP arrays. WordPress registers post types, tables, and URLs from it.";
   if (file.endsWith("/functions.php")) return "Every hook, action, job, HTTP route, page, and component compiled to native PHP.";
   if (file.includes("/migrations/")) return existed ? "A file from the project's migration history." : "A migration file generated live for your schema change.";
-  if (file.endsWith("db.d.ts")) return "Generated TypeScript definitions for typedpress:db and db.query so editors type-check your app.";
+  if (file.endsWith("db.d.ts")) return "Generated TypeScript definitions for spacepress:db and db.query so editors type-check your app.";
   if (file.endsWith("openapi.json")) return "OpenAPI 3.1 specification of the app's REST API.";
   if (file.includes("/client/")) return "Generated typed TypeScript client for browsers and external frontends.";
   return "Generated from your TypeScript source. Rebuilds automatically as you edit.";
@@ -59,7 +59,7 @@ class Play extends HTMLElement {
     this.outputView = undefined;
     this.replaceChildren();
     this.started = false;
-    this.classList.remove("tp-on", "is-fullscreen");
+    this.classList.remove("sp-on", "is-fullscreen");
     document.body.classList.remove("sp-no-scroll");
     if (this.onEscKey) {
       window.removeEventListener("keydown", this.onEscKey);
@@ -86,18 +86,18 @@ class Play extends HTMLElement {
       this.started = true;
       this.lastSig = sig;
       if (this.hasFlag("open")) { this.start(); return; }
-      const button = el("button", { type: "button", className: "tp-go", textContent: "Boot Live WordPress in Browser →" });
+      const button = el("button", { type: "button", className: "sp-go", textContent: "Boot Live WordPress in Browser →" });
       button.onclick = () => { closed.remove(); this.start(); };
-      const note = el("span", { className: "tp-hint", textContent: this.getAttribute("hint") ?? "Edit TypeScript, compile to PHP & SQL in your browser, and boot it inside WordPress Playground." });
-      const closed = el("div", { className: "tp-closed" }, button, note);
+      const note = el("span", { className: "sp-hint", textContent: this.getAttribute("hint") ?? "Edit TypeScript, compile to PHP & SQL in your browser, and boot it inside WordPress Playground." });
+      const closed = el("div", { className: "sp-closed" }, button, note);
       this.append(closed);
     });
   }
 
   async start() {
     const token = (this.startToken = (this.startToken ?? 0) + 1);
-    this.classList.add("tp-on");
-    this.status = el("p", { className: "tp-status", role: "status" });
+    this.classList.add("sp-on");
+    this.status = el("p", { className: "sp-status", role: "status" });
     this.status.setAttribute("aria-live", "polite");
     this.say("loading", "Loading SpacePress WASM compiler (7 MB)…");
     this.append(this.status);
@@ -136,8 +136,8 @@ class Play extends HTMLElement {
     this.pickerEl.setAttribute("aria-label", "Example");
     this.pickerEl.append(...Object.entries(this.data.examples).map(([name, e]) => new Option(e.title, name)));
     this.pickerEl.onchange = () => { this.keepAddress = false; this.loadExample(this.pickerEl.value); };
-    this.summary = el("span", { className: "tp-summary" });
-    const bar = el("div", { className: "tp-bar" });
+    this.summary = el("span", { className: "sp-summary" });
+    const bar = el("div", { className: "sp-bar" });
     if (this.hasFlag("picker")) bar.append(this.pickerEl);
     this.resetBtn = button("Reset", () => { this.keepAddress = false; this.loadExample(this.name, this.source); });
     this.resetBtn.disabled = true;
@@ -146,33 +146,33 @@ class Play extends HTMLElement {
     this.fullscreenBtn = button("Fullscreen", () => this.toggleFullscreen());
     this.fullscreenBtn.setAttribute("aria-pressed", "false");
     bar.append(this.fullscreenBtn);
-    bar.append(button("Run in WordPress", () => this.runInWordPress(), "tp-go"));
-    this.sharedNote = el("p", { className: "tp-shared", hidden: true });
+    bar.append(button("Run in WordPress", () => this.runInWordPress(), "sp-go"));
+    this.sharedNote = el("p", { className: "sp-shared", hidden: true });
 
-    this.problems = el("ul", { className: "tp-problems" });
+    this.problems = el("ul", { className: "sp-problems" });
     this.problems.setAttribute("role", "alert");
-    this.warningsEl = el("ul", { className: "tp-warnings", hidden: true });
+    this.warningsEl = el("ul", { className: "sp-warnings", hidden: true });
     this.warningsEl.setAttribute("role", "status");
-    this.wordpress = el("section", { className: "tp-wordpress", hidden: true });
+    this.wordpress = el("section", { className: "sp-wordpress", hidden: true });
     this.note = el("span");
     this.tab = el("a", { target: "_blank", rel: "noopener", textContent: "Open in a new tab" });
     this.frame = el("iframe", { title: "WordPress running your SpacePress app" });
     this.wordpress.append(el("p", {}, this.note, " ", this.tab, " ", button("Close", () => { this.wordpress.hidden = true; this.frame.removeAttribute("src"); })), this.frame);
 
     const pane = (title, hint, toggles) => {
-      const tree = el("div", { className: "tp-tree" });
-      const file = el("div", { className: "tp-file" });
+      const tree = el("div", { className: "sp-tree" });
+      const file = el("div", { className: "sp-file" });
       const head = el("h4", {}, title, el("small", { textContent: hint }), ...toggles);
-      return { section: el("section", { className: "tp-pane" }, head, el("div", { className: "tp-split" }, tree, file)), tree, file };
+      return { section: el("section", { className: "sp-pane" }, head, el("div", { className: "sp-split" }, tree, file)), tree, file };
     };
     this.sourceDiff = button("My changes", () => { this.showSourceDiff = !this.showSourceDiff; this.showSource(); });
     this.outputDiff = button("Diff previous build", () => { this.showOutputDiff = !this.showOutputDiff; this.showOutput(); });
     this.copyOutBtn = button("Copy", () => this.copyOutput());
     const left = pane("You write", "click in the file and edit", [this.sourceDiff]);
     const right = pane("SpacePress compiles", "rebuilt live via WASM", [this.outputDiff, this.copyOutBtn, button("Download", () => this.download())]);
-    right.section.classList.add("tp-out");
-    this.about = el("p", { className: "tp-about" });
-    right.section.querySelector(".tp-split").before(this.about);
+    right.section.classList.add("sp-out");
+    this.about = el("p", { className: "sp-about" });
+    right.section.querySelector(".sp-split").before(this.about);
     this.sourceTree = left.tree; this.sourceBox = left.file; this.outputTree = right.tree; this.outputBox = right.file;
     this.status.remove();
     const divider = el("div", {
@@ -182,7 +182,7 @@ class Play extends HTMLElement {
       title: "Drag to resize panes (double-click to reset)",
     });
     divider.setAttribute("aria-orientation", "vertical");
-    const panes = el("div", { className: "tp-panes" }, left.section, divider, right.section);
+    const panes = el("div", { className: "sp-panes" }, left.section, divider, right.section);
     this.wireSplitDivider(panes, divider);
     this.append(bar, this.status, this.sharedNote, this.problems, this.warningsEl, this.wordpress, panes);
   }
@@ -246,19 +246,19 @@ class Play extends HTMLElement {
     const { check, output: out } = this.compiler.compile(runRequest(this.name, sources, this.currentExample.run.ledger));
     if (!check.ok || !out) return { check, out: null, files: {} };
     const committed = migrationInputs(Object.entries(this.currentExample.run.ledger.files));
-    const openapi = Object.entries(out.appPlugin).find(([file]) => file.endsWith("/tp/app/openapi.json"))?.[1];
+    const openapi = Object.entries(out.appPlugin).find(([file]) => file.endsWith("/sp/app/openapi.json"))?.[1];
     return { check, out, files: {
-      "tp/app/schema.php": out.schemaPhp,
-      "tp/app/functions.php": out.functionsPhp,
+      "sp/app/schema.php": out.schemaPhp,
+      "sp/app/functions.php": out.functionsPhp,
       ...committed,
       ...migrationInputs(out.migrations),
-      "tp/_generated/db.d.ts": out.genTs,
-      ...Object.fromEntries(Object.entries(out.client).map(([file, text]) => [`tp/_generated/client/${file}`, text])),
-      ...(openapi ? { "tp/app/openapi.json": openapi } : {}),
+      "sp/_generated/db.d.ts": out.genTs,
+      ...Object.fromEntries(Object.entries(out.client).map(([file, text]) => [`sp/_generated/client/${file}`, text])),
+      ...(openapi ? { "sp/app/openapi.json": openapi } : {}),
     } };
   }
 
-  defaultFile() { return ["tp/schema.ts", "typedpress.config.ts"].find((file) => this.currentExample.shown.includes(file)) ?? this.currentExample.shown[0]; }
+  defaultFile() { return ["sp/schema.ts", "spacepress.config.ts"].find((file) => this.currentExample.shown.includes(file)) ?? this.currentExample.shown[0]; }
 
   remember() {
     if (!this.hasFlag("picker") || this.keepAddress) return;
@@ -271,7 +271,7 @@ class Play extends HTMLElement {
     this.files = { ...this.currentExample.files };
     this.summary.textContent = this.currentExample.summary;
     this.source = file && this.currentExample.shown.includes(file) ? file : this.defaultFile();
-    this.output = "tp/app/schema.php";
+    this.output = "sp/app/schema.php";
     this.showSourceDiff = false; this.showOutputDiff = false; this.picked = false;
     this.wordpress.hidden = true; this.frame.removeAttribute("src");
     this.outputs = this.compile(this.currentExample.files).files;
@@ -478,7 +478,7 @@ class Play extends HTMLElement {
     if (externalWarnings.length > 0) {
       this.warningsEl.hidden = false;
       for (const w of externalWarnings) {
-        const locBtn = el("button", { type: "button", className: "tp-warn-loc", textContent: `${w.file}:${w.line}:${w.column}` });
+        const locBtn = el("button", { type: "button", className: "sp-warn-loc", textContent: `${w.file}:${w.line}:${w.column}` });
         if (this.currentExample.shown.includes(w.file)) {
           locBtn.onclick = () => { this.source = w.file; this.showSourceDiff = false; this.showSource(); this.trees(); this.remember(); };
         }
@@ -567,7 +567,7 @@ class Play extends HTMLElement {
     if (Object.keys(changed).length === 0) { this.sharedNote.textContent = "Nothing to share yet — edit any file first."; return; }
     this.sharedNote.textContent = "Saving share link…";
     try {
-      const response = await fetch("/wp-json/typedpress/v1/actions/share", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ example: this.name, files: changed }) });
+      const response = await fetch("/wp-json/spacepress/v1/actions/share", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ example: this.name, files: changed }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error?.message ?? body?.message ?? `HTTP ${response.status}`);
       const url = new URL(`/play?s=${body.data.key}`, location.href).href;
@@ -595,4 +595,4 @@ class Play extends HTMLElement {
   }
 }
 
-if (!customElements.get("tp-play")) customElements.define("tp-play", Play);
+if (!customElements.get("sp-play")) customElements.define("sp-play", Play);

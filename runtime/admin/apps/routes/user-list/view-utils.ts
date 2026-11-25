@@ -1,7 +1,7 @@
-import { loadView } from '@typedpress-admin/views';
-import { loadViewConfig } from '@typedpress-admin/core-data-next';
-import type { ViewConfig } from '@typedpress-admin/core-data-next';
-import type { View, Filter } from '@typedpress-admin/dataviews';
+import { loadView } from '@spacepress-admin/views';
+import { loadViewConfig } from '@spacepress-admin/core-data-next';
+import type { ViewConfig } from '@spacepress-admin/core-data-next';
+import type { View, Filter } from '@spacepress-admin/dataviews';
 
 /**
  * Maps view field names to REST API orderby values.

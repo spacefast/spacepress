@@ -1,12 +1,12 @@
 [package]
-name = "typedpress-migrate"
+name = "spacepress-migrate"
 version = "0.1.0"
 edition = "2024"
 publish = false
 license = "MIT AND GPL-2.0-or-later"
 
 [dependencies]
-typedpress = { path = "..", default-features = false }
+spacepress = { path = "..", default-features = false }
 indexmap = "2.14.2"
 oxc_allocator = "=0.158.0"
 oxc_ast = "=0.158.0"

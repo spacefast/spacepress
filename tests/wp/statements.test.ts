@@ -1,4 +1,4 @@
-// TypedPress\Wp\Connection on mysqli (MariaDB): every statement is prepared for its own run, so a
+// SpacePress\Wp\Connection on mysqli (MariaDB): every statement is prepared for its own run, so a
 // change to the session that WordPress shares with it (sql_mode, through Connection or $wpdb) applies
 // to the very next statement. A statement cache was tried and removed (review 2, R2): a statement
 // prepared before a `SET SESSION sql_mode` kept the old parse, and WordPress fires no hook for every
@@ -9,7 +9,7 @@ import { wp } from "./env.ts";
 
 function evaluate(php: string): any {
   return JSON.parse(wp("eval", `
-    $db = \\TypedPress\\Wp\\Plugin::instance()->connection();
+    $db = \\SpacePress\\Wp\\Plugin::instance()->connection();
     $wpdb = $GLOBALS['wpdb'];
     ${php}
   `));
@@ -50,15 +50,15 @@ test("a sql_mode change through $wpdb applies to Connection's next identical SEL
 
 test("rows, affected rows and insert ids are each run's own", () => {
   const out = evaluate(`
-    $db->run('CREATE TEMPORARY TABLE tp_stmt_test (id INT AUTO_INCREMENT PRIMARY KEY, v VARCHAR(20))');
+    $db->run('CREATE TEMPORARY TABLE sp_stmt_test (id INT AUTO_INCREMENT PRIMARY KEY, v VARCHAR(20))');
     $ids = [];
     $counts = [];
     for ($i = 0; $i < 5; $i++) {
-      $db->run('INSERT INTO tp_stmt_test (v) VALUES (?)', ["v$i"]);
+      $db->run('INSERT INTO sp_stmt_test (v) VALUES (?)', ["v$i"]);
       $ids[] = $db->insertId();
-      $counts[] = (int) $db->run('SELECT COUNT(*) AS n FROM tp_stmt_test')[0]['n'];
+      $counts[] = (int) $db->run('SELECT COUNT(*) AS n FROM sp_stmt_test')[0]['n'];
     }
-    $db->run('UPDATE tp_stmt_test SET v = ? WHERE id > ?', ['x', 2]);
+    $db->run('UPDATE sp_stmt_test SET v = ? WHERE id > ?', ['x', 2]);
     echo json_encode(['ids' => $ids, 'counts' => $counts, 'changed' => $db->changes()]);
   `);
   assert.deepEqual(out, { ids: [1, 2, 3, 4, 5], counts: [1, 2, 3, 4, 5], changed: 3 });

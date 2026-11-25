@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs evals/guidance/cases.json through `typedpress check --json`.
+// Runs evals/guidance/cases.json through `spacepress check --json`.
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -9,13 +9,13 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../..");
 const bin =
-  process.env.TYPEDPRESS_BIN ||
-  (existsSync(join(repoRoot, "target/release/typedpress"))
-    ? join(repoRoot, "target/release/typedpress")
-    : join(repoRoot, "target/debug/typedpress"));
+  process.env.SPACEPRESS_BIN ||
+  (existsSync(join(repoRoot, "target/release/spacepress"))
+    ? join(repoRoot, "target/release/spacepress")
+    : join(repoRoot, "target/debug/spacepress"));
 
 if (!existsSync(bin)) {
-  console.error(`typedpress binary not found at ${bin}; build it with \`cargo build --release\` or set TYPEDPRESS_BIN`);
+  console.error(`spacepress binary not found at ${bin}; build it with \`cargo build --release\` or set SPACEPRESS_BIN`);
   process.exit(1);
 }
 
@@ -23,7 +23,7 @@ const cases = JSON.parse(readFileSync(join(here, "cases.json"), "utf8"));
 let passed = 0;
 
 for (const c of cases) {
-  const dir = mkdtempSync(join(tmpdir(), `tp-eval-${c.id}-`));
+  const dir = mkdtempSync(join(tmpdir(), `sp-eval-${c.id}-`));
   try {
     for (const [rel, content] of Object.entries(c.files)) {
       const target = join(dir, rel);

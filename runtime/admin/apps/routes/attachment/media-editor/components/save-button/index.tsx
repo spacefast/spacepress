@@ -1,5 +1,5 @@
 import { useNavigate } from '@wordpress/route';
-import { useImageCropper } from '@typedpress-admin/image-cropper';
+import { useImageCropper } from '@spacepress-admin/image-cropper';
 import { __ } from '@wordpress/i18n';
 import { Button } from '@wordpress/components';
 import { store as coreStore } from '@wordpress/core-data';
@@ -100,7 +100,7 @@ export default function MediaEditorSaveButton( {
 			return response;
 		} catch {
 			createErrorNotice(
-				__( 'Could not save attachment.', 'typedpress-admin' ),
+				__( 'Could not save attachment.', 'spacepress-admin' ),
 				{
 					id: 'attachment-save-error',
 					type: 'snackbar',
@@ -119,7 +119,7 @@ export default function MediaEditorSaveButton( {
 		if ( isEntityRecordDirty ) {
 			const saved = await saveAttachment();
 			if (!saved) return;
-			createSuccessNotice( __( 'Media saved', 'typedpress-admin' ), {
+			createSuccessNotice( __( 'Media saved', 'spacepress-admin' ), {
 				id: 'attachements-save-success',
 				type: 'snackbar',
 			} );
@@ -146,7 +146,7 @@ export default function MediaEditorSaveButton( {
 			disabled={ isButtonDisabled }
 			accessibleWhenDisabled
 		>
-			{ __( 'Save', 'typedpress-admin' ) }
+			{ __( 'Save', 'spacepress-admin' ) }
 		</Button>
 	);
 }

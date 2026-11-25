@@ -7,7 +7,7 @@ on:
       - 'scripts/release/**'
       - 'packages/**/package.json'
       - 'packages/cli/**'
-      - 'packages/create-typedpress/**'
+      - 'packages/create-spacepress/**'
       - 'packages/blocks/scripts/**'
       - 'LICENSE'
       - 'LICENSING.md'
@@ -61,12 +61,12 @@ jobs:
         shell: bash
         run: |
           exe=""; if [ "${{ runner.os }}" = Windows ]; then exe=.exe; fi
-          node scripts/release/archive.mjs "target/${{ matrix.target }}/release/typedpress$exe" "${{ matrix.target }}" release "$GITHUB_SHA"
+          node scripts/release/archive.mjs "target/${{ matrix.target }}/release/spacepress$exe" "${{ matrix.target }}" release "$GITHUB_SHA"
       - name: Smoke compiled executable
         shell: bash
         run: |
           exe=""; if [ "${{ runner.os }}" = Windows ]; then exe=.exe; fi
-          "target/${{ matrix.target }}/release/typedpress$exe" check examples/pantry
+          "target/${{ matrix.target }}/release/spacepress$exe" check examples/pantry
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: unsigned-${{ matrix.target }}
@@ -83,7 +83,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: compiler-wasm
-          path: target/wasm32-unknown-unknown/wasm/typedpress.wasm
+          path: target/wasm32-unknown-unknown/wasm/spacepress.wasm
           if-no-files-found: error
 
   npm:
@@ -101,7 +101,7 @@ jobs:
         env:
           REQUESTED_VERSION: ${{ inputs.version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
         run: node scripts/release/version.mjs "$REQUESTED_VERSION"
-      - run: node --test packages/cli/test/*.test.mjs packages/create-typedpress/test/*.test.mjs scripts/release/archive.test.mjs scripts/release/pack-check.test.mjs
+      - run: node --test packages/cli/test/*.test.mjs packages/create-spacepress/test/*.test.mjs scripts/release/archive.test.mjs scripts/release/pack-check.test.mjs
       - name: Install adapter build dependencies
         run: |
           npm ci --prefix packages/astro --ignore-scripts --no-audit --no-fund
@@ -110,7 +110,7 @@ jobs:
       - name: Pack all four npm packages
         run: |
           mkdir -p release
-          for package in cli create-typedpress astro blocks; do npm pack "./packages/$package" --pack-destination release; done
+          for package in cli create-spacepress astro blocks; do npm pack "./packages/$package" --pack-destination release; done
       - name: Check packed contents (required files, licenses, no tests, fixtures or secrets)
         run: node scripts/release/pack-check.mjs release
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -136,9 +136,9 @@ jobs:
         run: |
           version=$(node scripts/release/version.mjs)
           mkdir compiler
-          tar -xzf "release/typedpress-v${version}-x86_64-unknown-linux-gnu.tar.gz" -C compiler typedpress
-          TP_SETUP_BINARY="$PWD/compiler/typedpress" \
-            TP_SETUP_EVIDENCE="/tmp/typedpress-framework-setup-ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+          tar -xzf "release/spacepress-v${version}-x86_64-unknown-linux-gnu.tar.gz" -C compiler spacepress
+          SP_SETUP_BINARY="$PWD/compiler/spacepress" \
+            SP_SETUP_EVIDENCE="/tmp/spacepress-framework-setup-ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
             node scripts/release/acceptance.mjs
       - name: Retain setup evidence
         if: always()
@@ -146,10 +146,10 @@ jobs:
         with:
           name: setup-acceptance
           path: |
-            /tmp/typedpress-framework-setup-ci-*/result.json
-            /tmp/typedpress-framework-setup-ci-*/cleanup.txt
-            /tmp/typedpress-framework-setup-ci-*/dev-output.txt
-            /tmp/typedpress-framework-setup-ci-*/commands.log
+            /tmp/spacepress-framework-setup-ci-*/result.json
+            /tmp/spacepress-framework-setup-ci-*/cleanup.txt
+            /tmp/spacepress-framework-setup-ci-*/dev-output.txt
+            /tmp/spacepress-framework-setup-ci-*/commands.log
           if-no-files-found: warn
 
   assemble:
@@ -177,12 +177,12 @@ jobs:
           name: compiler-wasm
           path: release
       - run: node scripts/release/compiler-assets.mjs release "$GITHUB_SHA"
-      - run: node scripts/release/homebrew.mjs release release/homebrew/Formula/typedpress.rb
+      - run: node scripts/release/homebrew.mjs release release/homebrew/Formula/spacepress.rb
       - name: Include exact compiler/runtime source and dependency provenance
-        run: git archive --format=tar.gz --output=release/typedpress-source.tar.gz "$GITHUB_SHA"
+        run: git archive --format=tar.gz --output=release/spacepress-source.tar.gz "$GITHUB_SHA"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: typedpress-release-unsigned
+          name: spacepress-release-unsigned
           path: release/
           if-no-files-found: error
           retention-days: 14
@@ -195,4 +195,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes "Unsigned compiler assets. See compiler-assets.json for source and checksums."
-          gh release upload "$GITHUB_REF_NAME" release/typedpress-v*.tar.gz release/typedpress-v*.tar.gz.sha256 release/typedpress.wasm release/compiler-assets.json release/typedpress-source.tar.gz release/*.tgz
+          gh release upload "$GITHUB_REF_NAME" release/spacepress-v*.tar.gz release/spacepress-v*.tar.gz.sha256 release/spacepress.wasm release/compiler-assets.json release/spacepress-source.tar.gz release/*.tgz

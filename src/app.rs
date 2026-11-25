@@ -1,4 +1,4 @@
-//! `tp/app/`: pages, layouts and HTTP routes by file convention (docs/spec/rendering.md §1–§3).
+//! `sp/app/`: pages, layouts and HTTP routes by file convention (docs/spec/rendering.md §1–§3).
 //!
 //! Discovery turns the folder tree into a route table. Each route is a URL pattern plus the files
 //! that render it: `page.tsx` with the `layout.tsx` files above it, or `route.ts` for an HTTP
@@ -7,7 +7,7 @@
 //! `page.md` is a page too, with the same layouts; [`crate::content_page`] reads it.
 //! The pipeline compiles the exports these files name (`default`, `metadata`, `guard`, `search`,
 //! HTTP method handlers) through the same compiler as every other root; the runtime router
-//! (`runtime/TypedPress/Wp/AppRouter.php`) matches requests against the table in `schema.php`.
+//! (`runtime/SpacePress/Wp/AppRouter.php`) matches requests against the table in `schema.php`.
 //!
 //! Folder names:
 //! - `about` is a literal segment;
@@ -19,7 +19,7 @@ use crate::diag::{Code, Diag, Span};
 use crate::loader::Fs;
 use std::path::{Path, PathBuf};
 
-/// The routing folder, under the TypedPress root.
+/// The routing folder, under the SpacePress root.
 pub const APP_DIR: &str = "app";
 
 /// One URL segment of a route pattern.
@@ -48,11 +48,11 @@ pub enum RouteKind {
 pub struct Route {
     pub segments: Vec<Segment>,
     pub kind: RouteKind,
-    /// The route file, relative to `tp/` (`app/blog/[slug]/page.tsx`).
+    /// The route file, relative to `sp/` (`app/blog/[slug]/page.tsx`).
     pub file: String,
-    /// Layouts from the root down, relative to `tp/`.
+    /// Layouts from the root down, relative to `sp/`.
     pub layouts: Vec<String>,
-    /// The nearest `error.tsx` at or above this route, relative to `tp/`.
+    /// The nearest `error.tsx` at or above this route, relative to `sp/`.
     pub error: Option<String>,
 }
 
@@ -64,7 +64,7 @@ impl Route {
     }
 
     /// A stable id from the file path: `blog/[slug]` for `app/blog/[slug]/page.tsx`. It names the
-    /// route in diagnostics, typed links and `typedpress check --json`.
+    /// route in diagnostics, typed links and `spacepress check --json`.
     pub fn id(&self) -> String {
         let dir = Path::new(&self.file)
             .parent()
@@ -110,31 +110,31 @@ pub struct Table {
     /// `app/login.tsx`, with the root layout(s) that wrap it: wp-login.php's sign-in view.
     pub login: Option<Route>,
     /// Every `.tsx`/`.ts` route file the pipeline compiles (pages, layouts, not-found, error,
-    /// handlers), relative to `tp/`, sorted.
+    /// handlers), relative to `sp/`, sorted.
     pub files: Vec<String>,
 }
 
-/// TypedPress URL segments WordPress or TypedPress own: the same list kind `url` patterns can't start
+/// SpacePress URL segments WordPress or SpacePress own: the same list kind `url` patterns can't start
 /// with (spec §5: wp-admin, login, REST and media keep working in every mode).
-pub use crate::kind_url::RESERVED_TP_SEGMENTS as RESERVED_TP;
+pub use crate::kind_url::RESERVED_SP_SEGMENTS as RESERVED_SP;
 
 /// Names that look like a route file but aren't one, with the fix.
 const MISNAMED: &[(&str, &str)] = &[
     ("page.ts", "a page renders JSX: name it page.tsx"),
-    ("page.jsx", "TypedPress compiles TypeScript: name it page.tsx"),
-    ("page.mdx", "TypedPress reads Markdown: name it page.md"),
-    ("page.js", "TypedPress compiles TypeScript: name it page.tsx"),
+    ("page.jsx", "SpacePress compiles TypeScript: name it page.tsx"),
+    ("page.mdx", "SpacePress reads Markdown: name it page.md"),
+    ("page.js", "SpacePress compiles TypeScript: name it page.tsx"),
     ("layout.ts", "a layout renders JSX: name it layout.tsx"),
-    ("layout.jsx", "TypedPress compiles TypeScript: name it layout.tsx"),
+    ("layout.jsx", "SpacePress compiles TypeScript: name it layout.tsx"),
     (
         "route.tsx",
         "an HTTP route returns a Response, not JSX: name it route.ts",
     ),
-    ("route.js", "TypedPress compiles TypeScript: name it route.ts"),
+    ("route.js", "SpacePress compiles TypeScript: name it route.ts"),
     ("template.tsx", "put shared structure in layout.tsx"),
     (
         "loading.tsx",
-        "TypedPress renders on the server and has no Suspense; the page arrives when its data is in",
+        "SpacePress renders on the server and has no Suspense; the page arrives when its data is in",
     ),
     (
         "default.tsx",
@@ -156,7 +156,7 @@ fn located(fs: &dyn Fs, path: &Path, message: impl Into<String>, help: impl Into
         .code(Code::Import)
 }
 
-/// Reads `tp/app/` (absolute `dir`) into a route table. `first` is the TypedPress root, which the
+/// Reads `sp/app/` (absolute `dir`) into a route table. `first` is the SpacePress root, which the
 /// relative paths are taken against.
 pub fn discover(fs: &dyn Fs, first: &Path) -> std::result::Result<Table, Vec<Diag>> {
     let dir = first.join(APP_DIR);
@@ -319,8 +319,8 @@ fn walk(
             diags.push(located(
                 fs,
                 &dir.join("not-found.tsx"),
-                "not-found.tsx works only at the root of tp/app/",
-                "move it to tp/app/not-found.tsx; call notFound() in a page to show it",
+                "not-found.tsx works only at the root of sp/app/",
+                "move it to sp/app/not-found.tsx; call notFound() in a page to show it",
             ));
         } else {
             table.files.push(file.clone());
@@ -339,8 +339,8 @@ fn walk(
             diags.push(located(
                 fs,
                 &dir.join("login.tsx"),
-                "login.tsx works only at the root of tp/app/",
-                "move it to tp/app/login.tsx: it renders wp-login.php's sign-in page, which has one URL",
+                "login.tsx works only at the root of sp/app/",
+                "move it to sp/app/login.tsx: it renders wp-login.php's sign-in page, which has one URL",
             ));
         } else {
             table.files.push(file.clone());
@@ -416,13 +416,13 @@ fn walk(
         if root
             && segments.is_empty()
             && let Some(Segment::Literal(l)) = &segment
-            && RESERVED_TP.contains(&l.as_str())
+            && RESERVED_SP.contains(&l.as_str())
         {
             diags.push(located(
                 fs,
                 &path,
-                format!("tp/app/{name}/ would shadow /{name}, which WordPress or TypedPress serves"),
-                "rename the folder; wp-admin, login, REST, feeds and TypedPress's own paths stay reachable in every mode",
+                format!("sp/app/{name}/ would shadow /{name}, which WordPress or SpacePress serves"),
+                "rename the folder; wp-admin, login, REST, feeds and SpacePress's own paths stay reachable in every mode",
             ));
             continue;
         }
@@ -490,7 +490,7 @@ pub fn parse_segment(name: &str) -> std::result::Result<Option<Segment>, Refusal
     }
     if name.starts_with('@') {
         return Err((
-            format!("`{name}` is a parallel route slot, which TypedPress doesn't support"),
+            format!("`{name}` is a parallel route slot, which SpacePress doesn't support"),
             "render both parts from one page, as components",
         ));
     }
@@ -537,7 +537,7 @@ pub fn parse_segment(name: &str) -> std::result::Result<Option<Segment>, Refusal
         && !name.ends_with('.');
     if !literal {
         return Err((
-            format!("`{name}` isn't a URL segment TypedPress routes"),
+            format!("`{name}` isn't a URL segment SpacePress routes"),
             "use lowercase letters, digits, `-`, `.`, `_` and `~` in folder names",
         ));
     }
@@ -546,7 +546,7 @@ pub fn parse_segment(name: &str) -> std::result::Result<Option<Segment>, Refusal
 
 /// The exports a route file may have, and what each is for. Any other export is an error, so a
 /// typo (`export const metdata`) never silently does nothing. Helpers belong in `_private` folders
-/// or `tp/components/`.
+/// or `sp/components/`.
 pub fn allowed_exports(file: &str) -> &'static [&'static str] {
     let name = Path::new(file).file_name().and_then(|n| n.to_str()).unwrap_or_default();
     match name {
@@ -575,7 +575,7 @@ pub fn allowed_exports(file: &str) -> &'static [&'static str] {
 
 pub const METHODS: &[&str] = &["GET", "POST", "PUT", "PATCH", "DELETE"];
 
-/// Values `"typedpress/app"` exports (docs/spec/rendering.md §3).
+/// Values `"spacepress/app"` exports (docs/spec/rendering.md §3).
 pub const EXPORTS: &[&str] = &[
     "notFound",
     "redirect",
@@ -592,7 +592,7 @@ pub const EXPORTS: &[&str] = &[
     "SearchResults",
     "TemplatePart",
 ];
-/// Type-only exports of `"typedpress/app"`: importable, erased.
+/// Type-only exports of `"spacepress/app"`: importable, erased.
 pub const TYPES: &[&str] = &[
     "PageProps",
     "LayoutProps",
@@ -611,7 +611,7 @@ pub fn export(name: &str) -> Option<&'static str> {
     EXPORTS.iter().copied().find(|e| *e == name)
 }
 
-/// `tp/_generated/routes.d.ts`: every page and handler route, so `<Link href>` and `PageProps<…>`
+/// `sp/_generated/routes.d.ts`: every page and handler route, so `<Link href>` and `PageProps<…>`
 /// are checked against the app's own URLs. Each route's `path` is a template literal type: a
 /// `[slug]` folder is any segment, a catch-all any rest of the path.
 pub fn routes_d_ts(table: &Table, kinds: &[(String, String)]) -> Option<String> {
@@ -619,7 +619,7 @@ pub fn routes_d_ts(table: &Table, kinds: &[(String, String)]) -> Option<String> 
         return None;
     }
     let mut out = String::from(
-        "// Generated by `typedpress build` from tp/app/. Do not edit.\n\nexport {};\n\ndeclare module \"typedpress/app\" {\n  interface Routes {\n",
+        "// Generated by `spacepress build` from sp/app/. Do not edit.\n\nexport {};\n\ndeclare module \"spacepress/app\" {\n  interface Routes {\n",
     );
     for route in &table.routes {
         let mut path = String::new();
@@ -654,7 +654,7 @@ pub fn routes_d_ts(table: &Table, kinds: &[(String, String)]) -> Option<String> 
             .find(|(_, url)| route.kind == RouteKind::Page && serves_kind_url(route, url).is_some())
         {
             Some((kind, _)) => format!(
-                "; item: import(\"typedpress\").RegisteredKinds extends {{ {kind}: {{ $inferSelect: infer R }} }} ? R : Record<string, unknown>"
+                "; item: import(\"spacepress\").RegisteredKinds extends {{ {kind}: {{ $inferSelect: infer R }} }} ? R : Record<string, unknown>"
             ),
             None => String::new(),
         };
@@ -668,7 +668,7 @@ pub fn routes_d_ts(table: &Table, kinds: &[(String, String)]) -> Option<String> 
 }
 
 /// Whether a page's folders serve a kind's `url` pattern (spec §2.7: "an app/ route whose path
-/// matches the pattern renders with TypedPress"): the same literals in the same places, a `[x]` folder
+/// matches the pattern renders with SpacePress"): the same literals in the same places, a `[x]` folder
 /// for each placeholder, and `[...x]` for `:path`. Returns the folder parameter for each pattern
 /// placeholder, in order.
 pub fn serves_kind_url(route: &Route, pattern: &str) -> Option<Vec<(String, String)>> {
@@ -681,7 +681,7 @@ pub fn serves_kind_url(route: &Route, pattern: &str) -> Option<Vec<(String, Stri
         match (part.strip_prefix(':'), segment) {
             (None, Segment::Literal(l)) if l == part => {}
             // `[[...path]]` too: its empty match (`/docs`) finds no item and is a 404, so the
-            // landing page stays its own `tp/app/docs/page.tsx`.
+            // landing page stays its own `sp/app/docs/page.tsx`.
             (Some("path"), Segment::CatchAll(p) | Segment::OptionalCatchAll(p)) => {
                 bound.push(("path".to_string(), p.clone()))
             }
@@ -706,7 +706,7 @@ pub fn params_of(file: &str) -> Vec<(String, bool)> {
     out
 }
 
-/// The pipeline's view of a route file it should load: path below `tp/`, and its absolute path.
+/// The pipeline's view of a route file it should load: path below `sp/`, and its absolute path.
 pub fn route_paths(first: &Path, table: &Table) -> Vec<(String, PathBuf)> {
     table.files.iter().map(|f| (f.clone(), first.join(f))).collect()
 }

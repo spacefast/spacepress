@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR\Tag;
+namespace SpacePress\Identity\Vendor\CBOR\Tag;
 
-use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
-use TypedPress\Identity\Vendor\CBOR\CBORObject;
-use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthListObject;
-use TypedPress\Identity\Vendor\CBOR\ListObject;
-use TypedPress\Identity\Vendor\CBOR\MapObject;
-use TypedPress\Identity\Vendor\CBOR\OtherObject\NullObject;
-use TypedPress\Identity\Vendor\CBOR\Tag;
+use SpacePress\Identity\Vendor\CBOR\ByteStringObject;
+use SpacePress\Identity\Vendor\CBOR\CBORObject;
+use SpacePress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use SpacePress\Identity\Vendor\CBOR\IndefiniteLengthListObject;
+use SpacePress\Identity\Vendor\CBOR\ListObject;
+use SpacePress\Identity\Vendor\CBOR\MapObject;
+use SpacePress\Identity\Vendor\CBOR\OtherObject\NullObject;
+use SpacePress\Identity\Vendor\CBOR\Tag;
 
 /**
  * Tag 96: COSE_Encrypt, an encrypted message with one or more recipients, each of which carries the content

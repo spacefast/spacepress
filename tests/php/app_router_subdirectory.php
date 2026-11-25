@@ -3,22 +3,22 @@
 declare(strict_types=1);
 
 /*
- * `tp/app/` on a WordPress that lives in a subdirectory (tests/app_router.rs
- * `app_router_serves_item_pages_under_a_subdirectory`): examples/full-site, built by `typedpress build`,
+ * `sp/app/` on a WordPress that lives in a subdirectory (tests/app_router.rs
+ * `app_router_serves_item_pages_under_a_subdirectory`): examples/full-site, built by `spacepress build`,
  * served under `/blog` as WordPress Playground serves every site under `/scope:<id>/`. A note's
  * page (`url: "/notes/:slug"`) must answer at its own URL there too. Prints one JSON object:
  * label => [status, <h1>].
  *
- *   TP_WP_THEMES=1 php tests/php/app_router_subdirectory.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/app_router_subdirectory.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
 
 $site = wpSite('app-subdir', ['wpContent' => $argv[1], 'base' => '/blog']);
 wp_set_current_user(1);
-\TypedPress\db()->insert('notes', ['title' => 'Dawn on the ridge', 'slug' => 'dawn-on-the-ridge', 'status' => 'published']);
-\TypedPress\db()->insert('notes', ['title' => 'Notes for next week', 'slug' => 'notes-for-next-week', 'status' => 'draft']);
-$note = get_page_by_path('dawn-on-the-ridge', OBJECT, 'tp_notes');
+\SpacePress\db()->insert('notes', ['title' => 'Dawn on the ridge', 'slug' => 'dawn-on-the-ridge', 'status' => 'published']);
+\SpacePress\db()->insert('notes', ['title' => 'Notes for next week', 'slug' => 'notes-for-next-week', 'status' => 'draft']);
+$note = get_page_by_path('dawn-on-the-ridge', OBJECT, 'sp_notes');
 $link = $note instanceof WP_Post ? get_permalink($note) : null;
 $site->actAs(null);
 $site->startServer();
@@ -34,7 +34,7 @@ $get = static function (string $path) use ($url): array {
 };
 $renderLink = static function (array $props): DOMElement {
     $html = new DOMDocument();
-    @$html->loadHTML(\TypedPress\Render\Markup::link($props, 'Link')->html());
+    @$html->loadHTML(\SpacePress\Render\Markup::link($props, 'Link')->html());
     return $html->getElementsByTagName('a')->item(0);
 };
 $links = [];
@@ -51,7 +51,7 @@ foreach ([
     'query' => '?q=tea#body',
 ] as $name => $href) {
     $a = $renderLink(['href' => $href, 'prefetch' => true]);
-    $links[$name] = ['href' => $a->getAttribute('href'), 'template' => $a->getAttribute('data-tp-template'), 'prefetch' => $a->getAttribute('data-wp-on--mouseenter')];
+    $links[$name] = ['href' => $a->getAttribute('href'), 'template' => $a->getAttribute('data-sp-template'), 'prefetch' => $a->getAttribute('data-wp-on--mouseenter')];
 }
 $authLinks = [];
 $target = '/notes/dawn-on-the-ridge?q=tea%20time&sort=new#body';
@@ -74,7 +74,7 @@ $site->actAs(null);
 $trailing = $GLOBALS['wp_rewrite']->use_trailing_slashes;
 $GLOBALS['wp_rewrite']->use_trailing_slashes = false;
 $html = new DOMDocument();
-@$html->loadHTML(\TypedPress\Render\Markup::link(['href' => '/notes/dawn-on-the-ridge/?q=tea#body'], 'Link')->html());
+@$html->loadHTML(\SpacePress\Render\Markup::link(['href' => '/notes/dawn-on-the-ridge/?q=tea#body'], 'Link')->html());
 $links['without slash'] = $html->getElementsByTagName('a')->item(0)->getAttribute('href');
 $GLOBALS['wp_rewrite']->use_trailing_slashes = $trailing;
 echo json_encode([

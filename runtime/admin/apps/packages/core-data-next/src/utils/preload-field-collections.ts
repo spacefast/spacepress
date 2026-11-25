@@ -15,7 +15,7 @@ export async function preloadFieldCollections(
 ): Promise< void > {
 	const { resolveSelect } = await import( '@wordpress/data' );
 
-	// TypedPress, resolve the field collections data
+	// SpacePress, resolve the field collections data
 	const collections = ( await resolveSelect(
 		store
 	).getEntityFieldCollections( kind, name ) ) as FieldCollection< any >[];

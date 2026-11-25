@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\NameConverter;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\NameConverter;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 
 /**
  * @author Fabien Bourigault <bourigaultfabien@gmail.com>

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-use TypedPress\Identity\Vendor\Symfony\Polyfill\Php83 as p;
+use SpacePress\Identity\Vendor\Symfony\Polyfill\Php83 as p;
 
 if (!class_exists('ValueError', false)) {
     class ValueError extends Error

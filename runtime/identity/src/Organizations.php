@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 final class Organizations
 {
@@ -183,8 +183,8 @@ final class Organizations
             $identityUrl = home_url(Plugin::basePath());
             $invitationCode = $id . "." . $secret;
             $subject = "Join your organization on " . $siteName;
-            $custom = class_exists(\TypedPress\Render\Email::class)
-                ? \TypedPress\Render\Email::invitation($siteName, $identityUrl, $invitationCode)
+            $custom = class_exists(\SpacePress\Render\Email::class)
+                ? \SpacePress\Render\Email::invitation($siteName, $identityUrl, $invitationCode)
                 : null;
             $sent = $custom === null
                 ? wp_mail(
@@ -194,7 +194,7 @@ final class Organizations
                         " and verify this email. In Organizations, enter this invitation code:\n\n" .
                         $invitationCode . "\n\nExpires in seven days.",
                 )
-                : \TypedPress\Mail::sendWordPress(
+                : \SpacePress\Mail::sendWordPress(
                     $email,
                     $subject,
                     $custom['html'],

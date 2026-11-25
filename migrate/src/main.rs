@@ -6,7 +6,7 @@ mod project;
 mod wordpress;
 mod zero;
 
-const USAGE: &str = "usage: typedpress-migrate --from <zero|astro|emdash|payload|sanity> <operation> [options]
+const USAGE: &str = "usage: spacepress-migrate --from <zero|astro|emdash|payload|sanity> <operation> [options]
   zero: app, config, wordpress
   astro: app
   emdash, payload, sanity: config";

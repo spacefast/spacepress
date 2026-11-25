@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Extractor;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Extractor;
 
 /**
  * @author David Maicher <mail@dmaicher.de>

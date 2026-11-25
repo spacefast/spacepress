@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
- * TypedPress Identity's provider callback under a host route prefix, over HTTP on WordPress with php -S.
+ * SpacePress Identity's provider callback under a host route prefix, over HTTP on WordPress with php -S.
  * The site defines SP_AUTH_PREFIX=/__spacefast/auth, and two OpenID providers answer from a stand-in
  * on `pre_http_request` that signs real RS256 ID tokens and checks the redirect URI and PKCE verifier
  * of each code exchange. One provider is registered with the path form
@@ -15,19 +15,19 @@ require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 // Identity's issuer pages answer on template_redirect, which the test router runs only with themes on.
-putenv('TP_WP_THEMES=1');
+putenv('SP_WP_THEMES=1');
 
 $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
 openssl_pkey_export($key, $pem);
 $provider = str_replace('{PEM}', var_export($pem, true), <<<'PHP'
     <?php
     // php -S speaks HTTP only; Identity allows that on a local site with this switch.
-    define('TP_IDENTITY_DEV_HTTP', true);
+    define('SP_IDENTITY_DEV_HTTP', true);
     // The host's issuer prefix, as Spacefast sets it.
     define('SP_AUTH_PREFIX', '/__spacefast/auth');
 
     const TEST_IDP = 'http://127.0.0.1:8080/idp';
-    add_filter('tp_identity_providers', static fn (array $providers): array => $providers + [
+    add_filter('sp_identity_providers', static fn (array $providers): array => $providers + [
         'spacefast' => ['issuer' => TEST_IDP . '/spacefast', 'client_id' => 'spacefast-client', 'secret' => ''],
         'generic' => ['issuer' => TEST_IDP . '/generic', 'client_id' => 'generic-client', 'secret' => 'generic-secret'],
     ]);
@@ -63,7 +63,7 @@ $provider = str_replace('{PEM}', var_export($pem, true), <<<'PHP'
                 return $answer(['error' => 'invalid_grant'], 400);
             }
             $claims = ['iss' => $issuer, 'aud' => $grant['client_id'], 'sub' => "$name-subject", 'iat' => time() - 1, 'exp' => time() + 300, 'nonce' => $grant['nonce']];
-            $token = \TypedPress\Identity\Vendor\Firebase\JWT\JWT::encode($claims, $pem, 'RS256', 'test');
+            $token = \SpacePress\Identity\Vendor\Firebase\JWT\JWT::encode($claims, $pem, 'RS256', 'test');
             return $answer(['access_token' => "$name-access", 'token_type' => 'Bearer', 'expires_in' => 300, 'id_token' => $token]);
         }
         if ($endpoint === '/userinfo') {
@@ -103,17 +103,17 @@ function authorize(string $location): array
 
 $prefix = '/__spacefast/auth';
 eq('the issuer and its callbacks live under SP_AUTH_PREFIX',
-    [\TypedPress\Identity\Plugin::basePath(), \TypedPress\Identity\Providers::callbackUrl('spacefast'), \TypedPress\Identity\Providers::callbackUrl('generic')],
+    [\SpacePress\Identity\Plugin::basePath(), \SpacePress\Identity\Providers::callbackUrl('spacefast'), \SpacePress\Identity\Providers::callbackUrl('generic')],
     [$prefix, "$url$prefix/callback/spacefast", "$url$prefix/provider/callback?provider=generic"]);
 eq('both callback forms name their provider; other routes name none', [
-    \TypedPress\Identity\Providers::callbackProvider('/callback/spacefast', []),
-    \TypedPress\Identity\Providers::callbackProvider('/provider/callback', ['provider' => 'generic']),
-    \TypedPress\Identity\Providers::callbackProvider('/callback/spacefast/extra', []),
-    \TypedPress\Identity\Providers::callbackProvider('/authorize', ['provider' => 'generic']),
+    \SpacePress\Identity\Providers::callbackProvider('/callback/spacefast', []),
+    \SpacePress\Identity\Providers::callbackProvider('/provider/callback', ['provider' => 'generic']),
+    \SpacePress\Identity\Providers::callbackProvider('/callback/spacefast/extra', []),
+    \SpacePress\Identity\Providers::callbackProvider('/authorize', ['provider' => 'generic']),
 ], ['spacefast', 'generic', null, null]);
 
 $signIn = static function (string $name, string $expectedCallback) use ($url, $prefix): array {
-    $jar = tempnam(sys_get_temp_dir(), 'tp-identity-jar');
+    $jar = tempnam(sys_get_temp_dir(), 'sp-identity-jar');
     [$status, $location, , $startBody] = visit("$url$prefix/provider/start?provider=$name", $jar);
     if ($location === '') {
         throw new RuntimeException("provider/start answered $status without a redirect: " . substr($startBody, 0, 600));
@@ -133,13 +133,13 @@ check('its callback at /__spacefast/auth/callback/spacefast signs the browser in
 eq('a generic provider keeps the query-form redirect URI, under the prefix', $started, [302, true, "$url$prefix/provider/callback?provider=generic"]);
 check('its callback at /__spacefast/auth/provider/callback?provider=generic signs the browser in', $finished === [302, "$url$prefix", true], [$finished, $debug, substr($body, 0, 400)]);
 
-$db = \TypedPress\Identity\Plugin::$db;
+$db = \SpacePress\Identity\Plugin::$db;
 eq('each provider identity is linked to its own new account',
     array_map(static fn (array $row): string => $row['subject'], $db->rows("SELECT subject FROM {$db->prefix}providers ORDER BY subject")),
     ['generic-subject', 'spacefast-subject']);
 
 // A callback for one provider can't finish a sign-in another provider started.
-$jar = tempnam(sys_get_temp_dir(), 'tp-identity-jar');
+$jar = tempnam(sys_get_temp_dir(), 'sp-identity-jar');
 [, $location] = visit("$url$prefix/provider/start?provider=generic", $jar);
 [, $back] = authorize($location);
 $crossed = str_replace("$prefix/provider/callback?provider=generic&", "$prefix/callback/spacefast?", $back);

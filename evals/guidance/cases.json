@@ -4,7 +4,7 @@
     "prompt": "Define a blog posts collection with Markdown sync and a relational tasks SQL table with a cascade ref to posts.",
     "expectOk": true,
     "files": {
-      "typedpress.config.ts": "import { wp, table, text, boolean, ref, defineConfig } from \"typedpress\";\nexport const posts = wp.posts.extend({ subtitle: text().max(200).optional() }, { url: \"/blog/:slug\", sync: \"content/posts/*.md\" });\nexport const tasks = table({ title: text().min(1).max(120), done: boolean().default(false), postId: ref(posts).optional().onDelete(\"cascade\") }, { access: { read: \"anyone\", create: \"authenticated\", update: \"authenticated\", delete: \"editor\" } });\nexport default defineConfig({ name: \"eval-schema\" });\n"
+      "spacepress.config.ts": "import { wp, table, text, boolean, ref, defineConfig } from \"spacepress\";\nexport const posts = wp.posts.extend({ subtitle: text().max(200).optional() }, { url: \"/blog/:slug\", sync: \"content/posts/*.md\" });\nexport const tasks = table({ title: text().min(1).max(120), done: boolean().default(false), postId: ref(posts).optional().onDelete(\"cascade\") }, { access: { read: \"anyone\", create: \"authenticated\", update: \"authenticated\", delete: \"editor\" } });\nexport default defineConfig({ name: \"eval-schema\" });\n"
     }
   },
   {
@@ -12,7 +12,7 @@
     "prompt": "Create a notes table with per-user row access and an admin-only internalNote field.",
     "expectOk": true,
     "files": {
-      "typedpress.config.ts": "import { table, text, integer, defineConfig } from \"typedpress\";\nexport const notes = table({ ownerId: integer(), body: text().min(1), internalNote: text().optional().access({ read: \"admin\" }) }, { access: { read: ({ user }) => (user ? { ownerId: user.id } : false), create: \"authenticated\", update: ({ user }) => (user ? { ownerId: user.id } : false), delete: \"admin\" } });\nexport default defineConfig({ name: \"eval-access\" });\n"
+      "spacepress.config.ts": "import { table, text, integer, defineConfig } from \"spacepress\";\nexport const notes = table({ ownerId: integer(), body: text().min(1), internalNote: text().optional().access({ read: \"admin\" }) }, { access: { read: ({ user }) => (user ? { ownerId: user.id } : false), create: \"authenticated\", update: ({ user }) => (user ? { ownerId: user.id } : false), delete: \"admin\" } });\nexport default defineConfig({ name: \"eval-access\" });\n"
     }
   },
   {
@@ -20,17 +20,17 @@
     "prompt": "Create a subscriptions table whose afterCreate hook enqueues a retryable sendWelcome background job.",
     "expectOk": true,
     "files": {
-      "typedpress.config.ts": "import { table, text, integer, timestamp, job, jobs, db, defineConfig } from \"typedpress\";\nexport const subscriptions = table({ email: text().max(191).unique(), welcomedAt: timestamp().optional() }, { access: { read: \"admin\", create: \"anyone\", update: \"admin\", delete: \"admin\" } }).on({ async afterCreate(row) { await jobs.sendWelcome.enqueue({ id: row.id }, { key: `welcome-${row.id}` }); } });\nexport const sendWelcome = job({ input: { id: integer() }, retries: 3, async handler({ id }) { await db.update(subscriptions).set({ welcomedAt: new Date().toISOString() }).where({ id }); } });\nexport default defineConfig({ name: \"eval-jobs\" });\n"
+      "spacepress.config.ts": "import { table, text, integer, timestamp, job, jobs, db, defineConfig } from \"spacepress\";\nexport const subscriptions = table({ email: text().max(191).unique(), welcomedAt: timestamp().optional() }, { access: { read: \"admin\", create: \"anyone\", update: \"admin\", delete: \"admin\" } }).on({ async afterCreate(row) { await jobs.sendWelcome.enqueue({ id: row.id }, { key: `welcome-${row.id}` }); } });\nexport const sendWelcome = job({ input: { id: integer() }, retries: 3, async handler({ id }) { await db.update(subscriptions).set({ welcomedAt: new Date().toISOString() }).where({ id }); } });\nexport default defineConfig({ name: \"eval-jobs\" });\n"
     }
   },
   {
     "id": "headful-page-and-island",
-    "prompt": "Render a headful PHP page in tp/app/page.tsx listing tasks from typedpress:db with a \"use client\" counter island.",
+    "prompt": "Render a headful PHP page in sp/app/page.tsx listing tasks from spacepress:db with a \"use client\" counter island.",
     "expectOk": true,
     "files": {
-      "typedpress.config.ts": "import { table, text, boolean, defineConfig } from \"typedpress\";\nexport const tasks = table({ title: text().min(1), done: boolean().default(false) }, { access: { read: \"anyone\", create: \"authenticated\", update: \"authenticated\", delete: \"editor\" } });\nexport default defineConfig({ name: \"eval-headful\" });\n",
-      "tp/components/Counter.tsx": "\"use client\";\nimport { useState } from \"typedpress/client\";\nexport function Counter() { const [n, setN] = useState(0); return <button type=\"button\" onClick={() => setN(n + 1)}>{n}</button>; }\n",
-      "tp/app/page.tsx": "import { tasks } from \"typedpress:db\";\nimport { Counter } from \"../components/Counter\";\nexport default async function Home() { const rows = await tasks.list({ limit: 10 }); return <main><h1>Tasks</h1><ul>{rows.map((r) => <li key={r.id}>{r.title}</li>)}</ul><Counter /></main>; }\n"
+      "spacepress.config.ts": "import { table, text, boolean, defineConfig } from \"spacepress\";\nexport const tasks = table({ title: text().min(1), done: boolean().default(false) }, { access: { read: \"anyone\", create: \"authenticated\", update: \"authenticated\", delete: \"editor\" } });\nexport default defineConfig({ name: \"eval-headful\" });\n",
+      "sp/components/Counter.tsx": "\"use client\";\nimport { useState } from \"spacepress/client\";\nexport function Counter() { const [n, setN] = useState(0); return <button type=\"button\" onClick={() => setN(n + 1)}>{n}</button>; }\n",
+      "sp/app/page.tsx": "import { tasks } from \"spacepress:db\";\nimport { Counter } from \"../components/Counter\";\nexport default async function Home() { const rows = await tasks.list({ limit: 10 }); return <main><h1>Tasks</h1><ul>{rows.map((r) => <li key={r.id}>{r.title}</li>)}</ul><Counter /></main>; }\n"
     }
   },
   {
@@ -38,8 +38,8 @@
     "prompt": "Declare a WooCommerce store with USD currency, flat-rate shipping, synced products, and a native checkout page.",
     "expectOk": true,
     "files": {
-      "typedpress.config.ts": "import { store, product, productCategory, order, defineConfig } from \"typedpress\";\nexport const shop = store({ currency: \"USD\", country: \"US\", sellTo: [\"US\"], shipping: [{ name: \"US\", countries: [\"US\"], methods: [{ type: \"flatRate\", title: \"Standard\", cost: \"10.00\" }] }], payments: [\"cod\"] });\nexport const products = product({ sync: \"content/products/*.md\", url: \"/products/:slug\" });\nexport const categories = productCategory({ url: \"/shop/:path\" });\nexport const orders = order();\nexport default defineConfig({ name: \"eval-woo\" });\n",
-      "tp/app/checkout/page.md": "---\ntitle: Checkout\nrobots: { index: false, follow: false }\n---\n<!-- wp:woocommerce/checkout -->\n<div class=\"wp-block-woocommerce-checkout\"></div>\n<!-- /wp:woocommerce/checkout -->\n"
+      "spacepress.config.ts": "import { store, product, productCategory, order, defineConfig } from \"spacepress\";\nexport const shop = store({ currency: \"USD\", country: \"US\", sellTo: [\"US\"], shipping: [{ name: \"US\", countries: [\"US\"], methods: [{ type: \"flatRate\", title: \"Standard\", cost: \"10.00\" }] }], payments: [\"cod\"] });\nexport const products = product({ sync: \"content/products/*.md\", url: \"/products/:slug\" });\nexport const categories = productCategory({ url: \"/shop/:path\" });\nexport const orders = order();\nexport default defineConfig({ name: \"eval-woo\" });\n",
+      "sp/app/checkout/page.md": "---\ntitle: Checkout\nrobots: { index: false, follow: false }\n---\n<!-- wp:woocommerce/checkout -->\n<div class=\"wp-block-woocommerce-checkout\"></div>\n<!-- /wp:woocommerce/checkout -->\n"
     }
   },
   {
@@ -47,7 +47,7 @@
     "prompt": "Rename a column from title to headline using .was() for a non-destructive SQL migration.",
     "expectOk": true,
     "files": {
-      "typedpress.config.ts": "import { table, text, defineConfig } from \"typedpress\";\nexport const issues = table({ headline: text().min(1).max(160).was(\"title\") });\nexport default defineConfig({ name: \"eval-was\" });\n"
+      "spacepress.config.ts": "import { table, text, defineConfig } from \"spacepress\";\nexport const issues = table({ headline: text().min(1).max(160).was(\"title\") });\nexport default defineConfig({ name: \"eval-was\" });\n"
     }
   },
   {
@@ -55,7 +55,7 @@
     "prompt": "Negative check: importing node:fs inside a server action must be caught by the TS->PHP compiler.",
     "expectOk": false,
     "files": {
-      "typedpress.config.ts": "import fs from \"node:fs\";\nimport { action, defineConfig } from \"typedpress\";\nexport const bad = action({ access: \"admin\", async handler() { return { text: fs.readFileSync(\"/etc/passwd\", \"utf8\") }; } });\nexport default defineConfig({ name: \"eval-reject-node\" });\n"
+      "spacepress.config.ts": "import fs from \"node:fs\";\nimport { action, defineConfig } from \"spacepress\";\nexport const bad = action({ access: \"admin\", async handler() { return { text: fs.readFileSync(\"/etc/passwd\", \"utf8\") }; } });\nexport default defineConfig({ name: \"eval-reject-node\" });\n"
     }
   },
   {
@@ -64,7 +64,7 @@
     "expectOk": true,
     "expectWarningCode": "capital_P_dangit",
     "files": {
-      "typedpress.config.ts": "import { action, defineConfig } from \"typedpress\";\nexport const greet = action({ access: \"anyone\", async handler() { return { msg: \"Built for Wordpress\" }; } });\nexport default defineConfig({ name: \"eval-lint\" });\n"
+      "spacepress.config.ts": "import { action, defineConfig } from \"spacepress\";\nexport const greet = action({ access: \"anyone\", async handler() { return { msg: \"Built for Wordpress\" }; } });\nexport default defineConfig({ name: \"eval-lint\" });\n"
     }
   }
 ]

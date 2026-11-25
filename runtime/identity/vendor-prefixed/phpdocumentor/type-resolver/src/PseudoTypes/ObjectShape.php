@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Type;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Object_;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Type;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Object_;
 
 use function implode;
 

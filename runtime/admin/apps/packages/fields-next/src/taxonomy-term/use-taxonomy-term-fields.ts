@@ -1,10 +1,10 @@
-import { useFieldCollections } from '@typedpress-admin/core-data-next';
+import { useFieldCollections } from '@spacepress-admin/core-data-next';
 import { store as coreStore } from '@wordpress/core-data';
 import { useSelect } from '@wordpress/data';
 import { useMemo } from '@wordpress/element';
 import { decodeEntities } from '@wordpress/html-entities';
 import type { Term } from '@wordpress/core-data';
-import type { Field } from '@typedpress-admin/dataviews';
+import type { Field } from '@spacepress-admin/dataviews';
 
 const fieldDescriptions: Record< string, string > = {
 	name: 'name_field_description',

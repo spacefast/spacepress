@@ -4,20 +4,20 @@ import {
 	useSearch,
 	privateApis as routePrivateApis,
 } from '@wordpress/route';
-import type { View } from '@typedpress-admin/dataviews';
-import { Page, RouterLink, unlock } from '@typedpress-admin/admin-toolkit';
+import type { View } from '@spacepress-admin/dataviews';
+import { Page, RouterLink, unlock } from '@spacepress-admin/admin-toolkit';
 import { Button } from '@wordpress/ui';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components -- See: ARC-1359
-import { EmptyState, Tabs } from '@typedpress-admin/design-system';
-import { useTaxonomyTermFields } from '@typedpress-admin/fields-next';
-import { useView, DataViews, useViewConfig } from '@typedpress-admin/views';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components -- See: ARC-1359
+import { EmptyState, Tabs } from '@spacepress-admin/design-system';
+import { useTaxonomyTermFields } from '@spacepress-admin/fields-next';
+import { useView, DataViews, useViewConfig } from '@spacepress-admin/views';
 import { useCallback, useMemo } from '@wordpress/element';
 import {
 	serializeFilters,
 	usePageView,
 	useTrack,
 	useTrackedDataView,
-} from '@typedpress-admin/telemetry';
+} from '@spacepress-admin/telemetry';
 import {
 	store as coreStore,
 	privateApis as coreDataPrivateApis,
@@ -227,7 +227,7 @@ function TaxonomyTerms() {
 			}
 		>
 			{ hasResolved && terms.length === 0 && ! searchParams.search ? (
-				<EmptyState.Root className="typedpress-admin-terms-list-content__no-terms">
+				<EmptyState.Root className="spacepress-admin-terms-list-content__no-terms">
 					<EmptyState.Icon icon={ tag } />
 					<EmptyState.Title>
 						{ taxonomyObject.labels.no_terms }
@@ -237,7 +237,7 @@ function TaxonomyTerms() {
 							// translators: %s: Taxonomy name.
 							__(
 								'No %s have been created yet. Create one to start organizing your content.',
-								'typedpress-admin'
+								'spacepress-admin'
 							),
 							taxonomyObject.labels.name.toLocaleLowerCase()
 						) }
@@ -307,7 +307,7 @@ function TaxonomyTerms() {
 						<Tabs.Root>
 							<Tabs.List density="compact">
 								<Tabs.Tab value="all">
-									{ __( 'All', 'typedpress-admin' ) }
+									{ __( 'All', 'spacepress-admin' ) }
 								</Tabs.Tab>
 							</Tabs.List>
 						</Tabs.Root>
@@ -323,7 +323,7 @@ function TaxonomyTerms() {
 									// translators: %s: Taxonomy singular name.
 									__(
 										'Try adjusting your search or create a new %s.',
-										'typedpress-admin'
+										'spacepress-admin'
 									),
 									taxonomyObject.labels.singular_name.toLocaleLowerCase()
 								) }
@@ -344,7 +344,7 @@ function TaxonomyTerms() {
 										} )
 									}
 								>
-									{ __( 'Clear search', 'typedpress-admin' ) }
+									{ __( 'Clear search', 'spacepress-admin' ) }
 								</Button>
 								<Button
 									variant="solid"

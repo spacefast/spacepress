@@ -1,4 +1,4 @@
-// The plugin lane's app at each deploy, one typedpress.config.ts per step (`node steps.mjs <step>`).
+// The plugin lane's app at each deploy, one spacepress.config.ts per step (`node steps.mjs <step>`).
 const notes = (fields = "") => `export const notes = collection({
   title: text(),
   body: text().optional(),${fields}
@@ -11,7 +11,7 @@ export const welcome = mutation({ access: "editor" }, async (i: { to: string }) 
 const entries = (fields = "") => `export const entries = table({
   body: text().optional(),${fields}
 });`;
-const app = (parts, options = "") => `import { collection, defineConfig, mail, table, text, mutation } from "typedpress";
+const app = (parts, options = "") => `import { collection, defineConfig, mail, table, text, mutation } from "spacepress";
 ${parts.join("\n")}
 ${actions}
 export default defineConfig({ name: "pluginlane"${options} });
@@ -19,7 +19,7 @@ export default defineConfig({ name: "pluginlane"${options} });
 const tasks = `export const tasks = collection({ name: text() }, { title: "name", access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });`;
 
 export const steps = {
-  // 1. The typedpress deploy.
+  // 1. The spacepress deploy.
   initial: app([notes(), entries()]),
   // 2. A new kind, and a column with a default on the table: one migration, no refusal.
   additive: app([notes(`\n  mood: text().optional(),`), entries(`\n  state: text().default("open"),`), tasks]),

@@ -7,17 +7,17 @@ declare(strict_types=1);
  * `docs_kind_*`): the fixture tests/fixtures/docs-kind as built, seeded from the records a hosted
  * compile wrote for its content/docs/ folder tree, and served by php -S. Prints one JSON object.
  *
- *   TP_WP_THEMES=1 php tests/php/docs_kind.php <wp-content dir> <seed records dir>
+ *   SP_WP_THEMES=1 php tests/php/docs_kind.php <wp-content dir> <seed records dir>
  */
 
 require __DIR__ . '/wp.php';
 
 // Test-only must-use plugin: what WordPress's main query says a page is. `X-Test-Resolved` is what
-// WordPress resolved the URL to, before TypedPress's router runs; the HTML comment is what a plugin is
+// WordPress resolved the URL to, before SpacePress's router runs; the HTML comment is what a plugin is
 // told while the page renders (an SEO or breadcrumb plugin, in the footer).
 $site = wpSite('docs-kind', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor'], 'muPlugins' => ['query' => <<<'PHP'
     <?php
-    function tp_test_query(): string
+    function sp_test_query(): string
     {
         $object = get_queried_object();
         return (string) wp_json_encode([
@@ -27,13 +27,13 @@ $site = wpSite('docs-kind', ['wpContent' => $argv[1], 'users' => ['chief' => 'ed
             'is_singular' => is_singular(),
         ]);
     }
-    add_action('template_redirect', static fn () => header('X-Test-Resolved: ' . tp_test_query()), PHP_INT_MIN);
+    add_action('template_redirect', static fn () => header('X-Test-Resolved: ' . sp_test_query()), PHP_INT_MIN);
     add_action('wp_footer', static function (): void {
-        echo '<!-- wp-query ' . tp_test_query() . ' -->';
+        echo '<!-- wp-query ' . sp_test_query() . ' -->';
     });
     PHP]]);
 $out = [];
-$out['seed'] = \TypedPress\Sync\Seed::run(\TypedPress\Wp\Runtime::plugin(), $argv[2]);
+$out['seed'] = \SpacePress\Sync\Seed::run(\SpacePress\Wp\Runtime::plugin(), $argv[2]);
 $site->startServer();
 $url = $site->url();
 
@@ -115,7 +115,7 @@ $cookie = static function (string $user) use ($site): string {
 
 // The rows as WordPress stores them: a Page-like tree in post_parent and menu_order.
 global $wpdb;
-$type = \TypedPress\Wp\Runtime::plugin()->schema->collection('docs')['wp']['postType'];
+$type = \SpacePress\Wp\Runtime::plugin()->schema->collection('docs')['wp']['postType'];
 $rows = $wpdb->get_results($wpdb->prepare("SELECT ID, post_name, post_parent, menu_order, post_status FROM {$wpdb->posts} WHERE post_type = %s AND post_status NOT IN ('auto-draft', 'inherit') ORDER BY post_name", $type), ARRAY_A);
 $byId = array_column($rows, 'post_name', 'ID');
 foreach ($rows as $row) {
@@ -123,15 +123,15 @@ foreach ($rows as $row) {
 }
 $out['type hierarchical'] = is_post_type_hierarchical($type);
 
-// A site built before the rule for `:path` was TypedPress's own: its stored rule hands the path to core's
+// A site built before the rule for `:path` was SpacePress's own: its stored rule hands the path to core's
 // `pagename`, and the recorded fingerprint is the patterns alone.
 $docRule = static fn (): string => (string) (maybe_unserialize($wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'rewrite_rules'"))['^docs/(.+?)/?$'] ?? '');
 $stale = static function (): void {
-    update_option('rewrite_rules', array_map(static fn (string $query): string => str_replace('tp_kind_path=', 'pagename=', $query), (array) get_option('rewrite_rules')));
-    update_option('tp_kind_urls', md5((string) json_encode(['/docs/:path'])), true);
+    update_option('rewrite_rules', array_map(static fn (string $query): string => str_replace('sp_kind_path=', 'pagename=', $query), (array) get_option('rewrite_rules')));
+    update_option('sp_kind_urls', md5((string) json_encode(['/docs/:path'])), true);
 };
 $fresh = static function (): void {
-    foreach (['tp_kind_urls', 'rewrite_rules', 'alloptions', 'notoptions'] as $key) {
+    foreach (['sp_kind_urls', 'rewrite_rules', 'alloptions', 'notoptions'] as $key) {
         wp_cache_delete($key, 'options');
     }
 };
@@ -139,14 +139,14 @@ $doc = static fn (string $path): int => (int) get_page_by_path($path, OBJECT, $t
 // A managed build never flushes on a request: its deploy asks whether the stored rules are behind
 // (Runtime::rewritesBehind reads KindUrls::recorded) and rebuilds them once (Runtime::installRewrites).
 $stale();
-$out['stale site']['deploy'] = ['rule before' => $docRule(), 'recorded before' => \TypedPress\Wp\KindUrls::recorded(), 'rebuilt' => \TypedPress\Wp\Runtime::installRewrites()['rules']];
+$out['stale site']['deploy'] = ['rule before' => $docRule(), 'recorded before' => \SpacePress\Wp\KindUrls::recorded(), 'rebuilt' => \SpacePress\Wp\Runtime::installRewrites()['rules']];
 $fresh();
-$out['stale site']['deploy'] += ['rule after' => $docRule(), 'recorded after' => \TypedPress\Wp\KindUrls::recorded()];
+$out['stale site']['deploy'] += ['rule after' => $docRule(), 'recorded after' => \SpacePress\Wp\KindUrls::recorded()];
 // A plugin-installed site rebuilds on the first request, which is already answered from the new rule.
 $stale();
 $out['stale site']['request'] = ['rule before' => $docRule(), 'first request' => wordpress(fetch("$url/docs/guides/install/")) + ['expected id' => $doc('guides/install')]];
 $fresh();
-$out['stale site']['request'] += ['rule after' => $docRule(), 'recorded after' => \TypedPress\Wp\KindUrls::recorded()];
+$out['stale site']['request'] += ['rule after' => $docRule(), 'recorded after' => \SpacePress\Wp\KindUrls::recorded()];
 
 // What the rest of WordPress sees at a doc's URL: the doc, as a singular item of its post type, nested
 // or at the top; a path with no item is the app's 404, and WordPress's too.
@@ -170,8 +170,8 @@ $out['spellings'] = [
     'bare section' => $moved('/docs'),
     'canonical' => $moved('/docs/introduction/'),
     'twin' => $moved('/docs/introduction.md'),
-    'api' => $moved('/wp-json/typedpress/v1/docs'),
-    'api slash' => $moved('/wp-json/typedpress/v1/docs/'),
+    'api' => $moved('/wp-json/spacepress/v1/docs'),
+    'api slash' => $moved('/wp-json/spacepress/v1/docs/'),
     'rest' => $moved('/wp-json/'),
     'sitemap' => $moved('/wp-sitemap.xml'),
     'missing' => $moved('/docs/no-such-doc'),
@@ -181,7 +181,7 @@ $out['wordpress']['case'] = array_intersect_key(wordpress(fetch("$url/docs/Guide
 $out['wordpress']['case']['location'] = parse_url((string) $out['wordpress']['case']['location'], PHP_URL_PATH);
 // WordPress's sitemap lists the published items at the kind's URLs (sorted here: core lists by id).
 preg_match_all('#<loc>([^<]+)</loc>#', fetch("$url/wp-sitemap.xml")['body'], $index);
-preg_match_all('#<loc>([^<]+)</loc>#', fetch("$url/wp-sitemap-typedpress-docs-1.xml")['body'], $locs);
+preg_match_all('#<loc>([^<]+)</loc>#', fetch("$url/wp-sitemap-spacepress-docs-1.xml")['body'], $locs);
 $paths = array_map(static fn (string $u): ?string => parse_url($u, PHP_URL_PATH), $locs[1]);
 sort($paths);
 $out['sitemap'] = [array_map(static fn (string $u): ?string => parse_url($u, PHP_URL_PATH), $index[1]), $paths];
@@ -216,13 +216,13 @@ fetch("$url/docs/reference"); // the alternate spelling returns a redirect
 fetch("$url/docs/reference/");
 fetch("$url/docs/reference.md");
 $purges = [];
-add_action('tp_purge_urls', static function (array $paths) use (&$purges): void { array_push($purges, ...$paths); });
-\TypedPress\Wp\Purges::flush();
+add_action('sp_purge_urls', static function (array $paths) use (&$purges): void { array_push($purges, ...$paths); });
+\SpacePress\Wp\Purges::flush();
 $purges = [];
-$db = \TypedPress\db();
+$db = \SpacePress\db();
 try {
     $db->transaction(static function () use ($reference, $guides): void {
-        \TypedPress\Wp\Functions::tracked(static fn () => wp_update_post(['ID' => $reference, 'post_parent' => $guides]));
+        \SpacePress\Wp\Functions::tracked(static fn () => wp_update_post(['ID' => $reference, 'post_parent' => $guides]));
         throw new \RuntimeException('rollback');
     });
 } catch (\RuntimeException) {
@@ -232,7 +232,7 @@ $out['parent rollback'] = ['purges' => $purges, 'status' => $prior['status'],
     'reference' => str_contains($prior['body'], 'Reference'),
     'new status' => fetch("$url/docs/guides/reference/")['status']];
 wp_update_post(['ID' => $reference, 'post_parent' => $guides, 'menu_order' => 0]);
-\TypedPress\Wp\Purges::flush();
+\SpacePress\Wp\Purges::flush();
 $out['parent purge'] = array_values(array_intersect(
     ['/docs/reference/', '/docs/reference.md', '/docs/guides/reference/', '/docs/guides/reference.md'], $purges
 ));
@@ -288,13 +288,13 @@ $out['headings beside a gallery'] = [$gallery['toc'], $gallery['anchors']];
 
 // Heading ids follow GitHub's rule: each case's id as github-slugger gives it. Prints the ones that differ.
 $ids = json_decode((string) file_get_contents(dirname(__DIR__) . '/fixtures/docs-kind/heading-ids.json'), true, flags: JSON_THROW_ON_ERROR);
-$out['heading ids'] = array_values(array_filter(array_map(static fn (array $c): ?array => \TypedPress\Content\Nav::slug($c[0]) === $c[1] ? null : [$c[0], $c[1], \TypedPress\Content\Nav::slug($c[0])], $ids['cases'])));
+$out['heading ids'] = array_values(array_filter(array_map(static fn (array $c): ?array => \SpacePress\Content\Nav::slug($c[0]) === $c[1] ? null : [$c[0], $c[1], \SpacePress\Content\Nav::slug($c[0])], $ids['cases'])));
 $out['heading id cases'] = count($ids['cases']);
 // A heading with its own id keeps it, and no generated id repeats it; the rest number around it.
 $own = ("<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">Why</h2>\n<!-- /wp:heading -->\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\" id=\"why\">Mine</h2>\n<!-- /wp:heading -->\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">Why</h2>\n<!-- /wp:heading -->");
-$out['own ids'] = array_map(static fn (\TypedPress\JsObject $h): string => $h->p['id'], \TypedPress\Content\Nav::headings(['content' => $own], 'content')->a);
+$out['own ids'] = array_map(static fn (\SpacePress\JsObject $h): string => $h->p['id'], \SpacePress\Content\Nav::headings(['content' => $own], 'content')->a);
 // The query API reads the same tree.
-$out['api'] = array_map(static fn (array $r): array => [$r['slug'], $r['parent'] === null ? null : $byId[$r['parent']] ?? $r['parent'], $r['order']], \TypedPress\Seam::toPhp(\TypedPress\Seam::kindList('docs', ['orderBy' => ['order' => 'asc'], 'where' => ['parent' => null]], true)));
+$out['api'] = array_map(static fn (array $r): array => [$r['slug'], $r['parent'] === null ? null : $byId[$r['parent']] ?? $r['parent'], $r['order']], \SpacePress\Seam::toPhp(\SpacePress\Seam::kindList('docs', ['orderBy' => ['order' => 'asc'], 'where' => ['parent' => null]], true)));
 
 // Components in Markdown: the file's tags are the app's blocks, stored as blocks, rendered through
 // the components on the route, and written back as the same tags.
@@ -306,13 +306,13 @@ $page = fetch("$url/docs/guides/install/");
 preg_match('#<aside class="callout callout-warning".*?</aside>#s', $page['body'], $callout);
 preg_match('#<span class="badge">.*?</span>#s', $page['body'], $badge);
 $out['blocks rendered'] = [$page['status'], preg_replace('/\s+/', ' ', $callout[0] ?? ''), $badge[0] ?? null];
-$out['blocks back'] = \TypedPress\Sync\Markdown::fromBlocks($stored);
+$out['blocks back'] = \SpacePress\Sync\Markdown::fromBlocks($stored);
 $out['blocks twin'] = fetch("$url/docs/guides/install.md")['body'];
 // An editor changes a prop in the block editor: the file's tag follows.
 $changed = str_replace('{"type":"warning","title":"Before you start"}', '{"type":"note","title":"Before you start"}', $stored);
-$out['blocks edited back'] = \TypedPress\Sync\Markdown::fromBlocks($changed);
+$out['blocks edited back'] = \SpacePress\Sync\Markdown::fromBlocks($changed);
 // The editor stores a cleared text field or choice as "": written back, the prop isn't there.
-$out['blocks cleared back'] = \TypedPress\Sync\Markdown::fromBlocks('<!-- wp:docskind/status {"label":"","kind":""} /-->' . "\n\n" . '<!-- wp:docskind/badge {"label":"x","count":3} /-->');
+$out['blocks cleared back'] = \SpacePress\Sync\Markdown::fromBlocks('<!-- wp:docskind/status {"label":"","kind":""} /-->' . "\n\n" . '<!-- wp:docskind/badge {"label":"x","count":3} /-->');
 // What a Markdown file can't say about a block is refused with the reason, never stored half.
 foreach ([
     'unknown tag' => "<Tabs>\nx\n</Tabs>\n",
@@ -323,14 +323,14 @@ foreach ([
     'unclosed' => "<Callout type=\"note\">\nx\n",
 ] as $case => $markdown) {
     try {
-        \TypedPress\Sync\Markdown::toBlocks($markdown);
+        \SpacePress\Sync\Markdown::toBlocks($markdown);
         $out['blocks refused'][$case] = null;
-    } catch (\TypedPress\HttpError $e) {
+    } catch (\SpacePress\HttpError $e) {
         $out['blocks refused'][$case] = $e->getMessage();
     }
 }
 // A tag inside a code fence is code, not a block.
-$out['blocks fenced'] = \TypedPress\Sync\Markdown::toBlocks("```md\n<Callout type=\"note\">\n```\n");
+$out['blocks fenced'] = \SpacePress\Sync\Markdown::toBlocks("```md\n<Callout type=\"note\">\n```\n");
 
 // Code blocks (docs/decisions/2026-11-13-code-blocks.md): highlighted on the route, with titles,
 // marked lines and a tab group, no script; written back as the same fences.
@@ -341,23 +341,23 @@ $x = new DOMXPath($html);
 $text = static fn (?DOMNode $n): ?string => $n === null ? null : trim($n->textContent);
 $out['code'] = [
     'status' => $setup['status'],
-    'titles' => array_map($text, iterator_to_array($x->query('//figcaption[@class="typedpress-code-title"]'))),
+    'titles' => array_map($text, iterator_to_array($x->query('//figcaption[@class="spacepress-code-title"]'))),
     'keywords' => array_map($text, iterator_to_array($x->query('//pre[contains(@class, "language-ts")]//span[@class="hljs-keyword"]'))),
-    'marked' => array_map($text, iterator_to_array($x->query('//span[contains(@class, "typedpress-code-marked")]'))),
-    'tabs' => array_map($text, iterator_to_array($x->query('//div[@class="typedpress-code-group"]/label'))),
-    'tab inputs' => $x->query('//div[@class="typedpress-code-group"]/input[@type="radio"]')->length,
-    'panels' => array_map(static fn (DOMNode $n): string => trim($n->textContent), iterator_to_array($x->query('//div[@class="typedpress-code-group"]/figure'))),
+    'marked' => array_map($text, iterator_to_array($x->query('//span[contains(@class, "spacepress-code-marked")]'))),
+    'tabs' => array_map($text, iterator_to_array($x->query('//div[@class="spacepress-code-group"]/label'))),
+    'tab inputs' => $x->query('//div[@class="spacepress-code-group"]/input[@type="radio"]')->length,
+    'panels' => array_map(static fn (DOMNode $n): string => trim($n->textContent), iterator_to_array($x->query('//div[@class="spacepress-code-group"]/figure'))),
     'plain' => $text($x->query('//pre[contains(@class, "language-text")]')->item(0)),
     'plain spans' => $x->query('//pre[contains(@class, "language-text")]//span[starts-with(@class, "hljs")]')->length,
-    'stylesheet' => $x->query('//link[@id="typedpress-code-css"]')->length,
+    'stylesheet' => $x->query('//link[@id="spacepress-code-css"]')->length,
     'scripts' => array_values(array_filter(array_map(static fn (DOMNode $n): string => (string) $n->getAttribute('src'), iterator_to_array($x->query('//script[@src]'))), static fn (string $s): bool => str_contains($s, 'code'))),
 ];
-$css = fetch($x->query('//link[@id="typedpress-code-css"]')->item(0)?->getAttribute('href') ?? "$url/none");
-$out['code css'] = [$css['status'], str_contains($css['body'], '@media (prefers-color-scheme: dark)'), str_contains($css['body'], '.typedpress-code .hljs-keyword'),
+$css = fetch($x->query('//link[@id="spacepress-code-css"]')->item(0)?->getAttribute('href') ?? "$url/none");
+$out['code css'] = [$css['status'], str_contains($css['body'], '@media (prefers-color-scheme: dark)'), str_contains($css['body'], '.spacepress-code .hljs-keyword'),
     // A page's own theme switch wins over the scheme: data-theme="dark" or "light" on <html>.
-    str_contains($css['body'], ':root[data-theme="dark"] .typedpress-code .hljs-keyword') && str_contains($css['body'], ':root:not([data-theme="light"]) .typedpress-code .hljs-keyword')];
+    str_contains($css['body'], ':root[data-theme="dark"] .spacepress-code .hljs-keyword') && str_contains($css['body'], ':root:not([data-theme="light"]) .spacepress-code .hljs-keyword')];
 $setupPost = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'setup'", $type));
-$out['code back'] = \TypedPress\Sync\Markdown::fromBlocks((string) get_post_field('post_content', $setupPost));
+$out['code back'] = \SpacePress\Sync\Markdown::fromBlocks((string) get_post_field('post_content', $setupPost));
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

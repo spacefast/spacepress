@@ -1,5 +1,5 @@
 import { __experimentalGrid as Grid } from '@wordpress/components';
-import type { Duotone } from '@typedpress-admin/global-styles-engine';
+import type { Duotone } from '@spacepress-admin/global-styles-engine';
 
 const DuotoneExamples = ( {
 	duotones,
@@ -16,7 +16,7 @@ const DuotoneExamples = ( {
 				return (
 					<Grid
 						key={ duotone.slug }
-						className="typedpress-admin-style-book__duotone-example"
+						className="spacepress-admin-style-book__duotone-example"
 						columns={ 2 }
 						rowGap={ 8 }
 						columnGap={ 8 }
@@ -34,7 +34,7 @@ const DuotoneExamples = ( {
 							return (
 								<div
 									key={ color }
-									className="typedpress-admin-style-book__color-example"
+									className="spacepress-admin-style-book__color-example"
 									style={ { backgroundColor: color } }
 								/>
 							);

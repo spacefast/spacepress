@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Algorithm;
+namespace SpacePress\Identity\Vendor\Cose\Algorithm;
 
-use TypedPress\Identity\Vendor\Cose\Key\Key;
+use SpacePress\Identity\Vendor\Cose\Key\Key;
 
 /**
  * An algorithm that can enforce the restrictions a COSE key carries: "alg" (label 3) and "key_ops" (label 4), as

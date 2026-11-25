@@ -1,4 +1,4 @@
-//! Lowers oxc's TypeScript AST into TypedPress's IR, enforcing the supported subset.
+//! Lowers oxc's TypeScript AST into SpacePress's IR, enforcing the supported subset.
 //! Every construct outside the subset is a build error that names the construct
 //! and says what to write instead.
 
@@ -49,7 +49,7 @@ impl Lowerer {
     }
 
     fn unsupported<T>(&self, s: oxc_span::Span, what: &str, help: &str) -> Result<T> {
-        let mut d = Diag::new(self.sp(s), format!("TypedPress code doesn't support {what}")).code(
+        let mut d = Diag::new(self.sp(s), format!("SpacePress code doesn't support {what}")).code(
             if what.contains("class") || self.class_context.get() {
                 crate::diag::Code::Classes
             } else {
@@ -1345,7 +1345,7 @@ impl Lowerer {
                     };
                     // `key` identifies list items for React's reconciler. It stays in the IR so its
                     // expression evaluates in source order, as in React; it never reaches the HTML
-                    // (`\TypedPress\Html` skips it) or a component's props (below).
+                    // (`\SpacePress\Html` skips it) or a component's props (below).
                     // On an element, the compiler decides: a "use client" component attaches the
                     // ref, a server component refuses it (compile.rs). A component has no element
                     // to hand its caller.
@@ -1581,7 +1581,7 @@ impl Lowerer {
                             }
                             if !p.computed && p.key.is_specific_static_name("__proto__") {
                                 // `__proto__: null` makes a null-prototype object. Any other
-                                // value would install a prototype, which TypedPress doesn't model;
+                                // value would install a prototype, which SpacePress doesn't model;
                                 // shorthand and methods define an own property only in name.
                                 if !p.shorthand && !p.method && matches!(p.value, a::Expression::NullLiteral(_)) {
                                     props.push(Prop::NullPrototype);
@@ -3016,7 +3016,7 @@ mod tests {
     #[test]
     fn derived_constructors_cannot_read_this_from_the_enclosing_function_before_super() {
         let dir = tempfile::tempdir().unwrap();
-        let entry = dir.path().join("typedpress.config.ts");
+        let entry = dir.path().join("spacepress.config.ts");
         for constructor in [
             "constructor(value = this.x) { super(); }",
             "constructor() { super(this.x); }",
@@ -3040,7 +3040,7 @@ mod tests {
     #[test]
     fn lone_surrogates_are_refused_wherever_a_string_is_spelled() {
         let tmp = tempfile::tempdir().unwrap();
-        let entry = tmp.path().join("typedpress.config.ts");
+        let entry = tmp.path().join("spacepress.config.ts");
         for source in [
             r"export default '\uD800';",
             r"export default `a\uDC00b`;",

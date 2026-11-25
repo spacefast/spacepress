@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Exception\CannotCreateTag;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Type;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Exception\CannotCreateTag;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Type;
 
 abstract class TagWithType extends BaseTag
 {

@@ -2,12 +2,12 @@
 /**
  * Email field definition for core user fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'          => 'email',
-	'label'         => __( 'Email', 'typedpress-admin' ),
+	'label'         => __( 'Email', 'spacepress-admin' ),
 	'enableSorting' => true,
 	'isValid'       => array(
 		'required' => true,

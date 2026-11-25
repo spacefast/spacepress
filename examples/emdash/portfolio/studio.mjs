@@ -11,12 +11,12 @@ import { promisify } from 'node:util';
 const execute = promisify(execFile);
 const source = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(source, '../../..');
-const first = resolve(process.env.TP_BIN ?? join(repo, 'target/debug/typedpress'));
-const evidence = resolve(process.env.TP_PORTFOLIO_EVIDENCE ?? await mkdtemp(join(tmpdir(), 'typedpress-portfolio-evidence-')));
+const first = resolve(process.env.SP_BIN ?? join(repo, 'target/debug/spacepress'));
+const evidence = resolve(process.env.SP_PORTFOLIO_EVIDENCE ?? await mkdtemp(join(tmpdir(), 'spacepress-portfolio-evidence-')));
 
 async function port() {
-  // TP_EXAMPLE_PORT pins the WordPress port (a shared machine's assigned lane); otherwise any free one.
-  if (process.env.TP_EXAMPLE_PORT) return Number(process.env.TP_EXAMPLE_PORT);
+  // SP_EXAMPLE_PORT pins the WordPress port (a shared machine's assigned lane); otherwise any free one.
+  if (process.env.SP_EXAMPLE_PORT) return Number(process.env.SP_EXAMPLE_PORT);
   const listener = createServer();
   await new Promise((done) => listener.listen(0, '127.0.0.1', done));
   const address = listener.address();
@@ -29,16 +29,16 @@ async function port() {
 
 export async function startStudio() {
   await mkdir(evidence, { recursive: true });
-  const root = await mkdtemp(join(tmpdir(), 'typedpress-portfolio-studio-'));
+  const root = await mkdtemp(join(tmpdir(), 'spacepress-portfolio-studio-'));
   const project = join(root, 'app');
-  const site = join(project, '.tp/dev/wordpress');
+  const site = join(project, '.sp/dev/wordpress');
   const command = async (args) => {
     const result = await execute(first, args, { cwd: repo, timeout: 600000, maxBuffer: 8 * 1024 * 1024 });
     return result.stdout.trim();
   };
   const wp = (...args) => command(['wp', '--site', project, ...args]);
   await mkdir(project);
-  await cp(join(source, 'typedpress.config.ts'), join(project, 'typedpress.config.ts'));
+  await cp(join(source, 'spacepress.config.ts'), join(project, 'spacepress.config.ts'));
   const receipt = { root, project, site, evidence, binary: first, state: 'starting' };
   const save = () => writeFile(join(evidence, 'studio.json'), JSON.stringify(receipt, null, 2) + '\n');
   await save();
@@ -59,10 +59,10 @@ export async function startStudio() {
     const base = status.siteUrl.replace(/\/$/, '');
     Object.assign(receipt, { base, state: 'running' });
     await save();
-    await cp(join(project, '.tp/dev'), join(evidence, 'dev-receipt'), { recursive: true, filter: (path) => !path.includes('/wordpress') });
-    await cp(join(source, 'frontend'), join(site, 'wp-content/plugins/typedpress-portfolio-frontend'), { recursive: true });
-    await wp('plugin', 'activate', 'typedpress-portfolio-frontend');
-    const password = await wp('user', 'application-password', 'create', 'admin', 'typedpress-portfolio-acceptance', '--porcelain');
+    await cp(join(project, '.sp/dev'), join(evidence, 'dev-receipt'), { recursive: true, filter: (path) => !path.includes('/wordpress') });
+    await cp(join(source, 'frontend'), join(site, 'wp-content/plugins/spacepress-portfolio-frontend'), { recursive: true });
+    await wp('plugin', 'activate', 'spacepress-portfolio-frontend');
+    const password = await wp('user', 'application-password', 'create', 'admin', 'spacepress-portfolio-acceptance', '--porcelain');
     const authorization = `Basic ${Buffer.from(`admin:${password}`).toString('base64')}`;
     const request = async (path, { method = 'GET', body, headers = {}, authenticated = true } = {}) => {
       const response = await fetch(`${base}${path}`, { method, headers: { ...(authenticated ? { authorization } : {}), ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30000) });
@@ -70,7 +70,7 @@ export async function startStudio() {
       assert.ok(response.ok, `${method} ${path}: ${response.status} ${JSON.stringify(result)}`);
       return result.data ?? result;
     };
-    const api = (path, options) => request(`/wp-json/typedpress/v1${path}`, options);
+    const api = (path, options) => request(`/wp-json/spacepress/v1${path}`, options);
     const uploads = [];
     const uploadBytes = async ({ bytes, filename, type = 'image/png', alt = '' }) => {
       const response = await fetch(`${base}/wp-json/wp/v2/media`, { method: 'POST', headers: { authorization, 'content-type': type, 'content-disposition': `attachment; filename="${filename}"` }, body: bytes, signal: AbortSignal.timeout(60000) });

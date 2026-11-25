@@ -10,10 +10,10 @@ $wp = wpSite('react-email-spike', [
     'schema' => require $argv[1] . '/schema.php',
     'functions' => file_get_contents($argv[1] . '/functions.php'),
 ]);
-\TypedPress\Env::isolate(['TP_MAIL_SENDER_DOMAIN' => 'example.test']);
+\SpacePress\Env::isolate(['SP_MAIL_SENDER_DOMAIN' => 'example.test']);
 
 $captured = [];
-add_filter('tp_mail_transport', static function ($accepted, array $payload) use (&$captured): bool {
+add_filter('sp_mail_transport', static function ($accepted, array $payload) use (&$captured): bool {
     $captured[] = $payload;
     return true;
 }, 10, 2);
@@ -22,7 +22,7 @@ foreach ($messages as $index => $message) {
     [$status] = $wp->handle('POST', '/actions/invite', json_encode($message, JSON_THROW_ON_ERROR));
     eq('compiled handler queues invitation', $status, 200);
     eq('delivery waits for the jobs tick', count($captured), $index);
-    ActionScheduler_QueueRunner::instance()->run('TypedPress tests');
+    ActionScheduler_QueueRunner::instance()->run('SpacePress tests');
     eq('jobs tick delivers once', count($captured), $index + 1);
     $payload = $captured[$index] ?? [];
     eq('mail transport receives both original rendered bodies', [

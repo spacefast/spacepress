@@ -3,11 +3,11 @@ import {
 	getStyle,
 	getPalettes,
 	generateGlobalStyles,
-} from '@typedpress-admin/global-styles-engine';
+} from '@spacepress-admin/global-styles-engine';
 import type {
 	GlobalStylesConfig,
 	GlobalStylesSettings,
-} from '@typedpress-admin/global-styles-engine';
+} from '@spacepress-admin/global-styles-engine';
 import { Disabled, Composite } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import {
@@ -357,7 +357,7 @@ const StyleBook = ( { id }: StyleBookProps ) => {
 
 	return (
 		<div
-			className="typedpress-admin-style-book"
+			className="spacepress-admin-style-book"
 			style={ {
 				color: textColor,
 				background: backgroundColor,
@@ -419,7 +419,7 @@ export const StyleBookBody = ( {
 	return (
 		<BlockEditorProvider settings={ settings }>
 			<Iframe
-				className="typedpress-admin-style-book__iframe"
+				className="spacepress-admin-style-book__iframe"
 				name="style-book-canvas"
 				tabIndex={ 0 }
 				onLoad={ handleLoad }
@@ -428,7 +428,7 @@ export const StyleBookBody = ( {
 				<EditorStyles styles={ styles } />
 				<style>{ STYLE_BOOK_IFRAME_STYLES }</style>
 				<Examples
-					className="typedpress-admin-style-book__examples"
+					className="spacepress-admin-style-book__examples"
 					category={ category }
 					examples={ examples }
 					label={
@@ -437,11 +437,11 @@ export const StyleBookBody = ( {
 									// translators: %s: Category of blocks, e.g. Text.
 									__(
 										'Examples of blocks in the %s category',
-										'typedpress-admin'
+										'spacepress-admin'
 									),
 									title
 							  )
-							: __( 'Examples of blocks', 'typedpress-admin' )
+							: __( 'Examples of blocks', 'spacepress-admin' )
 					}
 					isSelected={ isSelected }
 					onSelect={ onSelect }
@@ -494,11 +494,11 @@ const Examples = memo(
 					examples.subcategories?.map( ( subcategory ) => {
 						return (
 							<Composite.Group
-								className="typedpress-admin-style-book__subcategory"
+								className="spacepress-admin-style-book__subcategory"
 								key={ `subcategory-${ subcategory.slug }` }
 							>
 								<Composite.GroupLabel>
-									<h2 className="typedpress-admin-style-book__subcategory-title">
+									<h2 className="spacepress-admin-style-book__subcategory-title">
 										{ subcategory.title }
 									</h2>
 								</Composite.GroupLabel>
@@ -568,7 +568,7 @@ const Example = ( {
 		<div role="row">
 			<div role="gridcell">
 				<Composite.Item
-					className={ clsx( 'typedpress-admin-style-book__example', {
+					className={ clsx( 'spacepress-admin-style-book__example', {
 						'is-selected': isSelected,
 						'is-disabled-example': !! disabledProps?.disabled,
 					} ) }
@@ -579,7 +579,7 @@ const Example = ( {
 									// translators: %s: Title of a block, e.g. Heading.
 									__(
 										'Open %s styles in Styles panel',
-										'typedpress-admin'
+										'spacepress-admin'
 									),
 									title
 							  )
@@ -590,14 +590,14 @@ const Example = ( {
 					onClick={ onClick }
 					{ ...disabledProps }
 				>
-					<span className="typedpress-admin-style-book__example-title">
+					<span className="spacepress-admin-style-book__example-title">
 						{ title }
 					</span>
 					<div
-						className="typedpress-admin-style-book__example-preview"
+						className="spacepress-admin-style-book__example-preview"
 						aria-hidden
 					>
-						<Disabled className="typedpress-admin-style-book__example-preview__content">
+						<Disabled className="spacepress-admin-style-book__example-preview__content">
 							{ content ? (
 								content
 							) : (

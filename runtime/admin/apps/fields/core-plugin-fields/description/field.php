@@ -2,12 +2,12 @@
 /**
  * Description field definition for core plugins fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Description', 'typedpress-admin' ),
+	'label'              => __( 'Description', 'spacepress-admin' ),
 	'enableHiding'       => true,
 	'filterBy'           => false,
 	'enableGlobalSearch' => true,

@@ -1,7 +1,7 @@
 import { useParams } from '@wordpress/route';
 import { useMemo } from '@wordpress/element';
 import type { Term } from '@wordpress/core-data';
-import type { Action } from '@typedpress-admin/dataviews';
+import type { Action } from '@spacepress-admin/dataviews';
 import { useDeleteTermAction } from './delete-term';
 import { useFullEditTermAction } from './full-edit-term';
 import { viewTermAction } from './view-term';

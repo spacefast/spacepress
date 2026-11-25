@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Brick\Math\Exception;
+namespace SpacePress\Identity\Vendor\Brick\Math\Exception;
 
-use TypedPress\Identity\Vendor\Brick\Math\BigInteger;
+use SpacePress\Identity\Vendor\Brick\Math\BigInteger;
 use RuntimeException;
 
 use function sprintf;

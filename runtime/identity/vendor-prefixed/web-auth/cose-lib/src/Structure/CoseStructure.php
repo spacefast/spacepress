@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Structure;
+namespace SpacePress\Identity\Vendor\Cose\Structure;
 
-use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
-use TypedPress\Identity\Vendor\CBOR\CBORObject;
-use TypedPress\Identity\Vendor\CBOR\ListObject;
-use TypedPress\Identity\Vendor\CBOR\TextStringObject;
+use SpacePress\Identity\Vendor\CBOR\ByteStringObject;
+use SpacePress\Identity\Vendor\CBOR\CBORObject;
+use SpacePress\Identity\Vendor\CBOR\ListObject;
+use SpacePress\Identity\Vendor\CBOR\TextStringObject;
 use Stringable;
 
 /**

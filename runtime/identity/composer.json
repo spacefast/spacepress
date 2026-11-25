@@ -1,6 +1,6 @@
 {
-  "name": "spacefast/typedpress-identity",
-  "description": "Bundled passkey, JWT and TOTP libraries for the TypedPress Identity plugin",
+  "name": "spacefast/spacepress-identity",
+  "description": "Bundled passkey, JWT and TOTP libraries for the SpacePress Identity plugin",
   "type": "library",
   "license": "GPL-2.0-or-later",
   "require": {
@@ -19,14 +19,14 @@
   },
   "extra": {
     "strauss": {
-      "namespace_prefix": "TypedPress\\Identity\\Vendor\\",
-      "classmap_prefix": "TypedPress_Identity_Vendor_",
-      "constant_prefix": "TP_IDENTITY_VENDOR_",
+      "namespace_prefix": "SpacePress\\Identity\\Vendor\\",
+      "classmap_prefix": "SpacePress_Identity_Vendor_",
+      "constant_prefix": "SP_IDENTITY_VENDOR_",
       "target_directory": "vendor-prefixed",
       "delete_vendor_packages": true,
       "exclude_from_prefix": {
         "namespaces": [
-          "TypedPress\\"
+          "SpacePress\\"
         ]
       },
       "exclude_constants": {

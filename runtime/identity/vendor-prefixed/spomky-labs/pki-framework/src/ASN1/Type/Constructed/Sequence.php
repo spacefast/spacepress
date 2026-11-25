@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Structure;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Structure;
 
 /**
  * Implements *SEQUENCE* and *SEQUENCE OF* types.

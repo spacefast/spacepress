@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
-use TypedPress\Identity\Vendor\Firebase\JWT\ExpiredException;
-use TypedPress\Identity\Vendor\Firebase\JWT\JWT;
-use TypedPress\Identity\Vendor\Firebase\JWT\Key;
+use SpacePress\Identity\Vendor\Firebase\JWT\ExpiredException;
+use SpacePress\Identity\Vendor\Firebase\JWT\JWT;
+use SpacePress\Identity\Vendor\Firebase\JWT\Key;
 
 /** RS256 signing keys: sealed private keys in an option, ten-minute overlap after rotation. */
 final class Keys
 {
-    private const OPTION = "tp_identity_signing_keys";
+    private const OPTION = "sp_identity_signing_keys";
 
     public static function rotate(): void
     {

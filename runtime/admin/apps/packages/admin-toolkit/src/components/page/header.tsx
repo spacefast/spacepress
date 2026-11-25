@@ -1,6 +1,6 @@
 import clsx from 'clsx';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
-import { Stack } from '@typedpress-admin/design-system';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components
+import { Stack } from '@spacepress-admin/design-system';
 import { __experimentalHeading as Heading } from '@wordpress/components';
 import { SidebarToggleSlot } from './sidebar-toggle-slot';
 
@@ -24,14 +24,14 @@ export default function Header( {
 	return (
 		<Stack
 			direction="column"
-			className={ clsx( 'typedpress-admin-page__header', {
+			className={ clsx( 'spacepress-admin-page__header', {
 				'has-tabs': tabs,
 			} ) }
 			render={ <header /> }
 		>
 			<Stack
 				direction="row"
-				className="typedpress-admin-page__header-title"
+				className="spacepress-admin-page__header-title"
 				justify="space-between"
 				gap={ 2 }
 				align="center"
@@ -40,7 +40,7 @@ export default function Header( {
 					{ showSidebarToggle && (
 						<SidebarToggleSlot
 							bubblesVirtually
-							className="typedpress-admin-page__sidebar-toggle-slot"
+							className="spacepress-admin-page__sidebar-toggle-slot"
 						/>
 					) }
 					{ title && (
@@ -61,7 +61,7 @@ export default function Header( {
 				</Stack>
 			</Stack>
 			{ subTitle && (
-				<p className="typedpress-admin-page__header-subtitle">{ subTitle }</p>
+				<p className="spacepress-admin-page__header-subtitle">{ subTitle }</p>
 			) }
 			{ tabs }
 		</Stack>

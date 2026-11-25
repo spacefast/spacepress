@@ -2,17 +2,17 @@
 /**
  * Field Collections Registration System
  *
- * This file provides the API for registering field collections in TypedPress Admin.
+ * This file provides the API for registering field collections in SpacePress Admin.
  *
- * @package TypedPressAdmin
+ * @package SpacePressAdmin
  */
 
 // Global storage for registered field collections.
-global $tp_admin_field_collections;
-$tp_admin_field_collections = array();
+global $sp_admin_field_collections;
+$sp_admin_field_collections = array();
 
 /**
- * Register a field collection for TypedPress Admin.
+ * Register a field collection for SpacePress Admin.
  *
  * This function registers a field collection that will be available
  * for specific entities (postType, taxonomy, user, etc.).
@@ -25,8 +25,8 @@ $tp_admin_field_collections = array();
  * @param array       $fields        Array of field definitions keyed by field ID.
  * @param string|null $fields_module The script module handle for field extensions.
  */
-function tp_admin_register_field_collection( $id, $kind, $name, $fields, $fields_module = null ) {
-	global $tp_admin_field_collections;
+function sp_admin_register_field_collection( $id, $kind, $name, $fields, $fields_module = null ) {
+	global $sp_admin_field_collections;
 
 	if ( empty( $id ) || empty( $kind ) || empty( $fields ) ) {
 		_doing_it_wrong( __FUNCTION__, 'Field collection must have "id", "kind", and "fields".', '1.0.0' );
@@ -34,7 +34,7 @@ function tp_admin_register_field_collection( $id, $kind, $name, $fields, $fields
 	}
 
 	// Check if collection with same ID already exists.
-	foreach ( $tp_admin_field_collections as $existing_collection ) {
+	foreach ( $sp_admin_field_collections as $existing_collection ) {
 		if ( $existing_collection['id'] === $id ) {
 			return;
 		}
@@ -48,7 +48,7 @@ function tp_admin_register_field_collection( $id, $kind, $name, $fields, $fields
 		'fields_module' => $fields_module,
 	);
 
-	$tp_admin_field_collections[] = $collection;
+	$sp_admin_field_collections[] = $collection;
 }
 
 /**
@@ -58,12 +58,12 @@ function tp_admin_register_field_collection( $id, $kind, $name, $fields, $fields
  * @param string $name Entity name (attachment, product, etc.).
  * @return array Array of matching collections.
  */
-function tp_admin_get_field_collections( $kind, $name ) {
-	global $tp_admin_field_collections;
+function sp_admin_get_field_collections( $kind, $name ) {
+	global $sp_admin_field_collections;
 
 	$matching_collections = array();
 
-	foreach ( $tp_admin_field_collections as $collection ) {
+	foreach ( $sp_admin_field_collections as $collection ) {
 		// Must match kind.
 		if ( $collection['kind'] !== $kind ) {
 			continue;
@@ -83,7 +83,7 @@ function tp_admin_get_field_collections( $kind, $name ) {
  *
  * @return array Array of all registered collections.
  */
-function tp_admin_get_all_field_collections() {
-	global $tp_admin_field_collections;
-	return $tp_admin_field_collections ?? array();
+function sp_admin_get_all_field_collections() {
+	global $sp_admin_field_collections;
+	return $sp_admin_field_collections ?? array();
 }

@@ -2,7 +2,7 @@
 // properties, arrays, arguments, class instances and statics, built-in values, union narrowing,
 // and the TypeError for a primitive right side. Every action runs under Node and as compiled PHP;
 // the JSON results must be byte-identical. `in-helpers.mjs` runs the same checks untyped.
-import { defineConfig, mutation as server } from "typedpress";
+import { defineConfig, mutation as server } from "spacepress";
 import { inUntyped as inUntypedImpl } from "./in-helpers.mjs";
 
 const run = (handler: () => unknown) => server({}, handler);

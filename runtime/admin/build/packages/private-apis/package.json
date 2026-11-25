@@ -1,7 +1,7 @@
 {
-	"name": "@typedpress-admin/private-apis",
+	"name": "@spacepress-admin/private-apis",
 	"version": "1.0.0",
-	"description": "Private APIs for TypedPress Admin",
+	"description": "Private APIs for SpacePress Admin",
 	"type": "module",
 	"wpModule": true,
 	"exports": {

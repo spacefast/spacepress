@@ -1,4 +1,4 @@
-// Imports a pinned upstream seed.json into a TypedPress site through its API (`/wp-json/typedpress/v1`) as the
+// Imports a pinned upstream seed.json into a SpacePress site through its API (`/wp-json/spacepress/v1`) as the
 // administrator: settings, the primary menu, categories, tags, byline credits, the widget areas,
 // posts and pages with their terms, and the posts' cover images. Test seeding only: nothing here
 // runs when the template serves pages.
@@ -46,7 +46,7 @@ export async function seed({ backend, authorization, mode, seedFile, wp }) {
     if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${JSON.stringify(json)}`);
     return json.data ?? json;
   }
-  const first = (path, ...rest) => api(rest.length ? rest[0] : 'GET', `/wp-json/typedpress/v1${path}`, ...rest.slice(1));
+  const first = (path, ...rest) => api(rest.length ? rest[0] : 'GET', `/wp-json/spacepress/v1${path}`, ...rest.slice(1));
 
   await first('/settings', 'PATCH', { title: data.settings.title, tagline: data.settings.tagline });
   await wp('option', 'update', 'comment_moderation', '1');

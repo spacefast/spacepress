@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\NameConverter;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\NameConverter;
 
 /**
  * Defines the interface for property name converters.

@@ -1,7 +1,7 @@
 //! The input of a `query()`, `mutation()`, `job(options, handler)` or `cron()` is its handler's first
 //! parameter type: `async ({ id, limit = 10 }: { id: number; limit?: number }) => ...`. This module
 //! reads that type before anything uses the input, and turns it into the input fields the rest of
-//! TypedPress already knows (the runtime's validation, the client, the Ability and OpenAPI schemas,
+//! SpacePress already knows (the runtime's validation, the client, the Ability and OpenAPI schemas,
 //! admin screens), so a typed input is validated exactly as the old `input: { ... }` columns were.
 
 use super::*;

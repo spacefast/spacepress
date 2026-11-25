@@ -1,6 +1,6 @@
 //! examples/kitchen-sink uses every authoring feature, and runs.
 //!
-//! `kitchen_sink_exercises_public_api` reads the declarations in types/typedpress with the oxc
+//! `kitchen_sink_exercises_public_api` reads the declarations in types/spacepress with the oxc
 //! parser and requires the example to use each one: every value a module exports, every method of
 //! an exported object or interface (`mail.render`, `db.delete`, `wp.posts.clone`, the kind API,
 //! the collection hooks, the column modifiers), every `defineConfig` key, every page export and
@@ -30,75 +30,75 @@ const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
 /// The modules an app imports from, with the file that declares each.
 const MODULES: &[(&str, &str)] = &[
-    ("typedpress", "index.d.ts"),
-    ("typedpress/app", "app.d.ts"),
-    ("typedpress/client", "client.d.ts"),
-    ("typedpress/content", "content.d.ts"),
+    ("spacepress", "index.d.ts"),
+    ("spacepress/app", "app.d.ts"),
+    ("spacepress/client", "client.d.ts"),
+    ("spacepress/content", "content.d.ts"),
     ("php/wordpress", "wordpress.d.ts"),
 ];
 
 /// Interfaces whose methods an app calls on a value it gets from a module: (module, interface,
 /// label in a failure, the ways the example reaches a value of it).
 const INTERFACES: &[(&str, &str, &str, &[Reach])] = &[
-    ("typedpress", "ColumnBuilder", "ColumnBuilder", &[Reach::Builder]),
-    ("typedpress", "Database", "db", &[Reach::Member("typedpress", "db")]),
+    ("spacepress", "ColumnBuilder", "ColumnBuilder", &[Reach::Builder]),
+    ("spacepress", "Database", "db", &[Reach::Member("spacepress", "db")]),
     (
-        "typedpress",
+        "spacepress",
         "InsertBuilder",
         "db.insert()",
-        &[Reach::Chain("typedpress", "db")],
+        &[Reach::Chain("spacepress", "db")],
     ),
     (
-        "typedpress",
+        "spacepress",
         "UpdateBuilder",
         "db.update()",
-        &[Reach::Chain("typedpress", "db")],
+        &[Reach::Chain("spacepress", "db")],
     ),
     (
-        "typedpress",
+        "spacepress",
         "UpdateSetQuery",
         "db.update().set()",
-        &[Reach::Chain("typedpress", "db")],
+        &[Reach::Chain("spacepress", "db")],
     ),
     (
-        "typedpress",
+        "spacepress",
         "DeleteQuery",
         "db.delete()",
-        &[Reach::Chain("typedpress", "db")],
+        &[Reach::Chain("spacepress", "db")],
     ),
     (
-        "typedpress",
+        "spacepress",
         "WriteQuery",
         "a db write",
-        &[Reach::Chain("typedpress", "db")],
+        &[Reach::Chain("spacepress", "db")],
     ),
     (
-        "typedpress",
+        "spacepress",
         "CollectionQuery",
         "db.query.<kind>",
-        &[Reach::MemberOf("typedpress", "db", "query")],
+        &[Reach::MemberOf("spacepress", "db", "query")],
     ),
     (
-        "typedpress",
+        "spacepress",
         "GlobalApi",
         "db.globals.<global>",
-        &[Reach::MemberOf("typedpress", "db", "globals")],
+        &[Reach::MemberOf("spacepress", "db", "globals")],
     ),
     (
-        "typedpress",
+        "spacepress",
         "KindApi",
-        "<kind> from typedpress:db",
-        &[Reach::Import("typedpress:db"), Reach::SystemOf("typedpress:db")],
+        "<kind> from spacepress:db",
+        &[Reach::Import("spacepress:db"), Reach::SystemOf("spacepress:db")],
     ),
-    ("typedpress", "Job", "<job>", &[Reach::Chain("typedpress", "job")]),
-    ("typedpress", "CollectionHooks", "collection hook", &[Reach::HookKey]),
-    ("typedpress", "ConfigInput", "defineConfig", &[Reach::ConfigKey]),
+    ("spacepress", "Job", "<job>", &[Reach::Chain("spacepress", "job")]),
+    ("spacepress", "CollectionHooks", "collection hook", &[Reach::HookKey]),
+    ("spacepress", "ConfigInput", "defineConfig", &[Reach::ConfigKey]),
 ];
 
 /// How the example reaches a value whose members are required.
 #[derive(Clone, Copy)]
 enum Reach {
-    /// `text().min(1).method(...)`: a call chain that starts at a field builder of "typedpress"
+    /// `text().min(1).method(...)`: a call chain that starts at a field builder of "spacepress"
     /// (a function the declarations say returns a `ColumnBuilder`).
     Builder,
     /// `<name>.a(...).method(...)`: a call chain that starts at this import.
@@ -120,7 +120,7 @@ enum Reach {
 /// Features the example leaves out, each with the reason. Keys are the labels a failure prints.
 const NOT_USED: &[(&str, &str)] = &[
     // Locales are turned off in normal builds (docs/decisions/2026-11-17-locales-off.md): setting
-    // either fails `typedpress build` unless TYPEDPRESS_LOCALES is set, which examples never do.
+    // either fails `spacepress build` unless SPACEPRESS_LOCALES is set, which examples never do.
     ("ColumnBuilder.localized", "locales are off in normal builds"),
     ("defineConfig.locales", "locales are off in normal builds"),
     // The example has guarded pages, forms and request-time reads; `output: "static"` prebuilds
@@ -131,15 +131,15 @@ const NOT_USED: &[(&str, &str)] = &[
     ),
     // The example renders its own pages; `frontend` hands rendering to another site or turns it off.
     ("defineConfig.frontend", "the app renders its own pages"),
-    // The schedule screen lives in TypedPress Admin, which `admin: false` leaves out of the build.
+    // The schedule screen lives in SpacePress Admin, which `admin: false` leaves out of the build.
     (
         "defineConfig.admin",
-        "the example's admin screen needs TypedPress Admin",
+        "the example's admin screen needs SpacePress Admin",
     ),
     // Sealed mode refuses every plugin the config does not pin, which would stop a reader from
     // trying the example beside their own plugins. docs/sealed.md and tests/wp cover it.
     ("defineConfig.sealed", "an example site should accept other plugins"),
-    // Runtime schema changes are made on the running site and committed back by `typedpress pull`;
+    // Runtime schema changes are made on the running site and committed back by `spacepress pull`;
     // an example that ships none would only switch the option on. tests/runtime_schema.rs covers it.
     (
         "defineConfig.runtimeSchema",
@@ -148,7 +148,7 @@ const NOT_USED: &[(&str, &str)] = &[
     // Connectors are a host's (`sp_connectors_call`); the example runs on plain WordPress, where a
     // call answers 503. tests/spacepress_cutover.rs and tests/php/connectors_test.php cover them.
     (
-        "typedpress::connectors",
+        "spacepress::connectors",
         "connectors need a host transport the example site lacks",
     ),
     (
@@ -169,7 +169,7 @@ fn files(dir: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     for entry in std::fs::read_dir(dir).unwrap() {
         let entry = entry.unwrap();
-        if matches!(entry.file_name().to_str(), Some("dist" | ".tp" | "node_modules")) {
+        if matches!(entry.file_name().to_str(), Some("dist" | ".sp" | "node_modules")) {
             continue;
         }
         if entry.file_type().unwrap().is_dir() {
@@ -315,17 +315,17 @@ fn declared(path: &Path) -> Declared {
 struct Used {
     /// (module, export): called, constructed or rendered as a JSX tag.
     called: BTreeSet<(String, String)>,
-    /// (module, export, path): `mail.render(...)` is ("typedpress", "mail", ["render"]).
+    /// (module, export, path): `mail.render(...)` is ("spacepress", "mail", ["render"]).
     member_calls: BTreeSet<(String, String, Vec<String>)>,
-    /// (module, export, method): `text().min(1).max(9)` is ("typedpress", "text", "min") and
-    /// (.., "max"); `db.insert(t).values(v).returning()` is ("typedpress", "db", "values") and
+    /// (module, export, method): `text().min(1).max(9)` is ("spacepress", "text", "min") and
+    /// (.., "max"); `db.insert(t).values(v).returning()` is ("spacepress", "db", "values") and
     /// (.., "returning"). The chain's first call is in `called` or `member_calls`.
     chain_calls: BTreeSet<(String, String, String)>,
     /// Keys of objects passed to `.on({...})` and of each kind under `definePlugin({ hooks })`.
     hooks: BTreeSet<String>,
     /// Keys of the object passed to `defineConfig`.
     config: BTreeSet<String>,
-    /// `export const x` / `export function x` / `export default` in files under tp/app/.
+    /// `export const x` / `export function x` / `export default` in files under sp/app/.
     page_exports: BTreeSet<String>,
     /// Extensions of imported assets whose import is used: "module.css" and "svg" need a use, "css" is a side effect.
     assets: BTreeSet<&'static str>,
@@ -444,7 +444,7 @@ fn scan(path: &Path, app: &Path, used: &mut Used) {
         .semantic;
     let nodes = semantic.nodes();
     let scoping = semantic.scoping();
-    let in_app = path.starts_with(app.join("tp/app"));
+    let in_app = path.starts_with(app.join("sp/app"));
 
     // Imported names by symbol: (module, exported name). A default import is "default".
     let mut imported = BTreeMap::new();
@@ -557,11 +557,11 @@ fn scan(path: &Path, app: &Path, used: &mut Used) {
                     if path.is_empty() {
                         used.called.insert((module.clone(), name.clone()));
                         let argument = call.arguments.first().and_then(|a| a.as_expression());
-                        if module == "typedpress" && name == "defineConfig" {
+                        if module == "spacepress" && name == "defineConfig" {
                             used.config.extend(argument.map(object_keys).unwrap_or_default());
                         }
                         // `definePlugin({ hooks: { recipes: { beforeCreate } } })`.
-                        if module == "typedpress"
+                        if module == "spacepress"
                             && name == "definePlugin"
                             && let Some(hooks) = argument.and_then(|a| property(a, "hooks"))
                             && let Expression::ObjectExpression(kinds) = unwrap(hooks)
@@ -637,10 +637,10 @@ fn unused(types: &Path, app: &Path) -> BTreeSet<String> {
             }
         }
     }
-    // The compiler's own list of what "typedpress/app" exports, so the declarations cannot fall behind it.
-    for name in typedpress::app::EXPORTS {
-        if !used.called.contains(&("typedpress/app".to_string(), name.to_string())) {
-            missing.insert(format!("typedpress/app::{name}"));
+    // The compiler's own list of what "spacepress/app" exports, so the declarations cannot fall behind it.
+    for name in spacepress::app::EXPORTS {
+        if !used.called.contains(&("spacepress/app".to_string(), name.to_string())) {
+            missing.insert(format!("spacepress/app::{name}"));
         }
     }
 
@@ -690,27 +690,27 @@ fn unused(types: &Path, app: &Path) -> BTreeSet<String> {
     if !used
         .member_calls
         .iter()
-        .any(|(module, _, path)| module == "typedpress:db" && path.len() == 2 && path[0] == "system")
+        .any(|(module, _, path)| module == "spacepress:db" && path.len() == 2 && path[0] == "system")
     {
-        missing.insert("<kind>.system from typedpress:db".to_string());
+        missing.insert("<kind>.system from spacepress:db".to_string());
     }
 
-    // The files a tp/app/ tree may hold, and every export a page or route may have.
+    // The files a sp/app/ tree may hold, and every export a page or route may have.
     for file in ["layout.tsx", "login.tsx", "not-found.tsx", "error.tsx"] {
-        if !app.join("tp/app").join(file).is_file() {
-            missing.insert(format!("tp/app/{file}"));
+        if !app.join("sp/app").join(file).is_file() {
+            missing.insert(format!("sp/app/{file}"));
         }
     }
-    let app_root = app.join("tp/app");
+    let app_root = app.join("sp/app");
     for file in ["page.tsx", "page.md", "route.ts"] {
         if !all
             .iter()
             .any(|p| p.starts_with(&app_root) && p.file_name().is_some_and(|name| name == file))
         {
-            missing.insert(format!("tp/app/**/{file}"));
+            missing.insert(format!("sp/app/**/{file}"));
         }
     }
-    for export in typedpress::app::allowed_exports("page.tsx") {
+    for export in spacepress::app::allowed_exports("page.tsx") {
         if !used.page_exports.contains(*export) {
             missing.insert(format!("page export {export}"));
         }
@@ -728,8 +728,8 @@ fn unused(types: &Path, app: &Path) -> BTreeSet<String> {
     }
     for (path, what) in [
         ("emails", "an emails/ template (mail.render)"),
-        ("tp/wp-hooks", "a tp/wp-hooks/ handler"),
-        ("tp/plugins", "a plugin package under tp/plugins/"),
+        ("sp/wp-hooks", "a sp/wp-hooks/ handler"),
+        ("sp/plugins", "a plugin package under sp/plugins/"),
         ("content", "synced content/ files"),
     ] {
         let dir = app.join(path);
@@ -747,7 +747,7 @@ fn unused(types: &Path, app: &Path) -> BTreeSet<String> {
 #[test]
 fn kitchen_sink_exercises_public_api() {
     let root = Path::new(ROOT);
-    let unused = unused(&root.join("types/typedpress"), &root.join("examples/kitchen-sink"));
+    let unused = unused(&root.join("types/spacepress"), &root.join("examples/kitchen-sink"));
     let allowed: BTreeSet<&str> = NOT_USED.iter().map(|(name, _)| *name).collect();
     // An allowlist entry for something the example does use, or that no longer exists, is stale.
     let stale: Vec<&str> = allowed.iter().copied().filter(|name| !unused.contains(*name)).collect();
@@ -774,9 +774,9 @@ fn coverage_check_requires_a_real_use() {
     let dir = tempfile::tempdir().unwrap();
     let types = dir.path().join("types");
     let app = dir.path().join("app");
-    std::fs::create_dir_all(app.join("tp/app")).unwrap();
+    std::fs::create_dir_all(app.join("sp/app")).unwrap();
     std::fs::create_dir_all(&types).unwrap();
-    let real = Path::new(ROOT).join("types/typedpress");
+    let real = Path::new(ROOT).join("types/spacepress");
     for (_, file) in MODULES {
         std::fs::copy(real.join(file), types.join(file)).unwrap();
     }
@@ -785,9 +785,9 @@ fn coverage_check_requires_a_real_use() {
     app_types.push_str("\nexport declare namespace Probe { function run(): void }\n");
     std::fs::write(types.join("app.d.ts"), app_types).unwrap();
     std::fs::write(
-        app.join("tp/app/page.tsx"),
-        r#"import { Html, Link, notFound } from "typedpress/app";
-import { db, mail, text } from "typedpress";
+        app.join("sp/app/page.tsx"),
+        r#"import { Html, Link, notFound } from "spacepress/app";
+import { db, mail, text } from "spacepress";
 import styles from "./page.module.css";
 // mail.render(Template, props) and text().unique() in a comment are not uses.
 const note = "db.delete(rows) and .validate() in a string are not uses either";
@@ -804,9 +804,9 @@ export default function Page() {
     .unwrap();
     let missing = unused(&types, &app);
     for name in [
-        "typedpress/app::Html",
-        "typedpress/app::notFound",
-        "typedpress/app::Probe",
+        "spacepress/app::Html",
+        "spacepress/app::notFound",
+        "spacepress/app::Probe",
         "mail.render",
         "mail.send",
         "db.delete",
@@ -815,14 +815,14 @@ export default function Page() {
         // `Math.min(a, b)` is no column modifier.
         "ColumnBuilder.min",
         "db.insert().values",
-        "<kind>.system from typedpress:db",
+        "<kind>.system from spacepress:db",
         "a CSS module import whose classes are used",
     ] {
         assert!(missing.contains(name), "{name} should be reported: {missing:?}");
     }
     for name in [
-        "typedpress/app::Link",
-        "typedpress::text",
+        "spacepress/app::Link",
+        "spacepress::text",
         "ColumnBuilder.optional",
         "page export default",
     ] {
@@ -842,12 +842,12 @@ fn kitchen_sink_renders_every_route_on_wordpress() {
         std::fs::copy(path, target).unwrap();
     }
     let out = temp.path().join("wp-content");
-    let build = Command::new(env!("CARGO_BIN_EXE_typedpress"))
+    let build = Command::new(env!("CARGO_BIN_EXE_spacepress"))
         .arg("build")
         .arg(&project)
         .arg("--out")
         .arg(&out)
-        .env_remove("TYPEDPRESS_LOCALES")
+        .env_remove("SPACEPRESS_LOCALES")
         .output()
         .unwrap();
     assert!(build.status.success(), "{}", String::from_utf8_lossy(&build.stderr));
@@ -856,7 +856,7 @@ fn kitchen_sink_renders_every_route_on_wordpress() {
         .args(["-d", "memory_limit=512M"])
         .arg(root.join("tests/php/kitchen_sink.php"))
         .arg(&out)
-        .env("TP_WP_THEMES", "1")
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     println!("{}", String::from_utf8_lossy(&runtime.stdout));

@@ -1,4 +1,4 @@
-//! The evaluated schema: plain data produced by running `typedpress.config.ts` at
+//! The evaluated schema: plain data produced by running `spacepress.config.ts` at
 //! build time. Migrations, schema.php, the typed client, and generated types
 //! all derive from it.
 
@@ -24,7 +24,7 @@ pub enum ColType {
     /// `select([...]).many()`. A single select is `Text` with `enum`.
     Select,
     /// `ref(kind).many()`: the target ids in write order. No column of its own: the rows live in a
-    /// TypedPress-owned join table (see [`Column::join_table`]).
+    /// SpacePress-owned join table (see [`Column::join_table`]).
     RefList,
     Group,
     Repeater,
@@ -127,7 +127,7 @@ pub struct Reference {
     pub on_delete: Option<RefAction>,
     pub on_update: Option<RefAction>,
     /// A many-ref's join table: its snapshot key, `<owner storage name>_<field snake_case>`, stored as
-    /// `{prefix}tp_<key>` with `owner_id`, `target_id` and `position`. A `terms()` field's links
+    /// `{prefix}sp_<key>` with `owner_id`, `target_id` and `position`. A `terms()` field's links
     /// are core's term relationships instead: `term:<taxonomy storage name>` ([`term_join`]).
     pub join: Option<String>,
 }
@@ -138,7 +138,7 @@ pub fn term_join(taxonomy: &str) -> String {
     format!("term:{taxonomy}")
 }
 
-/// Whether a link key names a taxonomy's term relationships rather than a TypedPress join table.
+/// Whether a link key names a taxonomy's term relationships rather than a SpacePress join table.
 pub fn is_term_join(join: &str) -> bool {
     join.starts_with("term:")
 }
@@ -430,7 +430,7 @@ pub struct RevisionRetention {
 }
 
 /// Config-driven retention policy for soft-deleted rows and revisions.
-/// When absent (or `"forever"`), TypedPress never automatically purges deleted rows or revisions.
+/// When absent (or `"forever"`), SpacePress never automatically purges deleted rows or revisions.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Retention {
     /// Seconds before soft-deleted rows / trashed posts are auto-purged. `None` = `"forever"`.
@@ -496,7 +496,7 @@ pub struct Collection {
     pub slug: Option<String>,
     /// `wp.posts` kinds: the field stored as the post's own excerpt (`post_excerpt`).
     pub excerpt: Option<String>,
-    /// `wp.posts.extend()`: WordPress's own `post` type, not a post type of TypedPress's.
+    /// `wp.posts.extend()`: WordPress's own `post` type, not a post type of SpacePress's.
     pub native: bool,
     pub columns: IndexMap<String, Column>,
     pub relations: IndexMap<String, Relation>,
@@ -521,7 +521,7 @@ pub struct Collection {
     /// `taxonomy()`: terms in core's term tables, attached to these kinds
     /// (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34).
     pub taxonomy: Option<Taxonomy>,
-    /// Native Woo resource; no TypedPress storage is registered.
+    /// Native Woo resource; no SpacePress storage is registered.
     pub commerce: Option<String>,
     /// `.index(fields, { unique? })`: compound indexes the author declared, as (fields, unique).
     pub indexes: Vec<(Vec<String>, bool)>,
@@ -535,9 +535,9 @@ pub struct Taxonomy {
     pub on: Vec<String>,
 }
 
-/// A taxonomy's WordPress name: `tp_<storage name>`.
+/// A taxonomy's WordPress name: `sp_<storage name>`.
 pub fn taxonomy_name(table: &str) -> String {
-    format!("tp_{table}")
+    format!("sp_{table}")
 }
 
 impl Collection {
@@ -555,12 +555,12 @@ impl Collection {
             || self.excerpt.as_deref() == Some(col)
     }
 
-    /// The WordPress post type an editor kind's items are: `post` for `wp.posts.extend()`, else `tp_<name>`.
+    /// The WordPress post type an editor kind's items are: `post` for `wp.posts.extend()`, else `sp_<name>`.
     pub fn post_type(&self) -> String {
         if self.native {
             "post".into()
         } else {
-            format!("tp_{}", self.table)
+            format!("sp_{}", self.table)
         }
     }
 }
@@ -681,7 +681,7 @@ pub struct Schema {
     pub actions: IndexMap<String, Action>,
     pub jobs: IndexMap<String, Job>,
     /// `adminScreen()` exports by screen id (the export name in kebab case): each one the
-    /// declaration `tp_admin_register_screen()` takes (`crate::admin_screen`).
+    /// declaration `sp_admin_register_screen()` takes (`crate::admin_screen`).
     pub screens: IndexMap<String, Json>,
     /// `adminWidget()` exports by widget id (kebab case).
     pub widgets: IndexMap<String, Json>,
@@ -689,18 +689,18 @@ pub struct Schema {
     pub dashboards: IndexMap<String, Json>,
     /// `wp-hooks/` handlers, in registration order.
     pub wp_hooks: Vec<WpHook>,
-    /// Server components (`tp/components/<file>.tsx#<export>`) → their compiled PHP function.
+    /// Server components (`sp/components/<file>.tsx#<export>`) → their compiled PHP function.
     pub components: IndexMap<String, String>,
     /// `"use client"` components (generator B): namespace → its store module.
     pub islands: IndexMap<String, Island>,
     /// Components content may use as blocks (`export const blocks` in a component file).
     pub blocks: Vec<crate::content_blocks::Block>,
     /// Imported stylesheets and static assets (`crate::assets`), by output file name below
-    /// `tp/app/assets/`.
+    /// `sp/app/assets/`.
     pub assets: IndexMap<String, Vec<u8>>,
     /// Intrinsic dimensions and format for imported image assets, by output file name.
     pub assets_meta: IndexMap<String, crate::assets::ImageMeta>,
-    /// `tp/app/`: the route table and each route file's compiled exports (docs/spec/rendering.md).
+    /// `sp/app/`: the route table and each route file's compiled exports (docs/spec/rendering.md).
     pub app: Option<App>,
     /// Hooks or WordPress functions hand `WP_Post`/`WP_User` views to compiled code.
     pub wp_views: bool,
@@ -712,9 +712,9 @@ pub struct Schema {
     pub store: Option<Json>,
     /// Compile synced records into the standalone plugin for its WordPress install.
     pub seed: bool,
-    /// The build ships the `typedpress-admin` plugin (the default); `defineConfig({ admin: false })` leaves it out.
+    /// The build ships the `spacepress-admin` plugin (the default); `defineConfig({ admin: false })` leaves it out.
     pub admin: bool,
-    /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `tp/app`.
+    /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `sp/app`.
     pub frontend: Option<crate::kind_url::Frontend>,
     /// `defineConfig({ output })` (docs/decisions/2026-11-13-static-output.md): `Server` renders
     /// pages per request and prebuilds the ones that say `prerender = true`; `Static` prebuilds them all.
@@ -729,10 +729,10 @@ pub struct Schema {
     /// default) leaves them to WordPress and the site's Discussion settings.
     pub pings: bool,
     /// `defineConfig({ sealed: true })`: the slugs of the config's `plugins`, which run as plugins with
-    /// TypedPress's own and the platform's (spec §6; docs/sealed.md). `None` when the site isn't sealed.
+    /// SpacePress's own and the platform's (spec §6; docs/sealed.md). `None` when the site isn't sealed.
     pub sealed: Option<Vec<String>>,
     /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
-    /// while it runs. Holds what the build read from the lock `typedpress pull` writes.
+    /// while it runs. Holds what the build read from the lock `spacepress pull` writes.
     pub runtime_schema: Option<RuntimeSchema>,
     /// `defineConfig({ retention })`: global retention policy for soft-deleted rows and revisions.
     /// `None` means `"forever"` (never automatically purge).
@@ -756,11 +756,11 @@ pub enum Output {
     /// Pages render on WordPress per request; a page that exports `prerender = true` is prebuilt.
     #[default]
     Server,
-    /// Every page is prebuilt; `typedpress export` writes a site with no WordPress at runtime.
+    /// Every page is prebuilt; `spacepress export` writes a site with no WordPress at runtime.
     Static,
 }
 
-/// The site schema version a build contains: zero and no hash before any `typedpress pull`.
+/// The site schema version a build contains: zero and no hash before any `spacepress pull`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RuntimeSchema {
     pub version: u64,
@@ -910,7 +910,7 @@ pub fn physical_name(key: &str) -> String {
     out
 }
 
-/// `tp/app/` as the runtime router reads it.
+/// `sp/app/` as the runtime router reads it.
 #[derive(Debug, Clone, Default)]
 pub struct App {
     /// Most specific first: the router takes the first match.
@@ -918,7 +918,7 @@ pub struct App {
     pub not_found: Option<AppRoute>,
     /// `login.tsx`: wp-login.php's sign-in view, rendered in the root layout.
     pub login: Option<AppRoute>,
-    /// Route file (relative to `tp/`) → its compiled exports.
+    /// Route file (relative to `sp/`) → its compiled exports.
     pub files: IndexMap<String, AppFile>,
     /// Content-owned pages (`page.md`), by URL path: what the site stores as a WordPress Page.
     pub content: IndexMap<String, crate::content_page::Page>,
@@ -1067,7 +1067,7 @@ pub enum IslandAsset {
 /// One compiled `"use client"` component: its store module and the server actions it calls.
 #[derive(Debug, Clone)]
 pub struct Island {
-    /// File name under the app plugin's `tp/app/client/`: `<stem>.<12 hex>.js`, the hex being the
+    /// File name under the app plugin's `sp/app/client/`: `<stem>.<12 hex>.js`, the hex being the
     /// start of the SHA-256 of [`Island::shipped`], the exact bytes served under that name.
     pub file: String,
     /// The generated store module, readable.
@@ -1079,6 +1079,6 @@ pub struct Island {
     pub uploads: Vec<String>,
     /// Static assets imported by this client component, passed via `wp_interactivity_config`.
     pub assets: std::collections::BTreeMap<String, IslandAsset>,
-    /// The store keeps `useLive` reads current: the page also loads `@typedpress/live`.
+    /// The store keeps `useLive` reads current: the page also loads `@spacepress/live`.
     pub live: bool,
 }

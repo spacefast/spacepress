@@ -5,10 +5,10 @@ declare(strict_types=1);
 /*
  * Imported stylesheets and images on WordPress over HTTP (tests/app_router.rs
  * `imported_stylesheets_and_images_serve_from_the_app_plugin`): the fixture tests/fixtures/app-assets,
- * built by `typedpress build` and served by php -S. Prints one JSON object of what each page linked and
+ * built by `spacepress build` and served by php -S. Prints one JSON object of what each page linked and
  * what each linked file holds.
  *
- *   TP_WP_THEMES=1 php tests/php/app_assets.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/app_assets.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -47,19 +47,19 @@ foreach (['about', 'plain', 'colophon'] as $path) {
     @$html->loadHTML($page['body']);
     $xpath = new DOMXPath($html);
     $styleOrder = [];
-    foreach ($xpath->query('//style[@id="global-styles-inline-css" or @id="late-theme-inline-css" or @id="owner-override-inline-css"] | //link[@rel="stylesheet"][starts-with(@id, "typedpress-app-")] | //style[starts-with(@id, "typedpress-app-")]') as $style) {
+    foreach ($xpath->query('//style[@id="global-styles-inline-css" or @id="late-theme-inline-css" or @id="owner-override-inline-css"] | //link[@rel="stylesheet"][starts-with(@id, "spacepress-app-")] | //style[starts-with(@id, "spacepress-app-")]') as $style) {
         $styleOrder[] = $style->getAttribute('id');
     }
     $links = [];
-    foreach ($xpath->query('//link[@rel="stylesheet"][starts-with(@id, "typedpress-app-")] | //style[starts-with(@id, "typedpress-app-")]') as $node) {
+    foreach ($xpath->query('//link[@rel="stylesheet"][starts-with(@id, "spacepress-app-")] | //style[starts-with(@id, "spacepress-app-")]') as $node) {
         if ($node->nodeName === 'link') {
             $href = (string) $node->getAttribute('href');
             $file = get($href);
             $links[] = ['file' => basename((string) parse_url($href, PHP_URL_PATH)), 'inline' => false, 'status' => $file['status'], 'type' => $file['type'], 'css' => $file['body']];
         } else {
             $id = (string) $node->getAttribute('id');
-            // typedpress-app-<stem>-<hash>-css-inline-css -> <stem>-<hash>.css
-            $stem = preg_replace('/^typedpress-app-|-css-inline-css$/', '', $id);
+            // spacepress-app-<stem>-<hash>-css-inline-css -> <stem>-<hash>.css
+            $stem = preg_replace('/^spacepress-app-|-css-inline-css$/', '', $id);
             $css = (string) preg_replace('/\s*\/\*#\s*sourceURL=[^*]+\*\/\s*$/', '', trim($node->textContent));
             $links[] = ['file' => $stem . '.css', 'inline' => true, 'status' => 200, 'type' => 'text/css', 'css' => $css];
         }

@@ -1,4 +1,4 @@
-import { defineConfig, mutation } from "typedpress";
+import { defineConfig, mutation } from "spacepress";
 import { untypedPrivate, untypedClasses, untypedAccessors, untypedErrors } from "./class-private-lib.mjs";
 
 const run = (handler: () => unknown) => mutation({}, handler);

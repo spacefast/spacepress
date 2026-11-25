@@ -1,5 +1,5 @@
 // Shared lazy singleton loader for the in-browser Rust/OXC WASM compiler and playground catalog.
-// Both <tp-play> and <tp-sandbox> reuse the same instantiated compiler so compiler.wasm is fetched once.
+// Both <sp-play> and <sp-sandbox> reuse the same instantiated compiler so compiler.wasm is fetched once.
 import { Compiler } from "../lib/compiler.ts";
 
 const base = new URL(".", import.meta.url);

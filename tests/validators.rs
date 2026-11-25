@@ -1,4 +1,4 @@
-//! HTTP validators on what TypedPress serves as is: a prebuilt page and the OpenAPI document answer
+//! HTTP validators on what SpacePress serves as is: a prebuilt page and the OpenAPI document answer
 //! `If-None-Match` with an empty 304 (as public files do), and the facade's API reads stay
 //! `private, no-store` with no validator (tests/php/validators.php).
 use serde_json::json;
@@ -24,10 +24,10 @@ fn copy(from: &Path, to: &Path) {
 
 #[test]
 fn prebuilt_pages_and_the_openapi_document_answer_if_none_match() {
-    let project = std::env::temp_dir().join(format!("typedpress-validators-{}", std::process::id()));
+    let project = std::env::temp_dir().join(format!("spacepress-validators-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&project);
     copy(&root().join("tests/fixtures/app-prebuilt"), &project);
-    let built = Command::new(env!("CARGO_BIN_EXE_typedpress"))
+    let built = Command::new(env!("CARGO_BIN_EXE_spacepress"))
         .arg("build")
         .arg(&project)
         .output()
@@ -36,8 +36,8 @@ fn prebuilt_pages_and_the_openapi_document_answer_if_none_match() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/validators.php"))
-        .arg(project.join("tp/dist/wp-content"))
-        .env("TP_WP_THEMES", "1")
+        .arg(project.join("sp/dist/wp-content"))
+        .env("SP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);

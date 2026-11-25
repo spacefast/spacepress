@@ -6,22 +6,22 @@ order: 4
 status: published
 publishedAt: 2026-11-21T09:07:00.000Z
 ---
-## File-based routing in `tp/app/`
+## File-based routing in `sp/app/`
 
-SpacePress compiles TSX pages and layouts in `tp/app/` directly into server-rendered PHP:
+SpacePress compiles TSX pages and layouts in `sp/app/` directly into server-rendered PHP:
 
-- `tp/app/layout.tsx` — shared shell, `export const template = "theme" | "blank" | "<slug>"`, `metadata`, and CSS imports.
-- `tp/app/page.tsx`, `[slug]/page.tsx`, `[...path]/page.tsx`, `(group)/` — static, dynamic, catch-all, and grouped routes.
-- `tp/app/not-found.tsx` and `tp/app/login.tsx` — custom 404 and custom WordPress sign-in screens.
+- `sp/app/layout.tsx` — shared shell, `export const template = "theme" | "blank" | "<slug>"`, `metadata`, and CSS imports.
+- `sp/app/page.tsx`, `[slug]/page.tsx`, `[...path]/page.tsx`, `(group)/` — static, dynamic, catch-all, and grouped routes.
+- `sp/app/not-found.tsx` and `sp/app/login.tsx` — custom 404 and custom WordPress sign-in screens.
 - `export const search = { page: integer().default(1) }` — typed query string parsing.
 - `export const guard = "authenticated"` — route-level authorization.
 
 With `template = "theme"`, WordPress renders the TSX page in the block theme's
-**Page content** block (`<!-- wp:tp/page /-->`). Use the Site Editor to change
+**Page content** block (`<!-- wp:sp/page /-->`). Use the Site Editor to change
 the header, footer, or other blocks around it. Use `template = "blank"` when
 your layout supplies those elements.
 
-## Built-in server components (`typedpress/app`)
+## Built-in server components (`spacepress/app`)
 
 Use `<Link>` (Interactivity Router navigation), `<Content>` (block content via `the_content`), `<Html>` (sanitized HTML), `<Comments>`, `<Pagination>`, `<Search>`, `<SearchResults>`, `<LoginForm>`, `<TemplatePart>`, `<Live id="...">`, and `useFormState(action)` for progressive zero-JS `<form action={myAction}>` submissions.
 
@@ -34,8 +34,8 @@ to the page with a `303`. Once the router script runs, the same post goes
 through `fetch` and the page swaps in place.
 
 ```ts
-// tp/server.ts
-import { db, HttpError, mail, mutation } from "typedpress";
+// sp/server.ts
+import { db, HttpError, mail, mutation } from "spacepress";
 import { messages } from "./schema";
 
 export const contact = mutation({ access: "anyone", rateLimit: "5/min" }, async ({ email, message }: { email: string; message: string }) => {
@@ -47,8 +47,8 @@ export const contact = mutation({ access: "anyone", rateLimit: "5/min" }, async 
 ```
 
 ```tsx
-// tp/app/contact/page.tsx
-import { useFormState } from "typedpress/app";
+// sp/app/contact/page.tsx
+import { useFormState } from "spacepress/app";
 import { contact } from "../../server";
 
 export default function Contact() {
@@ -87,14 +87,14 @@ export default function Contact() {
   `aria-busy="true"` and its submit buttons are disabled. Style
   `form[aria-busy="true"]`.
 - **State attribute.** After a submit, the form has
-  `data-tp-form-state="success"` or `"error"`.
+  `data-sp-form-state="success"` or `"error"`.
 
 ### Show a WordPress comment thread
 
-Enable comments on the kind in `tp/schema.ts`. The SpacePress blog uses native WordPress posts.
+Enable comments on the kind in `sp/schema.ts`. The SpacePress blog uses native WordPress posts.
 
 ```ts
-import { wp } from "typedpress";
+import { wp } from "spacepress";
 
 export const posts = wp.posts.extend({}, {
 	url: "/blog/:slug",
@@ -102,10 +102,10 @@ export const posts = wp.posts.extend({}, {
 });
 ```
 
-Pass the route's post to `<Comments>` in `tp/app/blog/[slug]/page.tsx`.
+Pass the route's post to `<Comments>` in `sp/app/blog/[slug]/page.tsx`.
 
 ```tsx
-import { Comments, type PageProps } from "typedpress/app";
+import { Comments, type PageProps } from "spacepress/app";
 
 export default function Post({ item }: PageProps<"blog/[slug]">) {
 	return <Comments for={item} />;
@@ -120,17 +120,17 @@ until the commenter has an approved comment. Editors manage the thread under
 You can pass the same post to `<Comments>` on another page. Both places show
 the same WordPress comment thread.
 
-## `"use client"` interactive islands (`typedpress/client`)
+## `"use client"` interactive islands (`spacepress/client`)
 
 Start a component file with `"use client";`. SpacePress renders its initial HTML in PHP and compiles the interactive logic into a WordPress Interactivity API store supporting `useState`, `useEffect`, `useMount`, `useEvent`, `useRef`, `sharedState`, `uploadFile(bucket, file, opts?)` for private file buckets, and live-updating `useLive(kind, query)` subscriptions.
 
 ## Static export
 
-Set `output: "static"` in `defineConfig()` and export `staticParams()` on dynamic routes, then run `typedpress export` to emit a standalone static site to `tp/dist/static/`.
+Set `output: "static"` in `defineConfig()` and export `staticParams()` on dynamic routes, then run `spacepress export` to emit a standalone static site to `sp/dist/static/`.
 
 ## Page caching on WordPress
 
-Run `typedpress check --json` and inspect `routePlan` for each route's cache class, shared cache window, declared query parameters, and dependencies. The plan includes the route's layouts and metadata.
+Run `spacepress check --json` and inspect `routePlan` for each route's cache class, shared cache window, declared query parameters, and dependencies. The plan includes the route's layouts and metadata.
 
 | Cache class | Meaning |
 |---|---|

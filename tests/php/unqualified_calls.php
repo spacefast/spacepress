@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 // unqualified_calls.php FILE...: prints every call to a PHP built-in function that is not fully
-// qualified, and exits 1 if there is one. Compiled code lives in `namespace TypedPressApp`, where an
+// qualified, and exits 1 if there is one. Compiled code lives in `namespace SpacePressApp`, where an
 // unqualified `count(...)` is looked up in that namespace first on every call (tests/compiler.rs).
 $internal = array_flip(get_defined_functions()['internal']);
 $total = 0;

@@ -1,7 +1,7 @@
 import type { Plugin } from '@wordpress/core-data';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { update } from '@wordpress/icons';
-import type { Action } from '@typedpress-admin/dataviews';
+import type { Action } from '@spacepress-admin/dataviews';
 import usePluginService from '../hooks/use-plugin-service';
 import { bulkAction } from './helpers/bulk-runner';
 
@@ -15,7 +15,7 @@ export const useUpdatePluginAction = (): Action< Plugin > => {
 
 	return {
 		id: 'update-plugin',
-		label: __( 'Update', 'typedpress-admin' ),
+		label: __( 'Update', 'spacepress-admin' ),
 		isPrimary: false,
 		icon: update,
 		callback: async ( plugins: Plugin[] ) => {
@@ -37,7 +37,7 @@ export const useUpdatePluginAction = (): Action< Plugin > => {
 									'%d plugin updated.',
 									'%d plugins updated.',
 									fulfilled,
-									'typedpress-admin'
+									'spacepress-admin'
 								),
 								fulfilled
 							);
@@ -53,7 +53,7 @@ export const useUpdatePluginAction = (): Action< Plugin > => {
 									'%d plugin failed to update.',
 									'%d plugins failed to update.',
 									rejected,
-									'typedpress-admin'
+									'spacepress-admin'
 								),
 								rejected
 							);

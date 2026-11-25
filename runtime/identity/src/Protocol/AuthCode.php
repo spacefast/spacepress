@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Protocol;
+namespace SpacePress\Identity\Protocol;
 
-use TypedPress\Identity\DB;
-use TypedPress\Identity\Failure;
-use TypedPress\Identity\Security;
+use SpacePress\Identity\DB;
+use SpacePress\Identity\Failure;
+use SpacePress\Identity\Security;
 
 /**
  * Authorization codes (RFC 6749 §4.1 + PKCE S256, RFC 7636): 32 random bytes, stored as their

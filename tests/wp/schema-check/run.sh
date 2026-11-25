@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 # Forward-only schema changes through successive builds and a real WordPress/MariaDB site.
-#   TP_WP_PROJECT=typedpress-wp-schema-check TP_WP_PORT=8902 tests/wp/schema-check/run.sh
+#   SP_WP_PROJECT=spacepress-wp-schema-check SP_WP_PORT=8902 tests/wp/schema-check/run.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 wp="$(cd "$here/.." && pwd)"
 repo="$(cd "$wp/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-schema-check}"
-export TP_WP_PORT="${TP_WP_PORT:-8902}"
+export SP_WP_PROJECT="${SP_WP_PROJECT:-spacepress-wp-schema-check}"
+export SP_WP_PORT="${SP_WP_PORT:-8902}"
 work="$(mktemp -d)"
 cleanup() { "$wp/harness.sh" down >/dev/null; rm -rf "$work"; }
 trap cleanup EXIT
 mkdir -p "$work/app" "$work/content" "$work/live"
 
-write_config() { node "$here/steps.mjs" "$1" > "$work/app/typedpress.config.ts"; }
-build() { "$target/debug/typedpress" build "$work/app" --quiet; }
+write_config() { node "$here/steps.mjs" "$1" > "$work/app/spacepress.config.ts"; }
+build() { "$target/debug/spacepress" build "$work/app" --quiet; }
 stage() {
   write_config "$1"
   build >/dev/null
-  rsync -a "$work/app/tp/dist/wp-content/" "$work/content/$1/"
+  rsync -a "$work/app/sp/dist/wp-content/" "$work/content/$1/"
 }
 refuses() {
   write_config "$1"
@@ -52,5 +52,5 @@ rsync -a "$work/content/initial/" "$work/live/"
 "$wp/harness.sh" sql "CREATE TABLE wp_external_tasks (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, title LONGTEXT NOT NULL, note LONGTEXT, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 "$wp/harness.sh" sql "INSERT INTO wp_external_tasks (title, note) VALUES ('kept', 'existing row'), ('also kept', NULL)"
 "$wp/harness.sh" up --wp-content "$work/live" > "$work/harness.json"
-TP_WP_HARNESS="$work/harness.json" TP_SCHEMA_CHECK_CONTENT="$work/content" TP_SCHEMA_CHECK_LIVE="$work/live" \
+SP_WP_HARNESS="$work/harness.json" SP_SCHEMA_CHECK_CONTENT="$work/content" SP_SCHEMA_CHECK_LIVE="$work/live" \
   node --test "$here/schema-check.test.ts"

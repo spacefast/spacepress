@@ -5,18 +5,18 @@ import Content from '../stage';
 const mockRecordTracksEvent = jest.fn();
 const mockButtonClick = jest.fn();
 
-jest.mock( '@typedpress-admin/core-data-next', () => ( {
+jest.mock( '@spacepress-admin/core-data-next', () => ( {
 	useFieldCollections: () => [ { id: 'email', label: 'Email' } ],
 } ) );
 
-jest.mock( '@typedpress-admin/views', () => ( {
+jest.mock( '@spacepress-admin/views', () => ( {
 	useViewConfig: () => ( {
 		editForm: {},
 		viewConfig: {},
 	} ),
 } ) );
 
-jest.mock( '@typedpress-admin/admin-toolkit', () => {
+jest.mock( '@spacepress-admin/admin-toolkit', () => {
 	function Menu( { children }: { children: React.ReactNode } ) {
 		return <div>{ children }</div>;
 	}
@@ -100,8 +100,8 @@ jest.mock( '@wordpress/i18n', () => ( {
 	sprintf: ( value: string ) => value,
 } ) );
 
-jest.mock( '@typedpress-admin/boot', () => ( {
-	store: 'typedpress-admin-store',
+jest.mock( '@spacepress-admin/boot', () => ( {
+	store: 'spacepress-admin-store',
 } ) );
 
 jest.mock( '@wordpress/data', () => ( {
@@ -196,11 +196,11 @@ jest.mock( '@wordpress/icons', () => ( {
 	arrowUpRight: {},
 } ) );
 
-jest.mock( '@typedpress-admin/dataviews', () => ( {
+jest.mock( '@spacepress-admin/dataviews', () => ( {
 	DataForm: () => <div>DataForm</div>,
 } ) );
 
-jest.mock( '@typedpress-admin/telemetry', () => ( {
+jest.mock( '@spacepress-admin/telemetry', () => ( {
 	useTrack: () => ( {
 		buttonClick: mockButtonClick,
 		buttonError: jest.fn(),

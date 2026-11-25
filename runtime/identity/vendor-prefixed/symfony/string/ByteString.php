@@ -9,12 +9,12 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\String;
+namespace SpacePress\Identity\Vendor\Symfony\Component\String;
 
 use Random\Randomizer;
-use TypedPress\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
-use TypedPress\Identity\Vendor\Symfony\Component\String\Exception\RuntimeException;
+use SpacePress\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\String\Exception\RuntimeException;
 
 /**
  * Represents a binary-safe string of bytes.

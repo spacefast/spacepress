@@ -1,10 +1,10 @@
-import { unlock } from '@typedpress-admin/admin-toolkit';
+import { unlock } from '@spacepress-admin/admin-toolkit';
 import type {
 	TypographyPreset,
 	FluidTypographySettings,
 	FontSize,
 	FluidTypographyConfig,
-} from '@typedpress-admin/global-styles-engine';
+} from '@spacepress-admin/global-styles-engine';
 import { __, sprintf } from '@wordpress/i18n';
 import {
 	__experimentalSpacer as Spacer,
@@ -160,7 +160,7 @@ function FontSize() {
 						title={ fontSize.name }
 						description={ sprintf(
 							/* translators: %s: font size preset name. */
-							__( 'Manage the font size %s.', 'typedpress-admin' ),
+							__( 'Manage the font size %s.', 'spacepress-admin' ),
 							fontSize.name
 						) }
 					/>
@@ -179,7 +179,7 @@ function FontSize() {
 												icon={ moreVertical }
 												label={ __(
 													'Font size options',
-													'typedpress-admin'
+													'spacepress-admin'
 												) }
 											/>
 										}
@@ -189,14 +189,14 @@ function FontSize() {
 											onClick={ toggleRenameDialog }
 										>
 											<Menu.ItemLabel>
-												{ __( 'Rename', 'typedpress-admin' ) }
+												{ __( 'Rename', 'spacepress-admin' ) }
 											</Menu.ItemLabel>
 										</Menu.Item>
 										<Menu.Item
 											onClick={ toggleDeleteConfirm }
 										>
 											<Menu.ItemLabel>
-												{ __( 'Delete', 'typedpress-admin' ) }
+												{ __( 'Delete', 'spacepress-admin' ) }
 											</Menu.ItemLabel>
 										</Menu.Item>
 									</Menu.Popover>
@@ -218,7 +218,7 @@ function FontSize() {
 							</FlexItem>
 
 							<SizeControl
-								label={ __( 'Size', 'typedpress-admin' ) }
+								label={ __( 'Size', 'spacepress-admin' ) }
 								value={
 									! isCustomFluid && fontSize.size
 										? String( fontSize.size )
@@ -229,10 +229,10 @@ function FontSize() {
 							/>
 
 							<ToggleControl
-								label={ __( 'Fluid typography', 'typedpress-admin' ) }
+								label={ __( 'Fluid typography', 'spacepress-admin' ) }
 								help={ __(
 									'Scale the font size dynamically to fit the screen or viewport.',
-									'typedpress-admin'
+									'spacepress-admin'
 								) }
 								checked={ isFluid }
 								onChange={ handleFluidChange }
@@ -243,11 +243,11 @@ function FontSize() {
 								<ToggleControl
 									label={ __(
 										'Custom fluid values',
-										'typedpress-admin'
+										'spacepress-admin'
 									) }
 									help={ __(
 										'Set custom min and max values for the fluid font size.',
-										'typedpress-admin'
+										'spacepress-admin'
 									) }
 									checked={ isCustomFluid }
 									onChange={ handleCustomFluidValues }
@@ -258,7 +258,7 @@ function FontSize() {
 							{ isCustomFluid && (
 								<>
 									<SizeControl
-										label={ __( 'Minimum', 'typedpress-admin' ) }
+										label={ __( 'Minimum', 'spacepress-admin' ) }
 										value={
 											typeof fontSize?.fluid === 'object'
 												? fontSize.fluid?.min
@@ -267,7 +267,7 @@ function FontSize() {
 										onChange={ handleMinChange }
 									/>
 									<SizeControl
-										label={ __( 'Maximum', 'typedpress-admin' ) }
+										label={ __( 'Maximum', 'spacepress-admin' ) }
 										value={
 											typeof fontSize?.fluid === 'object'
 												? fontSize.fluid?.max

@@ -1,20 +1,20 @@
 {
-  "name": "typedpress",
+  "name": "spacepress",
   "version": "0.3.0",
-  "description": "The TypedPress compiler and local WordPress development command, without a Rust toolchain",
+  "description": "The SpacePress compiler and local WordPress development command, without a Rust toolchain",
   "license": "MIT",
-  "homepage": "https://github.com/spacefast/zero/tree/main/packages/cli#readme",
-  "bugs": "https://github.com/spacefast/zero/issues",
-  "keywords": ["typedpress", "wordpress", "typescript", "backend", "compiler", "cli"],
+  "homepage": "https://github.com/spacefast/spacepress/tree/main/packages/cli#readme",
+  "bugs": "https://github.com/spacefast/spacepress/issues",
+  "keywords": ["spacepress", "wordpress", "typescript", "backend", "compiler", "cli"],
   "type": "module",
   "engines": { "node": ">=22" },
-  "bin": { "typedpress": "bin/typedpress.mjs" },
+  "bin": { "spacepress": "bin/spacepress.mjs" },
   "files": ["bin", "lib", "types", "LICENSE", "README.md"],
   "scripts": {
     "prepack": "node scripts/prepare.mjs",
     "postinstall": "node bin/install.mjs",
     "test": "node --test test/*.test.mjs"
   },
-  "repository": { "type": "git", "url": "https://github.com/spacefast/zero.git", "directory": "packages/cli" },
+  "repository": { "type": "git", "url": "https://github.com/spacefast/spacepress.git", "directory": "packages/cli" },
   "publishConfig": { "access": "public" }
 }

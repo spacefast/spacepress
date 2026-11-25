@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\MetadataService\Service;
+namespace SpacePress\Identity\Vendor\Webauthn\MetadataService\Service;
 
-use TypedPress\Identity\Vendor\Webauthn\Exception\MissingMetadataStatementException;
-use TypedPress\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
+use SpacePress\Identity\Vendor\Webauthn\Exception\MissingMetadataStatementException;
+use SpacePress\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
 
 final class ChainedMetadataServices implements MetadataService
 {

@@ -1,7 +1,7 @@
-import { SelectControl } from '@typedpress-admin/design-system';
+import { SelectControl } from '@spacepress-admin/design-system';
 import { __ } from '@wordpress/i18n';
 import type { User } from '@wordpress/core-data';
-import type { Field } from '@typedpress-admin/dataviews';
+import type { Field } from '@spacepress-admin/dataviews';
 
 export const getDisplayNameItems = ( item: User ) => {
 	const items = [ item.nickname, item.username, item.name ];

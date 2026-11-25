@@ -1,5 +1,5 @@
 // Untyped JavaScript for tests/differential/language/char-codes.ts: String.fromCharCode and
-// String.fromCodePoint through TypedPress's checked JavaScript dispatch, as ret 0.5 (a files-sdk
+// String.fromCodePoint through SpacePress's checked JavaScript dispatch, as ret 0.5 (a files-sdk
 // dependency) rebuilds regex sources from token code points.
 
 export function charCodes() {

@@ -40,5 +40,5 @@ copy=${SUMMARY_FILE:-/dev/null}
     echo "Core changes in this build: https://core.trac.wordpress.org/browser/tags/$version (its milestone's tickets list what changed)"
   fi
   echo
-  echo "What TypedPress relies on in core, and what to check first: docs/wordpress-internals.md."
+  echo "What SpacePress relies on in core, and what to check first: docs/wordpress-internals.md."
 } | tee -a "$copy" >> "$out"

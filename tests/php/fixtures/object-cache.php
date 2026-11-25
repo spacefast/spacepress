@@ -14,7 +14,7 @@ declare(strict_types=1);
 
 require_once ABSPATH . WPINC . '/class-wp-object-cache.php';
 
-final class TP_Test_Object_Cache extends WP_Object_Cache
+final class SP_Test_Object_Cache extends WP_Object_Cache
 {
     /** @var array{single: int, multi: int, keys: int, log?: list<string>} round trips a cache server would see */
     public array $trips = ['single' => 0, 'multi' => 0, 'keys' => 0];
@@ -72,7 +72,7 @@ final class TP_Test_Object_Cache extends WP_Object_Cache
     {
         if ($this->pull($key, (string) $group)) {
             $this->trips['single']++;
-            if (isset($_SERVER['HTTP_X_TP_READ_BUDGET_TRACE'])) {
+            if (isset($_SERVER['HTTP_X_SP_READ_BUDGET_TRACE'])) {
                 $this->trips['log'][] = "$group:$key <- " . substr(wp_debug_backtrace_summary(null, 2), -150);
             }
         }
@@ -89,7 +89,7 @@ final class TP_Test_Object_Cache extends WP_Object_Cache
         if ($asked > 0) {
             $this->trips['multi']++;
             $this->trips['keys'] += $asked;
-            if (isset($_SERVER['HTTP_X_TP_READ_BUDGET_TRACE'])) {
+            if (isset($_SERVER['HTTP_X_SP_READ_BUDGET_TRACE'])) {
                 $this->trips['log'][] = "$group:" . implode(',', $keys) . ' <- ' . substr(wp_debug_backtrace_summary(null, 2), -150);
             }
         }
@@ -218,7 +218,7 @@ final class TP_Test_Object_Cache extends WP_Object_Cache
 
 function wp_cache_init(): void
 {
-    $GLOBALS['wp_object_cache'] = new TP_Test_Object_Cache();
+    $GLOBALS['wp_object_cache'] = new SP_Test_Object_Cache();
 }
 function wp_cache_add($key, $data, $group = '', $expire = 0)
 {

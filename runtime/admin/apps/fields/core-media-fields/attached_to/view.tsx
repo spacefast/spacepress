@@ -1,6 +1,6 @@
 import { useState, useEffect } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
-import type { DataViewRenderFieldProps } from '@typedpress-admin/dataviews';
+import type { DataViewRenderFieldProps } from '@spacepress-admin/dataviews';
 import type { MediaItem } from '../types';
 import { getRenderedContent } from '../utils/get-rendered-content';
 
@@ -29,7 +29,7 @@ export default function MediaAttachedToView( {
 		}
 
 		if ( ! parentId ) {
-			setAttachedPostTitle( __( '(Unattached)', 'typedpress-admin' ) );
+			setAttachedPostTitle( __( '(Unattached)', 'spacepress-admin' ) );
 		}
 	}, [ parentId, embeddedPostId, embeddedPostTitle ] );
 

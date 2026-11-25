@@ -9,9 +9,9 @@ import {
 	RouterLink,
 	createConfirmModal,
 	useDocumentChanges,
-} from '@typedpress-admin/admin-toolkit';
-import type { Action, Field, View } from '@typedpress-admin/dataviews';
-import { DataViews, useView } from '@typedpress-admin/views';
+} from '@spacepress-admin/admin-toolkit';
+import type { Action, Field, View } from '@spacepress-admin/dataviews';
+import { DataViews, useView } from '@spacepress-admin/views';
 import {
 	EditingObjects,
 	allowed,
@@ -54,7 +54,7 @@ export function Loading({ state }: { state: Load<unknown> }) {
 			</Notice>
 		</div>
 	) : (
-		<div role="status" className="typedpress-schema-loading">
+		<div role="status" className="spacepress-schema-loading">
 			<Spinner />
 			<span>Loading…</span>
 		</div>
@@ -68,7 +68,7 @@ export function Overview() {
 			{state.kind !== 'ready' ? (
 				<Loading state={state} />
 			) : (
-				<div className="typedpress-schema-cards">
+				<div className="spacepress-schema-cards">
 					{Object.values(state.value.collections)
 						.filter((c) => bootstrap().readable.includes(c.name))
 						.map((c) => (
@@ -79,7 +79,7 @@ export function Overview() {
 									</RouterLink>
 								</h2>
 								{c.ui?.description && <p>{c.ui.description}</p>}
-								<p className="typedpress-schema-card-meta">
+								<p className="spacepress-schema-card-meta">
 									{Object.keys(c.columns).length} fields
 								</p>
 							</article>
@@ -159,33 +159,33 @@ function formatCellText(value: unknown, col?: Column): string {
 
 function renderCell(value: unknown, key: string, col: Column) {
 	if (value == null || value === '') {
-		return <span className="typedpress-schema-cell-muted">—</span>;
+		return <span className="spacepress-schema-cell-muted">—</span>;
 	}
 	if (key === 'status' || (col.options.length > 0 && typeof value === 'string')) {
 		const str = String(value);
 		const tone = key === 'status' ? statusTone(str) : 'neutral';
 		return (
-			<span className={`typedpress-schema-badge is-${tone}`}>
+			<span className={`spacepress-schema-badge is-${tone}`}>
 				{humanLabel(str)}
 			</span>
 		);
 	}
 	if (col.type === 'boolean' && typeof value === 'boolean') {
 		return (
-			<span className={`typedpress-schema-badge is-${value ? 'success' : 'neutral'}`}>
+			<span className={`spacepress-schema-badge is-${value ? 'success' : 'neutral'}`}>
 				{value ? 'Yes' : 'No'}
 			</span>
 		);
 	}
 	if (key === 'slug' || col.type === 'url') {
 		return (
-			<code className="typedpress-schema-cell-code">
+			<code className="spacepress-schema-cell-code">
 				{formatCellText(value, col)}
 			</code>
 		);
 	}
 	return (
-		<span className="typedpress-schema-cell-truncate">
+		<span className="spacepress-schema-cell-truncate">
 			{formatCellText(value, col)}
 		</span>
 	);
@@ -215,7 +215,7 @@ export function listFields(c: Collection, rows: Row[]): Field<Row>[] {
 			render: ({ item }) =>
 				key === linkField ? (
 					<RouterLink
-						className="typedpress-schema-title-link"
+						className="spacepress-schema-title-link"
 						to={`/collections/${c.name}/${encodeURIComponent(String(item[c.primaryKey]))}`}
 					>
 						{formatCellText(item[key], col)}
@@ -235,7 +235,7 @@ export function listFields(c: Collection, rows: Row[]): Field<Row>[] {
 			filterBy: false,
 			getValue: ({ item }) => item._modified,
 			render: ({ item }) => (
-				<span className="typedpress-schema-cell-muted">
+				<span className="spacepress-schema-cell-muted">
 					{formatDate(item._modified)}
 				</span>
 			),
@@ -286,7 +286,7 @@ function CollectionTable({ c }: { c: Collection }) {
 	}, [c]);
 
 	const { view: savedView, updateView, isModified, resetToDefault } = useView({
-		kind: 'tpCollection',
+		kind: 'spCollection',
 		name: collection,
 		slug: 'all',
 		defaultView,
@@ -398,7 +398,7 @@ function CollectionTable({ c }: { c: Collection }) {
 	}, [c, collection, navigate, deleteModal]);
 
 	const statusTabs = canFilterStatus ? (
-		<div className="typedpress-schema-status-tabs" role="tablist" aria-label="Filter by status">
+		<div className="spacepress-schema-status-tabs" role="tablist" aria-label="Filter by status">
 			{['all', ...(c.columns.status?.options ?? [])].map((status) => {
 				const active = statusFilter === status;
 				return (
@@ -407,7 +407,7 @@ function CollectionTable({ c }: { c: Collection }) {
 						type="button"
 						role="tab"
 						aria-selected={active}
-						className={`typedpress-schema-status-tab${active ? ' is-active' : ''}`}
+						className={`spacepress-schema-status-tab${active ? ' is-active' : ''}`}
 						onClick={() => {
 							void navigate({
 								to: `/collections/${collection}`,
@@ -571,7 +571,7 @@ export function DocumentForm({
 	}, [savedResult, onSaved, sharedChanges]);
 	return (
 		<form
-			className="typedpress-schema-form"
+			className="spacepress-schema-form"
 			onSubmit={(e) => {
 				e.preventDefault();
 				if (disabled || busy || !drafts.valid) return;
@@ -638,7 +638,7 @@ export function NewDocument() {
 			title={`New ${singular}`}
 			breadcrumbs={
 				<RouterLink
-					className="typedpress-schema-back"
+					className="spacepress-schema-back"
 					to={`/collections/${collection}`}
 				>
 					Back to {c.label}
@@ -692,7 +692,7 @@ export function PlainDocument() {
 			title={`Edit ${singularLabel(c)}`}
 			breadcrumbs={
 				<RouterLink
-					className="typedpress-schema-back"
+					className="spacepress-schema-back"
 					to={`/collections/${collection}`}
 				>
 					Back to {c.label}
@@ -741,7 +741,7 @@ export function Globals() {
 			{state.kind !== 'ready' ? (
 				<Loading state={state} />
 			) : (
-				<div className="typedpress-schema-cards">
+				<div className="spacepress-schema-cards">
 					{state.value.map((g) => (
 						<article key={g.name}>
 							<h2>

@@ -1,4 +1,4 @@
-//! `typedpress add <module> [dir]`: adds an optional part of TypedPress to a project as ordinary files the
+//! `spacepress add <module> [dir]`: adds an optional part of SpacePress to a project as ordinary files the
 //! author then owns. A module is a row in [`MODULES`]: its name, what it is, and the files it
 //! writes. A new module is one more row and its files under `add/<name>/`.
 //!
@@ -31,7 +31,7 @@ struct File {
     path: &'static str,
     content: &'static str,
     /// For a project with `output: "static"`: text put in after the line that starts with the
-    /// first string, and the import names the second adds to the import from `typedpress/app`.
+    /// first string, and the import names the second adds to the import from `spacepress/app`.
     static_output: Option<StaticOutput>,
     what: &'static str,
     when: When,
@@ -57,7 +57,7 @@ const MODULES: &[Module] = &[
         summary: "SQL tables beside your WordPress content: table(), foreign keys, a schema check at deploy",
         files: &[
             File {
-                path: "tp/tables.ts",
+                path: "sp/tables.ts",
                 content: include_str!("add/db/tables.ts"),
                 static_output: None,
                 what: "two example tables, with a reference between them and access rules",
@@ -71,7 +71,7 @@ const MODULES: &[Module] = &[
                 when: When::Tables(&["projects", "tasks"]),
             },
             File {
-                path: "tp/DATABASE.md",
+                path: "sp/DATABASE.md",
                 content: include_str!("add/db/DATABASE.md"),
                 static_output: None,
                 what: "how tables, migrations and the deploy check work",
@@ -79,9 +79,9 @@ const MODULES: &[Module] = &[
             },
         ],
         next: &[
-            "typedpress build   writes the SQL for new tables to tp/_generated/migrations/ (commit it)",
-            "typedpress dev     applies it to the local site",
-            "tsc           checks the new files once tsconfig.json includes them (tp/DATABASE.md)",
+            "spacepress build   writes the SQL for new tables to sp/_generated/migrations/ (commit it)",
+            "spacepress dev     applies it to the local site",
+            "tsc           checks the new files once tsconfig.json includes them (sp/DATABASE.md)",
         ],
     },
     Module {
@@ -89,14 +89,14 @@ const MODULES: &[Module] = &[
         summary: "pages at /api that document the app's HTTP API from its OpenAPI document",
         files: &[
             File {
-                path: "tp/app/api/page.tsx",
+                path: "sp/app/api/page.tsx",
                 content: include_str!("add/api-reference/page.tsx"),
                 static_output: None,
                 what: "/api: every operation, by tag",
                 when: When::Always,
             },
             File {
-                path: "tp/app/api/[tag]/[operation]/page.tsx",
+                path: "sp/app/api/[tag]/[operation]/page.tsx",
                 content: include_str!("add/api-reference/operation.tsx"),
                 // A static site prebuilds every page, so the dynamic one lists its URLs. A site that
                 // renders per request gets none: `staticParams` would make the page prebuilt, which
@@ -110,14 +110,14 @@ const MODULES: &[Module] = &[
                 when: When::Always,
             },
             File {
-                path: "tp/components/ApiFields.tsx",
+                path: "sp/components/ApiFields.tsx",
                 content: include_str!("add/api-reference/ApiFields.tsx"),
                 static_output: None,
                 what: "the fields of a parameter list, body or response",
                 when: When::Always,
             },
             File {
-                path: "tp/API.md",
+                path: "sp/API.md",
                 content: include_str!("add/api-reference/API.md"),
                 static_output: None,
                 what: "what the pages read and how to change them",
@@ -125,8 +125,8 @@ const MODULES: &[Module] = &[
             },
         ],
         next: &[
-            "typedpress dev     serves the reference at /api",
-            "typedpress build   keeps it in step with the schema: it reads tp/_generated/openapi.json",
+            "spacepress dev     serves the reference at /api",
+            "spacepress build   keeps it in step with the schema: it reads sp/_generated/openapi.json",
         ],
     },
     Module {
@@ -134,21 +134,21 @@ const MODULES: &[Module] = &[
         summary: "WooCommerce products, native checkout, cart and editable storefront pages",
         files: &[
             File {
-                path: "tp/shop.ts",
+                path: "sp/shop.ts",
                 content: include_str!("add/shop/shop.ts"),
                 static_output: None,
                 what: "store settings and commerce kinds",
                 when: When::NoStore,
             },
             File {
-                path: "tp/components/MiniCart.tsx",
+                path: "sp/components/MiniCart.tsx",
                 content: include_str!("add/shop/MiniCart.tsx"),
                 static_output: None,
                 what: "browser-only cart count",
                 when: When::Shop,
             },
             File {
-                path: "tp/shop.css",
+                path: "sp/shop.css",
                 content: include_str!("add/shop/shop.css"),
                 static_output: None,
                 what: "storefront styles",
@@ -162,35 +162,35 @@ const MODULES: &[Module] = &[
                 when: When::Shop,
             },
             File {
-                path: "tp/app/(shop)/shop/page.tsx",
+                path: "sp/app/(shop)/shop/page.tsx",
                 content: include_str!("add/shop/catalog.tsx"),
                 static_output: None,
                 what: "catalog page",
                 when: When::Shop,
             },
             File {
-                path: "tp/app/(shop)/shop/[...path]/page.tsx",
+                path: "sp/app/(shop)/shop/[...path]/page.tsx",
                 content: include_str!("add/shop/category.tsx"),
                 static_output: None,
                 what: "category page",
                 when: When::Shop,
             },
             File {
-                path: "tp/app/(shop)/products/[slug]/page.tsx",
+                path: "sp/app/(shop)/products/[slug]/page.tsx",
                 content: include_str!("add/shop/product.tsx"),
                 static_output: None,
                 what: "product page",
                 when: When::Shop,
             },
             File {
-                path: "tp/app/(shop)/cart/page.tsx",
+                path: "sp/app/(shop)/cart/page.tsx",
                 content: include_str!("add/shop/cart.tsx"),
                 static_output: None,
                 what: "cart page",
                 when: When::Shop,
             },
             File {
-                path: "tp/app/(shop)/checkout/page.md",
+                path: "sp/app/(shop)/checkout/page.md",
                 content: include_str!("add/shop/checkout.md"),
                 static_output: None,
                 what: "native Woo Checkout Block",
@@ -225,7 +225,7 @@ const MODULES: &[Module] = &[
                 when: When::Shop,
             },
             File {
-                path: "tp/app/(shop)/layout.tsx",
+                path: "sp/app/(shop)/layout.tsx",
                 content: include_str!("add/shop/layout.tsx"),
                 static_output: None,
                 what: "storefront layout",
@@ -233,13 +233,13 @@ const MODULES: &[Module] = &[
             },
         ],
         next: &[
-            "typedpress dev     starts the store with source products and native Woo checkout",
-            "typedpress sync    merges catalog edits between source and WooCommerce",
+            "spacepress dev     starts the store with source products and native Woo checkout",
+            "spacepress sync    merges catalog edits between source and WooCommerce",
         ],
     },
 ];
 
-/// The modules, one line each, for usage errors and `typedpress help add`.
+/// The modules, one line each, for usage errors and `spacepress help add`.
 pub(crate) fn modules() -> String {
     let width = MODULES.iter().map(|m| m.name.len()).max().unwrap_or(0);
     let mut out = String::from("modules:\n");
@@ -250,7 +250,7 @@ pub(crate) fn modules() -> String {
 }
 
 fn usage(message: &str) -> ExitCode {
-    eprint!("{message}\nusage: typedpress add <module> [dir]\n{}", modules());
+    eprint!("{message}\nusage: spacepress add <module> [dir]\n{}", modules());
     ExitCode::from(2)
 }
 
@@ -274,12 +274,12 @@ fn skip(file: &File, schema: &Schema, project: &Path) -> Option<String> {
             .store
             .is_some()
             .then(|| "the project already has a store".to_string()),
-        When::Shop => (!(project.join("tp/shop.ts").is_file()
+        When::Shop => (!(project.join("sp/shop.ts").is_file()
             && schema
                 .collections
                 .values()
                 .any(|c| c.commerce.as_deref() == Some("product") && c.key == "products")))
-        .then(|| "the project doesn't use the example tp/shop.ts products kind".to_string()),
+        .then(|| "the project doesn't use the example sp/shop.ts products kind".to_string()),
         When::NoTables => table(schema, None).then(|| "the project already has tables".to_string()),
         When::Tables(names) => names
             .iter()
@@ -341,23 +341,23 @@ impl Created {
 
 pub(crate) fn cli(args: &[String]) -> ExitCode {
     if let Some(option) = args.iter().find(|a| a.starts_with('-')) {
-        return usage(&format!("unknown option {option} for typedpress add"));
+        return usage(&format!("unknown option {option} for spacepress add"));
     }
     let (name, dir) = match args {
         [name] => (name, "."),
         [name, dir] => (name, dir.as_str()),
-        [] => return usage("typedpress add needs a module"),
-        _ => return usage("typedpress add takes one module and one directory"),
+        [] => return usage("spacepress add needs a module"),
+        _ => return usage("spacepress add takes one module and one directory"),
     };
     let Some(module) = MODULES.iter().find(|m| m.name == name) else {
         return usage(&format!("no module {name}"));
     };
     let project = PathBuf::from(dir);
     let project = project.canonicalize().unwrap_or(project);
-    let command = format!("typedpress add {}", module.name);
-    if !project.join("typedpress.config.ts").is_file() {
+    let command = format!("spacepress add {}", module.name);
+    if !project.join("spacepress.config.ts").is_file() {
         eprintln!(
-            "{command}: no typedpress.config.ts in {}. Run it in a TypedPress project, or pass the project's directory.",
+            "{command}: no spacepress.config.ts in {}. Run it in a SpacePress project, or pass the project's directory.",
             project.display()
         );
         return ExitCode::from(1);
@@ -382,7 +382,7 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
             report.push((file, "kept   ", "already there, not changed".to_string()));
             continue;
         }
-        let shop_files = matches!(file.when, When::Shop) && created.files.contains(&"tp/shop.ts");
+        let shop_files = matches!(file.when, When::Shop) && created.files.contains(&"sp/shop.ts");
         if !shop_files && !matches!(file.when, When::Always) && compiled < created.files.len() {
             schema = match super::build::compile(&project) {
                 Ok(schema) => schema,

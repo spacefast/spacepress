@@ -24,12 +24,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "src/wordpress/catalog.json"
-# The generated half of types/typedpress/wordpress.d.ts, between these markers.
-TYPES = ROOT / "types/typedpress/wordpress.d.ts"
+# The generated half of types/spacepress/wordpress.d.ts, between these markers.
+TYPES = ROOT / "types/spacepress/wordpress.d.ts"
 BEGIN, END = "// BEGIN GENERATED: scripts/wordpress-catalog.py", "// END GENERATED"
 CACHE = ROOT / "tests/wp/cache/catalog"
 
-# WordPress 7.1.x: the newest stubs php-stubs/wordpress-stubs has released. TypedPress's floor is 7.1
+# WordPress 7.1.x: the newest stubs php-stubs/wordpress-stubs has released. SpacePress's floor is 7.1
 # (src/platform.rs), so the catalog's names are the floor's.
 PINS = {
     "hooks": {
@@ -50,15 +50,15 @@ SELECT_HOOKS = [
     "user_register", "wp_login", "wp_logout",
     "rest_api_init", "wp_mail", "pre_get_posts", "login_message",
 ]
-# Hooks TypedPress's runtime fires itself, so no core docblock describes them. `async` admits an
-# `async` handler: its awaited TypedPress database writes run synchronously in PHP.
+# Hooks SpacePress's runtime fires itself, so no core docblock describes them. `async` admits an
+# `async` handler: its awaited SpacePress database writes run synchronously in PHP.
 OWN_HOOKS = {
-    "typedpress_woo_order_stock": {
+    "spacepress_woo_order_stock": {
         "kind": "action",
         "params": [{"name": "product_id", "type": "number"}, {"name": "order_id", "type": "number"},
                    {"name": "change", "type": "number"}, {"name": "reason", "type": '"sale" | "return"'}],
         "description": "Fires when WooCommerce changes a product's stock for an order: a sale lowers it, a cancelled order or a restocked refund returns it.",
-        "source": "runtime/TypedPress/Commerce/Operations.php",
+        "source": "runtime/SpacePress/Commerce/Operations.php",
         "byReference": False,
         "async": True,
     },
@@ -283,7 +283,7 @@ def render():
 
 
 def render_types(catalog):
-    """The catalog as declarations: class views and the hook map, for types/typedpress/wordpress.d.ts."""
+    """The catalog as declarations: class views and the hook map, for types/spacepress/wordpress.d.ts."""
     lines = [BEGIN]
     for cls, fields in catalog["classes"].items():
         lines.append(f"/** A read-only view of `{cls}` as a hook handler receives it. */")
@@ -300,7 +300,7 @@ def render_types(catalog):
         throws = " Throws an HttpError when WordPress returns a WP_Error." if f["wpError"] else ""
         lines.append(f"/** WordPress `{name}()`.{throws} */")
         lines.append(f"export declare function {name}({params}): {f['returns']};")
-    lines.append("/** The hooks `tp/wp-hooks/` accepts: kind and arguments, from core's docblocks and TypedPress's own. */")
+    lines.append("/** The hooks `sp/wp-hooks/` accepts: kind and arguments, from core's docblocks and SpacePress's own. */")
     lines.append("export interface Hooks {")
     for name, h in catalog["hooks"].items():
         params = ", ".join(f"{p['name']}: {p['type']}" for p in h["params"])

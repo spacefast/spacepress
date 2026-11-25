@@ -1,7 +1,7 @@
 // `this` outside classes: object-literal methods,
 // borrowed methods, call/apply and arrows inside methods. Every action runs under Node and as
 // compiled PHP; the JSON results must be byte-identical. `this-helpers.mjs` runs the untyped forms.
-import { defineConfig, mutation } from "typedpress";
+import { defineConfig, mutation } from "spacepress";
 import * as thisModule from "./this-helpers.mjs";
 import { detached, factory, mod, moduleReceivers, receivers, rich, richReceivers, store } from "./this-helpers.mjs";
 

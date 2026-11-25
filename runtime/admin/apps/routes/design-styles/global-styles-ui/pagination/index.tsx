@@ -27,7 +27,7 @@ export default function Pagination( {
 	className,
 	disabled = false,
 	buttonVariant = 'tertiary',
-	label = __( 'Pagination', 'typedpress-admin' ),
+	label = __( 'Pagination', 'spacepress-admin' ),
 }: PaginationProps ) {
 	return (
 		<HStack
@@ -36,12 +36,12 @@ export default function Pagination( {
 			aria-label={ label }
 			spacing={ 3 }
 			justify="flex-start"
-			className={ clsx( 'typedpress-admin-pagination', className ) }
+			className={ clsx( 'spacepress-admin-pagination', className ) }
 		>
-			<Text variant="muted" className="typedpress-admin-pagination__total">
+			<Text variant="muted" className="spacepress-admin-pagination__total">
 				{ sprintf(
 					// translators: %d: Total number of patterns.
-					_n( '%d item', '%d items', totalItems, 'typedpress-admin' ),
+					_n( '%d item', '%d items', totalItems, 'spacepress-admin' ),
 					totalItems
 				) }
 			</Text>
@@ -51,7 +51,7 @@ export default function Pagination( {
 					onClick={ () => changePage( 1 ) }
 					accessibleWhenDisabled
 					disabled={ disabled || currentPage === 1 }
-					label={ __( 'TypedPress page', 'typedpress-admin' ) }
+					label={ __( 'SpacePress page', 'spacepress-admin' ) }
 					icon={ isRTL() ? next : previous }
 					size="compact"
 				/>
@@ -60,7 +60,7 @@ export default function Pagination( {
 					onClick={ () => changePage( currentPage - 1 ) }
 					accessibleWhenDisabled
 					disabled={ disabled || currentPage === 1 }
-					label={ __( 'Previous page', 'typedpress-admin' ) }
+					label={ __( 'Previous page', 'spacepress-admin' ) }
 					icon={ isRTL() ? chevronRight : chevronLeft }
 					size="compact"
 				/>
@@ -68,7 +68,7 @@ export default function Pagination( {
 			<Text variant="muted">
 				{ sprintf(
 					// translators: 1: Current page number. 2: Total number of pages.
-					_x( '%1$d of %2$d', 'paging', 'typedpress-admin' ),
+					_x( '%1$d of %2$d', 'paging', 'spacepress-admin' ),
 					currentPage,
 					numPages
 				) }
@@ -79,7 +79,7 @@ export default function Pagination( {
 					onClick={ () => changePage( currentPage + 1 ) }
 					accessibleWhenDisabled
 					disabled={ disabled || currentPage === numPages }
-					label={ __( 'Next page', 'typedpress-admin' ) }
+					label={ __( 'Next page', 'spacepress-admin' ) }
 					icon={ isRTL() ? chevronLeft : chevronRight }
 					size="compact"
 				/>
@@ -88,7 +88,7 @@ export default function Pagination( {
 					onClick={ () => changePage( numPages ) }
 					accessibleWhenDisabled
 					disabled={ disabled || currentPage === numPages }
-					label={ __( 'Last page', 'typedpress-admin' ) }
+					label={ __( 'Last page', 'spacepress-admin' ) }
 					icon={ isRTL() ? previous : next }
 					size="compact"
 				/>

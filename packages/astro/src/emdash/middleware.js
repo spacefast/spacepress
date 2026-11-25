@@ -1,5 +1,5 @@
 // The request handling EmDash's templates rely on, for a template served by Astro in front of a
-// TypedPress site: `/_emdash/admin` opens wp-admin, a comment form posts through to WordPress, and a
+// SpacePress site: `/_emdash/admin` opens wp-admin, a comment form posts through to WordPress, and a
 // `?preview=` token reads a draft. Prerendered pages pass straight through.
 import { backendUrl } from "./client.js";
 import { requestContext } from "./context.js";

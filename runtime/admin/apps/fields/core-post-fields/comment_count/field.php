@@ -2,12 +2,12 @@
 /**
  * Comment count field definition for core post fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'Comments', 'typedpress-admin' ),
+	'label'         => __( 'Comments', 'spacepress-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 );

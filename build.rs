@@ -1,10 +1,10 @@
 //! Embeds the runtime into the binary: every file under `runtime/` (PHP runtime,
 //! WordPress stores, plugin template, client runtime). New files are picked up
-//! without code changes; `typedpress build` decides which go where.
+//! without code changes; `spacepress build` decides which go where.
 //!
-//! Also embeds the documentation `typedpress mcp` searches and reads (`docs_files.rs`): the pages
+//! Also embeds the documentation `spacepress mcp` searches and reads (`docs_files.rs`): the pages
 //! under `www/content/docs/`, so an answer matches the binary that gave it. And the agent skills
-//! under `skills/`, which `typedpress init` writes into a project.
+//! under `skills/`, which `spacepress init` writes into a project.
 
 use std::fmt::Write as _;
 use std::path::Path;

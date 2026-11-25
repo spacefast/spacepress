@@ -1,9 +1,9 @@
 import { privateApis as editorPrivateApis } from '@wordpress/editor';
 import { useViewportMatch } from '@wordpress/compose';
 import { __ } from '@wordpress/i18n';
-import { unlock } from '@typedpress-admin/admin-toolkit';
+import { unlock } from '@spacepress-admin/admin-toolkit';
 import { useLinkProps } from '@wordpress/route';
-import { ImageCropperProvider } from '@typedpress-admin/image-cropper';
+import { ImageCropperProvider } from '@spacepress-admin/image-cropper';
 import MediaEditorNotices from '../notices';
 import MediaEditorHeader from '../header';
 import MediaEditorSidebar from '../sidebar';
@@ -24,7 +24,7 @@ export default function MediaEditorLayout( {
 } ) {
 	const linkProps = useLinkProps( {
 		to: editLink,
-		className: 'typedpress-admin-site-editor__hyperlink',
+		className: 'spacepress-admin-site-editor__hyperlink',
 	} );
 	const isMobileViewport = useViewportMatch( 'medium', '<' );
 	const { isImageEditorOpen } = useMediaEditorState();
@@ -32,7 +32,7 @@ export default function MediaEditorLayout( {
 
 	return (
 		<ImageCropperProvider>
-			<div className="typedpress-admin-site-editor typedpress-admin-site-editor__media-editor-layout">
+			<div className="spacepress-admin-site-editor spacepress-admin-site-editor__media-editor-layout">
 				<InterfaceSkeleton
 					header={ ! isPreview && <MediaEditorHeader /> }
 					sidebar={
@@ -53,7 +53,7 @@ export default function MediaEditorLayout( {
 				{ isPreview && (
 					<a
 						{ ...linkProps }
-						aria-label={ __( 'Edit', 'typedpress-admin' ) }
+						aria-label={ __( 'Edit', 'spacepress-admin' ) }
 					/>
 				) }
 				<MediaEditorNotices />

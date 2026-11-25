@@ -1,5 +1,5 @@
-//! `typedpress abilities pull [dir] --site <url> [--only vendor/*]...`: list a site's abilities over
-//! `wp-abilities/v1` and write the committed lock `tp/_generated/abilities.json`. It signs in as every
+//! `spacepress abilities pull [dir] --site <url> [--only vendor/*]...`: list a site's abilities over
+//! `wp-abilities/v1` and write the committed lock `sp/_generated/abilities.json`. It signs in as every
 //! remote command does (`remote::sign_in`), never with a flag that lands in shell history; signed out it
 //! lists what the site shows anyone.
 
@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
-const USAGE: &str = "usage: typedpress abilities pull [project-dir] --site <url> [--only vendor/*]...";
+const USAGE: &str = "usage: spacepress abilities pull [project-dir] --site <url> [--only vendor/*]...";
 
 pub fn cli(args: &[String]) -> ExitCode {
     match run(args) {
@@ -144,7 +144,7 @@ pub(crate) fn list(site: &str, credential: Option<&Credential>) -> Result<Vec<Va
             200 => {}
             401 | 403 => {
                 return Err(format!(
-                    "{site}: listing abilities needs a signed-in user. Run: typedpress login {site}   (in CI: TP_APP_PASSWORD=user:application-password)"
+                    "{site}: listing abilities needs a signed-in user. Run: spacepress login {site}   (in CI: SP_APP_PASSWORD=user:application-password)"
                 ));
             }
             404 => {

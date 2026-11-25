@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { __ } from '@wordpress/i18n';
-import type { View } from '@typedpress-admin/dataviews';
+import type { View } from '@spacepress-admin/dataviews';
 import { Spinner } from '@wordpress/components';
 import { Button, Icon } from '@wordpress/ui';
 import { chevronRight } from '@wordpress/icons';
-import { EmptyState } from '@typedpress-admin/design-system';
+import { EmptyState } from '@spacepress-admin/design-system';
 import './style.scss';
 
 export interface EmptyStateAction {
@@ -30,12 +30,12 @@ export interface TabEmptyStateProps< TView extends View = View > {
 
 const DEFAULT_FILTERED_TITLE = __(
 	'No items match your filters',
-	'typedpress-admin'
+	'spacepress-admin'
 );
 
 const DEFAULT_FILTERED_DESCRIPTION = __(
 	'Try clearing some filters or adjusting your search query.',
-	'typedpress-admin'
+	'spacepress-admin'
 );
 
 export function TabEmptyState< TView extends View = View >( {
@@ -77,7 +77,7 @@ export function TabEmptyState< TView extends View = View >( {
 					<EmptyState.Actions>
 						<Button variant="outline" onClick={ onClearFilters }>
 							{ filteredButtonLabel ??
-								__( 'Clear filters', 'typedpress-admin' ) }
+								__( 'Clear filters', 'spacepress-admin' ) }
 						</Button>
 					</EmptyState.Actions>
 				) }
@@ -99,7 +99,7 @@ export function TabEmptyState< TView extends View = View >( {
 							loading={ true }
 							loadingAnnouncement={ __(
 								'Loading…',
-								'typedpress-admin'
+								'spacepress-admin'
 							) }
 						>
 							{ actions[ 0 ].label }

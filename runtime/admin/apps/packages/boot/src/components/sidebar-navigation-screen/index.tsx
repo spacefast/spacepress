@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { IconButton } from '@wordpress/ui';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
-import { Stack } from '@typedpress-admin/design-system';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components
+import { Stack } from '@spacepress-admin/design-system';
 import {
 	__experimentalHeading as Heading,
 	__unstableMotion as motion,
@@ -69,7 +69,7 @@ export default function SidebarNavigationScreen( {
 
 	return (
 		<div
-			className="typedpress-admin-sidebar-navigation-screen"
+			className="spacepress-admin-sidebar-navigation-screen"
 			style={ {
 				overflow: 'hidden',
 				position: 'relative',
@@ -101,34 +101,34 @@ export default function SidebarNavigationScreen( {
 						direction="row"
 						gap={ 2 }
 						align="center"
-						className="typedpress-admin-sidebar-navigation-screen__title-icon"
+						className="spacepress-admin-sidebar-navigation-screen__title-icon"
 					>
 						{ ! isRoot && (
 							<IconButton
 								icon={ icon }
 								onClick={ handleBackClick }
-								label={ __( 'Back', 'typedpress-admin' ) }
+								label={ __( 'Back', 'spacepress-admin' ) }
 								size="small"
 								variant="minimal"
 								tone="neutral"
 							/>
 						) }
 						<Heading
-							className="typedpress-admin-sidebar-navigation-screen__title"
+							className="spacepress-admin-sidebar-navigation-screen__title"
 							level={ 1 }
 							size="15px"
 						>
 							{ title }
 						</Heading>
 						{ actions && (
-							<div className="typedpress-admin-sidebar-navigation-screen__actions">
+							<div className="spacepress-admin-sidebar-navigation-screen__actions">
 								{ actions }
 							</div>
 						) }
 					</Stack>
 
 					{ description && (
-						<div className="typedpress-admin-sidebar-navigation-screen__description">
+						<div className="spacepress-admin-sidebar-navigation-screen__description">
 							{ description }
 						</div>
 					) }

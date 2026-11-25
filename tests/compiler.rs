@@ -1,8 +1,8 @@
-//! Runs the real `typedpress` binary. Rejections are checked by message and
+//! Runs the real `spacepress` binary. Rejections are checked by message and
 //! location; the pantry example is built, served with `php -S`, and driven
 //! over HTTP so hooks and actions are proven by their effects in PHP.
 
-// Runs the `typedpress` binary: only with the cli feature (the browser build of the core has none).
+// Runs the `spacepress` binary: only with the cli feature (the browser build of the core has none).
 #![cfg(feature = "cli")]
 
 use std::io::{BufRead, Read, Write};
@@ -11,14 +11,14 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 fn first() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_typedpress"))
+    Command::new(env!("CARGO_BIN_EXE_spacepress"))
 }
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// `typedpress check` on a fixture must fail with `message` at `file:line`.
+/// `spacepress check` on a fixture must fail with `message` at `file:line`.
 fn rejects(fixture: &str, message: &str, at: &str) {
     let out = first()
         .args(["check"])
@@ -42,17 +42,17 @@ fn wordpress_secrets_are_refused_on_every_env_path() {
     rejects(
         "reject-process-env-host",
         "`DB_PASSWORD` is a host setting",
-        "typedpress.config.ts:2:",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-env-host-secret",
         "`nonce_salt` is a host setting",
-        "typedpress.config.ts:3:",
+        "spacepress.config.ts:3:",
     );
     rejects(
         "reject-hmac-host-secret",
         "`AUTH_KEY` is a host setting",
-        "typedpress.config.ts:3:",
+        "spacepress.config.ts:3:",
     );
 }
 
@@ -61,76 +61,76 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-class",
         "abstract, ambient or generic classes",
-        "typedpress.config.ts:2:1",
+        "spacepress.config.ts:2:1",
     );
     rejects(
         "reject-uninstalled-package",
         "can't import \"dayjs\": package is not installed in node_modules",
-        "typedpress.config.ts:1:1",
+        "spacepress.config.ts:1:1",
     );
     rejects(
         "reject-build-time-clock",
         "`Date.now()` isn't available while the config is evaluated",
-        "typedpress.config.ts:2:11",
+        "spacepress.config.ts:2:11",
     );
     rejects(
         "reject-infinite-loop",
         "step budget exceeded",
-        "typedpress.config.ts:2:",
+        "spacepress.config.ts:2:",
     );
-    // App code loads only from tp/ (F1210): here a module inside tp/ reaches back out.
+    // App code loads only from sp/ (F1210): here a module inside sp/ reaches back out.
     rejects(
         "reject-import-fence",
-        "tp/tags.ts imports \"../lib/prefix\" (lib/prefix.ts), which is outside tp/",
-        "tp/tags.ts:2:1",
+        "sp/tags.ts imports \"../lib/prefix\" (lib/prefix.ts), which is outside sp/",
+        "sp/tags.ts:2:1",
     );
     // Export names are unique across the app (F1221): an action named like a kind.
     rejects(
         "reject-duplicate-export",
-        "`notes` names two things: at tp/a.ts:2 and here",
-        "tp/b.ts:3:22",
+        "`notes` names two things: at sp/a.ts:2 and here",
+        "sp/b.ts:3:22",
     );
-    // "typedpress:db" names only registered kinds, and suggests the closest one.
+    // "spacepress:db" names only registered kinds, and suggests the closest one.
     rejects(
         "reject-db-unknown",
-        "\"typedpress:db\" has no kind named `note`",
-        "tp/app.ts:2:10",
+        "\"spacepress:db\" has no kind named `note`",
+        "sp/app.ts:2:10",
     );
-    // ... in tp/wp-hooks/ modules too, which load after every kind has registered.
+    // ... in sp/wp-hooks/ modules too, which load after every kind has registered.
     rejects(
         "reject-wp-hook-db-unknown",
-        "\"typedpress:db\" has no kind named `note`",
-        "tp/wp-hooks/the_title.ts:2:10",
+        "\"spacepress:db\" has no kind named `note`",
+        "sp/wp-hooks/the_title.ts:2:10",
     );
     // An exported name is unique across the app: an action listed under it is refused too.
     rejects(
         "reject-action-named-like-table",
-        "`notes` names two things: at typedpress.config.ts:3 and here",
-        "tp/schema.ts:2:22",
+        "`notes` names two things: at spacepress.config.ts:3 and here",
+        "sp/schema.ts:2:22",
     );
-    // "typedpress:db" is imported where it's used, never re-exported (a barrel, or a plugin handing on
+    // "spacepress:db" is imported where it's used, never re-exported (a barrel, or a plugin handing on
     // the app's kinds): refused at the statement, not a crash.
     rejects(
         "reject-db-reexport",
-        "\"typedpress:db\" can't be re-exported",
-        "tp/kinds.ts:4:1",
+        "\"spacepress:db\" can't be re-exported",
+        "sp/kinds.ts:4:1",
     );
     // ... and from a plugin, whose fix is to take the kinds as options.
     rejects(
         "reject-plugin-db-reexport",
         "a plugin takes the app's kinds as options",
-        "node_modules/typedpress-plugin-reach/src/index.ts:3:1",
+        "node_modules/spacepress-plugin-reach/src/index.ts:3:1",
     );
     // A default export has no name to register under.
     rejects(
         "reject-default-export-kind",
         "a kind, query, mutation or job can't be a default export",
-        "tp/notes.ts:3:16",
+        "sp/notes.ts:3:16",
     );
-    // wp-hooks/ beside typedpress.config.ts is from before tp/wp-hooks/: refused, never dropped.
+    // wp-hooks/ beside spacepress.config.ts is from before sp/wp-hooks/: refused, never dropped.
     rejects(
         "reject-wp-hooks-root",
-        "wp-hooks/ beside typedpress.config.ts is from an earlier layout; its handlers would not register",
+        "wp-hooks/ beside spacepress.config.ts is from an earlier layout; its handlers would not register",
         "wp-hooks:1:1",
     );
 }
@@ -182,14 +182,14 @@ fn removed_registry_keys_name_the_export_that_replaces_them() {
         ),
     ] {
         let fixture = format!("reject-config-{key}");
-        rejects(&fixture, message, "typedpress.config.ts:3:31");
-        rejects(&fixture, help, "typedpress.config.ts:3:31");
+        rejects(&fixture, message, "spacepress.config.ts:3:31");
+        rejects(&fixture, help, "spacepress.config.ts:3:31");
     }
     // A kind built in app source without an export would have no name (ruling 37, F1222).
     rejects(
         "reject-unexported-kind",
         "`hidden` is a table but isn't exported, so it has no name",
-        "tp/schema.ts:4:16",
+        "sp/schema.ts:4:16",
     );
     let out = first()
         .args(["check", "--json"])
@@ -200,14 +200,14 @@ fn removed_registry_keys_name_the_export_that_replaces_them() {
     assert_eq!(report["diagnostics"][0]["code"], "F1222", "{report}");
 }
 
-/// `typedpress.config.ts`'s own exports register like those of modules under tp/ (spec §1.1), and
+/// `spacepress.config.ts`'s own exports register like those of modules under sp/ (spec §1.1), and
 /// `export { a as b }` registers `b`: the API name and the stored name are the export name.
 #[test]
 fn config_file_exports_register_under_their_export_name() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        r#"import { defineConfig, table, text, mutation } from "typedpress";
+        tmp.path().join("spacepress.config.ts"),
+        r#"import { defineConfig, table, text, mutation } from "spacepress";
 const variants = table({ name: text() }, { access: { read: "anyone" } });
 export { variants as productVariants };
 export const ping = mutation({ access: "anyone" }, () => 1);
@@ -217,7 +217,7 @@ export default defineConfig({ name: "exported" });
     .unwrap();
     let out = first().arg("build").arg(tmp.path()).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    let migrations_dir = tmp.path().join("tp/_generated/migrations");
+    let migrations_dir = tmp.path().join("sp/_generated/migrations");
     let mut folders: Vec<PathBuf> = std::fs::read_dir(&migrations_dir)
         .unwrap()
         .map(|e| e.unwrap().path())
@@ -230,7 +230,7 @@ export default defineConfig({ name: "exported" });
         .as_array()
         .unwrap()
         .iter()
-        .filter(|op| op["op"] == "createTable" && op["table"] != "tp__revisions")
+        .filter(|op| op["op"] == "createTable" && op["table"] != "sp__revisions")
         .filter_map(|op| op["table"].as_str())
         .collect();
     assert_eq!(created_tables, ["product_variants"]);
@@ -238,7 +238,7 @@ export default defineConfig({ name: "exported" });
         .args(["-r", "echo json_encode(require $argv[1]);"])
         .arg(
             tmp.path()
-                .join("tp/dist/wp-content/plugins/typedpress-app-exported/tp/app/schema.php"),
+                .join("sp/dist/wp-content/plugins/spacepress-app-exported/sp/app/schema.php"),
         )
         .output()
         .unwrap();
@@ -254,8 +254,8 @@ export default defineConfig({ name: "exported" });
 fn searchable_marks_the_fields_search_matches() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        r#"import { defineConfig, integer, richText, table, text } from "typedpress";
+        tmp.path().join("spacepress.config.ts"),
+        r#"import { defineConfig, integer, richText, table, text } from "spacepress";
 export const recipes = table({ name: text().searchable(), intro: richText().searchable(), notes: text().optional(), secret: text().optional().searchable(false), servings: integer() }, { access: { read: "anyone" } });
 export const codes = table({ code: text().searchable(false) }, { access: { read: "anyone" } });
 export const plain = table({ label: text() }, { access: { read: "anyone" } });
@@ -269,7 +269,7 @@ export default defineConfig({ name: "searchable" });
         .args(["-r", "echo json_encode(require $argv[1]);"])
         .arg(
             tmp.path()
-                .join("tp/dist/wp-content/plugins/typedpress-app-searchable/tp/app/schema.php"),
+                .join("sp/dist/wp-content/plugins/spacepress-app-searchable/sp/app/schema.php"),
         )
         .output()
         .unwrap();
@@ -296,7 +296,7 @@ export default defineConfig({ name: "searchable" });
             .is_none()
     );
     let openapi: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(tmp.path().join("tp/_generated/openapi.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(tmp.path().join("sp/_generated/openapi.json")).unwrap()).unwrap();
     let has_search = |path: &str| {
         openapi["paths"][path]["get"]["parameters"]
             .as_array()
@@ -317,27 +317,27 @@ export default defineConfig({ name: "searchable" });
     rejects(
         "reject-searchable-kind",
         "`.searchable()` isn't valid on an integer column",
-        "typedpress.config.ts:2:43",
+        "spacepress.config.ts:2:43",
     );
     rejects(
         "reject-searchable-select",
         "`.searchable()` isn't valid on a select() column",
-        "typedpress.config.ts:2:57",
+        "spacepress.config.ts:2:57",
     );
     rejects(
         "reject-searchable-subfield",
         "`.searchable()` isn't allowed inside a group, repeater, or blocks field (`note`)",
-        "typedpress.config.ts:2:53",
+        "spacepress.config.ts:2:53",
     );
     rejects(
         "reject-searchable-global",
         "`.searchable()` isn't allowed on a global field (`tagline`)",
-        "typedpress.config.ts:2:50",
+        "spacepress.config.ts:2:50",
     );
     rejects(
         "reject-searchable-flag",
         "`.searchable()` takes true or false, not \"yes\"",
-        "typedpress.config.ts:2:39",
+        "spacepress.config.ts:2:39",
     );
 }
 
@@ -349,118 +349,118 @@ fn replaced_field_forms_name_their_replacement() {
         (
             "reject-not-null",
             "`.notNull()` is gone: fields are required by default",
-            "typedpress.config.ts:2:44",
+            "spacepress.config.ts:2:44",
         ),
         (
             "reject-id-builder",
             "`id()` is gone: every kind already has an integer `id`",
-            "typedpress.config.ts:2:34",
+            "spacepress.config.ts:2:34",
         ),
         (
             "reject-authored-id",
             "`id` is built in: every kind has an integer `id`",
-            "typedpress.config.ts:2:34",
+            "spacepress.config.ts:2:34",
         ),
-        ("reject-real", "`real()` is now `number()`", "typedpress.config.ts:2:37"),
+        ("reject-real", "`real()` is now `number()`", "spacepress.config.ts:2:37"),
         (
             "reject-type-annotation",
             "`json().$type<T>()` is now `json<T>()`",
-            "typedpress.config.ts:2:43",
+            "spacepress.config.ts:2:43",
         ),
         (
             "reject-function-default",
             "`.default()` takes a literal value, not a function",
-            "typedpress.config.ts:2:53",
+            "spacepress.config.ts:2:53",
         ),
         (
             "reject-select-options",
             "select() takes its options as an array",
-            "typedpress.config.ts:2:36",
+            "spacepress.config.ts:2:36",
         ),
         (
             "reject-text-enum",
             "`text({ enum })` is now `select([...])`",
-            "typedpress.config.ts:2:49",
+            "spacepress.config.ts:2:49",
         ),
         (
             "reject-group-wrapper",
             "group() takes its fields directly, without the `{ fields }` wrapper",
-            "typedpress.config.ts:2:35",
+            "spacepress.config.ts:2:35",
         ),
         (
             "reject-many-text",
             "`.many()` isn't valid on a text column",
-            "typedpress.config.ts:2:44",
+            "spacepress.config.ts:2:44",
         ),
         (
             "reject-define-relations",
             "`defineRelations()` is gone: a reference is a field",
-            "typedpress.config.ts:3:26",
+            "spacepress.config.ts:3:26",
         ),
         (
             "reject-named-global",
             "`global(\"settings\", ...)` no longer takes a name: the export names it",
-            "typedpress.config.ts:2:25",
+            "spacepress.config.ts:2:25",
         ),
         (
             "reject-named-files",
             "`files(\"decks\", ...)` no longer takes a name: the export names the bucket",
-            "typedpress.config.ts:2:22",
+            "spacepress.config.ts:2:22",
         ),
         (
             "reject-file-bucket-name",
             "`file({ bucket: \"decks\" })` is now `file(decks)`",
-            "typedpress.config.ts:3:36",
+            "spacepress.config.ts:3:36",
         ),
         (
             "reject-relations-key",
             "`relations` is gone: a reference is a field",
-            "typedpress.config.ts:3:42",
+            "spacepress.config.ts:3:42",
         ),
         (
             "reject-references",
             "`.references()` is gone: a reference is a `ref()` field",
-            "typedpress.config.ts:3:47",
+            "spacepress.config.ts:3:47",
         ),
         (
             "reject-ref-set-null",
             "`noteId` is required, so deleting what it refers to can't set it to null",
-            "tp/schema.ts:3:48",
+            "sp/schema.ts:3:48",
         ),
         (
             "reject-ref-reverse-clash",
             "`noteId` gives \"notes\" a reverse list named `tags`, which \"notes\" already has",
-            "tp/schema.ts:3:37",
+            "sp/schema.ts:3:37",
         ),
         (
             "reject-ref-target",
             "ref() takes a kind, not \"notes\"",
-            "tp/schema.ts:2:37",
+            "sp/schema.ts:2:37",
         ),
         (
             "reject-ref-many-set-null",
             "`.onDelete()` on the `ref().many()` field `tags` takes \"cascade\" or \"restrict\"",
-            "tp/schema.ts:3:53",
+            "sp/schema.ts:3:53",
         ),
         (
             "reject-ref-many-unique",
             "`.unique()` isn't valid on a `ref().many()` field",
-            "tp/schema.ts:3:53",
+            "sp/schema.ts:3:53",
         ),
         (
             "reject-ref-many-sub",
             "`ref()` isn't allowed inside a group, repeater, or blocks field (`tags`)",
-            "tp/schema.ts:3:50",
+            "sp/schema.ts:3:50",
         ),
         (
             "reject-ref-many-clash",
             "`extra` gives \"tags\" a reverse list named `name`, which \"tags\" already has",
-            "tp/schema.ts:3:61",
+            "sp/schema.ts:3:61",
         ),
         (
             "reject-ref-many-sync",
             "`tags` is a `ref().many()` list, which sync can't carry yet",
-            "tp/schema.ts:3:56",
+            "sp/schema.ts:3:56",
         ),
     ] {
         rejects(fixture, message, at);
@@ -475,38 +475,38 @@ fn rejects_what_wordpress_posts_do_not_take() {
         (
             "reject-wp-pages",
             "`wp.pages` isn't supported yet: `wp.posts` is the one WordPress kind an app can use",
-            "tp/schema.ts:2:25",
+            "sp/schema.ts:2:25",
         ),
         (
             "reject-wp-posts-url",
             "`wp.posts.extend()` needs a `url`",
-            "tp/schema.ts:2:22",
+            "sp/schema.ts:2:22",
         ),
         (
             "reject-wp-posts-field",
             "`excerpt` is built into every post; delete this field",
-            "tp/schema.ts:2:49",
+            "sp/schema.ts:2:49",
         ),
         (
             "reject-wp-posts-name",
             "WordPress's posts are exported as `posts`, not `articles`",
-            "tp/schema.ts:2:25",
+            "sp/schema.ts:2:25",
         ),
         (
             "reject-wp-posts-option",
             "wp.posts.clone() has no option `hierarchical`",
-            "tp/schema.ts:2:57",
+            "sp/schema.ts:2:57",
         ),
     ] {
         rejects(fixture, message, at);
     }
 }
 
-/// tests/php/native_posts_test.php: WordPress's own posts and a clone of them, on what `typedpress build`
+/// tests/php/native_posts_test.php: WordPress's own posts and a clone of them, on what `spacepress build`
 /// emits for tests/fixtures/native-posts, on WordPress's floor (tests/fixtures/platform.json) with SQLite.
 #[test]
 fn native_posts_run_on_wordpress() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-native-posts-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-native-posts-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/native-posts"), &tmp);
     let out = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
@@ -514,7 +514,7 @@ fn native_posts_run_on_wordpress() {
     let out = std::process::Command::new("php")
         .args(["-d", "zend.assertions=1", "-d", "memory_limit=512M"])
         .arg(root().join("tests/php/native_posts_test.php"))
-        .arg(tmp.join("tp/dist/wp-content"))
+        .arg(tmp.join("sp/dist/wp-content"))
         .output()
         .unwrap();
     assert!(
@@ -544,102 +544,102 @@ fn rejects_what_taxonomies_and_terms_do_not_build_yet() {
         (
             "reject-taxonomy-hooks",
             "hooks on the taxonomy `subjects` aren't built yet",
-            "typedpress.config.ts:2:25",
+            "spacepress.config.ts:2:25",
         ),
         (
             "reject-taxonomy-long",
-            "\"a_very_long_taxonomy_name_indeed\" is too long for a taxonomy: WordPress limits taxonomy names to 32 characters and TypedPress prefixes `tp_`",
-            "tp/schema.ts:2:44",
+            "\"a_very_long_taxonomy_name_indeed\" is too long for a taxonomy: WordPress limits taxonomy names to 32 characters and SpacePress prefixes `sp_`",
+            "sp/schema.ts:2:44",
         ),
         (
             "reject-taxonomy-on-clash",
             "`topics`'s `on` gives `posts` a terms field named `topics`, which is already a field of `posts`",
-            "tp/schema.ts:3:42",
+            "sp/schema.ts:3:42",
         ),
         (
             "reject-taxonomy-on-table",
             "`on` lists the table `notes`; terms attach to collection() kinds only",
-            "tp/schema.ts:3:42",
+            "sp/schema.ts:3:42",
         ),
         (
             "reject-taxonomy-option",
             "`abilities` on a taxonomy isn't built yet",
-            "tp/schema.ts:2:49",
+            "sp/schema.ts:2:49",
         ),
         (
             "reject-taxonomy-ref",
             "`topic` refers to a taxonomy with `ref()`, which isn't built yet",
-            "tp/schema.ts:3:57",
+            "sp/schema.ts:3:57",
         ),
         (
             "reject-taxonomy-reserved",
             "`author` is built into every term; delete this field",
-            "tp/schema.ts:2:42",
+            "sp/schema.ts:2:42",
         ),
         (
             "reject-taxonomy-richtext",
             "richText() fields on a taxonomy aren't built yet (`body`)",
-            "tp/schema.ts:2:40",
+            "sp/schema.ts:2:40",
         ),
         (
             "reject-taxonomy-translations",
             "taxonomy translations aren't built yet; add `translations: false`",
-            "tp/schema.ts:2:23",
+            "sp/schema.ts:2:23",
         ),
         (
             "reject-taxonomy-url",
             "`:name` in \"/topics/:name\" isn't a term placeholder",
-            "tp/schema.ts:2:43",
+            "sp/schema.ts:2:43",
         ),
         (
             "reject-taxonomy-was",
             "`was` on a taxonomy isn't built yet: renaming one has to move its terms",
-            "tp/schema.ts:2:43",
+            "sp/schema.ts:2:43",
         ),
         (
             "reject-terms-global",
             "`terms()` isn't allowed on a global field (`featured`)",
-            "typedpress.config.ts:4:44",
+            "spacepress.config.ts:4:44",
         ),
         (
             "reject-terms-many",
             "`.many()` isn't valid on a `terms()` field",
-            "tp/schema.ts:3:72",
+            "sp/schema.ts:3:72",
         ),
         (
             "reject-terms-min",
             "`.min()` isn't valid on a `terms()` field",
-            "tp/schema.ts:3:72",
+            "sp/schema.ts:3:72",
         ),
         (
             "reject-terms-not-taxonomy",
             "terms() takes a taxonomy() export, not a collection() kind",
-            "tp/schema.ts:3:56",
+            "sp/schema.ts:3:56",
         ),
         (
             "reject-terms-reverse-clash",
             "`topics` gives \"topics\" a reverse list named `posts`, which \"topics\" already has",
-            "tp/schema.ts:3:58",
+            "sp/schema.ts:3:58",
         ),
         (
             "reject-terms-sub",
             "`terms()` isn't allowed inside a group, repeater, or blocks field (`topics`)",
-            "tp/schema.ts:3:72",
+            "sp/schema.ts:3:72",
         ),
         (
             "reject-terms-sync",
             "`topics` holds terms, which sync can't carry yet",
-            "tp/schema.ts:3:58",
+            "sp/schema.ts:3:58",
         ),
         (
             "reject-terms-table",
             "`terms()` isn't available on a table() kind (`topics`)",
-            "tp/schema.ts:3:52",
+            "sp/schema.ts:3:52",
         ),
         (
             "reject-terms-twice",
             "`b` and `a` are both `terms()` of the same taxonomy",
-            "tp/schema.ts:3:71",
+            "sp/schema.ts:3:71",
         ),
     ] {
         rejects(fixture, message, at);
@@ -653,139 +653,139 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-jsx-unsafe-url",
         "`href` is an unsafe URL",
-        "tp/components/Link.tsx:2:18",
+        "sp/components/Link.tsx:2:18",
     );
     rejects(
         "reject-jsx-handler",
         "server components can't handle events (`onClick`)",
-        "tp/components/Button.tsx:2:18",
+        "sp/components/Button.tsx:2:18",
     );
     rejects(
         "reject-jsx-inner-html",
         "`dangerouslySetInnerHTML` isn't supported",
-        "tp/components/Raw.tsx:2:15",
+        "sp/components/Raw.tsx:2:15",
     );
     rejects(
         "reject-jsx-object-child",
         "{ title: string } can't be rendered as a JSX child",
-        "tp/components/Show.tsx:2:14",
+        "sp/components/Show.tsx:2:14",
     );
     rejects(
         "reject-jsx-props",
         "these props are { text: number }, but the component expects { text: string }",
-        "tp/components/Card.tsx:6:10",
+        "sp/components/Card.tsx:6:10",
     );
     rejects(
         "reject-jsx-head",
         "a component can't render `<title>`",
-        "tp/components/Head.tsx:2:10",
+        "sp/components/Head.tsx:2:10",
     );
     rejects(
         "reject-jsx-config",
-        "JSX files can't be part of a TypedPress config",
-        "tp/lib/view.tsx:1:1",
+        "JSX files can't be part of a SpacePress config",
+        "sp/lib/view.tsx:1:1",
     );
     // An action can't return rendered JSX: the config never reaches a component module.
     rejects(
         "reject-jsx-action",
-        "JSX files can't be part of a TypedPress config",
-        "tp/components/Badge.tsx:1:1",
+        "JSX files can't be part of a SpacePress config",
+        "sp/components/Badge.tsx:1:1",
     );
     rejects(
         "reject-jsx-textarea",
         "`<textarea>` can't have children",
-        "tp/components/Area.tsx:2:10",
+        "sp/components/Area.tsx:2:10",
     );
     rejects(
         "reject-jsx-srcdoc",
         "`srcDoc` isn't supported",
-        "tp/components/Frame.tsx:2:18",
+        "sp/components/Frame.tsx:2:18",
     );
     // The record's "Contexts text escaping can't make safe": tag and attribute names in any case,
     // raw-text tags, closed and open spreads, computed styles, names, SVG animation.
     rejects(
         "reject-jsx-script-case",
         "a component can't render `<sCript>`",
-        "tp/components/Search.tsx:2:15",
+        "sp/components/Search.tsx:2:15",
     );
     // The fix a `<script>` gets is the one that loads a script, not the one for a title.
     rejects(
         "reject-jsx-script-case",
         "load a script module with `scripts` in `export const metadata`",
-        "tp/components/Search.tsx:2:15",
+        "sp/components/Search.tsx:2:15",
     );
     rejects(
         "reject-jsx-head",
         "set the title, description and other head tags with `export const metadata`",
-        "tp/components/Head.tsx:2:10",
+        "sp/components/Head.tsx:2:10",
     );
     rejects(
         "reject-jsx-iframe-child",
         "`<iframe>` takes only literal text",
-        "tp/components/Frame.tsx:2:19",
+        "sp/components/Frame.tsx:2:19",
     );
     rejects(
         "reject-jsx-raw-close",
         "this text closes `<xmp>` early",
-        "tp/components/Code.tsx:2:16",
+        "sp/components/Code.tsx:2:16",
     );
     rejects(
         "reject-jsx-open-spread",
         "can't spread Record<string, string> into attributes",
-        "tp/components/Link.tsx:2:17",
+        "sp/components/Link.tsx:2:17",
     );
     rejects(
         "reject-jsx-spread-handler",
         "server components can't handle events (`onClick`)",
-        "tp/components/Button.tsx:2:22",
+        "sp/components/Button.tsx:2:22",
     );
     rejects(
         "reject-jsx-style-keys",
         "`style` needs an object with fixed keys",
-        "tp/components/Box.tsx:2:22",
+        "sp/components/Box.tsx:2:22",
     );
     rejects(
         "reject-jsx-attribute-name",
         "`a b` isn't a valid attribute name",
-        "tp/components/Odd.tsx:2:19",
+        "sp/components/Odd.tsx:2:19",
     );
     rejects(
         "reject-jsx-svg-animate",
         "SVG animation of `href`",
-        "tp/components/Anim.tsx:2:27",
+        "sp/components/Anim.tsx:2:27",
     );
     rejects(
         "reject-jsx-children-object",
         "`children` is typed { title: string }, which JSX can't pass",
-        "tp/components/Wrap.tsx:1:22",
+        "sp/components/Wrap.tsx:1:22",
     );
     rejects(
         "reject-jsx-config-unused",
-        "JSX files can't be part of a TypedPress config",
-        "tp/lib/label.tsx:1:1",
+        "JSX files can't be part of a SpacePress config",
+        "sp/lib/label.tsx:1:1",
     );
     rejects(
         "reject-jsx-style-case",
         "`STYLE` is spelled `style`",
-        "tp/components/Box.tsx:2:15",
+        "sp/components/Box.tsx:2:15",
     );
     rejects(
         "reject-jsx-style-case-spread",
         "`STYLE` is spelled `style`",
-        "tp/components/Box.tsx:2:19",
+        "sp/components/Box.tsx:2:19",
     );
     rejects(
         "reject-jsx-style-case-custom",
         "`Style` is spelled `style`",
-        "tp/components/Widget.tsx:2:17",
+        "sp/components/Widget.tsx:2:17",
     );
     rejects(
         "reject-jsx-children-local",
         "this component types `children` as { title: string }, which JSX can't pass",
-        "tp/components/Page.tsx:6:11",
+        "sp/components/Page.tsx:6:11",
     );
     // The folders that admit JSX are matched below the project, not anywhere in its path.
-    let nested = std::env::temp_dir().join(format!("typedpress-jsx-app-{}", std::process::id()));
+    let nested = std::env::temp_dir().join(format!("spacepress-jsx-app-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&nested);
     copy(
         &root().join("tests/fixtures/reject-jsx-config"),
@@ -798,7 +798,7 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
         .unwrap();
     let _ = std::fs::remove_dir_all(&nested);
     assert_eq!(out.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("JSX files can't be part of a TypedPress config"));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("JSX files can't be part of a SpacePress config"));
 }
 
 #[test]
@@ -812,7 +812,7 @@ fn destructured_defaults_may_read_earlier_siblings_only() {
     rejects(
         "reject-later-sibling-default",
         "parameter defaults can't reference the current or a later parameter",
-        "typedpress.config.ts:3:",
+        "spacepress.config.ts:3:",
     );
 }
 
@@ -821,7 +821,7 @@ fn mail_send_needs_recipients_a_subject_and_a_body() {
     rejects(
         "reject-mail-message",
         "mail.send() needs { to, subject, text or html }",
-        "typedpress.config.ts:2:",
+        "spacepress.config.ts:2:",
     );
     let out = first()
         .args(["check"])
@@ -836,7 +836,7 @@ fn mail_render_checks_template_props() {
     rejects(
         "reject-mail-render-props",
         "these props are { name: number; kind: \"welcome\" }",
-        "typedpress.config.ts:3:",
+        "spacepress.config.ts:3:",
     );
 }
 
@@ -845,106 +845,106 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-hook-typo",
         "there's no hook called `beforeCreat`",
-        "typedpress.config.ts:2:",
+        "spacepress.config.ts:2:",
     );
     // Ruling 18: `.on()` belongs to the declaration; `afterPublish` to collections.
     rejects(
         "reject-on-imported",
         ".on() belongs to the kind's declaration, in the file that declares it",
-        "tp/hooks.ts:2:1",
+        "sp/hooks.ts:2:1",
     );
     rejects(
         "reject-after-publish-table",
         "`afterPublish` is for collections: a table() row is never published",
-        "tp/schema.ts:2:64",
+        "sp/schema.ts:2:64",
     );
     // §1.2: modifiers per column kind, pointing at the modifier call.
     rejects(
         "reject-modifier-kind",
         "`.max()` isn't valid on a boolean column",
-        "typedpress.config.ts:2:42",
+        "spacepress.config.ts:2:42",
     );
     // §1.3: sub-fields hold plain values.
     rejects(
         "reject-subfield-unique",
         "`.unique()` isn't allowed inside a group, repeater, or blocks field (`code`)",
-        "typedpress.config.ts:2:53",
+        "spacepress.config.ts:2:53",
     );
     // §1.4: what an editor (post-backed) collection needs, and the names WordPress can't hold.
     rejects(
         "reject-editor-no-title",
         "editor collection \"notes\" has no title",
-        "typedpress.config.ts:2:22",
+        "spacepress.config.ts:2:22",
     );
     // Storage is chosen only by the builder: a collection can't ask for a table.
     rejects(
         "reject-collection-editor-false",
         "collection() has no option `editor`",
-        "typedpress.config.ts:2:67",
+        "spacepress.config.ts:2:67",
     );
     rejects(
         "reject-collection-editor-false",
         "help: storage follows the builder: collection() is always WordPress posts; use table() for a SQL table",
-        "typedpress.config.ts:2:67",
+        "spacepress.config.ts:2:67",
     );
     // On table() the same option gets its own builder's name and fix.
     rejects(
         "reject-table-editor-false",
         "table() has no option `editor`",
-        "typedpress.config.ts:2:62",
+        "spacepress.config.ts:2:62",
     );
     rejects(
         "reject-table-editor-false",
         "help: storage follows the builder: table() is always a SQL table; remove the option",
-        "typedpress.config.ts:2:62",
+        "spacepress.config.ts:2:62",
     );
     rejects(
         "reject-reserved-name",
         "\"media\" is reserved",
-        "typedpress.config.ts:2:22",
+        "spacepress.config.ts:2:22",
     );
     rejects(
         "reject-reserved-files",
         "\"files\" is reserved",
-        "typedpress.config.ts:2:22",
+        "spacepress.config.ts:2:22",
     );
     // The client declares `Query<T>`: a global of that name would declare a second `Query` type.
     rejects(
         "reject-global-client-query",
         "\"query\" is reserved by generated client types",
-        "typedpress.config.ts:2:22",
+        "spacepress.config.ts:2:22",
     );
     rejects(
         "reject-reserved-search",
         "\"search\" is reserved",
-        "typedpress.config.ts:2:23",
+        "spacepress.config.ts:2:23",
     );
     rejects(
         "reject-post-type-length",
-        "WordPress post types are limited to 20 characters and TypedPress prefixes `tp_`",
-        "typedpress.config.ts:2:18",
+        "WordPress post types are limited to 20 characters and SpacePress prefixes `sp_`",
+        "spacepress.config.ts:2:18",
     );
     rejects(
         "reject-unique-length",
         "unique text columns are limited to 191 characters on MySQL (`code`); add `.max(191)`",
-        "typedpress.config.ts:2:39",
+        "spacepress.config.ts:2:39",
     );
     rejects(
         "reject-drafts-reserved",
         "`status` is reserved: drafts add these",
-        "typedpress.config.ts:2:58",
+        "spacepress.config.ts:2:58",
     );
     // §1.5
     rejects(
         "reject-global-required",
         "a global field is required unless it has a default (`title`)",
-        "typedpress.config.ts:3:37",
+        "spacepress.config.ts:3:37",
     );
     // Literal defaults follow the strict ISO timestamp codec, inside structured columns too.
     rejects(
         "reject-default-timestamp",
         "`when` defaults to a `at` value that isn't a real ISO 8601 date or timestamp",
-        "typedpress.config.ts:4:",
+        "spacepress.config.ts:4:",
     );
     // Each case owns a separate schema invariant, exercised through the compiler: the kinds it
     // declares (exported, as kinds register) and the defineConfig options beside them.
@@ -1077,8 +1077,8 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "only collection() kinds take comments",
         ),
     ] {
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!(
-            "import {{ collection, table, global, text, defineConfig }} from 'typedpress'; {declarations} export default defineConfig({{ {options} }});"
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!(
+            "import {{ collection, table, global, text, defineConfig }} from 'spacepress'; {declarations} export default defineConfig({{ {options} }});"
         )).unwrap();
         let checked = first().arg("check").arg(tmp.path()).output().unwrap();
         assert_eq!(checked.status.code(), Some(1));
@@ -1096,70 +1096,70 @@ fn rejects_hooks_that_would_misbehave_in_php() {
     rejects(
         "reject-filter-column",
         "\"a\" has no column or relation `nmae`",
-        "typedpress.config.ts:2:",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-ambiguous-plus",
         "`+` between number and unknown | null is ambiguous",
-        "typedpress.config.ts:2:",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-missing-await",
         "this database call never runs",
-        "typedpress.config.ts:2:",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-module-state",
         "hooks can't change `count`",
-        "typedpress.config.ts:3:",
+        "spacepress.config.ts:3:",
     );
     rejects(
         "reject-maybe-null",
         "can't read `length`: this might be null",
-        "typedpress.config.ts:2:",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-missing-insert-field",
         "missing required field `x`",
-        "typedpress.config.ts:2:",
+        "spacepress.config.ts:2:",
     );
     // §3.5: literal filters use the runtime's operator rules and its exact message.
     rejects(
         "reject-list-operator",
         "`in` isn't supported on list columns; use `has`",
-        "typedpress.config.ts:2:",
+        "spacepress.config.ts:2:",
     );
     // A structured field of a collection is spread over post meta and can't be compared. The fix
     // names table(), where the same filter compiles; storage is never an option of collection().
     rejects(
         "reject-collection-group-filter",
         "use isNull/isNotNull, or keep this data in a table()",
-        "typedpress.config.ts:2:188",
+        "spacepress.config.ts:2:188",
     );
     // db.globals is typed from the global's fields, like db.query from a collection's.
     rejects(
         "reject-db-globals-key",
         "`db.globals.setings` doesn't match a global in `globals`",
-        "typedpress.config.ts:4:",
+        "spacepress.config.ts:4:",
     );
     rejects(
         "reject-db-globals-patch",
         "`stats` must be { visits: number } | null | undefined, not number",
-        "typedpress.config.ts:4:",
+        "spacepress.config.ts:4:",
     );
 }
 
 /// `db.globals.<key>` in compiled code: never-written defaults, then a typed JSON field round-trips.
 #[test]
 fn db_globals_read_defaults_and_write_typed_fields() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-db-globals-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-db-globals-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/db-globals"), &tmp);
     let built = first().arg("build").arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     // One site, three trusted CLI actions in a row (the global's first write, its second, a json filter).
     let out = wp_eval_json(
-        &tmp.join("tp/dist/wp-content"),
+        &tmp.join("sp/dist/wp-content"),
         r#"$run = static fn (string $name) => json_decode($app->cli(['action', $name])[1], true);
            echo json_encode([$run('visit'), $run('visit'), $run('emptyMeta')]);"#,
         &serde_json::Value::Null,
@@ -1179,7 +1179,7 @@ fn db_globals_read_defaults_and_write_typed_fields() {
 /// take them, return them and read static keys, in compiled PHP as a signed-in user and a guest.
 #[test]
 fn context_values_pass_through_typed_helpers() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-context-helpers-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-context-helpers-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/context-helpers"), &tmp);
     let built = first().arg("build").arg(&tmp).output().unwrap();
@@ -1188,16 +1188,16 @@ fn context_values_pass_through_typed_helpers() {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("eval")
-        .arg(tmp.join("tp/dist/wp-content"))
+        .arg(tmp.join("sp/dist/wp-content"))
         .arg(
-            r#"// tp/app/echo/route.ts, matched the way the app router matches it.
+            r#"// sp/app/echo/route.ts, matched the way the app router matches it.
                $file = $wp->plugin()->schema->app()["files"]["app/echo/route.ts"];
                $route = ["name" => "echo", "params" => [], "route" => ["handler" => $file["methods"]["POST"], "access" => $file["handlerGuard"], "signature" => null]];
                // req.url and req.query as the WordPress transport builds them: 0.8's form, with every
                // share-link secret redacted and the share parameter kept out of the query.
                $at = fn (string $host, string $uri) => json_decode($app->serveRoute($route, "POST", "/echo",
-                   \TypedPress\Wp\RouteRequest::query((string) parse_url($uri, PHP_URL_QUERY)), "", [], null,
-                   \TypedPress\Wp\RouteRequest::url($host, $uri))[2], true);
+                   \SpacePress\Wp\RouteRequest::query((string) parse_url($uri, PHP_URL_QUERY)), "", [], null,
+                   \SpacePress\Wp\RouteRequest::url($host, $uri))[2], true);
                $urls = [
                  $at("Site.Example.:8443", "/echo?a=1&__=secret&b=2"),
                  $at("site.example", "/echo?token=t1&purchaseToken=p1&tokens=kept"),
@@ -1242,8 +1242,8 @@ fn context_values_pass_through_typed_helpers() {
     );
     // Only a key no type can bound is refused, with the fix.
     std::fs::write(
-        tmp.join("typedpress.config.ts"),
-        std::fs::read_to_string(tmp.join("typedpress.config.ts"))
+        tmp.join("spacepress.config.ts"),
+        std::fs::read_to_string(tmp.join("spacepress.config.ts"))
             .unwrap()
             .replace(
                 r#"viaIndex: ctx["user"] === null"#,
@@ -1264,18 +1264,18 @@ fn context_values_pass_through_typed_helpers() {
 
 /// A value typed as a function only by a type assertion or parsed JSON can be a string at run
 /// time. Passed to a callback-taking method or called, it is refused as a JavaScript TypeError;
-/// PHP never calls the PHP function the request named. `sprintf`, `max` and `TypedPress\Js::typeOf`
+/// PHP never calls the PHP function the request named. `sprintf`, `max` and `SpacePress\Js::typeOf`
 /// accept any argument count, so before the check they ran and returned a result. (A JSON array
 /// parses to a JsArray, never a PHP `[class, method]` array; tests/php/js_parity.php covers those.)
 #[test]
 fn a_string_from_input_is_never_called_as_a_php_function() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-callback-closures-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-callback-closures-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/callback-closures"), &tmp);
     let built = first().arg("build").arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     let got = wp_eval_json(
-        &tmp.join("tp/dist/wp-content"),
+        &tmp.join("sp/dist/wp-content"),
         r#"$out = [];
            foreach ($arg as [$action, $input]) {
                [$status, $body] = $wp->call("POST", "/actions/$action", $input);
@@ -1284,7 +1284,7 @@ fn a_string_from_input_is_never_called_as_a_php_function() {
            echo json_encode($out);"#,
         &serde_json::json!([
             ["map", { "fn": "sprintf" }],
-            ["map", { "fn": "TypedPress\\Js::typeOf" }],
+            ["map", { "fn": "SpacePress\\Js::typeOf" }],
             ["filter", { "fn": "strrev" }],
             ["reduce", { "fn": "max" }],
             ["replace", { "fn": "max" }],
@@ -1319,24 +1319,24 @@ fn rejects_access_rules_that_cant_hold() {
     rejects(
         "reject-access-create-filter",
         "create rules return a boolean",
-        "typedpress.config.ts:3:31",
+        "spacepress.config.ts:3:31",
     );
     rejects(
         "reject-access-query",
         "access rules can't write to the database; put that in a hook or action",
-        "typedpress.config.ts:3:39",
+        "spacepress.config.ts:3:39",
     );
     rejects(
         "reject-access-filter-column",
         "\"posts\" has no column or relation `ownr`",
-        "typedpress.config.ts:3:39",
+        "spacepress.config.ts:3:39",
     );
 
     // Additional read-only enforcement checks: global writes and viewer-scoped kind reads are refused.
     for (name, body, needle) in [
         (
             "global-write",
-            r#"import { table, global, text, defineConfig, db } from "typedpress";
+            r#"import { table, global, text, defineConfig, db } from "spacepress";
 export const settings = global({ mode: text().default("open") });
 export const items = table({ title: text() }, {
   access: { read: async () => { await db.globals.settings.update({ mode: "closed" }); return true; } },
@@ -1346,7 +1346,7 @@ export default defineConfig({});"#,
         ),
         (
             "viewer-read",
-            r#"import { table, text, defineConfig } from "typedpress";
+            r#"import { table, text, defineConfig } from "spacepress";
 export const items = table({ title: text() }, {
   access: { read: async () => (await items.list()).length >= 0 },
 });
@@ -1355,7 +1355,7 @@ export default defineConfig({});"#,
         ),
         (
             "system-write",
-            r#"import { table, text, defineConfig } from "typedpress";
+            r#"import { table, text, defineConfig } from "spacepress";
 export const items = table({ title: text() }, {
   access: { read: async () => { await items.system.create({ title: "x" }); return true; } },
 });
@@ -1364,7 +1364,7 @@ export default defineConfig({});"#,
         ),
         (
             "system-restore",
-            r#"import { table, text, defineConfig } from "typedpress";
+            r#"import { table, text, defineConfig } from "spacepress";
 export const items = table({ title: text() }, {
   softDelete: true,
   access: { read: async () => { await items.system.restore(1); return true; } },
@@ -1374,7 +1374,7 @@ export default defineConfig({});"#,
         ),
         (
             "system-purge",
-            r#"import { table, text, defineConfig } from "typedpress";
+            r#"import { table, text, defineConfig } from "spacepress";
 export const items = table({ title: text() }, {
   softDelete: true,
   access: { read: async () => { await items.system.purge(1); return true; } },
@@ -1383,10 +1383,10 @@ export default defineConfig({});"#,
             "access rules can't write to the database",
         ),
     ] {
-        let tmp = std::env::temp_dir().join(format!("typedpress-access-ro-{name}-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("spacepress-access-ro-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
-        std::fs::write(tmp.join("typedpress.config.ts"), body).unwrap();
+        std::fs::write(tmp.join("spacepress.config.ts"), body).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(out.status.code(), Some(1), "{name}: expected failure, got:\n{stderr}");
@@ -1399,12 +1399,12 @@ export default defineConfig({});"#,
 /// lookups (e.g. checking a `grants` table), memoize per-request, and invalidate on writes.
 #[test]
 fn access_rules_can_run_readonly_db_queries_and_memoize_per_request() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-access-grants-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-access-grants-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     std::fs::write(
-        tmp.join("typedpress.config.ts"),
-        r#"import { table, global, text, integer, select, ref, mutation, defineConfig, db } from "typedpress";
+        tmp.join("spacepress.config.ts"),
+        r#"import { table, global, text, integer, select, ref, mutation, defineConfig, db } from "spacepress";
 
 export const settings = global({
   allowExport: select(["yes", "no"]).default("no"),
@@ -1477,14 +1477,14 @@ export default defineConfig({ name: "access-grants" });
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
 
     let got = wp_eval_json(
-        &tmp.join("tp/dist/wp-content"),
+        &tmp.join("sp/dist/wp-content"),
         r#"
         $ownerId = wp_insert_user(['user_login' => 'owner', 'user_pass' => 'pass', 'role' => 'administrator']);
         $viewerId = wp_insert_user(['user_login' => 'viewer', 'user_pass' => 'pass', 'role' => 'subscriber']);
         $editorId = wp_insert_user(['user_login' => 'ed', 'user_pass' => 'pass', 'role' => 'subscriber']);
         $strangerId = wp_insert_user(['user_login' => 'stranger', 'user_pass' => 'pass', 'role' => 'subscriber']);
 
-        $db = \TypedPress\db();
+        $db = \SpacePress\db();
         $e1 = $db->insert('entities', ['ownerId' => $ownerId, 'name' => 'NL BV'], true)[0]['id'];
         $e2 = $db->insert('entities', ['ownerId' => $ownerId, 'name' => 'Personal'], true)[0]['id'];
         $row1 = $db->insert('entries', ['ownerId' => $ownerId, 'entityId' => $e1, 'label' => 'BV Invoice'], true)[0]['id'];
@@ -1493,9 +1493,9 @@ export default defineConfig({ name: "access-grants" });
         $db->insert('grants', ['userId' => $viewerId, 'entityId' => $e1, 'role' => 'viewer']);
         $db->insert('grants', ['userId' => $editorId, 'entityId' => $e1, 'role' => 'editor']);
 
-        $viewer = new \TypedPress\Viewer(['id' => $viewerId, 'name' => 'viewer', 'role' => 'subscriber']);
-        $editor = new \TypedPress\Viewer(['id' => $editorId, 'name' => 'ed', 'role' => 'subscriber']);
-        $stranger = new \TypedPress\Viewer(['id' => $strangerId, 'name' => 'stranger', 'role' => 'subscriber']);
+        $viewer = new \SpacePress\Viewer(['id' => $viewerId, 'name' => 'viewer', 'role' => 'subscriber']);
+        $editor = new \SpacePress\Viewer(['id' => $editorId, 'name' => 'ed', 'role' => 'subscriber']);
+        $stranger = new \SpacePress\Viewer(['id' => $strangerId, 'name' => 'stranger', 'role' => 'subscriber']);
 
         // 1. Read: viewer sees ONLY e1 (NL BV), stranger sees nothing.
         $viewerLabels = array_column($db->findMany('entries', [], $viewer), 'label');
@@ -1506,19 +1506,19 @@ export default defineConfig({ name: "access-grants" });
         try {
             $db->insert('entries', ['ownerId' => $ownerId, 'entityId' => $e1, 'label' => 'Editor Added'], false, $editor);
             $editorCreateOk = true;
-        } catch (\TypedPress\HttpError $e) {}
+        } catch (\SpacePress\HttpError $e) {}
 
         $editorCreateDenied = false;
         try {
             $db->insert('entries', ['ownerId' => $ownerId, 'entityId' => $e2, 'label' => 'Nope'], false, $editor);
-        } catch (\TypedPress\HttpError $e) {
+        } catch (\SpacePress\HttpError $e) {
             $editorCreateDenied = $e->status === 403;
         }
 
         $viewerCreateDenied = false;
         try {
             $db->insert('entries', ['ownerId' => $ownerId, 'entityId' => $e1, 'label' => 'Viewer Nope'], false, $viewer);
-        } catch (\TypedPress\HttpError $e) {
+        } catch (\SpacePress\HttpError $e) {
             $viewerCreateDenied = $e->status === 403;
         }
 
@@ -1528,7 +1528,7 @@ export default defineConfig({ name: "access-grants" });
 
         // 4. Memoization + same-request cache invalidation:
         // Read populates Access::$cache; inserting a grant clears it so the next read sees e2 immediately.
-        $cacheProp = new \ReflectionProperty(\TypedPress\Access::class, 'cache');
+        $cacheProp = new \ReflectionProperty(\SpacePress\Access::class, 'cache');
         $db->findMany('entries', [], $stranger);
         $cachedBeforeWrite = count($cacheProp->getValue()) > 0;
         $db->insert('grants', ['userId' => $strangerId, 'entityId' => $e2, 'role' => 'viewer']);
@@ -1546,10 +1546,10 @@ export default defineConfig({ name: "access-grants" });
         $depReads = [];
         $depAlso = [];
         $actionRule = $db->schema()->action('exportData')['access'];
-        \TypedPress\Access::evaluate($actionRule, $viewer, 'create');
-        \TypedPress\Render\Reads::during(static function () use ($actionRule, $viewer, $db): void {
-            \TypedPress\Access::evaluate($actionRule, $viewer, 'create');
-            \TypedPress\Seam::asViewer($viewer, static function () use ($db, $viewer): void {
+        \SpacePress\Access::evaluate($actionRule, $viewer, 'create');
+        \SpacePress\Render\Reads::during(static function () use ($actionRule, $viewer, $db): void {
+            \SpacePress\Access::evaluate($actionRule, $viewer, 'create');
+            \SpacePress\Seam::asViewer($viewer, static function () use ($db, $viewer): void {
                 $db->findMany('entries', [], $viewer);
             });
         }, $depReads, $depAlso);
@@ -1599,16 +1599,16 @@ export default defineConfig({ name: "access-grants" });
 }
 
 /// `"use client"` islands can upload browser File/Blob objects to a registered `files()` bucket
-/// via `uploadFile("bucket", file, opts?)`, reusing `@typedpress/client` and validating bucket names.
+/// via `uploadFile("bucket", file, opts?)`, reusing `@spacepress/client` and validating bucket names.
 #[test]
 fn client_island_upload_file_emits_typed_client_upload_and_checks_bucket() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-island-upload-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-island-upload-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(tmp.join("tp/app")).unwrap();
-    std::fs::create_dir_all(tmp.join("tp/components")).unwrap();
+    std::fs::create_dir_all(tmp.join("sp/app")).unwrap();
+    std::fs::create_dir_all(tmp.join("sp/components")).unwrap();
     std::fs::write(
-        tmp.join("typedpress.config.ts"),
-        r#"import { defineConfig, files } from "typedpress";
+        tmp.join("spacepress.config.ts"),
+        r#"import { defineConfig, files } from "spacepress";
 
 export const inboxFiles = files({
   accept: ["text/csv", "application/pdf"],
@@ -1621,9 +1621,9 @@ export default defineConfig({ name: "island-upload" });
     )
     .unwrap();
     std::fs::write(
-        tmp.join("tp/components/Dropzone.tsx"),
+        tmp.join("sp/components/Dropzone.tsx"),
         r#""use client";
-import { useState, uploadFile } from "typedpress/client";
+import { useState, uploadFile } from "spacepress/client";
 
 export function Dropzone() {
   const [name, setName] = useState("");
@@ -1640,7 +1640,7 @@ export function Dropzone() {
     )
     .unwrap();
     std::fs::write(
-        tmp.join("tp/app/page.tsx"),
+        tmp.join("sp/app/page.tsx"),
         r#"import { Dropzone } from "../components/Dropzone";
 export default function Page() {
   return <main><Dropzone /></main>;
@@ -1652,33 +1652,33 @@ export default function Page() {
     let built = first().arg("build").arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
 
-    let plugin = tmp.join("tp/dist/wp-content/plugins/typedpress-app-island-upload");
-    let schema_php = std::fs::read_to_string(plugin.join("tp/app/schema.php")).unwrap();
+    let plugin = tmp.join("sp/dist/wp-content/plugins/spacepress-app-island-upload");
+    let schema_php = std::fs::read_to_string(plugin.join("sp/app/schema.php")).unwrap();
     assert!(
         schema_php.contains("'client' => true"),
         "island using uploadFile must mark client => true:\n{schema_php}"
     );
-    let client_dir = plugin.join("tp/app/client");
+    let client_dir = plugin.join("sp/app/client");
     let island_js = std::fs::read_dir(&client_dir)
         .unwrap()
         .filter_map(|e| e.ok())
         .find(|e| e.file_name().to_string_lossy().starts_with("dropzone."))
         .expect("compiled dropzone island module");
     let js = std::fs::read_to_string(island_js.path()).unwrap();
-    assert!(js.contains("@typedpress/client"), "missing client import:\n{js}");
+    assert!(js.contains("@spacepress/client"), "missing client import:\n{js}");
     assert!(js.contains(".files["), "missing files[bucket].upload helper:\n{js}");
     assert!(
         js.contains("withSyncEvent"),
         "onDrop using dataTransfer must use withSyncEvent:\n{js}"
     );
     assert!(js.contains("inboxFiles"), "missing bucket argument:\n{js}");
-    assert!(js.contains("__tpUpload("), "missing upload helper call:\n{js}");
+    assert!(js.contains("__spUpload("), "missing upload helper call:\n{js}");
 
     // Unknown bucket name fails build with suggestion.
     std::fs::write(
-        tmp.join("tp/components/Dropzone.tsx"),
+        tmp.join("sp/components/Dropzone.tsx"),
         r#""use client";
-import { uploadFile } from "typedpress/client";
+import { uploadFile } from "spacepress/client";
 export function Dropzone() {
   const onChange = async (event: Event) => {
     await uploadFile("inboxFile", (event.target as HTMLInputElement).files![0]);
@@ -1700,12 +1700,12 @@ export function Dropzone() {
 /// base64 bytes via `bucket.get/readText/readBase64`, and background jobs get relaxed `Fetch` limits.
 #[test]
 fn file_bucket_server_reads_and_job_fetch_limits() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-file-reads-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-file-reads-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     std::fs::write(
-        tmp.join("typedpress.config.ts"),
-        r#"import { defineConfig, files, query } from "typedpress";
+        tmp.join("spacepress.config.ts"),
+        r#"import { defineConfig, files, query } from "spacepress";
 
 export const inbox = files({
   accept: ["text/plain", "application/octet-stream"],
@@ -1730,20 +1730,20 @@ export default defineConfig({ name: "file-reads" });
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
 
     let got = wp_eval_json(
-        &tmp.join("tp/dist/wp-content"),
+        &tmp.join("sp/dist/wp-content"),
         r#"
-        update_option(\TypedPress\Wp\WpFiles::OK, '1', false);
+        update_option(\SpacePress\Wp\WpFiles::OK, '1', false);
         $uid = wp_insert_user(['user_login' => 'alice', 'user_pass' => 'pass', 'role' => 'subscriber']);
-        $viewer = new \TypedPress\Viewer(['id' => $uid, 'name' => 'alice', 'role' => 'subscriber']);
+        $viewer = new \SpacePress\Viewer(['id' => $uid, 'name' => 'alice', 'role' => 'subscriber']);
 
         $csvTmp = tempnam(sys_get_temp_dir(), 'tpcsv');
         file_put_contents($csvTmp, "date,amount\n2026-11-24,-1250\n");
-        $csv = \TypedPress\Media\Files::upload('inbox', $csvTmp, 'bunq.csv', $viewer);
+        $csv = \SpacePress\Media\Files::upload('inbox', $csvTmp, 'bunq.csv', $viewer);
 
         $binTmp = tempnam(sys_get_temp_dir(), 'tpbin');
         $binBytes = "\x00\xff\xfe\x01PDF";
         file_put_contents($binTmp, $binBytes);
-        $bin = \TypedPress\Media\Files::upload('inbox', $binTmp, 'raw.bin', $viewer);
+        $bin = \SpacePress\Media\Files::upload('inbox', $binTmp, 'raw.bin', $viewer);
 
         [$sCsv, $csvRes] = $wp->call('POST', '/actions/inspectFile', ['id' => $csv['id']], $uid);
         [$sBin, $binRes] = $wp->call('POST', '/actions/inspectFile', ['id' => $bin['id']], $uid);
@@ -1751,21 +1751,21 @@ export default defineConfig({ name: "file-reads" });
 
         $invalidUtf8Status = 0;
         try {
-            \TypedPress\Media\Files::readText('inbox', $bin['id']);
-        } catch (\TypedPress\HttpError $e) {
+            \SpacePress\Media\Files::readText('inbox', $bin['id']);
+        } catch (\SpacePress\HttpError $e) {
             $invalidUtf8Status = $e->status;
         }
 
         // Verify Fetch limits outside vs inside Fetch::inJob() (including restoration on throw).
-        $httpTimeout = \TypedPress\Fetch::timeout();
-        $httpMax = \TypedPress\Fetch::maxBody();
-        $jobLimits = \TypedPress\Fetch::inJob(static fn () => [\TypedPress\Fetch::timeout(), \TypedPress\Fetch::maxBody()]);
+        $httpTimeout = \SpacePress\Fetch::timeout();
+        $httpMax = \SpacePress\Fetch::maxBody();
+        $jobLimits = \SpacePress\Fetch::inJob(static fn () => [\SpacePress\Fetch::timeout(), \SpacePress\Fetch::maxBody()]);
         try {
-            \TypedPress\Fetch::inJob(static function (): void {
+            \SpacePress\Fetch::inJob(static function (): void {
                 throw new \RuntimeException('boom');
             });
         } catch (\RuntimeException) {}
-        $afterThrowTimeout = \TypedPress\Fetch::timeout();
+        $afterThrowTimeout = \SpacePress\Fetch::timeout();
 
         echo json_encode([
             'sCsv' => $sCsv,
@@ -1820,8 +1820,8 @@ export default defineConfig({ name: "file-reads" });
 
     // Access rules still cannot read private file contents.
     std::fs::write(
-        tmp.join("typedpress.config.ts"),
-        r#"import { defineConfig, files, table, text } from "typedpress";
+        tmp.join("spacepress.config.ts"),
+        r#"import { defineConfig, files, table, text } from "spacepress";
 export const inbox = files({ accept: ["text/plain"], maxBytes: 1000 });
 export const docs = table({ name: text() }, {
   access: { read: async () => (await inbox.readText(1)).length > 0 },
@@ -1837,16 +1837,16 @@ export default defineConfig({ name: "file-reads" });
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
-/// `tp/_generated/routes.d.ts` must index `RegisteredKinds` by each collection's TypeScript key
+/// `sp/_generated/routes.d.ts` must index `RegisteredKinds` by each collection's TypeScript key
 /// (`legalEntities`), not its snake_case SQL table name (`legal_entities`).
 #[test]
 fn routes_dts_uses_collection_ts_key_for_multi_word_kinds() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-routes-dts-key-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-routes-dts-key-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(tmp.join("tp/app/entities/[slug]")).unwrap();
+    std::fs::create_dir_all(tmp.join("sp/app/entities/[slug]")).unwrap();
     std::fs::write(
-        tmp.join("typedpress.config.ts"),
-        r#"import { collection, defineConfig, slug, text } from "typedpress";
+        tmp.join("spacepress.config.ts"),
+        r#"import { collection, defineConfig, slug, text } from "spacepress";
 
 export const legalEntities = collection(
   {
@@ -1861,8 +1861,8 @@ export default defineConfig({ name: "routes-dts-key" });
     )
     .unwrap();
     std::fs::write(
-        tmp.join("tp/app/entities/[slug]/page.tsx"),
-        r#"import { notFound, type PageProps } from "typedpress/app";
+        tmp.join("sp/app/entities/[slug]/page.tsx"),
+        r#"import { notFound, type PageProps } from "spacepress/app";
 
 export default function EntityPage({ item }: PageProps<"entities/[slug]">) {
   if (!item) notFound();
@@ -1875,7 +1875,7 @@ export default function EntityPage({ item }: PageProps<"entities/[slug]">) {
     let built = first().arg("build").arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
 
-    let routes_dts = std::fs::read_to_string(tmp.join("tp/_generated/routes.d.ts")).unwrap();
+    let routes_dts = std::fs::read_to_string(tmp.join("sp/_generated/routes.d.ts")).unwrap();
     assert!(
         routes_dts.contains("RegisteredKinds extends { legalEntities: { $inferSelect: infer R } }"),
         "expected camelCase collection key in routes.d.ts:\n{routes_dts}"
@@ -1888,7 +1888,7 @@ export default function EntityPage({ item }: PageProps<"entities/[slug]">) {
 }
 
 /// A fresh WordPress on SQLite with a built `wp-content` installed, served by `php -S`
-/// (`php tests/php/wp.php serve`): the site a client and `typedpress sync` talk to.
+/// (`php tests/php/wp.php serve`): the site a client and `spacepress sync` talk to.
 struct Server {
     child: Child,
     port: u16,
@@ -1950,7 +1950,7 @@ impl Server {
         self.users[name]["appPassword"].as_str().unwrap().to_string()
     }
 
-    /// Returns (status, body) for a request to TypedPress's API (/wp-json/typedpress/v1).
+    /// Returns (status, body) for a request to SpacePress's API (/wp-json/spacepress/v1).
     fn send(&self, method: &str, path: &str, body: Option<&str>) -> (u16, serde_json::Value) {
         let mut s = TcpStream::connect(("127.0.0.1", self.port)).unwrap();
         let body = body.unwrap_or("");
@@ -1961,7 +1961,7 @@ impl Server {
             .map(|u| format!("Authorization: Basic {}\r\n", base64(self.credential(u).as_bytes())))
             .unwrap_or_default();
         let request = format!(
-            "{method} /wp-json/typedpress/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "{method} /wp-json/spacepress/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
         s.write_all(request.as_bytes()).unwrap();
@@ -2021,12 +2021,12 @@ fn wp_eval_json(wp_content: &Path, code: &str, arg: &serde_json::Value) -> serde
 
 #[test]
 fn pantry_example_builds_and_its_hooks_run_in_php() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-pantry-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-pantry-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     let project = tmp.join("pantry");
     copy(&root().join("examples/pantry"), &project);
-    let _ = std::fs::remove_dir_all(project.join(".tp"));
-    let _ = std::fs::remove_dir_all(project.join("tp/_generated"));
+    let _ = std::fs::remove_dir_all(project.join(".sp"));
+    let _ = std::fs::remove_dir_all(project.join("sp/_generated"));
 
     let out = first().arg("build").arg(&project).output().unwrap();
     assert!(
@@ -2044,22 +2044,22 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         names.sort();
         names
     };
-    let init_dirs = migration_dirs(&project.join("tp/_generated/migrations"));
+    let init_dirs = migration_dirs(&project.join("sp/_generated/migrations"));
     assert_eq!(init_dirs.len(), 1, "{init_dirs:?}");
     let init = std::fs::read_to_string(
         project
-            .join("tp/_generated/migrations")
+            .join("sp/_generated/migrations")
             .join(&init_dirs[0])
             .join("migration.sql"),
     )
     .unwrap();
-    assert!(init.contains("CREATE TABLE `{prefix}tp_items`"), "{init}");
+    assert!(init.contains("CREATE TABLE `{prefix}sp_items`"), "{init}");
     // A second build with no changes adds no migration.
     let again = first().arg("build").arg(&project).output().unwrap();
     assert!(again.status.success());
-    assert_eq!(migration_dirs(&project.join("tp/_generated/migrations")), init_dirs);
+    assert_eq!(migration_dirs(&project.join("sp/_generated/migrations")), init_dirs);
     for example in ["pantry", "blog", "site"] {
-        let original = migration_dirs(&root().join(format!("examples/{example}/tp/_generated/migrations")));
+        let original = migration_dirs(&root().join(format!("examples/{example}/sp/_generated/migrations")));
         let persisted = tmp.join(format!("preserved-{example}"));
         copy(&root().join(format!("examples/{example}")), &persisted);
         let result = first().arg("build").arg(&persisted).output().unwrap();
@@ -2068,41 +2068,41 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             "{example}: {}",
             String::from_utf8_lossy(&result.stderr)
         );
-        let actual = migration_dirs(&persisted.join("tp/_generated/migrations"));
+        let actual = migration_dirs(&persisted.join("sp/_generated/migrations"));
         assert_eq!(actual, original, "{example}: no new migration for an unchanged build");
     }
     // Historical storage-upgrade fixture keeps its committed migrations unchanged on rebuild.
     let upgraded = tmp.join("storage-upgrade");
     let fixture = root().join("tests/fixtures/storage-upgrade");
     copy(&fixture, &upgraded);
-    let original = migration_dirs(&fixture.join("tp/_generated/migrations"));
+    let original = migration_dirs(&fixture.join("sp/_generated/migrations"));
     let built = first().arg("build").arg(&upgraded).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     assert_eq!(
-        migration_dirs(&upgraded.join("tp/_generated/migrations")),
+        migration_dirs(&upgraded.join("sp/_generated/migrations")),
         original,
         "the historical ledger must remain unchanged"
     );
     for id in &original {
         for file in ["ops.json", "migration.sql"] {
             assert_eq!(
-                std::fs::read(upgraded.join("tp/_generated/migrations").join(id).join(file)).unwrap(),
-                std::fs::read(fixture.join("tp/_generated/migrations").join(id).join(file)).unwrap(),
+                std::fs::read(upgraded.join("sp/_generated/migrations").join(id).join(file)).unwrap(),
+                std::fs::read(fixture.join("sp/_generated/migrations").join(id).join(file)).unwrap(),
                 "the historical ledger must remain unchanged: {id}/{file}"
             );
         }
     }
-    assert_eq!(migration_dirs(&upgraded.join("tp/_generated/migrations")).len(), 1);
+    assert_eq!(migration_dirs(&upgraded.join("sp/_generated/migrations")).len(), 1);
 
     // Neither camel-case names nor canonical names behind aliases may be silently replaced.
     let conflict = tmp.join("name-conflict");
     std::fs::create_dir_all(&conflict).unwrap();
-    std::fs::write(conflict.join("typedpress.config.ts"), "import { table, defineConfig } from 'typedpress'; const __stockItems = table({}); export { __stockItems as stockItems }; export default defineConfig({});").unwrap();
+    std::fs::write(conflict.join("spacepress.config.ts"), "import { table, defineConfig } from 'spacepress'; const __stockItems = table({}); export { __stockItems as stockItems }; export default defineConfig({});").unwrap();
     let built = first().arg("build").arg(&conflict).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let init_id = migration_dirs(&conflict.join("tp/_generated/migrations"))[0].clone();
+    let init_id = migration_dirs(&conflict.join("sp/_generated/migrations"))[0].clone();
     let ledger = conflict
-        .join("tp/_generated/migrations")
+        .join("sp/_generated/migrations")
         .join(&init_id)
         .join("ops.json");
     let canonical: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
@@ -2117,9 +2117,9 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         let legacy_bytes = serde_json::to_vec(&legacy).unwrap();
         std::fs::write(&ledger, &legacy_bytes).unwrap();
         std::fs::write(
-            conflict.join("typedpress.config.ts"),
+            conflict.join("spacepress.config.ts"),
             format!(
-                "import {{ table, defineConfig }} from 'typedpress'; const __stockItems = table({{}}, {{ storageName: \"{stored_name}\" }}); export {{ __stockItems as stockItems }}; export default defineConfig({{}});"
+                "import {{ table, defineConfig }} from 'spacepress'; const __stockItems = table({{}}, {{ storageName: \"{stored_name}\" }}); export {{ __stockItems as stockItems }}; export default defineConfig({{}});"
             ),
         )
         .unwrap();
@@ -2131,11 +2131,11 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
         );
         let actual: serde_json::Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
         assert_eq!(actual, legacy);
-        assert_eq!(migration_dirs(&conflict.join("tp/_generated/migrations")).len(), 1);
+        assert_eq!(migration_dirs(&conflict.join("sp/_generated/migrations")).len(), 1);
     }
 
     // Writes default to editor access: the site's editor signs in with an application password.
-    let content = project.join("tp/dist/wp-content");
+    let content = project.join("sp/dist/wp-content");
     let mut server = Server::start(&content, &["kim=editor"]);
     let (s, denied) = server.send("POST", "/locations", Some(r#"{"name":"Shed"}"#));
     assert_eq!((s, denied["code"].as_str()), (401, Some("unauthenticated")));
@@ -2169,7 +2169,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     assert_eq!(list["data"][0]["notifiedAt"], serde_json::Value::Null);
 
     // §6.1: restocking enqueued notifyLowStock; Action Scheduler runs it off the request (the queue's
-    // semantics live in tests/php/jobs_test.php). `wp typedpress jobs` lists it before and after.
+    // semantics live in tests/php/jobs_test.php). `wp spacepress jobs` lists it before and after.
     let jobs = |args: &str| -> serde_json::Value {
         let (_, out) = server.send("GET", "", None);
         assert_eq!(out["data"]["name"], "pantry");
@@ -2177,7 +2177,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
             &Command::new("php")
                 .args(["-d", "memory_limit=512M", "-r"])
                 .arg(format!(
-                    "require $argv[1]; wpLoad($argv[2]); echo \\TypedPress\\Wp\\Runtime::plugin()->app()->cli({args})[1];"
+                    "require $argv[1]; wpLoad($argv[2]); echo \\SpacePress\\Wp\\Runtime::plugin()->app()->cli({args})[1];"
                 ))
                 .arg(root().join("tests/php/wp.php"))
                 .arg(server_dir(&server))
@@ -2269,7 +2269,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
         String::from_utf8_lossy(&node.stderr)
     );
     let oracle: serde_json::Value = serde_json::from_slice(&node.stdout).unwrap();
-    assert_eq!(oracle["schema"], "typedpress-differential");
+    assert_eq!(oracle["schema"], "spacepress-differential");
     assert_eq!(oracle["version"], 1);
     assert_eq!(oracle["complete"], true, "oracle must finish every case");
     let expected = &oracle["cases"];
@@ -2279,7 +2279,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
         .args(["--input-type=module", "-e"])
         .arg(format!(
             "import {{ register }} from 'node:module'; register({:?}); const m = await import({:?}); process.stdout.write(JSON.stringify({{ ctxs: m.ACCESS_CTXS, fctxs: m.FIELD_CTXS ?? [], values: m.VALIDATE_VALUES, vctx: m.VALIDATE_CTX }}));",
-            format!("file://{}", dir.join("resolve-typedpress.mjs").display()),
+            format!("file://{}", dir.join("resolve-spacepress.mjs").display()),
             format!("file://{}", dir.join("cases.ts").display()),
         ))
         .output()
@@ -2291,18 +2291,18 @@ fn compiled_php_matches_node_on_every_differential_case() {
     );
     let fixtures: serde_json::Value = serde_json::from_slice(&fixtures.stdout).unwrap();
 
-    let tmp = std::env::temp_dir().join(format!("typedpress-diff-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-diff-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
-    // App code loads from tp/; the root config re-exports the cases' config.
-    std::fs::create_dir_all(tmp.join("tp")).unwrap();
-    std::fs::copy(dir.join("cases.ts"), tmp.join("tp/cases.ts")).unwrap();
-    std::fs::copy(dir.join("namespace.mjs"), tmp.join("tp/namespace.mjs")).unwrap();
+    // App code loads from sp/; the root config re-exports the cases' config.
+    std::fs::create_dir_all(tmp.join("sp")).unwrap();
+    std::fs::copy(dir.join("cases.ts"), tmp.join("sp/cases.ts")).unwrap();
+    std::fs::copy(dir.join("namespace.mjs"), tmp.join("sp/namespace.mjs")).unwrap();
     // Plain JavaScript modules the cases import run through checked dynamic dispatch.
-    std::fs::copy(dir.join("stdlib.js"), tmp.join("tp/stdlib.js")).unwrap();
+    std::fs::copy(dir.join("stdlib.js"), tmp.join("sp/stdlib.js")).unwrap();
     std::fs::write(
-        tmp.join("typedpress.config.ts"),
-        "export { default } from \"./tp/cases.ts\";\n",
+        tmp.join("spacepress.config.ts"),
+        "export { default } from \"./sp/cases.ts\";\n",
     )
     .unwrap();
     let built = first().arg("build").arg(&tmp).output().unwrap();
@@ -2312,21 +2312,21 @@ fn compiled_php_matches_node_on_every_differential_case() {
         String::from_utf8_lossy(&built.stderr)
     );
     // The compiled app plugin (named after the project directory) and the runtime beside it.
-    let plugins = tmp.join("tp/dist/wp-content/plugins");
+    let plugins = tmp.join("sp/dist/wp-content/plugins");
     let app = std::fs::read_dir(&plugins)
         .unwrap()
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .find(|p| p.is_dir() && p.file_name().unwrap().to_string_lossy().starts_with("typedpress-app-"))
+        .find(|p| p.is_dir() && p.file_name().unwrap().to_string_lossy().starts_with("spacepress-app-"))
         .expect("the app plugin");
-    let runtime = plugins.join("typedpress-runtime");
+    let runtime = plugins.join("spacepress-runtime");
 
-    let functions = std::fs::read_to_string(app.join("tp/app/functions.php")).unwrap();
+    let functions = std::fs::read_to_string(app.join("sp/app/functions.php")).unwrap();
     // Every PHP built-in the compiler emits is called by its full name (`\\count`), so PHP doesn't
-    // look it up in `namespace TypedPressApp` first.
+    // look it up in `namespace SpacePressApp` first.
     let unqualified = Command::new("php")
         .arg(root().join("tests/php/unqualified_calls.php"))
-        .arg(app.join("tp/app/functions.php"))
+        .arg(app.join("sp/app/functions.php"))
         .output()
         .unwrap();
     assert!(
@@ -2336,14 +2336,14 @@ fn compiled_php_matches_node_on_every_differential_case() {
     );
     let body = |name: &str| {
         functions
-            .split(&format!("function {}(", typedpress::schema::physical_name(name)))
+            .split(&format!("function {}(", spacepress::schema::physical_name(name)))
             .nth(1)
             .expect("differential helper is emitted")
             .split("\nfunction ")
             .next()
             .unwrap()
     };
-    assert!(body("nativeParameter").contains("$input->p['n'] ?? \\TypedPress\\Js::dataGet( $input, 'n' )"));
+    assert!(body("nativeParameter").contains("$input->p['n'] ?? \\SpacePress\\Js::dataGet( $input, 'n' )"));
     assert!(
         body("nativeParameter")
             .lines()
@@ -2351,13 +2351,13 @@ fn compiled_php_matches_node_on_every_differential_case() {
     );
     assert!(body("nativeMissing").contains("$input->p["));
     assert!(
-        body("reboundParameter").contains("\\TypedPress\\Js::dataGet( $input, 'n' )")
+        body("reboundParameter").contains("\\SpacePress\\Js::dataGet( $input, 'n' )")
             && !body("reboundParameter").contains("->p[")
     );
     // A nullable receiver that no assignment replaces tries the property first: `??` gives the
     // checked read for null and undefined, so a missing value still reads as dataGet does.
     assert!(
-        body("nullableParameter").contains("( $input->p['n'] ?? \\TypedPress\\Js::dataGet( $input, 'n' ) )"),
+        body("nullableParameter").contains("( $input->p['n'] ?? \\SpacePress\\Js::dataGet( $input, 'n' ) )"),
         "{}",
         body("nullableParameter")
     );
@@ -2394,12 +2394,12 @@ fn compiled_php_matches_node_on_every_differential_case() {
     );
     assert!(
         body("literalTypedMissing").contains("\\is_float( $__t")
-            || body("literalTypedMissing").contains("\\TypedPress\\Js::strictEq("),
+            || body("literalTypedMissing").contains("\\SpacePress\\Js::strictEq("),
         "{}",
         body("literalTypedMissing")
     );
     assert!(
-        body("literalTypedCall").contains("\\TypedPress\\Js::strictEq( $a, "),
+        body("literalTypedCall").contains("\\SpacePress\\Js::strictEq( $a, "),
         "{}",
         body("literalTypedCall")
     );
@@ -2412,7 +2412,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
         ("argumentsInDefault", true),
     ] {
         assert_eq!(
-            body(name).contains("\\TypedPress\\Js::arguments("),
+            body(name).contains("\\SpacePress\\Js::arguments("),
             uses,
             "{name}:\n{}",
             body(name)
@@ -2420,7 +2420,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
     }
     assert_eq!(
         body("argumentsInInnerFunction")
-            .matches("\\TypedPress\\Js::arguments(")
+            .matches("\\SpacePress\\Js::arguments(")
             .count(),
         1,
         "only the inner function names arguments:\n{}",
@@ -2450,7 +2450,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
             }
             // Actions run through the trusted CLI on a site: they may use db(), once() and jobs.
             _ => wp_eval(
-                &tmp.join("tp/dist/wp-content"),
+                &tmp.join("sp/dist/wp-content"),
                 "echo $app->cli(['action', $arg])[1];",
                 &serde_json::Value::String(name.clone()),
             ),
@@ -2496,7 +2496,7 @@ fn compiled_tsx_renders_the_html_react_renders() {
         dir.join("node_modules/react-dom").is_dir(),
         "run: npm ci --prefix tests/differential/html"
     );
-    let tmp = std::env::temp_dir().join(format!("typedpress-tsx-parity-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-tsx-parity-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&dir.join("project"), &tmp);
     let built = first().arg("build").arg(&tmp).output().unwrap();
@@ -2516,14 +2516,14 @@ fn compiled_tsx_renders_the_html_react_renders() {
         "node failed:\n{}",
         String::from_utf8_lossy(&node.stderr)
     );
-    let plugins = tmp.join("tp/dist/wp-content/plugins");
+    let plugins = tmp.join("sp/dist/wp-content/plugins");
     let app = plugins.join(format!(
-        "typedpress-app-{}",
+        "spacepress-app-{}",
         tmp.file_name().unwrap().to_string_lossy().replace('_', "-")
     ));
     let php = Command::new("php")
         .arg(dir.join("render-php.php"))
-        .arg(plugins.join("typedpress-runtime"))
+        .arg(plugins.join("spacepress-runtime"))
         .arg(&app)
         .arg(dir.join("cases.json"))
         .output()
@@ -2555,7 +2555,7 @@ fn compiled_tsx_renders_the_html_react_renders() {
             mismatches.push(format!("case {index}\n  react: {want}\n  php:   {got}"));
         }
     }
-    // React rewrites `javascript:` URLs; TypedPress drops any URL attribute outside its policy.
+    // React rewrites `javascript:` URLs; SpacePress drops any URL attribute outside its policy.
     let urls = [
         "javascript:alert(1)",
         " JavaScript:x",
@@ -2576,7 +2576,7 @@ fn compiled_tsx_renders_the_html_react_renders() {
     std::fs::write(&file, cases.to_string()).unwrap();
     let out = Command::new("php")
         .arg(dir.join("render-php.php"))
-        .arg(plugins.join("typedpress-runtime"))
+        .arg(plugins.join("spacepress-runtime"))
         .arg(&app)
         .arg(&file)
         .output()
@@ -2614,7 +2614,7 @@ fn compiled_tsx_renders_the_html_react_renders() {
     std::fs::write(&file, cases.to_string()).unwrap();
     let out = Command::new("php")
         .arg(dir.join("render-php.php"))
-        .arg(plugins.join("typedpress-runtime"))
+        .arg(plugins.join("spacepress-runtime"))
         .arg(&app)
         .arg(&file)
         .output()
@@ -2629,7 +2629,7 @@ fn compiled_tsx_renders_the_html_react_renders() {
     std::fs::write(&file, cases.to_string()).unwrap();
     let out = Command::new("php")
         .arg(dir.join("render-php.php"))
-        .arg(plugins.join("typedpress-runtime"))
+        .arg(plugins.join("spacepress-runtime"))
         .arg(&app)
         .arg(&file)
         .output()
@@ -2648,7 +2648,7 @@ fn compiled_tsx_renders_the_html_react_renders() {
     std::fs::write(&file, cases.to_string()).unwrap();
     let out = Command::new("php")
         .arg(dir.join("render-php.php"))
-        .arg(plugins.join("typedpress-runtime"))
+        .arg(plugins.join("spacepress-runtime"))
         .arg(&app)
         .arg(&file)
         .output()
@@ -2658,12 +2658,12 @@ fn compiled_tsx_renders_the_html_react_renders() {
     assert_eq!(rendered["1"]["error"], "a void element's child ran", "{rendered}");
     // Literal JSX is folded into markup at build time; what folding leaves to the runtime still
     // calls `Html::element` (src/compile/html.rs).
-    let functions = std::fs::read_to_string(app.join("tp/app/functions.php")).unwrap();
+    let functions = std::fs::read_to_string(app.join("sp/app/functions.php")).unwrap();
     let body = |name: &str| {
         functions
             .split(&format!(
                 "function component__components_{}(",
-                typedpress::schema::physical_name(name)
+                spacepress::schema::physical_name(name)
             ))
             .nth(1)
             .and_then(|rest| rest.split("\n}\n").next())
@@ -2672,15 +2672,15 @@ fn compiled_tsx_renders_the_html_react_renders() {
     };
     // Layout may wrap calls, but the first argument must still name the tag.
     let has_element = |php: &str, element: &str| {
-        php.split("\\TypedPress\\Html::element(")
+        php.split("\\SpacePress\\Html::element(")
             .skip(1)
             .any(|call| call.trim_start().starts_with(element))
     };
     let strings = body("static__TemplateStrings");
     assert_eq!(strings.matches("\\implode(").count(), 1, "{strings}");
     let slots = body("static__TemplateSlots");
-    assert_eq!(slots.matches("\\TypedPress\\Html::template(").count(), 2, "{slots}");
-    assert!(!slots.contains("\\TypedPress\\Html::raw("), "{slots}");
+    assert_eq!(slots.matches("\\SpacePress\\Html::template(").count(), 2, "{slots}");
+    assert!(!slots.contains("\\SpacePress\\Html::raw("), "{slots}");
     let folded = body("static__Static");
     for element in [
         "'main'",
@@ -2698,13 +2698,13 @@ fn compiled_tsx_renders_the_html_react_renders() {
     }
     assert!(folded.contains("<main class=\"page\" id=\"top\""), "{folded}");
     // Left to the runtime: a custom element, a list item with a dynamic key, a void element with children.
-    assert!(folded.contains("\\TypedPress\\Html::element( 'link-like'"), "{folded}");
+    assert!(folded.contains("\\SpacePress\\Html::element( 'link-like'"), "{folded}");
     assert!(
         folded.contains("'className' => 'item',") && folded.contains("'key'       => $item,"),
         "{folded}"
     );
     assert!(
-        body("static__VoidChildren").contains("\\TypedPress\\Html::element( 'br', array(), "),
+        body("static__VoidChildren").contains("\\SpacePress\\Html::element( 'br', array(), "),
         "{}",
         body("static__VoidChildren")
     );
@@ -2737,7 +2737,7 @@ fn compiled_tsx_renders_the_html_react_renders() {
     std::fs::write(&file, cases.to_string()).unwrap();
     let out = Command::new("php")
         .arg(dir.join("render-php.php"))
-        .arg(plugins.join("typedpress-runtime"))
+        .arg(plugins.join("spacepress-runtime"))
         .arg(&app)
         .arg(&file)
         .output()
@@ -2756,35 +2756,35 @@ fn compiled_tsx_renders_the_html_react_renders() {
 }
 
 /// Drops `<link rel="preload" as="image" …/>`, which React emits ahead of an eager `<img>`.
-/// `\TypedPress\Html` keeps its own attribute checks even though the compiler refuses these names and
+/// `\SpacePress\Html` keeps its own attribute checks even though the compiler refuses these names and
 /// spreads at build time: a value that reaches it another way (an imported JavaScript object)
 /// still can't set a URL, an event handler or `srcdoc` (PHP's `$` matches before a final `\n`,
 /// so the name pattern must be anchored with `\z`).
 #[test]
 fn html_runtime_drops_unsafe_attribute_names_from_any_source() {
-    let runtime = root().join("runtime/TypedPress/bootstrap.php");
+    let runtime = root().join("runtime/SpacePress/bootstrap.php");
     let script = r#"
         require $argv[1];
         $attrs = ["href\n" => "javascript:alert(1)", "style\n" => "position:fixed", "onclick" => "x",
             "ONMOUSEOVER" => "x", "Href" => "javascript:alert(1)", "srcdoc" => "<p>", "a b" => "x",
             "title" => "kept"];
-        echo \TypedPress\Html::element("a", $attrs, "x")->html(), "\n";
-        echo \TypedPress\Html::element("my-el", $attrs)->html(), "\n";
-        $style = new \TypedPress\JsObject(["color" => "red;position:fixed", "background" => "url(//evil)", "width" => "1px",
+        echo \SpacePress\Html::element("a", $attrs, "x")->html(), "\n";
+        echo \SpacePress\Html::element("my-el", $attrs)->html(), "\n";
+        $style = new \SpacePress\JsObject(["color" => "red;position:fixed", "background" => "url(//evil)", "width" => "1px",
             "x:y;position" => "fixed", "inset\n" => "0", "--ok" => "1"]);
-        echo \TypedPress\Html::element("div", ["style" => $style])->html(), "\n";
+        echo \SpacePress\Html::element("div", ["style" => $style])->html(), "\n";
         // Every spelling of `style` goes through the style filter, and a string is never CSS.
         $css = "position:fixed;inset:0;background:url(//evil)";
-        echo \TypedPress\Html::element("div", ["Style" => $style])->html(), "\n";
+        echo \SpacePress\Html::element("div", ["Style" => $style])->html(), "\n";
         // A string `style` throws, as React does, so it never reaches the attribute.
-        try { \TypedPress\Html::element("div", ["STYLE" => $css])->html(); echo "rendered\n"; }
-        catch (\TypedPress\JsError $e) { echo "refused\n"; }
-        echo \TypedPress\Html::element("my-el", ["STYLE" => $style])->html(), "\n";
-        var_export(\TypedPress\Html::styleOf($css, ["position"]) === \TypedPress\JsUndefined::Value);
+        try { \SpacePress\Html::element("div", ["STYLE" => $css])->html(); echo "rendered\n"; }
+        catch (\SpacePress\JsError $e) { echo "refused\n"; }
+        echo \SpacePress\Html::element("my-el", ["STYLE" => $style])->html(), "\n";
+        var_export(\SpacePress\Html::styleOf($css, ["position"]) === \SpacePress\JsUndefined::Value);
         echo "\n";
         // `styleOf` keeps only the names the compiler saw in the style's type.
-        $extra = new \TypedPress\JsObject(["color" => "red", "position" => "fixed", "inset" => "0"]);
-        echo \TypedPress\Html::element("p", ["style" => \TypedPress\Html::styleOf($extra, ["color"])])->html(), "\n";
+        $extra = new \SpacePress\JsObject(["color" => "red", "position" => "fixed", "inset" => "0"]);
+        echo \SpacePress\Html::element("p", ["style" => \SpacePress\Html::styleOf($extra, ["color"])])->html(), "\n";
     "#;
     let out = Command::new("php").args(["-r", script]).arg(&runtime).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -2828,7 +2828,7 @@ fn without_directives(html: &str) -> String {
     }
     kept.push_str(rest);
     let attr = regex::Regex::new(r#" data-wp-[a-z0-9-]+="[^"]*""#).unwrap();
-    let span = regex::Regex::new(r#"<span data-wp-text="[^"]*" data-tp-text="">([^<]*)</span>"#).unwrap();
+    let span = regex::Regex::new(r#"<span data-wp-text="[^"]*" data-sp-text="">([^<]*)</span>"#).unwrap();
     let html = span.replace_all(&kept, "$1");
     attr.replace_all(&html, "").into_owned()
 }
@@ -2856,11 +2856,11 @@ fn php_case(runtime: &Path, app: &Path, case: &str, args: serde_json::Value) -> 
         .unwrap()
 }
 
-/// Locales are turned off for apps: only the test suite's TYPEDPRESS_LOCALES=1 (.cargo/config.toml) keeps them.
+/// Locales are turned off for apps: only the test suite's SPACEPRESS_LOCALES=1 (.cargo/config.toml) keeps them.
 #[test]
 fn locales_are_turned_off() {
     let out = first()
-        .env_remove("TYPEDPRESS_LOCALES")
+        .env_remove("SPACEPRESS_LOCALES")
         .arg("check")
         .arg(root().join("tests/fixtures/locales-client"))
         .output()
@@ -2873,7 +2873,7 @@ fn locales_are_turned_off() {
 /// §7.3: the generated client types localized collections; translation ids follow the primary key.
 #[test]
 fn localized_generated_client_types() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-locales-client-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-locales-client-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/locales-client"), &tmp);
     let out = first().arg("build").arg(&tmp).output().unwrap();
@@ -2883,9 +2883,9 @@ fn localized_generated_client_types() {
         serde_json::to_vec(&serde_json::json!({
             "compilerOptions": {
                 "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
-                "paths": { "typedpress": [root().join("types/typedpress/index.d.ts")] }
+                "paths": { "spacepress": [root().join("types/spacepress/index.d.ts")] }
             },
-            "files": ["client.ts", "tp/_generated/db.d.ts"]
+            "files": ["client.ts", "sp/_generated/db.d.ts"]
         }))
         .unwrap(),
     )
@@ -2904,24 +2904,24 @@ fn localized_generated_client_types() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
-/// §9.1 golden: the frozen phase-1 blog (tests/fixtures/blog/typedpress.config.ts) compiles to a schema.php
+/// §9.1 golden: the frozen phase-1 blog (tests/fixtures/blog/spacepress.config.ts) compiles to a schema.php
 /// equal, as data, to the fixture the runtime and the PHP suites code against. examples/blog, which
 /// carries every phase-2 feature, builds the §4.9 plugin with the §7.3 wpml-config.xml golden, passes
 /// doctor, and syncs its committed posts into a served site.
 #[test]
 fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-blog-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-blog-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     let frozen = tmp.join("frozen");
     std::fs::create_dir_all(&frozen).unwrap();
     std::fs::copy(
-        root().join("tests/fixtures/blog/typedpress.config.ts"),
-        frozen.join("typedpress.config.ts"),
+        root().join("tests/fixtures/blog/spacepress.config.ts"),
+        frozen.join("spacepress.config.ts"),
     )
     .unwrap();
     let project = tmp.join("blog");
     copy(&root().join("examples/blog"), &project);
-    for generated in [".tp", "tp"] {
+    for generated in [".sp", "sp"] {
         let _ = std::fs::remove_dir_all(project.join(generated));
     }
     let as_json = |php_file: &Path| -> serde_json::Value {
@@ -2938,7 +2938,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     let out = first().arg("build").arg(&frozen).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(
-        as_json(&frozen.join("tp/dist/wp-content/plugins/typedpress-app-blog/tp/app/schema.php")),
+        as_json(&frozen.join("sp/dist/wp-content/plugins/spacepress-app-blog/sp/app/schema.php")),
         golden,
         "schema.php drifted from tests/fixtures/blog/schema.php"
     );
@@ -2953,11 +2953,11 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let plugin = project.join("tp/dist/wp-content/plugins/typedpress-app-blog");
-    for rel in ["typedpress-app-blog.php", "tp/app/functions.php", "tp/app/migrations"] {
+    let plugin = project.join("sp/dist/wp-content/plugins/spacepress-app-blog");
+    for rel in ["spacepress-app-blog.php", "sp/app/functions.php", "sp/app/migrations"] {
         assert!(plugin.join(rel).exists(), "plugin is missing {rel}");
     }
-    let init_mig_dir = std::fs::read_dir(plugin.join("tp/app/migrations"))
+    let init_mig_dir = std::fs::read_dir(plugin.join("sp/app/migrations"))
         .unwrap()
         .map(|e| e.unwrap().path())
         .find(|p| p.is_dir())
@@ -2968,20 +2968,20 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     );
     assert!(
         project
-            .join("tp/dist/wp-content/plugins/typedpress-app-blog.zip")
+            .join("sp/dist/wp-content/plugins/spacepress-app-blog.zip")
             .is_file()
     );
-    let content = project.join("tp/dist/wp-content");
+    let content = project.join("sp/dist/wp-content");
     let manifest: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(content.join("typedpress-manifest.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(content.join("spacepress-manifest.json")).unwrap()).unwrap();
     assert_eq!(manifest["runtime"], "0.3");
     assert_eq!(manifest["app"], "blog");
-    for slug in ["typedpress-runtime", "typedpress-identity", "typedpress-app-blog"] {
+    for slug in ["spacepress-runtime", "spacepress-identity", "spacepress-app-blog"] {
         let archive = std::fs::File::open(content.join("plugins").join(format!("{slug}.zip"))).unwrap();
         let mut archive = zip::ZipArchive::new(archive).unwrap();
         assert!(archive.by_name(&format!("{slug}/{slug}.php")).is_ok());
     }
-    assert!(content.join("plugins/typedpress-runtime/tp/bootstrap.php").is_file());
+    assert!(content.join("plugins/spacepress-runtime/sp/bootstrap.php").is_file());
     let doctor = first().args(["doctor", "--json"]).arg(&project).output().unwrap();
     assert!(doctor.status.success(), "{}", String::from_utf8_lossy(&doctor.stdout));
     let doctor: serde_json::Value = serde_json::from_slice(&doctor.stdout).unwrap();
@@ -3000,7 +3000,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         first()
             .arg("sync")
             .arg(&project)
-            .env("TP_APP_PASSWORD", &credential)
+            .env("SP_APP_PASSWORD", &credential)
             .args(["--site", &site, "--no-commit", "--json"])
             .args(extra)
             .output()
@@ -3030,25 +3030,25 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
         0
     );
     let (_, posts) = server.send("GET", "/posts?orderBy=id", None);
-    assert_eq!(posts["data"][0]["title"], "Hello, TypedPress", "{posts}");
+    assert_eq!(posts["data"][0]["title"], "Hello, SpacePress", "{posts}");
     drop(server);
 
     // The blog has no localized post types. The localized fixture below checks the XML contents.
     assert!(!plugin.join("wpml-config.xml").exists());
     // Post-backed collections have no MySQL table; editor:false ones do (no FK to a post type).
     let mysql = std::fs::read_to_string(init_mig_dir.join("migration.sql")).unwrap();
-    assert!(mysql.contains("CREATE TABLE `{prefix}tp_comments`"), "{mysql}");
+    assert!(mysql.contains("CREATE TABLE `{prefix}sp_comments`"), "{mysql}");
     assert!(
-        !mysql.contains("tp_posts`") && !mysql.contains("FOREIGN KEY"),
+        !mysql.contains("sp_posts`") && !mysql.contains("FOREIGN KEY"),
         "{mysql}"
     );
     // The typed client: generated types and the descriptor, next to the migrations.
-    let types = std::fs::read_to_string(project.join("tp/_generated/client/types.ts")).unwrap();
+    let types = std::fs::read_to_string(project.join("sp/_generated/client/types.ts")).unwrap();
     assert!(
         types.contains("tags: (\"news\" | \"guide\" | \"release\")[];"),
         "{types}"
     );
-    assert!(project.join("tp/_generated/client/schema.ts").is_file());
+    assert!(project.join("sp/_generated/client/schema.ts").is_file());
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
@@ -3056,7 +3056,7 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
 /// distinct from a collection whose type name would collide with it (phase-2 §7.2).
 #[test]
 fn generated_client_types_files_and_avoids_the_private_file_name() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-private-files-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-private-files-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/private-files"), &tmp);
     let out = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
@@ -3247,13 +3247,13 @@ fn rejects_phase2_static_contracts() {
             "{fixture}: expected {message:?}, got {stderr}"
         );
         assert!(
-            stderr.contains("--> typedpress.config.ts:"),
+            stderr.contains("--> spacepress.config.ts:"),
             "{fixture} has no source location: {stderr}"
         );
         assert!(stderr.contains("help:"), "{fixture} has no fix: {stderr}");
     }
     // Mutations must not make a partial field predicate look exhaustive.
-    let tmp = std::env::temp_dir().join(format!("typedpress-phase2-mutations-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-phase2-mutations-{}", std::process::id()));
     std::fs::create_dir_all(&tmp).unwrap();
     for (body, diagnostic) in [
         (
@@ -3454,8 +3454,8 @@ fn rejects_phase2_static_contracts() {
             "function expects",
         ),
     ] {
-        std::fs::write(tmp.join("typedpress.config.ts"), format!(
-            "import {{ collection, text, defineConfig , table}} from 'typedpress'; const notes = table({{ secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
+        std::fs::write(tmp.join("spacepress.config.ts"), format!(
+            "import {{ collection, text, defineConfig , table}} from 'spacepress'; const notes = table({{ secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -3504,8 +3504,8 @@ fn rejects_phase2_static_contracts() {
             "field rules must return a boolean on every path",
         ),
     ] {
-        std::fs::write(tmp.join("typedpress.config.ts"), format!(
-            "import {{ collection, text, defineConfig , table}} from 'typedpress'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
+        std::fs::write(tmp.join("spacepress.config.ts"), format!(
+            "import {{ collection, text, defineConfig , table}} from 'spacepress'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -3528,8 +3528,8 @@ fn rejects_phase2_static_contracts() {
         "Array.from(writers)[0]!()",
         "const objects = [{ write: writers[0]! }]; objects.forEach(({ write }) => write())",
     ] {
-        std::fs::write(tmp.join("typedpress.config.ts"), format!(
-            "import {{ collection, text, defineConfig , table}} from 'typedpress'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
+        std::fs::write(tmp.join("spacepress.config.ts"), format!(
+            "import {{ collection, text, defineConfig , table}} from 'spacepress'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -3545,12 +3545,12 @@ fn rejects_phase2_static_contracts() {
 /// The v3 config normalizes to one shape, and the new slots run through the existing PHP path.
 #[test]
 fn phase2_schema_and_closures_match_the_contract() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-phase2-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-phase2-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     std::fs::copy(
-        root().join("tests/fixtures/phase2-surface/typedpress.config.ts"),
-        tmp.join("typedpress.config.ts"),
+        root().join("tests/fixtures/phase2-surface/spacepress.config.ts"),
+        tmp.join("spacepress.config.ts"),
     )
     .unwrap();
     std::fs::copy(
@@ -3569,7 +3569,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
-        .arg(tmp.join("tp/dist/wp-content/plugins/typedpress-app-phase2/tp/app/schema.php"))
+        .arg(tmp.join("sp/dist/wp-content/plugins/spacepress-app-phase2/sp/app/schema.php"))
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -3579,7 +3579,7 @@ fn phase2_schema_and_closures_match_the_contract() {
     let again = first().arg("build").arg(&tmp).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     assert_eq!(
-        std::fs::read_dir(tmp.join("tp/_generated/migrations"))
+        std::fs::read_dir(tmp.join("sp/_generated/migrations"))
             .unwrap()
             .filter_map(Result::ok)
             .filter(|e| e.path().is_dir())
@@ -3588,7 +3588,7 @@ fn phase2_schema_and_closures_match_the_contract() {
         "a rebuild planned a migration"
     );
     // §7.3 drift guard: the generated wpml-config.xml (copy synced metas, translate localized ones).
-    let wpml = tmp.join("tp/dist/wp-content/plugins/typedpress-app-phase2/wpml-config.xml");
+    let wpml = tmp.join("sp/dist/wp-content/plugins/spacepress-app-phase2/wpml-config.xml");
     assert_eq!(
         std::fs::read_to_string(&wpml).expect("localized post types ship wpml-config.xml"),
         std::fs::read_to_string(root().join("tests/fixtures/phase2.wpml-config.xml")).unwrap(),
@@ -3620,50 +3620,50 @@ fn phase2_schema_and_closures_match_the_contract() {
     // The compiled closures run on a WordPress site with the plugins active (fields rules, actions,
     // a job handler writing through db()).
     let out = wp_eval(
-        &tmp.join("tp/dist/wp-content"),
+        &tmp.join("sp/dist/wp-content"),
         r#"
 
-        $db = \TypedPress\Db::instance();
+        $db = \SpacePress\Db::instance();
         $schema = $db->schema();
         $col = $schema->collection('posts')['columns']['seo']['fields']['label'];
-        $fn = '\\TypedPressApp\\' . $col['access']['read']['fn'];
-        $private = $fn(\TypedPress\Seam::ctx(['data' => ['label' => 'private'], 'user' => null, 'op' => 'read'], ['label' => ['type' => 'text']]));
-        $public = $fn(\TypedPress\Seam::ctx(['data' => ['label' => 'hello'], 'user' => null, 'op' => 'read'], ['label' => ['type' => 'text']]));
-        $authenticated = $fn(\TypedPress\Seam::ctx(['data' => ['label' => 'hello'], 'user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'op' => 'read'], ['label' => ['type' => 'text']]));
+        $fn = '\\SpacePressApp\\' . $col['access']['read']['fn'];
+        $private = $fn(\SpacePress\Seam::ctx(['data' => ['label' => 'private'], 'user' => null, 'op' => 'read'], ['label' => ['type' => 'text']]));
+        $public = $fn(\SpacePress\Seam::ctx(['data' => ['label' => 'hello'], 'user' => null, 'op' => 'read'], ['label' => ['type' => 'text']]));
+        $authenticated = $fn(\SpacePress\Seam::ctx(['data' => ['label' => 'hello'], 'user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor'], 'op' => 'read'], ['label' => ['type' => 'text']]));
         $fieldThrows = false;
         try {
-            $fn(\TypedPress\Seam::ctx(['data' => ['label' => 'error'], 'user' => null, 'op' => 'read'], ['label' => ['type' => 'text']]));
-        } catch (\TypedPress\JsError $error) {
+            $fn(\SpacePress\Seam::ctx(['data' => ['label' => 'error'], 'user' => null, 'op' => 'read'], ['label' => ['type' => 'text']]));
+        } catch (\SpacePress\JsError $error) {
             $fieldThrows = $error->getMessage() === 'denied';
         }
         $action = $schema->action('inbound');
-        $fn = '\\TypedPressApp\\' . $action['handler'];
+        $fn = '\\SpacePressApp\\' . $action['handler'];
         $actor = ['user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor']];
-        $actionAllowed = $fn(\TypedPress\Seam::toJs(\TypedPress\Schema::validateInput($action['input'], []), $action['input']), \TypedPress\Seam::ctx($actor));
+        $actionAllowed = $fn(\SpacePress\Seam::toJs(\SpacePress\Schema::validateInput($action['input'], []), $action['input']), \SpacePress\Seam::ctx($actor));
         $actionThrows = false;
         try {
-            $fn(\TypedPress\Seam::toJs(\TypedPress\Schema::validateInput($action['input'], ['allow' => false]), $action['input']), \TypedPress\Seam::ctx($actor));
-        } catch (\TypedPress\JsError $error) {
+            $fn(\SpacePress\Seam::toJs(\SpacePress\Schema::validateInput($action['input'], ['allow' => false]), $action['input']), \SpacePress\Seam::ctx($actor));
+        } catch (\SpacePress\JsError $error) {
             $actionThrows = $error->getMessage() === 'denied';
         }
-        $fn = '\\TypedPressApp\\' . $schema->action('widened')['handler'];
-        $widened = $fn(new \TypedPress\JsObject());
+        $fn = '\\SpacePressApp\\' . $schema->action('widened')['handler'];
+        $widened = $fn(new \SpacePress\JsObject());
         // Ordinary array mutation/reduction results belong to the differential
         // owner; this fixture retains their generated-client type proof.
         foreach (['values', 'choice', 'nested', 'reduced', 'reducedNested'] as $key) { unset($widened->p[$key]); }
         $nested = $schema->collection('posts')['columns']['sections']['layouts']['hero']['label'];
-        $fn = '\\TypedPressApp\\' . $nested['access']['update']['fn'];
-        $update = $fn(\TypedPress\Seam::ctx(['data' => [], 'op' => 'update'] + $actor, []));
-        $subscriberUpdate = $fn(\TypedPress\Seam::ctx(['data' => [], 'op' => 'update', 'user' => ['id' => 2, 'name' => 'Sub', 'role' => 'subscriber']], []));
+        $fn = '\\SpacePressApp\\' . $nested['access']['update']['fn'];
+        $update = $fn(\SpacePress\Seam::ctx(['data' => [], 'op' => 'update'] + $actor, []));
+        $subscriberUpdate = $fn(\SpacePress\Seam::ctx(['data' => [], 'op' => 'update', 'user' => ['id' => 2, 'name' => 'Sub', 'role' => 'subscriber']], []));
         $bucket = $schema->files()['decks'];
-        $fn = '\\TypedPressApp\\' . $bucket['access']['create']['fn'];
-        $bucketGuest = $fn(\TypedPress\Seam::ctx(['user' => null, 'op' => 'create']));
+        $fn = '\\SpacePressApp\\' . $bucket['access']['create']['fn'];
+        $bucketGuest = $fn(\SpacePress\Seam::ctx(['user' => null, 'op' => 'create']));
         $job = $schema->jobs()['sendWelcome'];
-        $input = \TypedPress\Schema::validateInput($job['input'], ['email' => 'a@example.com', 'payload' => ['message' => 'typed'], 'data' => ['payload' => ['suffix' => 'nested']]]);
+        $input = \SpacePress\Schema::validateInput($job['input'], ['email' => 'a@example.com', 'payload' => ['message' => 'typed'], 'data' => ['payload' => ['suffix' => 'nested']]]);
         $ctx = ['user' => null, 'attempt' => 2, 'jobId' => 'job-test'];
-        $fn = '\\TypedPressApp\\' . $job['handler'];
-        $db->transaction(static fn () => $fn(\TypedPress\Seam::toJs($input, $job['input']), \TypedPress\Seam::ctx($ctx)));
-        echo \TypedPress\Js::jsonStringify([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $subscriberUpdate], $bucketGuest, $db->findMany('audit', ['columns' => ['id' => true, 'note' => true]])]);
+        $fn = '\\SpacePressApp\\' . $job['handler'];
+        $db->transaction(static fn () => $fn(\SpacePress\Seam::toJs($input, $job['input']), \SpacePress\Seam::ctx($ctx)));
+        echo \SpacePress\Js::jsonStringify([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $subscriberUpdate], $bucketGuest, $db->findMany('audit', ['columns' => ['id' => true, 'note' => true]])]);
     "#,
         &serde_json::Value::Null,
     );
@@ -3685,22 +3685,22 @@ fn phase2_schema_and_closures_match_the_contract() {
 }
 
 /// There is one target: `--target` is no longer a flag and `target` no longer a config option, and
-/// a plain `typedpress build` writes the WordPress plugins.
+/// a plain `spacepress build` writes the WordPress plugins.
 #[test]
 fn builds_wordpress_and_knows_no_target_option() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-no-target-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-no-target-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/db-globals"), &tmp);
     let refused = first().args(["build", "--target", "wp"]).arg(&tmp).output().unwrap();
     let stderr = String::from_utf8_lossy(&refused.stderr);
     assert_eq!(refused.status.code(), Some(2), "{stderr}");
     assert!(
-        stderr.contains("unknown option --target for typedpress build"),
+        stderr.contains("unknown option --target for spacepress build"),
         "{stderr}"
     );
-    let config = std::fs::read_to_string(tmp.join("typedpress.config.ts")).unwrap();
+    let config = std::fs::read_to_string(tmp.join("spacepress.config.ts")).unwrap();
     std::fs::write(
-        tmp.join("typedpress.config.ts"),
+        tmp.join("spacepress.config.ts"),
         config.replacen("defineConfig({", "defineConfig({ target: \"wp\",", 1),
     )
     .unwrap();
@@ -3709,14 +3709,14 @@ fn builds_wordpress_and_knows_no_target_option() {
     assert_eq!(refused.status.code(), Some(1), "{stderr}");
     assert!(stderr.contains("defineConfig() has no option `target`"), "{stderr}");
     assert!(
-        !tmp.join(".tp").exists() && !tmp.join("tp/_generated").exists() && !tmp.join("tp/dist").exists(),
+        !tmp.join(".sp").exists() && !tmp.join("sp/_generated").exists() && !tmp.join("sp/dist").exists(),
         "a refusal wrote files"
     );
-    std::fs::write(tmp.join("typedpress.config.ts"), config).unwrap();
+    std::fs::write(tmp.join("spacepress.config.ts"), config).unwrap();
     let built = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    assert!(tmp.join("tp/dist/wp-content/typedpress-manifest.json").is_file());
-    let init_dirs: Vec<_> = std::fs::read_dir(tmp.join("tp/_generated/migrations"))
+    assert!(tmp.join("sp/dist/wp-content/spacepress-manifest.json").is_file());
+    let init_dirs: Vec<_> = std::fs::read_dir(tmp.join("sp/_generated/migrations"))
         .unwrap()
         .map(|e| e.unwrap().path())
         .filter(|p| p.is_dir())
@@ -3734,29 +3734,29 @@ fn kind_urls_and_the_frontend_mode_reach_the_schema() {
     rejects(
         "reject-kind-url",
         "`:titel` in \"/notes/:titel\" names no field of this kind",
-        "typedpress.config.ts:2:59",
+        "spacepress.config.ts:2:59",
     );
     rejects(
         "reject-kind-url-overlap",
         "\"/n/:topic/:id\" can match the same URLs as `notes`'s url",
-        "typedpress.config.ts:3:74",
+        "spacepress.config.ts:3:74",
     );
     rejects(
         "reject-table-url",
         "only collection() kinds have URLs",
-        "typedpress.config.ts:2:54",
+        "spacepress.config.ts:2:54",
     );
     rejects(
         "reject-frontend",
         "`frontend` \"http://example.com\" uses http://; only localhost may",
-        "typedpress.config.ts:2:59",
+        "spacepress.config.ts:2:59",
     );
     let tmp = tempfile::tempdir().unwrap();
     let schema = |config: &str| -> serde_json::Value {
         // A fresh project each time: these schemas are unrelated apps, not one app's history.
         let project = tmp.path().join(format!("app-{}", config.len()));
         std::fs::create_dir_all(&project).unwrap();
-        std::fs::write(project.join("typedpress.config.ts"), config).unwrap();
+        std::fs::write(project.join("spacepress.config.ts"), config).unwrap();
         let built = first().args(["build", "--quiet"]).arg(&project).output().unwrap();
         assert!(
             built.status.success(),
@@ -3764,10 +3764,10 @@ fn kind_urls_and_the_frontend_mode_reach_the_schema() {
             String::from_utf8_lossy(&built.stdout),
             String::from_utf8_lossy(&built.stderr)
         );
-        let app = project.join("tp/dist/wp-content/plugins/typedpress-app-kindurls");
+        let app = project.join("sp/dist/wp-content/plugins/spacepress-app-kindurls");
         let out = Command::new("php")
             .args(["-r", "echo json_encode(require $argv[1]);"])
-            .arg(app.join("tp/app/schema.php"))
+            .arg(app.join("sp/app/schema.php"))
             .output()
             .unwrap();
         assert!(
@@ -3779,7 +3779,7 @@ fn kind_urls_and_the_frontend_mode_reach_the_schema() {
         serde_json::from_slice(&out.stdout).unwrap()
     };
     let built = schema(
-        r#"import { collection, defineConfig, text } from "typedpress";
+        r#"import { collection, defineConfig, text } from "spacepress";
 export const notes = collection({ title: text() }, { url: "/notes/:year/:slug" });
 export const plain = collection({ title: text() });
 export { notes }; export { plain }; export default defineConfig({ name: "kindurls", frontend: "https://www.example.com/" });
@@ -3790,7 +3790,7 @@ export { notes }; export { plain }; export default defineConfig({ name: "kindurl
     assert_eq!(built["frontend"], "https://www.example.com");
     // `comments` (spec §2.3): `true` is the defaults; an object overrides some; off writes no policy.
     let built = schema(
-        r#"import { collection, defineConfig, text } from "typedpress";
+        r#"import { collection, defineConfig, text } from "spacepress";
 export const posts = collection({ title: text() }, { comments: true });
 export const reviews = collection({ title: text() }, { comments: { guests: true, moderation: "all", threaded: false, closeAfterDays: 30 } });
 export const pages = collection({ title: text() });
@@ -3808,13 +3808,13 @@ export { posts }; export { reviews }; export { pages }; export default defineCon
     assert_eq!(built["collections"]["pages"]["comments"], false);
     assert!(built["collections"]["pages"].get("commentPolicy").is_none(), "{built}");
     let built = schema(
-        r#"import { defineConfig } from "typedpress";
+        r#"import { defineConfig } from "spacepress";
 export default defineConfig({ name: "kindurls", frontend: false });
 "#,
     );
     assert_eq!(built["frontend"], false);
     let built = schema(
-        r#"import { defineConfig } from "typedpress";
+        r#"import { defineConfig } from "spacepress";
 export default defineConfig({ name: "kindurls" });
 "#,
     );
@@ -3822,7 +3822,7 @@ export default defineConfig({ name: "kindurls" });
     // `publicAuthors` reaches the runtime only when set (spec.md §6, the authors switch).
     assert!(built.get("publicAuthors").is_none(), "{built}");
     let built = schema(
-        r#"import { defineConfig } from "typedpress";
+        r#"import { defineConfig } from "spacepress";
 export default defineConfig({ name: "kindurls", publicAuthors: true });
 "#,
     );
@@ -3831,13 +3831,13 @@ export default defineConfig({ name: "kindurls", publicAuthors: true });
     // carries them only as `false`.
     assert!(built.get("xmlrpc").is_none() && built.get("pings").is_none(), "{built}");
     let built = schema(
-        r#"import { defineConfig } from "typedpress";
+        r#"import { defineConfig } from "spacepress";
 export default defineConfig({ name: "kindurls", xmlrpc: true, pings: true });
 "#,
     );
     assert!(built.get("xmlrpc").is_none() && built.get("pings").is_none(), "{built}");
     let built = schema(
-        r#"import { defineConfig } from "typedpress";
+        r#"import { defineConfig } from "spacepress";
 export default defineConfig({ name: "kindurls", xmlrpc: false, pings: false });
 "#,
     );
@@ -3848,8 +3848,8 @@ export default defineConfig({ name: "kindurls", xmlrpc: false, pings: false });
     let refused = tmp.path().join("app-public-authors");
     std::fs::create_dir_all(&refused).unwrap();
     std::fs::write(
-        refused.join("typedpress.config.ts"),
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"kindurls\", publicAuthors: \"yes\" });\n",
+        refused.join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"kindurls\", publicAuthors: \"yes\" });\n",
     )
     .unwrap();
     let out = first().args(["build", "--quiet"]).arg(&refused).output().unwrap();
@@ -3860,8 +3860,8 @@ export default defineConfig({ name: "kindurls", xmlrpc: false, pings: false });
         String::from_utf8_lossy(&out.stderr)
     );
     std::fs::write(
-        refused.join("typedpress.config.ts"),
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"kindurls\", xmlrpc: \"off\" });\n",
+        refused.join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"kindurls\", xmlrpc: \"off\" });\n",
     )
     .unwrap();
     let out = first().args(["build", "--quiet"]).arg(&refused).output().unwrap();
@@ -3875,33 +3875,33 @@ export default defineConfig({ name: "kindurls", xmlrpc: false, pings: false });
     // when it's off, as in the builds above.
     assert!(built.get("sealed").is_none(), "{built}");
     let built = schema(
-        r#"import { defineConfig } from "typedpress";
+        r#"import { defineConfig } from "spacepress";
 export default defineConfig({ name: "kindurls", sealed: true });
 "#,
     );
-    // The complete list for a plain WordPress build of this app: TypedPress's own plugins (the TypedPress
+    // The complete list for a plain WordPress build of this app: SpacePress's own plugins (the SpacePress
     // plugin and its admin always, whether or not this build ships them) and the platform pins (Polylang only with
     // `locales`).
     assert_eq!(
         built["sealed"],
-        serde_json::json!({"plugins": ["action-scheduler", "mcp-adapter", "secure-custom-fields", "two-factor", "typedpress", "typedpress-admin", "typedpress-app-kindurls", "typedpress-identity", "typedpress-runtime"]})
+        serde_json::json!({"plugins": ["action-scheduler", "mcp-adapter", "secure-custom-fields", "spacepress", "spacepress-admin", "spacepress-app-kindurls", "spacepress-identity", "spacepress-runtime", "two-factor"]})
     );
     let built = schema(
-        r#"import { defineConfig } from "typedpress";
+        r#"import { defineConfig } from "spacepress";
 export default defineConfig({ name: "kindurls", sealed: true, admin: true, locales: { default: "en", all: ["en", "de"] } });
 "#,
     );
     assert_eq!(
         built["sealed"],
-        serde_json::json!({"plugins": ["action-scheduler", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor", "typedpress", "typedpress-admin", "typedpress-app-kindurls", "typedpress-identity", "typedpress-runtime"]})
+        serde_json::json!({"plugins": ["action-scheduler", "mcp-adapter", "polylang", "secure-custom-fields", "spacepress", "spacepress-admin", "spacepress-app-kindurls", "spacepress-identity", "spacepress-runtime", "two-factor"]})
     );
-    // A sealed site can't declare a plugin that hands content out around TypedPress's read rules.
+    // A sealed site can't declare a plugin that hands content out around SpacePress's read rules.
     for slug in ["vip-block-data-api", "vip-decoupled-bundle"] {
         let denied = tmp.path().join(format!("app-sealed-denied-{slug}"));
         std::fs::create_dir_all(&denied).unwrap();
         std::fs::write(
-            denied.join("typedpress.config.ts"),
-            format!("import {{ defineConfig }} from \"typedpress\";\nexport default defineConfig({{ name: \"kindurls\", sealed: true, plugins: {{ \"{slug}\": {{ version: \"1.0.0\", pluginData: {{ resource: \"url\", url: \"https://example.test/{slug}.zip\" }}, sha256: \"{}\" }} }} }});\n", "0".repeat(64)),
+            denied.join("spacepress.config.ts"),
+            format!("import {{ defineConfig }} from \"spacepress\";\nexport default defineConfig({{ name: \"kindurls\", sealed: true, plugins: {{ \"{slug}\": {{ version: \"1.0.0\", pluginData: {{ resource: \"url\", url: \"https://example.test/{slug}.zip\" }}, sha256: \"{}\" }} }} }});\n", "0".repeat(64)),
         )
         .unwrap();
         let out = first().args(["build", "--quiet"]).arg(&denied).output().unwrap();
@@ -3909,15 +3909,15 @@ export default defineConfig({ name: "kindurls", sealed: true, admin: true, local
         assert!(!out.status.success(), "{slug}: {stderr}");
         assert!(
             stderr.contains(&format!("a sealed site can't run {slug}"))
-                && stderr.contains("around TypedPress's read rules"),
+                && stderr.contains("around SpacePress's read rules"),
             "{slug}: {stderr}"
         );
     }
     let refused = tmp.path().join("app-sealed-refused");
     std::fs::create_dir_all(&refused).unwrap();
     std::fs::write(
-        refused.join("typedpress.config.ts"),
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"kindurls\", sealed: \"yes\" });\n",
+        refused.join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"kindurls\", sealed: \"yes\" });\n",
     )
     .unwrap();
     let out = first().args(["build", "--quiet"]).arg(&refused).output().unwrap();
@@ -3929,7 +3929,7 @@ export default defineConfig({ name: "kindurls", sealed: true, admin: true, local
     );
     // `staged: false` is the one staged setting the schema carries: collections stage unless it is there.
     let built = schema(
-        r#"import { collection, defineConfig, text } from "typedpress";
+        r#"import { collection, defineConfig, text } from "spacepress";
 export const notes = collection({ title: text() });
 export const fixed = collection({ title: text() }, { staged: false });
 export { notes }; export { fixed }; export default defineConfig({ name: "kindurls" });
@@ -3939,18 +3939,18 @@ export { notes }; export { fixed }; export default defineConfig({ name: "kindurl
     assert_eq!(built["collections"]["fixed"]["staged"], false);
 }
 
-/// A project whose ledger is still at `tp/migrations/` is refused, never read as a first build:
+/// A project whose ledger is still at `sp/migrations/` is refused, never read as a first build:
 /// the build stops before it writes, so the numbering cannot restart at 0001 and the plugin cannot
 /// ship without its earlier files. Following the fix in the message builds again with nothing new.
 /// A version 1 snapshot is refused the same way.
 #[test]
 fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-legacy-layout-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-legacy-layout-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/db-globals"), &tmp);
     let built = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let migrations = tmp.join("tp/_generated/migrations");
+    let migrations = tmp.join("sp/_generated/migrations");
     let init_folder = std::fs::read_dir(&migrations)
         .unwrap()
         .map(|e| e.unwrap().path())
@@ -3985,12 +3985,12 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
         assert!(stderr.contains(message), "expected {message:?} in {stderr}");
         assert!(tree(&tmp) == before, "the refusal changed the project");
     };
-    let old = tmp.join("tp/migrations");
+    let old = tmp.join("sp/migrations");
     std::fs::rename(&migrations, &old).unwrap();
-    refused("tp/migrations/ moved to tp/_generated/migrations/");
+    refused("sp/migrations/ moved to sp/_generated/migrations/");
     // An old directory left beside the new one is refused too: one ledger, never two.
     std::fs::create_dir_all(&migrations).unwrap();
-    refused("tp/migrations/ moved to tp/_generated/migrations/");
+    refused("sp/migrations/ moved to sp/_generated/migrations/");
     std::fs::remove_dir(&migrations).unwrap();
     // A pre-flat checkout moved as-is keeps its `wp/` and `sqlite/` subdirectories: still refused
     // at the new path, so following the first message can't restart the ledger.
@@ -3998,7 +3998,7 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
     for nested in ["wp", "sqlite"] {
         std::fs::create_dir_all(migrations.join(nested)).unwrap();
         std::fs::write(migrations.join(nested).join("0001_init.sql"), &init).unwrap();
-        refused(&format!("tp/_generated/migrations/{nested}/ is from an earlier layout"));
+        refused(&format!("sp/_generated/migrations/{nested}/ is from an earlier layout"));
         std::fs::remove_dir_all(migrations.join(nested)).unwrap();
     }
     // A legacy snapshot.json file in the folder-based ledger is also refused.
@@ -4009,15 +4009,15 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
     let again = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     assert_eq!(count_migrations(), 1);
-    // A checkout from before `tp/_generated/`: the ledger still in `tp/migrations/` and nothing
+    // A checkout from before `sp/_generated/`: the ledger still in `sp/migrations/` and nothing
     // generated beside it. Building there would start a second init migration, so the build names
     // the move; running exactly the command it prints is enough.
-    let old = tmp.join("tp/migrations");
+    let old = tmp.join("sp/migrations");
     std::fs::rename(&migrations, &old).unwrap();
-    std::fs::remove_dir_all(tmp.join("tp/_generated")).unwrap();
-    std::fs::remove_dir_all(tmp.join("tp/dist")).unwrap();
-    let fix = "mkdir -p tp/_generated && rmdir tp/_generated/migrations 2>/dev/null; git mv tp/migrations tp/_generated/migrations";
-    refused("tp/migrations/ moved to tp/_generated/migrations/");
+    std::fs::remove_dir_all(tmp.join("sp/_generated")).unwrap();
+    std::fs::remove_dir_all(tmp.join("sp/dist")).unwrap();
+    let fix = "mkdir -p sp/_generated && rmdir sp/_generated/migrations 2>/dev/null; git mv sp/migrations sp/_generated/migrations";
+    refused("sp/migrations/ moved to sp/_generated/migrations/");
     refused(fix);
     let git = |args: &[&str]| {
         let out = Command::new("git").args(args).current_dir(&tmp).output().unwrap();
@@ -4034,24 +4034,24 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
     let moved = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(moved.status.success(), "{}", String::from_utf8_lossy(&moved.stderr));
     assert_eq!(count_migrations(), 1);
-    // The other committed files from before `tp/_generated/`: each is refused, writing nothing,
+    // The other committed files from before `sp/_generated/`: each is refused, writing nothing,
     // and the printed command is the whole fix. Left in place, a lock would be ignored (and
     // replaced) and an old client would load as app code.
     for (old, new, content) in [
         (
-            "tp/abilities.json",
-            "tp/_generated/abilities.json",
+            "sp/abilities.json",
+            "sp/_generated/abilities.json",
             r#"{"version":1,"abilities":[]}"#,
         ),
-        ("tp/wp-plugins.lock.json", "tp/_generated/wp-plugins.lock.json", ""),
+        ("sp/wp-plugins.lock.json", "sp/_generated/wp-plugins.lock.json", ""),
         (
-            "tp/client/index.ts",
-            "tp/_generated/client/index.ts",
+            "sp/client/index.ts",
+            "sp/_generated/client/index.ts",
             "import { SCHEMA } from \"./schema.ts\";\nexport const stale = SCHEMA;\n",
         ),
     ] {
-        let (old_dir, new_dir) = if old.starts_with("tp/client/") {
-            ("tp/client", "tp/_generated/client")
+        let (old_dir, new_dir) = if old.starts_with("sp/client/") {
+            ("sp/client", "sp/_generated/client")
         } else {
             (old, new)
         };
@@ -4065,7 +4065,7 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
         };
         std::fs::write(&path, content).unwrap();
         refused(&format!("{old_dir} moved to {new_dir}"));
-        let fix = format!("mkdir -p tp/_generated && git mv {old_dir} {new_dir}");
+        let fix = format!("mkdir -p sp/_generated && git mv {old_dir} {new_dir}");
         refused(&fix);
         git(&["add", "-A"]);
         // The old client and lock may already have a regenerated twin; the move replaces it.
@@ -4082,7 +4082,7 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
             String::from_utf8_lossy(&moved.stderr)
         );
         assert!(tmp.join(new).is_file() && !tmp.join(old_dir).exists());
-        if old_dir == "tp/client" {
+        if old_dir == "sp/client" {
             std::fs::remove_dir_all(tmp.join(new_dir)).unwrap();
         }
         let again = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
@@ -4093,16 +4093,16 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
         );
     }
     // Several left at once: one refusal names every one, and its one command moves them all.
-    std::fs::rename(tmp.join("tp/_generated/abilities.json"), tmp.join("tp/abilities.json")).unwrap();
+    std::fs::rename(tmp.join("sp/_generated/abilities.json"), tmp.join("sp/abilities.json")).unwrap();
     std::fs::rename(
-        tmp.join("tp/_generated/wp-plugins.lock.json"),
-        tmp.join("tp/wp-plugins.lock.json"),
+        tmp.join("sp/_generated/wp-plugins.lock.json"),
+        tmp.join("sp/wp-plugins.lock.json"),
     )
     .unwrap();
-    refused("2 files are from before tp/_generated/:");
-    refused("tp/abilities.json moved to tp/_generated/abilities.json");
-    refused("tp/wp-plugins.lock.json moved to tp/_generated/wp-plugins.lock.json");
-    let fix = "mkdir -p tp/_generated && git mv tp/wp-plugins.lock.json tp/_generated/wp-plugins.lock.json && git mv tp/abilities.json tp/_generated/abilities.json";
+    refused("2 files are from before sp/_generated/:");
+    refused("sp/abilities.json moved to sp/_generated/abilities.json");
+    refused("sp/wp-plugins.lock.json moved to sp/_generated/wp-plugins.lock.json");
+    let fix = "mkdir -p sp/_generated && git mv sp/wp-plugins.lock.json sp/_generated/wp-plugins.lock.json && git mv sp/abilities.json sp/_generated/abilities.json";
     refused(fix);
     git(&["add", "-A"]);
     let moved = Command::new("sh").args(["-c", fix]).current_dir(&tmp).output().unwrap();
@@ -4121,17 +4121,17 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
 fn a_stored_table_declared_with_collection_is_refused_before_anything_is_written() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path();
-    std::fs::create_dir_all(project.join("tp")).unwrap();
+    std::fs::create_dir_all(project.join("sp")).unwrap();
     std::fs::write(
-        project.join("typedpress.config.ts"),
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"stored\" });\n",
+        project.join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"stored\" });\n",
     )
     .unwrap();
     let schema = |builder: &str| {
         std::fs::write(
-            project.join("tp/schema.ts"),
+            project.join("sp/schema.ts"),
             format!(
-                "import {{ {builder}, text }} from \"typedpress\";\nexport const memos = {builder}({{ title: text() }});\n"
+                "import {{ {builder}, text }} from \"spacepress\";\nexport const memos = {builder}({{ title: text() }});\n"
             ),
         )
         .unwrap();
@@ -4148,7 +4148,7 @@ fn a_stored_table_declared_with_collection_is_refused_before_anything_is_written
                 }
             }
         }
-        let dir = project.join("tp/_generated/migrations");
+        let dir = project.join("sp/_generated/migrations");
         let mut files = Vec::new();
         walk(&dir, &dir, &mut files);
         files.sort();
@@ -4168,7 +4168,7 @@ fn a_stored_table_declared_with_collection_is_refused_before_anything_is_written
             stderr.contains("`memos` is stored as a SQL table, and collection() is always WordPress posts"),
             "{stderr}"
         );
-        assert!(stderr.contains("--> tp/schema.ts:2:22"), "{stderr}");
+        assert!(stderr.contains("--> sp/schema.ts:2:22"), "{stderr}");
         assert!(stderr.contains("help: declare it with table() again"), "{stderr}");
         assert_eq!(ledger(), deployed, "{command} wrote nothing to the ledger");
     }
@@ -4180,17 +4180,17 @@ fn a_stored_table_declared_with_collection_is_refused_before_anything_is_written
 
     // Posts declared as a table() lose nothing (they stay in wp_posts), so that builds and warns.
     let posts = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(posts.path().join("tp")).unwrap();
+    std::fs::create_dir_all(posts.path().join("sp")).unwrap();
     std::fs::copy(
-        project.join("typedpress.config.ts"),
-        posts.path().join("typedpress.config.ts"),
+        project.join("spacepress.config.ts"),
+        posts.path().join("spacepress.config.ts"),
     )
     .unwrap();
     let declare = |builder: &str| {
         std::fs::write(
-            posts.path().join("tp/schema.ts"),
+            posts.path().join("sp/schema.ts"),
             format!(
-                "import {{ {builder}, text }} from \"typedpress\";\nexport const memos = {builder}({{ title: text() }});\n"
+                "import {{ {builder}, text }} from \"spacepress\";\nexport const memos = {builder}({{ title: text() }});\n"
             ),
         )
         .unwrap();
@@ -4199,7 +4199,7 @@ fn a_stored_table_declared_with_collection_is_refused_before_anything_is_written
     assert!(declare("collection").status.success());
     let warned = declare("table");
     assert!(warned.status.success(), "{}", String::from_utf8_lossy(&warned.stderr));
-    let mut dirs: Vec<PathBuf> = std::fs::read_dir(posts.path().join("tp/_generated/migrations"))
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(posts.path().join("sp/_generated/migrations"))
         .unwrap()
         .map(|e| e.unwrap().path())
         .filter(|p| p.is_dir())
@@ -4211,21 +4211,21 @@ fn a_stored_table_declared_with_collection_is_refused_before_anything_is_written
         "switching collection() to table() plans a new table migration: {dirs:?}"
     );
     let sql = std::fs::read_to_string(dirs[1].join("migration.sql")).unwrap();
-    assert!(sql.contains("CREATE TABLE `{prefix}tp_memos`"), "{sql}");
+    assert!(sql.contains("CREATE TABLE `{prefix}sp_memos`"), "{sql}");
 }
 
 #[test]
 fn auth_fixture_matches_the_compiler() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-auth-fixture-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-auth-fixture-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     let fixture = root().join("tests/fixtures/auth");
-    std::fs::copy(fixture.join("typedpress.config.ts"), tmp.join("typedpress.config.ts")).unwrap();
+    std::fs::copy(fixture.join("spacepress.config.ts"), tmp.join("spacepress.config.ts")).unwrap();
     let out = first().arg("build").arg(&tmp).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
-        .arg(tmp.join("tp/dist/wp-content/plugins/typedpress-app-club/tp/app/schema.php"))
+        .arg(tmp.join("sp/dist/wp-content/plugins/spacepress-app-club/sp/app/schema.php"))
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -4270,7 +4270,7 @@ fn a_plugin_package_runs_under_its_locked_grant() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().join("plugins");
     copy(&root().join("tests/fixtures/plugin-seo"), &project);
-    let index = project.join("node_modules/typedpress-plugin-seo/src/index.ts");
+    let index = project.join("node_modules/spacepress-plugin-seo/src/index.ts");
     let source = std::fs::read_to_string(&index).unwrap();
 
     // The owner's lock grants posts.summary only; the same package writing posts.body is refused.
@@ -4284,23 +4284,23 @@ fn a_plugin_package_runs_under_its_locked_grant() {
     assert_eq!(refused.status.code(), Some(1), "{stderr}");
     assert!(
         stderr
-            .contains("plugin \"seo\" writes posts.body; tp/_generated/plugins.lock.json grants it only posts.summary"),
+            .contains("plugin \"seo\" writes posts.body; sp/_generated/plugins.lock.json grants it only posts.summary"),
         "{stderr}"
     );
-    assert!(!project.join(".tp").exists(), "a refused plugin generates nothing");
+    assert!(!project.join(".sp").exists(), "a refused plugin generates nothing");
 
-    // The same narrowed lock left at its place from before tp/_generated/: without --frozen it
+    // The same narrowed lock left at its place from before sp/_generated/: without --frozen it
     // must not be skipped and replaced by a lock granting posts.body. The build refuses and the
     // owner's file is untouched.
-    let lock = project.join("tp/_generated/plugins.lock.json");
-    let old = project.join("tp/plugins.lock.json");
+    let lock = project.join("sp/_generated/plugins.lock.json");
+    let old = project.join("sp/plugins.lock.json");
     let granted = std::fs::read(&lock).unwrap();
     std::fs::rename(&lock, &old).unwrap();
     let refused = first().arg("build").arg(&project).output().unwrap();
     let stderr = String::from_utf8_lossy(&refused.stderr);
     assert_eq!(refused.status.code(), Some(1), "{stderr}");
     assert!(
-        stderr.contains("tp/plugins.lock.json moved to tp/_generated/plugins.lock.json"),
+        stderr.contains("sp/plugins.lock.json moved to sp/_generated/plugins.lock.json"),
         "{stderr}"
     );
     assert_eq!(std::fs::read(&old).unwrap(), granted);
@@ -4311,7 +4311,7 @@ fn a_plugin_package_runs_under_its_locked_grant() {
     let out = first().args(["build", "--frozen"]).arg(&project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let got = wp_eval_json(
-        &project.join("tp/dist/wp-content"),
+        &project.join("sp/dist/wp-content"),
         r#"$row = json_decode($app->cli(['insert', 'posts', '{"title":"Hello plugins"}'])[1], true)['data'][0];
            $denied = json_decode($app->cli(['action', 'seo_lookup', '{"url":"https://elsewhere.example/x"}'])[1], true);
            echo json_encode(['summary' => $row['summary'], 'body' => $row['body'], 'denied' => $denied['error']['code'] ?? $denied]);"#,
@@ -4322,7 +4322,7 @@ fn a_plugin_package_runs_under_its_locked_grant() {
         serde_json::json!({
             "summary": "HELLO PLUGIN | Site",
             "body": "seen: HELLO PLUGIN | Site",
-            "denied": "tp_fetch_host_denied",
+            "denied": "sp_fetch_host_denied",
         })
     );
 }
@@ -4331,7 +4331,7 @@ fn a_plugin_package_runs_under_its_locked_grant() {
 /// branches push, pop, slice and copy token objects that point at each other through `prev`.
 /// The effects solver once re-ran every rule over every fact on each pass, which took minutes
 /// here. It now reads only new facts, so its work stays a small multiple of the facts it
-/// produces. Debug builds count that work (`TP_DEBUG_EFFECTS_WORK`). On this program the
+/// produces. Debug builds count that work (`SP_DEBUG_EFFECTS_WORK`). On this program the
 /// old solver made 51M path projections for 1.36M facts (37 per fact) and took 20 s in a
 /// release build; the incremental solver makes 3.5M (2.6 per fact).
 #[test]
@@ -4372,13 +4372,13 @@ fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
 ",
     );
     let tmp = tempfile::tempdir().unwrap();
-    // App modules live under tp/ (the import fence).
-    std::fs::create_dir_all(tmp.path().join("tp")).unwrap();
-    std::fs::write(tmp.path().join("tp/run.mjs"), body).unwrap();
+    // App modules live under sp/ (the import fence).
+    std::fs::create_dir_all(tmp.path().join("sp")).unwrap();
+    std::fs::write(tmp.path().join("sp/run.mjs"), body).unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        r#"import { defineConfig, text, mutation } from "typedpress";
-import { run } from "./tp/run.mjs";
+        tmp.path().join("spacepress.config.ts"),
+        r#"import { defineConfig, text, mutation } from "spacepress";
+import { run } from "./sp/run.mjs";
 const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { return { v: run(input.s) }; }); export { __a as a }; export default defineConfig({ name: "p" });
 "#,
     )
@@ -4387,7 +4387,7 @@ const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { ret
     let out = first()
         .args(["check", "--json"])
         .arg(tmp.path())
-        .env("TP_DEBUG_EFFECTS_WORK", &work)
+        .env("SP_DEBUG_EFFECTS_WORK", &work)
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
@@ -4412,34 +4412,34 @@ const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { ret
     );
 }
 
-/// `ref(kind).many()` (docs/decisions/2026-11-11-authoring-surface.md, ruling 3): a TypedPress-owned join
+/// `ref(kind).many()` (docs/decisions/2026-11-11-authoring-surface.md, ruling 3): a SpacePress-owned join
 /// table per field, a many relation each way in schema.php and db.d.ts, and a field that leaves the
 /// config drops nothing without `--drop`.
 #[test]
 fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-ref-many-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-ref-many-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(tmp.join("tp")).unwrap();
+    std::fs::create_dir_all(tmp.join("sp")).unwrap();
     std::fs::write(
-        tmp.join("typedpress.config.ts"),
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"many\" });\n",
+        tmp.join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"many\" });\n",
     )
     .unwrap();
     let schema = |posts_extra: &str| {
         format!(
-            "import {{ collection, ref, table, text }} from \"typedpress\";\n\
+            "import {{ collection, ref, table, text }} from \"spacepress\";\n\
              export const tags = table({{ name: text() }});\n\
              export const notes = table({{ body: text(), tags: ref(tags).many(){posts_extra} }});\n\
              export const posts = collection({{ title: text(), tags: ref(tags).many().optional().reverse(\"taggedPosts\").onDelete(\"restrict\") }});\n"
         )
     };
-    std::fs::write(tmp.join("tp/schema.ts"), schema("")).unwrap();
+    std::fs::write(tmp.join("sp/schema.ts"), schema("")).unwrap();
     let build = || {
         let out = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     };
     let sorted_migrations = || -> Vec<PathBuf> {
-        let mut dirs: Vec<PathBuf> = std::fs::read_dir(tmp.join("tp/_generated/migrations"))
+        let mut dirs: Vec<PathBuf> = std::fs::read_dir(tmp.join("sp/_generated/migrations"))
             .unwrap()
             .map(|e| e.unwrap().path())
             .filter(|p| p.is_dir())
@@ -4452,8 +4452,8 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
     assert_eq!(dirs.len(), 1, "{dirs:?}");
     let migration = std::fs::read_to_string(dirs[0].join("migration.sql")).unwrap();
     // Both sides custom tables: constraints cascade. A post-backed side: no constraint.
-    assert!(migration.contains("CREATE TABLE `{prefix}tp__join_notes_tags` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`),\n\tCONSTRAINT `tp_notes_tags_owner_id_fk` FOREIGN KEY (`owner_id`) REFERENCES `{prefix}tp_notes` (`id`) ON DELETE CASCADE,\n\tCONSTRAINT `tp_notes_tags_target_id_fk` FOREIGN KEY (`target_id`) REFERENCES `{prefix}tp_tags` (`id`) ON DELETE CASCADE\n)"), "{migration}");
-    assert!(migration.contains("CREATE TABLE `{prefix}tp__join_posts_tags` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)\n)"), "{migration}");
+    assert!(migration.contains("CREATE TABLE `{prefix}sp__join_notes_tags` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`),\n\tCONSTRAINT `sp_notes_tags_owner_id_fk` FOREIGN KEY (`owner_id`) REFERENCES `{prefix}sp_notes` (`id`) ON DELETE CASCADE,\n\tCONSTRAINT `sp_notes_tags_target_id_fk` FOREIGN KEY (`target_id`) REFERENCES `{prefix}sp_tags` (`id`) ON DELETE CASCADE\n)"), "{migration}");
+    assert!(migration.contains("CREATE TABLE `{prefix}sp__join_posts_tags` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)\n)"), "{migration}");
     assert!(
         !migration.contains("ADD COLUMN `tags`") && !migration.contains("`tags` LONGTEXT"),
         "{migration}"
@@ -4461,7 +4461,7 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
 
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
-        .arg(tmp.join("tp/dist/wp-content/plugins/typedpress-app-many/tp/app/schema.php"))
+        .arg(tmp.join("sp/dist/wp-content/plugins/spacepress-app-many/sp/app/schema.php"))
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -4487,7 +4487,7 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
     );
     assert_eq!(tags["notes"]["through"]["table"], "notes_tags");
 
-    let dts = std::fs::read_to_string(tmp.join("tp/_generated/db.d.ts")).unwrap();
+    let dts = std::fs::read_to_string(tmp.join("sp/_generated/db.d.ts")).unwrap();
     assert!(
         dts.contains("'tags': ColumnBuilder<'refList', Id<'tags'>[], false, false, false, false>;"),
         "{dts}"
@@ -4499,7 +4499,7 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
 
     // Another many-ref adds its join table; removing one retires it in ops.json (forward-only: no DROP TABLE).
     std::fs::write(
-        tmp.join("tp/schema.ts"),
+        tmp.join("sp/schema.ts"),
         schema(", related: ref(() => notes).many().reverse(\"relatedFrom\")"),
     )
     .unwrap();
@@ -4508,10 +4508,10 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
     assert_eq!(dirs2.len(), 2, "{dirs2:?}");
     let added = std::fs::read_to_string(dirs2[1].join("migration.sql")).unwrap();
     assert!(
-        added.starts_with("CREATE TABLE `{prefix}tp__join_notes_related` ("),
+        added.starts_with("CREATE TABLE `{prefix}sp__join_notes_related` ("),
         "{added}"
     );
-    std::fs::write(tmp.join("tp/schema.ts"), schema("")).unwrap();
+    std::fs::write(tmp.join("sp/schema.ts"), schema("")).unwrap();
     build();
     let dirs3 = sorted_migrations();
     assert_eq!(dirs3.len(), 3, "{dirs3:?}");
@@ -4535,24 +4535,24 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
 /// way through core's term relationships; db.d.ts types them; nothing enters the migration snapshot.
 #[test]
 fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-taxonomy-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-taxonomy-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(tmp.join("tp")).unwrap();
+    std::fs::create_dir_all(tmp.join("sp")).unwrap();
     std::fs::write(
-        tmp.join("typedpress.config.ts"),
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"taxo\" });\n",
+        tmp.join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"taxo\" });\n",
     )
     .unwrap();
     let build = |schema: &str| {
-        std::fs::write(tmp.join("tp/schema.ts"), schema).unwrap();
+        std::fs::write(tmp.join("sp/schema.ts"), schema).unwrap();
         let out = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     };
     let plain =
-        "import { collection, text } from \"typedpress\";\nexport const posts = collection({ title: text() });\n";
+        "import { collection, text } from \"spacepress\";\nexport const posts = collection({ title: text() });\n";
     build(plain);
     let ledger = || -> Vec<(String, String)> {
-        let mut out: Vec<(String, String)> = std::fs::read_dir(tmp.join("tp/_generated/migrations"))
+        let mut out: Vec<(String, String)> = std::fs::read_dir(tmp.join("sp/_generated/migrations"))
             .unwrap()
             .map(|e| e.unwrap().path())
             .filter(|p| p.is_dir())
@@ -4568,7 +4568,7 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
     let before = ledger();
     assert_eq!(before.len(), 1, "{before:?}");
     build(
-        "import { collection, taxonomy, terms, text } from \"typedpress\";\n\
+        "import { collection, taxonomy, terms, text } from \"spacepress\";\n\
          export const tags = taxonomy({}, { url: \"/tags/:slug\" });\n\
          export const posts = collection({ title: text(), labels: terms(tags).reverse(\"labelled\") });\n\
          export const topics = taxonomy({ color: text().optional() }, { hierarchical: true, on: [posts], access: { create: \"author\" } });\n",
@@ -4578,7 +4578,7 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
 
     let out = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
-        .arg(tmp.join("tp/dist/wp-content/plugins/typedpress-app-taxo/tp/app/schema.php"))
+        .arg(tmp.join("sp/dist/wp-content/plugins/spacepress-app-taxo/sp/app/schema.php"))
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -4587,7 +4587,7 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
     let topics = &php["taxonomies"]["topics"];
     assert_eq!(
         topics["wp"],
-        serde_json::json!({ "taxonomy": "tp_topics", "groupKey": "group_tp_topics", "metaPrefix": "tp_", "fieldKeyPrefix": "field_tp_topics_", "on": ["posts"] })
+        serde_json::json!({ "taxonomy": "sp_topics", "groupKey": "group_sp_topics", "metaPrefix": "sp_", "fieldKeyPrefix": "field_sp_topics_", "on": ["posts"] })
     );
     assert_eq!(topics["hierarchical"], true);
     assert_eq!(
@@ -4615,7 +4615,7 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
         "posts"
     );
 
-    let dts = std::fs::read_to_string(tmp.join("tp/_generated/db.d.ts")).unwrap();
+    let dts = std::fs::read_to_string(tmp.join("sp/_generated/db.d.ts")).unwrap();
     assert!(dts.contains("'topics': Collection<'topics', {"), "{dts}");
     assert!(dts.contains("}, false, 'taxonomy'>;"), "{dts}");
     assert!(
@@ -4634,15 +4634,15 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
 }
 
 /// tests/php/taxonomy_test.php runs on tests/fixtures/taxonomy/schema.php and functions.php: they are
-/// what `typedpress build` emits for that fixture's sources.
+/// what `spacepress build` emits for that fixture's sources.
 #[test]
 fn the_taxonomy_suite_runs_on_what_the_compiler_emits() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-taxonomy-fixture-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("spacepress-taxonomy-fixture-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures/taxonomy"), &tmp);
     let out = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    let built = tmp.join("tp/dist/wp-content/plugins/typedpress-app-taxo/tp/app");
+    let built = tmp.join("sp/dist/wp-content/plugins/spacepress-app-taxo/sp/app");
     for file in ["schema.php", "functions.php"] {
         assert_eq!(
             std::fs::read_to_string(built.join(file)).unwrap(),
@@ -4664,7 +4664,7 @@ fn api(
 ) -> (u16, String, String) {
     let mut s = TcpStream::connect(("127.0.0.1", server.port)).unwrap();
     let mut head = format!(
-        "{method} /wp-json/typedpress/v1{path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: {}\r\n",
+        "{method} /wp-json/spacepress/v1{path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: {}\r\n",
         body.len()
     );
     if let Some(user) = user {
@@ -4705,7 +4705,7 @@ fn api(
     (status, content_type, text.to_string())
 }
 
-/// `typedpress build` writes the app's API as an OpenAPI 3.1 document (spec §7), and the document is
+/// `spacepress build` writes the app's API as an OpenAPI 3.1 document (spec §7), and the document is
 /// true: it validates against the OpenAPI 3.1 schema, and every answer of a real WordPress site to
 /// a request the document describes matches the response schema the document gives for that
 /// operation and status. The fixture has one of everything the API serves, and every operation in
@@ -4718,12 +4718,12 @@ fn the_openapi_document_describes_what_the_api_answers() {
     copy(&root().join("tests/fixtures/openapi"), &project);
     let out = first().arg("build").arg(&project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    let text = std::fs::read_to_string(project.join("tp/_generated/openapi.json")).unwrap();
+    let text = std::fs::read_to_string(project.join("sp/_generated/openapi.json")).unwrap();
     let document: Value = serde_json::from_str(&text).unwrap();
 
     // The document is an OpenAPI 3.1 document (the schema OpenAPI publishes for 3.1), and each
     // schema in it compiles as JSON Schema 2020-12 with every `$ref` resolved.
-    const DOCUMENT: &str = "https://tp.test/openapi.json";
+    const DOCUMENT: &str = "https://sp.test/openapi.json";
     let mut schemas = boon::Schemas::new();
     let mut compiler = boon::Compiler::new();
     compiler.set_default_draft(boon::Draft::V2020_12);
@@ -4756,7 +4756,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
     compiler.add_resource(DOCUMENT, strict).unwrap();
     let openapi = compiler.compile(&meta_id, &mut schemas).unwrap();
     if let Err(error) = schemas.validate(&document, openapi) {
-        panic!("tp/_generated/openapi.json is not an OpenAPI 3.1 document:\n{error:#}");
+        panic!("sp/_generated/openapi.json is not an OpenAPI 3.1 document:\n{error:#}");
     }
     assert_eq!(document["openapi"], "3.1.0");
     // Every named schema is valid JSON Schema, the ones only requests use included.
@@ -4777,7 +4777,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
     let again = first().arg("build").arg(&project).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
     assert_eq!(
-        std::fs::read_to_string(project.join("tp/_generated/openapi.json")).unwrap(),
+        std::fs::read_to_string(project.join("sp/_generated/openapi.json")).unwrap(),
         text
     );
 
@@ -4818,13 +4818,13 @@ fn the_openapi_document_describes_what_the_api_answers() {
             .clone()
     };
 
-    let content = project.join("tp/dist/wp-content");
+    let content = project.join("sp/dist/wp-content");
     let mut child = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
         .arg(&content)
-        .env("TP_WP_IDENTITY", "1")
+        .env("SP_WP_IDENTITY", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
@@ -4993,7 +4993,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
     let live = check("GET", "/openapi.json", None, &[], b"", 200);
     assert_eq!(
         live["servers"][0]["url"],
-        format!("{}/wp-json/typedpress/v1", server.url())
+        format!("{}/wp-json/spacepress/v1", server.url())
     );
     assert_eq!(live["paths"], document["paths"]);
     assert_eq!(live["components"], document["components"]);
@@ -5729,7 +5729,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
     check("DELETE", &format!("/media/{media}"), Some("editor"), &[], b"", 200);
     check("GET", "/media/999999", None, &[], b"", 404);
 
-    // WordPress's own kinds, in TypedPress's field names.
+    // WordPress's own kinds, in SpacePress's field names.
     let hello = check("GET", "/posts?search=Hello", None, &[], b"", 200);
     assert_eq!(hello["data"][0]["slug"], "hello-world", "{hello}");
     let post = check(
@@ -5806,7 +5806,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
         "/comments",
         Some("editor"),
         &[],
-        &json(json!({ "on": id, "content": "TypedPress!" })),
+        &json(json!({ "on": id, "content": "SpacePress!" })),
         201,
     );
     assert_eq!(created["data"]["on"], id, "{created}");
@@ -5856,7 +5856,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
         403,
     );
 
-    // Sign-in: TypedPress Identity is installed here, so a guest gets tokens and can sign out with them.
+    // Sign-in: SpacePress Identity is installed here, so a guest gets tokens and can sign out with them.
     assert_eq!(
         check("GET", "/auth/config", None, &[], b"", 200)["data"]["guests"],
         true
@@ -6082,7 +6082,7 @@ fn queries_mutations_jobs_and_schedules_run_on_wordpress() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/server_functions.php"))
-        .arg(project.join("tp/dist/wp-content"))
+        .arg(project.join("sp/dist/wp-content"))
         .output()
         .unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -6098,8 +6098,8 @@ fn queries_mutations_jobs_and_schedules_run_on_wordpress() {
 fn a_query_that_writes_fails_the_build_at_the_write() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        r#"import { defineConfig, query, table, text } from "typedpress";
+        tmp.path().join("spacepress.config.ts"),
+        r#"import { defineConfig, query, table, text } from "spacepress";
 export const notes = table({ title: text() });
 async function touch(id: number) { await notes.update(id, { title: "x" }); }
 export const read = query({}, async ({ id }: { id: number }) => { await touch(id); return 1; });
@@ -6114,7 +6114,7 @@ export default defineConfig({ name: "q" });
         stderr.contains("`read` is a query, so it can't write: this updates a row (in a function the query calls)"),
         "{stderr}"
     );
-    assert!(stderr.contains("--> typedpress.config.ts:3:"), "{stderr}");
+    assert!(stderr.contains("--> spacepress.config.ts:3:"), "{stderr}");
     assert!(stderr.contains("make it a mutation"), "{stderr}");
 }
 
@@ -6124,117 +6124,117 @@ export default defineConfig({ name: "q" });
 fn server_function_mistakes_are_refused_with_the_new_spelling() {
     for (source, message, help) in [
         (
-            "import { action } from \"typedpress\";\nexport const a = action({ input: {}, handler() { return 1; } });",
+            "import { action } from \"spacepress\";\nexport const a = action({ input: {}, handler() { return 1; } });",
             "`action()` is gone",
             "mutation({ access: \"subscriber\" }",
         ),
         (
-            "import { job } from \"typedpress\";\nexport const a = job({ input: {}, handler() {} });",
+            "import { job } from \"spacepress\";\nexport const a = job({ input: {}, handler() {} });",
             "`job({ input, handler })` is gone",
             "job({ retries: 3 }, async ({ postId }: { postId: number })",
         ),
         (
-            "import { jobs } from \"typedpress\";\nexport const a = 1;",
+            "import { jobs } from \"spacepress\";\nexport const a = 1;",
             "`jobs` is gone",
             ".enqueue(",
         ),
         (
-            "import { mutation } from \"typedpress\";\nexport const a = mutation({ input: {} }, async () => 1);",
+            "import { mutation } from \"spacepress\";\nexport const a = mutation({ input: {} }, async () => 1);",
             "mutation() has no option `input`",
             "the input is the handler's parameter type",
         ),
         (
-            "import { mutation } from \"typedpress\";\nexport const a = mutation({ readonly: true }, async () => 1);",
+            "import { mutation } from \"spacepress\";\nexport const a = mutation({ readonly: true }, async () => 1);",
             "mutation() has no option `readonly`",
             "a function that only reads is a query()",
         ),
         (
-            "import { query } from \"typedpress\";\nexport const a = query({}, async (input) => 1);",
+            "import { query } from \"spacepress\";\nexport const a = query({}, async (input) => 1);",
             "this parameter has none",
             "type it",
         ),
         (
-            "import { query } from \"typedpress\";\nexport const a = query({}, async (at: { when: Date }) => 1);",
+            "import { query } from \"spacepress\";\nexport const a = query({}, async (at: { when: Date }) => 1);",
             "input field `when` is Date, which JSON can't carry",
             "a date is an ISO string",
         ),
         (
-            "import { mutation } from \"typedpress\";\nexport const a = mutation({ rateLimit: \"5/fortnight\" }, async () => 1);",
+            "import { mutation } from \"spacepress\";\nexport const a = mutation({ rateLimit: \"5/fortnight\" }, async () => 1);",
             "rateLimit \"5/fortnight\" isn't a count per period",
             "10/min",
         ),
         (
-            "import { job } from \"typedpress\";\nexport const a = job({ every: \"30s\" }, async () => {});",
+            "import { job } from \"spacepress\";\nexport const a = job({ every: \"30s\" }, async () => {});",
             "every \"30s\" is under a minute",
             "1m",
         ),
         (
-            "import { cron } from \"typedpress\";\nexport const a = cron(\"every day\", async () => {});",
+            "import { cron } from \"spacepress\";\nexport const a = cron(\"every day\", async () => {});",
             "\"every day\" isn't a cron schedule",
             "0 3 * * *",
         ),
         (
-            "import { cron } from \"typedpress\";\nexport const a = cron(\"99 88 77 66 55\", async () => {});",
+            "import { cron } from \"spacepress\";\nexport const a = cron(\"99 88 77 66 55\", async () => {});",
             "\"99 88 77 66 55\" isn't a cron schedule",
             "a range `1-5`",
         ),
         (
-            "import { cron } from \"typedpress\";\nexport const a = cron(\"0 9 * * 7-1\", async () => {});",
+            "import { cron } from \"spacepress\";\nexport const a = cron(\"0 9 * * 7-1\", async () => {});",
             "isn't a cron schedule",
             "",
         ),
         (
-            "import { query } from \"typedpress\";\nimport { update_option } from \"php/wordpress\";\nexport const a = query({}, async () => { update_option(\"x\", 1); return 1; });",
+            "import { query } from \"spacepress\";\nimport { update_option } from \"php/wordpress\";\nexport const a = query({}, async () => { update_option(\"x\", 1); return 1; });",
             "`a` is a query, so it can't write: this calls a WordPress function that writes",
             "make it a mutation",
         ),
         (
-            "import { query } from \"typedpress\";\nexport const a = query({}, async () => (await fetch(\"https://api.example.com/x\", { method: \"POST\" })).status);",
+            "import { query } from \"spacepress\";\nexport const a = query({}, async () => (await fetch(\"https://api.example.com/x\", { method: \"POST\" })).status);",
             "`a` is a query, so it can't write: this sends a request that isn't a GET",
             "make it a mutation",
         ),
         (
-            "import { query, mutation } from \"typedpress\";\nimport { abilities } from \"php/wordpress\";\nexport const w = mutation({}, async () => 1);\nexport const a = query({}, async () => await abilities.call(\"m/w\", {}));",
+            "import { query, mutation } from \"spacepress\";\nimport { abilities } from \"php/wordpress\";\nexport const w = mutation({}, async () => 1);\nexport const a = query({}, async () => await abilities.call(\"m/w\", {}));",
             "`a` is a query, so it can't write: this calls an ability that isn't read-only",
             "make it a mutation",
         ),
         (
-            "import { query, table, text } from \"typedpress\";\nexport const notes = table({ title: text() });\nclass Writer { async run(id: number) { await notes.update(id, { title: \"x\" }); } }\nexport const a = query({}, async ({ id }: { id: number }) => { await new Writer().run(id); return 1; });",
+            "import { query, table, text } from \"spacepress\";\nexport const notes = table({ title: text() });\nclass Writer { async run(id: number) { await notes.update(id, { title: \"x\" }); } }\nexport const a = query({}, async ({ id }: { id: number }) => { await new Writer().run(id); return 1; });",
             "`a` is a query, so it can't write: this updates a row (in a function the query calls)",
             "make it a mutation",
         ),
         (
-            "import { query } from \"typedpress\";\nexport const a = query({}, async (input: { pick: { kind: \"a\"; n: number } | { kind: \"b\"; s: string } }) => 1);",
+            "import { query } from \"spacepress\";\nexport const a = query({}, async (input: { pick: { kind: \"a\"; n: number } | { kind: \"b\"; s: string } }) => 1);",
             "has no JSON shape the site can check",
             "`kind` field",
         ),
         (
-            "import { job } from \"typedpress\";\nexport const a = job({ every: \"1h\" }, async ({ id }: { id: number }) => {});",
+            "import { job } from \"spacepress\";\nexport const a = job({ every: \"1h\" }, async ({ id }: { id: number }) => {});",
             "a job on a schedule runs with no input",
             "make every field optional",
         ),
         (
-            "import { job, mutation } from \"typedpress\";\nexport const j = job({}, async ({ id }: { id: number }) => {});\nexport const m = mutation({}, async () => { await j.enqueue({ id: \"one\" }); });",
+            "import { job, mutation } from \"spacepress\";\nexport const j = job({}, async ({ id }: { id: number }) => {});\nexport const m = mutation({}, async () => { await j.enqueue({ id: \"one\" }); });",
             "doesn't fit job `j`",
             "",
         ),
         (
-            "import { job, mutation } from \"typedpress\";\nexport const j = job({}, async ({ id }: { id: number }) => {});\nexport const m = mutation({}, async () => { await j({ id: 1 }); });",
+            "import { job, mutation } from \"spacepress\";\nexport const j = job({}, async ({ id }: { id: number }) => {});\nexport const m = mutation({}, async () => { await j({ id: 1 }); });",
             "`j` is a job: it runs on the queue, not as a function",
             "j.enqueue(",
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("typedpress.config.ts"),
-            format!("import {{ defineConfig }} from \"typedpress\";\n{source}\nexport default defineConfig({{ name: \"m\" }});\n"),
+            tmp.path().join("spacepress.config.ts"),
+            format!("import {{ defineConfig }} from \"spacepress\";\n{source}\nexport default defineConfig({{ name: \"m\" }});\n"),
         )
         .unwrap();
         let out = first().arg("check").arg(tmp.path()).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(out.status.code(), Some(1), "{source}\n{stderr}");
         assert!(stderr.contains(message), "{source}\nexpected {message:?} in:\n{stderr}");
-        assert!(stderr.contains("--> typedpress.config.ts:"), "{source}\n{stderr}");
+        assert!(stderr.contains("--> spacepress.config.ts:"), "{source}\n{stderr}");
         assert!(stderr.contains(help), "{source}\nexpected help {help:?} in:\n{stderr}");
     }
 }
@@ -6245,8 +6245,8 @@ fn server_function_mistakes_are_refused_with_the_new_spelling() {
 fn a_member_path_keeps_its_type_after_a_conjunction_that_throws() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        r#"import { defineConfig, query, HttpError } from "typedpress";
+        tmp.path().join("spacepress.config.ts"),
+        r#"import { defineConfig, query, HttpError } from "spacepress";
 export const range = query({}, async (input: { q?: number | null }) => {
   if (input.q != null && input.q < 1) throw new HttpError(422, "low", "low");
   if (input.q != null && input.q > 5) throw new HttpError(422, "high", "high");
@@ -6278,7 +6278,7 @@ fn the_pantry_example_runs_its_query_mutation_job_and_schedule_on_wordpress() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/pantry_example.php"))
-        .arg(project.join("tp/dist/wp-content"))
+        .arg(project.join("sp/dist/wp-content"))
         .output()
         .unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -6293,19 +6293,19 @@ fn the_pantry_example_runs_its_query_mutation_job_and_schedule_on_wordpress() {
 #[test]
 fn a_form_posts_to_a_mutation_not_a_query() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(tmp.path().join("tp/app")).unwrap();
+    std::fs::create_dir_all(tmp.path().join("sp/app")).unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"f\" });\n",
+        tmp.path().join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"f\" });\n",
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("tp/server.ts"),
-        "import { query } from \"typedpress\";\nexport const read = query({ access: \"anyone\" }, async () => 1);\n",
+        tmp.path().join("sp/server.ts"),
+        "import { query } from \"spacepress\";\nexport const read = query({ access: \"anyone\" }, async () => 1);\n",
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("tp/app/page.tsx"),
+        tmp.path().join("sp/app/page.tsx"),
         "import { read } from \"../server\";\nexport default function Home() {\n  return <form action={read}><button>Go</button></form>;\n}\n",
     )
     .unwrap();
@@ -6316,14 +6316,14 @@ fn a_form_posts_to_a_mutation_not_a_query() {
         stderr.contains("`read` is a query, which a form can't post to"),
         "{stderr}"
     );
-    assert!(stderr.contains("--> tp/app/page.tsx:3:"), "{stderr}");
+    assert!(stderr.contains("--> sp/app/page.tsx:3:"), "{stderr}");
 }
 
 /// Refused helper chains called in narrowing positions (`if (f())`) must stay linear, not retry
 /// exponentially across speculative `attempt()` rollbacks (#232).
 #[test]
 fn refused_helper_chain_stays_linear_on_speculative_retries() {
-    let mut src = String::from("import { query, defineConfig } from \"typedpress\";\n");
+    let mut src = String::from("import { query, defineConfig } from \"spacepress\";\n");
     for i in 0..20 {
         let next = i + 1;
         src.push_str(&format!(
@@ -6342,7 +6342,7 @@ fn refused_helper_chain_stays_linear_on_speculative_retries() {
         let config = format!(
             "{src}\n{method}\nexport const run = query({{ access: \"anyone\" }}, () => {{ if ({entry}) return 1; return 0; }});\nexport default defineConfig({{ name: \"chain\" }});\n"
         );
-        std::fs::write(dir.path().join("typedpress.config.ts"), config).unwrap();
+        std::fs::write(dir.path().join("spacepress.config.ts"), config).unwrap();
         let start = std::time::Instant::now();
         let out = first().args(["check"]).arg(dir.path()).output().unwrap();
         let elapsed = start.elapsed();

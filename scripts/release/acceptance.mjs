@@ -14,9 +14,9 @@ import { stopOwnedDaemon } from './studio-cleanup.mjs';
 
 const exec = promisify(execFile);
 const repo = fileURLToPath(root);
-const compiler = process.env.TP_SETUP_BINARY;
-const work = process.env.TP_SETUP_EVIDENCE;
-if (!compiler || !work || !resolve(work).startsWith('/tmp/typedpress-framework-setup-')) throw new Error('Set TP_SETUP_BINARY to your real built compiler and TP_SETUP_EVIDENCE to a NEW /tmp/typedpress-framework-setup-* directory.');
+const compiler = process.env.SP_SETUP_BINARY;
+const work = process.env.SP_SETUP_EVIDENCE;
+if (!compiler || !work || !resolve(work).startsWith('/tmp/spacepress-framework-setup-')) throw new Error('Set SP_SETUP_BINARY to your real built compiler and SP_SETUP_EVIDENCE to a NEW /tmp/spacepress-framework-setup-* directory.');
 await mkdir(work); // Exclusive ownership, never adopt a pre-existing test directory.
 const release = join(work, 'release');
 const cache = join(work, 'cache');
@@ -43,10 +43,10 @@ for (const name of ['npm', 'npx', 'sh', 'bash', 'uname', 'tar', 'gzip', 'unzip',
   }
 }
 const env = {
-  ...process.env, PATH: pathTools, TP_BIN: '', TP_CACHE_DIR: cache,
-  TP_RELEASE_BASE_URL: pathToFileURL(`${release}/`).href,
+  ...process.env, PATH: pathTools, SP_BIN: '', SP_CACHE_DIR: cache,
+  SP_RELEASE_BASE_URL: pathToFileURL(`${release}/`).href,
   XDG_CACHE_HOME: join(work, 'xdg-cache'), TMPDIR: temp,
-  npm_config_cache: process.env.TP_SETUP_NPM_CACHE || join(work, 'npm-cache'),
+  npm_config_cache: process.env.SP_SETUP_NPM_CACHE || join(work, 'npm-cache'),
   DEV_CONFIG_DIR: join(work, 'studio-config'), E2E: '', NODE_ENV: 'production', STUDIO_DEBUG_TRACKS: '',
   STUDIO_PROCESS_MANAGER_HOME: join(work, 'studio-daemon'),
 };
@@ -63,17 +63,17 @@ try {
   for (const unavailable of ['cargo', 'rustc', 'docker', 'php']) await assert.rejects(exec(unavailable, ['--version'], { env }), (error) => error.code === 'ENOENT');
   const pack = async (directory) => JSON.parse(await run('npm', ['pack', directory, '--json', '--pack-destination', work], { cwd: repo }))[0].filename;
   const cliPackage = join(work, await pack('./packages/cli'));
-  const createPackage = join(work, await pack('./packages/create-typedpress'));
+  const createPackage = join(work, await pack('./packages/create-spacepress'));
   await run('npm', ['install', '--prefix', tools, '--no-audit', '--no-fund', createPackage], { cwd: work });
-  const scaffold = join(tools, 'node_modules/.bin/create-typedpress');
+  const scaffold = join(tools, 'node_modules/.bin/create-spacepress');
   assert.match(await run(scaffold, ['--help'], { cwd: work }), /npm run dev/);
-  await run(scaffold, [project], { cwd: work, env: { ...env, TP_CLI_PACKAGE: cliPackage } });
+  await run(scaffold, [project], { cwd: work, env: { ...env, SP_CLI_PACKAGE: cliPackage } });
   await assert.rejects(run(scaffold, [project, '--no-install']), (error) => /already exists/.test(error.stderr));
-  const first = join(project, 'node_modules/.bin/typedpress');
-  const offline = { ...env, TP_OFFLINE: '1', TP_RELEASE_BASE_URL: 'http://127.0.0.1:1/' };
+  const first = join(project, 'node_modules/.bin/spacepress');
+  const offline = { ...env, SP_OFFLINE: '1', SP_RELEASE_BASE_URL: 'http://127.0.0.1:1/' };
   await run(first, ['check'], { env: offline });
   await run('npm', ['run', 'typecheck']);
-  const generated = await readdir(join(project, 'tp/_generated/client'));
+  const generated = await readdir(join(project, 'sp/_generated/client'));
   assert.ok(generated.includes('index.ts') && generated.includes('types.ts'));
   const server = createServer();
   await new Promise((done, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', done); });
@@ -98,7 +98,7 @@ try {
   const status = JSON.parse(await run('npm', ['run', '--silent', 'status']));
   assert.equal(status.isOnline, true);
   const base = status.siteUrl.replace(/\/$/, '');
-  const { createClient, TypedPressError } = await import(pathToFileURL(join(project, 'tp/_generated/client/index.ts')).href);
+  const { createClient, SpacePressError } = await import(pathToFileURL(join(project, 'sp/_generated/client/index.ts')).href);
   const client = createClient({ fetch: (path, options) => fetch(new URL(path, base), options) });
   for (const [path, expected] of [
     ['/', /Make this site yours/],
@@ -114,11 +114,11 @@ try {
   assert.deepEqual(schema.runtime.pendingMigrations, []);
   await assert.rejects(
     client.notes.create({ title: 'Anonymous write' }),
-    (error) => error instanceof TypedPressError && error.status === 401,
+    (error) => error instanceof SpacePressError && error.status === 401,
   );
   // Create a post through native WordPress and read it through the generated client.
   const password = (await run('npm', ['run', '--silent', 'wp', '--', 'user', 'application-password', 'create', 'admin', 'setup-acceptance', '--porcelain'])).trim();
-  const created = await fetch(`${base}/wp-json/wp/v2/tp_notes`, {
+  const created = await fetch(`${base}/wp-json/wp/v2/sp_notes`, {
     method: 'POST', headers: { 'content-type': 'application/json', authorization: `Basic ${Buffer.from(`admin:${password}`).toString('base64')}` },
     body: JSON.stringify({ title: 'From native WordPress', status: 'publish', content: 'One server, real SQLite.' }),
   });
@@ -126,26 +126,26 @@ try {
   const notes = await client.notes.list();
   assert.deepEqual(notes.map((note) => note.title).sort(), ['A first walk', 'From native WordPress', 'What to pack']);
   // Exercise the actual supplied-compiler escape hatch independently of the cache.
-  await run(first, ['check'], { env: { ...env, TP_BIN: compiler, TP_OFFLINE: '1', TP_CACHE_DIR: join(work, 'unused-cache') } });
+  await run(first, ['check'], { env: { ...env, SP_BIN: compiler, SP_OFFLINE: '1', SP_CACHE_DIR: join(work, 'unused-cache') } });
   await run('npm', ['run', 'stop']);
   await once(session, 'exit', { signal: AbortSignal.timeout(15000) }).catch((error) => { if (session.exitCode === null) throw error; });
   assert.equal(JSON.parse(await run('npm', ['run', '--silent', 'status'])).isOnline, false);
   await writeFile(join(work, 'dev-output.txt'), redacted().replaceAll(password, '[redacted]'));
-  await writeFile(join(work, 'result.json'), JSON.stringify({ passed: true, sourceHead: head.trim(), target: releaseTarget(), node: process.version, checks: ['no cargo/rustc/docker/host PHP on PATH', 'npm pack/install', 'automatic scaffold install', 'offline cached compiler', 'typecheck generated client', 'npm run dev foreground', 'WordPress renders starter pages and seeded notes', 'SQLite schema ready', 'anonymous write rejected', 'native WordPress write visible through typed client', 'TP_BIN override', 'site stopped'] }, null, 2) + '\n');
+  await writeFile(join(work, 'result.json'), JSON.stringify({ passed: true, sourceHead: head.trim(), target: releaseTarget(), node: process.version, checks: ['no cargo/rustc/docker/host PHP on PATH', 'npm pack/install', 'automatic scaffold install', 'offline cached compiler', 'typecheck generated client', 'npm run dev foreground', 'WordPress renders starter pages and seeded notes', 'SQLite schema ready', 'anonymous write rejected', 'native WordPress write visible through typed client', 'SP_BIN override', 'site stopped'] }, null, 2) + '\n');
 } catch (error) { primary = error; throw error; }
 finally {
   const cleanup = [];
   if (siteCreated) {
-    try { await run('npm', ['run', 'stop']); cleanup.push('Owned TypedPress site stopped.'); }
+    try { await run('npm', ['run', 'stop']); cleanup.push('Owned SpacePress site stopped.'); }
     catch (error) { cleanup.push(`Stop: ${error.message}`); }
     try {
-      const site = join(project, '.tp/dev/wordpress');
+      const site = join(project, '.sp/dev/wordpress');
       const listed = JSON.parse(await studio(['list', '--format=json']));
       if (listed.some((entry) => resolve(entry.path) === site)) await studio(['delete', '--path', site, '--no-files', '--format=json']);
       assert.equal(JSON.parse(await studio(['list', '--format=json'])).some((entry) => resolve(entry.path) === site), false);
       cleanup.push('Owned WordPress site absent from isolated Studio registry.');
-      await rm(join(project, '.tp/dev'), { recursive: true, force: true });
-      await assert.rejects(access(join(project, '.tp/dev')), (error) => error.code === 'ENOENT');
+      await rm(join(project, '.sp/dev'), { recursive: true, force: true });
+      await assert.rejects(access(join(project, '.sp/dev')), (error) => error.code === 'ENOENT');
       cleanup.push('Owned WordPress files and SQLite data removed.');
     } catch (error) { cleanup.push(`Cleanup failed: ${error.message}`); if (!primary) primary = error; }
   }

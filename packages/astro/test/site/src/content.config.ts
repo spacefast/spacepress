@@ -1,6 +1,6 @@
 import { defineCollection } from "astro:content";
-import { tpLoader } from "@typedpress/astro";
+import { spLoader } from "@spacepress/astro";
 
 export const collections = {
-  notes: defineCollection({ loader: tpLoader("notes") }),
+  notes: defineCollection({ loader: spLoader("notes") }),
 };

@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
 
 /**
  * @author Jordi Boggiano <j.boggiano@seld.be>

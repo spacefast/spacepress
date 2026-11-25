@@ -1,5 +1,5 @@
-import { loadView } from '@typedpress-admin/views';
-import { preloadFieldCollections } from '@typedpress-admin/core-data-next';
+import { loadView } from '@spacepress-admin/views';
+import { preloadFieldCollections } from '@spacepress-admin/core-data-next';
 import { store as coreStore } from '@wordpress/core-data';
 import { resolveSelect } from '@wordpress/data';
 import { getDefaultView } from './view-utils';

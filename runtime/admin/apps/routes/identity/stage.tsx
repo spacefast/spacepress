@@ -7,7 +7,7 @@ import {
 	TextControl,
 } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
-import { Page } from '@typedpress-admin/admin-toolkit';
+import { Page } from '@spacepress-admin/admin-toolkit';
 import './style.scss';
 
 type TabKey =
@@ -21,14 +21,14 @@ type TabKey =
 type Row = Record< string, unknown >;
 
 const TABS: Array< { key: TabKey; label: string } > = [
-	{ key: 'people', label: __( 'People', 'typedpress-admin' ) },
-	{ key: 'organizations', label: __( 'Organizations', 'typedpress-admin' ) },
-	{ key: 'applications', label: __( 'Applications', 'typedpress-admin' ) },
-	{ key: 'sessions', label: __( 'Sessions', 'typedpress-admin' ) },
-	{ key: 'authentication', label: __( 'Authentication', 'typedpress-admin' ) },
+	{ key: 'people', label: __( 'People', 'spacepress-admin' ) },
+	{ key: 'organizations', label: __( 'Organizations', 'spacepress-admin' ) },
+	{ key: 'applications', label: __( 'Applications', 'spacepress-admin' ) },
+	{ key: 'sessions', label: __( 'Sessions', 'spacepress-admin' ) },
+	{ key: 'authentication', label: __( 'Authentication', 'spacepress-admin' ) },
 	{
 		key: 'security-events',
-		label: __( 'Security Events', 'typedpress-admin' ),
+		label: __( 'Security Events', 'spacepress-admin' ),
 	},
 ];
 
@@ -46,7 +46,7 @@ function errorMessage( err: unknown ): string {
 			return String( record.message );
 		}
 	}
-	return __( 'Unable to complete request.', 'typedpress-admin' );
+	return __( 'Unable to complete request.', 'spacepress-admin' );
 }
 
 function formatTs( value: unknown ): string {
@@ -73,7 +73,7 @@ async function identityRequest< T = unknown >(
 	data?: Record< string, unknown >
 ): Promise< T > {
 	const res = await apiFetch< { data?: T } >( {
-		path: `/typedpress-identity/v1/admin/${ op }`,
+		path: `/spacepress-identity/v1/admin/${ op }`,
 		method,
 		data,
 	} );
@@ -156,9 +156,9 @@ export default function IdentityStage() {
 	const renderBody = () => {
 		if ( loading ) {
 			return (
-				<div className="tp-identity-loading">
+				<div className="sp-identity-loading">
 					<Spinner />
-					<span>{ __( 'Loading…', 'typedpress-admin' ) }</span>
+					<span>{ __( 'Loading…', 'spacepress-admin' ) }</span>
 				</div>
 			);
 		}
@@ -170,22 +170,22 @@ export default function IdentityStage() {
 		if ( tab === 'people' ) {
 			const rows = Array.isArray( data ) ? ( data as Row[] ) : [];
 			return (
-				<div className="tp-identity-table-wrap">
-					<table className="tp-identity-table">
+				<div className="sp-identity-table-wrap">
+					<table className="sp-identity-table">
 						<thead>
 							<tr>
-								<th>{ __( 'Person', 'typedpress-admin' ) }</th>
-								<th>{ __( 'Email', 'typedpress-admin' ) }</th>
-								<th>{ __( 'Status', 'typedpress-admin' ) }</th>
-								<th>{ __( 'MFA', 'typedpress-admin' ) }</th>
-								<th>{ __( 'Actions', 'typedpress-admin' ) }</th>
+								<th>{ __( 'Person', 'spacepress-admin' ) }</th>
+								<th>{ __( 'Email', 'spacepress-admin' ) }</th>
+								<th>{ __( 'Status', 'spacepress-admin' ) }</th>
+								<th>{ __( 'MFA', 'spacepress-admin' ) }</th>
+								<th>{ __( 'Actions', 'spacepress-admin' ) }</th>
 							</tr>
 						</thead>
 						<tbody>
 							{ rows.length === 0 ? (
 								<tr>
-									<td colSpan={ 5 } className="tp-identity-muted">
-										{ __( 'No accounts found.', 'typedpress-admin' ) }
+									<td colSpan={ 5 } className="sp-identity-muted">
+										{ __( 'No accounts found.', 'spacepress-admin' ) }
 									</td>
 								</tr>
 							) : (
@@ -208,7 +208,7 @@ export default function IdentityStage() {
 											<td>{ String( person.email ?? '—' ) }</td>
 											<td>
 												<span
-													className={ `tp-identity-badge ${
+													className={ `sp-identity-badge ${
 														suspended ? 'is-error' : 'is-success'
 													}` }
 												>
@@ -220,13 +220,13 @@ export default function IdentityStage() {
 											</td>
 											<td>
 												<span
-													className={ `tp-identity-badge ${
+													className={ `sp-identity-badge ${
 														person.mfa_enabled ? 'is-success' : ''
 													}` }
 												>
 													{ person.mfa_enabled
-														? __( 'Enabled', 'typedpress-admin' )
-														: __( 'Off', 'typedpress-admin' ) }
+														? __( 'Enabled', 'spacepress-admin' )
+														: __( 'Off', 'spacepress-admin' ) }
 												</span>
 											</td>
 											<td>
@@ -243,14 +243,14 @@ export default function IdentityStage() {
 																	{ id, suspended: ! suspended }
 																),
 															suspended
-																? __( 'Account reactivated.', 'typedpress-admin' )
-																: __( 'Account suspended.', 'typedpress-admin' )
+																? __( 'Account reactivated.', 'spacepress-admin' )
+																: __( 'Account suspended.', 'spacepress-admin' )
 														)
 													}
 												>
 													{ suspended
-														? __( 'Reactivate', 'typedpress-admin' )
-														: __( 'Suspend', 'typedpress-admin' ) }
+														? __( 'Reactivate', 'spacepress-admin' )
+														: __( 'Suspend', 'spacepress-admin' ) }
 												</Button>
 											</td>
 										</tr>
@@ -266,20 +266,20 @@ export default function IdentityStage() {
 		if ( tab === 'organizations' ) {
 			const rows = Array.isArray( data ) ? ( data as Row[] ) : [];
 			return (
-				<div className="tp-identity-table-wrap">
-					<table className="tp-identity-table">
+				<div className="sp-identity-table-wrap">
+					<table className="sp-identity-table">
 						<thead>
 							<tr>
-								<th>{ __( 'Name', 'typedpress-admin' ) }</th>
-								<th>{ __( 'Slug', 'typedpress-admin' ) }</th>
-								<th>{ __( 'Created', 'typedpress-admin' ) }</th>
+								<th>{ __( 'Name', 'spacepress-admin' ) }</th>
+								<th>{ __( 'Slug', 'spacepress-admin' ) }</th>
+								<th>{ __( 'Created', 'spacepress-admin' ) }</th>
 							</tr>
 						</thead>
 						<tbody>
 							{ rows.length === 0 ? (
 								<tr>
-									<td colSpan={ 3 } className="tp-identity-muted">
-										{ __( 'No organizations yet.', 'typedpress-admin' ) }
+									<td colSpan={ 3 } className="sp-identity-muted">
+										{ __( 'No organizations yet.', 'spacepress-admin' ) }
 									</td>
 								</tr>
 							) : (
@@ -288,7 +288,7 @@ export default function IdentityStage() {
 										<td>
 											<strong>{ String( org.name ?? '—' ) }</strong>
 										</td>
-										<td className="tp-identity-code">
+										<td className="sp-identity-code">
 											{ String( org.slug ?? org.id ?? '—' ) }
 										</td>
 										<td>{ formatTs( org.created_at ) }</td>
@@ -306,7 +306,7 @@ export default function IdentityStage() {
 			return (
 				<>
 					<form
-						className="tp-identity-card"
+						className="sp-identity-card"
 						onSubmit={ ( e ) => {
 							e.preventDefault();
 							if ( ! appName.trim() || ! appRedirect.trim() || ! appOrigin.trim() ) {
@@ -329,25 +329,25 @@ export default function IdentityStage() {
 								setAppName( '' );
 								setAppRedirect( '' );
 								setAppOrigin( '' );
-							}, __( 'OAuth application registered.', 'typedpress-admin' ) );
+							}, __( 'OAuth application registered.', 'spacepress-admin' ) );
 						} }
 					>
-						<h3>{ __( 'Register OAuth Application', 'typedpress-admin' ) }</h3>
-						<div className="tp-identity-form-grid">
+						<h3>{ __( 'Register OAuth Application', 'spacepress-admin' ) }</h3>
+						<div className="sp-identity-form-grid">
 							<TextControl
-								label={ __( 'Name', 'typedpress-admin' ) }
+								label={ __( 'Name', 'spacepress-admin' ) }
 								value={ appName }
 								onChange={ setAppName }
 								placeholder="My Client App"
 							/>
 							<TextControl
-								label={ __( 'Redirect URI', 'typedpress-admin' ) }
+								label={ __( 'Redirect URI', 'spacepress-admin' ) }
 								value={ appRedirect }
 								onChange={ setAppRedirect }
 								placeholder="https://app.example.com/callback"
 							/>
 							<TextControl
-								label={ __( 'Allowed Origin', 'typedpress-admin' ) }
+								label={ __( 'Allowed Origin', 'spacepress-admin' ) }
 								value={ appOrigin }
 								onChange={ setAppOrigin }
 								placeholder="https://app.example.com"
@@ -362,7 +362,7 @@ export default function IdentityStage() {
 									! appOrigin.trim()
 								}
 							>
-								{ __( 'Add Application', 'typedpress-admin' ) }
+								{ __( 'Add Application', 'spacepress-admin' ) }
 							</Button>
 						</div>
 						{ createdSecret && (
@@ -371,28 +371,28 @@ export default function IdentityStage() {
 								isDismissible
 								onRemove={ () => setCreatedSecret( null ) }
 							>
-								<strong>{ __( 'Client secret (shown once):', 'typedpress-admin' ) }</strong>{ ' ' }
-								<code className="tp-identity-code">{ createdSecret }</code>
+								<strong>{ __( 'Client secret (shown once):', 'spacepress-admin' ) }</strong>{ ' ' }
+								<code className="sp-identity-code">{ createdSecret }</code>
 							</Notice>
 						) }
 					</form>
 
-					<div className="tp-identity-table-wrap">
-						<table className="tp-identity-table">
+					<div className="sp-identity-table-wrap">
+						<table className="sp-identity-table">
 							<thead>
 								<tr>
-									<th>{ __( 'Name', 'typedpress-admin' ) }</th>
-									<th>{ __( 'Client ID', 'typedpress-admin' ) }</th>
-									<th>{ __( 'Origin', 'typedpress-admin' ) }</th>
-									<th>{ __( 'Status', 'typedpress-admin' ) }</th>
-									<th>{ __( 'Actions', 'typedpress-admin' ) }</th>
+									<th>{ __( 'Name', 'spacepress-admin' ) }</th>
+									<th>{ __( 'Client ID', 'spacepress-admin' ) }</th>
+									<th>{ __( 'Origin', 'spacepress-admin' ) }</th>
+									<th>{ __( 'Status', 'spacepress-admin' ) }</th>
+									<th>{ __( 'Actions', 'spacepress-admin' ) }</th>
 								</tr>
 							</thead>
 							<tbody>
 								{ rows.length === 0 ? (
 									<tr>
-										<td colSpan={ 5 } className="tp-identity-muted">
-											{ __( 'No OAuth applications registered.', 'typedpress-admin' ) }
+										<td colSpan={ 5 } className="sp-identity-muted">
+											{ __( 'No OAuth applications registered.', 'spacepress-admin' ) }
 										</td>
 									</tr>
 								) : (
@@ -407,19 +407,19 @@ export default function IdentityStage() {
 												<td>
 													<strong>{ String( app.name ?? '—' ) }</strong>
 												</td>
-												<td className="tp-identity-code">{ id }</td>
-												<td className="tp-identity-code">
+												<td className="sp-identity-code">{ id }</td>
+												<td className="sp-identity-code">
 													{ String( app.origin ?? '—' ) }
 												</td>
 												<td>
 													<span
-														className={ `tp-identity-badge ${
+														className={ `sp-identity-badge ${
 															enabled ? 'is-success' : 'is-warning'
 														}` }
 													>
 														{ enabled
-															? __( 'Enabled', 'typedpress-admin' )
-															: __( 'Disabled', 'typedpress-admin' ) }
+															? __( 'Enabled', 'spacepress-admin' )
+															: __( 'Disabled', 'spacepress-admin' ) }
 													</span>
 												</td>
 												<td>
@@ -436,14 +436,14 @@ export default function IdentityStage() {
 																		{ id, enabled: ! enabled }
 																	),
 																enabled
-																	? __( 'Application disabled.', 'typedpress-admin' )
-																	: __( 'Application enabled.', 'typedpress-admin' )
+																	? __( 'Application disabled.', 'spacepress-admin' )
+																	: __( 'Application enabled.', 'spacepress-admin' )
 															)
 														}
 													>
 														{ enabled
-															? __( 'Disable', 'typedpress-admin' )
-															: __( 'Enable', 'typedpress-admin' ) }
+															? __( 'Disable', 'spacepress-admin' )
+															: __( 'Enable', 'spacepress-admin' ) }
 													</Button>
 												</td>
 											</tr>
@@ -460,23 +460,23 @@ export default function IdentityStage() {
 		if ( tab === 'sessions' ) {
 			const rows = Array.isArray( data ) ? ( data as Row[] ) : [];
 			return (
-				<div className="tp-identity-table-wrap">
-					<table className="tp-identity-table">
+				<div className="sp-identity-table-wrap">
+					<table className="sp-identity-table">
 						<thead>
 							<tr>
-								<th>{ __( 'Session', 'typedpress-admin' ) }</th>
-								<th>{ __( 'User ID', 'typedpress-admin' ) }</th>
-								<th>{ __( 'Created', 'typedpress-admin' ) }</th>
-								<th>{ __( 'Expires', 'typedpress-admin' ) }</th>
-								<th>{ __( 'Status', 'typedpress-admin' ) }</th>
-								<th>{ __( 'Actions', 'typedpress-admin' ) }</th>
+								<th>{ __( 'Session', 'spacepress-admin' ) }</th>
+								<th>{ __( 'User ID', 'spacepress-admin' ) }</th>
+								<th>{ __( 'Created', 'spacepress-admin' ) }</th>
+								<th>{ __( 'Expires', 'spacepress-admin' ) }</th>
+								<th>{ __( 'Status', 'spacepress-admin' ) }</th>
+								<th>{ __( 'Actions', 'spacepress-admin' ) }</th>
 							</tr>
 						</thead>
 						<tbody>
 							{ rows.length === 0 ? (
 								<tr>
-									<td colSpan={ 6 } className="tp-identity-muted">
-										{ __( 'No sessions recorded.', 'typedpress-admin' ) }
+									<td colSpan={ 6 } className="sp-identity-muted">
+										{ __( 'No sessions recorded.', 'spacepress-admin' ) }
 									</td>
 								</tr>
 							) : (
@@ -494,13 +494,13 @@ export default function IdentityStage() {
 											<td>{ formatTs( s.expires_at ) }</td>
 											<td>
 												<span
-													className={ `tp-identity-badge ${
+													className={ `sp-identity-badge ${
 														revoked ? 'is-error' : 'is-success'
 													}` }
 												>
 													{ revoked
-														? __( 'Revoked', 'typedpress-admin' )
-														: __( 'Active', 'typedpress-admin' ) }
+														? __( 'Revoked', 'spacepress-admin' )
+														: __( 'Active', 'spacepress-admin' ) }
 												</span>
 											</td>
 											<td>
@@ -518,11 +518,11 @@ export default function IdentityStage() {
 																		'POST',
 																		{ user_id: userId, id }
 																	),
-																__( 'Session revoked.', 'typedpress-admin' )
+																__( 'Session revoked.', 'spacepress-admin' )
 															)
 														}
 													>
-														{ __( 'Revoke', 'typedpress-admin' ) }
+														{ __( 'Revoke', 'spacepress-admin' ) }
 													</Button>
 												) }
 											</td>
@@ -549,18 +549,18 @@ export default function IdentityStage() {
 			const jwks = Array.isArray( keysObj.keys ) ? keysObj.keys : [];
 			return (
 				<>
-					<div className="tp-identity-card">
-						<h3>{ __( 'Sign-in Providers', 'typedpress-admin' ) }</h3>
+					<div className="sp-identity-card">
+						<h3>{ __( 'Sign-in Providers', 'spacepress-admin' ) }</h3>
 						{ providers.length === 0 ? (
-							<p className="tp-identity-muted">
-								{ __( 'Email & password sign-in active. No external OAuth providers configured.', 'typedpress-admin' ) }
+							<p className="sp-identity-muted">
+								{ __( 'Email & password sign-in active. No external OAuth providers configured.', 'spacepress-admin' ) }
 							</p>
 						) : (
 							<div>
 								{ providers.map( ( p ) => (
 									<span
 										key={ p }
-										className="tp-identity-badge is-success"
+										className="sp-identity-badge is-success"
 										style={ { marginInlineEnd: 6 } }
 									>
 										{ p }
@@ -569,27 +569,27 @@ export default function IdentityStage() {
 							</div>
 						) }
 					</div>
-					<div className="tp-identity-card">
-						<div className="tp-identity-toolbar">
-							<h3>{ __( 'Signing Keys (JWKS)', 'typedpress-admin' ) }</h3>
+					<div className="sp-identity-card">
+						<div className="sp-identity-toolbar">
+							<h3>{ __( 'Signing Keys (JWKS)', 'spacepress-admin' ) }</h3>
 							<Button
 								variant="secondary"
 								disabled={ busy }
 								onClick={ () =>
 									void runMutation(
 										() => identityRequest( 'keys/rotate', 'POST' ),
-										__( 'Signing keys rotated.', 'typedpress-admin' )
+										__( 'Signing keys rotated.', 'spacepress-admin' )
 									)
 								}
 							>
-								{ __( 'Rotate Keys', 'typedpress-admin' ) }
+								{ __( 'Rotate Keys', 'spacepress-admin' ) }
 							</Button>
 						</div>
-						<p className="tp-identity-muted">
-							{ jwks.length } { __( 'active signing key(s).', 'typedpress-admin' ) }
+						<p className="sp-identity-muted">
+							{ jwks.length } { __( 'active signing key(s).', 'spacepress-admin' ) }
 						</p>
 						{ jwks.map( ( k, idx ) => (
-							<div key={ String( k.kid ?? idx ) } className="tp-identity-code">
+							<div key={ String( k.kid ?? idx ) } className="sp-identity-code">
 								kid: { String( k.kid ?? '—' ) } ({ String( k.alg ?? k.kty ?? '' ) })
 							</div>
 						) ) }
@@ -601,26 +601,26 @@ export default function IdentityStage() {
 		// security-events
 		const events = Array.isArray( data ) ? ( data as Row[] ) : [];
 		return (
-			<div className="tp-identity-table-wrap">
-				<table className="tp-identity-table">
+			<div className="sp-identity-table-wrap">
+				<table className="sp-identity-table">
 					<thead>
 						<tr>
-							<th>{ __( 'Event', 'typedpress-admin' ) }</th>
-							<th>{ __( 'User ID', 'typedpress-admin' ) }</th>
-							<th>{ __( 'Time', 'typedpress-admin' ) }</th>
+							<th>{ __( 'Event', 'spacepress-admin' ) }</th>
+							<th>{ __( 'User ID', 'spacepress-admin' ) }</th>
+							<th>{ __( 'Time', 'spacepress-admin' ) }</th>
 						</tr>
 					</thead>
 					<tbody>
 						{ events.length === 0 ? (
 							<tr>
-								<td colSpan={ 3 } className="tp-identity-muted">
-									{ __( 'No security events recorded.', 'typedpress-admin' ) }
+								<td colSpan={ 3 } className="sp-identity-muted">
+									{ __( 'No security events recorded.', 'spacepress-admin' ) }
 								</td>
 							</tr>
 						) : (
 							events.map( ( ev, idx ) => (
 								<tr key={ String( ev.id ?? idx ) }>
-									<td className="tp-identity-code">
+									<td className="sp-identity-code">
 										{ String( ev.kind ?? ev.event ?? ev.type ?? '—' ) }
 									</td>
 									<td>{ ev.wp_user_id ? `#${ String( ev.wp_user_id ) }` : '—' }</td>
@@ -635,14 +635,14 @@ export default function IdentityStage() {
 	};
 
 	const tabBar = (
-		<div className="tp-identity-tabs" role="tablist">
+		<div className="sp-identity-tabs" role="tablist">
 			{ TABS.map( ( item ) => (
 				<button
 					key={ item.key }
 					type="button"
 					role="tab"
 					aria-selected={ tab === item.key }
-					className={ `tp-identity-tab${ tab === item.key ? ' is-active' : '' }` }
+					className={ `sp-identity-tab${ tab === item.key ? ' is-active' : '' }` }
 					onClick={ () => setTab( item.key ) }
 				>
 					{ item.label }
@@ -653,19 +653,19 @@ export default function IdentityStage() {
 
 	return (
 		<Page
-			title={ __( 'Identity & Auth', 'typedpress-admin' ) }
+			title={ __( 'Identity & Auth', 'spacepress-admin' ) }
 			subTitle={ __(
 				'Accounts, organizations, OAuth applications, sessions, and security logs.',
-				'typedpress-admin'
+				'spacepress-admin'
 			) }
 			tabs={ tabBar }
 			actions={
 				<Button variant="secondary" size="compact" onClick={ reload }>
-					{ __( 'Refresh', 'typedpress-admin' ) }
+					{ __( 'Refresh', 'spacepress-admin' ) }
 				</Button>
 			}
 		>
-			<div className="tp-identity-body">
+			<div className="sp-identity-body">
 				{ error && (
 					<Notice status="error" isDismissible onRemove={ () => setError( '' ) }>
 						{ error }

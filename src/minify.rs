@@ -38,12 +38,12 @@ pub fn module(source: &str) -> String {
 mod tests {
     #[test]
     fn a_module_keeps_its_exports_and_names_and_loses_its_spaces() {
-        let source = "// a comment\nimport { a } from \"x\";\nexport class TypedPressError extends Error {\n  constructor(message) {\n    super(message);\n    this.name = \"TypedPressError\";\n  }\n}\nexport function call(longName) {\n  const another = longName + a;\n  return another;\n}\n";
+        let source = "// a comment\nimport { a } from \"x\";\nexport class SpacePressError extends Error {\n  constructor(message) {\n    super(message);\n    this.name = \"SpacePressError\";\n  }\n}\nexport function call(longName) {\n  const another = longName + a;\n  return another;\n}\n";
         let out = super::module(source);
         assert!(out.len() < source.len(), "{out}");
         assert!(!out.contains("a comment") && !out.contains('\n'), "{out}");
         for kept in [
-            "class TypedPressError",
+            "class SpacePressError",
             "export",
             "function call",
             "from\"x\"",

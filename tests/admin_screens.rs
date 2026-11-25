@@ -1,5 +1,5 @@
 //! `adminScreen()` (docs/admin-screens.md): a screen declared in TypeScript compiles to the
-//! declaration `tp_admin_register_screen()` takes, in schema.php, with action references as
+//! declaration `sp_admin_register_screen()` takes, in schema.php, with action references as
 //! the Abilities the runtime registers for them. Each mistake is refused at its source location
 //! with a fix.
 
@@ -9,11 +9,11 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 fn first() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_typedpress"))
+    Command::new(env!("CARGO_BIN_EXE_spacepress"))
 }
 
 /// Two actions every case uses: a readonly list and a write that takes an id.
-const ACTIONS: &str = r#"import { adminScreen, item, defineConfig, query, mutation } from "typedpress";
+const ACTIONS: &str = r#"import { adminScreen, item, defineConfig, query, mutation } from "spacepress";
 
 export const listPending = query({ access: "editor" }, (_input: { limit?: number }) => ({ rows: [{ id: 1, total: 3, shipped: false }] }));
 
@@ -25,7 +25,7 @@ export const purge = mutation({ destructive: true, idempotent: true }, ({ id }: 
 fn project(screens: &str) -> tempfile::TempDir {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
+        tmp.path().join("spacepress.config.ts"),
         format!("{ACTIONS}\n{screens}\nexport default defineConfig({{ name: \"shop\" }});\n"),
     )
     .unwrap();
@@ -87,7 +87,7 @@ export const orderForm = adminScreen({{
         .args(["-r", "echo json_encode(require $argv[1]);"])
         .arg(
             tmp.path()
-                .join("tp/dist/wp-content/plugins/typedpress-app-shop/tp/app/schema.php"),
+                .join("sp/dist/wp-content/plugins/spacepress-app-shop/sp/app/schema.php"),
         )
         .output()
         .unwrap();
@@ -140,7 +140,7 @@ fn an_app_without_screens_has_no_screens_key() {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let php = std::fs::read_to_string(
         tmp.path()
-            .join("tp/dist/wp-content/plugins/typedpress-app-shop/tp/app/schema.php"),
+            .join("sp/dist/wp-content/plugins/spacepress-app-shop/sp/app/schema.php"),
     )
     .unwrap();
     assert!(!php.contains("'screens'"), "{php}");
@@ -236,7 +236,7 @@ fn screen_mistakes_are_refused_where_they_are_written_with_a_fix() {
         ),
         (
             "export const tableComments = adminScreen({ title: \"S\", view: { action: listPending, fields: { id: {} } } });",
-            "the screen id `table-comments` is one TypedPress registers itself",
+            "the screen id `table-comments` is one SpacePress registers itself",
             0,
             "export the screen under another name",
         ),
@@ -254,7 +254,7 @@ fn screen_mistakes_are_refused_where_they_are_written_with_a_fix() {
         assert_eq!(out.status.code(), Some(1), "{source}\nshould fail, got:\n{stderr}");
         assert!(stderr.contains(message), "expected {message:?} in:\n{stderr}");
         assert!(stderr.contains(help), "expected the fix {help:?} in:\n{stderr}");
-        let at = format!("--> typedpress.config.ts:{}:", line(*offset));
+        let at = format!("--> spacepress.config.ts:{}:", line(*offset));
         assert!(stderr.contains(&at), "expected location {at} in:\n{stderr}");
     }
 }
@@ -263,7 +263,7 @@ fn screen_mistakes_are_refused_where_they_are_written_with_a_fix() {
 fn define_config_takes_no_screens_option() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
+        tmp.path().join("spacepress.config.ts"),
         format!(
             "{ACTIONS}\nexport const s = adminScreen({{ title: \"S\", view: {{ action: listPending, fields: {{ id: {{}} }} }} }});\nexport default defineConfig({{ name: \"shop\", screens: {{ s }} }});\n"
         ),
@@ -274,7 +274,7 @@ fn define_config_takes_no_screens_option() {
     assert_eq!(out.status.code(), Some(1), "{stderr}");
     assert!(stderr.contains("defineConfig() has no option `screens`"), "{stderr}");
     assert!(
-        stderr.contains(&format!("--> typedpress.config.ts:{}:", line(1))),
+        stderr.contains(&format!("--> spacepress.config.ts:{}:", line(1))),
         "{stderr}"
     );
 }
@@ -289,7 +289,7 @@ fn an_agents_false_action_has_no_ability_for_a_screen() {
     assert_eq!(out.status.code(), Some(1), "{stderr}");
     assert!(stderr.contains("the action `hidden` is `agents: false`"), "{stderr}");
     assert!(
-        stderr.contains(&format!("--> typedpress.config.ts:{}:", line(1))),
+        stderr.contains(&format!("--> spacepress.config.ts:{}:", line(1))),
         "{stderr}"
     );
 }

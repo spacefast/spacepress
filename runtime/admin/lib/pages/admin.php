@@ -1,10 +1,10 @@
 <?php
 /**
- * TypedPress Admin SPA
+ * SpacePress Admin SPA
  *
- * This file serves as the entry point for the TypedPress Admin SPA.
+ * This file serves as the entry point for the SpacePress Admin SPA.
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 set_current_screen();
 
-// Do this action to populate the admin bar menu items. This is needed because the admin bar is not shown in TypedPressAdmin, so its items won't be populated by default.
+// Do this action to populate the admin bar menu items. This is needed because the admin bar is not shown in SpacePressAdmin, so its items won't be populated by default.
 // Core only builds `$wp_admin_bar` when the bar is shown; a host that hides it
 // still needs the object to collect the menu items this page reads.
 global $wp_admin_bar;
@@ -36,38 +36,38 @@ foreach ( wp_styles()->queue as $style ) {
 	wp_dequeue_style( $style );
 }
 
-// Run `tp_admin_init`.
-do_action( 'tp_admin_init' );
+// Run `sp_admin_init`.
+do_action( 'sp_admin_init' );
 
 // Always enable the experimental DataViews media modal. The Gutenberg plugin
 // is optional here: fall back to the core WordPress version for cache busting.
-wp_register_script( 'typedpress-admin-gutenberg-experiments', '', array(), defined( 'GUTENBERG_VERSION' ) ? GUTENBERG_VERSION : get_bloginfo( 'version' ), false );
-wp_add_inline_script( 'typedpress-admin-gutenberg-experiments', 'window.__experimentalDataViewsMediaModal = true' );
-wp_enqueue_script( 'typedpress-admin-gutenberg-experiments' );
+wp_register_script( 'spacepress-admin-gutenberg-experiments', '', array(), defined( 'GUTENBERG_VERSION' ) ? GUTENBERG_VERSION : get_bloginfo( 'version' ), false );
+wp_add_inline_script( 'spacepress-admin-gutenberg-experiments', 'window.__experimentalDataViewsMediaModal = true' );
+wp_enqueue_script( 'spacepress-admin-gutenberg-experiments' );
 
 // The boot module dependencies come from the committed module build.
-$asset_file = is_file( TP_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php' )
-	? include TP_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php'
+$asset_file = is_file( SP_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php' )
+	? include SP_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php'
 	: array(
 		'dependencies' => array(),
-		'version'      => TP_ADMIN_VERSION,
+		'version'      => SP_ADMIN_VERSION,
 	);
 
 // This script serves two purposes:
 // 1. It ensures all the globals that are made available to the modules are loaded.
 // 2. It initializes the boot module as an inline script.
-wp_register_script( 'typedpress-admin-prerequisites', '', $asset_file['dependencies'], $asset_file['version'], true );
+wp_register_script( 'spacepress-admin-prerequisites', '', $asset_file['dependencies'], $asset_file['version'], true );
 
 // Pass data to script module via global variables.
 wp_add_inline_script(
-	'typedpress-admin-prerequisites',
+	'spacepress-admin-prerequisites',
 	sprintf(
-		'import( "@typedpress-admin/boot" ).then( mod => mod.init( %s, %s, %s, %s, %s ) );',
-		wp_json_encode( tp_admin_get_admin_routes(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
-		wp_json_encode( tp_admin_get_admin_menu_items(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
-		wp_json_encode( tp_admin_get_admin_meta_menu_items(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
-		wp_json_encode( tp_admin_get_init_modules(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
-		wp_json_encode( tp_admin_get_boot_context(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
+		'import( "@spacepress-admin/boot" ).then( mod => mod.init( %s, %s, %s, %s, %s ) );',
+		wp_json_encode( sp_admin_get_admin_routes(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
+		wp_json_encode( sp_admin_get_admin_menu_items(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
+		wp_json_encode( sp_admin_get_admin_meta_menu_items(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
+		wp_json_encode( sp_admin_get_init_modules(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
+		wp_json_encode( sp_admin_get_boot_context(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
 	)
 );
 
@@ -76,45 +76,45 @@ wp_add_inline_script(
  *
  * @return array
  */
-function tp_admin_get_boot_context() {
-	$plugin = class_exists( '\\TypedPress\\Wp\\Runtime' ) ? \TypedPress\Wp\Runtime::plugin() : null;
+function sp_admin_get_boot_context() {
+	$plugin = class_exists( '\\SpacePress\\Wp\\Runtime' ) ? \SpacePress\Wp\Runtime::plugin() : null;
 	return apply_filters(
-		'tp_admin_boot_context',
-		array_merge( tp_admin_get_dashboard_context(), array(
+		'sp_admin_boot_context',
+		array_merge( sp_admin_get_dashboard_context(), array(
 			'logout_url'               => html_entity_decode( wp_logout_url() ),
-			'dashboard_widget_types'   => tp_admin_get_dashboard_widgets(),
-			'dashboard_default_layout' => apply_filters( 'tp_admin_dashboard_widgets', array() ),
-			'declarative_widgets'      => function_exists( 'tp_admin_get_declarative_widgets' ) ? tp_admin_get_declarative_widgets() : array(),
-			'dashboards'               => function_exists( 'tp_admin_get_dashboards' ) ? tp_admin_get_dashboards() : array(),
-			'managed'                  => class_exists( '\\TypedPress\\Wp\\Runtime' ) && \TypedPress\Wp\Runtime::managed(),
+			'dashboard_widget_types'   => sp_admin_get_dashboard_widgets(),
+			'dashboard_default_layout' => apply_filters( 'sp_admin_dashboard_widgets', array() ),
+			'declarative_widgets'      => function_exists( 'sp_admin_get_declarative_widgets' ) ? sp_admin_get_declarative_widgets() : array(),
+			'dashboards'               => function_exists( 'sp_admin_get_dashboards' ) ? sp_admin_get_dashboards() : array(),
+			'managed'                  => class_exists( '\\SpacePress\\Wp\\Runtime' ) && \SpacePress\Wp\Runtime::managed(),
 			'sealed'                   => $plugin !== null && $plugin->schema->sealed() !== null,
 			'has_store'                => $plugin !== null && $plugin->schema->commerce() !== null,
-			'identity_active'          => class_exists( '\\TypedPress\\Identity\\Plugin' ),
+			'identity_active'          => class_exists( '\\SpacePress\\Identity\\Plugin' ),
 			// Where this admin is mounted and where wp-admin is: a WordPress installed below the
 			// origin root (`/blog/`) routes and frames correctly only if the app learns both here.
-			'mount_url'                => tp_admin_url( '/' ),
+			'mount_url'                => sp_admin_url( '/' ),
 			'admin_url'                => admin_url(),
 		) )
 	);
 }
 
 // Transport comes from registered native types, independently of editor preferences.
-$tp_admin_native = array();
-foreach ( \TypedPress\Wp\Runtime::plugin()->schema->collections() as $name => $collection ) {
+$sp_admin_native = array();
+foreach ( \SpacePress\Wp\Runtime::plugin()->schema->collections() as $name => $collection ) {
     $type = isset( $collection['wp']['postType'] ) ? get_post_type_object( $collection['wp']['postType'] ) : null;
     if ( $type && $type->show_in_rest ) {
         $terms = array();
         $rest_terms = true;
         foreach ( $collection['columns'] as $column => $def ) {
-            if ( ! \TypedPress\Wp\PostMeta::terms( $def ) ) {
+            if ( ! \SpacePress\Wp\PostMeta::terms( $def ) ) {
                 continue;
             }
-            $target = \TypedPress\Wp\Runtime::plugin()->schema->collection( $def['references']['collection'] );
+            $target = \SpacePress\Wp\Runtime::plugin()->schema->collection( $def['references']['collection'] );
             $taxonomy = get_taxonomy( $target['wp']['taxonomy'] );
             if ( $taxonomy && $taxonomy->show_in_rest ) {
                 $terms[ $column ] = $taxonomy->rest_base ?: $taxonomy->name;
             } else {
-                // Keep this collection on TypedPress's form/API: core REST cannot
+                // Keep this collection on SpacePress's form/API: core REST cannot
                 // represent every assignment, and terms are never post meta.
                 $rest_terms = false;
                 break;
@@ -123,20 +123,20 @@ foreach ( \TypedPress\Wp\Runtime::plugin()->schema->collections() as $name => $c
         if ( ! $rest_terms ) {
             continue;
         }
-        $tp_admin_native[ $name ] = array( 'postType' => $type->name, 'terms' => $terms, 'path' => '/' . ( $type->rest_namespace ?: 'wp/v2' ) . '/' . ( $type->rest_base ?: $type->name ) );
+        $sp_admin_native[ $name ] = array( 'postType' => $type->name, 'terms' => $terms, 'path' => '/' . ( $type->rest_namespace ?: 'wp/v2' ) . '/' . ( $type->rest_base ?: $type->name ) );
     }
 }
-wp_add_inline_script( 'wp-api-fetch', 'window.tpAdmin = ' . wp_json_encode( array(
-    'native' => $tp_admin_native,
-    'readable' => tp_admin_navigation(),
-    'role' => \TypedPress\Wp\CoreAccess::viewer()->user['role'] ?? 'subscriber',
-    'mount' => tp_admin_url(),
-    // TypedPress's API (/wp-json/typedpress/v1): the admin's own reads and writes go through it, as every client's do.
-    'api' => \TypedPress\Wp\Facade::url(),
+wp_add_inline_script( 'wp-api-fetch', 'window.spAdmin = ' . wp_json_encode( array(
+    'native' => $sp_admin_native,
+    'readable' => sp_admin_navigation(),
+    'role' => \SpacePress\Wp\CoreAccess::viewer()->user['role'] ?? 'subscriber',
+    'mount' => sp_admin_url(),
+    // SpacePress's API (/wp-json/spacepress/v1): the admin's own reads and writes go through it, as every client's do.
+    'api' => \SpacePress\Wp\Facade::url(),
 ), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ) . ';', 'after' );
 
 // Preload endpoints used by `getEntityRecord` (entity configs) and by the root route loader.
-$tp_admin_preload_paths = array(
+$sp_admin_preload_paths = array(
 	// Config for the `postType` entity kind (fetched by Gutenberg `loadPostTypeEntities`).
 	'/wp/v2/types?context=view',
 	// Config for the `taxonomy` entity kind (fetched by Gutenberg `loadTaxonomyEntities`).
@@ -165,8 +165,8 @@ $tp_admin_preload_paths = array(
 	),
 );
 
-$tp_admin_preload_data = array_reduce(
-	$tp_admin_preload_paths,
+$sp_admin_preload_data = array_reduce(
+	$sp_admin_preload_paths,
 	'rest_preload_api_request',
 	array()
 );
@@ -175,7 +175,7 @@ wp_add_inline_script(
 	'wp-api-fetch',
 	sprintf(
 		'wp.apiFetch.use( wp.apiFetch.createPreloadingMiddleware( %s ) );',
-		wp_json_encode( $tp_admin_preload_data, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
+		wp_json_encode( $sp_admin_preload_data, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
 	),
 	'after'
 );
@@ -184,13 +184,13 @@ wp_add_inline_script(
 $boot_dependencies = array(
 	array(
 		'import' => 'static',
-		'id'     => '@typedpress-admin/boot',
+		'id'     => '@spacepress-admin/boot',
 	),
 );
 
 
 // Add all registered routes as dependencies.
-foreach ( tp_admin_get_admin_routes() as $route ) {
+foreach ( sp_admin_get_admin_routes() as $route ) {
 	if ( isset( $route['route_module'] ) ) {
 		$boot_dependencies[] = array(
 			'import' => ! empty( $route['before_load'] ) ? 'static' : 'dynamic',
@@ -206,7 +206,7 @@ foreach ( tp_admin_get_admin_routes() as $route ) {
 }
 
 // Native widgets are lazy script modules and need entries in the import map.
-foreach ( tp_admin_get_dashboard_widgets() as $widget ) {
+foreach ( sp_admin_get_dashboard_widgets() as $widget ) {
     foreach ( array( 'render_module', 'widget_module' ) as $key ) {
         if ( ! empty( $widget[$key] ) ) {
             $boot_dependencies[] = array( 'import' => 'dynamic', 'id' => $widget[$key] );
@@ -215,7 +215,7 @@ foreach ( tp_admin_get_dashboard_widgets() as $widget ) {
 }
 
 // Add all registered init modules as dependencies.
-foreach ( tp_admin_get_init_modules() as $init_module ) {
+foreach ( sp_admin_get_init_modules() as $init_module ) {
 	$boot_dependencies[] = array(
 		'import' => 'static',
 		'id'     => $init_module,
@@ -223,7 +223,7 @@ foreach ( tp_admin_get_init_modules() as $init_module ) {
 }
 
 // Add all field collection modules as dependencies.
-foreach ( tp_admin_get_all_field_collections() as $collection ) {
+foreach ( sp_admin_get_all_field_collections() as $collection ) {
 	if ( isset( $collection['fields_module'] ) ) {
 		$boot_dependencies[] = array(
 			'import' => 'dynamic',
@@ -232,10 +232,10 @@ foreach ( tp_admin_get_all_field_collections() as $collection ) {
 	}
 }
 
-// This just an empty script to ensure @typedpress-admin/boot is added to the import map.
+// This just an empty script to ensure @spacepress-admin/boot is added to the import map.
 wp_register_script_module(
-	'typedpress-admin-boot',
-	TP_ADMIN_PLUGIN_URL . 'routes.js',
+	'spacepress-admin-boot',
+	SP_ADMIN_PLUGIN_URL . 'routes.js',
 	$boot_dependencies
 );
 
@@ -243,9 +243,9 @@ wp_register_script_module(
 wp_enqueue_style( 'wp-components' );
 wp_enqueue_style( 'wp-commands' );
 
-// Enqueue the TypedPress Admin SPA itself.
-wp_enqueue_script( 'typedpress-admin-prerequisites' );
-wp_enqueue_script_module( 'typedpress-admin-boot' );
+// Enqueue the SpacePress Admin SPA itself.
+wp_enqueue_script( 'spacepress-admin-prerequisites' );
+wp_enqueue_script_module( 'spacepress-admin-boot' );
 
 // Output the admin page.
 ?><!DOCTYPE html>
@@ -253,9 +253,9 @@ wp_enqueue_script_module( 'typedpress-admin-boot' );
 <head>
 	<meta charset="<?php bloginfo( 'charset' ); ?>">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>TypedPress Admin</title>
+	<title>SpacePress Admin</title>
 	<style>
-		/* TypedPress: the router starts view transitions on navigation; without the document's opt-in
+		/* SpacePress: the router starts view transitions on navigation; without the document's opt-in
 		   the browser aborts each one with an error. */
 		@media (prefers-reduced-motion: no-preference) {
 			@view-transition {
@@ -280,7 +280,7 @@ wp_enqueue_script_module( 'typedpress-admin-boot' );
 global $hook_suffix;
 
 // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
-$hook_suffix = 'typedpress-admin';
+$hook_suffix = 'spacepress-admin';
 
 // BEGIN see wp-admin/admin-header.php.
 
@@ -308,8 +308,8 @@ do_action( 'admin_head' );
 
 ?>
 </head>
-<body class="<?php echo esc_attr( apply_filters( 'tp_admin_body_class', 'typedpress-admin' ) ); ?>">
-	<div id="typedpress-admin-app" style="height: 100vh;box-sizing: border-box;"></div>
+<body class="<?php echo esc_attr( apply_filters( 'sp_admin_body_class', 'spacepress-admin' ) ); ?>">
+	<div id="spacepress-admin-app" style="height: 100vh;box-sizing: border-box;"></div>
 <?php
 
 // BEGIN see wp-admin/admin-footer.php.
@@ -323,7 +323,7 @@ do_action( 'admin_head' );
  */
 do_action( 'admin_footer', '' );
 
-tp_admin_print_import_map();
+sp_admin_print_import_map();
 print_footer_scripts();
 wp_script_modules()->print_enqueued_script_modules();
 wp_script_modules()->print_script_module_preloads();

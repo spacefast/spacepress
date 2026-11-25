@@ -7,14 +7,14 @@ declare(strict_types=1);
  * built, a hierarchical kind with `url: "/:path"`, seeded from the records a hosted compile wrote,
  * served by php -S. Prints one JSON object.
  *
- *   TP_WP_THEMES=1 php tests/php/docs_root.php <wp-content dir> <seed records dir>
+ *   SP_WP_THEMES=1 php tests/php/docs_root.php <wp-content dir> <seed records dir>
  */
 
 require __DIR__ . '/wp.php';
 
 $site = wpSite('docs-root', ['wpContent' => $argv[1]]);
 $out = [];
-$out['seed'] = \TypedPress\Sync\Seed::run(\TypedPress\Wp\Runtime::plugin(), $argv[2]);
+$out['seed'] = \SpacePress\Sync\Seed::run(\SpacePress\Wp\Runtime::plugin(), $argv[2]);
 $site->startServer();
 $url = $site->url();
 
@@ -38,7 +38,7 @@ foreach (['/', '/getting-started/', '/reference/', '/reference/config/', '/playg
     $out['pages'][$path] = $page($path);
 }
 // Links WordPress builds follow the pattern, and the tree and pager use them.
-$config = get_page_by_path('reference/config', OBJECT, \TypedPress\Wp\Runtime::plugin()->schema->collection('docs')['wp']['postType']);
+$config = get_page_by_path('reference/config', OBJECT, \SpacePress\Wp\Runtime::plugin()->schema->collection('docs')['wp']['postType']);
 $out['permalink'] = parse_url((string) get_permalink($config), PHP_URL_PATH);
 $doc = get("$url/getting-started/")['body'];
 preg_match_all('#<ul class="tree">(.*?)</ul>#s', $doc, $tree);
@@ -46,7 +46,7 @@ preg_match_all('#href="([^"]+)"#', $tree[1][0] ?? '', $links);
 $out['tree'] = array_map(static fn (string $h): ?string => parse_url($h, PHP_URL_PATH), $links[1]);
 preg_match('#href="([^"]+)"[^>]*rel="next"#', $doc, $next);
 $out['next'] = isset($next[1]) ? parse_url($next[1], PHP_URL_PATH) : null;
-// WordPress's own addresses and TypedPress's are untouched by a kind at the root (the sign-in page
+// WordPress's own addresses and SpacePress's are untouched by a kind at the root (the sign-in page
 // answers itself rather than redirecting since #411).
 foreach (['/wp-login.php', '/feed/', '/llms.txt', '/robots.txt', '/getting-started.md', '/reference/config.md'] as $path) {
     $out['wordpress'][$path] = get("$url$path")['status'];
@@ -60,7 +60,7 @@ foreach (['/about/', '/news/', '/about.md', '/news.md'] as $path) {
     $out['wordpress pages'][$path] = [$r['status'], str_contains($r['body'], str_starts_with($path, '/about') ? 'About us.' : 'News.')];
 }
 // WordPress's sitemap lists the items at their root paths.
-preg_match_all('#<loc>([^<]+)</loc>#', get("$url/wp-sitemap-typedpress-docs-1.xml")['body'], $locs);
+preg_match_all('#<loc>([^<]+)</loc>#', get("$url/wp-sitemap-spacepress-docs-1.xml")['body'], $locs);
 $out['sitemap'] = array_map(static fn (string $u): ?string => parse_url($u, PHP_URL_PATH), $locs[1]);
 
 // What a visitor may not read stays unread, as a page, a twin, through %2F or in the sitemap: a
@@ -69,8 +69,8 @@ foreach (['/members', '/members/', '/Members', '/members.md', '/drafts/child', '
     $r = get("$url$path");
     $out['hidden'][$path] = [$r['status'], str_contains($r['body'], 'members-only text') || str_contains($r['body'], 'under a draft') || str_contains($r['body'], 'Every option')];
 }
-// An item under a segment WordPress or TypedPress owns has no URL.
-$auth = get_page_by_path('auth', OBJECT, \TypedPress\Wp\Runtime::plugin()->schema->collection('docs')['wp']['postType']);
+// An item under a segment WordPress or SpacePress owns has no URL.
+$auth = get_page_by_path('auth', OBJECT, \SpacePress\Wp\Runtime::plugin()->schema->collection('docs')['wp']['postType']);
 $out['reserved permalink'] = $auth instanceof WP_Post ? get_permalink($auth) : 'missing';
 // The same path as a Page: WordPress keeps its Page; the item at that path is not reached there.
 wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Getting started page', 'post_name' => 'getting-started', 'post_content' => 'The Page wins.']);
@@ -84,7 +84,7 @@ $out['bare'] = $page('/reference/config');
 $out['case'] = [get("$url/Reference/Config")['status'], get("$url/Reference/Config")['location']];
 // <Link> names no template for a path under the root kind's catch-all: WordPress may answer it (a
 // Page), so the router loads it rather than swap a region that isn't there. The app's own pages say theirs.
-$router = \TypedPress\Wp\AppRouter::instance();
+$router = \SpacePress\Wp\AppRouter::instance();
 $out['link templates'] = ['/about/' => $router?->templateFor('/about/'), '/reference/config' => $router?->templateFor('/reference/config'), '/playground' => $router?->templateFor('/playground')];
 $site->destroy();
 echo json_encode($out, JSON_UNESCAPED_SLASHES), "\n";

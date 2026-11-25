@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess;
 
 use Psr\Cache\CacheItemPoolInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfoExtractorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfoExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfoExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfoExtractorInterface;
 
 /**
  * A configurable builder to create a PropertyAccessor.

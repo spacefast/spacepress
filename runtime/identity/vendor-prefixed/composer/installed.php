@@ -1,7 +1,7 @@
 <?php return array (
   'root' => 
   array (
-    'name' => 'spacefast/typedpress-identity',
+    'name' => 'spacefast/spacepress-identity',
     'pretty_version' => '1.0.0+no-version-set',
     'version' => '1.0.0.0',
     'reference' => NULL,

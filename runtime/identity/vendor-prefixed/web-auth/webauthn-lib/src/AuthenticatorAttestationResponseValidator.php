@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn;
+namespace SpacePress\Identity\Vendor\Webauthn;
 
-use TypedPress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use TypedPress\Identity\Vendor\Psr\Log\LoggerInterface;
-use TypedPress\Identity\Vendor\Psr\Log\NullLogger;
+use SpacePress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use SpacePress\Identity\Vendor\Psr\Log\LoggerInterface;
+use SpacePress\Identity\Vendor\Psr\Log\NullLogger;
 use Throwable;
-use TypedPress\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManager;
-use TypedPress\Identity\Vendor\Webauthn\Event\AuthenticatorAttestationResponseValidationFailedEvent;
-use TypedPress\Identity\Vendor\Webauthn\Event\AuthenticatorAttestationResponseValidationSucceededEvent;
-use TypedPress\Identity\Vendor\Webauthn\Event\BackupEligibilityChangedEvent;
-use TypedPress\Identity\Vendor\Webauthn\Event\BackupStatusChangedEvent;
-use TypedPress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use TypedPress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use TypedPress\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
-use TypedPress\Identity\Vendor\Webauthn\MetadataService\CanLogData;
+use SpacePress\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManager;
+use SpacePress\Identity\Vendor\Webauthn\Event\AuthenticatorAttestationResponseValidationFailedEvent;
+use SpacePress\Identity\Vendor\Webauthn\Event\AuthenticatorAttestationResponseValidationSucceededEvent;
+use SpacePress\Identity\Vendor\Webauthn\Event\BackupEligibilityChangedEvent;
+use SpacePress\Identity\Vendor\Webauthn\Event\BackupStatusChangedEvent;
+use SpacePress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use SpacePress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use SpacePress\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use SpacePress\Identity\Vendor\Webauthn\MetadataService\CanLogData;
 
 class AuthenticatorAttestationResponseValidator implements CanLogData, CanDispatchEvents
 {

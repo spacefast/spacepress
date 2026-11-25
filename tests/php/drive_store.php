@@ -7,7 +7,7 @@ require __DIR__ . '/harness.php';
 
 $profile = null;
 $muPlugins = ['test-mail' => "<?php add_filter('pre_wp_mail', '__return_true');"];
-if ($destination = getenv('TP_DRIVE_PROFILE')) {
+if ($destination = getenv('SP_DRIVE_PROFILE')) {
     require __DIR__ . '/drive_store_profile.php';
     $profile = new DriveStoreProfile($destination);
     $muPlugins['drive-profile'] = DriveStoreProfile::PLUGIN;
@@ -88,8 +88,8 @@ function session(WpSite $site, string $who): string
 }
 
 $db = $site->app()->db;
-$admin = new \TypedPress\Viewer(['id' => $site->userId('admin'), 'name' => 'Admin', 'role' => 'admin']);
-$guest = new \TypedPress\Viewer(null);
+$admin = new \SpacePress\Viewer(['id' => $site->userId('admin'), 'name' => 'Admin', 'role' => 'admin']);
+$guest = new \SpacePress\Viewer(null);
 $catalog = $db->findMany('drives', ['orderBy' => ['slug' => 'asc']], $guest);
 eq('a fresh installation seeds the Markdown drives', array_column($catalog, 'slug'), [
     'crucial-p3-2tb', 'samsung-870-evo-1tb', 'seagate-exos-x16', 'wd-red-plus-4tb',
@@ -100,7 +100,7 @@ $slug = $drive['slug'];
 $path = "/drives/$slug/";
 $native = wc_get_product($id);
 check('the catalog row is a native Woo product', $native instanceof WC_Product_Simple);
-eq('typed capacity is stored on the Woo product', [(int) $native->get_meta('_tp_field_capacityGb'), $drive['capacityGb']], [16000, 16000]);
+eq('typed capacity is stored on the Woo product', [(int) $native->get_meta('_sp_field_capacityGb'), $drive['capacityGb']], [16000, 16000]);
 eq('money is an exact decimal string', $drive['price'], '139.00');
 eq('the public product masks its serial', $drive['serial'] ?? null, null);
 eq('staff can read the typed inventory serial', $db->findFirst('drives', ['where' => ['id' => $id]], $admin)['serial'], 'DEMO-SEAGATE-EXOS-X16');
@@ -137,14 +137,14 @@ check('the app source page still renders', str_contains(fetch("$url/source/")['b
 $staffCookie = session($site, 'admin');
 $staff = fetch("$url/staff/", headers: ["Cookie: $staffCookie"]);
 eq('admin can open the staff page', $staff['status'], 200);
-check('the staff page links to TypedPress Admin', str_contains($staff['body'], '/wp-admin/new/screens/shipping'));
+check('the staff page links to SpacePress Admin', str_contains($staff['body'], '/wp-admin/new/screens/shipping'));
 eq('editor cannot restock through the action', $site->call('POST', '/actions/restock', ['drive' => $id, 'quantity' => 2], as: 'editor')[0], 403);
 [$status, $restocked] = $site->call('POST', '/actions/restock', ['drive' => $id, 'quantity' => 2], as: 'admin');
 eq('restock action increments Woo inventory', [$status, $restocked['stock'] ?? null, wc_get_product($id)->get_stock_quantity()], [200, 2, 2]);
 
 $detail = fetch("$url$path");
 eq('native product URL renders', $detail['status'], 200);
-check('native product page shows specs and live stock', str_contains($detail['body'], 'SMART power-on hours') && str_contains($detail['body'], '2 in stock') && str_contains($detail['body'], 'data-tp-live'));
+check('native product page shows specs and live stock', str_contains($detail['body'], 'SMART power-on hours') && str_contains($detail['body'], '2 in stock') && str_contains($detail['body'], 'data-sp-live'));
 check('native product page shows the test date, category and tag', str_contains($detail['body'], '2026-10-02') && str_contains($detail['body'], 'NAS and server, Enterprise'));
 check('an available drive offers add to cart', str_contains($detail['body'], 'Add to cart'));
 check('the storefront does not print the inventory serial', !str_contains($detail['body'], 'DEMO-SEAGATE-EXOS-X16'));
@@ -219,7 +219,7 @@ eq('the restock action refuses a negative quantity before Woo sees it', $site->c
 
 // Scoped credentials over real HTTP: what an agent is offered matches what it may run.
 [$password, $item] = WP_Application_Passwords::create_new_application_password($site->userId('admin'), ['name' => 'Drive Store test agent']);
-$scope = static fn (array $scope) => \TypedPress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], $scope);
+$scope = static fn (array $scope) => \SpacePress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], $scope);
 $request = static function (string $path, ?array $body = null, array $headers = []) use ($url, $password): array {
     $ch = curl_init($url . $path);
     $answered = [];
@@ -252,7 +252,7 @@ $shown = static function (array $names) use ($orderAbilities, $openAbilities): a
     return $names;
 };
 $tools = static function () use ($mcp, $shown): array {
-    [$status, $list] = $mcp('typedpress-drive-store', 'tools/list', new stdClass());
+    [$status, $list] = $mcp('spacepress-drive-store', 'tools/list', new stdClass());
     // The adapter names a tool after its ability, with the slash as a hyphen.
     return [$status, array_map(static fn (string $name) => str_replace('drive-store/', 'drive-store-', $name), $shown(array_map(static fn (string $tool) => preg_replace('/^drive-store-/', 'drive-store/', $tool), array_column($list['result']['tools'] ?? [], 'name'))))];
 };

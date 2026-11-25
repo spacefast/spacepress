@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace SpacePress\Identity\Vendor\CBOR\Tag\TypedArray;
 
 /**
  * Tag 85: an array of IEEE 754 binary32 values, little endian.

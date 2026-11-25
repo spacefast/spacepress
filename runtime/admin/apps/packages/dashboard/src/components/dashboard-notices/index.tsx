@@ -21,10 +21,10 @@ export function DashboardNotice( {
 		<Notice
 			status={ status }
 			isDismissible={ false }
-			className="typedpress-admin-dashboard-notice"
+			className="spacepress-admin-dashboard-notice"
 		>
 			<Stack direction="column" gap="md">
-				<p className="typedpress-admin-dashboard-notice__message">
+				<p className="spacepress-admin-dashboard-notice__message">
 					{ message }
 				</p>
 				{ actions && actions.length > 0 && (
@@ -65,7 +65,7 @@ export default function DashboardNotices() {
 		<Stack
 			direction="column"
 			gap="md"
-			className="typedpress-admin-dashboard-notices"
+			className="spacepress-admin-dashboard-notices"
 		>
 			{ notices.map( ( notice ) => (
 				<DashboardNotice

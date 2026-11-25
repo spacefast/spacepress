@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Set;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Set;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
 
 /**
  * Implements *Attributes* ASN.1 type as a *SET OF Attribute*.

@@ -5,7 +5,7 @@ import type { Attachment, Post } from '@wordpress/core-data';
 import { __ } from '@wordpress/i18n';
 import { useSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
-import type { Field, DataViewRenderFieldProps } from '@typedpress-admin/dataviews';
+import type { Field, DataViewRenderFieldProps } from '@spacepress-admin/dataviews';
 import './style.scss';
 
 function FeaturedMixed({ item }: DataViewRenderFieldProps<Post>) {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Key;
+namespace SpacePress\Identity\Vendor\Cose\Key;
 
 use InvalidArgumentException;
 use function is_string;
@@ -15,7 +15,7 @@ use Throwable;
  *
  * RFC 9053, section 3.1 requires implementations to "validate that the key type, key length, and algorithm are
  * correct and appropriate for the entities involved". The key type and the byte string nature of `k` admit no
- * exception and are therefore applied by the algorithms themselves: TypedPress\Identity\Vendor\Cose\Algorithm\Mac\Hmac rejects a key that is
+ * exception and are therefore applied by the algorithms themselves: SpacePress\Identity\Vendor\Cose\Algorithm\Mac\Hmac rejects a key that is
  * not symmetric, whose `k` is missing, is not a PHP string, or is empty.
  *
  * The *minimum* key length is the policy choice, and it stays opt-in, exactly like the minimum modulus length of
@@ -34,7 +34,7 @@ final class SymmetricKeyValidator
      * The output length of SHA-256, in bytes: the shortest key RFC 2104, section 3 does not discourage for HS256 and
      * HS256/64, and the smallest of the three lengths the MAC algorithms of this library use.
      *
-     * TypedPress\Identity\Vendor\Cose\Algorithm\Mac\Hmac::minimumKeyLength() gives the value that matches a given algorithm (32, 48 or 64).
+     * SpacePress\Identity\Vendor\Cose\Algorithm\Mac\Hmac::minimumKeyLength() gives the value that matches a given algorithm (32, 48 or 64).
      */
     public const MINIMUM_KEY_LENGTH = 32;
 

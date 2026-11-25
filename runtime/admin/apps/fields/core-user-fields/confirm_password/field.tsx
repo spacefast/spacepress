@@ -1,6 +1,6 @@
 import { __ } from '@wordpress/i18n';
 import type { User } from '@wordpress/core-data';
-import type { Field } from '@typedpress-admin/dataviews';
+import type { Field } from '@spacepress-admin/dataviews';
 import {
 	estimatePasswordStrength,
 	PasswordStrengthLevel,
@@ -33,7 +33,7 @@ export const fieldExtensions: Partial< Field< User > > = {
 			) {
 				return __(
 					'You must confirm the use of a weak password.',
-					'typedpress-admin'
+					'spacepress-admin'
 				);
 			}
 

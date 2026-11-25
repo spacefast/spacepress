@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding;
 
 use function is_string;
 use function mb_strlen;

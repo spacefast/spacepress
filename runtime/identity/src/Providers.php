@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
-use TypedPress\Identity\Providers\OidcClient;
+use SpacePress\Identity\Providers\OidcClient;
 
 final class Providers
 {
@@ -14,21 +14,21 @@ final class Providers
         private Sessions $sessions,
     ) {}
     /**
-     * Google is the one built-in provider; sites add others through `tp_identity_providers`:
+     * Google is the one built-in provider; sites add others through `sp_identity_providers`:
      * `issuer`, `client_id`, `secret` (empty for a public client), optional `discovery` entries
      * that override the issuer's discovery document, and `alg` (`RS256` default, or `EdDSA`).
      */
     public static function config(): array
     {
         $providers = [];
-        if (defined("TP_IDENTITY_GOOGLE_CLIENT_ID")) {
+        if (defined("SP_IDENTITY_GOOGLE_CLIENT_ID")) {
             $providers["google"] = [
                 "issuer" => "https://accounts.google.com",
-                "client_id" => TP_IDENTITY_GOOGLE_CLIENT_ID,
-                "secret" => defined("TP_IDENTITY_GOOGLE_CLIENT_SECRET") ? TP_IDENTITY_GOOGLE_CLIENT_SECRET : "",
+                "client_id" => SP_IDENTITY_GOOGLE_CLIENT_ID,
+                "secret" => defined("SP_IDENTITY_GOOGLE_CLIENT_SECRET") ? SP_IDENTITY_GOOGLE_CLIENT_SECRET : "",
             ];
         }
-        return apply_filters("tp_identity_providers", $providers);
+        return apply_filters("sp_identity_providers", $providers);
     }
     public function client(string $name): OidcClient
     {

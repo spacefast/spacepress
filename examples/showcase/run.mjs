@@ -25,7 +25,7 @@ const example = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(example, "../..");
 const state = resolve(
   repo,
-  process.env.TP_SHOWCASE_STATE_DIR ?? ".tp/showcase",
+  process.env.SP_SHOWCASE_STATE_DIR ?? ".sp/showcase",
 );
 const app = join(state, "app");
 const harness = join(state, "harness/wp/harness.sh");
@@ -39,12 +39,12 @@ const known = existsSync(knownFile)
   : null;
 const command = process.argv[2] ?? "up";
 const project =
-  process.env.TP_SHOWCASE_PROJECT ??
+  process.env.SP_SHOWCASE_PROJECT ??
   known?.project ??
-  `typedpress-showcase-${createHash("sha256").update(state).digest("hex").slice(0, 8)}`;
-const port = process.env.TP_SHOWCASE_PORT ?? known?.port ?? "8860";
+  `spacepress-showcase-${createHash("sha256").update(state).digest("hex").slice(0, 8)}`;
+const port = process.env.SP_SHOWCASE_PORT ?? known?.port ?? "8860";
 const publicAddress = new URL(
-  process.env.TP_SHOWCASE_URL ??
+  process.env.SP_SHOWCASE_URL ??
     known?.publicUrl ??
     `http://127.0.0.1:${port}`,
 );
@@ -57,7 +57,7 @@ if (
   publicAddress.hash
 )
   throw new Error(
-    "TP_SHOWCASE_URL must be an HTTP(S) origin without a path or credentials.",
+    "SP_SHOWCASE_URL must be an HTTP(S) origin without a path or credentials.",
   );
 const publicUrl = publicAddress.origin;
 if (
@@ -77,13 +77,13 @@ if (known && (known.project !== project || known.port !== port)) {
 }
 const env = {
   ...process.env,
-  TP_WP_PROJECT: project,
-  TP_WP_PORT: port,
-  TP_WP_HARNESS: dirname(harness),
-  TP_WP_CONTENT: join(state, "wp-content"),
-  TP_WP_S3: "0",
-  TP_WP_UID: String(process.getuid()),
-  TP_WP_GID: String(process.getgid()),
+  SP_WP_PROJECT: project,
+  SP_WP_PORT: port,
+  SP_WP_HARNESS: dirname(harness),
+  SP_WP_CONTENT: join(state, "wp-content"),
+  SP_WP_S3: "0",
+  SP_WP_UID: String(process.getuid()),
+  SP_WP_GID: String(process.getgid()),
 };
 const run = (file, args, options = {}) =>
   execFileSync(file, args, { cwd: repo, env, stdio: "inherit", ...options });
@@ -95,8 +95,8 @@ const wp = (...args) =>
     encoding: "utf8",
   }).trim();
 
-const invocation = process.env.TP_SHOWCASE_STATE_DIR
-  ? `TP_SHOWCASE_STATE_DIR='${state.replaceAll("'", "'\\''")}' node examples/showcase/run.mjs`
+const invocation = process.env.SP_SHOWCASE_STATE_DIR
+  ? `SP_SHOWCASE_STATE_DIR='${state.replaceAll("'", "'\\''")}' node examples/showcase/run.mjs`
   : "node examples/showcase/run.mjs";
 
 function prerequisites(mode) {
@@ -155,7 +155,7 @@ function receipt() {
   const saved = JSON.parse(readFileSync(receiptFile, "utf8"));
   if (saved.project !== project || saved.port !== port)
     throw new Error(
-      "Use the same TP_SHOWCASE_PROJECT and TP_SHOWCASE_PORT as the running showcase.",
+      "Use the same SP_SHOWCASE_PROJECT and SP_SHOWCASE_PORT as the running showcase.",
     );
   return saved;
 }
@@ -245,7 +245,7 @@ function verifyOwnership() {
   }
   if (foreign.length)
     throw new Error(
-      `Refusing to change a Compose project with unverified resources:\n- ${foreign.join("\n- ")}\nUse a different TP_SHOWCASE_PROJECT and state directory. A saved receipt is not proof of Docker ownership; older unlabeled showcases require explicit manual inspection/cleanup.`,
+      `Refusing to change a Compose project with unverified resources:\n- ${foreign.join("\n- ")}\nUse a different SP_SHOWCASE_PROJECT and state directory. A saved receipt is not proof of Docker ownership; older unlabeled showcases require explicit manual inspection/cleanup.`,
     );
   return ownsPort;
 }
@@ -259,14 +259,14 @@ async function verifyPort(ownsPort) {
   ).trim();
   if (publishers)
     throw new Error(
-      `Cannot bind showcase port 127.0.0.1:${port}: already published by Docker (${publishers.replaceAll("\n", ", ")}). Choose another TP_SHOWCASE_PORT on a new state directory.`,
+      `Cannot bind showcase port 127.0.0.1:${port}: already published by Docker (${publishers.replaceAll("\n", ", ")}). Choose another SP_SHOWCASE_PORT on a new state directory.`,
     );
   await new Promise((resolve, reject) => {
     const server = createServer();
     server.once("error", (error) =>
       reject(
         new Error(
-          `Cannot bind showcase port 127.0.0.1:${port}: ${error.message}. Choose another TP_SHOWCASE_PORT on a new state directory.`,
+          `Cannot bind showcase port 127.0.0.1:${port}: ${error.message}. Choose another SP_SHOWCASE_PORT on a new state directory.`,
         ),
       ),
     );
@@ -283,11 +283,11 @@ async function clients(saved) {
   );
   return {
     publicClient: createClient({
-      url: `${saved.url}/wp-json/typedpress/v1`,
+      url: `${saved.url}/wp-json/spacepress/v1`,
       fetch: http,
     }),
     editor: createClient({
-      url: `${saved.url}/wp-json/typedpress/v1`,
+      url: `${saved.url}/wp-json/spacepress/v1`,
       fetch: http,
       headers: {
         authorization: `Basic ${Buffer.from(`editor:${saved.users.editor.appPassword}`).toString("base64")}`,
@@ -308,7 +308,7 @@ async function seedClassic(saved) {
   if (
     wp(
       "eval",
-      "echo get_option('tp_showcase_seeded', false) ? 'yes' : 'no';",
+      "echo get_option('sp_showcase_seeded', false) ? 'yes' : 'no';",
     ) === "yes"
   )
     return;
@@ -323,7 +323,7 @@ async function seedClassic(saved) {
   const first = await editor.stories.create({
     title: "Make room for the work that matters",
     status: "published",
-    body: "<p>This is a real WordPress post, created through TypedPress’s generated client. Open the native editor, change a sentence, and publish it.</p><p>The fields below the editor come from the same TypeScript config as the API.</p>",
+    body: "<p>This is a real WordPress post, created through SpacePress’s generated client. Open the native editor, change a sentence, and publish it.</p><p>The fields below the editor come from the same TypeScript config as the API.</p>",
     cover: cover.id,
     details: {
       subtitle:
@@ -331,7 +331,7 @@ async function seedClassic(saved) {
       featured: true,
     },
     links: [
-      { label: "TypedPress on GitHub", href: "https://github.com/spacefast/zero" },
+      { label: "SpacePress on GitHub", href: "https://github.com/spacefast/spacepress" },
     ],
     sections: [
       {
@@ -372,14 +372,14 @@ async function seedClassic(saved) {
       done,
       editorNote: "Only signed-in editors can read this note.",
     });
-  wp("option", "update", "tp_showcase_seeded", "1");
+  wp("option", "update", "sp_showcase_seeded", "1");
 }
 
 async function seedPantry(saved) {
   if (
     wp(
       "eval",
-      "echo get_option('tp_showcase_pantry_seeded', false) ? 'yes' : 'no';",
+      "echo get_option('sp_showcase_pantry_seeded', false) ? 'yes' : 'no';",
     ) === "yes"
   )
     return;
@@ -453,7 +453,7 @@ async function seedPantry(saved) {
     locationId: cupboard.id,
   });
   await editor.actions.restock({ itemId: coffee.id, amount: 3 });
-  wp("option", "update", "tp_showcase_pantry_seeded", "1");
+  wp("option", "update", "sp_showcase_pantry_seeded", "1");
 }
 
 async function seed(saved) {
@@ -466,7 +466,7 @@ async function seedPantryDetails(saved) {
   if (
     wp(
       "eval",
-      "echo get_option('tp_showcase_details_seeded', false) ? 'yes' : 'no';",
+      "echo get_option('sp_showcase_details_seeded', false) ? 'yes' : 'no';",
     ) === "yes"
   )
     return;
@@ -488,7 +488,7 @@ async function seedPantryDetails(saved) {
     links: [
       {
         label: "Edit the pantry",
-        href: `${saved.url}/wp-admin/admin.php?page=typedpress-showcase-pantry`,
+        href: `${saved.url}/wp-admin/admin.php?page=spacepress-showcase-pantry`,
       },
     ],
     sections: [
@@ -532,7 +532,7 @@ async function seedPantryDetails(saved) {
       locationId: location?.id ?? null,
       storyId: story.id,
     });
-  wp("option", "update", "tp_showcase_details_seeded", "1");
+  wp("option", "update", "sp_showcase_details_seeded", "1");
 }
 
 async function checkPantry(publicClient, editor, story) {
@@ -739,8 +739,8 @@ async function checkPantry(publicClient, editor, story) {
 async function check(saved) {
   const { publicClient, editor } = await clients(saved);
   assert.deepEqual(
-    await publicClient.actions.previewHeadline({ title: "  Hello, TypedPress!  " }),
-    { title: "Hello, TypedPress!", slug: "hello-typedpress", characters: 12 },
+    await publicClient.actions.previewHeadline({ title: "  Hello, SpacePress!  " }),
+    { title: "Hello, SpacePress!", slug: "hello-spacepress", characters: 12 },
   );
   let task, story, cover, anonymousTask, failure;
   try {
@@ -754,7 +754,7 @@ async function check(saved) {
     );
     const png = coverPng();
     cover = await editor.media.upload(new Blob([png], { type: "image/png" }), {
-      filename: "typedpress-smoke-check.png",
+      filename: "spacepress-smoke-check.png",
       alt: "Temporary showcase smoke check",
     });
     story = await editor.stories.create({
@@ -846,7 +846,7 @@ async function check(saved) {
       "HTTP derivative decodes to the configured dimensions",
     );
     const page = await http(
-      `${saved.url}/wp-content/plugins/typedpress-app-showcase/public/`,
+      `${saved.url}/wp-content/plugins/spacepress-app-showcase/public/`,
     );
     assert.equal(page.status, 200);
     console.log(
@@ -883,7 +883,7 @@ async function check(saved) {
 
 function show(saved) {
   console.log(
-    `\nShowcase: ${saved.url}/wp-content/plugins/typedpress-app-showcase/public/\nPantry:   ${saved.url}/wp-content/plugins/typedpress-app-showcase/public/#pantry\nAdmin:    ${saved.url}/wp-admin/new/\nWordPress: ${saved.url}/wp-admin/\nPlugins:   ${saved.url}/wp-admin/plugins.php\nSettings:  ${saved.url}/wp-admin/options-general.php\nLogin:     admin / typedpress-test-admin\nEditor:    editor / typedpress-test-editor\n\nCheck: ${invocation} check\nStop:  ${invocation} down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
+    `\nShowcase: ${saved.url}/wp-content/plugins/spacepress-app-showcase/public/\nPantry:   ${saved.url}/wp-content/plugins/spacepress-app-showcase/public/#pantry\nAdmin:    ${saved.url}/wp-admin/new/\nWordPress: ${saved.url}/wp-admin/\nPlugins:   ${saved.url}/wp-admin/plugins.php\nSettings:  ${saved.url}/wp-admin/options-general.php\nLogin:     admin / spacepress-test-admin\nEditor:    editor / spacepress-test-editor\n\nCheck: ${invocation} check\nStop:  ${invocation} down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
   );
 }
 
@@ -921,7 +921,7 @@ async function main() {
   mkdirSync(state, { recursive: true, mode: 0o700 });
   await stopControl(state);
   run("cargo", ["build", "--locked", "--quiet"]);
-  const first = resolve(repo, process.env.CARGO_TARGET_DIR ?? "target", "debug/typedpress");
+  const first = resolve(repo, process.env.CARGO_TARGET_DIR ?? "target", "debug/spacepress");
   mkdirSync(app, { recursive: true });
   const sourceFiles = readdirSync(example).filter((name) => name.endsWith(".ts"));
   const overridesFile = join(state, "source-overrides.json");
@@ -939,7 +939,7 @@ async function main() {
     cwd: join(example, "code-tools"),
   });
   run("node", [join(example, "code-tools/build.mjs"), join(app, "public")]);
-  copyFileSync(join(repo, "www/.build/compiler.wasm"), join(app, "public/typedpress.wasm"));
+  copyFileSync(join(repo, "www/.build/compiler.wasm"), join(app, "public/spacepress.wasm"));
   await buildApp({
     app,
     first,
@@ -950,7 +950,7 @@ async function main() {
   });
   const content = join(state, "wp-content");
   mkdirSync(content, { recursive: true });
-  const builtContent = join(app, "tp/dist/wp-content");
+  const builtContent = join(app, "sp/dist/wp-content");
   // Refresh generated files without deleting plugins installed through WordPress.
   run("rsync", ["-a", "--exclude=/plugins/", `${builtContent}/`, `${content}/`]);
   const builtPlugins = join(builtContent, "plugins");
@@ -964,11 +964,11 @@ async function main() {
       run("rsync", ["-a", "--delete", `${source}/`, `${destination}/`]);
     } else copyFileSync(source, destination);
   }
-  const classic = join(content, "plugins/typedpress-showcase-classic-admin");
+  const classic = join(content, "plugins/spacepress-showcase-classic-admin");
   mkdirSync(classic, { recursive: true });
   copyFileSync(
     join(example, "classic-admin.php"),
-    join(classic, "typedpress-showcase-classic-admin.php"),
+    join(classic, "spacepress-showcase-classic-admin.php"),
   );
   copyFileSync(join(example, "build-control.php"), join(classic, "build-control.php"));
   mkdirSync(join(state, "control"), { recursive: true, mode: 0o700 });
@@ -977,8 +977,8 @@ async function main() {
     "harness.sh",
     "compose.yml",
     "mu-plugins/capture-mail.php",
-    "php/zz-typedpress-tests.ini",
-    "apache/zz-typedpress-tests.conf",
+    "php/zz-spacepress-tests.ini",
+    "apache/zz-spacepress-tests.conf",
   ]) {
     const target = join(dirname(harness), file);
     mkdirSync(dirname(target), { recursive: true });
@@ -988,8 +988,8 @@ async function main() {
   writeFileSync(
     compose,
     readFileSync(compose, "utf8").replace(
-      '"${TP_WP_PORT:-8790}:80"',
-      '"127.0.0.1:${TP_WP_PORT:-8790}:80"',
+      '"${SP_WP_PORT:-8790}:80"',
+      '"127.0.0.1:${SP_WP_PORT:-8790}:80"',
     ),
   );
   // Resolve the existing harness configuration, then label every resource it creates.
@@ -1008,7 +1008,7 @@ async function main() {
     configuration.services[name].volumes.push({
       type: "bind",
       source: join(state, "control"),
-      target: "/var/run/typedpress-showcase",
+      target: "/var/run/spacepress-showcase",
       read_only: true,
     });
   writeFileSync(compose, JSON.stringify(configuration, null, 2));
@@ -1031,12 +1031,12 @@ async function main() {
   wp("option", "update", "siteurl", publicUrl);
   writeFileSync(receiptFile, JSON.stringify(saved, null, 2), { mode: 0o600 });
   chmodSync(receiptFile, 0o600);
-  wp("plugin", "activate", "typedpress-showcase-classic-admin");
-  wp("option", "update", "blogname", "TypedPress showcase");
+  wp("plugin", "activate", "spacepress-showcase-classic-admin");
+  wp("option", "update", "blogname", "SpacePress showcase");
   const controlEnv = Object.fromEntries(
     Object.entries(env).filter(
       ([name]) =>
-        name.startsWith("TP_WP_") ||
+        name.startsWith("SP_WP_") ||
         [
           "PATH",
           "HOME",

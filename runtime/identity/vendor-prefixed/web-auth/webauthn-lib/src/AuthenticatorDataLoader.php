@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn;
+namespace SpacePress\Identity\Vendor\Webauthn;
 
-use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
-use TypedPress\Identity\Vendor\CBOR\Decoder;
-use TypedPress\Identity\Vendor\CBOR\ListObject;
-use TypedPress\Identity\Vendor\CBOR\MapObject;
-use TypedPress\Identity\Vendor\CBOR\NegativeIntegerObject;
-use TypedPress\Identity\Vendor\CBOR\TextStringObject;
-use TypedPress\Identity\Vendor\CBOR\UnsignedIntegerObject;
+use SpacePress\Identity\Vendor\CBOR\ByteStringObject;
+use SpacePress\Identity\Vendor\CBOR\Decoder;
+use SpacePress\Identity\Vendor\CBOR\ListObject;
+use SpacePress\Identity\Vendor\CBOR\MapObject;
+use SpacePress\Identity\Vendor\CBOR\NegativeIntegerObject;
+use SpacePress\Identity\Vendor\CBOR\TextStringObject;
+use SpacePress\Identity\Vendor\CBOR\UnsignedIntegerObject;
 use function chr;
 use function ord;
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\Uuid;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensionLoader;
-use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensionLoader;
+use SpacePress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 final readonly class AuthenticatorDataLoader
 {

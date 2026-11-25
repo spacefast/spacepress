@@ -5,14 +5,14 @@ import { useMemo } from '@wordpress/element';
 import { __, _x, sprintf } from '@wordpress/i18n';
 import { useSelect } from '@wordpress/data';
 import { wrapIcon } from '../items';
-import { store as tpAdminStore } from '../../store';
+import { store as spAdminStore } from '../../store';
 
 type CommandCallbackArgs = { close: () => void };
 
 function useNavigateLoader() {
 	const navigate = useNavigate();
 	const items = useSelect(
-		( select ) => select( tpAdminStore ).getMenuItems(),
+		( select ) => select( spAdminStore ).getMenuItems(),
 		[]
 	);
 	// Include all items in the command palette.
@@ -55,16 +55,16 @@ function useNavigateLoader() {
 					const parentLabels = getParentLabels( item );
 
 					return {
-						name: `typedpress-admin/navigate-${ item.id }`,
+						name: `spacepress-admin/navigate-${ item.id }`,
 						label: sprintf(
 							/* translators: %s: Name of the navigation item with hierarchical path */
-							__( 'Go to %s', 'typedpress-admin' ),
+							__( 'Go to %s', 'spacepress-admin' ),
 							parentLabels.join(
 								' ' +
 									_x(
 										'›',
 										'Hierarchical separator for navigation items',
-										'typedpress-admin'
+										'spacepress-admin'
 									) +
 									' '
 							)
@@ -96,7 +96,7 @@ function useNavigateLoader() {
 
 export function useCommands() {
 	useCommandLoader( {
-		name: 'typedpress-admin/navigate',
+		name: 'spacepress-admin/navigate',
 		hook: useNavigateLoader,
 	} );
 	return null;

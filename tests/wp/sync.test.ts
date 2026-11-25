@@ -1,5 +1,5 @@
 // Content sync on real WordPress (design §5.3): uid meta on posts, the /sync routes over
-// /wp-json/typedpress/v1 with application passwords, Markdown bodies stored as Gutenberg blocks, reference
+// /wp-json/spacepress/v1 with application passwords, Markdown bodies stored as Gutenberg blocks, reference
 // uids, WordPress trash and restore, and a post created in the editor gaining a uid.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,7 +13,7 @@ import { api, core, harness, http, ok, problem, qs, run, sql, wp, wpTry, first }
 
 const here = dirname(fileURLToPath(import.meta.url));
 /** The binary run.sh built; honours CARGO_TARGET_DIR. */
-const tpBinary = () => `${process.env.CARGO_TARGET_DIR ?? join(here, "../../target")}/debug/typedpress`;
+const spBinary = () => `${process.env.CARGO_TARGET_DIR ?? join(here, "../../target")}/debug/spacepress`;
 
 const canon = (v: unknown): string => {
   if (v === null || typeof v !== "object") return JSON.stringify(v);
@@ -35,7 +35,7 @@ async function pull(collection: string): Promise<Map<string, any>> {
   }
 }
 
-/** The stored guide, trusted (WP-CLI `wp typedpress find`). */
+/** The stored guide, trusted (WP-CLI `wp spacepress find`). */
 const row = (id: number) => first("find", "guides", JSON.stringify({ where: { id } }))[0];
 
 const push = (record: unknown, expect: string) => http("POST", `${api}/sync/guides`, { as: "editor", body: { record, expect } });
@@ -46,7 +46,7 @@ test("sync on WordPress", async (t) => {
   const record = {
     uid: guideUid,
     fields: { title: `Guide ${run}`, slug: `guide-${run}`, summary: null, level: "intro", writerId: writer.uid, review: null, status: "draft", publishedAt: null },
-    body: `# Getting started\n\nInstall **TypedPress** and run [the CLI](https://example.test/cli).\n\n- build\n- sync\n`,
+    body: `# Getting started\n\nInstall **SpacePress** and run [the CLI](https://example.test/cli).\n\n- build\n- sync\n`,
   };
 
   await t.test("site id and uids", async () => {
@@ -54,12 +54,12 @@ test("sync on WordPress", async (t) => {
     assert.match(schema.site.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     assert.equal((await ok("GET", "")).site.id, schema.site.id);
     assert.match(writer.uid, /^zr_[0-9a-f]{20}$/);
-    const meta = sql(`SELECT meta_value FROM wp_postmeta WHERE post_id = ${writer.id} AND meta_key = '_tp_uid'`);
-    assert.deepEqual(meta, [{ meta_value: writer.uid }], "the uid lives in _tp_uid meta, not an SCF field");
+    const meta = sql(`SELECT meta_value FROM wp_postmeta WHERE post_id = ${writer.id} AND meta_key = '_sp_uid'`);
+    assert.deepEqual(meta, [{ meta_value: writer.uid }], "the uid lives in _sp_uid meta, not an SCF field");
     await problem("PATCH", `/writers/${writer.id}`, { as: "admin", body: { uid: uidOf(99) } }, { status: 422, code: "invalid_input", pointer: "/uid" });
     const hooked = first("insert", "guides", JSON.stringify({ title: `Hooked ${run}`, slug: `hooked-${run}` }))[0];
     await problem("PATCH", `/guides/${hooked.id}`, { as: "editor", body: { title: "steal uid" } }, { status: 422, code: "invalid_input", pointer: "/uid" });
-    assert.deepEqual(sql(`SELECT p.post_title, m.meta_value FROM wp_posts p JOIN wp_postmeta m ON m.post_id = p.ID AND m.meta_key = '_tp_uid' WHERE p.ID = ${hooked.id}`),
+    assert.deepEqual(sql(`SELECT p.post_title, m.meta_value FROM wp_posts p JOIN wp_postmeta m ON m.post_id = p.ID AND m.meta_key = '_sp_uid' WHERE p.ID = ${hooked.id}`),
       [{ post_title: `Hooked ${run}`, meta_value: hooked.uid }], "a hook's uid rewrite rolls back the post and its uid");
   });
 
@@ -70,8 +70,8 @@ test("sync on WordPress", async (t) => {
     created = r.json.data;
     assert.deepEqual([created.status, created.uid, created.digest], ["applied", guideUid, digest(record)]);
     const [post] = sql(`SELECT p.ID, p.post_status, p.post_content, m.meta_value AS writer FROM wp_posts p
-      JOIN wp_postmeta m ON m.post_id = p.ID AND m.meta_key = 'tp_writerId'
-      JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_tp_uid' AND u.meta_value = '${guideUid}'`);
+      JOIN wp_postmeta m ON m.post_id = p.ID AND m.meta_key = 'sp_writerId'
+      JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_sp_uid' AND u.meta_value = '${guideUid}'`);
     assert.equal(post.post_status, "draft");
     assert.equal(post.writer, String(writer.id));
     assert.match(post.post_content, /^<!-- wp:heading \{"level":1\} -->\\n<h1 class="wp-block-heading">Getting started<\/h1>/);
@@ -84,9 +84,9 @@ test("sync on WordPress", async (t) => {
   });
 
   await t.test("an editor's change in WordPress is pulled as Markdown and makes a stale push conflict", async () => {
-    const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_tp_uid' AND meta_value = '${guideUid}'`);
+    const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_sp_uid' AND meta_value = '${guideUid}'`);
     const blocks = `<!-- wp:heading -->\n<h2 class="wp-block-heading">Edited in WordPress</h2>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>By an <strong>editor</strong>.</p>\n<!-- /wp:paragraph -->`;
-    const saved = await http("POST", `${core}/tp_guides/${ID}`, { as: "editor", body: { content: blocks, title: `Guide ${run} (edited)` } });
+    const saved = await http("POST", `${core}/sp_guides/${ID}`, { as: "editor", body: { content: blocks, title: `Guide ${run} (edited)` } });
     assert.equal(saved.status, 200, JSON.stringify(saved.json));
     const item = (await pull("guides")).get(guideUid);
     assert.equal(item.record.body, "## Edited in WordPress\n\nBy an **editor**.\n");
@@ -99,14 +99,14 @@ test("sync on WordPress", async (t) => {
   });
 
   await t.test("blocks Markdown can't carry are refused by name, never dropped", async () => {
-    const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_tp_uid' AND meta_value = '${guideUid}'`);
+    const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_sp_uid' AND meta_value = '${guideUid}'`);
     const table = `<!-- wp:table -->\n<figure class="wp-block-table"><table><tbody><tr><td>a</td></tr></tbody></table></figure>\n<!-- /wp:table -->`;
-    await http("POST", `${core}/tp_guides/${ID}`, { as: "editor", body: { content: table } });
+    await http("POST", `${core}/sp_guides/${ID}`, { as: "editor", body: { content: table } });
     const item = (await pull("guides")).get(guideUid);
     assert.equal(item.refused, "not_representable");
     assert.match(item.message, /core\/table/);
     await problem("POST", "/sync/guides", { as: "editor", body: { record, expect: created.digest } }, { status: 409, code: "sync_stale", pointer: undefined });
-    await http("POST", `${core}/tp_guides/${ID}`, { as: "editor", body: { content: "<!-- wp:paragraph -->\n<p>Plain again.</p>\n<!-- /wp:paragraph -->" } });
+    await http("POST", `${core}/sp_guides/${ID}`, { as: "editor", body: { content: "<!-- wp:paragraph -->\n<p>Plain again.</p>\n<!-- /wp:paragraph -->" } });
     created = (await pull("guides")).get(guideUid);
     assert.equal(created.record.body, "Plain again.\n");
   });
@@ -116,11 +116,11 @@ test("sync on WordPress", async (t) => {
     // and other features use this seam) recording the uid it receives.
     const seen = JSON.parse(wp("eval", `
       $seen = 'not called';
-      \\TypedPress\\Wp\\Plugin::instance()->app();
-      \\TypedPress\\Extensions::onWritten(function (string $op, string $c, array $row) use (&$seen) { if ($c === 'guides') { $seen = $row['uid']; } });
+      \\SpacePress\\Wp\\Plugin::instance()->app();
+      \\SpacePress\\Extensions::onWritten(function (string $op, string $c, array $row) use (&$seen) { if ($c === 'guides') { $seen = $row['uid']; } });
       wp_set_current_user(get_user_by('login', 'editor')->ID);
-      $id = wp_insert_post(['post_type' => 'tp_guides', 'post_title' => 'Admin ${run}', 'post_status' => 'publish'], true);
-      echo wp_json_encode([$id, $seen, get_post_meta($id, '_tp_uid', true)]);
+      $id = wp_insert_post(['post_type' => 'sp_guides', 'post_title' => 'Admin ${run}', 'post_status' => 'publish'], true);
+      echo wp_json_encode([$id, $seen, get_post_meta($id, '_sp_uid', true)]);
     `));
     const [id, observed, stored] = seen;
     assert.match(stored, /^zr_[0-9a-f]{20}$/);
@@ -132,16 +132,16 @@ test("sync on WordPress", async (t) => {
     await problem("POST", "/sync/guides/trash", { as: "editor", body: { uid: guideUid, expect: "sha256:" + "0".repeat(64) } }, { status: 409, code: "sync_stale", pointer: undefined });
     const trashed = await ok("POST", "/sync/guides/trash", { as: "editor", body: { uid: guideUid, expect: created.digest } });
     assert.equal(trashed.status, "applied");
-    const [post] = sql(`SELECT p.post_status FROM wp_posts p JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_tp_uid' AND u.meta_value = '${guideUid}'`);
+    const [post] = sql(`SELECT p.post_status FROM wp_posts p JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_sp_uid' AND u.meta_value = '${guideUid}'`);
     assert.equal(post.post_status, "trash");
     assert.deepEqual((await pull("guides")).get(guideUid), { uid: guideUid, record: null, digest: null, trashed: true });
 
     const restored = await push(record, "absent");
     assert.equal(restored.status, 200, JSON.stringify(restored.json));
     assert.equal(restored.json.data.status, "applied");
-    const [back] = sql(`SELECT p.post_status FROM wp_posts p JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_tp_uid' AND u.meta_value = '${guideUid}'`);
+    const [back] = sql(`SELECT p.post_status FROM wp_posts p JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_sp_uid' AND u.meta_value = '${guideUid}'`);
     assert.equal(back.post_status, "draft", "restored in place, as the pushed draft");
-    assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_postmeta WHERE meta_key = '_tp_uid' AND meta_value = '${guideUid}'`)[0].n, "1");
+    assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_postmeta WHERE meta_key = '_sp_uid' AND meta_value = '${guideUid}'`)[0].n, "1");
     assert.deepEqual((await pull("guides")).get(guideUid).record, record);
   });
 
@@ -152,7 +152,7 @@ test("sync on WordPress", async (t) => {
     // Publishing stamps publishedAt: the stored record is what a pull shows.
     const stored = (await pull("guides")).get(kept.uid);
     const keptDigest = stored.digest;
-    const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_tp_uid' AND meta_value = '${kept.uid}'`);
+    const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_sp_uid' AND meta_value = '${kept.uid}'`);
     const id = Number(ID);
     // Rows that depend on it (onDelete: cascade), a revision, and a published row's update hook.
     first("insert", "guide_notes", JSON.stringify({ guideId: id, note: `depends on ${run}` }));
@@ -230,7 +230,7 @@ test("sync on WordPress", async (t) => {
     // Publishing stamps publishedAt: the record as stored is what a pull shows.
     const published = (await pull("guides")).get(regret.uid);
     await problem("POST", "/sync/guides/trash", { as: "editor", body: { uid: regret.uid, expect: published.digest } }, { status: 409, code: "regretted", pointer: undefined });
-    const [post] = sql(`SELECT p.post_status FROM wp_posts p JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_tp_uid' AND u.meta_value = '${regret.uid}'`);
+    const [post] = sql(`SELECT p.post_status FROM wp_posts p JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_sp_uid' AND u.meta_value = '${regret.uid}'`);
     assert.equal(post.post_status, "publish");
     assert.deepEqual((await pull("guides")).get(regret.uid), published, "the cached read is the restored post too");
   });
@@ -247,17 +247,17 @@ test("sync on WordPress", async (t) => {
     // Two connections, interleaved deterministically: the request reads (its REPEATABLE READ snapshot),
     // then another connection commits, then the request writes.
     const result = JSON.parse(wp("eval", `
-      $app = \\TypedPress\\Wp\\Plugin::instance()->app();
+      $app = \\SpacePress\\Wp\\Plugin::instance()->app();
       $db = $app->db;
       $other = new mysqli(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME);
       $id = $db->insert('guides', ['title' => 'Race ${run}', 'slug' => 'race-${run}'], true)[0]['id'];
       $uid = $db->findFirst('guides', ['where' => ['id' => $id]])['uid'];
-      $item = fn () => \\TypedPress\\Sync\\Wire::encode('guides', [$db->findFirst('guides', ['where' => ['id' => $id]])])[0];
+      $item = fn () => \\SpacePress\\Sync\\Wire::encode('guides', [$db->findFirst('guides', ['where' => ['id' => $id]])])[0];
       $seen = $item();
       $record = $seen['record'];
       $record['fields']['summary'] = 'ours';
       wp_set_current_user(get_user_by('login', 'editor')->ID);
-      $viewer = new \\TypedPress\\Viewer(\\TypedPress\\Wp\\WpAuth::current(), 'wp');
+      $viewer = new \\SpacePress\\Viewer(\\SpacePress\\Wp\\WpAuth::current(), 'wp');
       $status = $db->transaction(function () use ($app, $db, $other, $id, $record, $seen, $viewer) {
         $db->findFirst('guides', ['where' => ['id' => $id]]);
         $other->query("UPDATE {$GLOBALS['wpdb']->posts} SET post_title = 'Theirs' WHERE ID = $id");
@@ -275,10 +275,10 @@ test("sync on WordPress", async (t) => {
         return [$response->status, array_key_exists('current', json_decode($response->body, true))];
       });
       // A trashed post restored by a push whose snapshot is outdated stays in the trash.
-      $db->transaction(fn () => \\TypedPress\\Sync\\Trash::trash('guides', $db->schema()->collection('guides'), $db->editorRow('guides', $id), $viewer));
+      $db->transaction(fn () => \\SpacePress\\Sync\\Trash::trash('guides', $db->schema()->collection('guides'), $db->editorRow('guides', $id), $viewer));
       $restore = $db->transaction(function () use ($app, $db, $other, $id, $record, $viewer) {
         $db->findFirst('guides', ['where' => ['id' => $id]]);
-        $other->query("INSERT INTO {$GLOBALS['wpdb']->postmeta} (post_id, meta_key, meta_value) VALUES ($id, 'tp_summary', 'later')");
+        $other->query("INSERT INTO {$GLOBALS['wpdb']->postmeta} (post_id, meta_key, meta_value) VALUES ($id, 'sp_summary', 'later')");
         return $app->dispatch('POST', '/sync/guides', [], wp_json_encode(['record' => $record, 'expect' => 'absent']), $viewer)->status;
       });
       clean_post_cache($id);
@@ -287,22 +287,22 @@ test("sync on WordPress", async (t) => {
       // anything (its actions run outside the transaction's reach).
       $untrashed = 0;
       add_action('untrash_post', function () use (&$untrashed) { $untrashed++; });
-      $author = new \\TypedPress\\Viewer(\\TypedPress\\Wp\\WpAuth::map(get_user_by('login', 'author')), 'wp');
+      $author = new \\SpacePress\\Viewer(\\SpacePress\\Wp\\WpAuth::map(get_user_by('login', 'author')), 'wp');
       try {
         $db->transaction(fn () => $app->dispatch('POST', '/sync/guides', [], wp_json_encode(['record' => $record, 'expect' => 'absent']), $author));
         $refused = 'allowed';
-      } catch (\\TypedPress\\HttpError $e) {
+      } catch (\\SpacePress\\HttpError $e) {
         $refused = $e->status;
       }
       $untrashedByPush = $untrashed;
       wp_untrash_post($id);
 
-      delete_post_meta($id, '_tp_uid');
+      delete_post_meta($id, '_sp_uid');
       $stale = $db->findMany('guides', ['where' => ['id' => $id]]);
       $assigned = 'zr_' . str_repeat('e', 20);
-      $other->query("INSERT INTO {$GLOBALS['wpdb']->postmeta} (post_id, meta_key, meta_value) VALUES ($id, '_tp_uid', '$assigned')");
-      $kept = $db->transaction(fn () => \\TypedPress\\Sync\\Module::ensureUids('guides', $stale)[0]['uid']);
-      echo wp_json_encode([...$status, $title, ...$mismatch, $restore, $statusAfter, $refused, $untrashedByPush, $kept, get_post_meta($id, '_tp_uid')]);
+      $other->query("INSERT INTO {$GLOBALS['wpdb']->postmeta} (post_id, meta_key, meta_value) VALUES ($id, '_sp_uid', '$assigned')");
+      $kept = $db->transaction(fn () => \\SpacePress\\Sync\\Module::ensureUids('guides', $stale)[0]['uid']);
+      echo wp_json_encode([...$status, $title, ...$mismatch, $restore, $statusAfter, $refused, $untrashedByPush, $kept, get_post_meta($id, '_sp_uid')]);
     `));
     assert.deepEqual(result, [409, false, "Theirs", 409, false, 409, "trash", 403, 0, "zr_" + "e".repeat(20), ["zr_" + "e".repeat(20)]],
       "stale without an outdated current (also for a mismatched expect), their title kept, the stale restore left in the trash, an unauthorized restore refused before WordPress untrashes, their uid kept");
@@ -323,10 +323,10 @@ test("sync on WordPress", async (t) => {
   await t.test("sync operations are WordPress Abilities that run through the same routes", async () => {
     const names = first("abilities").map((a: any) => a.name).filter((n: string) => n.startsWith("blog/guides-sync-")).sort();
     assert.deepEqual(names, ["blog/guides-sync-apply", "blog/guides-sync-read", "blog/guides-sync-trash"]);
-    const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_tp_uid' AND meta_value = '${guideUid}'`);
-    const read = JSON.parse(wp("typedpress", "run", "blog/guides-sync-read", `--input=${JSON.stringify({ after: Number(ID) - 1, first: 1 })}`, "--user=editor")).data;
+    const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_sp_uid' AND meta_value = '${guideUid}'`);
+    const read = JSON.parse(wp("spacepress", "run", "blog/guides-sync-read", `--input=${JSON.stringify({ after: Number(ID) - 1, first: 1 })}`, "--user=editor")).data;
     assert.deepEqual(read.records, [(await pull("guides")).get(guideUid)]);
-    const denied = JSON.parse(wpTry("typedpress", "run", "blog/guides-sync-read", "--input={}", "--user=author"));
+    const denied = JSON.parse(wpTry("spacepress", "run", "blog/guides-sync-read", "--input={}", "--user=author"));
     assert.ok("error" in denied, JSON.stringify(denied));
   });
 
@@ -388,18 +388,18 @@ test("sync on WordPress", async (t) => {
   });
 });
 
-// The `typedpress sync` CLI against this WordPress (design §5.8): pull posts into Markdown files, push a local
+// The `spacepress sync` CLI against this WordPress (design §5.8): pull posts into Markdown files, push a local
 // edit, let an editor edit in WordPress, then merge a non-conflicting edit and write a conflict file for
 // a conflicting one. A wp-admin trash removes the file on the next run.
 // Only `guides` is synced into this project: other lanes' fragments may add synced collections too.
-test("typedpress sync against WordPress", async (t) => {
-  const project = mkdtempSync(join(tmpdir(), "typedpress-wp-sync-"));
+test("spacepress sync against WordPress", async (t) => {
+  const project = mkdtempSync(join(tmpdir(), "spacepress-wp-sync-"));
   // The sync directories come from the site's /_schema; the project is just a directory of files.
   const writer = first("insert", "writers", JSON.stringify({ name: `CLI writer ${run}` }))[0];
   const slug = `cli-${run}`;
   const created = first("insert", "guides", JSON.stringify({ title: `CLI ${run}`, slug, summary: "From WordPress", level: "intro", writerId: writer.id,
     body: "<!-- wp:paragraph -->\n<p>First paragraph.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Second paragraph.</p>\n<!-- /wp:paragraph -->" }))[0];
-  const sync = (...args: string[]) => spawnSync(tpBinary(), ["sync", ...args, project, "--only", "guides", "--site", harness.url, "--no-commit", "--json"], { encoding: "utf8", env: { ...process.env, TP_APP_PASSWORD: `editor:${harness.users.editor.appPassword}` } });
+  const sync = (...args: string[]) => spawnSync(spBinary(), ["sync", ...args, project, "--only", "guides", "--site", harness.url, "--no-commit", "--json"], { encoding: "utf8", env: { ...process.env, SP_APP_PASSWORD: `editor:${harness.users.editor.appPassword}` } });
   const file = join(project, `content/guides/${slug}.md`);
   const row = () => first("find", "guides", JSON.stringify({ where: { id: created.id } }))[0];
 
@@ -421,7 +421,7 @@ test("typedpress sync against WordPress", async (t) => {
 
   await t.test("3 + 4. an editor edits the post: other fields merge, the same field conflicts", async () => {
     // The editor changes the summary in WordPress; the file changes the level. Different fields merge.
-    const saved = await http("POST", `${core}/tp_guides/${created.id}`, { as: "editor", body: { acf: { tp_summary: "Edited in WordPress" } } });
+    const saved = await http("POST", `${core}/sp_guides/${created.id}`, { as: "editor", body: { acf: { sp_summary: "Edited in WordPress" } } });
     assert.equal(saved.status, 200, JSON.stringify(saved.json));
     writeFileSync(file, readFileSync(file, "utf8").replace("level: intro", "level: advanced"));
     const merged = sync();
@@ -431,7 +431,7 @@ test("typedpress sync against WordPress", async (t) => {
 
     // Both edit the body, in different paragraphs: the site merges the lines and both edits survive.
     const blocks = row().body.replace("First paragraph.", "First paragraph, edited in WordPress.");
-    const edited = await http("POST", `${core}/tp_guides/${created.id}`, { as: "editor", body: { content: blocks } });
+    const edited = await http("POST", `${core}/sp_guides/${created.id}`, { as: "editor", body: { content: blocks } });
     assert.equal(edited.status, 200, JSON.stringify(edited.json));
     writeFileSync(file, readFileSync(file, "utf8").replace("## A new heading", "## A new heading, from the file"));
     const bodies = sync();
@@ -440,13 +440,13 @@ test("typedpress sync against WordPress", async (t) => {
     assert.match(readFileSync(file, "utf8"), /First paragraph, edited in WordPress\.[\s\S]*## A new heading, from the file/);
 
     // Both change the title: a conflict file, and neither side is touched.
-    const titled = await http("POST", `${core}/tp_guides/${created.id}`, { as: "editor", body: { title: "Title from WordPress" } });
+    const titled = await http("POST", `${core}/sp_guides/${created.id}`, { as: "editor", body: { title: "Title from WordPress" } });
     assert.equal(titled.status, 200);
     writeFileSync(file, readFileSync(file, "utf8").replace(`title: CLI ${run}`, "title: Title from the file"));
     const conflicted = sync();
     assert.equal(conflicted.status, 0, conflicted.stdout + conflicted.stderr);
     assert.equal(JSON.parse(conflicted.stdout).data.conflicts.length, 1);
-    const conflict = readFileSync(join(project, `.tp/conflicts/${created.uid}.md`), "utf8");
+    const conflict = readFileSync(join(project, `.sp/conflicts/${created.uid}.md`), "utf8");
     assert.match(conflict, /# Fields: \/fields\/title\n[\s\S]*<<<<<<< files\n[\s\S]*title: Title from the file[\s\S]*\|\|\|\|\|\|\| base\n[\s\S]*=======\n[\s\S]*title: Title from WordPress[\s\S]*>>>>>>> wordpress\n/);
     assert.equal(row().title, "Title from WordPress");
     assert.match(readFileSync(file, "utf8"), /title: Title from the file/);
@@ -454,7 +454,7 @@ test("typedpress sync against WordPress", async (t) => {
   });
 
   await t.test("resolve applies the edited conflict file to WordPress and the file", () => {
-    const path = join(project, `.tp/conflicts/${created.uid}.md`);
+    const path = join(project, `.sp/conflicts/${created.uid}.md`);
     const conflict = readFileSync(path, "utf8");
     const header = conflict.split("\n").filter((l) => l.startsWith("#")).join("\n") + "\n";
     const theirs = conflict.split("=======\n")[1].split(">>>>>>> wordpress")[0].replace("title: Title from WordPress", "title: Agreed title");

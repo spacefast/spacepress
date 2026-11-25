@@ -1,14 +1,14 @@
 <?php
 /**
- * Adding support for i18n of script modules in TypedPress Admin
+ * Adding support for i18n of script modules in SpacePress Admin
  *
- * @package TypedPressAdmin
+ * @package SpacePressAdmin
  */
 
 /**
  * Prints the import map with translations and scopes.
  */
-function tp_admin_print_import_map() {
+function sp_admin_print_import_map() {
 	// Too many useful methods in `WP_Script_Modules` are private, we need to work around that.
 	$script_modules        = wp_script_modules();
 	$reflection            = new ReflectionClass( $script_modules );
@@ -25,10 +25,10 @@ function tp_admin_print_import_map() {
 	foreach ( $import_map['imports'] as $module_id => $module_url ) {
 		// Register a dummy script with the module's relative path as src.
 		// phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion
-		wp_register_script( 'typedpress-admin-translations', $module_url, array(), null, false );
+		wp_register_script( 'spacepress-admin-translations', $module_url, array(), null, false );
 
 		// Set script translations for this module.
-		wp_set_script_translations( 'typedpress-admin-translations', 'typedpress-admin', plugin_dir_path( __FILE__ ) . 'languages' );
+		wp_set_script_translations( 'spacepress-admin-translations', 'spacepress-admin', plugin_dir_path( __FILE__ ) . 'languages' );
 
 		// Intercept loading the translations for this module. The module relative path will be used to find the right JSON chunk file.
 		$intercept_translation_file = function ( $translations, $file ) use ( &$translation_files, $module_url ) {
@@ -39,11 +39,11 @@ function tp_admin_print_import_map() {
 		};
 
 		add_filter( 'load_script_translations', $intercept_translation_file, 10, 2 );
-		wp_scripts()->print_translations( 'typedpress-admin-translations' );
+		wp_scripts()->print_translations( 'spacepress-admin-translations' );
 		remove_filter( 'load_script_translations', $intercept_translation_file );
 
 		// Deregister the dummy script.
-		wp_deregister_script( 'typedpress-admin-translations' );
+		wp_deregister_script( 'spacepress-admin-translations' );
 	}
 
 	// Initialize scopes if it doesn't exist.
@@ -62,9 +62,9 @@ function tp_admin_print_import_map() {
 		// Create the JavaScript code for loading translations.
 		$translation_code = <<<JS
 import translations from '$file_url' with { type: 'json' };
-const localeData = translations.locale_data['typedpress-admin'] || translations.locale_data.messages;
-localeData[''].domain = 'typedpress-admin';
-wp.i18n.setLocaleData( localeData, 'typedpress-admin' );
+const localeData = translations.locale_data['spacepress-admin'] || translations.locale_data.messages;
+localeData[''].domain = 'spacepress-admin';
+wp.i18n.setLocaleData( localeData, 'spacepress-admin' );
 JS;
 
 		// Create a data URL with the translation loading code.

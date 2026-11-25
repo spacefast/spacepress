@@ -1,11 +1,11 @@
 import { renderHook } from '@testing-library/react';
 import { useSelect, useDispatch } from '@wordpress/data';
-import type { DashboardWidget } from '@typedpress-admin/dashboard';
+import type { DashboardWidget } from '@spacepress-admin/dashboard';
 import { useDashboardLayout } from '../hooks';
 
 jest.mock( '@wordpress/data' );
-jest.mock( '@typedpress-admin/boot', () => ( {
-	store: 'core/typedpress-admin',
+jest.mock( '@spacepress-admin/boot', () => ( {
+	store: 'core/spacepress-admin',
 } ) );
 
 jest.mock( '@wordpress/preferences', () => ( {

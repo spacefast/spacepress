@@ -1,20 +1,20 @@
-// TypedPress typed client: React hooks for a React frontend that runs outside TypedPress (Next.js, TanStack
-// Start, an Astro island, Vite). `typedpress build` copies this file next to `index.ts` in
-// `tp/_generated/client/`. Do not edit the copy.
+// SpacePress typed client: React hooks for a React frontend that runs outside SpacePress (Next.js, TanStack
+// Start, an Astro island, Vite). `spacepress build` copies this file next to `index.ts` in
+// `sp/_generated/client/`. Do not edit the copy.
 //
 // It imports nothing from "react": you pass your React to `createHooks`, so a project that never
 // imports this file needs no React, and the hooks use whichever React the app already bundles.
 //
 //   import * as React from "react";
-//   import { createClient } from "./tp/_generated/client/index.ts";
-//   import { createHooks } from "./tp/_generated/client/react.ts";
+//   import { createClient } from "./sp/_generated/client/index.ts";
+//   import { createHooks } from "./sp/_generated/client/react.ts";
 //
 //   export const first = createClient();
 //   export const { useQuery, useMutation } = createHooks(React);
 //
-// TypedPress's own pages (`tp/app/`) never run React; they keep data live with `<Live>` and `useLive`.
+// SpacePress's own pages (`sp/app/`) never run React; they keep data live with `<Live>` and `useLive`.
 
-import type { TypedPressError, Query } from "./index.ts";
+import type { SpacePressError, Query } from "./index.ts";
 
 /** The parts of React the hooks use (React 18 and later, Preact through `preact/compat`). */
 export interface ReactLike {
@@ -35,7 +35,7 @@ export interface QueryState<T> {
    */
   data: T | undefined;
   /** The problem of the last refresh, if it failed: a refused read (401, 403, 404) or the network. */
-  error: TypedPressError | undefined;
+  error: SpacePressError | undefined;
   /** True until the first answer or error. */
   loading: boolean;
 }
@@ -43,7 +43,7 @@ export interface QueryState<T> {
 export interface UseQueryOptions<T> {
   /** `false` subscribes to nothing and returns `{ data: undefined, loading: false }`. */
   enabled?: boolean;
-  /** An answer rendered on the server (`TypedPress\Live\Module::evaluate`): shown at once, and during server rendering. */
+  /** An answer rendered on the server (`SpacePress\Live\Module::evaluate`): shown at once, and during server rendering. */
   seed?: { token: string; data: T };
 }
 

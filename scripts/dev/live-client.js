@@ -1,4 +1,4 @@
-// typedpress dev's reload client. It reads live.json, which `typedpress dev` rewrites beside this script,
+// spacepress dev's reload client. It reads live.json, which `spacepress dev` rewrites beside this script,
 // from the site's own origin: the page reloads when a build changed the site, and a failed build's
 // errors are shown over the page until a build succeeds.
 (() => {
@@ -12,10 +12,10 @@
   const rendered = source.searchParams.get('build');
   let loaded = rendered;
   // One small static file from Studio, a few times a second while the tab is shown; less often
-  // while the site does not answer or no `typedpress dev` is watching.
+  // while the site does not answer or no `spacepress dev` is watching.
   const QUICK = 250;
   const SLOW = 3000;
-  const RELOADED = 'typedpress-dev-reloaded';
+  const RELOADED = 'spacepress-dev-reloaded';
   let overlay;
   let shown = '';
   let dismissed = '';
@@ -37,7 +37,7 @@
     if (!key || key === dismissed) return;
     dismissed = '';
 
-    overlay = document.createElement('typedpress-dev-error');
+    overlay = document.createElement('spacepress-dev-error');
     const root = overlay.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
     style.textContent = `
@@ -60,7 +60,7 @@
     panel.setAttribute('role', 'alert');
     const top = document.createElement('header');
     const heading = document.createElement('h1');
-    heading.textContent = 'TypedPress build failed';
+    heading.textContent = 'SpacePress build failed';
     const close = document.createElement('button');
     close.type = 'button';
     close.textContent = 'Dismiss';

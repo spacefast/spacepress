@@ -1,0 +1,226 @@
+<?php
+
+declare(strict_types=1);
+
+/*
+ * A site deployed before the rename, upgraded by copying in this checkout's plugins (SpacePress\Wp\
+ * BrandUpgrade), on WordPress on SQLite. The site is real: brand_upgrade/legacy-site.php builds it
+ * with the runtime, identity and harness of LEGACY_COMMIT, the last commit with the old names, and
+ * gives it data through that runtime. Then this checkout's plugins load on it, and everything it
+ * stored is checked under the current names: the same rows, ids, hashes and history, and nothing of
+ * another plugin's touched. A second load changes nothing.
+ *
+ * Needs git and the commit in the checkout's history (CI checks out the full history for this suite).
+ */
+
+require __DIR__ . '/wp.php';
+require __DIR__ . '/harness.php';
+
+const LEGACY_COMMIT = '45d81e72857beb2d2f6b6c15bc3d749ead96baf2';
+
+$before = require __DIR__ . '/brand_upgrade/legacy.php';
+
+$schema = require dirname(__DIR__) . '/fixtures/blog/schema.php';
+$schema['collections']['comments']['revisions'] = true;
+// Runtime schema changes on (`runtimeSchema: true`): the site adds a field of its own.
+$schema['runtimeSchema'] = ['version' => 0, 'hash' => ''];
+// A custom-table child of a custom table, so the site has a foreign key between two of its tables.
+$schema['collections']['replies'] = ['key' => 'replies', 'editor' => false, 'table' => 'sp_replies', 'primaryKey' => 'id', 'revisions' => false, 'softDelete' => false,
+    'uid' => false, 'columns' => ['id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+        'commentId' => ['type' => 'integer', 'notNull' => true, 'references' => ['collection' => 'comments', 'column' => 'id', 'onDelete' => 'cascade']],
+        'body' => ['type' => 'text', 'notNull' => true]],
+    'access' => array_fill_keys(['read', 'create', 'update', 'delete'], ['role' => 'editor'])];
+// The earlier harness gave the site its keys under the earlier name; the site keeps them.
+$site = json_decode((string) file_get_contents("{$before['dir']}/site.json"), true, 512, JSON_THROW_ON_ERROR);
+file_put_contents("{$before['dir']}/site.json", json_encode(['salts' => 'typedpress-test-'] + $site, JSON_THROW_ON_ERROR));
+$wp = WpSite::adopt($before['dir'], ['schema' => $schema, 'identity' => true, 'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php')],
+    ['typedpress-app-blog', 'typedpress-identity', 'typedpress-runtime']);
+
+global $wpdb;
+$p = $wpdb->prefix;
+$tables = static fn (string $like): array => array_column($wp->sql("SELECT name AS n FROM sqlite_master WHERE type = 'table' AND name LIKE ? ORDER BY name", [$like]), 'n');
+$state = static function () use ($wp, $p, $tables): array {
+    return [
+        'tables' => $tables("{$p}%"),
+        'options' => $wp->sql("SELECT option_name AS n, option_value AS v FROM `{$p}options` WHERE option_name NOT LIKE '\\_transient%' AND option_name NOT IN ('cron', 'sp_installed') ORDER BY option_name"),
+        'postmeta' => $wp->sql("SELECT post_id, meta_key, meta_value FROM `{$p}postmeta` ORDER BY meta_id"),
+        'usermeta' => $wp->sql("SELECT user_id, meta_key, meta_value FROM `{$p}usermeta` WHERE meta_key NOT LIKE '%session_tokens' ORDER BY umeta_id"),
+        'posts' => $wp->sql("SELECT ID, post_type, post_status, post_name FROM `{$p}posts` ORDER BY ID"),
+        'ledger' => $wp->sql("SELECT * FROM `{$p}sp__migrations` ORDER BY `id`"),
+        'revisions' => $wp->sql("SELECT * FROM `{$p}sp__revisions` ORDER BY `id`"),
+        'jobs' => $wp->sql("SELECT `id`, `job`, `state`, `runAt` FROM `{$p}sp__jobs` ORDER BY `id`"),
+        'scheduler' => $wp->sql("SELECT a.`action_id`, a.`hook`, a.`status`, a.`scheduled_date_gmt`, g.`slug` FROM `{$p}actionscheduler_actions` a JOIN `{$p}actionscheduler_groups` g ON g.`group_id` = a.`group_id` ORDER BY a.`action_id`"),
+        'groups' => $wp->sql("SELECT `group_id`, `slug` FROM `{$p}actionscheduler_groups` ORDER BY `group_id`"),
+    ];
+};
+
+$legacy = 'typedpress';
+$after = $state();
+// The one stored value that keeps the earlier name on purpose (the S3 key prefix of objects already
+// stored), and the look-alikes this test planted for other plugins and the site's owner.
+// WordPress caches absolute theme paths. The existing site's directory keeps its original name.
+$fixtureDirectory = basename($before['dir']);
+$hasLegacy = static fn (array $rows): array => array_values(array_filter(array_map(
+    static fn (array $row): string => str_replace($fixtureDirectory, '<site>', json_encode($row, JSON_THROW_ON_ERROR)), $rows), static fn (string $r): bool => !str_contains($r, '"sp_upload_keys"')
+    && !preg_match('/tp_(unrelated|prebuilt_other|global_other)|typedpress-home-owner|not the app/', $r)
+    && (str_contains($r, $legacy) || preg_match('/(?<![a-z0-9])_?tp_/', $r) === 1)));
+
+check('the upgrade is recorded', BrandUpgrade_done());
+eq('no table keeps the earlier name', $tables("{$p}tp%"), []);
+eq('every table moved under the current name', count($tables("{$p}sp%")), count($before['tables']));
+eq('the ledger keeps every applied file and its SHA-256', array_map(static fn (array $r): array => [$r['app'], $r['id'], $r['kind'], $r['sql']], array_values(array_filter($after['ledger'], static fn (array $r): bool => $r['kind'] === 'schema'))),
+    array_map(static fn (array $r): array => [$r['app'], $r['id'], $r['kind'], $r['sql']], $before['ledger']));
+$audit = array_values(array_filter($after['ledger'], static fn (array $r): bool => $r['kind'] === 'data'));
+eq('… and gains one data row per app saying what moved', [count($audit), $audit[0]['id'] ?? null, $audit[0]['actor'] ?? null], [1, 'brand-upgrade-v1', 'spacepress']);
+eq('the revisions keep their chain', array_map(static fn (array $r): array => [$r['collection'], $r['pk'], (int) $r['version'], $r['op']], $after['revisions']),
+    array_map(static fn (array $r): array => [$r['collection'], $r['pk'], (int) $r['version'], $r['op']], $before['revisions']));
+$kept = array_values(array_filter($after['jobs'], static fn (array $r): bool => in_array($r['id'], array_column($before['jobs'], 'id'), true)));
+eq('the queued job keeps its id and state, under the current job name', array_map(static fn (array $r): array => [$r['id'], $r['job'], $r['state']], $kept),
+    array_map(static fn (array $r): array => [$r['id'], 'spacepress.mail', $r['state']], $before['jobs']));
+eq('Action Scheduler keeps every action, under the current hooks and groups', array_map(static fn (array $r): array => [$r['hook'], $r['status'], $r['slug']], array_slice($after['scheduler'], 0, count($before['scheduler']))),
+    array_map(static fn (array $r): array => [str_replace([$legacy, 'tp_'], ['spacepress', 'sp_'], $r['hook']), $r['status'], str_replace($legacy, 'spacepress', $r['slug'])], $before['scheduler']));
+eq('the post keeps its fields, uid and timestamps', array_column($wp->sql("SELECT meta_key AS k, meta_value AS v FROM `{$p}postmeta` WHERE post_id = ? ORDER BY meta_key", [$before['post']]), 'v', 'k'),
+    array_combine(array_map(static fn (array $m): string => str_replace('tp_', 'sp_', $m['k']), $before['meta']), array_map(static fn (array $m): string => str_replace('field_tp_', 'field_sp_', $m['v']), $before['meta'])));
+eq('the soft-deleted post keeps its deletion metadata', array_column($wp->sql("SELECT meta_key AS k FROM `{$p}postmeta` WHERE post_id = ? AND meta_key LIKE '\\_sp\\_deleted%' ORDER BY meta_key", [$before['gone']]), 'k'),
+    array_map(static fn (array $m): string => str_replace('_tp_', '_sp_', $m['k']), $before['goneMeta']));
+eq('post types moved', array_column($wp->sql("SELECT DISTINCT post_type AS t FROM `{$p}posts` WHERE post_type LIKE 'sp\\_%' ORDER BY t"), 't'), array_map(static fn (string $t): string => 'sp_' . substr($t, 3), $before['postTypes']));
+eq('the scoped application password keeps its scope', \SpacePress\Wp\AgentScope::KEY, 'sp_scope');
+$entry = array_values(array_filter(WP_Application_Passwords::get_user_application_passwords($before['editor']), static fn (array $e): bool => $e['name'] === 'agent'))[0] ?? [];
+eq('… under the current key', [$entry['sp_scope'] ?? null, array_key_exists('tp_scope', $entry)], [['write' => true, 'personal' => false, 'abilities' => null], false]);
+$both = array_values(array_filter(WP_Application_Passwords::get_user_application_passwords($before['editor']), static fn (array $e): bool => $e['name'] === 'both'))[0] ?? [];
+eq('… and an entry with both keys keeps the narrower grant it had, never widened', [$both['sp_scope'] ?? 'absent', array_key_exists('tp_scope', $both)], [['write' => false, 'personal' => false, 'abilities' => []], false]);
+check('the guest role moved', get_role('sp_guest') !== null && get_role('tp_guest') === null);
+check('the subscriber who was a guest is still one', in_array('sp_guest', (new WP_User($wp->userId('subscriber')))->roles, true));
+eq('the S3 namespace is kept', get_option('sp_upload_namespace'), str_repeat('ab', 16));
+eq('… and stored objects keep their key prefix', [\SpacePress\Wp\BrandUpgrade::uploadPrefix(), str_starts_with(\SpacePress\Wp\Uploads::prefix(), $legacy . '/' . str_repeat('ab', 16) . '/')], [$legacy, true]);
+// The private files stay where the earlier build put them, at the same URL and under the same deny
+// rules (a compatibility exception, as the S3 keys are): recorded, nothing moved, nothing copied.
+eq('the private files stay in their directory, and the runtime keeps them there', [is_dir(WP_CONTENT_DIR . "/uploads/$legacy-private"), file_exists(WP_CONTENT_DIR . '/uploads/spacepress-private'), \SpacePress\Wp\WpFiles::root(), \SpacePress\Wp\BrandUpgrade::privateDir()],
+    [true, false, WP_CONTENT_DIR . "/uploads/$legacy-private", "$legacy-private"]);
+// A file stored before the rename is read from where it is, and its direct URL stays denied.
+$kept = (new \SpacePress\Wp\WpFiles($wp->connection(), 'blog'))->stream('decks/kept.bin');
+ob_start();
+$kept();
+eq('… a file stored before is read from where it is', ob_get_clean(), 'stored before the rename');
+$wp->startServer();
+$direct = wp_remote_get(apply_filters('sp_private_probe_url', \SpacePress\Wp\WpFiles::url('blog/decks/kept.bin')), ['timeout' => 5]);
+eq('… and its direct URL, where it always was, is still refused', [\SpacePress\Wp\WpFiles::url('blog/decks/kept.bin'), wp_remote_retrieve_response_code($direct)], [content_url("uploads/$legacy-private/blog/decks/kept.bin"), 403]);
+// The kept directory's own deny rules (an owner's, for their server) stay as they are when the runtime protects it.
+$rules = WP_CONTENT_DIR . "/uploads/$legacy-private/.htaccess";
+$ownRules = "# the owner's rules\nRequire all denied\n";
+$was = @file_get_contents($rules);
+file_put_contents($rules, $ownRules);
+\SpacePress\Wp\WpFiles::protect();
+eq('… and keeps its own deny rules when the runtime protects it', file_get_contents($rules), $ownRules);
+is_string($was) ? file_put_contents($rules, $was) : unlink($rules);
+eq('identity\'s cron event moved', array_values(array_filter(array_merge(...array_map('array_keys', array_values(array_filter(_get_cron_array(), 'is_array')))), static fn ($h) => str_contains($h, 'identity'))),
+    array_map(static fn (string $h): string => 'sp_' . substr($h, 3), $before['cron']));
+eq('another plugin\'s option that shares the prefix is untouched', [get_option('tp_unrelated_plugin_setting'), get_option('sp_unrelated_plugin_setting')], ['not ours', false]);
+eq('nothing else is left under the earlier names', [
+    ...$hasLegacy($after['options']), ...$hasLegacy($after['postmeta']), ...$hasLegacy($after['posts']), ...$hasLegacy($after['scheduler']), ...$hasLegacy($after['groups']),
+], []);
+
+// The app reads what it wrote before.
+[$status, $post] = $wp->call('GET', '/posts/' . $before['post'], as: 'editor');
+eq('the field the site added at runtime is still served, with its value', [$post['mood'] ?? null, \SpacePress\RuntimeSchema\Loader::sealedBy(get_option(\SpacePress\RuntimeSchema\Loader::option('blog'))), count(\SpacePress\Wp\SchemaVersions::of($wp->plugin())->list())], ['calm', true, 1]);
+eq('the post reads back through the API, a group\'s field included', [$status, $post['title'] ?? null, $post['excerpt'] ?? null, $post['seo']['metaTitle'] ?? null], [200, 'Kept through the rename', 'Short', 'Legacy SEO']);
+[$status, $global] = $wp->call('GET', '/globals/settings', as: 'editor');
+eq('the global\'s value reads back', [$status, $global['tagline'] ?? null], [200, 'Kept tagline']);
+$template = get_page_by_path('sp-login', OBJECT, 'wp_template');
+eq('the owner\'s saved template keeps its markup, under the current slug and block', $template?->post_content,
+    '<!-- wp:paragraph --><p>Owner text</p><!-- /wp:paragraph --><!-- wp:sp/login-form /-->');
+eq('… filed under the fallback theme by its current name, where the Site Editor looks', wp_get_object_terms($template->ID, 'wp_theme', ['fields' => 'slugs']), [\SpacePress\Wp\Hardening::THEME]);
+eq('the fallback theme\'s mods moved', [get_option('theme_mods_' . \SpacePress\Wp\Hardening::THEME)['owner'] ?? null, get_option('theme_mods_typedpress-default')], ['kept', false]);
+$ownerPage = (int) $wpdb->get_var("SELECT ID FROM {$wpdb->posts} WHERE post_name = 'typedpress-home-owner'");
+eq('another post\'s meta of the same spelling, with no SCF reference, is untouched', [get_post_meta($ownerPage, 'tp_seo_metaTitle', true), get_post_meta($ownerPage, 'sp_seo_metaTitle', true)], ['not the app\'s', '']);
+eq('… and so is its meta named like a top-level field of the app\'s posts', [get_post_meta($ownerPage, 'tp_body', true), get_post_meta($ownerPage, 'sp_body', true)], ['not the app\'s', '']);
+eq('… and a user\'s meta of that spelling: only the members\' fields are on users', [get_user_meta($wp->userId('editor'), 'tp_body', true), get_user_meta($wp->userId('editor'), 'sp_body', true)], ['not the app\'s', '']);
+eq('look-alike options of other plugins are untouched', [get_option('tp_prebuilt_other_plugin_setting'), get_option('tp_global_other_plugin')], ['not ours', 'not ours']);
+[$status, $comment] = $wp->call('GET', '/comments/' . $before['comment'], as: 'editor');
+eq('the custom-table row reads back', [$status, $comment['body'] ?? null], [200, 'First, edited']);
+[$status, $list] = $wp->call('GET', '/posts', as: 'editor');
+eq('the soft-deleted post stays deleted', in_array($before['gone'], array_column($list ?? [], 'id'), true), false);
+eq('the next migration plan creates nothing anew', $wp->plugin()->pendingMigrations(), []);
+eq('the foreign key keeps its target and rule, under the name the compiler gives it now', $wp->sql("SELECT k.CONSTRAINT_NAME AS n, k.REFERENCED_TABLE_NAME AS t, r.DELETE_RULE AS d FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_NAME = k.CONSTRAINT_NAME AND r.TABLE_NAME = k.TABLE_NAME WHERE k.TABLE_NAME = ?", ["{$p}sp_replies"]),
+    [['n' => 'sp_replies_commentId_fk', 't' => "{$p}sp_comments", 'd' => 'CASCADE']]);
+// A schema change after the upgrade alters the moved table: the driver rebuilds it from its metadata.
+$wp->exec("ALTER TABLE `{$p}sp_replies` ADD COLUMN `probe` BIGINT NULL");
+eq('… and the table still takes an ALTER, keeping its row and its key', [(int) $wp->scalar("SELECT COUNT(*) FROM `{$p}sp_replies`"), $wp->scalar("SELECT REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_NAME = ? AND CONSTRAINT_NAME = 'sp_replies_commentId_fk'", ["{$p}sp_replies"])], [1, "{$p}sp_comments"]);
+$wp->exec("ALTER TABLE `{$p}sp_replies` DROP COLUMN `probe`");
+
+$session = \SpacePress\Identity\Plugin::$sessions->find($before['session']);
+eq('a session the earlier identity opened stays signed in', [(int) ($session['wp_user_id'] ?? 0), $session === null ? null : hash_equals((string) $session['secret_hash'], \SpacePress\Identity\Sessions::digest($before['session']))], [$before['editor'], true]);
+eq('… its row now holds the current digest', (int) $wp->scalar("SELECT COUNT(*) FROM `{$p}sp_identity_sessions` WHERE secret_hash = ?", [\SpacePress\Identity\Sessions::digest($before['session'])]), 1);
+
+// A password a pre-release build scoped, met before the site has moved (another site of a network,
+// or a request that comes first): the earlier key is read, so it stays as narrow as it was.
+eq('a scope under the earlier key still narrows its password', \SpacePress\Wp\AgentScope::normalize(\SpacePress\Wp\BrandUpgrade::earlierScope(['tp_scope' => ['write' => false, 'personal' => false, 'abilities' => ['typedpress-identity/account', 'tp/deployments']]])),
+    ['write' => false, 'personal' => false, 'abilities' => ['spacepress-identity/account', 'sp/deployments']]);
+// A stored null under the earlier key was the narrowest scope; it stays so.
+eq('… and a stored null under the earlier key stays the narrowest', \SpacePress\Wp\AgentScope::normalize(\SpacePress\Wp\BrandUpgrade::earlierScope(['tp_scope' => null])), ['write' => false, 'personal' => false, 'abilities' => []]);
+// On a network a site not yet moved may narrow the earlier key only: the narrower grant holds.
+eq('a wildcard on one key and a name it covers on the other: the name holds', \SpacePress\Wp\BrandUpgrade::narrower(['write' => false, 'personal' => false, 'abilities' => ['blog/*']], ['write' => false, 'personal' => false, 'abilities' => ['blog/posts-list']])['abilities'], ['blog/posts-list']);
+eq('both keys on one entry: each grant holds only when both give it', \SpacePress\Wp\BrandUpgrade::narrower(['write' => true, 'personal' => true, 'abilities' => null], ['write' => false, 'personal' => true, 'abilities' => ['blog/posts-list']]),
+    ['write' => false, 'personal' => true, 'abilities' => ['blog/posts-list']]);
+
+eq('nothing written under a current name before the move was deleted: what was set aside is kept', array_values(array_filter(array_column($wp->sql("SELECT option_name AS n FROM `{$p}options` WHERE option_name LIKE '%\\_\\_superseded\\_%'"), 'n'), static fn (string $n): bool => !preg_match('/\\Asp_(runtime_secret|runtime_private_ok|runtime_private_checked|rewrite_rules|jobs_prepared|jobs_scheduled|search_shape|kind_urls|installed|identity_dummy_password_hash|identity_password_profiles|identity_password_inventory)__superseded_\\d+\\z/', $n))), []);
+
+// A plugin's basename: the runtime's own move to the current name, an app renamed with the brand
+// takes the app's current name, and any other plugin keeps its own.
+$basename = (new ReflectionClass(\SpacePress\Wp\BrandUpgrade::class))->getMethod('pluginBasename');
+$renamed = [$legacy . '-site' => 'spacepress-site'];
+eq('plugin basenames map to the current names', array_map(static fn (string $b): string => $basename->invoke(null, $b, $renamed),
+    ["$legacy-runtime/$legacy-runtime.php", "$legacy-app-$legacy-site/$legacy-app-$legacy-site.php", "$legacy-app-blog/$legacy-app-blog.php", "$legacy-seo/$legacy-seo.php", 'akismet/akismet.php']),
+    ['spacepress-runtime/spacepress-runtime.php', 'spacepress-app-spacepress-site/spacepress-app-spacepress-site.php', 'spacepress-app-blog/spacepress-app-blog.php', "$legacy-seo/$legacy-seo.php", 'akismet/akismet.php']);
+
+// A second run: the marker is recorded, so nothing moves; and a forced replan finds nothing to do.
+eq('a second ensure changes nothing', \SpacePress\Wp\BrandUpgrade::ensure($wp->plugin()->schema), []);
+$plan = \SpacePress\Wp\BrandUpgrade::plan($wp->connection(), $wp->plugin()->schema);
+eq('… and a fresh plan finds nothing left to move', array_filter([$plan['tables'], $plan['options'], ...array_values($plan['meta']), $plan['postTypes'], $plan['taxonomies'], $plan['plugins']]), []);
+eq('… so the stored state is byte for byte the same', $state(), $after);
+
+// A renamed app with a migration recorded under both its names stops the move before any change.
+$empty = ['tables' => [], 'options' => [], 'meta' => [], 'sitemeta' => [], 'postTypes' => [], 'taxonomies' => [], 'keys' => [], 'renamedApp' => ["$legacy-site" => 'spacepress-site']];
+foreach (["$legacy-site", 'spacepress-site'] as $app) {
+    $wp->sql("INSERT INTO `{$p}sp__migrations` (`app`, `id`, `kind`, `applied_at`) VALUES (?, '20260101000000_aaaaaa_init', 'schema', '2026-01-01T00:00:00.000Z')", [$app]);
+}
+eq('a migration recorded for an app under both names is a conflict', array_values(array_diff(\SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), $empty), ['option sp_upload_keys'])), ["migration 20260101000000_aaaaaa_init recorded for both $legacy-site and spacepress-site"]);
+$wp->sql("DELETE FROM `{$p}sp__migrations` WHERE `app` IN (?, ?)", ["$legacy-site", 'spacepress-site']);
+foreach (["$legacy-site", 'spacepress-site'] as $app) {
+    $wp->sql("INSERT INTO `{$p}sp__schema_versions` (`app`, `version`, `parent`, `format`, `build`, `actor`, `changes`, `hash`, `createdAt`) VALUES (?, 1, 0, 1, '', '{}', '[]', '', '2026-01-01T00:00:00.000Z')", [$app]);
+}
+// A resumed move (marker `started`) after the namespace option had moved: the record a first attempt
+// wrote, which names the S3 keys too, still answers this plan, which no longer sees that option.
+$keysNow = get_option(\SpacePress\Wp\BrandUpgrade::UPLOAD_KEYS);
+$apply = (new ReflectionClass(\SpacePress\Wp\BrandUpgrade::class))->getMethod('apply');
+$resumePlan = \SpacePress\Wp\BrandUpgrade::plan($wp->connection(), $wp->plugin()->schema);
+eq('a resumed move keeps the stored-files record a first attempt wrote', [$resumePlan['keys'] !== $keysNow, (static function () use ($apply, $wp, $resumePlan): string {
+    try {
+        $apply->invoke(null, $wp->connection(), ['resumed' => true] + $resumePlan);
+
+        return 'resumed';
+    } catch (\RuntimeException $e) {
+        return $e->getMessage();
+    }
+})(), get_option(\SpacePress\Wp\BrandUpgrade::UPLOAD_KEYS)], [true, 'resumed', $keysNow]);
+$kept = get_option(\SpacePress\Wp\BrandUpgrade::UPLOAD_KEYS);
+eq('a record of stored files this move did not write stops it before any change', [update_option(\SpacePress\Wp\BrandUpgrade::UPLOAD_KEYS, ['prefix' => 'other'], true), array_values(array_intersect(\SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), ['keys' => ['private' => "$legacy-private"], 'renamedApp' => []] + $empty), ['option sp_upload_keys'])), update_option(\SpacePress\Wp\BrandUpgrade::UPLOAD_KEYS, $kept, true)],
+    [true, ['option sp_upload_keys'], true]);
+eq('… and so is a runtime schema version recorded under both', array_values(array_diff(\SpacePress\Wp\BrandUpgrade::conflicts($wp->connection(), $empty), ['option sp_upload_keys'])), ["runtime schema version 1 recorded for both $legacy-site and spacepress-site"]);
+$wp->sql("DELETE FROM `{$p}sp__schema_versions` WHERE `app` IN (?, ?)", ["$legacy-site", 'spacepress-site']);
+
+// A move stopped after the tables were renamed and before the ledger rows took the app's new name:
+// a plan reads them under the earlier name, in the ledger's current table.
+$wp->sql("INSERT INTO `{$p}sp__migrations` (`app`, `id`, `kind`, `applied_at`) VALUES (?, '20260101000000_aaaaaa_init', 'schema', '2026-01-01T00:00:00.000Z')", ["$legacy-site"]);
+update_option(\SpacePress\Wp\BrandUpgrade::DONE, 'started', true);
+eq('a plan during an interrupted move finds what ran under the earlier app name', \SpacePress\Wp\Legacy::applied($wp->connection(), 'spacepress-site'), ['20260101000000_aaaaaa_init']);
+update_option(\SpacePress\Wp\BrandUpgrade::DONE, 1, true);
+eq('… and once the move is done, reads nothing', \SpacePress\Wp\Legacy::applied($wp->connection(), 'spacepress-site'), []);
+$wp->sql("DELETE FROM `{$p}sp__migrations` WHERE `app` = ?", ["$legacy-site"]);
+
+function BrandUpgrade_done(): bool
+{
+    return \SpacePress\Wp\BrandUpgrade::done();
+}
+
+finish('brand_upgrade');

@@ -1,5 +1,5 @@
 // The generated client's React hooks in a real browser: a React 19 app (tests/wp/hooks/app.tsx) is
-// bundled with the client `typedpress build` wrote, served from this test, and run in Chromium against
+// bundled with the client `spacepress build` wrote, served from this test, and run in Chromium against
 // the tests/wp WordPress. `useQuery` shows another visitor's write with no reload and no push
 // transport; a refused kind is an error state; `useMutation` shows an optimistic row, replaces it
 // with the server's, and rolls it back when the write is refused.
@@ -15,8 +15,8 @@ import { api, auth, harness, ok, run } from "./env.ts";
 
 const here = join(dirname(fileURLToPath(import.meta.url)), "hooks");
 const installed = existsSync(join(here, "node_modules/playwright-core"));
-if (!installed && process.env.TP_WP_SKIP_BROWSER !== "1") {
-  throw new Error("the hooks browser test requires: npm ci --prefix tests/wp/hooks --ignore-scripts && npx --prefix tests/wp/hooks playwright-core install chromium-headless-shell (or TP_WP_SKIP_BROWSER=1)");
+if (!installed && process.env.SP_WP_SKIP_BROWSER !== "1") {
+  throw new Error("the hooks browser test requires: npm ci --prefix tests/wp/hooks --ignore-scripts && npx --prefix tests/wp/hooks playwright-core install chromium-headless-shell (or SP_WP_SKIP_BROWSER=1)");
 }
 
 let server: Server;
@@ -69,10 +69,10 @@ test("useQuery renders the first answer, and every hook of the page shares one r
   await until("#count", "0");
   assert.deepEqual(await items("#notes"), []);
   assert.equal(await text("#off"), "off", "a disabled query subscribes to nothing and is not loading");
-  const first = requests.find((r) => r.url === "/wp-json/typedpress/v1/_live");
+  const first = requests.find((r) => r.url === "/wp-json/spacepress/v1/_live");
   assert.ok(first, JSON.stringify(requests));
   assert.deepEqual(JSON.parse(first.body).queries.map((q: any) => [q.kind, q.op]), [["guestNotes", "list"], ["guestNotes", "count"], ["signups", "list"], ["bigCounts", "list"]]);
-  assert.ok(requests.every((r) => r.url === "/wp-json/typedpress/v1/_live"), "nothing but the subscription endpoint is called");
+  assert.ok(requests.every((r) => r.url === "/wp-json/spacepress/v1/_live"), "nothing but the subscription endpoint is called");
 });
 
 test("a kind the visitor may not read is an error state, not data", { skip: !installed }, async () => {
@@ -99,7 +99,7 @@ test("useMutation shows the optimistic row at once, then the server's row", { sk
   // Hold the write's response so the optimistic frame can be observed.
   let release: () => void = () => {};
   const held = new Promise<void>((resolve) => (release = resolve));
-  await page.route(`${harness.url}/wp-json/typedpress/v1/guest_notes`, async (route: any) => {
+  await page.route(`${harness.url}/wp-json/spacepress/v1/guest_notes`, async (route: any) => {
     if (route.request().method() !== "POST") return route.continue();
     await held;
     await route.continue();
@@ -112,7 +112,7 @@ test("useMutation shows the optimistic row at once, then the server's row", { sk
   await listed("#notes", [`Hooks ${run} theirs`, `Hooks ${run} mine`]);
   await until("#adding", "idle");
   await until("#count", "2");
-  await page.unroute(`${harness.url}/wp-json/typedpress/v1/guest_notes`);
+  await page.unroute(`${harness.url}/wp-json/spacepress/v1/guest_notes`);
 });
 
 test("a refused write rolls its optimistic row back and reports the error", { skip: !installed }, async () => {
@@ -120,7 +120,7 @@ test("a refused write rolls its optimistic row back and reports the error", { sk
   assert.deepEqual(await items("#counts"), []);
   let release: () => void = () => {};
   const held = new Promise<void>((resolve) => (release = resolve));
-  await page.route(`${harness.url}/wp-json/typedpress/v1/big_counts`, async (route: any) => {
+  await page.route(`${harness.url}/wp-json/spacepress/v1/big_counts`, async (route: any) => {
     if (route.request().method() !== "POST") return route.continue();
     await held;
     await route.continue();
@@ -130,7 +130,7 @@ test("a refused write rolls its optimistic row back and reports the error", { sk
   release();
   await until("#refused", "error 403");
   await listed("#counts", []);
-  await page.unroute(`${harness.url}/wp-json/typedpress/v1/big_counts`);
+  await page.unroute(`${harness.url}/wp-json/spacepress/v1/big_counts`);
 });
 
 test("a hidden tab stops asking, and catches up when it is shown again", { skip: !installed }, async () => {

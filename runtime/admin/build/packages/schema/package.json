@@ -1,5 +1,5 @@
 {
-	"name": "@typedpress-admin/schema",
+	"name": "@spacepress-admin/schema",
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
@@ -14,11 +14,11 @@
 		"@wordpress/html-entities": "catalog:",
 		"@wordpress/icons": "catalog:",
 		"@wordpress/route": "catalog:",
-		"@typedpress-admin/admin-toolkit": "workspace:*",
-		"@typedpress-admin/dataviews": "workspace:*",
+		"@spacepress-admin/admin-toolkit": "workspace:*",
+		"@spacepress-admin/dataviews": "workspace:*",
 		"react": "catalog:",
 		"@wordpress/data": "catalog:",
-		"@typedpress-admin/attachment-importer": "workspace:*",
-		"@typedpress-admin/views": "workspace:*"
+		"@spacepress-admin/attachment-importer": "workspace:*",
+		"@spacepress-admin/views": "workspace:*"
 	}
 }

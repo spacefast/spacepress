@@ -2,13 +2,13 @@
 /**
  * Auto update field definition for core plugins fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 // TODO: Add the field to core-data types, and re-implement this field spec.
 return array(
 	'type'         => 'boolean',
-	'label'        => __( 'Auto-Updates', 'typedpress-admin' ),
+	'label'        => __( 'Auto-Updates', 'spacepress-admin' ),
 	'enableHiding' => true,
 	'filterBy'     => array(
 		'operators' => array( 'is', 'isNot' ),
@@ -16,11 +16,11 @@ return array(
 	'elements'     => array(
 		array(
 			'value' => true,
-			'label' => __( 'Enabled', 'typedpress-admin' ),
+			'label' => __( 'Enabled', 'spacepress-admin' ),
 		),
 		array(
 			'value' => false,
-			'label' => __( 'Disabled', 'typedpress-admin' ),
+			'label' => __( 'Disabled', 'spacepress-admin' ),
 		),
 	),
 );

@@ -29,7 +29,7 @@ impl Span {
 pub enum Code {
     #[serde(rename = "sync_files_too_large")]
     SyncFilesTooLarge,
-    #[serde(rename = "tp_source_needs_local_capture")]
+    #[serde(rename = "sp_source_needs_local_capture")]
     SourceNeedsLocalCapture,
     #[serde(rename = "F0001")]
     General,
@@ -58,7 +58,7 @@ pub enum Code {
     /// A plugin package imports the app's modules or another plugin's package.
     #[serde(rename = "F1201")]
     PluginIsolation,
-    /// App source imports a file outside `tp/` (docs/spec/spec.md §1).
+    /// App source imports a file outside `sp/` (docs/spec/spec.md §1).
     #[serde(rename = "F1210")]
     ImportFence,
     /// Two exports register the same name, or one kind, action or job under two (§1.1).
@@ -67,10 +67,10 @@ pub enum Code {
     /// A kind, global, bucket, action or job built in app source but not exported, so it has no name.
     #[serde(rename = "F1222")]
     Unexported,
-    /// A plugin's compiled code uses a capability its `tp/_generated/plugins.lock.json` entry doesn't grant.
+    /// A plugin's compiled code uses a capability its `sp/_generated/plugins.lock.json` entry doesn't grant.
     #[serde(rename = "F4201")]
     PluginCapability,
-    /// App code names a WordPress option the runtime guard protects (runtime/TypedPress/Wp/guard.json).
+    /// App code names a WordPress option the runtime guard protects (runtime/SpacePress/Wp/guard.json).
     #[serde(rename = "F4301")]
     ProtectedWordPress,
 }
@@ -217,7 +217,7 @@ pub fn render(diag: &Diag, root: &Path) -> String {
     render_headed(diag, root, "error")
 }
 
-/// [`render`] with the diagnostic's code in the heading (`error[F1001]: …`), the form `typedpress build`
+/// [`render`] with the diagnostic's code in the heading (`error[F1001]: …`), the form `spacepress build`
 /// prints and the dev overlay links to the reference. Everything else that renders a diagnostic
 /// keeps the plain `error: …` heading other tools match on.
 pub fn render_with_code(diag: &Diag, root: &Path) -> String {
@@ -297,7 +297,7 @@ fn location(span: Span, root: &Path) -> Option<Location> {
     })
 }
 
-/// A span's file (relative to `root`), 1-based line and UTF-16 column, as `typedpress check --json` reports them.
+/// A span's file (relative to `root`), 1-based line and UTF-16 column, as `spacepress check --json` reports them.
 pub fn position(span: Span, root: &Path) -> Option<(String, usize, usize)> {
     location(span, root).map(|l| (l.file, l.line, l.column))
 }
@@ -347,7 +347,7 @@ impl Envelope<'_> {
 }
 
 /// Both successful and failing checks write exactly one versioned envelope, and so does
-/// `typedpress build --diagnostics-file` for the compile it ran.
+/// `spacepress build --diagnostics-file` for the compile it ran.
 /// Offsets are UTF-8 bytes; lines/UTF-16 columns are one-based, ends exclusive.
 pub fn envelope<'a>(diagnostics: &'a [Diag], root: &Path) -> Envelope<'a> {
     let mut groups = indexmap::IndexMap::<String, DiagnosticGroup<'a>>::new();
@@ -384,7 +384,7 @@ pub fn envelope<'a>(diagnostics: &'a [Diag], root: &Path) -> Envelope<'a> {
         });
     }
     Envelope {
-        schema: "typedpress-diagnostics",
+        schema: "spacepress-diagnostics",
         version: 1,
         compiler_version: env!("CARGO_PKG_VERSION"),
         ok: diagnostics.is_empty(),

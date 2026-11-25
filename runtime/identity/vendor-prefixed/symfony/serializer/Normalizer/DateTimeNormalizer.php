@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
 
 /**
  * Normalizes an object implementing the {@see \DateTimeInterface} to a date string.

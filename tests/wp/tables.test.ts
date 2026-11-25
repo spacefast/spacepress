@@ -1,13 +1,13 @@
-// `table()` custom tables (§4.2): rows live in wp_tp_<table> in the §3.4 storage form, the
+// `table()` custom tables (§4.2): rows live in wp_sp_<table> in the §3.4 storage form, the
 // cross-kind reference (comments.postId → a post) is checked and cascaded by the pipeline, and a
 // MySQL UNIQUE violation maps to a 409 `unique_violation` with the column pointer. Also: db.globals from
 // compiled code.
 import { test } from "node:test";
-import { createClient, TypedPressError } from "./app/tp/_generated/client/index.ts";
+import { createClient, SpacePressError } from "./app/sp/_generated/client/index.ts";
 import assert from "node:assert/strict";
 import { api, auth, core, harness, http, ok, problem, run, sql, wp, wpTry, first } from "./env.ts";
 
-test("comments are rows in wp_tp_comments; references to posts are checked and cascade", async () => {
+test("comments are rows in wp_sp_comments; references to posts are checked and cascade", async () => {
   const post = await ok("POST", "/posts", { as: "editor", body: { title: `Table ${run}` } });
   await ok("PATCH", `/posts/${post.id}`, { as: "editor", body: { status: "published" } });
   const draft = await ok("POST", "/posts", { as: "editor", body: { title: `Private ${run}`, status: "draft" } });
@@ -16,12 +16,12 @@ test("comments are rows in wp_tp_comments; references to posts are checked and c
   }
   await ok("POST", "/comments", { as: "editor", body: { postId: draft.id, name: "Editor", body: "Allowed" } });
   const c = await ok("POST", "/comments", { body: { postId: post.id, name: "Visitor", body: "Hello" } });
-  assert.deepEqual(sql(`SELECT postId, name, body, approved, createdAt FROM wp_tp_comments WHERE id = ${c.id}`), [
+  assert.deepEqual(sql(`SELECT postId, name, body, approved, createdAt FROM wp_sp_comments WHERE id = ${c.id}`), [
     { postId: String(post.id), name: "Visitor", body: "Hello", approved: "0", createdAt: c.createdAt },
   ]);
   await problem("POST", "/comments", { body: { postId: 999_999_999, name: "V", body: "x" } }, { status: 409, code: "reference_violation", pointer: "/postId" });
   await ok("DELETE", `/posts/${post.id}`, { as: "editor" });
-  assert.deepEqual(sql(`SELECT id FROM wp_tp_comments WHERE id = ${c.id} AND deletedAt IS NOT NULL AND _live IS NULL`),
+  assert.deepEqual(sql(`SELECT id FROM wp_sp_comments WHERE id = ${c.id} AND deletedAt IS NOT NULL AND _live IS NULL`),
     [{ id: String(c.id) }], "onDelete: cascade soft-deleted the comment");
   await problem("GET", `/comments/${c.id}`, { as: "editor" }, { status: 404, code: "not_found", pointer: undefined });
 });
@@ -36,16 +36,16 @@ test("table relations use the generated client, SQL joins and the target's acces
   const reverse = await editor.fieldTeams.get(team.id, { with: { signups: { where: { email: signup.email } } } });
   assert.deepEqual(reverse.signups.map(row => row.id), [signup.id]);
   await assert.rejects(anonymous.fieldTeams.get(team.id, { with: { signups: true } }), (error: unknown) => {
-    assert.ok(error instanceof TypedPressError);
+    assert.ok(error instanceof SpacePressError);
     assert.deepEqual([error.status, error.code], [401, "unauthenticated"], "a relation load must enforce target read access");
     return true;
   });
   await assert.rejects(editor.signups.list({ where: { teamId: { budget: 250 } } }), (error: unknown) => {
-    assert.ok(error instanceof TypedPressError);
+    assert.ok(error instanceof SpacePressError);
     assert.deepEqual([error.status, error.code, error.pointer], [403, "forbidden", "/where/teamId/budget"]);
     return true;
   });
-  assert.deepEqual(sql(`SELECT teamId FROM wp_tp_signups WHERE id = ${signup.id}`), [{ teamId: String(team.id) }]);
+  assert.deepEqual(sql(`SELECT teamId FROM wp_sp_signups WHERE id = ${signup.id}`), [{ teamId: String(team.id) }]);
   await editor.signups.delete(signup.id);
   await editor.fieldTeams.delete(team.id);
 });
@@ -53,7 +53,7 @@ test("table relations use the generated client, SQL joins and the target's acces
 test("unique() maps to 409 with a pointer: the meta check on posts, SQL UNIQUE on tables", async () => {
   // authors.email is unique meta on a post-backed collection: no SQL constraint exists, the store checks.
   first("insert", "authors", JSON.stringify({ name: "U1", email: `u-${run}@example.test` }));
-  const dup = JSON.parse(wpTry("typedpress", "insert", "authors", JSON.stringify({ name: "U2", email: `u-${run}@example.test` })));
+  const dup = JSON.parse(wpTry("spacepress", "insert", "authors", JSON.stringify({ name: "U2", email: `u-${run}@example.test` })));
   assert.deepEqual([dup.error.status, dup.error.code, dup.error.pointer], [409, "unique_violation", "/email"]);
   // signups (tests/wp/app) is an SQL table with a real UNIQUE index: MySQL error 1062, mapped.
   await ok("POST", "/signups", { as: "editor", body: { email: `s-${run}@example.test` } });
@@ -71,7 +71,7 @@ test("db.globals in compiled code reads and writes the WordPress-stored global",
 
 test("unique fields, filtered references and restrictive deletes hide competing rows on both REST surfaces", async () => {
   const trip = first("insert", "round_trips", JSON.stringify({ title: `Round trip ${run}`, ownerId: harness.users.editor.id, secretCode: `secret-${run}` }))[0];
-  const nativeDraft = (owner: number) => Number(wp("eval", `$id = wp_insert_post(['post_type' => 'tp_round_trips', 'post_status' => 'draft', 'post_title' => 'Native draft ${run}', 'post_name' => '${trip.slug}'], true); if (is_wp_error($id)) throw new Exception($id->get_error_message()); update_field('field_tp_round_trips_ownerId', ${owner}, $id); echo $id;`));
+  const nativeDraft = (owner: number) => Number(wp("eval", `$id = wp_insert_post(['post_type' => 'sp_round_trips', 'post_status' => 'draft', 'post_title' => 'Native draft ${run}', 'post_name' => '${trip.slug}'], true); if (is_wp_error($id)) throw new Exception($id->get_error_message()); update_field('field_sp_round_trips_ownerId', ${owner}, $id); echo $id;`));
   const hiddenDraft = nativeDraft(harness.users.admin.id);
   assert.equal(wp("post", "get", String(hiddenDraft), "--field=post_name"), trip.slug);
   const pulled = await ok("GET", "/sync/round_trips", { as: "editor" });
@@ -81,17 +81,17 @@ test("unique fields, filtered references and restrictive deletes hide competing 
   assert.equal(echoed.status, "applied");
   assert.equal((await ok("GET", `/round_trips/${trip.id}`, { as: "editor" })).slug, trip.slug, "a sync edit can resend a readable slug under a filtered read rule");
   await ok("PATCH", `/round_trips/${trip.id}`, { as: "editor", body: { slug: trip.slug } });
-  const coreEcho = await http("POST", `${core}/tp_round_trips/${trip.id}`, { as: "editor", body: { slug: trip.slug } });
+  const coreEcho = await http("POST", `${core}/sp_round_trips/${trip.id}`, { as: "editor", body: { slug: trip.slug } });
   assert.equal(coreEcho.status, 200, JSON.stringify(coreEcho.json));
   assert.equal(wp("eval", `wp_set_current_user(${harness.users.editor.id}); $result = wp_update_post(['ID' => ${trip.id}, 'post_name' => '${trip.slug}'], true); if (is_wp_error($result)) throw new Exception($result->get_error_message()); echo get_post_field('post_name', $result);`), trip.slug);
   const readableDraft = nativeDraft(harness.users.editor.id);
   for (const body of [{ status: "published", slug: trip.slug }, { status: "published" }]) {
     await problem("PATCH", `/round_trips/${readableDraft}`, { as: "editor", body }, { status: 403, code: "forbidden", pointer: "/slug" });
   }
-  const publishEcho = await http("POST", `${core}/tp_round_trips/${readableDraft}`, { as: "editor", body: { status: "publish", slug: trip.slug } });
+  const publishEcho = await http("POST", `${core}/sp_round_trips/${readableDraft}`, { as: "editor", body: { status: "publish", slug: trip.slug } });
   assert.deepEqual([publishEcho.status, publishEcho.json.code, publishEcho.json.data?.pointer], [403, "forbidden", "/slug"], "publication needs visibility of competing rows even when its draft slug is readable");
   assert.equal(wp("post", "get", String(readableDraft), "--field=post_status"), "draft");
-  const adminPublish = await http("POST", `${core}/tp_round_trips/${readableDraft}`, { as: "admin", body: { status: "publish", slug: trip.slug } });
+  const adminPublish = await http("POST", `${core}/sp_round_trips/${readableDraft}`, { as: "admin", body: { status: "publish", slug: trip.slug } });
   assert.equal(adminPublish.status, 200, JSON.stringify(adminPublish.json));
   assert.equal(adminPublish.json.slug, `${trip.slug}-2`, "a viewer who can read competitors gets normal native collision resolution");
   const afterEcho = (await ok("GET", "/sync/round_trips", { as: "editor" })).records.find((item: { record?: { uid: string } }) => item.record?.uid === trip.uid);
@@ -110,18 +110,18 @@ test("unique fields, filtered references and restrictive deletes hide competing 
   }
   for (const occupied of [false, true]) {
     const slug = `native-probe-${occupied}-${run}`;
-    const draft = await http("POST", `${core}/tp_dossier`, { as: "admin", body: { title: "Native slug probe", slug, status: "draft" } });
+    const draft = await http("POST", `${core}/sp_dossier`, { as: "admin", body: { title: "Native slug probe", slug, status: "draft" } });
     assert.equal(draft.status, 201, JSON.stringify(draft.json));
     if (occupied) {
-      const other = await http("POST", `${core}/tp_dossier`, { as: "admin", body: { title: "Competing native slug", slug, status: "publish" } });
+      const other = await http("POST", `${core}/sp_dossier`, { as: "admin", body: { title: "Competing native slug", slug, status: "publish" } });
       assert.equal(other.status, 201, JSON.stringify(other.json));
     }
-    const publish = await http("POST", `${core}/tp_dossier/${draft.json.id}`, { as: "editor", body: { status: "publish" } });
+    const publish = await http("POST", `${core}/sp_dossier/${draft.json.id}`, { as: "editor", body: { status: "publish" } });
     assert.deepEqual([publish.status, publish.json.code], [403, "forbidden"]);
     assert.equal(first("find", "dossier", JSON.stringify({ where: { id: draft.json.id } }))[0].status, "draft");
     if (!occupied) {
-      assert.equal((await http("POST", `${core}/tp_dossier/${draft.json.id}`, { as: "admin", body: { status: "publish" } })).status, 200);
-      assert.equal((await http("POST", `${core}/tp_dossier/${draft.json.id}`, { as: "editor", body: { title: "Visible edit" } })).status, 200);
+      assert.equal((await http("POST", `${core}/sp_dossier/${draft.json.id}`, { as: "admin", body: { status: "publish" } })).status, 200);
+      assert.equal((await http("POST", `${core}/sp_dossier/${draft.json.id}`, { as: "editor", body: { title: "Visible edit" } })).status, 200);
       assert.equal(first("find", "dossier", JSON.stringify({ where: { id: draft.json.id } }))[0].slug, slug);
       const renamed = `${slug}-renamed`;
       const result = wp("eval", `wp_set_current_user(${harness.users.admin.id}); $result = wp_update_post(['ID' => ${draft.json.id}, 'post_name' => '${renamed}'], true); if (is_wp_error($result)) throw new Exception($result->get_error_message()); echo get_post_field('post_name', $result);`);
@@ -130,22 +130,22 @@ test("unique fields, filtered references and restrictive deletes hide competing 
   }
   for (const badge of [778001, 778002]) {
     await problem("PATCH", `/payroll/${person.id}`, { as: "editor", body: { badge } }, { status: 403, code: "forbidden", pointer: "/badge" });
-    const coreWrite = await http("POST", `${core}/tp_payroll/${person.id}`, { as: "editor", body: { acf: { tp_badge: badge } } });
+    const coreWrite = await http("POST", `${core}/sp_payroll/${person.id}`, { as: "editor", body: { acf: { sp_badge: badge } } });
     assert.deepEqual([coreWrite.status, coreWrite.json.code], [403, "forbidden"]);
   }
   for (const rowId of [privateRow.id, 999_999_997]) {
     await problem("PATCH", `/oracle_refs/${reference.id}`, { as: "editor", body: { rowId } }, { status: 409, code: "reference_violation", pointer: "/rowId" });
-    const coreWrite = await http("POST", `${core}/tp_oracle_refs/${reference.id}`, { as: "editor", body: { acf: { tp_rowId: rowId } } });
+    const coreWrite = await http("POST", `${core}/sp_oracle_refs/${reference.id}`, { as: "editor", body: { acf: { sp_rowId: rowId } } });
     assert.deepEqual([coreWrite.status, coreWrite.json.code], [409, "reference_violation"]);
   }
   await ok("PATCH", `/oracle_refs/${reference.id}`, { as: "editor", body: { rowId: own.id } });
   // A delete looks only at the rows referencing this row (docs/decisions/2026-11-16-per-row-delete-visibility.md).
   await problem("DELETE", `/oracle_rows/${own.id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
-  const coreDelete = await http("DELETE", `${core}/tp_oracle_rows/${own.id}?force=true`, { as: "editor" });
+  const coreDelete = await http("DELETE", `${core}/sp_oracle_rows/${own.id}?force=true`, { as: "editor" });
   assert.deepEqual([coreDelete.status, coreDelete.json.code], [409, "reference_violation"]);
   await ok("DELETE", `/oracle_rows/${unused.id}`, { as: "editor" });
   const unusedCore = first("insert", "oracle_rows", JSON.stringify({ title: "Unused core", ownerId: harness.users.editor.id }))[0];
-  assert.equal((await http("DELETE", `${core}/tp_oracle_rows/${unusedCore.id}?force=true`, { as: "editor" })).status, 200, "a row nothing references deletes on both surfaces");
+  assert.equal((await http("DELETE", `${core}/sp_oracle_rows/${unusedCore.id}?force=true`, { as: "editor" })).status, 200, "a row nothing references deletes on both surfaces");
   const privatePeer = first("insert", "oracle_peers", JSON.stringify({ title: "Private peer", ownerId: harness.users.admin.id, locale: "en" }))[0];
   for (const [uid, targetUid] of [["zr_12121212121212121212", privatePeer.uid], ["zr_13131313131313131313", "zr_99999999999999999999"]]) {
     await ok("POST", "/sync/oracle_peers", { as: "editor", body: { record: { uid, fields: { title: "Unlinked peer", ownerId: harness.users.editor.id, locale: "fr", translations: { en: targetUid } }, body: null }, expect: "absent" } });
@@ -171,7 +171,7 @@ test("cascades and generated editor values cannot answer questions about hidden 
   const fresh = (kind: string) => first("insert", kind, JSON.stringify({ title: "Empty branch" }))[0];
   const emptyDelete = async (kind: string) => {
     await ok("DELETE", `/${kind}/${fresh(kind).id}`, { as: "editor" });
-    assert.equal((await http("DELETE", `${core}/tp_${kind}/${fresh(kind).id}?force=true`, { as: "editor" })).status, 200, `an empty ${kind} branch deletes`);
+    assert.equal((await http("DELETE", `${core}/sp_${kind}/${fresh(kind).id}?force=true`, { as: "editor" })).status, 200, `an empty ${kind} branch deletes`);
   };
   await emptyDelete("deep_roots");
   const hiddenRoot = first("insert", "deep_roots", JSON.stringify({ title: "Deep hidden branch" }))[0];
@@ -180,7 +180,7 @@ test("cascades and generated editor values cannot answer questions about hidden 
     ancestor = first("insert", "deep_nodes", JSON.stringify({ title: `Hidden depth ${depth}`, parentId: ancestor.id }))[0];
   }
   await problem("DELETE", `/deep_roots/${hiddenRoot.id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
-  const hiddenCore = await http("DELETE", `${core}/tp_deep_roots/${hiddenRoot.id}?force=true`, { as: "editor" });
+  const hiddenCore = await http("DELETE", `${core}/sp_deep_roots/${hiddenRoot.id}?force=true`, { as: "editor" });
   assert.deepEqual([hiddenCore.status, hiddenCore.json.code], [409, "reference_violation"]);
   for (const kind of ["oracle_parents", "null_parents", "hook_parents"]) await emptyDelete(kind);
   const parent = first("insert", "oracle_parents", JSON.stringify({ title: "With child" }))[0];
@@ -199,33 +199,33 @@ test("cascades and generated editor values cannot answer questions about hidden 
     }
     if (populated) {
       await problem("DELETE", `/oracle_parents/${parent.id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
-      const r = await http("DELETE", `${core}/tp_oracle_parents/${parent.id}?force=true`, { as: "editor" });
+      const r = await http("DELETE", `${core}/sp_oracle_parents/${parent.id}?force=true`, { as: "editor" });
       assert.deepEqual([r.status, r.json.code], [409, "reference_violation"], "a hidden grandchild under a visible cascade refuses");
     }
     // A visible child's referential update is the viewer's own update, with its generated-value checks:
     // refused alike whether the generated value is taken or free, with the one delete refusal.
     await problem("DELETE", `/hook_parents/${hookParent.id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
-    const hooked = await http("DELETE", `${core}/tp_hook_parents/${hookParent.id}?force=true`, { as: "editor" });
+    const hooked = await http("DELETE", `${core}/sp_hook_parents/${hookParent.id}?force=true`, { as: "editor" });
     assert.deepEqual([hooked.status, hooked.json.code], [409, "reference_violation"]);
     await problem("DELETE", `/null_parents/${nullParent.id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
-    const nulled = await http("DELETE", `${core}/tp_null_parents/${nullParent.id}?force=true`, { as: "editor" });
+    const nulled = await http("DELETE", `${core}/sp_null_parents/${nullParent.id}?force=true`, { as: "editor" });
     assert.deepEqual([nulled.status, nulled.json.code], [409, "reference_violation"]);
     await problem("POST", "/oracle_default", { as: "editor", body: { title: "Probe" } }, { status: 403, code: "forbidden", pointer: "/code" });
-    const create = await http("POST", `${core}/tp_oracle_default`, { as: "editor", body: { title: "Probe" } });
+    const create = await http("POST", `${core}/sp_oracle_default`, { as: "editor", body: { title: "Probe" } });
     assert.deepEqual([create.status, create.json.code], [403, "forbidden"]);
-    const update = await http("POST", `${core}/tp_oracle_default/${generated.id}`, { as: "editor", body: { title: "Changed" } });
+    const update = await http("POST", `${core}/sp_oracle_default/${generated.id}`, { as: "editor", body: { title: "Changed" } });
     assert.deepEqual([update.status, update.json.code], [403, "forbidden"]);
   }
   assert.equal(first("find", "null_children", JSON.stringify({ where: { id: nullChild.id } }))[0].parentId, nullParent.id);
   const defaultRows = first("insert", "default_only", JSON.stringify([{ title: "Empty hidden", code: null }, { title: "Filled hidden", code: "filled" }]));
   for (const row of defaultRows) {
-    const result = await http("POST", `${core}/tp_default_only/${row.id}`, { as: "editor", body: { title: "Probe default" } });
+    const result = await http("POST", `${core}/sp_default_only/${row.id}`, { as: "editor", body: { title: "Probe default" } });
     assert.deepEqual([result.status, result.json.code], [403, "forbidden"], "backfill cannot reveal whether a hidden value is empty");
   }
   for (const exists of [false, true]) {
-    if (exists) wp("eval", `wp_insert_post(['import_id' => 444444444, 'post_type' => 'tp_oracle_rows', 'post_status' => 'publish', 'post_title' => 'Private default target']);`);
+    if (exists) wp("eval", `wp_insert_post(['import_id' => 444444444, 'post_type' => 'sp_oracle_rows', 'post_status' => 'publish', 'post_title' => 'Private default target']);`);
     await problem("POST", "/ref_defaults", { as: "editor", body: { title: "Generated reference" } }, { status: 409, code: "reference_violation", pointer: "/targetId" });
-    const coreDefault = await http("POST", `${core}/tp_ref_defaults`, { as: "editor", body: { title: "Generated reference" } });
+    const coreDefault = await http("POST", `${core}/sp_ref_defaults`, { as: "editor", body: { title: "Generated reference" } });
     assert.deepEqual([coreDefault.status, coreDefault.json.code], [409, "reference_violation"]);
   }
   assert.equal(first("find", "oracle_default", JSON.stringify({ where: { id: generated.id } }))[0].title, "Existing");
@@ -233,19 +233,19 @@ test("cascades and generated editor values cannot answer questions about hidden 
 });
 
 // The one new core route (spec §3a): /wp/v2/<table> for a table() kind, in core's shape, answering
-// what /wp-json/typedpress/v1 answers because both run TypedPress's pipeline as the viewer.
+// what /wp-json/spacepress/v1 answers because both run SpacePress's pipeline as the viewer.
 test("/wp/v2/<table> lists, reads, writes and deletes table rows in core's shape", async () => {
-  const base = `${core}/tp_field_teams`;
+  const base = `${core}/sp_field_teams`;
   const created = await http("POST", base, { as: "editor", body: { name: `Core team ${run}`, budget: 40 } });
   assert.equal(created.status, 201, JSON.stringify(created.json));
   const id = created.json.id;
   assert.equal("budget" in created.json, false, "field masks apply to write results");
-  assert.deepEqual(sql(`SELECT name, budget FROM wp_tp_field_teams WHERE id = ${id}`), [{ name: `Core team ${run}`, budget: "40" }]);
-  const tpRow = await ok("GET", `/field_teams/${id}`, { as: "editor" });
+  assert.deepEqual(sql(`SELECT name, budget FROM wp_sp_field_teams WHERE id = ${id}`), [{ name: `Core team ${run}`, budget: "40" }]);
+  const spRow = await ok("GET", `/field_teams/${id}`, { as: "editor" });
   const coreRow = await http("GET", `${base}/${id}`, { as: "editor" });
-  assert.deepEqual(coreRow.json.name, tpRow.name);
+  assert.deepEqual(coreRow.json.name, spRow.name);
   assert.equal((await http("GET", `${base}/${id}`, { as: "admin" })).json.budget, 40);
-  // Lists: TypedPress's where/orderBy, core's pagination headers.
+  // Lists: SpacePress's where/orderBy, core's pagination headers.
   await http("POST", base, { as: "editor", body: { name: `Core team ${run} b` } });
   const page = await fetch(`${base}?` + new URLSearchParams({ where: JSON.stringify({ name: { like: `Core team ${run}%` } }), orderBy: "-name", per_page: "1" }), { headers: auth("editor") });
   assert.deepEqual([(await page.json()).map((t: any) => t.name), page.headers.get("x-wp-total"), page.headers.get("x-wp-totalpages")], [[`Core team ${run} b`], "2", "2"]);
@@ -255,9 +255,9 @@ test("/wp/v2/<table> lists, reads, writes and deletes table rows in core's shape
   const hiddenTotal = await http("GET", `${base}?` + new URLSearchParams({ where: JSON.stringify({ budget: 40 }), per_page: "1" }), { as: "editor" });
   assert.deepEqual([hiddenTotal.status, hiddenTotal.json.data?.pointer], [403, "/where/budget"], "a total can't count by a hidden field either");
   // Core's `_fields`, nested paths included, on First rows and their relations.
-  const signup = await http("POST", `${core}/tp_signups`, { as: "editor", body: { email: `fields-${run}@example.test`, teamId: id } });
+  const signup = await http("POST", `${core}/sp_signups`, { as: "editor", body: { email: `fields-${run}@example.test`, teamId: id } });
   assert.equal(signup.status, 201, JSON.stringify(signup.json));
-  const fielded = await http("GET", `${core}/tp_signups/${signup.json.id}?` + new URLSearchParams({ with: "teamId", _fields: "email,teamId.name" }), { as: "editor" });
+  const fielded = await http("GET", `${core}/sp_signups/${signup.json.id}?` + new URLSearchParams({ with: "teamId", _fields: "email,teamId.name" }), { as: "editor" });
   assert.deepEqual(fielded.json, { email: `fields-${run}@example.test`, teamId: { name: `Core team ${run}` } }, JSON.stringify(fielded.json));
   assert.ok("_links" in (await http("GET", `${base}/${id}`, { as: "editor" })).json, "links without _fields, as core gives them");
   // A form-encoded body is read as WordPress parses it, not as JSON.
@@ -270,11 +270,11 @@ test("/wp/v2/<table> lists, reads, writes and deletes table rows in core's shape
   assert.deepEqual([deleted.status, deleted.json.deleted, deleted.json.previous.id], [200, true, id]);
   assert.equal((await http("GET", `${base}/${id}`, { as: "editor" })).status, 404);
   const schema = (await http("OPTIONS", base)).json.schema;
-  assert.deepEqual([schema.title, schema.properties.name.type], ["tp_field_teams", "string"]);
+  assert.deepEqual([schema.title, schema.properties.name.type], ["sp_field_teams", "string"]);
 });
 
-test("/wp/v2/<table> keeps every denial /wp-json/typedpress/v1 makes", async () => {
-  const signups = `${core}/tp_signups`;
+test("/wp/v2/<table> keeps every denial /wp-json/spacepress/v1 makes", async () => {
+  const signups = `${core}/sp_signups`;
   const email = `core-${run}@example.test`;
   // An anonymous create of a unique value is refused on both (it would answer whether it exists).
   const anonCore = await http("POST", signups, { body: { email } });

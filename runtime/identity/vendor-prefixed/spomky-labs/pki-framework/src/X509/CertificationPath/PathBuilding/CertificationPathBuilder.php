@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathBuilding;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathBuilding;
 
 use function count;
 use function hash;
 use function spl_object_id;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception\StringPreparationException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateBundle;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathBuildingException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception\StringPreparationException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateBundle;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathBuildingException;
 
 /**
  * Class for resolving certification paths.

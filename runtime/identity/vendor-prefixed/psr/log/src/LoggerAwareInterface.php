@@ -1,6 +1,6 @@
 <?php
 
-namespace TypedPress\Identity\Vendor\Psr\Log;
+namespace SpacePress\Identity\Vendor\Psr\Log;
 
 /**
  * Describes a logger-aware instance.

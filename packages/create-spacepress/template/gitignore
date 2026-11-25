@@ -1,0 +1,13 @@
+node_modules/
+.sp/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+
+# sp/_generated/ is committed; sp/dist/ is build output.
+sp/dist/
+# @spacepress/frontend's build lock and staging, while a build runs.
+sp/_generated/.spacepress-*-lock*
+sp/_generated/.spacepress-*-build-*/

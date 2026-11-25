@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest\Attribute;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest\Attribute;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\BinaryMatch;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extensions;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\BinaryMatch;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extensions;
 
 /**
  * Implements value for 'Extension request' attribute.

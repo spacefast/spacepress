@@ -10,7 +10,7 @@ publishedAt: 2026-11-21T10:00:00.000Z
 
 ## Prerequisites
 
-- A SpacePress project that passes `typedpress check` cleanly
+- A SpacePress project that passes `spacepress check` cleanly
 - A [Spacefast](https://spacefast.com) account and site URL
 
 ## 1. Verify your project locally
@@ -18,19 +18,19 @@ publishedAt: 2026-11-21T10:00:00.000Z
 Run a check and test build before pushing:
 
 ```bash
-npx typedpress check
-npx typedpress build
+npx spacepress check
+npx spacepress build
 ```
 
-Commit your migration ledger (`tp/_generated/migrations/`) and plugin lockfile (`tp/_generated/wp-plugins.lock.json`) so every deployment upgrades your database safely and deterministically.
+Commit your migration ledger (`sp/_generated/migrations/`) and plugin lockfile (`sp/_generated/wp-plugins.lock.json`) so every deployment upgrades your database safely and deterministically.
 
 ## 2. Sign in and preview the deployment plan
 
 Authenticate once with your Spacefast site using WordPress Application Passwords, then inspect what the deployment will change:
 
 ```bash
-npx typedpress login https://your-site.spacefast.com
-npx typedpress push --dry-run
+npx spacepress login https://your-site.spacefast.com
+npx spacepress push --dry-run
 ```
 
 The dry run uploads your compiled runtime and app trees and prints every migration, page, and index change before making the build live.
@@ -38,18 +38,18 @@ The dry run uploads your compiled runtime and app trees and prints every migrati
 ## 3. Push to production
 
 ```bash
-npx typedpress push
+npx spacepress push
 ```
 
-`typedpress push` atomically activates the new build, applies pending SQL migrations, seeds synced Markdown content on an empty site, and purges page caches automatically.
+`spacepress push` atomically activates the new build, applies pending SQL migrations, seeds synced Markdown content on an empty site, and purges page caches automatically.
 
 ## 4. Sync Markdown content & verify
 
 If your schema defines synced collections (`sync: "content/**/*.md"`), keep Git and your live Spacefast site in two-way sync:
 
 ```bash
-npx typedpress sync --site https://your-site.spacefast.com
-npx typedpress doctor --site https://your-site.spacefast.com --links
+npx spacepress sync --site https://your-site.spacefast.com
+npx spacepress doctor --site https://your-site.spacefast.com --links
 ```
 
-For CI pipelines, supply `TP_APP_PASSWORD="user:application-password"` as a secret environment variable instead of running `typedpress login` interactively.
+For CI pipelines, supply `SP_APP_PASSWORD="user:application-password"` as a secret environment variable instead of running `spacepress login` interactively.

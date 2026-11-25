@@ -2,32 +2,32 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\MetadataService\CertificateChain;
+namespace SpacePress\Identity\Vendor\Webauthn\MetadataService\CertificateChain;
 
 use function count;
 use function in_array;
 use function parse_url;
 use const PHP_EOL;
 use const PHP_URL_SCHEME;
-use TypedPress\Identity\Vendor\Psr\Clock\ClockInterface;
-use TypedPress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationConfig;
+use SpacePress\Identity\Vendor\Psr\Clock\ClockInterface;
+use SpacePress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationConfig;
 use function sprintf;
-use TypedPress\Identity\Vendor\Symfony\Component\Clock\NativeClock;
+use SpacePress\Identity\Vendor\Symfony\Component\Clock\NativeClock;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Throwable;
-use TypedPress\Identity\Vendor\Webauthn\Event\BeforeCertificateChainValidation;
-use TypedPress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use TypedPress\Identity\Vendor\Webauthn\Event\CertificateChainValidationFailed;
-use TypedPress\Identity\Vendor\Webauthn\Event\CertificateChainValidationSucceeded;
-use TypedPress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use TypedPress\Identity\Vendor\Webauthn\Exception\CertificateChainException;
-use TypedPress\Identity\Vendor\Webauthn\Exception\CertificateRevocationListException;
-use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidCertificateException;
+use SpacePress\Identity\Vendor\Webauthn\Event\BeforeCertificateChainValidation;
+use SpacePress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use SpacePress\Identity\Vendor\Webauthn\Event\CertificateChainValidationFailed;
+use SpacePress\Identity\Vendor\Webauthn\Event\CertificateChainValidationSucceeded;
+use SpacePress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use SpacePress\Identity\Vendor\Webauthn\Exception\CertificateChainException;
+use SpacePress\Identity\Vendor\Webauthn\Exception\CertificateRevocationListException;
+use SpacePress\Identity\Vendor\Webauthn\Exception\InvalidCertificateException;
 
 final class PhpCertificateChainValidator implements CertificateChainValidator, CanDispatchEvents
 {

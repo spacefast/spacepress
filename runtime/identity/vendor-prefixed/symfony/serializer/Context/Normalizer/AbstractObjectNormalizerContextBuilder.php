@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 
 /**
  * A helper providing autocompletion for available AbstractObjectNormalizer options.

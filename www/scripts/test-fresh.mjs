@@ -8,9 +8,9 @@ import { fileURLToPath } from "node:url";
 
 const site = fileURLToPath(new URL("../", import.meta.url));
 const repo = resolve(site, "..");
-const binary = process.env.TP_BIN ?? resolve(repo, process.env.CARGO_TARGET_DIR ?? "target", "debug/typedpress");
-const port = Number(process.env.TP_WWW_PORT ?? 8960);
-assert.ok(Number.isInteger(port) && port > 0 && port <= 65535, "TP_WWW_PORT must be a valid port");
+const binary = process.env.SP_BIN ?? resolve(repo, process.env.CARGO_TARGET_DIR ?? "target", "debug/spacepress");
+const port = Number(process.env.SP_WWW_PORT ?? 8960);
+assert.ok(Number.isInteger(port) && port > 0 && port <= 65535, "SP_WWW_PORT must be a valid port");
 const base = `http://localhost:${port}`;
 const data = JSON.parse(readFileSync(join(site, "public/play-data.json"), "utf8"));
 assert.equal(data.plugins, base, `Build the site first with PLUGINS_URL=${base} npm run build --prefix www`);
@@ -19,9 +19,9 @@ const probe = createServer();
 await new Promise((done, fail) => probe.once("error", fail).listen(port, done));
 await new Promise((done, fail) => probe.close((error) => error ? fail(error) : done()));
 
-const work = realpathSync(mkdtempSync(join(tmpdir(), "tp-www-")));
+const work = realpathSync(mkdtempSync(join(tmpdir(), "sp-www-")));
 const project = join(work, "www");
-const studioSite = join(project, ".tp/dev/wordpress");
+const studioSite = join(project, ".sp/dev/wordpress");
 
 function run(command, args, { capture = false, env = process.env, timeout = 600_000 } = {}) {
   const result = spawnSync(command, args, {
@@ -34,10 +34,10 @@ function run(command, args, { capture = false, env = process.env, timeout = 600_
 }
 
 try {
-  for (const entry of ["typedpress.config.ts", "tsconfig.json", "tp", "public", "content", "scripts/seed.mjs"]) {
+  for (const entry of ["spacepress.config.ts", "tsconfig.json", "sp", "public", "content", "scripts/seed.mjs"]) {
     cpSync(join(site, entry), join(project, entry), {
       recursive: true,
-      filter: (source) => relative(site, source) !== "tp/dist",
+      filter: (source) => relative(site, source) !== "sp/dist",
     });
   }
   run(binary, ["dev", "--port", String(port), "--no-watch"]);
@@ -49,7 +49,7 @@ try {
 
   const password = run(binary, ["wp", "user", "application-password", "create", "admin", "www-ci", "--porcelain"], { capture: true }).split("\n").at(-1);
   assert.ok(password, "WP-CLI returned no application password");
-  const env = { ...process.env, SITE_URL: base, TP_TOKEN: "", TP_APP_PASSWORD: `admin:${password}` };
+  const env = { ...process.env, SITE_URL: base, SP_TOKEN: "", SP_APP_PASSWORD: `admin:${password}` };
   run(binary, ["sync", "--site", base, "--no-commit"], { env });
   run(process.execPath, ["scripts/seed.mjs"], { env });
   run(process.execPath, ["--test", join(site, "tests/site.test.mjs")], {

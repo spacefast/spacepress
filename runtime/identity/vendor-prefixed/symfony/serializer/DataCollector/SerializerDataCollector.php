@@ -9,13 +9,13 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\DataCollector;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\DataCollector;
 
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\DataCollector\DataCollector;
 use Symfony\Component\HttpKernel\DataCollector\LateDataCollectorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Debug\TraceableSerializer;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Debug\TraceableSerializer;
 use Symfony\Component\VarDumper\Cloner\Data;
 
 /**

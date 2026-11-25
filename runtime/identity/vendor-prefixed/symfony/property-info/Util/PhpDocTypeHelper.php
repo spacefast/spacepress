@@ -9,27 +9,27 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Util;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Util;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\ConstExpression;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\Generic;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\List_;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\Scalar;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Type as DocType;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Array_;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Collection;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Compound;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Integer;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Mixed_;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Null_;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Nullable;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Scalar as LegacyScalar;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\String_;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\ConstExpression;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\Generic;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\List_;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes\Scalar;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Type as DocType;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Array_;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Collection;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Compound;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Integer;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Mixed_;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Null_;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Nullable;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Scalar as LegacyScalar;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\String_;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
 
 // Workaround for phpdocumentor/type-resolver < 1.6
 // We trigger the autoloader here, so we don't need to trigger it inside the loop later.
@@ -52,7 +52,7 @@ final class PhpDocTypeHelper
      */
     public function getTypes(DocType $varType): array
     {
-        typedpress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
+        spacepress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
 
         if ($varType instanceof ConstExpression) {
             // It's safer to fall back to other extractors here, as resolving const types correctly is not easy at the moment

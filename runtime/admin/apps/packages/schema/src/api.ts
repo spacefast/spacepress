@@ -13,11 +13,11 @@ import {
 } from './model';
 declare global {
 	interface Window {
-		tpAdmin?: unknown;
+		spAdmin?: unknown;
 	}
 }
 export function bootstrap() {
-	const b = object(window.tpAdmin);
+	const b = object(window.spAdmin);
 	const native = Object.fromEntries(
 		Object.entries(map(b.native)).map(([name, raw]) => {
 			const n = object(raw),
@@ -37,7 +37,7 @@ export function bootstrap() {
 	);
 	return {
 		native,
-		api: (text(b.api) ?? '/wp-json/typedpress/v1').replace(/\/+$/, ''),
+		api: (text(b.api) ?? '/wp-json/spacepress/v1').replace(/\/+$/, ''),
 		readable: strings(b.readable),
 		role: text(b.role) ?? 'subscriber',
 	};
@@ -46,13 +46,13 @@ export function native(collection: string) {
 	return bootstrap().native[collection];
 }
 /**
- * A request to TypedPress's API (`/wp-json/typedpress/v1`, from `window.tpAdmin.api`): `url` instead of `path`, so
+ * A request to SpacePress's API (`/wp-json/spacepress/v1`, from `window.spAdmin.api`): `url` instead of `path`, so
  * api-fetch sends the nonce and the cookie and parses problems as for any core route.
  */
 export function api(path: string): { url: string } {
 	return { url: bootstrap().api + path };
 }
-/** An api-fetch target for a collection: its core route when it has one, else TypedPress's API. */
+/** An api-fetch target for a collection: its core route when it has one, else SpacePress's API. */
 export function target(collection: string, suffix = ''): { path: string } | { url: string } {
 	const n = native(collection);
 	return n ? { path: n.path + suffix } : api(`/${encodeURIComponent(collection)}${suffix}`);
@@ -63,7 +63,7 @@ export function unwrap(value: unknown): unknown {
 }
 export async function schema() {
 	const described = object(unwrap(await apiFetch(api(''))));
-	// The facade lists kinds; the admin's model reads them as collections (those TypedPress stores).
+	// The facade lists kinds; the admin's model reads them as collections (those SpacePress stores).
 	const kinds = map(described.kinds);
 	return parseSchema({ ...described, collections: Object.fromEntries(Object.entries(kinds).filter(([, k]) => ['post', 'users', 'table'].includes(String(object(k).type)))) });
 }
@@ -120,7 +120,7 @@ export function collectionForPostType(postType: string): string {
 		)?.[0] ?? postType
 	);
 }
-/** Native meta already has TypedPress's decoded field names and value shapes. */
+/** Native meta already has SpacePress's decoded field names and value shapes. */
 export function fromNative(c: Collection, value: unknown): Row {
 	const terms = native(c.name)?.terms ?? {};
 	const r = object(value),
@@ -313,7 +313,7 @@ export async function list(
 	};
 }
 
-/** Resolve editor navigation through the active TypedPress adapter or the native WordPress routes. */
+/** Resolve editor navigation through the active SpacePress adapter or the native WordPress routes. */
 export function entityEditorPath(postType: string, postId: string): string {
     const collection = Object.entries(bootstrap().native).find(([, value]) => value.postType === postType)?.[0];
     return collection

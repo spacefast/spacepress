@@ -48,7 +48,7 @@ export default function PluginDetailsInfo( {
 			{ data.author && (
 				<Text variant="muted">
 					<strong className="plugin-details-label">
-						{ __( 'Author:', 'typedpress-admin' ) }
+						{ __( 'Author:', 'spacepress-admin' ) }
 					</strong>
 					<span
 						className="plugin-details-author"
@@ -62,7 +62,7 @@ export default function PluginDetailsInfo( {
 			{ data.version && (
 				<Text variant="muted">
 					<strong className="plugin-details-label">
-						{ __( 'Version:', 'typedpress-admin' ) }
+						{ __( 'Version:', 'spacepress-admin' ) }
 					</strong>
 					{ data.version }
 				</Text>
@@ -71,7 +71,7 @@ export default function PluginDetailsInfo( {
 			{ data.last_updated && (
 				<Text variant="muted">
 					<strong className="plugin-details-label">
-						{ __( 'Last updated:', 'typedpress-admin' ) }
+						{ __( 'Last updated:', 'spacepress-admin' ) }
 					</strong>
 					{ humanTimeDiff( data.last_updated ) }
 				</Text>
@@ -80,15 +80,15 @@ export default function PluginDetailsInfo( {
 			{ data.requires && (
 				<Text variant="muted">
 					<strong className="plugin-details-label">
-						{ __( 'Requires WordPress version:', 'typedpress-admin' ) }
+						{ __( 'Requires WordPress version:', 'spacepress-admin' ) }
 					</strong>
-					{ data.requires } { __( 'or higher', 'typedpress-admin' ) }
+					{ data.requires } { __( 'or higher', 'spacepress-admin' ) }
 				</Text>
 			) }
 			{ data.tested && (
 				<Text variant="muted">
 					<strong className="plugin-details-label">
-						{ __( 'Compatible up to:', 'typedpress-admin' ) }
+						{ __( 'Compatible up to:', 'spacepress-admin' ) }
 					</strong>
 					{ data.tested }
 				</Text>
@@ -96,15 +96,15 @@ export default function PluginDetailsInfo( {
 			{ data.requires_php && (
 				<Text variant="muted">
 					<strong className="plugin-details-label">
-						{ __( 'Requires PHP version:', 'typedpress-admin' ) }
+						{ __( 'Requires PHP version:', 'spacepress-admin' ) }
 					</strong>
-					{ data.requires_php } { __( 'or higher', 'typedpress-admin' ) }
+					{ data.requires_php } { __( 'or higher', 'spacepress-admin' ) }
 				</Text>
 			) }
 			{ typeof data.active_installs !== 'undefined' && (
 				<Text variant="muted">
 					<strong className="plugin-details-label">
-						{ __( 'Active installations:', 'typedpress-admin' ) }
+						{ __( 'Active installations:', 'spacepress-admin' ) }
 					</strong>
 					{ formatActiveInstalls( data.active_installs ) }
 				</Text>
@@ -112,14 +112,14 @@ export default function PluginDetailsInfo( {
 
 			{ data.slug && ! data.external && (
 				<Link href={ baseUrl } openInNewTab>
-					{ __( 'WordPress.org Plugin Page', 'typedpress-admin' ) }
+					{ __( 'WordPress.org Plugin Page', 'spacepress-admin' ) }
 				</Link>
 			) }
 
 			{ /* When we don't have contributors we render here, otherwise we render in the Contributors section below. */ }
 			{ data.donate_link && ! data.contributors && (
 				<Link href={ data.donate_link } openInNewTab>
-					{ __( 'Donate', 'typedpress-admin' ) }
+					{ __( 'Donate', 'spacepress-admin' ) }
 				</Link>
 			) }
 
@@ -127,7 +127,7 @@ export default function PluginDetailsInfo( {
 			{ totalRatings > 0 && (
 				<VStack spacing={ 2 } className="plugin-details-ratings">
 					<Text className="plugin-details-side-title">
-						{ __( 'Average rating', 'typedpress-admin' ) }
+						{ __( 'Average rating', 'spacepress-admin' ) }
 					</Text>
 					<div className="plugin-details-average-stars">
 						{ renderStars( data.rating || 0 ) }
@@ -139,13 +139,13 @@ export default function PluginDetailsInfo( {
 								'(based on %s review)',
 								'(based on %s reviews)',
 								totalRatings,
-								'typedpress-admin'
+								'spacepress-admin'
 							),
 							new Intl.NumberFormat().format( totalRatings )
 						) }
 					</Text>
 					<Text className="plugin-details-side-title">
-						{ __( 'Reviews', 'typedpress-admin' ) }
+						{ __( 'Reviews', 'spacepress-admin' ) }
 					</Text>
 
 					{ /* Render star reviews */ }
@@ -173,7 +173,7 @@ export default function PluginDetailsInfo( {
 											'%d star',
 											'%d stars',
 											stars,
-											'typedpress-admin'
+											'spacepress-admin'
 										),
 										stars
 									) }
@@ -200,7 +200,7 @@ export default function PluginDetailsInfo( {
 			{ data.contributors && (
 				<VStack spacing={ 1 }>
 					<Text className="plugin-details-contributors-title">
-						{ __( 'Contributors', 'typedpress-admin' ) }
+						{ __( 'Contributors', 'spacepress-admin' ) }
 					</Text>
 					<div>
 						{ Object.entries( data.contributors ).map(
@@ -232,7 +232,7 @@ export default function PluginDetailsInfo( {
 					</div>
 					{ data.donate_link && (
 						<Link href={ data.donate_link } openInNewTab>
-							{ __( 'Donate', 'typedpress-admin' ) }
+							{ __( 'Donate', 'spacepress-admin' ) }
 						</Link>
 					) }
 				</VStack>

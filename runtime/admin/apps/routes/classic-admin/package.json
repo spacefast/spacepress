@@ -1,16 +1,16 @@
 {
-	"name": "@typedpress-admin/route-classic-admin",
+	"name": "@spacepress-admin/route-classic-admin",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
 		"path": "/classic/$slug"
 	},
 	"dependencies": {
-		"@typedpress-admin/admin-toolkit": "workspace:*",
+		"@spacepress-admin/admin-toolkit": "workspace:*",
 		"@wordpress/route": "catalog:",
 		"@types/react": "catalog:",
 		"@wordpress/compose": "catalog:",
-		"@typedpress-admin/boot": "workspace:*"
+		"@spacepress-admin/boot": "workspace:*"
 	},
 	"license": "GPL-2.0-or-later"
 }

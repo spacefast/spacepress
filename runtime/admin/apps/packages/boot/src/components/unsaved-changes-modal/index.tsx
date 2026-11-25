@@ -7,9 +7,9 @@ import {
 	saveDirtyEntitiesSettled,
 	unlock,
 	useEntityValidity,
-} from '@typedpress-admin/admin-toolkit';
+} from '@spacepress-admin/admin-toolkit';
 import { Button, Icon } from '@wordpress/ui';
-import { Dialog } from '@typedpress-admin/design-system';
+import { Dialog } from '@spacepress-admin/design-system';
 import { store as coreStore } from '@wordpress/core-data';
 import { useDispatch, useRegistry, useSelect } from '@wordpress/data';
 import { doAction } from '@wordpress/hooks';
@@ -70,7 +70,7 @@ function getErrorMessage( error: unknown ): string {
 		return error.message;
 	}
 
-	return __( 'Unable to save changes.', 'typedpress-admin' );
+	return __( 'Unable to save changes.', 'spacepress-admin' );
 }
 
 export default function UnsavedChangesModal() {
@@ -148,24 +148,24 @@ export default function UnsavedChangesModal() {
 	}, [ clearEntityRecordEdits, router ] );
 
 	const modalTitle = isEntityValid
-		? __( 'Save changes before leaving?', 'typedpress-admin' )
-		: __( 'Fix errors before leaving?', 'typedpress-admin' );
+		? __( 'Save changes before leaving?', 'spacepress-admin' )
+		: __( 'Fix errors before leaving?', 'spacepress-admin' );
 
 	const modalDescription = isEntityValid
 		? __(
 				'You have unsaved changes. Choose whether to save or discard them before continuing.',
-				'typedpress-admin'
+				'spacepress-admin'
 		  )
 		: __(
 				'Some fields need attention before you can save your changes. Continue editing or discard changes.',
-				'typedpress-admin'
+				'spacepress-admin'
 		  );
 
-	const discardLabel = __( 'Discard changes', 'typedpress-admin' );
+	const discardLabel = __( 'Discard changes', 'spacepress-admin' );
 
 	const primaryActionLabel = isEntityValid
-		? __( 'Save changes', 'typedpress-admin' )
-		: __( 'Continue editing', 'typedpress-admin' );
+		? __( 'Save changes', 'spacepress-admin' )
+		: __( 'Continue editing', 'spacepress-admin' );
 
 	const closeDialog = () => {
 		shouldClearOnNavigationRef.current = false;
@@ -199,8 +199,8 @@ export default function UnsavedChangesModal() {
 						onClick={ () => {
 							shouldClearOnNavigationRef.current = true;
 							recordsToClearRef.current = [ ...entityRecords ];
-							// @fires tpAdmin.unsavedChangesDiscarded
-							doAction( 'tpAdmin.unsavedChangesDiscarded' );
+							// @fires spAdmin.unsavedChangesDiscarded
+							doAction( 'spAdmin.unsavedChangesDiscarded' );
 							void blocker.proceed();
 						} }
 					>
@@ -211,7 +211,7 @@ export default function UnsavedChangesModal() {
 						disabled={ isSaveInFlight }
 						loadingAnnouncement={ __(
 							'Saving changes',
-							'typedpress-admin'
+							'spacepress-admin'
 						) }
 						onClick={ async () => {
 							if ( ! isEntityValid ) {
@@ -254,7 +254,7 @@ export default function UnsavedChangesModal() {
 									messages: {
 										error: __(
 											'Failed to save changes. Please try again.',
-											'typedpress-admin'
+											'spacepress-admin'
 										),
 										success: () => '',
 									},
@@ -264,7 +264,7 @@ export default function UnsavedChangesModal() {
 									void createErrorNotice( notice.message, {
 										icon: <Icon icon={ errorIcon } />,
 										type: 'snackbar',
-										id: 'typedpress-admin-unsaved-changes-save-error',
+										id: 'spacepress-admin-unsaved-changes-save-error',
 									} );
 								}
 							} catch ( error: unknown ) {
@@ -273,7 +273,7 @@ export default function UnsavedChangesModal() {
 									{
 										icon: <Icon icon={ errorIcon } />,
 										type: 'snackbar',
-										id: 'typedpress-admin-unsaved-changes-save-error',
+										id: 'spacepress-admin-unsaved-changes-save-error',
 									}
 								);
 							} finally {

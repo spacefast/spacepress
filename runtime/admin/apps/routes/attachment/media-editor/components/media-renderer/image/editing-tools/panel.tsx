@@ -1,6 +1,6 @@
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components -- See: ARC-1359
-import { Stack } from '@typedpress-admin/design-system';
-import { useImageCropper } from '@typedpress-admin/image-cropper';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components -- See: ARC-1359
+import { Stack } from '@spacepress-admin/design-system';
+import { useImageCropper } from '@spacepress-admin/image-cropper';
 import { __ } from '@wordpress/i18n';
 import {
 	__experimentalHeading as Heading,
@@ -55,9 +55,9 @@ export default function EditingToolsPanel() {
 	}
 
 	return (
-		<div className="typedpress-admin-media-editor__tools-panel">
+		<div className="spacepress-admin-media-editor__tools-panel">
 			<ToolsPanel
-				label={ __( 'Crop area', 'typedpress-admin' ) }
+				label={ __( 'Crop area', 'spacepress-admin' ) }
 				resetAll={ () => {
 					setCropperState( {
 						zoom: resetState?.zoom ?? 1,
@@ -69,7 +69,7 @@ export default function EditingToolsPanel() {
 			>
 				<ToolsPanelItem
 					hasValue={ () => zoom !== ( resetState?.zoom ?? 1 ) }
-					label={ __( 'Zoom', 'typedpress-admin' ) }
+					label={ __( 'Zoom', 'spacepress-admin' ) }
 					onDeselect={ () =>
 						setCropperState( { zoom: resetState?.zoom ?? 1 } )
 					}
@@ -77,7 +77,7 @@ export default function EditingToolsPanel() {
 					panelId={ 'crop-area' }
 				>
 					<ZoomRange
-						label={ __( 'Zoom', 'typedpress-admin' ) }
+						label={ __( 'Zoom', 'spacepress-admin' ) }
 						zoom={ zoom }
 						onChange={ ( newZoom ) =>
 							setCropperState( { zoom: newZoom } )
@@ -88,7 +88,7 @@ export default function EditingToolsPanel() {
 					hasValue={ () =>
 						aspectRatio !== ( resetState?.aspectRatio ?? 1 )
 					}
-					label={ __( 'Aspect ratio', 'typedpress-admin' ) }
+					label={ __( 'Aspect ratio', 'spacepress-admin' ) }
 					onDeselect={ () => {
 						setCropperState( {
 							aspectRatio: resetState?.aspectRatio ?? 1,
@@ -101,7 +101,7 @@ export default function EditingToolsPanel() {
 					panelId={ 'crop-area' }
 				>
 					<AspectRatioSelect
-						className="typedpress-admin-media-editor__tools-panel-dropdown"
+						className="spacepress-admin-media-editor__tools-panel-dropdown"
 						aspectRatio={ selectedAspectRatio }
 						onChange={ handleSetAspectRatio }
 						imageAspectRatios={ imageAspectRatios }
@@ -112,7 +112,7 @@ export default function EditingToolsPanel() {
 				</ToolsPanelItem>
 			</ToolsPanel>
 			<ToolsPanel
-				label={ __( 'Position', 'typedpress-admin' ) }
+				label={ __( 'Position', 'spacepress-admin' ) }
 				resetAll={ resetPositionTools }
 				panelId={ 'position' }
 			>
@@ -120,7 +120,7 @@ export default function EditingToolsPanel() {
 					hasValue={ () =>
 						rotation !== ( resetState?.rotation ?? 0 )
 					}
-					label={ __( 'Rotate', 'typedpress-admin' ) }
+					label={ __( 'Rotate', 'spacepress-admin' ) }
 					onDeselect={ () => {
 						const updates: any = {
 							rotation: resetState?.rotation ?? 0,
@@ -137,28 +137,28 @@ export default function EditingToolsPanel() {
 						upperCase
 						level={ 3 }
 						size={ 11 }
-						className="typedpress-admin-media-editor__tools-panel-heading"
+						className="spacepress-admin-media-editor__tools-panel-heading"
 					>
-						{ __( 'Rotate', 'typedpress-admin' ) }
+						{ __( 'Rotate', 'spacepress-admin' ) }
 					</Heading>
 					<Stack direction="row" justify="space-between" gap={ 2 }>
 						<Button
-							className="typedpress-admin-media-editor__tools-panel-button"
+							className="spacepress-admin-media-editor__tools-panel-button"
 							variant="secondary"
 							icon={ rotateLeftIcon }
-							label={ __( 'Rotate 90° left', 'typedpress-admin' ) }
+							label={ __( 'Rotate 90° left', 'spacepress-admin' ) }
 							onClick={ () => handleSetRotation( rotation - 90 ) }
 						>
-							{ __( '90° left', 'typedpress-admin' ) }
+							{ __( '90° left', 'spacepress-admin' ) }
 						</Button>
 						<Button
-							className="typedpress-admin-media-editor__tools-panel-button"
+							className="spacepress-admin-media-editor__tools-panel-button"
 							variant="secondary"
 							icon={ rotateRightIcon }
-							label={ __( 'Rotate 90° right', 'typedpress-admin' ) }
+							label={ __( 'Rotate 90° right', 'spacepress-admin' ) }
 							onClick={ () => handleSetRotation( rotation + 90 ) }
 						>
-							{ __( '90° right', 'typedpress-admin' ) }
+							{ __( '90° right', 'spacepress-admin' ) }
 						</Button>
 					</Stack>
 				</ToolsPanelItem>
@@ -174,7 +174,7 @@ export default function EditingToolsPanel() {
 							flip.vertical !== resetFlip.vertical
 						);
 					} }
-					label={ __( 'Flip', 'typedpress-admin' ) }
+					label={ __( 'Flip', 'spacepress-admin' ) }
 					onDeselect={ () =>
 						setCropperState( {
 							flip: resetState?.flip ?? {
@@ -190,16 +190,16 @@ export default function EditingToolsPanel() {
 						upperCase
 						level={ 3 }
 						size={ 11 }
-						className="typedpress-admin-media-editor__tools-panel-heading"
+						className="spacepress-admin-media-editor__tools-panel-heading"
 					>
-						{ __( 'Flip', 'typedpress-admin' ) }
+						{ __( 'Flip', 'spacepress-admin' ) }
 					</Heading>
 					<Stack direction="row" justify="space-between" gap={ 2 }>
 						<Button
-							className="typedpress-admin-media-editor__tools-panel-button"
+							className="spacepress-admin-media-editor__tools-panel-button"
 							variant="secondary"
 							icon={ flipHorizontalIcon }
-							label={ __( 'Flip horizontal', 'typedpress-admin' ) }
+							label={ __( 'Flip horizontal', 'spacepress-admin' ) }
 							onClick={ () =>
 								handleSetFlip( {
 									vertical: flip.vertical,
@@ -207,13 +207,13 @@ export default function EditingToolsPanel() {
 								} )
 							}
 						>
-							{ __( 'Horizontal', 'typedpress-admin' ) }
+							{ __( 'Horizontal', 'spacepress-admin' ) }
 						</Button>
 						<Button
 							variant="secondary"
-							className="typedpress-admin-media-editor__tools-panel-button"
+							className="spacepress-admin-media-editor__tools-panel-button"
 							icon={ flipVerticalIcon }
-							label={ __( 'Flip vertical', 'typedpress-admin' ) }
+							label={ __( 'Flip vertical', 'spacepress-admin' ) }
 							onClick={ () =>
 								handleSetFlip( {
 									vertical: ! flip.vertical,
@@ -221,7 +221,7 @@ export default function EditingToolsPanel() {
 								} )
 							}
 						>
-							{ __( 'Vertical', 'typedpress-admin' ) }
+							{ __( 'Vertical', 'spacepress-admin' ) }
 						</Button>
 					</Stack>
 				</ToolsPanelItem>
@@ -230,15 +230,15 @@ export default function EditingToolsPanel() {
 				direction="row"
 				justify="end"
 				gap={ 4 }
-				className="typedpress-admin-media-editor__tools-panel-row"
+				className="spacepress-admin-media-editor__tools-panel-row"
 			>
 				<Button
-					className="typedpress-admin-media-editor__tools-panel-button"
+					className="spacepress-admin-media-editor__tools-panel-button"
 					variant="secondary"
 					isDestructive
 					onClick={ handleReset }
 				>
-					{ __( 'Reset all', 'typedpress-admin' ) }
+					{ __( 'Reset all', 'spacepress-admin' ) }
 				</Button>
 			</Stack>
 		</div>

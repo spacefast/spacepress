@@ -2,12 +2,12 @@
 @use "@wordpress/base-styles/colors";
 @use "@wordpress/base-styles/mixins";
 
-.typedpress-admin-global-styles-variations_item {
+.spacepress-admin-global-styles-variations_item {
 	box-sizing: border-box;
 	// To round the outline in Windows 10 high contrast mode.
 	cursor: pointer;
 
-	.typedpress-admin-global-styles-variations_item-preview {
+	.spacepress-admin-global-styles-variations_item-preview {
 		border-radius: variables.$radius-small;
 		outline: variables.$border-width solid
 			var( --wpds-color-stroke-interactive-neutral );
@@ -29,12 +29,12 @@
 	}
 
 	&:not( .is-active ):hover
-		.typedpress-admin-global-styles-variations_item-preview {
+		.spacepress-admin-global-styles-variations_item-preview {
 		outline-color: var( --wpds-color-stroke-interactive-neutral-active );
 	}
 
-	&.is-active .typedpress-admin-global-styles-variations_item-preview,
-	&:focus-visible .typedpress-admin-global-styles-variations_item-preview,
+	&.is-active .spacepress-admin-global-styles-variations_item-preview,
+	&:focus-visible .spacepress-admin-global-styles-variations_item-preview,
 	&:focus-visible {
 		outline-color: var( --wpds-color-stroke-focus );
 		outline-offset: variables.$border-width;

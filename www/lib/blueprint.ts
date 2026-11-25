@@ -1,14 +1,14 @@
 // WordPress Playground blueprints: WordPress in the visitor's browser with an app's plugins installed
 // and active. `blueprint` is the general form. `exampleBlueprint` is a built example's, with the zips
-// `typedpress build` wrote (scripts/build-showcase.ts publishes both). `editedBlueprint` is the
+// `spacepress build` wrote (scripts/build-showcase.ts publishes both). `editedBlueprint` is the
 // playground page's: the config in its editor, compiled in the browser, with the app plugin the
-// compiler returned written file by file and TypedPress's other plugins from the published zips.
+// compiler returned written file by file and SpacePress's other plugins from the published zips.
 // The page and tests/playground/ both build it with this module, so the tests boot what a visitor gets.
 //
 // Two steps make up for what Playground lacks, both checked against @wp-playground/cli 3.1.58:
-// - Its bundled SQLite Database Integration is 3.1.1; TypedPress's runtime needs 3.1.2 or later
+// - Its bundled SQLite Database Integration is 3.1.1; SpacePress's runtime needs 3.1.2 or later
 //   (src/platform.rs), so the blueprint unpacks that release over it.
-// - Its PHP has no OpenSSL config file, so openssl_pkey_new() fails and TypedPress's sign-in plugin
+// - Its PHP has no OpenSSL config file, so openssl_pkey_new() fails and SpacePress's sign-in plugin
 //   can't create its signing key on activation. A must-use plugin writes an empty config, before
 //   any other plugin loads, on every request (Playground doesn't keep /root between requests).
 //
@@ -21,13 +21,13 @@ export interface Platform {
 	sqlite: string;
 }
 
-/** One of TypedPress's plugins: a published zip, or the files of the plugin folder by path inside it. */
-export type TypedPressPlugin = { slug: string; url: string } | { slug: string; files: Record<string, string> };
+/** One of SpacePress's plugins: a published zip, or the files of the plugin folder by path inside it. */
+export type SpacePressPlugin = { slug: string; url: string } | { slug: string; files: Record<string, string> };
 
 export interface BlueprintInput {
 	platform: Platform;
-	/** TypedPress's plugins in activation order: runtime, identity, the app, then admin (typedpress-manifest.json order). */
-	tpPlugins: TypedPressPlugin[];
+	/** SpacePress's plugins in activation order: runtime, identity, the app, then admin (spacepress-manifest.json order). */
+	spPlugins: SpacePressPlugin[];
 	/** WordPress.org plugins from the lock, with their exact versions, dependencies first. */
 	wordpressPlugins: { slug: string; version: string }[];
 	/** Where the visitor lands. */
@@ -36,8 +36,8 @@ export interface BlueprintInput {
 	seed?: string;
 	/**
 	 * Content files a synced collection reads (`sync: "content/posts/*.md"`), as the records
-	 * `typedpress compile-sources` writes to `seed/<collection>.json`. They go in before `seed`, through the
-	 * runtime's own typedpress-sync seed, the one `wp typedpress seed` runs.
+	 * `spacepress compile-sources` writes to `seed/<collection>.json`. They go in before `seed`, through the
+	 * runtime's own spacepress-sync seed, the one `wp spacepress seed` runs.
 	 */
 	syncSeed?: Record<string, unknown>;
 	/** Pretty permalinks (`/%postname%/`): TSX pages route on the path, as `/notes/`. */
@@ -45,7 +45,7 @@ export interface BlueprintInput {
 }
 
 const openssl = `<?php
-// WordPress Playground's PHP has no OpenSSL config file, so openssl_pkey_new() fails. TypedPress's
+// WordPress Playground's PHP has no OpenSSL config file, so openssl_pkey_new() fails. SpacePress's
 // sign-in plugin needs it for its signing key. Playground doesn't keep /root between requests.
 if (!is_file('/root/install/ssl/openssl.cnf')) {
 \t@mkdir('/root/install/ssl', 0777, true);
@@ -67,14 +67,14 @@ function tree(files: Record<string, string>): FileTree {
 	return root;
 }
 
-const seedDirectory = "/internal/typedpress-seed";
-// Seeds each synced collection from the records the blueprint wrote, as `wp typedpress seed` does. It
+const seedDirectory = "/internal/spacepress-seed";
+// Seeds each synced collection from the records the blueprint wrote, as `wp spacepress seed` does. It
 // runs as a cron request: a bare wp-load.php request is not one Polylang serves on a site with no
-// languages yet, so a localized collection would have no PLL() and TypedPress wouldn't add its languages.
+// languages yet, so a localized collection would have no PLL() and SpacePress wouldn't add its languages.
 const syncSeedPhp = (directory: string) => `<?php
 define('DOING_CRON', true);
 require_once '/wordpress/wp-load.php';
-\\TypedPress\\Sync\\Seed::run(\\TypedPress\\Wp\\Runtime::plugin() ?? throw new RuntimeException('No TypedPress app is active'), '${directory}');
+\\SpacePress\\Sync\\Seed::run(\\SpacePress\\Wp\\Runtime::plugin() ?? throw new RuntimeException('No SpacePress app is active'), '${directory}');
 `;
 
 // Set once, on a site nobody has used yet; the rewrite rules are written for the new structure.
@@ -85,22 +85,22 @@ $wp_rewrite->set_permalink_structure('/%postname%/');
 flush_rewrite_rules();
 `;
 
-export function blueprint({ platform, tpPlugins, wordpressPlugins, landingPage, seed, syncSeed = {}, prettyPermalinks = false }: BlueprintInput) {
+export function blueprint({ platform, spPlugins, wordpressPlugins, landingPage, seed, syncSeed = {}, prettyPermalinks = false }: BlueprintInput) {
 	const wordpressOrg = (slug: string, version: string) => ({ resource: "url", url: `https://downloads.wordpress.org/plugin/${slug}.${version}.zip` });
 	return {
 		$schema: "https://playground.wordpress.net/blueprint-schema.json",
-		meta: { title: "TypedPress example", author: "TypedPress" },
-		// "latest" is WordPress's current release, at or above TypedPress's floor (tests/fixtures/platform.json).
+		meta: { title: "SpacePress example", author: "SpacePress" },
+		// "latest" is WordPress's current release, at or above SpacePress's floor (tests/fixtures/platform.json).
 		preferredVersions: { php: platform.php, wp: "latest" },
 		features: { networking: true },
 		login: true,
 		landingPage,
 		steps: [
 			{ step: "unzip", zipFile: wordpressOrg("sqlite-database-integration", platform.sqlite), extractToPath: "/internal/shared" },
-			{ step: "writeFile", path: "/wordpress/wp-content/mu-plugins/typedpress-playground-openssl.php", data: openssl },
+			{ step: "writeFile", path: "/wordpress/wp-content/mu-plugins/spacepress-playground-openssl.php", data: openssl },
 			...wordpressPlugins.map(({ slug, version }) => ({ step: "installPlugin", pluginData: wordpressOrg(slug, version) })),
 			// installPlugin activates each one as it goes, so the order is the activation order.
-			...tpPlugins.map((plugin) => ({
+			...spPlugins.map((plugin) => ({
 				step: "installPlugin",
 				pluginData: "url" in plugin
 					? { resource: "url", url: plugin.url }
@@ -117,8 +117,8 @@ export function blueprint({ platform, tpPlugins, wordpressPlugins, landingPage, 
 
 export type Blueprint = ReturnType<typeof blueprint>;
 
-/** TypedPress's plugins that are the same for every app (src/emit.rs `runtime_tree`): one published zip each. */
-export const sharedPlugins = ["typedpress-runtime", "typedpress-identity", "typedpress-admin"] as const;
+/** SpacePress's plugins that are the same for every app (src/emit.rs `runtime_tree`): one published zip each. */
+export const sharedPlugins = ["spacepress-runtime", "spacepress-identity", "spacepress-admin"] as const;
 
 /** Where the site publishes those zips, below its address: `playground-plugins/<slug>.zip`. */
 export const sharedZip = (site: string, slug: string) => `${site.replace(/\/$/, "")}/playground-plugins/${slug}.zip`;
@@ -134,7 +134,7 @@ export interface ExampleRun {
 	ledger: Ledger;
 	/** The synced collections' content rows (BlueprintInput `syncSeed`), for the committed schema. */
 	syncSeed: Record<string, unknown>;
-	/** The example has `tp/app/` pages: they route on the path, so the site needs pretty permalinks. */
+	/** The example has `sp/app/` pages: they route on the path, so the site needs pretty permalinks. */
 	appPages: boolean;
 }
 
@@ -142,14 +142,14 @@ export type EditedRun = { blueprint: Blueprint; seeded: boolean } | { refused: s
 
 /**
  * The blueprint for a config as the playground compiled it. The app plugin is the compiler's
- * `appPlugin`, the same files `typedpress build` packs into `typedpress-app-<name>.zip`; the other TypedPress plugins
+ * `appPlugin`, the same files `spacepress build` packs into `spacepress-app-<name>.zip`; the other SpacePress plugins
  * don't depend on the config, so they come from the site's published zips. WordPress.org plugins
  * come from the example's lock, at the versions it pins: a config that needs any other plugin or
  * version is refused, since Playground would install something no build here has checked.
  *
  * The example's seed writes sample data through the app's REST API for the committed schema, so it
  * runs only while the schema is unchanged; an edited schema starts empty. The same goes for the
- * synced content rows. `tp/app/` pages are in the app plugin the compiler returned, so an edited
+ * synced content rows. `sp/app/` pages are in the app plugin the compiler returned, so an edited
  * page runs as edited. The landing page stays the example's unless the edit took away the post type
  * it lists; then it is WordPress's plugin screen.
  */
@@ -158,20 +158,20 @@ export function editedBlueprint({ output, example, site, platform }: { output: O
 	const missing = output.wordpressPlugins.filter(({ slug, version }) => locked.get(slug) !== version);
 	if (missing.length > 0) {
 		const names = missing.map(({ slug, version }) => `${slug} ${version}`).join(", ");
-		return { refused: `This config needs ${names}, which this example's WordPress doesn't install, so it can't run in WordPress here. \`typedpress build\` installs it when you build the app yourself.` };
+		return { refused: `This config needs ${names}, which this example's WordPress doesn't install, so it can't run in WordPress here. \`spacepress build\` installs it when you build the app yourself.` };
 	}
-	const app = output.tpPlugins.find((slug) => !(sharedPlugins as readonly string[]).includes(slug));
+	const app = output.spPlugins.find((slug) => !(sharedPlugins as readonly string[]).includes(slug));
 	if (!app) throw new Error("the compiler returned no app plugin");
 	const prefix = `${app}/`;
 	const files = Object.fromEntries(Object.entries(output.appPlugin).filter(([file]) => file.startsWith(prefix)).map(([file, text]) => [file.slice(prefix.length), text]));
 	const unchanged = output.schemaPhp === example.schemaPhp;
-	const tpPlugins: TypedPressPlugin[] = output.tpPlugins.map((slug) => (slug === app ? { slug, files } : { slug, url: sharedZip(site, slug) }));
+	const spPlugins: SpacePressPlugin[] = output.spPlugins.map((slug) => (slug === app ? { slug, files } : { slug, url: sharedZip(site, slug) }));
 	const landingOpens = unchanged || opens(example.landing, output.schemaPhp);
 	return {
 		seeded: unchanged && example.seed !== undefined,
 		blueprint: blueprint({
 			platform,
-			tpPlugins,
+			spPlugins,
 			wordpressPlugins: output.wordpressPlugins,
 			landingPage: landingOpens ? example.landing : "/wp-admin/plugins.php",
 			seed: unchanged ? example.seed : undefined,
@@ -191,8 +191,8 @@ function opens(landing: string, schemaPhp: string): boolean {
 export const playgroundUrl = (print: Blueprint) => `https://playground.wordpress.net/#${encodeURIComponent(JSON.stringify(print))}`;
 
 /**
- * What an example has on disk beside its sources that `typedpress build` puts in the app plugin: the
- * migration history (`tp/_generated/migrations/`, with `ops.json` and `migration.sql` per entry)
+ * What an example has on disk beside its sources that `spacepress build` puts in the app plugin: the
+ * migration history (`sp/_generated/migrations/`, with `ops.json` and `migration.sql` per entry)
  * and the project's `public/` files by path below it.
  */
 export interface Ledger {
@@ -202,12 +202,12 @@ export interface Ledger {
 
 /** Migration files by project-relative path, as read by the compiler. */
 export const migrationInputs = (files: Iterable<[string, string]>) =>
-	Object.fromEntries(Array.from(files, ([file, text]) => [`tp/_generated/migrations/${file}`, text]));
+	Object.fromEntries(Array.from(files, ([file, text]) => [`sp/_generated/migrations/${file}`, text]));
 
 /**
  * The compile request for running sources in WordPress: the ledger goes along, so the compiler
  * writes new migrations after the existing ones and the app plugin carries all of them, as
- * `typedpress build` does in the example's folder. The project's `public/` goes along too, since the app
+ * `spacepress build` does in the example's folder. The project's `public/` goes along too, since the app
  * plugin carries it. `files` uses the names the compiler reads.
  */
 export function runRequest(name: string, files: Record<string, string>, ledger: Ledger): Request {

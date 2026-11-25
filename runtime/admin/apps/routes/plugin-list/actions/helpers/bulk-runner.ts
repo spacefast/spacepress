@@ -13,7 +13,7 @@ import { store as noticesStore } from '@wordpress/notices';
  * Example
  *   await bulkAction(items, doWork, {
  *     onProgress: (done, total) => setProgress(done / total),
- *     buildMessage: (ok, fail) => sprintf(__('Updated %d plugins.', 'typedpress-admin'), ok),
+ *     buildMessage: (ok, fail) => sprintf(__('Updated %d plugins.', 'spacepress-admin'), ok),
  *   });
  */
 

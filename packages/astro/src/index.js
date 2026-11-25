@@ -1,34 +1,34 @@
-// @typedpress/astro: a TypedPress site as the content source of an Astro site.
+// @spacepress/astro: a SpacePress site as the content source of an Astro site.
 //
-// - tpLoader(kind): a build-time content collection. Each build asks the site whether each page
-//   of the collection changed since the last one, with the tokens `POST /wp-json/typedpress/v1/_live`
+// - spLoader(kind): a build-time content collection. Each build asks the site whether each page
+//   of the collection changed since the last one, with the tokens `POST /wp-json/spacepress/v1/_live`
 //   issued; a page that didn't change costs no rows, and Astro's digest skips the unchanged
 //   entries of a page that did.
-// - tpLiveLoader(kind?): a live collection, read at request time, with cache hints tagged
+// - spLiveLoader(kind?): a live collection, read at request time, with cache hints tagged
 //   `<kind>` and `<kind>:<id>`.
-// - tpWebhook(): an Astro endpoint that verifies TypedPress's signed webhook and invalidates those tags.
+// - spWebhook(): an Astro endpoint that verifies SpacePress's signed webhook and invalidates those tags.
 //
-// It speaks the same HTTP API as the typed client `typedpress build` generates (`/wp-json/typedpress/v1`), so the
+// It speaks the same HTTP API as the typed client `spacepress build` generates (`/wp-json/spacepress/v1`), so the
 // Astro project needs only the site's URL, in this repository or another one.
 
 import { z } from "astro/zod";
 
-const API = "/wp-json/typedpress/v1";
+const API = "/wp-json/spacepress/v1";
 /** The API's largest page (Facade::MAX_LIMIT, Live\Module::MAX_LIST_LIMIT). */
 const PAGE = 100;
 /** Reads one `_live` request may carry (Live\Module::MAX_QUERIES). */
 const BATCH = 20;
 /** The meta key a build-time collection keeps its page tokens under. */
-const STATE = "typedpress:pages";
+const STATE = "spacepress:pages";
 /** How old a webhook's timestamp may be, in seconds (the runtime's own tolerance). */
 const TOLERANCE_S = 300;
 
 /** Thrown for every answer that is not a 2xx; the fields are the problem document's. */
-export class TypedPressError extends Error {
+export class SpacePressError extends Error {
   /** @param {number} status @param {string} code @param {string} detail @param {string} [pointer] */
   constructor(status, code, detail, pointer) {
     super(`${status} ${code}: ${detail}${pointer ? ` (at ${pointer})` : ""}`);
-    this.name = "TypedPressError";
+    this.name = "SpacePressError";
     this.status = status;
     this.code = code;
     this.detail = detail;
@@ -50,24 +50,24 @@ function base64(text) {
 
 /** The site's origin and path, without the API prefix or a trailing slash. */
 function siteUrl(site) {
-  const url = site ?? env("TP_URL");
-  if (!url) throw new Error("@typedpress/astro: set TP_URL to the TypedPress site's URL, or pass { site }");
-  return String(url).replace(/\/+$/, "").replace(/\/wp-json\/typedpress\/v1$/, "");
+  const url = site ?? env("SP_URL");
+  if (!url) throw new Error("@spacepress/astro: set SP_URL to the SpacePress site's URL, or pass { site }");
+  return String(url).replace(/\/+$/, "").replace(/\/wp-json\/spacepress\/v1$/, "");
 }
 
 const connections = new Map();
 
 /**
  * One site's connection: the URL, the credentials and the site's description (fetched once).
- * @param {import("./index.d.ts").TypedPressOptions} [options]
+ * @param {import("./index.d.ts").SpacePressOptions} [options]
  */
 export function connect(options = {}) {
   const site = siteUrl(options.site);
   const headers = { accept: "application/json", ...options.headers };
   // `anonymous: true` never reads credentials from the environment: a server that renders pages
-  // for visitors must read as a visitor, whatever TP_APP_PASSWORD the build uses.
-  const password = options.anonymous ? undefined : options.appPassword ?? env("TP_APP_PASSWORD");
-  const token = options.anonymous ? undefined : options.token ?? env("TP_TOKEN");
+  // for visitors must read as a visitor, whatever SP_APP_PASSWORD the build uses.
+  const password = options.anonymous ? undefined : options.appPassword ?? env("SP_APP_PASSWORD");
+  const token = options.anonymous ? undefined : options.token ?? env("SP_TOKEN");
   if (!Object.keys(headers).some((h) => h.toLowerCase() === "authorization")) {
     if (password) headers.authorization = `Basic ${base64(password)}`;
     else if (token) headers.authorization = `Bearer ${token}`;
@@ -88,7 +88,7 @@ export function connect(options = {}) {
     try {
       response = await doFetch(path.startsWith("http") ? path : site + path, init);
     } catch (e) {
-      throw new TypedPressError(0, "network", `${method} ${site + path}: ${e instanceof Error ? e.message : String(e)}`);
+      throw new SpacePressError(0, "network", `${method} ${site + path}: ${e instanceof Error ? e.message : String(e)}`);
     }
     const text = await response.text();
     let parsed = null;
@@ -98,9 +98,9 @@ export function connect(options = {}) {
       // not JSON: reported below with the status
     }
     if (!response.ok) {
-      throw new TypedPressError(response.status, parsed?.code ?? "http_error", parsed?.detail ?? (text.slice(0, 200) || response.statusText), parsed?.pointer);
+      throw new SpacePressError(response.status, parsed?.code ?? "http_error", parsed?.detail ?? (text.slice(0, 200) || response.statusText), parsed?.pointer);
     }
-    if (parsed === null && text !== "") throw new TypedPressError(response.status, "invalid_json", `${method} ${path} did not answer JSON`);
+    if (parsed === null && text !== "") throw new SpacePressError(response.status, "invalid_json", `${method} ${path} did not answer JSON`);
     return parsed;
   }
 
@@ -108,7 +108,7 @@ export function connect(options = {}) {
   const connection = {
     site,
     request,
-    /** `GET /wp-json/typedpress/v1`: the app's kinds, fields and actions. */
+    /** `GET /wp-json/spacepress/v1`: the app's kinds, fields and actions. */
     describe() {
       described ??= request("GET", API).then((r) => r.data).catch((e) => {
         described = undefined;
@@ -125,7 +125,7 @@ export function connect(options = {}) {
         ?? (kinds[name] ? [name, kinds[name]] : undefined);
       if (!found) {
         const known = Object.entries(kinds).filter(([k]) => k !== "settings").map(([storage, k]) => k.key ?? storage);
-        throw new Error(`@typedpress/astro: ${site} has no kind '${name}' (it has ${known.join(", ")})`);
+        throw new Error(`@spacepress/astro: ${site} has no kind '${name}' (it has ${known.join(", ")})`);
       }
       return kindInfo(found[0], found[1]);
     },
@@ -136,23 +136,23 @@ export function connect(options = {}) {
 
 /** A kind as the loaders use it. Built-in WordPress kinds have no field list in the description. */
 function kindInfo(name, kind) {
-  const tp = kind.type !== "builtin";
-  const columns = tp ? kind.columns ?? {} : {};
+  const sp = kind.type !== "builtin";
+  const columns = sp ? kind.columns ?? {} : {};
   const media = Object.entries(columns).filter(([, c]) => c.type === "media" || c.type === "mediaList").map(([n]) => n);
   return {
     /** The storage name: the facade path, and the name in cache tags and webhook events. */
     name,
     /** The client key: what `_live` and the typed client name the kind by. */
-    key: tp ? kind.key ?? name : name,
-    tp,
+    key: sp ? kind.key ?? name : name,
+    sp,
     route: kind.route,
     type: kind.type,
-    primaryKey: tp ? kind.primaryKey : "id",
-    slug: tp ? kind.slug ?? null : ["posts", "pages", "categories", "tags"].includes(name) ? "slug" : null,
-    content: tp ? kind.content ?? null : null,
-    drafts: tp ? Boolean(kind.drafts) : name === "posts" || name === "pages",
+    primaryKey: sp ? kind.primaryKey : "id",
+    slug: sp ? kind.slug ?? null : ["posts", "pages", "categories", "tags"].includes(name) ? "slug" : null,
+    content: sp ? kind.content ?? null : null,
+    drafts: sp ? Boolean(kind.drafts) : name === "posts" || name === "pages",
     columns,
-    relations: tp ? kind.relations ?? {} : {},
+    relations: sp ? kind.relations ?? {} : {},
     media,
   };
 }
@@ -168,7 +168,7 @@ function entryId(info, options, row) {
 /** `with`: what the options ask for, plus every media field, so entries carry media URLs. */
 function withOf(info, options) {
   const out = {};
-  if (info.tp && options.media !== false) for (const m of info.media) out[m] = true;
+  if (info.sp && options.media !== false) for (const m of info.media) out[m] = true;
   return { ...out, ...(options.with ?? {}) };
 }
 
@@ -182,13 +182,13 @@ function and(...filters) {
 
 /** The `where` every read of the collection starts from: the options' own, published rows only by default. */
 function whereOf(info, options, extra) {
-  if (!info.tp && (nonEmpty(options.where) || nonEmpty(extra))) throw builtinFilter(info);
-  return and(options.where, extra, info.drafts && !options.drafts && info.tp ? { status: "published" } : null);
+  if (!info.sp && (nonEmpty(options.where) || nonEmpty(extra))) throw builtinFilter(info);
+  return and(options.where, extra, info.drafts && !options.drafts && info.sp ? { status: "published" } : null);
 }
 
-/** WordPress's own kinds are answered by core's routes, which ignore TypedPress's `where`, `orderBy` and `with`. */
+/** WordPress's own kinds are answered by core's routes, which ignore SpacePress's `where`, `orderBy` and `with`. */
 function builtinFilter(info) {
-  return new Error(`@typedpress/astro: '${info.name}' is WordPress's own kind; its reads take core's filters, not where, orderBy or with. `
+  return new Error(`@spacepress/astro: '${info.name}' is WordPress's own kind; its reads take core's filters, not where, orderBy or with. `
     + "Filter it by id or slug (getLiveEntry), or with the `query` option (core's parameters, e.g. { categories: 3 })");
 }
 
@@ -257,13 +257,13 @@ function rowTags(info, row) {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * A build-time content collection of one TypedPress kind.
+ * A build-time content collection of one SpacePress kind.
  * @param {string} kind
- * @param {import("./index.d.ts").TypedPressLoaderOptions} [options]
+ * @param {import("./index.d.ts").SpacePressLoaderOptions} [options]
  */
-export function tpLoader(kind, options = {}) {
+export function spLoader(kind, options = {}) {
   return {
-    name: "@typedpress/astro",
+    name: "@spacepress/astro",
     async createSchema() {
       const info = await connect(options).kind(kind);
       return { schema: zodSchema(info, options), types: tsTypes(info, options) };
@@ -271,8 +271,8 @@ export function tpLoader(kind, options = {}) {
     async load(context) {
       const connection = connect(options);
       const info = await connection.kind(kind);
-      if (!info.tp && nonEmpty(options.with)) throw builtinFilter(info);
-      if (info.tp && nonEmpty(options.query)) throw new Error("@typedpress/astro: `query` is for WordPress's own kinds; a TypedPress kind takes `where`");
+      if (!info.sp && nonEmpty(options.with)) throw builtinFilter(info);
+      if (info.sp && nonEmpty(options.query)) throw new Error("@spacepress/astro: `query` is for WordPress's own kinds; a SpacePress kind takes `where`");
       const query = { where: whereOf(info, options), with: withOf(info, options) };
       const key = JSON.stringify([connection.site, kind, query, typeof options.id === "function" ? String(options.id) : options.id ?? null]);
       let saved = null;
@@ -281,7 +281,7 @@ export function tpLoader(kind, options = {}) {
       } catch {
         saved = null;
       }
-      const result = info.tp
+      const result = info.sp
         ? await syncPages(connection, info, query, saved?.key === key ? saved.pages : null, context.store, options)
         : { rows: await readAll(connection, info, options), pages: null, unchanged: 0, total: 0 };
       const keep = new Set(result.kept);
@@ -292,7 +292,7 @@ export function tpLoader(kind, options = {}) {
         const id = entryId(info, options, row);
         const pk = row[info.primaryKey];
         if (owner.has(id) && owner.get(id) !== pk) {
-          throw new Error(`@typedpress/astro: ${kind} rows ${owner.get(id)} and ${pk} both have the entry id '${id}'; pass an \`id\` option that is unique`);
+          throw new Error(`@spacepress/astro: ${kind} rows ${owner.get(id)} and ${pk} both have the entry id '${id}'; pass an \`id\` option that is unique`);
         }
         if (owner.has(id)) continue;
         owner.set(id, pk);
@@ -325,7 +325,7 @@ export function tpLoader(kind, options = {}) {
 /** Rows per request: the `pageSize` option, 1 to 100. */
 function pageSize(options) {
   const n = options.pageSize ?? PAGE;
-  if (!Number.isInteger(n) || n < 1 || n > PAGE) throw new Error(`@typedpress/astro: pageSize is a whole number from 1 to ${PAGE}`);
+  if (!Number.isInteger(n) || n < 1 || n > PAGE) throw new Error(`@spacepress/astro: pageSize is a whole number from 1 to ${PAGE}`);
   return n;
 }
 
@@ -375,7 +375,7 @@ async function syncPages(connection, info, query, saved, store, options) {
     let todo = pages.filter((p) => !answered.has(p));
     if (todo.length === 0) break;
     while (todo.length > 0) {
-      if (++requests > 10_000) throw new Error(`@typedpress/astro: ${info.name} did not finish paging`);
+      if (++requests > 10_000) throw new Error(`@spacepress/astro: ${info.name} did not finish paging`);
       const batch = todo.slice(0, BATCH);
       todo = todo.slice(BATCH);
       const answer = await connection.request("POST", `${API}/_live`, {
@@ -384,7 +384,7 @@ async function syncPages(connection, info, query, saved, store, options) {
       const results = answer?.data?.results ?? [];
       for (const [n, page] of batch.entries()) {
         const r = results[n] ?? { pending: true };
-        if (r.error) throw new TypedPressError(r.error.status ?? 0, r.error.code ?? "error", r.error.detail ?? "", r.error.pointer);
+        if (r.error) throw new SpacePressError(r.error.status ?? 0, r.error.code ?? "error", r.error.detail ?? "", r.error.pointer);
         if (r.pending) {
           todo.push(page);
           continue;
@@ -477,7 +477,7 @@ function expandedFields(info, options) {
 
 /** A Zod schema for the kind's rows (extra keys pass, so `with` relations and new fields survive). */
 export function zodSchema(info, options = {}) {
-  if (!info.tp) return z.looseObject({ id: z.number() });
+  if (!info.sp) return z.looseObject({ id: z.number() });
   const expanded = expandedFields(info, options);
   const shape = {};
   for (const [name, col] of Object.entries(info.columns)) shape[name] = zodColumn(col, expanded.has(name));
@@ -528,11 +528,11 @@ function tsColumn(col, expanded, mediaExpanded) {
 
 /** The TypeScript type Astro writes for the collection's entries (`createSchema().types`). */
 export function tsTypes(info, options = {}) {
-  if (!info.tp) return "export type Entry = { id: number; [key: string]: unknown };\n";
+  if (!info.sp) return "export type Entry = { id: number; [key: string]: unknown };\n";
   const expanded = expandedFields(info, options);
   const fields = Object.entries(info.columns).map(([name, col]) =>
     `  ${/^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name)}${col.access ? "?" : ""}: ${tsColumn(col, expanded.has(name), options.media !== false)};`);
-  return `// The rows of the TypedPress kind '${info.name}', as its site describes them.\nexport type Entry = {\n${fields.join("\n")}\n  [key: string]: unknown;\n};\n`;
+  return `// The rows of the SpacePress kind '${info.name}', as its site describes them.\nexport type Entry = {\n${fields.join("\n")}\n  [key: string]: unknown;\n};\n`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -543,16 +543,16 @@ export function tsTypes(info, options = {}) {
  * A live collection: read at request time, never stored. With a kind, the collection is that kind:
  * `getLiveEntry("posts", "hello")` finds by slug (or the `id` option). Without one, each filter
  * names its kind: `getLiveEntry("first", { kind: "posts", slug: "hello" })`.
- * @param {string | import("./index.d.ts").TypedPressLiveOptions} [kindOrOptions]
- * @param {import("./index.d.ts").TypedPressLiveOptions} [maybeOptions]
+ * @param {string | import("./index.d.ts").SpacePressLiveOptions} [kindOrOptions]
+ * @param {import("./index.d.ts").SpacePressLiveOptions} [maybeOptions]
  */
-export function tpLiveLoader(kindOrOptions, maybeOptions) {
+export function spLiveLoader(kindOrOptions, maybeOptions) {
   const fixed = typeof kindOrOptions === "string" ? kindOrOptions : undefined;
   const options = (typeof kindOrOptions === "string" ? maybeOptions : kindOrOptions) ?? {};
   const pick = (filter) => {
     const { kind = fixed, ...rest } = filter ?? {};
-    if (!kind) throw new Error("@typedpress/astro: this live collection serves every kind; name one: { kind: \"posts\", ... }");
-    if (fixed && kind !== fixed) throw new Error(`@typedpress/astro: this live collection serves '${fixed}', not '${kind}'`);
+    if (!kind) throw new Error("@spacepress/astro: this live collection serves every kind; name one: { kind: \"posts\", ... }");
+    if (fixed && kind !== fixed) throw new Error(`@spacepress/astro: this live collection serves '${fixed}', not '${kind}'`);
     return { kind, rest };
   };
   const toEntry = (info, row, html) => {
@@ -566,15 +566,15 @@ export function tpLiveLoader(kindOrOptions, maybeOptions) {
   };
   const fail = (e) => ({ error: e instanceof Error ? e : new Error(String(e)) });
   return {
-    name: "@typedpress/astro/live",
+    name: "@spacepress/astro/live",
     async loadCollection({ filter }) {
       try {
         const { kind, rest } = pick(filter);
         const connection = connect(options);
         const info = await connection.kind(kind);
         const { where, with: w, rendered, query: core, ...list } = rest;
-        if (!info.tp && (nonEmpty(w) || nonEmpty(options.with) || list.orderBy !== undefined)) throw builtinFilter(info);
-        const query = info.tp
+        if (!info.sp && (nonEmpty(w) || nonEmpty(options.with) || list.orderBy !== undefined)) throw builtinFilter(info);
+        const query = info.sp
           ? { ...list, where: whereOf(info, options, where), with: withOf(info, { ...options, with: { ...options.with, ...w } }) }
           : { ...list, where: whereOf(info, options, where), core: { ...options.query, ...core } };
         const page = await connection.request("GET", `${API}/${encodeURIComponent(info.name)}${listQuery(query)}`);
@@ -593,9 +593,9 @@ export function tpLiveLoader(kindOrOptions, maybeOptions) {
         const info = await connection.kind(kind);
         const { id, where, with: w, ...fields } = rest;
         const match = and(where, fields);
-        if (id === undefined && !nonEmpty(match)) throw new Error("@typedpress/astro: loadEntry needs an id or a filter");
+        if (id === undefined && !nonEmpty(match)) throw new Error("@spacepress/astro: loadEntry needs an id or a filter");
         let query;
-        if (info.tp) {
+        if (info.sp) {
           let byId = null;
           if (id !== undefined) {
             const field = typeof options.id === "string" ? options.id : info.slug ?? info.primaryKey;
@@ -630,7 +630,7 @@ export function tpLiveLoader(kindOrOptions, maybeOptions) {
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 /**
- * Whether `header` (`TypedPress-Signature: t=<unix>,v1=<hex>[,v1=…]`) signs `body` with `secret`:
+ * Whether `header` (`SpacePress-Signature: t=<unix>,v1=<hex>[,v1=…]`) signs `body` with `secret`:
  * `v1 = hex(HMAC-SHA256(secret, "<t>.<body>"))`, `t` within five minutes of now.
  */
 export async function verifySignature(secret, header, body, now = Date.now()) {
@@ -658,19 +658,19 @@ export function eventTags(event) {
 }
 
 /**
- * An Astro endpoint for TypedPress's webhooks (`export const POST = tpWebhook()` in
- * `src/pages/api/tp.ts`). It verifies the signature, then invalidates the event's tags in
+ * An Astro endpoint for SpacePress's webhooks (`export const POST = spWebhook()` in
+ * `src/pages/api/sp.ts`). It verifies the signature, then invalidates the event's tags in
  * Astro's route cache (when one is configured) and calls `onEvent`, which a static site uses to
  * start a rebuild instead.
- * @param {import("./index.d.ts").TypedPressWebhookOptions} [options]
+ * @param {import("./index.d.ts").SpacePressWebhookOptions} [options]
  */
-export function tpWebhook(options = {}) {
+export function spWebhook(options = {}) {
   return async (context) => {
-    const secret = options.secret ?? env("TP_WEBHOOK_SECRET");
-    if (!secret) return new Response("TP_WEBHOOK_SECRET is not set", { status: 500 });
+    const secret = options.secret ?? env("SP_WEBHOOK_SECRET");
+    if (!secret) return new Response("SP_WEBHOOK_SECRET is not set", { status: 500 });
     if (context.request.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
     const body = await context.request.text();
-    if (!(await verifySignature(secret, context.request.headers.get("typedpress-signature"), body))) {
+    if (!(await verifySignature(secret, context.request.headers.get("spacepress-signature"), body))) {
       return new Response("invalid signature", { status: 401 });
     }
     let event;

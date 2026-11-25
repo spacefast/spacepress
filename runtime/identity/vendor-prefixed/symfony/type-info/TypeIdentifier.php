@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\TypeInfo;
+namespace SpacePress\Identity\Vendor\Symfony\Component\TypeInfo;
 
 /**
  * Identifier of a PHP native type.

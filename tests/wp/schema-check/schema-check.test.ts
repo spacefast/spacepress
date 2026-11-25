@@ -5,18 +5,18 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { first, sql, wpTry } from "../env.ts";
 
-const content = process.env.TP_SCHEMA_CHECK_CONTENT ?? "";
-const live = process.env.TP_SCHEMA_CHECK_LIVE ?? "";
-const migrations = "plugins/typedpress-app-schema-check/tp/app/migrations";
+const content = process.env.SP_SCHEMA_CHECK_CONTENT ?? "";
+const live = process.env.SP_SCHEMA_CHECK_LIVE ?? "";
+const migrations = "plugins/spacepress-app-schema-check/sp/app/migrations";
 
 function install(step: string) {
   execFileSync("rsync", ["-a", "--delete", `${content}/${step}/`, `${live}/`]);
 }
 
-const ledger = () => sql("SELECT id FROM wp_tp__migrations WHERE app = 'schema-check' ORDER BY id").map((row) => row.id);
-const notes = () => sql("SELECT id, body, state, category FROM wp_tp_notes ORDER BY id");
+const ledger = () => sql("SELECT id FROM wp_sp__migrations WHERE app = 'schema-check' ORDER BY id").map((row) => row.id);
+const notes = () => sql("SELECT id, body, state, category FROM wp_sp_notes ORDER BY id");
 const tasks = () => sql("SELECT id, title, note FROM wp_external_tasks ORDER BY id");
-const likes = () => sql("SELECT id, post, emoji FROM wp_tp_likes ORDER BY id");
+const likes = () => sql("SELECT id, post, emoji FROM wp_sp_likes ORDER BY id");
 
 function migrated(step: string) {
   first("migrate");
@@ -64,7 +64,7 @@ test("the additive deploy widens text, backfills defaults and preserves existing
   ]);
   assert.deepEqual(likes(), [{ id: "1", post: "1", emoji: "NULL" }]);
   assert.deepEqual(first("find", "tags"), []);
-  assert.equal(sql("SHOW COLUMNS FROM wp_tp_notes LIKE 'body'")[0].Type, "varchar(100)");
+  assert.equal(sql("SHOW COLUMNS FROM wp_sp_notes LIKE 'body'")[0].Type, "varchar(100)");
 });
 
 test("a renamed TypeScript export and field aliases leave the original tables and rows in place", () => {
@@ -73,7 +73,7 @@ test("a renamed TypeScript export and field aliases leave the original tables an
   assert.deepEqual(migrated("renamed"), before.ledger);
   assert.deepEqual(notes(), before.notes);
   assert.deepEqual(tasks(), before.tasks);
-  assert.deepEqual(sql("SHOW TABLES LIKE 'wp_tp_memos'"), []);
+  assert.deepEqual(sql("SHOW TABLES LIKE 'wp_sp_memos'"), []);
   assert.deepEqual(first("find", "notes").map((row: { text: string }) => row.text).sort(), ["first", "second"]);
   assert.deepEqual(first("find", "tasks").map((row: { name: string }) => row.name).sort(), ["also kept", "kept"]);
   first("insert", "notes", '{"body":"old name"}');
@@ -96,14 +96,14 @@ test("retiring a kind, field or an adopted binding keeps their stored data", () 
 
 test("a live preflight counts missing and incompatible values before applying any statement", () => {
   const id = "99991231235959_000000_preflight";
-  sql("UPDATE wp_tp_notes SET count = '007' WHERE id = 1");
-  const before = { notes: notes(), ledger: ledger(), counts: sql("SELECT count FROM wp_tp_notes ORDER BY id") };
+  sql("UPDATE wp_sp_notes SET count = '007' WHERE id = 1");
+  const before = { notes: notes(), ledger: ledger(), counts: sql("SELECT count FROM wp_sp_notes ORDER BY id") };
   withMigration(id, [
-    "ALTER TABLE `{prefix}tp_notes` ADD COLUMN `first_step` LONGTEXT;",
-    '-- typedpress-check {"check":"required","name":"notes.reviewer","table":"{prefix}tp_notes"}\nALTER TABLE `{prefix}tp_notes` ADD COLUMN `reviewer` LONGTEXT NOT NULL;',
-    '-- typedpress-check {"check":"narrow","name":"notes.count","table":"{prefix}tp_notes","column":"count","fits":"BINARY CAST(CAST({col} AS SIGNED) AS CHAR) = BINARY {col}"}\nALTER TABLE `{prefix}tp_notes` MODIFY COLUMN `count` BIGINT;',
+    "ALTER TABLE `{prefix}sp_notes` ADD COLUMN `first_step` LONGTEXT;",
+    '-- spacepress-check {"check":"required","name":"notes.reviewer","table":"{prefix}sp_notes"}\nALTER TABLE `{prefix}sp_notes` ADD COLUMN `reviewer` LONGTEXT NOT NULL;',
+    '-- spacepress-check {"check":"narrow","name":"notes.count","table":"{prefix}sp_notes","column":"count","fits":"BINARY CAST(CAST({col} AS SIGNED) AS CHAR) = BINARY {col}"}\nALTER TABLE `{prefix}sp_notes` MODIFY COLUMN `count` BIGINT;',
   ], () => {
-    const result = JSON.parse(wpTry("typedpress", "migrate"));
+    const result = JSON.parse(wpTry("spacepress", "migrate"));
     assert.equal(result.error?.code, "schema_refused");
     assert.equal(result.error.refusals.length, 2);
     const [required, narrow] = result.error.refusals;
@@ -112,26 +112,26 @@ test("a live preflight counts missing and incompatible values before applying an
     assert.deepEqual([narrow.code, narrow.name, narrow.rows, narrow.migration], ["value_does_not_fit", "notes.count", 1, id]);
     assert.deepEqual(notes(), before.notes);
     assert.deepEqual(ledger(), before.ledger);
-    assert.deepEqual(sql("SELECT count FROM wp_tp_notes ORDER BY id"), before.counts);
-    assert.deepEqual(sql("SHOW COLUMNS FROM wp_tp_notes LIKE 'first_step'"), []);
+    assert.deepEqual(sql("SELECT count FROM wp_sp_notes ORDER BY id"), before.counts);
+    assert.deepEqual(sql("SHOW COLUMNS FROM wp_sp_notes LIKE 'first_step'"), []);
   });
   first("migrate");
 });
 
 test("a count that overflows refuses the migration and preserves the stored value", () => {
-  sql("UPDATE wp_tp_notes SET total = -9223372036854775808 WHERE id = 1");
-  const totals = sql("SELECT total FROM wp_tp_notes ORDER BY id");
+  sql("UPDATE wp_sp_notes SET total = -9223372036854775808 WHERE id = 1");
+  const totals = sql("SELECT total FROM wp_sp_notes ORDER BY id");
   const before = ledger();
   withMigration("99991231235959_000000_overflow", [
-    '-- typedpress-check {"check":"narrow","name":"notes.total","table":"{prefix}tp_notes","column":"total","fits":"ABS({col}) <= 9007199254740992"}\nALTER TABLE `{prefix}tp_notes` MODIFY COLUMN `total` DOUBLE;',
+    '-- spacepress-check {"check":"narrow","name":"notes.total","table":"{prefix}sp_notes","column":"total","fits":"ABS({col}) <= 9007199254740992"}\nALTER TABLE `{prefix}sp_notes` MODIFY COLUMN `total` DOUBLE;',
   ], () => {
-    const result = JSON.parse(wpTry("typedpress", "migrate"));
+    const result = JSON.parse(wpTry("spacepress", "migrate"));
     assert.equal(result.error?.code, "schema_refused");
     assert.equal(result.error.refusals.length, 1);
     const [refusal] = result.error.refusals;
     assert.deepEqual([refusal.code, refusal.name], ["check_failed", "notes.total"]);
     assert.match(refusal.message, /returned no row|out of range|1690/i);
-    assert.deepEqual(sql("SELECT total FROM wp_tp_notes ORDER BY id"), totals);
+    assert.deepEqual(sql("SELECT total FROM wp_sp_notes ORDER BY id"), totals);
     assert.deepEqual(ledger(), before);
   });
   first("migrate");
@@ -140,15 +140,15 @@ test("a count that overflows refuses the migration and preserves the stored valu
 test("the runtime refuses a destructive migration even with matching row confirmation", () => {
   const before = { notes: notes(), ledger: ledger() };
   withMigration("99991231235959_000000_drop", [
-    "ALTER TABLE `{prefix}tp_notes` ADD COLUMN `first_step` LONGTEXT;",
-    "ALTER TABLE `{prefix}tp_notes` DROP COLUMN `category`;",
+    "ALTER TABLE `{prefix}sp_notes` ADD COLUMN `first_step` LONGTEXT;",
+    "ALTER TABLE `{prefix}sp_notes` DROP COLUMN `category`;",
   ], () => {
-    const result = JSON.parse(wpTry('--exec=putenv("TP_DEBUG=1");', "typedpress", "migrate", `--drop=notes.category=${before.notes.length}`));
+    const result = JSON.parse(wpTry('--exec=putenv("SP_DEBUG=1");', "spacepress", "migrate", `--drop=notes.category=${before.notes.length}`));
     assert.equal(result.error?.code, "internal");
     assert.match(result.error.detail, /Refusing destructive DDL \(DROP COLUMN\)/);
     assert.deepEqual(notes(), before.notes);
     assert.deepEqual(ledger(), before.ledger);
-    assert.deepEqual(sql("SHOW COLUMNS FROM wp_tp_notes LIKE 'first_step'"), []);
+    assert.deepEqual(sql("SHOW COLUMNS FROM wp_sp_notes LIKE 'first_step'"), []);
   });
   first("migrate");
 });

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA;
+namespace SpacePress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA;
 
-use TypedPress\Identity\Vendor\Cose\Key\Ec2Key;
+use SpacePress\Identity\Vendor\Cose\Key\Ec2Key;
 use const OPENSSL_ALGO_SHA256;
 
 final class ES256 extends ECDSA

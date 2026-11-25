@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR;
+namespace SpacePress\Identity\Vendor\CBOR;
 
 use function array_is_list;
-use TypedPress\Identity\Vendor\CBOR\OtherObject\DoublePrecisionFloatObject;
-use TypedPress\Identity\Vendor\CBOR\OtherObject\FalseObject;
-use TypedPress\Identity\Vendor\CBOR\OtherObject\NullObject;
-use TypedPress\Identity\Vendor\CBOR\OtherObject\SinglePrecisionFloatObject;
-use TypedPress\Identity\Vendor\CBOR\OtherObject\TrueObject;
+use SpacePress\Identity\Vendor\CBOR\OtherObject\DoublePrecisionFloatObject;
+use SpacePress\Identity\Vendor\CBOR\OtherObject\FalseObject;
+use SpacePress\Identity\Vendor\CBOR\OtherObject\NullObject;
+use SpacePress\Identity\Vendor\CBOR\OtherObject\SinglePrecisionFloatObject;
+use SpacePress\Identity\Vendor\CBOR\OtherObject\TrueObject;
 use InvalidArgumentException;
 use function is_array;
 use function is_float;

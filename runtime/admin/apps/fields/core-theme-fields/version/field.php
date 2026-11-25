@@ -2,12 +2,12 @@
 /**
  * Version field definition for core theme fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'Version', 'typedpress-admin' ),
+	'label'         => __( 'Version', 'spacepress-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 );

@@ -1752,7 +1752,7 @@ const macStrings = [
 	`hyphen`,
 	`period`,
 	`slash`,
-	`typedpress`,
+	`spacepress`,
 	`one`,
 	`two`,
 	`three`,

@@ -3,12 +3,12 @@
 declare(strict_types=1);
 
 /*
- * What TypedPress relies on in WordPress core that core does not promise to keep: the protected members
- * of core's classes TypedPress subclasses or calls, and the globals and plugin internals listed in
+ * What SpacePress relies on in WordPress core that core does not promise to keep: the protected members
+ * of core's classes SpacePress subclasses or calls, and the globals and plugin internals listed in
  * docs/wordpress-internals.md. Read by reflection from the WordPress that is installed (the pinned
  * floor here, the nightly and the next beta in .github/workflows/wordpress-ahead.yml), so a core
  * release that renames, hides or reshapes one fails here by name instead of as a 500 somewhere.
- * Each entry names the TypedPress file that uses it; the doc says what to do when one fails.
+ * Each entry names the SpacePress file that uses it; the doc says what to do when one fails.
  */
 
 require __DIR__ . '/wp.php';
@@ -18,7 +18,7 @@ $site = wpSite('core-shape', ['schema' => ['name' => 'shape', 'collections' => [
 
 /**
  * A method: it exists, has this visibility, and accepts the argument count First passes.
- * `$args` is how many arguments TypedPress's call passes; null when TypedPress only overrides it.
+ * `$args` is how many arguments SpacePress's call passes; null when SpacePress only overrides it.
  */
 function method(string $class, string $name, string $visibility, ?int $args, string $usedBy): void
 {
@@ -38,10 +38,10 @@ function method(string $class, string $name, string $visibility, ?int $args, str
         check("$label takes $args argument(s)", $method->getNumberOfRequiredParameters() <= $args && $method->getNumberOfParameters() >= $args,
             ['required' => $method->getNumberOfRequiredParameters(), 'accepted' => $method->getNumberOfParameters()]);
     }
-    check("$label is not final", !$method->isFinal() || $args !== null, 'TypedPress overrides it');
+    check("$label is not final", !$method->isFinal() || $args !== null, 'SpacePress overrides it');
 }
 
-/** A property TypedPress reads or sets on a subclass or an instance of $class. */
+/** A property SpacePress reads or sets on a subclass or an instance of $class. */
 function property(string $class, string $name, string $visibility, string $usedBy): void
 {
     $label = "$class::\$$name ($usedBy)";
@@ -54,7 +54,7 @@ function property(string $class, string $name, string $visibility, string $usedB
     eq("$label is $visibility", $is, $visibility);
 }
 
-// ---------------------------------------------------------------- REST controllers TypedPress subclasses
+// ---------------------------------------------------------------- REST controllers SpacePress subclasses
 
 // Wp/PostsController.php extends WP_REST_Posts_Controller and overrides or calls these.
 $posts = 'WP_REST_Posts_Controller';
@@ -74,7 +74,7 @@ method($posts, 'prepare_item_for_response', 'public', 2, 'PostsController overri
 method($posts, 'get_collection_params', 'public', 0, 'PostsController extends');
 method($posts, 'handle_template', 'public', 3, 'PostsController::coreFields');
 method('WP_REST_Controller', 'get_fields_for_response', 'public', 1, 'PostsController, TableController');
-method('WP_REST_Controller', 'update_additional_fields_for_object', 'protected', 2, 'PostsController::tpWrite, UserMeta::create');
+method('WP_REST_Controller', 'update_additional_fields_for_object', 'protected', 2, 'PostsController::spWrite, UserMeta::create');
 method('WP_REST_Controller', 'prepare_response_for_collection', 'public', 1, 'TableController');
 property('WP_REST_Controller', 'namespace', 'protected', 'TableController sets it');
 property('WP_REST_Controller', 'rest_base', 'protected', 'TableController sets it');
@@ -97,9 +97,9 @@ method('WP_REST_Search_Handler', 'prepare_item', 'public', 2, 'SearchHandler ove
 method('WP_REST_Search_Handler', 'prepare_item_links', 'public', 1, 'SearchHandler overrides');
 method('WP_REST_Search_Handler', 'get_subtypes', 'public', 0, 'SearchHandler reads core\'s');
 
-// Wp/Abilities/TypedPressAbility.php extends WP_Ability and overrides get_meta_item.
-method('WP_Ability', 'get_meta_item', 'public', 2, 'TypedPressAbility overrides');
-method('WP_Ability', 'get_name', 'public', 0, 'TypedPressAbility');
+// Wp/Abilities/SpacePressAbility.php extends WP_Ability and overrides get_meta_item.
+method('WP_Ability', 'get_meta_item', 'public', 2, 'SpacePressAbility overrides');
+method('WP_Ability', 'get_name', 'public', 0, 'SpacePressAbility');
 
 // Wp/Sitemap.php's provider extends WP_Sitemaps_Provider.
 method('WP_Sitemaps_Provider', 'get_url_list', 'public', 2, 'Sitemap provider overrides');
@@ -110,9 +110,9 @@ method('WP_Sitemaps_Provider', 'get_object_subtypes', 'public', 0, 'Sitemap::fil
 
 // Wp/Kinds.php reads another plugin's register_rest_field registrations: core keeps them here.
 global $wp_rest_additional_fields;
-register_rest_field('post', 'tp_shape_probe', ['update_callback' => static fn () => true]);
+register_rest_field('post', 'sp_shape_probe', ['update_callback' => static fn () => true]);
 check('$wp_rest_additional_fields holds register_rest_field calls (Kinds::restField)',
-    isset($wp_rest_additional_fields['post']['tp_shape_probe']['update_callback']), array_keys($wp_rest_additional_fields['post'] ?? []));
+    isset($wp_rest_additional_fields['post']['sp_shape_probe']['update_callback']), array_keys($wp_rest_additional_fields['post'] ?? []));
 
 // Wp/Facade.php: an autosave is a revision named "<parent>-autosave-v1", which wp_is_post_autosave reads.
 $parent = wp_insert_post(['post_title' => 'Shape', 'post_status' => 'draft', 'post_author' => 1]);

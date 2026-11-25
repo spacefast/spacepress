@@ -12,11 +12,11 @@ import { repo, first } from "../../../../tests/system/project.ts";
 const legacy = dirname(fileURLToPath(import.meta.url));
 const site = JSON.parse(readFileSync(join(legacy, "site.json"), "utf8"));
 const ids: { media: number[]; apollo: number; gemini: number; scheduled: number; parent: number; child: number; trashed: number } = site.ids;
-const receipt: { url: string; users: Record<"admin" | "editor", { appPassword: string }> } = JSON.parse(readFileSync(process.env.TP_WP_HARNESS!, "utf8"));
-const wpContent = process.env.TP_WP_CONTENT!;
+const receipt: { url: string; users: Record<"admin" | "editor", { appPassword: string }> } = JSON.parse(readFileSync(process.env.SP_WP_HARNESS!, "utf8"));
+const wpContent = process.env.SP_WP_CONTENT!;
 const harness = join(repo, "tests/wp/harness.sh");
 const project = join(dirname(wpContent), "legacy-app");
-const api = `${receipt.url}/wp-json/typedpress/v1`;
+const api = `${receipt.url}/wp-json/spacepress/v1`;
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const migrate = (...flags: string[]) => {
   const r = spawnSync(harness, ["wp", ...importArgs("content", ["-"], flags.length === 0 ? ["--apply"] : flags)], { input: readFileSync(join(legacy, "content-model.php")), encoding: "utf8" });
@@ -30,18 +30,18 @@ let client: (role: "anonymous" | "editor") => { projects: Collection; tasks: Col
 
 before(async () => {
   rmSync(project, { recursive: true, force: true });
-  // Step 1: the capsule becomes a typedpress.config.ts.
-  const bin = process.env.TP_MIGRATE_BIN ?? join(repo, "target/debug/typedpress-migrate");
-  execFileSync(bin, ["--from", "zero", "config", join(legacy, "capsule.ts"), "--out", join(project, "typedpress.config.ts")]);
+  // Step 1: the capsule becomes a spacepress.config.ts.
+  const bin = process.env.SP_MIGRATE_BIN ?? join(repo, "target/debug/spacepress-migrate");
+  execFileSync(bin, ["--from", "zero", "config", join(legacy, "capsule.ts"), "--out", join(project, "spacepress.config.ts")]);
   // Step 2: the importer denies every write; the owner opens them to editors.
-  const config = join(project, "typedpress.config.ts");
+  const config = join(project, "spacepress.config.ts");
   writeFileSync(config, readFileSync(config, "utf8").replaceAll(`"create":false,"update":false,"delete":false`, `"create":"editor","update":"editor","delete":"editor"`));
   // Step 3: build, upload the plugins, activate dependencies, then the runtime, then the app.
   first("build", project, "--quiet");
-  const built = join(project, "tp/dist/wp-content/plugins");
+  const built = join(project, "sp/dist/wp-content/plugins");
   for (const name of readdirSync(built).filter((n) => !n.endsWith(".zip"))) cpSync(join(built, name), join(wpContent, "plugins", name), { recursive: true });
-  wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "typedpress-runtime", "typedpress-identity", "typedpress-app-legacy");
-  const mod = await import(pathToFileURL(join(project, "tp/_generated/client/index.ts")).href);
+  wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "spacepress-runtime", "spacepress-identity", "spacepress-app-legacy");
+  const mod = await import(pathToFileURL(join(project, "sp/_generated/client/index.ts")).href);
   const basic = (role: "editor") => ({ Authorization: "Basic " + btoa(`${role}:${receipt.users[role].appPassword}`) });
   client = (role) => mod.createClient({ url: api, headers: role === "anonymous" ? {} : basic(role) });
 });

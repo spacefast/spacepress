@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
-const site = process.env.TP_SITE?.replace(/\/$/, '');
-const auth = process.env.TP_AUTH;
-const otherAuth = process.env.TP_OTHER_AUTH;
+const site = process.env.SP_SITE?.replace(/\/$/, '');
+const auth = process.env.SP_AUTH;
+const otherAuth = process.env.SP_OTHER_AUTH;
 
-assert.ok(site, 'Set TP_SITE to the WordPress site URL.');
-assert.ok(auth, 'Set TP_AUTH to username:application-password.');
-assert.ok(['http:', 'https:'].includes(new URL(site).protocol), 'TP_SITE must use HTTP or HTTPS.');
-assert.equal(new URL(site).username, '', 'Keep credentials in TP_AUTH, not TP_SITE.');
-assert.equal(new URL(site).password, '', 'Keep credentials in TP_AUTH, not TP_SITE.');
+assert.ok(site, 'Set SP_SITE to the WordPress site URL.');
+assert.ok(auth, 'Set SP_AUTH to username:application-password.');
+assert.ok(['http:', 'https:'].includes(new URL(site).protocol), 'SP_SITE must use HTTP or HTTPS.');
+assert.equal(new URL(site).username, '', 'Keep credentials in SP_AUTH, not SP_SITE.');
+assert.equal(new URL(site).password, '', 'Keep credentials in SP_AUTH, not SP_SITE.');
 
-const api = '/wp-json/typedpress/v1';
+const api = '/wp-json/spacepress/v1';
 
 async function request(path, { method = 'GET', body, credential = auth, key } = {}) {
   const headers = { accept: 'application/json' };
@@ -32,8 +32,8 @@ async function request(path, { method = 'GET', body, credential = auth, key } = 
   } catch {
     throw new Error(`${method} ${path}: HTTP ${response.status}, expected JSON; received ${text.slice(0, 1000)}`);
   }
-  const command = `curl ${credential ? '-u "$TP_AUTH" ' : ''}-X ${method} '${site}${path}'${key ? ` -H 'Idempotency-Key: ${key}'` : ''}${body === undefined ? '' : ` -H 'Content-Type: application/json' --data '${JSON.stringify(body)}'`}`;
-  console.log(command.replace('"$TP_AUTH"', credential === otherAuth && otherAuth ? '"$TP_OTHER_AUTH"' : '"$TP_AUTH"'));
+  const command = `curl ${credential ? '-u "$SP_AUTH" ' : ''}-X ${method} '${site}${path}'${key ? ` -H 'Idempotency-Key: ${key}'` : ''}${body === undefined ? '' : ` -H 'Content-Type: application/json' --data '${JSON.stringify(body)}'`}`;
+  console.log(command.replace('"$SP_AUTH"', credential === otherAuth && otherAuth ? '"$SP_OTHER_AUTH"' : '"$SP_AUTH"'));
   console.log(JSON.stringify({ status: response.status, body: json }));
   return { status: response.status, body: json };
 }
@@ -41,7 +41,7 @@ async function request(path, { method = 'GET', body, credential = auth, key } = 
 async function success(path, options = {}) {
   const result = await request(path, options);
   assert.ok(result.status >= 200 && result.status < 300, `${options.method ?? 'GET'} ${path}: HTTP ${result.status}`);
-  assert.ok(Object.hasOwn(result.body, 'data'), `${path}: missing TypedPress response data`);
+  assert.ok(Object.hasOwn(result.body, 'data'), `${path}: missing SpacePress response data`);
   return result.body.data;
 }
 
@@ -151,7 +151,7 @@ if (otherAuth) {
   assert.equal((await read('pets', pet.id)).name, 'Miso');
   assert.equal((await read('stock', stock.id)).gramsLeft, 20);
 } else {
-  console.log('Second-user isolation checks not run. Set TP_OTHER_AUTH to enable them.');
+  console.log('Second-user isolation checks not run. Set SP_OTHER_AUTH to enable them.');
 }
 
 console.log(JSON.stringify({ verified: true, ownerId, petId: pet.id, foodId: food.id, stockId: stock.id, vetNoteId: note.id, feedingId: fed.feeding.id }));

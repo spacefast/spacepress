@@ -1,13 +1,13 @@
 <?php
-// The WordPress HTTP API, reduced to what TypedPress\Fetch calls, for the host-globals contract.
+// The WordPress HTTP API, reduced to what SpacePress\Fetch calls, for the host-globals contract.
 // `origin.example` resolves to the local origin (tests/differential/host-origin.mjs), opened with
-// the same `tp_fetch_allow_address` seam a site plugin uses, so TypedPress\Fetch's own pin decides
+// the same `sp_fetch_allow_address` seam a site plugin uses, so SpacePress\Fetch's own pin decides
 // where the request connects. The stub only lets this one origin speak plain HTTP.
 
 declare(strict_types=1);
 
 namespace WpOrg\Requests\Transport {
-    /** WordPress's Requests cURL transport, as TypedPress\Fetch checks for it before pinning. */
+    /** WordPress's Requests cURL transport, as SpacePress\Fetch checks for it before pinning. */
     final class Curl
     {
         public static function test(array $capabilities = []): bool
@@ -32,15 +32,15 @@ function remove_action(string $hook, callable $fn, int $priority = 10): void
 function apply_filters(string $hook, mixed $value, mixed ...$args): mixed
 {
     return match (true) {
-        $hook === 'tp_fetch_resolve' && $args[0] === 'origin.example' => ['127.0.0.1'],
-        $hook === 'tp_fetch_allow_address' => $value || ($args[1] === 'origin.example' && $args[0] === '127.0.0.1'),
+        $hook === 'sp_fetch_resolve' && $args[0] === 'origin.example' => ['127.0.0.1'],
+        $hook === 'sp_fetch_allow_address' => $value || ($args[1] === 'origin.example' && $args[0] === '127.0.0.1'),
         default => $value,
     };
 }
 function is_wp_error(mixed $v): bool { return $v === false; }
 function wp_remote_request(string $url, array $args): array|false
 {
-    // The local origin speaks plain HTTP; host and port stay what TypedPress\Fetch checked and pinned.
+    // The local origin speaks plain HTTP; host and port stay what SpacePress\Fetch checked and pinned.
     $target = (string) preg_replace('#\Ahttps://origin\.example:#', 'http://origin.example:', $url);
     $headers = [];
     foreach ($args['headers'] as $name => $value) {
@@ -50,7 +50,7 @@ function wp_remote_request(string $url, array $args): array|false
     $message = '';
     $out = [];
     $curl = curl_init($target);
-    // As WordPress's cURL transport does: TypedPress\Fetch pins the checked address here and decides
+    // As WordPress's cURL transport does: SpacePress\Fetch pins the checked address here and decides
     // where the handle connects. Only the scheme is the stub's.
     foreach ($GLOBALS['host_actions']['http_api_curl'] ?? [] as $fn) {
         $fn($curl);

@@ -1,4 +1,4 @@
-//! The site side of sync: the facade's schema (`GET /wp-json/typedpress/v1`) and `/sync/*` over HTTP (design §5.3), blocking.
+//! The site side of sync: the facade's schema (`GET /wp-json/spacepress/v1`) and `/sync/*` over HTTP (design §5.3), blocking.
 
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -52,11 +52,11 @@ impl Problem {
 }
 
 /// The facade's path below the site's URL (spec §3a).
-pub const API: &str = "/wp-json/typedpress/v1";
+pub const API: &str = "/wp-json/spacepress/v1";
 
 impl Client {
     /// `site` is the site's URL (scheme, host and an optional path prefix); the facade's prefix
-    /// `/wp-json/typedpress/v1` (spec §3a) is appended to its path unless the path already ends in it. A query or fragment is refused: the
+    /// `/wp-json/spacepress/v1` (spec §3a) is appended to its path unless the path already ends in it. A query or fragment is refused: the
     /// endpoint paths are appended to the URL's path, so neither has a place to go.
     pub fn new(site: &str, credential: Credential) -> Result<Client, String> {
         let url = url::Url::parse(site).map_err(|e| format!("--site: {e}"))?;
@@ -120,7 +120,7 @@ impl Client {
         if status >= 300 {
             return Err(Problem { status, body: parsed });
         }
-        // A success is always `{ data }`; anything else is not a TypedPress site and must not read as "empty".
+        // A success is always `{ data }`; anything else is not a SpacePress site and must not read as "empty".
         match parsed.get("data") {
             Some(data) => Ok(data.clone()),
             None => Err(invalid("without a data envelope".into())),
@@ -157,14 +157,14 @@ mod tests {
 
     #[test]
     fn the_facade_prefix_joins_the_sites_path_and_is_never_doubled() {
-        assert_eq!(base("https://x.test").unwrap(), "https://x.test/wp-json/typedpress/v1");
+        assert_eq!(base("https://x.test").unwrap(), "https://x.test/wp-json/spacepress/v1");
         assert_eq!(
             base("https://x.test/blog/").unwrap(),
-            "https://x.test/blog/wp-json/typedpress/v1"
+            "https://x.test/blog/wp-json/spacepress/v1"
         );
         assert_eq!(
-            base("https://x.test/blog/wp-json/typedpress/v1/").unwrap(),
-            "https://x.test/blog/wp-json/typedpress/v1"
+            base("https://x.test/blog/wp-json/spacepress/v1/").unwrap(),
+            "https://x.test/blog/wp-json/spacepress/v1"
         );
     }
 

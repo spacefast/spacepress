@@ -1,5 +1,5 @@
-//! The build-time evaluator. Runs `typedpress.config.ts` (and the local modules it
-//! imports) over TypedPress's IR, so composition works: helpers, factories, spreads,
+//! The build-time evaluator. Runs `spacepress.config.ts` (and the local modules it
+//! imports) over SpacePress's IR, so composition works: helpers, factories, spreads,
 //! loops. It is pure: no I/O, no clock, no randomness, and a step budget stops
 //! runaway loops. Functions stored in the result (hooks, actions, `$default`
 //! callbacks) are never called here; they keep their defining scope so the
@@ -7,7 +7,7 @@
 
 use crate::diag::{Diag, Span, suggest};
 use crate::ir::*;
-use crate::loader::{Program, TP_MODULE, WORDPRESS_MODULE};
+use crate::loader::{Program, SP_MODULE, WORDPRESS_MODULE};
 use crate::num::js_number_to_string;
 use crate::schema::{ColType, RefAction};
 use crate::value::*;
@@ -252,7 +252,7 @@ fn require_static_coercion(value: &Value, span: Span) -> R<()> {
 pub const POST_FIELDS: &[&str] = &["id", "title", "slug", "content", "excerpt", "status", "publishedAt"];
 
 /// Names exported by `"first"`.
-pub const TP_EXPORTS: &[&str] = &[
+pub const SP_EXPORTS: &[&str] = &[
     "collection",
     "table",
     "userProjection",
@@ -302,7 +302,7 @@ pub const TP_EXPORTS: &[&str] = &[
     "wp",
 ];
 /// Type-only exports of `"first"`: importable, erased.
-const TP_TYPES: &[&str] = &[
+const SP_TYPES: &[&str] = &[
     "InferSelectModel",
     "InferInsertModel",
     "Config",
@@ -417,7 +417,7 @@ const GLOBALS: &[&str] = &[
     "FormData",
     "Blob",
     "AbortController",
-    // Bytes and text encoding (runtime/TypedPress/JsBinary.php). Imported JavaScript only.
+    // Bytes and text encoding (runtime/SpacePress/JsBinary.php). Imported JavaScript only.
     "ArrayBuffer",
     "SharedArrayBuffer",
     "DataView",
@@ -441,7 +441,7 @@ const GLOBALS: &[&str] = &[
 ];
 
 /// Byte globals, compiled only in imported JavaScript through checked runtime dispatch
-/// (runtime/TypedPress/JsBinary.php). See docs/decisions/2026-11-07-binary-data.md.
+/// (runtime/SpacePress/JsBinary.php). See docs/decisions/2026-11-07-binary-data.md.
 pub const BINARY_GLOBALS: &[&str] = &[
     "ArrayBuffer",
     "SharedArrayBuffer",
@@ -465,7 +465,7 @@ pub const BINARY_GLOBALS: &[&str] = &[
 ];
 
 /// `globalThis` members that host-globals work owns. Detecting them stays refused
-/// until that work defines what TypedPress provides.
+/// until that work defines what SpacePress provides.
 const HOST_GLOBALS: &[&str] = &[
     "fetch",
     "process",
@@ -506,9 +506,9 @@ pub const ABSENT_GLOBALS: &[&str] = &[
 
 /// What `globalThis.<name>` is in the PHP runtime, decided at compile time.
 pub enum GlobalMember {
-    /// One of TypedPress's globals, read as that global.
+    /// One of SpacePress's globals, read as that global.
     Provided(&'static str),
-    /// A host TypedPress never provides: `undefined`.
+    /// A host SpacePress never provides: `undefined`.
     Absent,
     /// Unknown or owned by host-global work: refused.
     Refused,
@@ -537,7 +537,7 @@ pub fn global_member(name: &str) -> GlobalMember {
 }
 
 /// Host objects whose `typeof` is the constant `"object"`, also through `globalThis.`, and whose
-/// only readable members are `.platform` (read when PHP runs, from `TypedPress\Host`) and
+/// only readable members are `.platform` (read when PHP runs, from `SpacePress\Host`) and
 /// `process.env.NAME`. See docs/decisions/2026-11-14-host-platform-detection.md.
 pub const HOST_OBJECTS: &[&str] = &["navigator", "process"];
 
@@ -546,7 +546,7 @@ pub fn global_type_of(g: &str) -> &'static str {
     match g {
         "Math" | "JSON" | "console" | "globalThis" | "navigator" | "process" => "object",
         "Infinity" | "NaN" => "number",
-        // Node defines no FileReader; TypedPress keeps the name so a fallback branch can compile.
+        // Node defines no FileReader; SpacePress keeps the name so a fallback branch can compile.
         "FileReader" => "undefined",
         _ => "function",
     }
@@ -556,9 +556,9 @@ pub fn global_type_of(g: &str) -> &'static str {
 pub fn navigator_member_refusal(prop: &str, span: Span) -> Diag {
     Diag::new(
         span,
-        format!("`navigator.{prop}` isn't available in TypedPress code; only `navigator.platform` is"),
+        format!("`navigator.{prop}` isn't available in SpacePress code; only `navigator.platform` is"),
     )
-    .help("TypedPress runs on the WordPress server, which has no browser or Node values for the rest of `navigator`")
+    .help("SpacePress runs on the WordPress server, which has no browser or Node values for the rest of `navigator`")
 }
 
 pub fn refused_global_member(name: &str, span: Span) -> Diag {
@@ -567,9 +567,9 @@ pub fn refused_global_member(name: &str, span: Span) -> Diag {
         format!("`globalThis.{name}` depends on the host and can't be resolved at compile time"),
     )
     .help(if HOST_GLOBALS.contains(&name) {
-        format!("remove the `{name}` detection and use a capability TypedPress supports in the handler")
+        format!("remove the `{name}` detection and use a capability SpacePress supports in the handler")
     } else {
-        "only TypedPress's own globals and absent browser or server runtimes (window, document, Bun, Deno, ...) can be detected; remove the detection".into()
+        "only SpacePress's own globals and absent browser or server runtimes (window, document, Bun, Deno, ...) can be detected; remove the detection".into()
     })
 }
 
@@ -589,11 +589,11 @@ pub struct Evaluator<'p> {
     /// Allocations of `import * as ns` namespace objects. Node binds such a namespace as `this`
     /// for `ns.f()`, and it's frozen and holds live bindings, which a copy can't reproduce.
     pub namespace_imports: HashSet<usize>,
-    /// `import { x } from "typedpress:db"` bindings, filled once every app module has registered
+    /// `import { x } from "spacepress:db"` bindings, filled once every app module has registered
     /// (see [`Evaluator::bind_db`]): (scope, local name, kind name, span).
     db_imports: Vec<(Rc<Scope>, String, String, Span)>,
-    /// The registered kinds, once [`Evaluator::bind_db`] has run: later `"typedpress:db"` imports (the
-    /// `tp/wp-hooks/` modules) bind on the spot.
+    /// The registered kinds, once [`Evaluator::bind_db`] has run: later `"spacepress:db"` imports (the
+    /// `sp/wp-hooks/` modules) bind on the spot.
     db_kinds: Option<IndexMap<String, Value>>,
     /// The object literal that defines each method reading `this`, keyed by the closure's
     /// allocation. The compiler types that method's `this` as its object and compiles it only as
@@ -649,7 +649,7 @@ impl<'p> Evaluator<'p> {
                     start: 0,
                     end: 0,
                 },
-                "typedpress.config.ts has no default export",
+                "spacepress.config.ts has no default export",
             )
             .help("end the file with `export default defineConfig({ name: \"my-app\" })`; kinds, actions and jobs register by their exports")),
         }
@@ -659,18 +659,18 @@ impl<'p> Evaluator<'p> {
         self.program
     }
 
-    /// Fills every `"typedpress:db"` binding from `kinds` (registered name → kind), once registration has
+    /// Fills every `"spacepress:db"` binding from `kinds` (registered name → kind), once registration has
     /// run. An unknown name is refused at its import, with the closest registered name.
     pub fn bind_db(&mut self, kinds: &IndexMap<String, Value>) -> Result<(), Diag> {
         self.db_kinds = Some(kinds.clone());
         for (scope, local, name, span) in std::mem::take(&mut self.db_imports) {
             let Some(value) = kinds.get(&name) else {
-                let mut d = Diag::new(span, format!("\"typedpress:db\" has no kind named `{name}`"));
+                let mut d = Diag::new(span, format!("\"spacepress:db\" has no kind named `{name}`"));
                 if let Some(s) = suggest(&name, kinds.keys().map(String::as_str)) {
                     d = d.help(format!("did you mean `{s}`?"));
                 } else {
                     d = d.help(
-                        "export the kind from a module under tp/, e.g. `export const posts = collection({ ... })`",
+                        "export the kind from a module under sp/, e.g. `export const posts = collection({ ... })`",
                     );
                 }
                 return Err(d);
@@ -949,7 +949,7 @@ impl<'p> Evaluator<'p> {
                 }
                 Stmt::ExportAll { from, span } => {
                     let Some(&target) = self.program.resolved.get(&(id, from.clone())) else {
-                        return err(*span, "`export * from \"typedpress\"` isn't supported");
+                        return err(*span, "`export * from \"spacepress\"` isn't supported");
                     };
                     let all: Vec<(String, Value)> = self.exports[target]
                         .iter()
@@ -1055,8 +1055,8 @@ impl<'p> Evaluator<'p> {
     }
 
     fn import_value(&mut self, from: usize, source: &str, name: &str, span: Span) -> R<Value> {
-        if source == TP_MODULE {
-            return tp_export(name, span);
+        if source == SP_MODULE {
+            return sp_export(name, span);
         }
         if let Some(module) = crate::builtins::module(source) {
             return node_crypto_export(module, source, name, span);
@@ -1069,8 +1069,8 @@ impl<'p> Evaluator<'p> {
                 "destructiveMigrations" | "default" => Ok(Value::Builtin(Builtin::DestructiveMigrations)),
                 "DestructiveMigrationsOptions" => Ok(Value::Undef),
                 _ => Err(Ctl::Err(
-                    Diag::new(span, format!("\"typedpress/danger\" has no export named `{name}`"))
-                        .help("import `{ destructiveMigrations }` from \"typedpress/danger\""),
+                    Diag::new(span, format!("\"spacepress/danger\" has no export named `{name}`"))
+                        .help("import `{ destructiveMigrations }` from \"spacepress/danger\""),
                 )),
             };
         }
@@ -1080,7 +1080,7 @@ impl<'p> Evaluator<'p> {
                 .find(|h| **h == name)
                 .map(|h| Value::Builtin(Builtin::Client(h)))
                 .ok_or_else(|| {
-                    let mut d = Diag::new(span, format!("\"typedpress/client\" has no export named `{name}`"));
+                    let mut d = Diag::new(span, format!("\"spacepress/client\" has no export named `{name}`"));
                     if let Some(s) = suggest(name, crate::client_component::HOOKS.iter().copied()) {
                         d = d.help(format!("did you mean `{s}`?"));
                     }
@@ -1094,7 +1094,7 @@ impl<'p> Evaluator<'p> {
                 .map(|e| Value::Builtin(Builtin::Content(e)))
                 .or_else(|| crate::compile::CONTENT_TYPES.contains(&name).then_some(Value::Undef))
                 .ok_or_else(|| {
-                    let mut d = Diag::new(span, format!("\"typedpress/content\" has no export named `{name}`"));
+                    let mut d = Diag::new(span, format!("\"spacepress/content\" has no export named `{name}`"));
                     if let Some(s) = suggest(
                         name,
                         crate::compile::CONTENT_EXPORTS
@@ -1128,7 +1128,7 @@ impl<'p> Evaluator<'p> {
                 .map(|e| Value::Builtin(Builtin::App(e)))
                 .or_else(|| crate::app::TYPES.contains(&name).then_some(Value::Undef))
                 .ok_or_else(|| {
-                    let mut d = Diag::new(span, format!("\"typedpress/app\" has no export named `{name}`"));
+                    let mut d = Diag::new(span, format!("\"spacepress/app\" has no export named `{name}`"));
                     if let Some(s) = suggest(name, crate::app::EXPORTS.iter().chain(crate::app::TYPES).copied()) {
                         d = d.help(format!("did you mean `{s}`?"));
                     }
@@ -1140,7 +1140,7 @@ impl<'p> Evaluator<'p> {
             Some(v) => Ok(v.clone()),
             None if self.erased_type_export(target, name, 0) => err_help(
                 span,
-                format!("`{name}` comes from an installed package or JavaScript module, whose types TypedPress erases"),
+                format!("`{name}` comes from an installed package or JavaScript module, whose types SpacePress erases"),
                 "describe the value with a local type, or narrow it with `typeof`/`instanceof` at the call site",
             ),
             None => {
@@ -1165,8 +1165,8 @@ impl<'p> Evaluator<'p> {
                 let ImportName::Named(name) = &spec.imported else {
                     return err_help(
                         spec.span,
-                        "\"typedpress:db\" exports one name per kind",
-                        "import the kinds you use: `import { posts } from \"typedpress:db\"`",
+                        "\"spacepress:db\" exports one name per kind",
+                        "import the kinds you use: `import { posts } from \"spacepress:db\"`",
                     );
                 };
                 scope.vars.borrow_mut().insert(
@@ -1225,10 +1225,10 @@ impl<'p> Evaluator<'p> {
                             "import the names you use: `import { abilities } from \"php/wordpress\"`",
                         );
                     }
-                    if source == TP_MODULE {
+                    if source == SP_MODULE {
                         let mut map = IndexMap::new();
-                        for n in TP_EXPORTS {
-                            map.insert(n.to_string(), tp_export(n, span)?);
+                        for n in SP_EXPORTS {
+                            map.insert(n.to_string(), sp_export(n, span)?);
                         }
                         Value::object(map)
                     } else {
@@ -1755,8 +1755,8 @@ impl<'p> Evaluator<'p> {
             candidates.extend(sc.vars.borrow().keys().cloned());
             s = sc.parent.clone();
         }
-        if TP_EXPORTS.contains(&name) {
-            d = d.help(format!("import it: `import {{ {name} }} from \"typedpress\"`"));
+        if SP_EXPORTS.contains(&name) {
+            d = d.help(format!("import it: `import {{ {name} }} from \"spacepress\"`"));
         } else if let Some(sug) = suggest(name, candidates.iter().map(String::as_str)) {
             d = d.help(format!("did you mean `{sug}`?"));
         }
@@ -1810,7 +1810,7 @@ impl<'p> Evaluator<'p> {
                         _ => {
                             return err_help(
                                 e.span,
-                                "extend a named TypedPress class or Error; other built-in and dynamic inheritance are unsupported",
+                                "extend a named SpacePress class or Error; other built-in and dynamic inheritance are unsupported",
                                 "extend Error, TypeError, RangeError, SyntaxError or a class declared in this program",
                             );
                         }
@@ -1921,7 +1921,7 @@ impl<'p> Evaluator<'p> {
                         if key == "length" || in_range {
                             return err_help(
                                 e.span,
-                                "`delete` would leave a hole in a dense TypedPress array",
+                                "`delete` would leave a hole in a dense SpacePress array",
                                 "use splice to remove elements",
                             );
                         }
@@ -2391,7 +2391,7 @@ impl<'p> Evaluator<'p> {
                 return err_help(
                     e.span,
                     "JSX at the top level of a module",
-                    "TypedPress renders JSX only while a component runs; return it from a function, e.g. `const Icon = () => <svg …/>`",
+                    "SpacePress renders JSX only while a component runs; return it from a function, e.g. `const Icon = () => <svg …/>`",
                 );
             }
             ExprKind::Await(_) => {
@@ -2653,7 +2653,7 @@ impl<'p> Evaluator<'p> {
                 span,
                 format!("`{g}` only works inside hooks, actions, routes and jobs, which run in PHP at request time"),
                 if *g == "process" {
-                    "read `process.env.NAME` inside the handler; for webhook and upload settings use env(\"NAME\") from \"typedpress\""
+                    "read `process.env.NAME` inside the handler; for webhook and upload settings use env(\"NAME\") from \"spacepress\""
                 } else {
                     "move the call into a handler"
                 },
@@ -2667,7 +2667,7 @@ impl<'p> Evaluator<'p> {
                     span,
                     format!("`Object.prototype.{prop}` isn't supported"),
                     format!(
-                        "TypedPress models {} on Object.prototype, called through `.call`",
+                        "SpacePress models {} on Object.prototype, called through `.call`",
                         OBJECT_PROTOTYPE_METHODS.join(", ")
                     ),
                 ),
@@ -2940,7 +2940,7 @@ impl<'p> Evaluator<'p> {
             );
         }
         if let Some(name) = name {
-            crate::builtins::check("typedpress", name, args.len(), crate::builtins::Phase::Evaluator, span)
+            crate::builtins::check("spacepress", name, args.len(), crate::builtins::Phase::Evaluator, span)
                 .map_err(Ctl::Err)?;
         }
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
@@ -3139,7 +3139,7 @@ impl<'p> Evaluator<'p> {
                     "pass the dashboard as an object literal: `export const ops = adminDashboard({ title: \"Operations\", widgets: [...] })`",
                 ),
             },
-            // The placeholder TypedPress Admin fills from the item (runtime/admin/apps/packages/screens).
+            // The placeholder SpacePress Admin fills from the item (runtime/admin/apps/packages/screens).
             Builtin::Item => match arg(0) {
                 Value::Str(path)
                     if !path.is_empty()
@@ -3357,13 +3357,13 @@ impl<'p> Evaluator<'p> {
             ),
             Builtin::Content(name) => err_help(
                 span,
-                format!("`{name}` from \"typedpress/content\" can't run while the config is built"),
+                format!("`{name}` from \"spacepress/content\" can't run while the config is built"),
                 "call it in a page, layout or component",
             ),
             Builtin::App(name) => err_help(
                 span,
-                format!("`{name}` from \"typedpress/app\" can't run while the config is built"),
-                "call it in a page, layout or component under tp/app/ or tp/components/",
+                format!("`{name}` from \"spacepress/app\" can't run while the config is built"),
+                "call it in a page, layout or component under sp/app/ or sp/components/",
             ),
         }
     }
@@ -3889,7 +3889,7 @@ impl<'p> Evaluator<'p> {
                     Err(_) => {
                         return err_help(
                             span,
-                            "this makes a string with a lone UTF-16 surrogate, which TypedPress can't represent",
+                            "this makes a string with a lone UTF-16 surrogate, which SpacePress can't represent",
                             "use complete characters; pair each high surrogate with a low one",
                         );
                     }
@@ -4007,7 +4007,7 @@ impl<'p> Evaluator<'p> {
             && matches!(&target, Value::Object(o) if !o.null_prototype())
             && !cell.borrow().contains_key(&key)
         {
-            // defineProperty creates an own `__proto__` data property; TypedPress's objects can't hold
+            // defineProperty creates an own `__proto__` data property; SpacePress's objects can't hold
             // one beside the prototype accessor.
             return err_help(
                 span,
@@ -4449,7 +4449,7 @@ pub fn uncaught(c: Ctl) -> Diag {
     }
 }
 
-fn tp_export(name: &str, span: Span) -> R<Value> {
+fn sp_export(name: &str, span: Span) -> R<Value> {
     Ok(Value::Builtin(match name {
         "collection" => Builtin::Collection(StorageKind::Collection),
         "table" => Builtin::Collection(StorageKind::Table),
@@ -4516,18 +4516,18 @@ fn tp_export(name: &str, span: Span) -> R<Value> {
         }
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,
-        n if TP_TYPES.contains(&n) => return Ok(Value::Undef),
+        n if SP_TYPES.contains(&n) => return Ok(Value::Undef),
         "route" => {
             return err_help(
                 span,
-                "\"typedpress\" has no export named `route`",
-                "an HTTP route is a file: tp/app/<path>/route.ts exporting `guard` (or `signature`) and GET, POST, … handlers",
+                "\"spacepress\" has no export named `route`",
+                "an HTTP route is a file: sp/app/<path>/route.ts exporting `guard` (or `signature`) and GET, POST, … handlers",
             );
         }
         "fetch" | "crypto" => {
             return err_help(
                 span,
-                format!("\"typedpress\" has no export named `{name}`"),
+                format!("\"spacepress\" has no export named `{name}`"),
                 format!(
                     "`{name}` is the standard global: remove it from this import{}",
                     if name == "crypto" {
@@ -4539,8 +4539,8 @@ fn tp_export(name: &str, span: Span) -> R<Value> {
             );
         }
         _ => {
-            let mut d = Diag::new(span, format!("\"typedpress\" has no export named `{name}`"));
-            if let Some(s) = suggest(name, TP_EXPORTS.iter().copied()) {
+            let mut d = Diag::new(span, format!("\"spacepress\" has no export named `{name}`"));
+            if let Some(s) = suggest(name, SP_EXPORTS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
             }
             return Err(Ctl::Err(d));
@@ -4553,11 +4553,11 @@ fn node_crypto_export(module: crate::builtins::BuiltinModule, source: &str, name
     if let Some(f) = exports.iter().find(|f| **f == name) {
         return Ok(Value::Builtin(Builtin::NodeCrypto(Some(f))));
     }
-    let mut d = Diag::new(span, format!("\"{source}\" has no `{name}` in TypedPress code"));
+    let mut d = Diag::new(span, format!("\"{source}\" has no `{name}` in SpacePress code"));
     d = match suggest(name, exports.iter().copied()) {
         Some(s) => d.help(format!("did you mean `{s}`?")),
         None => d.help(format!(
-            "TypedPress compiles {} from node:crypto to PHP; other functions, keys, ciphers and streams aren't available",
+            "SpacePress compiles {} from node:crypto to PHP; other functions, keys, ciphers and streams aren't available",
             exports.join(", ")
         )),
     };
@@ -4860,7 +4860,7 @@ fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
         "isFinite" => Value::Bool(to_number(&arg(0)).is_finite()),
         "Date" => return err(span, "dates aren't available while the config is evaluated"),
         "console" => return err(span, "`console` isn't available while the config is evaluated"),
-        _ => return err(span, format!("`{g}` isn't available in TypedPress code")),
+        _ => return err(span, format!("`{g}` isn't available in SpacePress code")),
     })
 }
 
@@ -5210,7 +5210,7 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
     if ty == T::RefList && matches!(m, "unique" | "default" | "$default" | "defaultNow" | "$onUpdate") {
         return Some((
             format!("`.{m}()` isn't valid on a `ref().many()` field"),
-            "a many-ref is a list of links TypedPress keeps in its own table; remove the modifier".into(),
+            "a many-ref is a list of links SpacePress keeps in its own table; remove the modifier".into(),
         ));
     }
     let ok = match m {
@@ -5711,7 +5711,7 @@ fn own_property_descriptor(args: &[Value], span: Span) -> R<Value> {
 /// `Object.create(null)` or `Object.create(Object.prototype)`: a new empty object. Other
 /// prototypes and the second (properties) argument are refused.
 fn object_create(args: &[Value], span: Span) -> R<Value> {
-    let help = "TypedPress models `Object.create(null)` and `Object.create(Object.prototype)`; use an object literal for others";
+    let help = "SpacePress models `Object.create(null)` and `Object.create(Object.prototype)`; use an object literal for others";
     if args.len() > 1 && !matches!(args[1], Value::Undef) {
         return err_help(span, "Object.create with a properties argument isn't supported", help);
     }
@@ -6163,7 +6163,7 @@ mod tests {
     #[test]
     fn env_takes_an_identifier_name() {
         let tmp = tempfile::tempdir().unwrap();
-        let entry = tmp.path().join("typedpress.config.ts");
+        let entry = tmp.path().join("spacepress.config.ts");
         for (name, ok) in [
             ("HOOK_SECRET", true),
             ("_x9", true),
@@ -6176,7 +6176,7 @@ mod tests {
         ] {
             std::fs::write(
                 &entry,
-                format!("import {{ env }} from 'typedpress';\nexport default env({name:?});"),
+                format!("import {{ env }} from 'spacepress';\nexport default env({name:?});"),
             )
             .unwrap();
             let program = crate::loader::load(&entry).unwrap();
@@ -6188,7 +6188,7 @@ mod tests {
     #[test]
     fn object_enumeration_reads_string_elements() {
         let tmp = tempfile::tempdir().unwrap();
-        let entry = tmp.path().join("typedpress.config.ts");
+        let entry = tmp.path().join("spacepress.config.ts");
         std::fs::write(&entry, "export default [Object.values('aé'), Object.entries('aé')];").unwrap();
         let program = crate::loader::load(&entry).unwrap();
         let result = super::Evaluator::new(&program).run().unwrap();
@@ -6205,7 +6205,7 @@ mod tests {
     #[test]
     fn global_builtins_work_as_array_callbacks() {
         let tmp = tempfile::tempdir().unwrap();
-        let entry = tmp.path().join("typedpress.config.ts");
+        let entry = tmp.path().join("spacepress.config.ts");
         std::fs::write(
             &entry,
             r#"export default [[1, 0, 2, "", null].filter(Boolean), Array.from(["1", "2.5"], Number), ["10", "10", "10"].map(parseInt), ["a", ""].map(String), [0, 1].every(Boolean), ["1", "x"].map(Number)];"#,
@@ -6223,7 +6223,7 @@ mod tests {
     #[test]
     fn boolean_is_a_function_value_at_build_time() {
         let tmp = tempfile::tempdir().unwrap();
-        let entry = tmp.path().join("typedpress.config.ts");
+        let entry = tmp.path().join("spacepress.config.ts");
         std::fs::write(
             &entry,
             r#"const truth = Boolean;
@@ -6247,7 +6247,7 @@ export default [values.map(truth), applyEach(Boolean, values), values.filter(glo
     #[test]
     fn new_boolean_is_refused_at_build_time() {
         let tmp = tempfile::tempdir().unwrap();
-        let entry = tmp.path().join("typedpress.config.ts");
+        let entry = tmp.path().join("spacepress.config.ts");
         std::fs::write(&entry, "export default new Boolean(false);").unwrap();
         let program = crate::loader::load(&entry).unwrap();
         let diag = super::Evaluator::new(&program).run().unwrap_err();
@@ -6264,7 +6264,7 @@ export default [values.map(truth), applyEach(Boolean, values), values.filter(glo
     #[test]
     fn error_constructors_are_globals_at_build_time() {
         let tmp = tempfile::tempdir().unwrap();
-        let entry = tmp.path().join("typedpress.config.ts");
+        let entry = tmp.path().join("spacepress.config.ts");
         std::fs::write(
             &entry,
             "class ParseFailure extends SyntaxError {}\nexport default [[Error, TypeError, RangeError, SyntaxError].map((c) => typeof c), typeof globalThis.SyntaxError, globalThis.SyntaxError === SyntaxError, typeof ParseFailure];",

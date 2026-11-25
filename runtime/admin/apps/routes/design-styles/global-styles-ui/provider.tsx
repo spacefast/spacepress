@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import type { GlobalStylesConfig } from '@typedpress-admin/global-styles-engine';
-import { mergeGlobalStyles } from '@typedpress-admin/global-styles-engine';
+import type { GlobalStylesConfig } from '@spacepress-admin/global-styles-engine';
+import { mergeGlobalStyles } from '@spacepress-admin/global-styles-engine';
 import { useMemo } from '@wordpress/element';
 import { GlobalStylesContext } from './context';
 

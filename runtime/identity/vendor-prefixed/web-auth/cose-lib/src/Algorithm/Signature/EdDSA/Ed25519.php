@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
+namespace SpacePress\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
 
 final class Ed25519 extends EdDSA
 {

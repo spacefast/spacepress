@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
 
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyListExtractorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyListExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
 
 /**
  * Lists available properties using Symfony Serializer Component metadata.

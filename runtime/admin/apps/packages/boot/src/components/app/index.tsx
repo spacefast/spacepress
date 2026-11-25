@@ -2,12 +2,12 @@
 import { createRoot } from 'react-dom/client';
 import { privateApis as routePrivateApis } from '@wordpress/route';
 import { useMemo, useEffect, StrictMode } from 'react';
-import { unlock } from '@typedpress-admin/admin-toolkit';
+import { unlock } from '@spacepress-admin/admin-toolkit';
 import { useSelect, dispatch } from '@wordpress/data';
 import '@wordpress/theme';
 import { getRouter, loadAdminModule } from './router';
 import { configureSite } from '../../site';
-import { store as tpAdminStore } from '../../store';
+import { store as spAdminStore } from '../../store';
 import { updateMenuIcons } from '../../icons';
 import { ModalRenderer } from '../modal-renderer';
 import type { Route, FlatMenuItem, DashboardContext } from '../../store/types';
@@ -20,7 +20,7 @@ const { RouterProvider } = unlock( routePrivateApis );
 
 function App() {
 	const routes = useSelect(
-		( select ) => select( tpAdminStore ).getRoutes(),
+		( select ) => select( spAdminStore ).getRoutes(),
 		[]
 	);
 
@@ -53,9 +53,9 @@ async function init(
 	dashboardContext?: DashboardContext,
 	element?: HTMLElement
 ) {
-	const rootElement = element ?? document.getElementById( 'typedpress-admin-app' );
+	const rootElement = element ?? document.getElementById( 'spacepress-admin-app' );
 	if ( ! rootElement ) {
-		throw new Error( "Root element with id 'typedpress-admin-app' not found." );
+		throw new Error( "Root element with id 'spacepress-admin-app' not found." );
 	}
 	// Where the site mounts the admin and its wp-admin live, from `site_url()` and `admin_url()`.
 	configureSite( ( dashboardContext ?? {} ) as Record< string, unknown > );
@@ -72,23 +72,23 @@ async function init(
 		} )
 	);
 
-	routes.forEach( dispatch( tpAdminStore ).registerRoute );
+	routes.forEach( dispatch( spAdminStore ).registerRoute );
 
 	menuItems.forEach( ( menuItem ) => {
-		void dispatch( tpAdminStore ).registerMenuItem(
+		void dispatch( spAdminStore ).registerMenuItem(
 			menuItem.id,
 			menuItem
 		);
 	} );
 
 	metaMenuItems.forEach( ( menuItem ) => {
-		void dispatch( tpAdminStore ).registerSiteHubHelpMenuItem(
+		void dispatch( spAdminStore ).registerSiteHubHelpMenuItem(
 			menuItem.id,
 			menuItem
 		);
 	} );
 
-	updateMenuIcons( dispatch( tpAdminStore ).updateMenuItem );
+	updateMenuIcons( dispatch( spAdminStore ).updateMenuItem );
 
 	if ( initModules?.length ) {
 		await Promise.all(
@@ -110,13 +110,13 @@ async function init(
 	}
 
 	if ( dashboardContext?.dashboard_widget_types ) {
-		void dispatch(tpAdminStore).setDashboardWidgetTypes(dashboardContext.dashboard_widget_types);
+		void dispatch(spAdminStore).setDashboardWidgetTypes(dashboardContext.dashboard_widget_types);
 	}
 	if ( dashboardContext?.dashboard_default_layout ) {
-		void dispatch(tpAdminStore).setDashboardDefaultLayout(dashboardContext.dashboard_default_layout);
+		void dispatch(spAdminStore).setDashboardDefaultLayout(dashboardContext.dashboard_default_layout);
 	}
 	if ( dashboardContext ) {
-		void dispatch( tpAdminStore ).setDashboardContext( dashboardContext );
+		void dispatch( spAdminStore ).setDashboardContext( dashboardContext );
 	}
 
 	// We need to apply different view transitions for Safari, because it
@@ -135,9 +135,9 @@ async function init(
 	);
 	return () => {
 		root.unmount();
-		for (const route of routes) void dispatch(tpAdminStore).unregisterRoute(route.path);
-		for (const item of menuItems) void dispatch(tpAdminStore).unregisterMenuItem(item.id);
-		for (const item of metaMenuItems) void dispatch(tpAdminStore).unregisterSiteHubHelpMenuItem(item.id);
+		for (const route of routes) void dispatch(spAdminStore).unregisterRoute(route.path);
+		for (const item of menuItems) void dispatch(spAdminStore).unregisterMenuItem(item.id);
+		for (const item of metaMenuItems) void dispatch(spAdminStore).unregisterSiteHubHelpMenuItem(item.id);
 	};
 }
 

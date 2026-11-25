@@ -9,12 +9,12 @@ import {
 	RouterLink,
 	unlock,
 	viewToQuery,
-} from '@typedpress-admin/admin-toolkit';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components -- See: ARC-1359
-import { Tabs } from '@typedpress-admin/design-system';
-import { useView, DataViews } from '@typedpress-admin/views';
-import { filterSortAndPaginate } from '@typedpress-admin/dataviews';
-import type { View, Action } from '@typedpress-admin/dataviews';
+} from '@spacepress-admin/admin-toolkit';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components -- See: ARC-1359
+import { Tabs } from '@spacepress-admin/design-system';
+import { useView, DataViews } from '@spacepress-admin/views';
+import { filterSortAndPaginate } from '@spacepress-admin/dataviews';
+import type { View, Action } from '@spacepress-admin/dataviews';
 import {
 	store as coreStore,
 	privateApis as coreDataPrivateApis,
@@ -22,10 +22,10 @@ import {
 import { Button, DropZone } from '@wordpress/components';
 import { useSelect, useRegistry } from '@wordpress/data';
 import { useCallback, useMemo } from '@wordpress/element';
-import { serializeFilters, usePageView } from '@typedpress-admin/telemetry';
+import { serializeFilters, usePageView } from '@spacepress-admin/telemetry';
 import { privateApis as editorPrivateApis } from '@wordpress/editor';
 import type { Post } from '@wordpress/core-data';
-import { usePostFields } from '@typedpress-admin/fields-next';
+import { usePostFields } from '@spacepress-admin/fields-next';
 import { __ } from '@wordpress/i18n';
 import { useQuickEditAction } from './actions/quick-edit';
 import { useFullEditAction } from './actions/full-edit';
@@ -368,7 +368,7 @@ function PostList() {
 							}
 						);
 					} }
-					label={ __( 'Drop files to upload', 'typedpress-admin' ) }
+					label={ __( 'Drop files to upload', 'spacepress-admin' ) }
 					className="post-list__drop-zone"
 				/>
 			) }

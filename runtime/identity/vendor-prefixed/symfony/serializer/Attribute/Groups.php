@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
 
 /**
  * @author Kévin Dunglas <dunglas@gmail.com>
@@ -52,6 +52,6 @@ class Groups
     }
 }
 
-if (!class_exists(\TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation\Groups::class, false)) {
-    class_alias(Groups::class, \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation\Groups::class);
+if (!class_exists(\SpacePress\Identity\Vendor\Symfony\Component\Serializer\Annotation\Groups::class, false)) {
+    class_alias(Groups::class, \SpacePress\Identity\Vendor\Symfony\Component\Serializer\Annotation\Groups::class);
 }

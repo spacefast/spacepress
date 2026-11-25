@@ -1,5 +1,5 @@
 {
-	"name": "@typedpress-admin/post-importer",
+	"name": "@spacepress-admin/post-importer",
 	"version": "1.0.0",
 	"description": "Post importer",
 	"type": "module",

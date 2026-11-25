@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\MetadataService\Service;
+namespace SpacePress\Identity\Vendor\Webauthn\MetadataService\Service;
 
-use TypedPress\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
+use SpacePress\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
 
 interface MetadataService
 {

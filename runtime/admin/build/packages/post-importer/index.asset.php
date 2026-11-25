@@ -1,1 +1,1 @@
-<?php return array('name' => '@typedpress-admin/post-importer', 'dependencies' => array('wp-blocks', 'wp-core-data', 'wp-i18n', 'wp-notices'), 'moduleDependencies' => array(), 'version' => 'e4ad1996cf81e91aff8d');
+<?php return array('name' => '@spacepress-admin/post-importer', 'dependencies' => array('wp-blocks', 'wp-core-data', 'wp-i18n', 'wp-notices'), 'moduleDependencies' => array(), 'version' => '83f6e2697a5733ea4a10');

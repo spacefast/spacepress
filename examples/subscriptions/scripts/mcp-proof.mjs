@@ -1,12 +1,12 @@
-// Run against any built TypedPress app: TP_SITE, TP_APP, TP_APP_PASSWORD=user:password.
+// Run against any built SpacePress app: SP_SITE, SP_APP, SP_APP_PASSWORD=user:password.
 // It prints only public protocol responses, never request headers or credentials.
 import assert from "node:assert/strict";
 
-const site = process.env.TP_SITE ?? "http://localhost:8794";
-const app = process.env.TP_APP ?? "subscriptions";
-const credentials = process.env.TP_APP_PASSWORD;
-assert.ok(credentials, "Set TP_APP_PASSWORD to username:application-password");
-const url = `${site.replace(/\/$/, "")}/wp-json/mcp/typedpress-${app}`;
+const site = process.env.SP_SITE ?? "http://localhost:8794";
+const app = process.env.SP_APP ?? "subscriptions";
+const credentials = process.env.SP_APP_PASSWORD;
+assert.ok(credentials, "Set SP_APP_PASSWORD to username:application-password");
+const url = `${site.replace(/\/$/, "")}/wp-json/mcp/spacepress-${app}`;
 const headers = {
   "Content-Type": "application/json",
   Accept: "application/json, text/event-stream",
@@ -30,13 +30,13 @@ async function rpc(method, params, notification = false) {
 }
 console.log(JSON.stringify({ endpoint: url }));
 console.log(JSON.stringify(await rpc("initialize", {
-  protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "typedpress-agent-guide", version: "1.0" },
+  protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "spacepress-agent-guide", version: "1.0" },
 })));
 await rpc("notifications/initialized", undefined, true);
 const tools = await rpc("tools/list", {});
 console.log(JSON.stringify({ jsonrpc: tools.jsonrpc, id: tools.id, result: { tools: tools.result.tools.map(({ name }) => ({ name })) } }));
-const name = process.env.TP_TOOL ?? `${app}-${app === "pantry" ? "locations" : "subscriptions"}-list`;
+const name = process.env.SP_TOOL ?? `${app}-${app === "pantry" ? "locations" : "subscriptions"}-list`;
 assert.ok(tools.result.tools.some((tool) => tool.name === name), `Tool ${name} was not listed`);
-const result = await rpc("tools/call", { name, arguments: JSON.parse(process.env.TP_TOOL_INPUT ?? '{"limit":1}') });
+const result = await rpc("tools/call", { name, arguments: JSON.parse(process.env.SP_TOOL_INPUT ?? '{"limit":1}') });
 assert.equal(result.result.isError, false, JSON.stringify(result));
 console.log(JSON.stringify(result));

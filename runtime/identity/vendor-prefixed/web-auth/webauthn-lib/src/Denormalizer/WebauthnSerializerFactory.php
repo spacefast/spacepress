@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Denormalizer;
+namespace SpacePress\Identity\Vendor\Webauthn\Denormalizer;
 
 use RuntimeException;
 use function sprintf;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyInfoExtractor;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ArrayDenormalizer;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\UidNormalizer;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Serializer;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
-use TypedPress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyInfoExtractor;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ArrayDenormalizer;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\UidNormalizer;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Serializer;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
+use SpacePress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
 
 final readonly class WebauthnSerializerFactory
 {

@@ -94,7 +94,7 @@ export const createInvite =
 			dispatch.receiveCreateInviteError(
 				extractErrorMessage(
 					error,
-					__( 'Failed to create invite', 'typedpress-admin' )
+					__( 'Failed to create invite', 'spacepress-admin' )
 				)
 			);
 			throw error;
@@ -130,7 +130,7 @@ export const deleteInvites =
 			dispatch.receiveDeleteInvitesError(
 				extractErrorMessage(
 					error,
-					__( 'Failed to delete invites', 'typedpress-admin' )
+					__( 'Failed to delete invites', 'spacepress-admin' )
 				)
 			);
 			throw error;

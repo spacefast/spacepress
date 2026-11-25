@@ -3,7 +3,7 @@
 // exercised three ways where the compiler has three paths: typed TypeScript, checked JavaScript
 // (`bitwise-helpers.mjs`, untyped), and configuration-time evaluation (a module constant).
 // JSON cannot carry -0, NaN or Infinity, so `show` spells numbers out first.
-import { defineConfig, mutation } from "typedpress";
+import { defineConfig, mutation } from "spacepress";
 import { bitwise as untypedBitwise } from "./bitwise-helpers.mjs";
 
 const run = (handler: () => unknown) => mutation({}, handler);

@@ -5,13 +5,13 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
-use typedpress::diag::{self, Span};
-use typedpress::ir::{
+use spacepress::diag::{self, Span};
+use spacepress::ir::{
     ArrEl, DeclKind, Expr, ExprKind as E, FnBody, Func, ImportName, LogOp, Pat, Prop, PropKey, Stmt, TyAnn,
 };
-use typedpress::lower::Lowerer;
+use spacepress::lower::Lowerer;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 pub(super) fn parse(path: &Path, text: &str) -> Result<Vec<Stmt>, Failure> {
     let arena = Allocator::default();
@@ -144,7 +144,7 @@ fn literal(e: &Expr) -> Result<Value, Failure> {
                 .collect::<Result<_, _>>()?,
         ),
         E::As(e, _) => literal(e)?,
-        E::Unary(typedpress::ir::UnOp::Neg, e) => {
+        E::Unary(spacepress::ir::UnOp::Neg, e) => {
             json!(-literal(e)?.as_f64().ok_or_else(|| fail("", "expected a number"))?)
         }
         _ => return Err(fail("", "expected a literal value")),
@@ -316,7 +316,7 @@ fn physical(space: &str, name: &str) -> String {
 
 /// Every v2 user projects as a member whose hidden `spacefastSubject` holds the 0.8 Space
 /// subject (`usr_<64 hex>` for Space Users) copied by
-/// `typedpress-migrate --from zero wordpress spacefast`. Users created after the migration answer
+/// `spacepress-migrate --from zero wordpress spacefast`. Users created after the migration answer
 /// `wp:<id>`, which no 0.8 subject can equal.
 const IDENTITY: &str = r#"const __z08Members = __z08Users({email: __z08Email().unique().max(191), name: __z08Text(), spacefastSubject: __z08Text().max(191).optional().access({ read: false, create: false, update: false })});
 type __z08User = { id: number; name: string; role: "guest" | "subscriber" | "author" | "editor" | "admin" };
@@ -394,7 +394,7 @@ pub(super) struct Transformed {
     /// The 0.8 path of each GET endpoint the candidate serves as a route at the same path: what an
     /// sf.jsonc cron can keep calling.
     pub get_paths: BTreeSet<String>,
-    /// `tp/app/**/route.ts` for the converted endpoints, by path below `tp/`.
+    /// `sp/app/**/route.ts` for the converted endpoints, by path below `sp/`.
     pub routes: BTreeMap<PathBuf, String>,
 }
 
@@ -566,7 +566,7 @@ pub(super) fn app(
     // 0.8 names are display titles; v2 needs the plugin slug.
     let name = title
         .as_deref()
-        .map(typedpress::extract::slugify_name)
+        .map(spacepress::extract::slugify_name)
         .unwrap_or_else(|| "migrated-app".into());
     if let Some(title) = title.as_deref().filter(|t| *t != name) {
         entries.push(entry(
@@ -642,12 +642,12 @@ pub(super) fn app(
             match (key.as_str(), literal(e).ok()) {
                 ("requireSignIn", Some(Value::Bool(b))) => {
                     signed_in = b;
-                    entries.push(entry("/auth/requireSignIn","mapped","carry requireSignIn to generated action gates using typedpress-identity; existing sessions and principal IDs require a separate identity migration"));
+                    entries.push(entry("/auth/requireSignIn","mapped","carry requireSignIn to generated action gates using spacepress-identity; existing sessions and principal IDs require a separate identity migration"));
                 }
                 _ => errors.push(
                     fail(
                         &pointer("/auth", &key),
-                        "identity callbacks/providers need an explicit typedpress-identity migration",
+                        "identity callbacks/providers need an explicit spacepress-identity migration",
                     )
                     .spanned(e.span, Path::new("")),
                 ),
@@ -829,7 +829,7 @@ pub(super) fn app(
         }
     }
     // Each endpoint's handler, exported from the server module; `served` says which method and
-    // path calls which handler, and becomes the `tp/app/**/route.ts` files.
+    // path calls which handler, and becomes the `sp/app/**/route.ts` files.
     let mut endpoints: Vec<String> = Vec::new();
     let mut served: Vec<(String, String, String)> = Vec::new();
     let mut prefixes: Vec<(String, String, String, String)> = Vec::new();
@@ -875,7 +875,7 @@ pub(super) fn app(
                 if !seen.insert((route.method.clone(), shape.clone())) {
                     return Err(fail(&at, "two endpoints share a method and path shape"));
                 }
-                // One `tp/app/` folder serves every method at a path, so its parameters have one name.
+                // One `sp/app/` folder serves every method at a path, so its parameters have one name.
                 if let Some(other) = paths.get(&shape).filter(|p| **p != route.path) {
                     return Err(fail(
                         &at,
@@ -1117,11 +1117,11 @@ pub(super) fn app(
         entries.push(entry(
             "",
             "review",
-            "ctx.email.send becomes mail.send from \"typedpress\": the message is queued in the handler's transaction and handed to the site's transport after commit. It resolves true once queued, where 0.8 resolved on transport acceptance; check the job queue for refusals. On Spacefast, from must stay on the Space's sending domain",
+            "ctx.email.send becomes mail.send from \"spacepress\": the message is queued in the handler's transaction and handed to the site's transport after commit. It resolves true once queued, where 0.8 resolved on transport acceptance; check the job queue for refusals. On Spacefast, from must stay on the Space's sending domain",
         ));
     }
     let mut config = String::from(
-        "import { query as __z08Query, mutation as __z08Mutation, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, number as __z08Number, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"typedpress\";\n",
+        "import { query as __z08Query, mutation as __z08Mutation, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, number as __z08Number, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"spacepress\";\n",
     );
     if uses_crypto {
         config.push_str(CRYPTO_PRELUDE);
@@ -1234,7 +1234,7 @@ pub(super) fn app(
             entries.push(entry(
                 at,
                 "review",
-                format!("`{name}` also names a table, and v2 names are one namespace: the action is `{renamed}`, served at /wp-json/typedpress/v1/actions/{renamed}; the converted client calls it there, and other callers must change"),
+                format!("`{name}` also names a table, and v2 names are one namespace: the action is `{renamed}`, served at /wp-json/spacepress/v1/actions/{renamed}; the converted client calls it there, and other callers must change"),
             ));
             if let Some(h) = client_handlers.iter_mut().find(|h| h.name == *name) {
                 h.action = Some(renamed.clone());
@@ -1668,7 +1668,7 @@ fn handler(
         // exists (it became `__z08ctx`); a default that reads it needs a manual port.
         let mut defaults: Vec<&Expr> = p.default.iter().collect();
         pattern_defaults(&p.pat, &mut defaults);
-        if ctx != "__z08unused" && defaults.iter().any(|d| typedpress::lower::reads_identifier(d, ctx)) {
+        if ctx != "__z08unused" && defaults.iter().any(|d| spacepress::lower::reads_identifier(d, ctx)) {
             return Err(fail(
                 at,
                 "rest and default parameters need a manual input schema when a default reads the context",
@@ -2091,7 +2091,7 @@ fn endpoint(
     if r.logs {
         r.helpers.push(LOG.into());
     }
-    // Exported for the generated `tp/app/**/route.ts`, which serves it at the 0.8 method and
+    // Exported for the generated `sp/app/**/route.ts`, which serves it at the 0.8 method and
     // path. 0.8's `/a/:splat` answered `/a` too; v2's `[...splat]` needs a segment, so the caller
     // may serve the same function at the bare prefix, where `params.splat` reads "".
     let code = format!(
@@ -2153,8 +2153,8 @@ fn endpoint_function(name: &str) -> String {
     format!("__z08Endpoint_{name}")
 }
 
-/// The `tp/app/` route files that serve each converted endpoint at its 0.8 method and path,
-/// keyed by their path below `tp/`: `/api/notes/:id` is `app/api/notes/[id]/route.ts`.
+/// The `sp/app/` route files that serve each converted endpoint at its 0.8 method and path,
+/// keyed by their path below `sp/`: `/api/notes/:id` is `app/api/notes/[id]/route.ts`.
 fn route_files(served: &[(String, String, String)]) -> BTreeMap<PathBuf, String> {
     let mut by_path: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
     for (method, path, function) in served {
@@ -2639,9 +2639,9 @@ impl Rewrite<'_> {
                     return Err(fail(
                         &pointer(&pointer(&pointer(self.at, "ctx"), "auth"), prop),
                         if prop == "userId" {
-                            "ctx.auth.userId maps only for Space Users (pass --users): its usr_ subjects are copied with each user. Without Space Users, 0.8 answered a Spacefast account (account:<id>) or a guest (guest:<id>), and which TypedPress user each becomes waits on an owner decision: how Sign in with Spacefast signs visitors in to a TypedPress Space, and whether guest:<id> rows get guest users. Until then the app stays on 0.8"
+                            "ctx.auth.userId maps only for Space Users (pass --users): its usr_ subjects are copied with each user. Without Space Users, 0.8 answered a Spacefast account (account:<id>) or a guest (guest:<id>), and which SpacePress user each becomes waits on an owner decision: how Sign in with Spacefast signs visitors in to a SpacePress Space, and whether guest:<id> rows get guest users. Until then the app stays on 0.8"
                         } else if PROFILE.contains(&prop.as_str()) {
-                            "ctx.auth profile fields map only for Space Users (pass --users), whose 0.8 sessions carried no email, picture, subject or aliases. Without Space Users they came from the visitor's Spacefast account or sign-in provider, and what a TypedPress user carries for them waits on the same owner decision as ctx.auth.userId (Sign in with Spacefast)"
+                            "ctx.auth profile fields map only for Space Users (pass --users), whose 0.8 sessions carried no email, picture, subject or aliases. Without Space Users they came from the visitor's Spacefast account or sign-in provider, and what a SpacePress user carries for them waits on the same owner decision as ctx.auth.userId (Sign in with Spacefast)"
                         } else {
                             "legacy profiles and auth methods require an explicit identity mapping"
                         },
@@ -2686,16 +2686,16 @@ impl Rewrite<'_> {
         if let Some(service) = self.service_of(e) {
             let why = match service {
                 "spam" => {
-                    "unsupported context service; ctx.spam has no TypedPress counterpart yet (spam checks on TypedPress use the Akismet a site has through Jetpack, and mapping ctx.spam onto it waits on an owner ruling). Remove the check, or call Akismet's REST API with fetch and a key from process.env"
+                    "unsupported context service; ctx.spam has no SpacePress counterpart yet (spam checks on SpacePress use the Akismet a site has through Jetpack, and mapping ctx.spam onto it waits on an owner ruling). Remove the check, or call Akismet's REST API with fetch and a key from process.env"
                 }
                 "jwt" => {
-                    "unsupported context service; ctx.jwt.sign has no TypedPress counterpart yet (TypedPress's node:crypto has hashes and HMAC, no Ed25519 signing, and adding it waits on an owner ruling). Sign the token in a service you call with fetch, or keep the app on 0.8"
+                    "unsupported context service; ctx.jwt.sign has no SpacePress counterpart yet (SpacePress's node:crypto has hashes and HMAC, no Ed25519 signing, and adding it waits on an owner ruling). Sign the token in a service you call with fetch, or keep the app on 0.8"
                 }
                 "connectors" => {
-                    "server code can't call connectors on TypedPress yet; the candidate keeps the capsule's roles in sf.jsonc, so call the role from the page with @spacefast/client (`space.connectors.<role>.<tool>()`), or keep the app on 0.8"
+                    "server code can't call connectors on SpacePress yet; the candidate keeps the capsule's roles in sf.jsonc, so call the role from the page with @spacefast/client (`space.connectors.<role>.<tool>()`), or keep the app on 0.8"
                 }
                 "storage" => {
-                    "unsupported context service; ctx.storage maps to TypedPress file buckets, which the converter doesn't write. Port the calls to a bucket by hand"
+                    "unsupported context service; ctx.storage maps to SpacePress file buckets, which the converter doesn't write. Port the calls to a bucket by hand"
                 }
                 _ => "unsupported context service; port its authority and behavior explicitly",
             };
@@ -3326,7 +3326,7 @@ impl Rewrite<'_> {
                 // Uppercase on both sides.
                 "method" => Ok(true),
                 // 0.8's URL: https, the normalized host and the URI with share-link secrets
-                // redacted, which v2 builds the same way (TypedPress\Wp\RouteRequest::url).
+                // redacted, which v2 builds the same way (SpacePress\Wp\RouteRequest::url).
                 "url" => Ok(true),
                 other => refuse(other),
             };

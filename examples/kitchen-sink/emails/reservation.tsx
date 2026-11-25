@@ -23,7 +23,7 @@ export default function Reservation({ name, workshop, startsOn, seats, code, url
   );
 }
 
-// `email dev` previews the template with these; `typedpress build` ignores them.
+// `email dev` previews the template with these; `spacepress build` ignores them.
 Reservation.PreviewProps = {
   name: "Ada", workshop: "Bread basics", startsOn: "2027-01-15", seats: 2,
   code: "3f0c9a52-6d1b-4c58-9a57-2f4c8e1d7b90", url: "https://example.test/events/bread-basics/", kitchen: "Community Kitchen",

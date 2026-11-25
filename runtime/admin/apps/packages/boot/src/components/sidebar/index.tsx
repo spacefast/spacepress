@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react';
 import { IconButton } from '@wordpress/ui';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
-import { Stack } from '@typedpress-admin/design-system';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components
+import { Stack } from '@spacepress-admin/design-system';
 import { __ } from '@wordpress/i18n';
 import { useSelect } from '@wordpress/data';
 import { help } from '@wordpress/icons';
-import { store as tpAdminStore } from '../../store';
+import { store as spAdminStore } from '../../store';
 import SidebarNavigationItem from '../sidebar-navigation-item';
 import SidebarDrilldownItem from '../sidebar-drilldown-item';
 import SidebarDropdownItem from '../sidebar-dropdown-item';
@@ -30,12 +30,12 @@ const CANONICAL_SECTION_ORDER = [
 ];
 
 const CANONICAL_SECTION_LABELS: Record< string, string > = {
-	content: __( 'Content', 'typedpress-admin' ),
-	commerce: __( 'Commerce', 'typedpress-admin' ),
-	data: __( 'Data', 'typedpress-admin' ),
-	site: __( 'Site', 'typedpress-admin' ),
-	extensions: __( 'Extensions', 'typedpress-admin' ),
-	system: __( 'System', 'typedpress-admin' ),
+	content: __( 'Content', 'spacepress-admin' ),
+	commerce: __( 'Commerce', 'spacepress-admin' ),
+	data: __( 'Data', 'spacepress-admin' ),
+	site: __( 'Site', 'spacepress-admin' ),
+	extensions: __( 'Extensions', 'spacepress-admin' ),
+	system: __( 'System', 'spacepress-admin' ),
 };
 
 function formatSectionLabel( key: string, explicitLabel?: string ): string {
@@ -100,7 +100,7 @@ function groupRootItems( items: MenuItem[] ): SidebarSectionGroup[] {
 
 function Sidebar() {
 	const nudge = useSelect(
-		( select ) => select( tpAdminStore ).getCurrentNudge(),
+		( select ) => select( spAdminStore ).getCurrentNudge(),
 		[]
 	);
 	const [ animationDirection, setAnimationDirection ] = useState<
@@ -109,7 +109,7 @@ function Sidebar() {
 	const [ parentId, setParentId, parentDropdownId, setParentDropdownId ] =
 		useSidebarParent();
 	const menuItems = useSelect(
-		( select ) => select( tpAdminStore ).getMenuItems(),
+		( select ) => select( spAdminStore ).getMenuItems(),
 		[]
 	);
 
@@ -163,7 +163,7 @@ function Sidebar() {
 				<SidebarDropdownItem
 					key={ item.id }
 					id={ item.id }
-					className="typedpress-admin-sidebar-navigation-item"
+					className="spacepress-admin-sidebar-navigation-item"
 					icon={ item.icon }
 					badge={ item.badge }
 					shouldShowPlaceholder={ hasRealIcons }
@@ -200,7 +200,7 @@ function Sidebar() {
 					badge={ item.badge }
 					shouldShowPlaceholder={ hasRealIcons }
 					onNavigate={ handleNavigate }
-					className="typedpress-admin-sidebar-navigation-item"
+					className="spacepress-admin-sidebar-navigation-item"
 				>
 					{ item.label }
 				</SidebarSubmenuItem>
@@ -227,9 +227,9 @@ function Sidebar() {
 
 	return (
 		<>
-			<div className="typedpress-admin-sidebar__scrollable">
+			<div className="spacepress-admin-sidebar__scrollable">
 				<SiteHub />
-				<div className="typedpress-admin-sidebar__content">
+				<div className="spacepress-admin-sidebar__content">
 					<SidebarNavigationScreen
 						isRoot={ ! parent }
 						title={ parent ? parent.label : '' }
@@ -239,15 +239,15 @@ function Sidebar() {
 						onNavigate={ handleNavigate }
 						content={
 							rootSections ? (
-								<div className="typedpress-admin-sidebar__sections">
+								<div className="spacepress-admin-sidebar__sections">
 									{ rootSections.map( ( section ) => (
 										<div
 											key={ section.key }
-											className="typedpress-admin-sidebar__section"
+											className="spacepress-admin-sidebar__section"
 											data-section={ section.key }
 										>
 											{ section.label && (
-												<div className="typedpress-admin-sidebar__section-label">
+												<div className="spacepress-admin-sidebar__section-label">
 													{ section.label }
 												</div>
 											) }
@@ -277,7 +277,7 @@ function Sidebar() {
 				<Stack
 					direction="column"
 					gap={ 1 }
-					className="typedpress-admin-sidebar__footer"
+					className="spacepress-admin-sidebar__footer"
 				>
 					<Stack
 						direction="row"
@@ -294,7 +294,7 @@ function Sidebar() {
 							<MetaMenu
 								parent="wp-logo"
 								icon={ help }
-								label={ __( 'Help', 'typedpress-admin' ) }
+								label={ __( 'Help', 'spacepress-admin' ) }
 							/>
 						</Stack>
 					</Stack>

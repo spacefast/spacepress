@@ -1,7 +1,7 @@
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components -- See: ARC-1359
-import { SelectControl, Field } from '@typedpress-admin/design-system';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components -- See: ARC-1359
+import { SelectControl, Field } from '@spacepress-admin/design-system';
 import type { User } from '@wordpress/core-data';
-import type { Field as DataViewField } from '@typedpress-admin/dataviews';
+import type { Field as DataViewField } from '@spacepress-admin/dataviews';
 import { useMemo } from '@wordpress/element';
 import { sanitizeHtml } from '../../../routes/plugin-list/components/plugin-detail-modal/plugin-detail-utils';
 import './style.scss';

@@ -5,8 +5,8 @@ import { useMemo, useEffect } from '@wordpress/element';
 import {
 	generateGlobalStyles,
 	mergeGlobalStyles,
-} from '@typedpress-admin/global-styles-engine';
-import type { GlobalStylesConfig } from '@typedpress-admin/global-styles-engine';
+} from '@spacepress-admin/global-styles-engine';
+import type { GlobalStylesConfig } from '@spacepress-admin/global-styles-engine';
 import './style.scss';
 import { GlobalStylesProvider } from './provider';
 import ScreenRoot from './screen-root';

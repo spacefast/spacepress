@@ -1,5 +1,5 @@
 import { Button } from '@wordpress/ui';
-import { Dialog } from '@typedpress-admin/design-system';
+import { Dialog } from '@spacepress-admin/design-system';
 import { __ } from '@wordpress/i18n';
 
 interface RestoreDefaultsModalProps {
@@ -16,7 +16,7 @@ export function RestoreDefaultsModal( {
 	return (
 		<Dialog.Root
 			open={ isOpen }
-			title={ __( 'Restore default widgets?', 'typedpress-admin' ) }
+			title={ __( 'Restore default widgets?', 'spacepress-admin' ) }
 		>
 			<Dialog.Popup>
 				<Dialog.Header>
@@ -26,17 +26,17 @@ export function RestoreDefaultsModal( {
 				<p>
 					{ __(
 						'All widgets will be reset to their default configuration. Any custom changes will be removed.',
-						'typedpress-admin'
+						'spacepress-admin'
 					) }
 				</p>
 
 				<Dialog.Footer>
 					<Button variant="minimal" onClick={ onClose }>
-						{ __( 'Cancel', 'typedpress-admin' ) }
+						{ __( 'Cancel', 'spacepress-admin' ) }
 					</Button>
 
 					<Dialog.Action onClick={ onConfirm }>
-						{ __( 'Restore defaults', 'typedpress-admin' ) }
+						{ __( 'Restore defaults', 'spacepress-admin' ) }
 					</Dialog.Action>
 				</Dialog.Footer>
 			</Dialog.Popup>

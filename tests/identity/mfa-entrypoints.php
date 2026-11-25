@@ -2,9 +2,9 @@
 declare(strict_types=1);
 require __DIR__.'/bootstrap.php';
 ob_start(); // sign-in sets cookies as a browser response would
-use TypedPress\Identity\{Plugin,Security,Mfa};
+use SpacePress\Identity\{Plugin,Security,Mfa};
 $db=Plugin::$db;$email='mfa-entry-'.bin2hex(random_bytes(6)).'@example.test';$uid=Plugin::$accounts->emailLogin($email);$password=Security::token();wp_set_password($password,$uid);
-$mfa=new Mfa($db,Plugin::$security);$setup=$mfa->setup($uid,'Entrypoints');$otp=\TypedPress\Identity\Vendor\OTPHP\TOTP::createFromSecret($setup['secret']);if(!$mfa->verify($uid,$otp->now(),true)){throw new RuntimeException('MFA setup failed');}
+$mfa=new Mfa($db,Plugin::$security);$setup=$mfa->setup($uid,'Entrypoints');$otp=\SpacePress\Identity\Vendor\OTPHP\TOTP::createFromSecret($setup['secret']);if(!$mfa->verify($uid,$otp->now(),true)){throw new RuntimeException('MFA setup failed');}
 function call(string $op,array $body):array{$r=new WP_REST_Request('POST');$r->set_url_params(['operation'=>$op]);$r->set_header('Origin',untrailingslashit(home_url()));$r->set_body_params($body);return Plugin::$api->dispatch($r)->get_data();}
 $challenge=Plugin::$security->challenge('login',0,'',['email'=>$email],'123456');
 foreach([call('sign-in/password',['login'=>$email,'password'=>$password]),call('sign-in/verify',['challenge_id'=>$challenge,'code'=>'123456']),['data'=>Plugin::$api->providerLogin($uid)]] as $result){if(($result['data']['kind']??null)!=='mfa_required'){throw new RuntimeException('Primary factor bypassed MFA: '.json_encode($result));}}

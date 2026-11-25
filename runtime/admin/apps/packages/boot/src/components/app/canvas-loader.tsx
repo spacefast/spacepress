@@ -1,8 +1,8 @@
 import { resolveSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
 import { parse } from '@wordpress/block-serialization-default-parser';
-import { loadEditorAssets } from '@typedpress-admin/lazy-editor';
-import { unlock } from '@typedpress-admin/admin-toolkit';
+import { loadEditorAssets } from '@spacepress-admin/lazy-editor';
+import { unlock } from '@spacepress-admin/admin-toolkit';
 import type { RouteCanvas } from '../../store/types';
 
 // packages/block-serialization-default-parser/src/index.ts

@@ -1,5 +1,5 @@
 import { createContext } from '@wordpress/element';
-import type { GlobalStylesConfig } from '@typedpress-admin/global-styles-engine';
+import type { GlobalStylesConfig } from '@spacepress-admin/global-styles-engine';
 
 export interface GlobalStylesContextType {
 	user: GlobalStylesConfig;

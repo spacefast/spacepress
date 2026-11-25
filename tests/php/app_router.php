@@ -6,7 +6,7 @@ declare(strict_types=1);
  * `app_router_serves_pages_on_wordpress` in tests/app_router.rs builds the app-router fixture
  * with the page-access routes and serves it through WordPress with the theme active.
  *
- *   TP_WP_THEMES=1 php tests/php/app_router.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/app_router.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -15,10 +15,10 @@ require __DIR__ . '/wp.php';
 $site = wpSite('app', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscriber', 'chief' => 'editor'],
     'muPlugins' => ['secret' => "<?php define('APPROUTER_HOOK_SECRET', 'hook-secret');"]]);
 wp_set_current_user(1);
-\TypedPress\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'secret' => 'desk only', 'status' => 'published']);
-\TypedPress\db()->insert('notes', ['title' => 'Draft', 'slug' => 'draft', 'status' => 'draft']);
+\SpacePress\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'secret' => 'desk only', 'status' => 'published']);
+\SpacePress\db()->insert('notes', ['title' => 'Draft', 'slug' => 'draft', 'status' => 'draft']);
 // What a site owner sets in WordPress: a Global Styles color (the Styles screen, the Site Editor),
-// Additional CSS, and a site icon. TypedPress's pages must print each, as the theme's own templates do.
+// Additional CSS, and a site icon. SpacePress's pages must print each, as the theme's own templates do.
 $styles = WP_Theme_JSON_Resolver::get_user_data_from_wp_global_styles(wp_get_theme(), true);
 wp_update_post(['ID' => $styles['ID'], 'post_content' => wp_json_encode([
     'version' => WP_Theme_JSON::LATEST_SCHEMA, 'isGlobalStylesUserThemeJSON' => true,
@@ -54,7 +54,7 @@ function fetch(string $url, string $method = 'GET', array $headers = [], ?string
 function page(array $r): array
 {
     preg_match('#<title>(.*?)</title>#s', $r['body'], $t);
-    preg_match('#data-wp-router-region="tp/main">(.*)</div><!-- /tp/main -->#s', $r['body'], $m);
+    preg_match('#data-wp-router-region="sp/main">(.*)</div><!-- /sp/main -->#s', $r['body'], $m);
     return ['status' => $r['status'], 'title' => html_entity_decode($t[1] ?? '', ENT_QUOTES), 'body' => $m[1] ?? null];
 }
 
@@ -89,7 +89,7 @@ foreach (['guest' => null, 'reader' => 'reader', 'admin' => 'admin'] as $viewer 
             $a->getAttribute('href'), $a->hasAttribute('data-wp-on--click'), $a->hasAttribute('data-wp-on--mouseenter'),
         ];
     }
-    $live = fetch("$url/wp-json/typedpress/v1/_live", 'POST', [
+    $live = fetch("$url/wp-json/spacepress/v1/_live", 'POST', [
         'Content-Type: application/json', ...$headers, ...($user === null ? [] : [$session($user)['nonce']]),
     ], json_encode(['queries' => [['op' => 'page', 'args' => ['url' => '/office/', 'region' => 'records']]]]));
     $region = json_decode($live['body'], true)['data']['results'][0] ?? [];
@@ -123,7 +123,7 @@ foreach (['guest' => null, 'reader' => 'reader', 'admin' => 'admin'] as $viewer 
 foreach (['Office' => '/office/?view=todo#queue', 'Archive' => '/members/archive/2026/', 'Tools' => '/members/tools/'] as $link => $path) {
     $access['login'][$link] = wp_login_url($url . $path);
 }
-$pages = \TypedPress\Wp\RoutePages::instance()->pages();
+$pages = \SpacePress\Wp\RoutePages::instance()->pages();
 foreach (['office', 'members/tools'] as $name) {
     $access['private pages'][] = isset($pages[$name]) ? get_post_status($pages[$name]) : null;
 }
@@ -146,14 +146,14 @@ $out = [
     'home' => page($home),
     'home description' => str_contains($home['body'], '<meta name="description" content="Notes.">'),
     'home cache' => $home['headers']['cache-control'] ?? null,
-    'router module' => str_contains($home['body'], 'tp/Render/client/router.js'),
+    'router module' => str_contains($home['body'], 'sp/Render/client/router.js'),
     'note' => page(fetch("$url/notes/hello/")),
     'note canonical' => (bool) preg_match('#<link rel="canonical" href="' . preg_quote($url, '#') . '/notes/hello/">#', fetch("$url/notes/hello/")['body']),
     // The layout's Open Graph type, card and link, with the page's image and link added.
     'note social' => (static function (string $body): array {
         preg_match_all('#<meta (?:property|name)="((?:og|twitter):[a-z]+)" content="([^"]*)">#', $body, $meta, PREG_SET_ORDER);
         preg_match_all('#<link rel="(describedby|alternate)" href="([^"]*)" type="([^"]*)">#', $body, $links, PREG_SET_ORDER);
-        preg_match_all('#<script id="typedpress-app-script-[0-9a-f]+-js-module" src="([^"]*)" type="module">#', $body, $scripts);
+        preg_match_all('#<script id="spacepress-app-script-[0-9a-f]+-js-module" src="([^"]*)" type="module">#', $body, $scripts);
         return ['meta' => array_map(static fn ($m) => [$m[1], html_entity_decode($m[2], ENT_QUOTES)], $meta), 'links' => array_map(static fn ($m) => array_slice($m, 1), $links), 'scripts' => $scripts[1]];
     })(fetch("$url/notes/hello/")['body']),
     'note as editor' => page(fetch("$url/notes/hello/", headers: [$cookie('chief')])),
@@ -167,7 +167,7 @@ $out = [
         $doc = new DOMDocument();
         @$doc->loadHTML((string) fetch("$url/notes/?q=tea&page=6&_flash=abcdefabcdef")['body']);
         $x = new DOMXPath($doc);
-        $nav = $x->query('//nav[@class="typedpress-pagination"]')->item(0);
+        $nav = $x->query('//nav[@class="spacepress-pagination"]')->item(0);
         $out = ['label' => $nav?->getAttribute('aria-label'), 'items' => []];
         foreach ($nav === null ? [] : $x->query('.//li', $nav) as $li) {
             $a = $x->query('.//a', $li)->item(0);
@@ -180,7 +180,7 @@ $out = [
         $doc = new DOMDocument();
         @$doc->loadHTML((string) fetch("$url/notes/")['body']);
         $x = new DOMXPath($doc);
-        return array_map(static fn ($li) => trim($li->textContent), iterator_to_array($x->query('//nav[@class="typedpress-pagination"]//li')));
+        return array_map(static fn ($li) => trim($li->textContent), iterator_to_array($x->query('//nav[@class="spacepress-pagination"]//li')));
     })(),
     'search noindex' => str_contains(fetch("$url/notes/")['body'], 'noindex'),
     'group' => page(fetch("$url/about/")),
@@ -223,7 +223,7 @@ $out = [
         return [
             'theme preset' => str_contains($head, '--wp--preset--font-family--system:'),
             'core preset' => str_contains($head, '--wp--preset--color--black:'),
-            // The project's tp/theme.json, over the theme's...
+            // The project's sp/theme.json, over the theme's...
             'project preset' => str_contains($head, '--wp--preset--color--code: #0000aa'),
             // ...and the owner's Global Styles over the project's, for the slug both name.
             'global styles' => str_contains($head, '--wp--preset--color--brand: #123456') && !str_contains($head, '#000001'),
@@ -232,9 +232,9 @@ $out = [
         ];
     })(explode('</head>', fetch("$url/notes/hello/")['body'])[0]),
 ];
-// `wp typedpress styles export`, which `typedpress styles pull` writes to tp/theme.json: the project's file
+// `wp spacepress styles export`, which `spacepress styles pull` writes to sp/theme.json: the project's file
 // with the owner's Global Styles merged over it, settings and styles only.
-$export = \TypedPress\Wp\ThemeStyles::export();
+$export = \SpacePress\Wp\ThemeStyles::export();
 $out['styles export'] = [array_keys($export), array_map(static fn (array $c): string => $c['slug'] . ' ' . $c['color'], $export['settings']['color']['palette'] ?? [])];
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

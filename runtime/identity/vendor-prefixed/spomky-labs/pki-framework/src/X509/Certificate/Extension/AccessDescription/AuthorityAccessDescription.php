@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\AccessDescription;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\AccessDescription;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
 
 /**
  * @see https://tools.ietf.org/html/rfc5280#section-4.2.2.1

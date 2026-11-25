@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping;
 
 /**
  * Knows how to get the class discriminator mapping for classes and objects.

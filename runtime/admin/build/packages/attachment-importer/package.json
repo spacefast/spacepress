@@ -1,5 +1,5 @@
 {
-	"name": "@typedpress-admin/attachment-importer",
+	"name": "@spacepress-admin/attachment-importer",
 	"version": "1.0.0",
 	"description": "Attachment importer",
 	"type": "module",

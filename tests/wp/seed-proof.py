@@ -23,13 +23,13 @@ def wp(*args, success=True):
 
 
 def rows(collection):
-    return wp('typedpress', 'find', collection, '{}')['data']
+    return wp('spacepress', 'find', collection, '{}')['data']
 
 
 def seed(directory, dry=False, success=True):
-    run(harness, 'compose', 'exec', '-T', 'cli', 'rm', '-rf', '/tmp/typedpress-seed')
-    run(harness, 'compose', 'cp', str(directory), 'cli:/tmp/typedpress-seed')
-    return wp('typedpress', 'seed', '--records=/tmp/typedpress-seed', *(['--dry-run'] if dry else []), success=success)
+    run(harness, 'compose', 'exec', '-T', 'cli', 'rm', '-rf', '/tmp/spacepress-seed')
+    run(harness, 'compose', 'cp', str(directory), 'cli:/tmp/spacepress-seed')
+    return wp('spacepress', 'seed', '--records=/tmp/spacepress-seed', *(['--dry-run'] if dry else []), success=success)
 
 
 def counts(receipt, collection, **expected):
@@ -53,8 +53,8 @@ assert rows('posts') == [post], 'republishing preserves the only record'
 
 # Start with the original uid-less file, then let the actual sync command adopt the seeded record.
 run(cli, 'sync', str(app / 'project'), '--site', site['url'], '--only', 'posts', '--no-commit', '--json',
-    env={'TP_APP_PASSWORD': 'editor:' + site['users']['editor']['appPassword']})
-assert rows('posts') == [post], 'typedpress sync after publish creates no duplicate or update'
+    env={'SP_APP_PASSWORD': 'editor:' + site['users']['editor']['appPassword']})
+assert rows('posts') == [post], 'spacepress sync after publish creates no duplicate or update'
 assert f'uid: {uid}' in (app / 'project/content/posts/hello.md').read_text()
 counts(seed(first), 'posts', unchanged=1)
 
@@ -68,8 +68,8 @@ for path in first.glob('*.json'):
 receipt = seed(changed)
 counts(receipt, 'posts', skipped_existing=1)
 counts(receipt, 'locked', updated=1)
-assert receipt['warnings'][0]['code'] == 'tp_seed_skipped_existing'
-assert 'typedpress sync' in receipt['warnings'][0]['detail']
+assert receipt['warnings'][0]['code'] == 'sp_seed_skipped_existing'
+assert 'spacepress sync' in receipt['warnings'][0]['detail']
 assert rows('posts') == [post]
 assert 'Changed by a later publish.' in rows('locked')[0]['body']
 assert rows('locked')[0]['id'] == locked['id']

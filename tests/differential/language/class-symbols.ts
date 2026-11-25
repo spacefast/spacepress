@@ -3,7 +3,7 @@
 // (class-symbols-helpers.mjs copies its dist). Authored TypeScript has no symbols, so it uses
 // those classes through `instanceof` and `in` on values the helpers create. Every action runs
 // under Node and as compiled PHP; the JSON results must be byte-identical.
-import { defineConfig, mutation } from "typedpress";
+import { defineConfig, mutation } from "spacepress";
 import {
   Files2,
   FilesError2,

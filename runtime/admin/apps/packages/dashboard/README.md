@@ -1,4 +1,4 @@
-# @typedpress-admin/dashboard
+# @spacepress-admin/dashboard
 
 Dashboard system for CiabAdmin. Provides types and utilities for resolving
 widget type registrations from PHP into hydrated definitions, and a React
@@ -13,7 +13,7 @@ component for rendering the dashboard UI with drag-and-drop layout management.
 ```json
 {
 	"dependencies": {
-		"@typedpress-admin/dashboard": "workspace:*"
+		"@spacepress-admin/dashboard": "workspace:*"
 	}
 }
 ```
@@ -25,7 +25,7 @@ import {
 	Dashboard,
 	useWidgetTypes,
 	type DashboardWidget,
-} from '@typedpress-admin/dashboard';
+} from '@spacepress-admin/dashboard';
 
 function MyDashboard( { registered } ) {
 	const [ layout, setLayout ] = useState< DashboardWidget< unknown >[] >(
@@ -50,7 +50,7 @@ function MyDashboard( { registered } ) {
 ### `RegisteredDashboardWidgetType`
 
 Shape of a widget type as registered by the PHP backend. Other packages
-(like `@typedpress-admin/boot`) re-export it from here.
+(like `@spacepress-admin/boot`) re-export it from here.
 
 ```ts
 interface RegisteredDashboardWidgetType {
@@ -222,7 +222,7 @@ setError?.( null );
 
 ### Widget Attributes
 
-Attributes use the `Field` type from `@typedpress-admin/dataviews`. Supported types:
+Attributes use the `Field` type from `@spacepress-admin/dataviews`. Supported types:
 `'text'`, `'integer'`, `'boolean'`, `'select'`, `'datetime'`.
 
 ---
@@ -246,7 +246,7 @@ your-project/
 ### Widget Definition (`widget.ts`)
 
 ```tsx
-import type { DashboardWidgetType } from '@typedpress-admin/dashboard';
+import type { DashboardWidgetType } from '@spacepress-admin/dashboard';
 import { __ } from '@wordpress/i18n';
 
 const widget: Omit<
@@ -265,7 +265,7 @@ export default widget;
 ### Widget Render Component (`render.tsx`)
 
 ```tsx
-import type { WidgetRenderProps } from '@typedpress-admin/dashboard';
+import type { WidgetRenderProps } from '@spacepress-admin/dashboard';
 
 export default function MyWidgetRender( {
 	attributes,
@@ -278,11 +278,11 @@ export default function MyWidgetRender( {
 
 ## Registering Widgets (PHP)
 
-Widgets can be added via the `tp_admin_dashboard_widgets` filter:
+Widgets can be added via the `sp_admin_dashboard_widgets` filter:
 
 ```php
 add_filter(
-	'tp_admin_dashboard_widgets',
+	'sp_admin_dashboard_widgets',
 	function ( $layout ) {
 		$uids = array_column( $layout, 'uid' );
 
@@ -307,7 +307,7 @@ Parameters: `uid` (required), `type` (required), `attributes`, `width`,
 
 ## Build System
 
-Widgets are automatically discovered and built by `@typedpress-admin/wp-build`.
+Widgets are automatically discovered and built by `@spacepress-admin/wp-build`.
 Output lands in `build/dashboard-widgets/`.
 
 ---
@@ -319,7 +319,7 @@ identity: `uid`, `name`, and `position` in the dashboard grid. Returns `null`
 outside a widget context.
 
 ```tsx
-import { useDashboardWidgetContext } from '@typedpress-admin/dashboard';
+import { useDashboardWidgetContext } from '@spacepress-admin/dashboard';
 
 export default function MyWidget() {
 	const ctx = useDashboardWidgetContext();

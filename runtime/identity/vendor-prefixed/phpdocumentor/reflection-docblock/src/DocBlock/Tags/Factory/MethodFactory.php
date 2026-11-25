@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Method;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\MethodParameter;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Type;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\TypeResolver;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Mixed_;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Void_;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\MethodTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\MethodTagValueParameterNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
-use TypedPress\Identity\Vendor\Webmozart\Assert\Assert;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Method;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\MethodParameter;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Type;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\TypeResolver;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Context;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Mixed_;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\Void_;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\MethodTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\MethodTagValueParameterNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
+use SpacePress\Identity\Vendor\Webmozart\Assert\Assert;
 
 use function array_map;
 use function trim;

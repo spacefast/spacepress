@@ -1,16 +1,16 @@
-// The typed client over the generated tp/_generated/client/types.ts + schema.ts (design §7):
+// The typed client over the generated sp/_generated/client/types.ts + schema.ts (design §7):
 // positive checks that results carry the shapes `with` asks for, and one @ts-expect-error per real mistake.
 import {
-  createClient, TypedPressError,
+  createClient, SpacePressError,
   type Author, type Comment, type Media, type Post, type RevisionSummary, type Settings, type User,
-} from "../tp/_generated/client/index.ts";
+} from "../sp/_generated/client/index.ts";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 declare function expectType<T extends true>(): void;
 type Flat<T> = { [K in keyof T]: T[K] } & {};
 
 const first = createClient();
-createClient({ url: "https://x.test/wp-json/typedpress/v1", nonce: "abc" });
+createClient({ url: "https://x.test/wp-json/spacepress/v1", nonce: "abc" });
 createClient({ headers: { Authorization: "Basic " + btoa("admin:app pass") } });
 
 async function reads() {
@@ -64,7 +64,7 @@ async function writes() {
   try {
     await first.posts.create({ title: "" });
   } catch (e) {
-    if (e instanceof TypedPressError) {
+    if (e instanceof SpacePressError) {
       expectType<Equal<[typeof e.status, typeof e.code, typeof e.pointer], [number, string, string | undefined]>>();
     }
   }

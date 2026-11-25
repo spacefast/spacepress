@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Mac;
+namespace SpacePress\Identity\Vendor\Cose\Mac;
 
-use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
-use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use TypedPress\Identity\Vendor\Cose\Structure\CoseStructure;
+use SpacePress\Identity\Vendor\CBOR\ByteStringObject;
+use SpacePress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use SpacePress\Identity\Vendor\Cose\Structure\CoseStructure;
 
 /**
  * The MAC_structure of a COSE_Mac0 (RFC 9052 section 6.3).

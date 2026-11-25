@@ -1,6 +1,6 @@
 <?php declare(strict_types = 1);
 
-namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser;
+namespace SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Parser;
 
 use PHPStan\ShouldNotHappenException;
 use function chr;

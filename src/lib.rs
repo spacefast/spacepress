@@ -1,4 +1,4 @@
-//! The TypedPress compiler: `typedpress.config.ts` in, WordPress plugins out.
+//! The SpacePress compiler: `spacepress.config.ts` in, WordPress plugins out.
 //!
 //! The core (parse, lower, evaluate, extract, compile, migrate, client, schema.php) does no I/O of
 //! its own: sources arrive through [`loader::Fs`] and the previous snapshot is a value

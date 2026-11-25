@@ -1,11 +1,11 @@
 import { renderHook } from '@testing-library/react';
 import { useSelect, useDispatch } from '@wordpress/data';
-import type { DashboardWidget } from '@typedpress-admin/dashboard';
+import type { DashboardWidget } from '@spacepress-admin/dashboard';
 import { useDashboardLayout } from '../hooks';
 
 jest.mock( '@wordpress/data' );
-jest.mock( '@typedpress-admin/boot', () => ( {
-	store: 'core/typedpress-admin',
+jest.mock( '@spacepress-admin/boot', () => ( {
+	store: 'core/spacepress-admin',
 } ) );
 
 jest.mock( '@wordpress/preferences', () => ( {
@@ -35,7 +35,7 @@ describe( 'useDashboardLayout', () => {
 	} );
 
 	it( 'falls back to default layout when preference is undefined', () => {
-		const defaults = [ { uid: 'w-1', type: 'tp/content-overview' } ];
+		const defaults = [ { uid: 'w-1', type: 'sp/content-overview' } ];
 		mockStores( { layout: undefined, defaultLayout: defaults } );
 
 		const { result } = renderHook( () => useDashboardLayout() );
@@ -45,8 +45,8 @@ describe( 'useDashboardLayout', () => {
 
 	it( 'returns stored layout when preference exists', () => {
 		const storedLayout = [
-			{ uid: 'widget-1', type: 'tp/content-overview' },
-			{ uid: 'widget-2', type: 'tp/recent-activity' },
+			{ uid: 'widget-1', type: 'sp/content-overview' },
+			{ uid: 'widget-2', type: 'sp/recent-activity' },
 		];
 
 		mockStores( { layout: storedLayout } );
@@ -70,25 +70,25 @@ describe( 'useDashboardLayout', () => {
 
 		const { result } = renderHook( () => useDashboardLayout() );
 
-		const newLayout = [ { uid: 'widget-3', type: 'tp/app-status' } ];
+		const newLayout = [ { uid: 'widget-3', type: 'sp/app-status' } ];
 
 		result.current[ 1 ]( newLayout );
 
 		expect( mockSet ).toHaveBeenCalledWith(
 			'core/admin',
-			'tpDashboardLayout',
+			'spDashboardLayout',
 			newLayout
 		);
 	} );
 
 	it( 'resets layout to default widgets from boot store', () => {
 		const defaultWidgets = [
-			{ uid: 'default-1', type: 'tp/content-overview' },
-			{ uid: 'default-2', type: 'tp/recent-activity' },
+			{ uid: 'default-1', type: 'sp/content-overview' },
+			{ uid: 'default-2', type: 'sp/recent-activity' },
 		];
 
 		mockStores( {
-			layout: [ { uid: 'custom-1', type: 'tp/app-status' } ],
+			layout: [ { uid: 'custom-1', type: 'sp/app-status' } ],
 			defaultLayout: defaultWidgets,
 		} );
 
@@ -98,24 +98,24 @@ describe( 'useDashboardLayout', () => {
 
 		expect( mockSet ).toHaveBeenCalledWith(
 			'core/admin',
-			'tpDashboardLayout',
+			'spDashboardLayout',
 			defaultWidgets
 		);
 	} );
 
 	it( 'supports custom preference key and fallback layout for custom dashboards', () => {
-		const customDefaults = [ { uid: 'ops-1', type: 'tp-widget/revenue' } ];
+		const customDefaults = [ { uid: 'ops-1', type: 'sp-widget/revenue' } ];
 		mockStores( { layout: undefined, defaultLayout: [] } );
 
 		const { result } = renderHook( () =>
-			useDashboardLayout( 'tpDashboardLayout:ops', customDefaults )
+			useDashboardLayout( 'spDashboardLayout:ops', customDefaults )
 		);
 
 		expect( result.current[ 0 ] ).toEqual( customDefaults );
 		result.current[ 2 ]();
 		expect( mockSet ).toHaveBeenCalledWith(
 			'core/admin',
-			'tpDashboardLayout:ops',
+			'spDashboardLayout:ops',
 			customDefaults
 		);
 	} );

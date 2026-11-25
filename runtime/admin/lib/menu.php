@@ -1,11 +1,11 @@
 <?php
 /**
- * TypedPress navigation. Data endpoints remain the authority.
+ * SpacePress navigation. Data endpoints remain the authority.
  *
  * Promotes collections flat to top-level Content, SQL tables to Data, commerce kinds to Commerce,
  * globals to Site (hidden when none exist), and hides unused surfaces.
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 /**
@@ -13,16 +13,16 @@
  *
  * @return string[]
  */
-function tp_admin_navigation() {
-	$plugin   = \TypedPress\Wp\Runtime::plugin();
-	$viewer   = \TypedPress\Wp\CoreAccess::viewer();
+function sp_admin_navigation() {
+	$plugin   = \SpacePress\Wp\Runtime::plugin();
+	$viewer   = \SpacePress\Wp\CoreAccess::viewer();
 	$readable = array();
 	if ( $viewer === null ) {
 		return $readable;
 	}
 	foreach ( $plugin->schema->collections() as $name => $collection ) {
-		$rule = \TypedPress\Access::collectionRules( $collection )['read'];
-		if ( isset( $rule['fn'] ) || \TypedPress\Access::evaluate( $rule, $viewer, 'read' ) !== false ) {
+		$rule = \SpacePress\Access::collectionRules( $collection )['read'];
+		if ( isset( $rule['fn'] ) || \SpacePress\Access::evaluate( $rule, $viewer, 'read' ) !== false ) {
 			$readable[] = $name;
 		}
 	}
@@ -34,9 +34,9 @@ function tp_admin_navigation() {
  *
  * @return array<string, array>
  */
-function tp_admin_readable_globals() {
-	$plugin   = \TypedPress\Wp\Runtime::plugin();
-	$viewer   = \TypedPress\Wp\CoreAccess::viewer();
+function sp_admin_readable_globals() {
+	$plugin   = \SpacePress\Wp\Runtime::plugin();
+	$viewer   = \SpacePress\Wp\CoreAccess::viewer();
 	$readable = array();
 	if ( $viewer === null ) {
 		return $readable;
@@ -45,8 +45,8 @@ function tp_admin_readable_globals() {
 		if ( ! empty( $global['ui']['hidden'] ) ) {
 			continue;
 		}
-		$rule = \TypedPress\Access::globalRules( $global )['read'];
-		if ( isset( $rule['fn'] ) || \TypedPress\Access::evaluate( $rule, $viewer, 'read' ) !== false ) {
+		$rule = \SpacePress\Access::globalRules( $global )['read'];
+		if ( isset( $rule['fn'] ) || \SpacePress\Access::evaluate( $rule, $viewer, 'read' ) !== false ) {
 			$readable[ $name ] = $global;
 		}
 	}
@@ -61,8 +61,8 @@ function tp_admin_readable_globals() {
  *
  * @return bool
  */
-function tp_admin_media_relevant() {
-	$plugin = \TypedPress\Wp\Runtime::plugin();
+function sp_admin_media_relevant() {
+	$plugin = \SpacePress\Wp\Runtime::plugin();
 	foreach ( $plugin->schema->collections() as $collection ) {
 		if ( isset( $collection['wp']['postType'] ) ) {
 			return true;
@@ -80,7 +80,7 @@ function tp_admin_media_relevant() {
 			}
 		}
 	}
-	if ( function_exists( 'tp_admin_pages_relevant' ) && tp_admin_pages_relevant() ) {
+	if ( function_exists( 'sp_admin_pages_relevant' ) && sp_admin_pages_relevant() ) {
 		return true;
 	}
 	$counts = wp_count_posts( 'attachment' );
@@ -88,14 +88,14 @@ function tp_admin_media_relevant() {
 }
 
 add_action(
-	'tp_admin_init',
+	'sp_admin_init',
 	static function () {
-		$plugin       = \TypedPress\Wp\Runtime::plugin();
+		$plugin       = \SpacePress\Wp\Runtime::plugin();
 		$content_pos  = 100;
 		$commerce_pos = 300;
 		$data_pos     = 400;
 
-		foreach ( tp_admin_navigation() as $name ) {
+		foreach ( sp_admin_navigation() as $name ) {
 			$collection = $plugin->schema->collection( $name );
 			$ui         = is_array( $collection['ui'] ?? null ) ? $collection['ui'] : array();
 			if ( ! empty( $ui['hidden'] ) ) {
@@ -125,7 +125,7 @@ add_action(
 
 			$section = ! empty( $ui['group'] ) ? (string) $ui['group'] : $default_section;
 
-			tp_admin_register_menu_item(
+			sp_admin_register_menu_item(
 				'collection-' . $name,
 				array(
 					'to'       => '/collections/' . rawurlencode( $name ),
@@ -137,12 +137,12 @@ add_action(
 			);
 		}
 
-		if ( tp_admin_media_relevant() ) {
-			tp_admin_register_menu_item(
+		if ( sp_admin_media_relevant() ) {
+			sp_admin_register_menu_item(
 				'media',
 				array(
 					'to'       => '/media',
-					'label'    => __( 'Media', 'typedpress-admin' ),
+					'label'    => __( 'Media', 'spacepress-admin' ),
 					'icon'     => 'image',
 					'section'  => 'content',
 					'position' => 250,
@@ -150,12 +150,12 @@ add_action(
 			);
 		}
 
-		if ( tp_admin_comments_relevant() && current_user_can( 'moderate_comments' ) ) {
-			tp_admin_register_menu_item(
+		if ( sp_admin_comments_relevant() && current_user_can( 'moderate_comments' ) ) {
+			sp_admin_register_menu_item(
 				'comments',
 				array(
-					'to'       => tp_admin_get_menu_to_from_slug( 'edit-comments.php' ),
-					'label'    => __( 'Comments', 'typedpress-admin' ),
+					'to'       => sp_admin_get_menu_to_from_slug( 'edit-comments.php' ),
+					'label'    => __( 'Comments', 'spacepress-admin' ),
 					'icon'     => 'comment',
 					'section'  => 'content',
 					'position' => 260,
@@ -164,12 +164,12 @@ add_action(
 		}
 
 		// Globals: hide when none exist; promote directly into Site when 1–3, or group as dropdown for 4+.
-		$globals = tp_admin_readable_globals();
+		$globals = sp_admin_readable_globals();
 		if ( count( $globals ) > 0 && count( $globals ) <= 3 ) {
 			$g_pos = 510;
 			foreach ( $globals as $name => $global ) {
 				$ui = is_array( $global['ui'] ?? null ) ? $global['ui'] : array();
-				tp_admin_register_menu_item(
+				sp_admin_register_menu_item(
 					'global-' . $name,
 					array(
 						'to'       => '/globals/' . rawurlencode( $name ),
@@ -181,10 +181,10 @@ add_action(
 				);
 			}
 		} elseif ( count( $globals ) > 3 ) {
-			tp_admin_register_menu_item(
+			sp_admin_register_menu_item(
 				'globals',
 				array(
-					'label'       => __( 'Globals', 'typedpress-admin' ),
+					'label'       => __( 'Globals', 'spacepress-admin' ),
 					'icon'        => 'globe',
 					'parent_type' => 'dropdown',
 					'section'     => 'site',
@@ -192,7 +192,7 @@ add_action(
 				)
 			);
 			foreach ( $globals as $name => $global ) {
-				tp_admin_register_menu_item(
+				sp_admin_register_menu_item(
 					'global-' . $name,
 					array(
 						'to'     => '/globals/' . rawurlencode( $name ),
@@ -204,12 +204,12 @@ add_action(
 		}
 
 		// Classic wp-admin on its own is only for self-hosted Developer Mode (never on SpaceFast/managed).
-		if ( tp_admin_developer_mode() ) {
-			tp_admin_register_menu_item(
+		if ( sp_admin_developer_mode() ) {
+			sp_admin_register_menu_item(
 				'classic',
 				array(
 					'to'       => admin_url(),
-					'label'    => __( 'Classic admin', 'typedpress-admin' ),
+					'label'    => __( 'Classic admin', 'spacepress-admin' ),
 					'icon'     => 'wordpress',
 					'section'  => 'system',
 					'position' => 990,
@@ -225,8 +225,8 @@ add_action(
  *
  * @return bool
  */
-function tp_admin_comments_relevant() {
-	foreach ( \TypedPress\Wp\Runtime::plugin()->schema->collections() as $collection ) {
+function sp_admin_comments_relevant() {
+	foreach ( \SpacePress\Wp\Runtime::plugin()->schema->collections() as $collection ) {
 		if ( true === ( $collection['comments'] ?? false ) ) {
 			return true;
 		}
@@ -235,20 +235,20 @@ function tp_admin_comments_relevant() {
 }
 
 /**
- * Register submenu entries from a classic wp-admin parent menu under a TypedPress Admin menu id,
+ * Register submenu entries from a classic wp-admin parent menu under a SpacePress Admin menu id,
  * each opening framed at `/classic/<slug>`.
  *
- * @param string      $id     Target TypedPress Admin menu id.
+ * @param string      $id     Target SpacePress Admin menu id.
  * @param string|null $label  Optional dropdown label (null to append into an existing parent).
  * @param string|null $icon   Optional icon.
  * @param string      $parent wp-admin parent file.
- * @param array       $skip   Parent-menu slugs TypedPress Admin shows natively or hides.
+ * @param array       $skip   Parent-menu slugs SpacePress Admin shows natively or hides.
  */
-function tp_admin_register_classic_children( $id, $label, $icon, $parent, $skip = array() ) {
+function sp_admin_register_classic_children( $id, $label, $icon, $parent, $skip = array() ) {
 	global $submenu;
 	$children = array();
 	foreach ( (array) ( $submenu[ $parent ] ?? array() ) as $item ) {
-		if ( empty( $item[0] ) || empty( $item[2] ) || in_array( $item[2], $skip, true ) || str_starts_with( $item[2], 'typedpress-screen-' )
+		if ( empty( $item[0] ) || empty( $item[2] ) || in_array( $item[2], $skip, true ) || str_starts_with( $item[2], 'spacepress-screen-' )
 			|| ( ! empty( $item[1] ) && ! current_user_can( $item[1] ) ) ) {
 			continue;
 		}
@@ -258,7 +258,7 @@ function tp_admin_register_classic_children( $id, $label, $icon, $parent, $skip 
 		return;
 	}
 	if ( null !== $label ) {
-		tp_admin_register_menu_item(
+		sp_admin_register_menu_item(
 			$id,
 			array(
 				'label'       => $label,
@@ -268,10 +268,10 @@ function tp_admin_register_classic_children( $id, $label, $icon, $parent, $skip 
 		);
 	}
 	foreach ( $children as $item ) {
-		tp_admin_register_menu_item(
+		sp_admin_register_menu_item(
 			$id . '-' . sanitize_key( $item[2] ),
 			array(
-				'to'     => tp_admin_get_menu_to_from_slug( $item[2], $parent ),
+				'to'     => sp_admin_get_menu_to_from_slug( $item[2], $parent ),
 				'label'  => trim( wp_strip_all_tags( preg_replace( '/<span.*/s', '', $item[0] ) ) ),
 				'parent' => $id,
 			)
@@ -279,12 +279,12 @@ function tp_admin_register_classic_children( $id, $label, $icon, $parent, $skip 
 	}
 }
 
-// TypedPress collections already have access-aware entries. Keep native WordPress types alongside them.
+// SpacePress collections already have access-aware entries. Keep native WordPress types alongside them.
 add_filter(
-	'tp_admin_native_post_types',
+	'sp_admin_native_post_types',
 	static function ( $types ) {
 		unset( $types['attachment'] );
-		foreach ( \TypedPress\Wp\Runtime::plugin()->schema->collections() as $collection ) {
+		foreach ( \SpacePress\Wp\Runtime::plugin()->schema->collections() as $collection ) {
 			if ( isset( $collection['wp']['postType'] ) ) {
 				unset( $types[ $collection['wp']['postType'] ] );
 			}
@@ -293,18 +293,18 @@ add_filter(
 	}
 );
 
-// Inside wp-admin, the classic menu lists TypedPress's post types and its globals page; TypedPress Admin
+// Inside wp-admin, the classic menu lists SpacePress's post types and its globals page; SpacePress Admin
 // has its own flat entries for both, so the copied plugin menu leaves them out.
 add_filter(
-	'tp_admin_classic_menu_items_exclude',
+	'sp_admin_classic_menu_items_exclude',
 	static function ( $slugs ) {
-		$plugin = \TypedPress\Wp\Runtime::plugin();
+		$plugin = \SpacePress\Wp\Runtime::plugin();
 		foreach ( $plugin->schema->collections() as $collection ) {
 			if ( isset( $collection['wp']['postType'] ) ) {
 				$slugs[] = 'edit.php?post_type=' . $collection['wp']['postType'];
 			}
 		}
-		$slugs[] = 'typedpress-' . $plugin->schema->name();
+		$slugs[] = 'spacepress-' . $plugin->schema->name();
 		return $slugs;
 	}
 );

@@ -2,7 +2,7 @@
 /**
  * WordPress REST API extensions.
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 add_filter(
@@ -25,9 +25,9 @@ add_filter(
 add_filter(
 	'rest_prepare_post_type',
 	function ( $response, $post_type ) {
-		// The registered post type, as tp_admin_register_default_view_arg_for_post_type() reads its
+		// The registered post type, as sp_admin_register_default_view_arg_for_post_type() reads its
 		// arguments: its built capabilities stand in for the `capabilities` argument registration drops.
-		$args = tp_admin_register_default_view_arg_for_post_type(
+		$args = sp_admin_register_default_view_arg_for_post_type(
 			array( 'capabilities' => (array) $post_type->cap ) + get_object_vars( $post_type ),
 			$post_type->name
 		);
@@ -49,7 +49,7 @@ add_filter(
 /**
  * Allow auto-draft status in WordPress REST API for all post types
  */
-function tp_admin_allow_auto_draft_in_rest_api() {
+function sp_admin_allow_auto_draft_in_rest_api() {
 	$auto_draft_filter = function ( $schema ) {
 		if ( isset( $schema['properties']['status']['enum'] ) ) {
 			$schema['properties']['status']['enum'][] = 'auto-draft';
@@ -86,12 +86,12 @@ function tp_admin_allow_auto_draft_in_rest_api() {
 	}
 }
 
-add_action( 'rest_api_init', 'tp_admin_allow_auto_draft_in_rest_api' );
+add_action( 'rest_api_init', 'sp_admin_allow_auto_draft_in_rest_api' );
 
 /**
  * Add comment_status filtering support to REST API for all post types that support comments
  */
-function tp_admin_add_comment_status_filter_to_rest_api() {
+function sp_admin_add_comment_status_filter_to_rest_api() {
 	$post_types = get_post_types( array( 'show_in_rest' => true ), 'objects' );
 
 	foreach ( $post_types as $post_type ) {
@@ -117,12 +117,12 @@ function tp_admin_add_comment_status_filter_to_rest_api() {
 	}
 }
 
-add_action( 'rest_api_init', 'tp_admin_add_comment_status_filter_to_rest_api' );
+add_action( 'rest_api_init', 'sp_admin_add_comment_status_filter_to_rest_api' );
 
 /**
  * Add comment_status parameters to REST API collection params for all post types that support comments
  */
-function tp_admin_add_comment_status_collection_params() {
+function sp_admin_add_comment_status_collection_params() {
 	$post_types = get_post_types( array( 'show_in_rest' => true ), 'objects' );
 
 	foreach ( $post_types as $post_type ) {
@@ -149,12 +149,12 @@ function tp_admin_add_comment_status_collection_params() {
 	}
 }
 
-add_action( 'rest_api_init', 'tp_admin_add_comment_status_collection_params' );
+add_action( 'rest_api_init', 'sp_admin_add_comment_status_collection_params' );
 
 /**
  * Add post_count field to user REST API
  */
-function tp_admin_register_user_post_count_field() {
+function sp_admin_register_user_post_count_field() {
 	register_rest_field(
 		'user',
 		'post_count',
@@ -170,19 +170,19 @@ function tp_admin_register_user_post_count_field() {
 		)
 	);
 }
-add_action( 'rest_api_init', 'tp_admin_register_user_post_count_field' );
+add_action( 'rest_api_init', 'sp_admin_register_user_post_count_field' );
 
 /**
  * Add comment count field to REST API response for posts. Don't compute it, as
- * it will be exposed by `tp_admin_prepare_comment_count_rest_field`.
+ * it will be exposed by `sp_admin_prepare_comment_count_rest_field`.
  */
-function tp_admin_register_comment_count_rest_field() {
+function sp_admin_register_comment_count_rest_field() {
 	register_rest_field(
 		'post',
 		'comment_count',
 		array(
 			'schema' => array(
-				'description' => __( 'Number of approved comments for this post.', 'typedpress-admin' ),
+				'description' => __( 'Number of approved comments for this post.', 'spacepress-admin' ),
 				'type'        => 'integer',
 			),
 		)
@@ -195,13 +195,13 @@ function tp_admin_register_comment_count_rest_field() {
  * @param WP_REST_Response $response The response object.
  * @param WP_Post          $post     Post object.
  */
-function tp_admin_prepare_comment_count_rest_field( $response, $post ) {
+function sp_admin_prepare_comment_count_rest_field( $response, $post ) {
 	$response->data['comment_count'] = (int) $post->comment_count;
 	return $response;
 }
 
-add_action( 'rest_api_init', 'tp_admin_register_comment_count_rest_field' );
-add_filter( 'rest_prepare_post', 'tp_admin_prepare_comment_count_rest_field', 10, 2 );
+add_action( 'rest_api_init', 'sp_admin_register_comment_count_rest_field' );
+add_filter( 'rest_prepare_post', 'sp_admin_prepare_comment_count_rest_field', 10, 2 );
 
 /**
  * Overrides the REST controller for the `attachments` post type.
@@ -211,13 +211,13 @@ add_filter( 'rest_prepare_post', 'tp_admin_prepare_comment_count_rest_field', 10
  *
  * @return array Array of arguments for registering a post type.
  */
-function tp_admin_override_attachments_endpoint( array $args ): array {
-	$args['rest_controller_class']   = 'TypedPress_Admin_REST_Attachments_Controller';
+function sp_admin_override_attachments_endpoint( array $args ): array {
+	$args['rest_controller_class']   = 'SpacePress_Admin_REST_Attachments_Controller';
 	$args['late_route_registration'] = true;
 
 	return $args;
 }
-add_filter( 'register_attachment_post_type_args', 'tp_admin_override_attachments_endpoint' );
+add_filter( 'register_attachment_post_type_args', 'sp_admin_override_attachments_endpoint' );
 
 /**
  * Get update information for a specific theme.
@@ -225,7 +225,7 @@ add_filter( 'register_attachment_post_type_args', 'tp_admin_override_attachments
  * @param array $theme The theme data from the REST API response.
  * @return array|null Theme update information.
  */
-function tp_admin_get_theme_update_info( $theme ) {
+function sp_admin_get_theme_update_info( $theme ) {
 	if ( is_multisite() || ! current_user_can( 'update_themes' ) ) {
 		return null;
 	}
@@ -270,12 +270,12 @@ function tp_admin_get_theme_update_info( $theme ) {
  *
  * This field provides information about available updates for themes.
  */
-function tp_admin_register_theme_update_info_field() {
+function sp_admin_register_theme_update_info_field() {
 	register_rest_field(
 		'theme',
 		'update_info',
 		array(
-			'get_callback' => 'tp_admin_get_theme_update_info',
+			'get_callback' => 'sp_admin_get_theme_update_info',
 			'schema'       => array(
 				'description' => 'Theme update information',
 				'type'        => 'object',
@@ -308,7 +308,7 @@ function tp_admin_register_theme_update_info_field() {
 	);
 }
 
-add_action( 'rest_api_init', 'tp_admin_register_theme_update_info_field' );
+add_action( 'rest_api_init', 'sp_admin_register_theme_update_info_field' );
 
 /**
  * Get theme auto-updates data.
@@ -316,7 +316,7 @@ add_action( 'rest_api_init', 'tp_admin_register_theme_update_info_field' );
  * @param array $theme The theme data from the REST API response.
  * @return array Theme auto-updates data.
  */
-function tp_admin_get_theme_auto_updates_data( $theme ) {
+function sp_admin_get_theme_auto_updates_data( $theme ) {
 	require_once ABSPATH . 'wp-admin/includes/theme.php';
 	require_once ABSPATH . 'wp-admin/includes/update.php';
 
@@ -345,12 +345,12 @@ function tp_admin_get_theme_auto_updates_data( $theme ) {
  *
  * This field provides information about whether theme auto-updates are or can be enabled.
  */
-function tp_admin_register_theme_auto_updates_field() {
+function sp_admin_register_theme_auto_updates_field() {
 	register_rest_field(
 		'theme',
 		'auto_updates',
 		array(
-			'get_callback' => 'tp_admin_get_theme_auto_updates_data',
+			'get_callback' => 'sp_admin_get_theme_auto_updates_data',
 			'schema'       => array(
 				'description' => 'Theme auto-updates information',
 				'type'        => 'object',
@@ -375,7 +375,7 @@ function tp_admin_register_theme_auto_updates_field() {
 	);
 }
 
-add_action( 'rest_api_init', 'tp_admin_register_theme_auto_updates_field' );
+add_action( 'rest_api_init', 'sp_admin_register_theme_auto_updates_field' );
 
 /**
  * Register custom collection params for user REST API to support field-specific search.
@@ -385,27 +385,27 @@ add_action( 'rest_api_init', 'tp_admin_register_theme_auto_updates_field' );
  * @param array $params Collection parameters.
  * @return array Modified collection parameters.
  */
-function tp_admin_register_user_search_collection_params( $params ) {
+function sp_admin_register_user_search_collection_params( $params ) {
 	$params['email_search'] = array(
-		'description'       => __( 'Search users by email address (partial match).', 'typedpress-admin' ),
+		'description'       => __( 'Search users by email address (partial match).', 'spacepress-admin' ),
 		'type'              => 'string',
 		'sanitize_callback' => 'sanitize_text_field',
 	);
 
 	$params['email_search_not'] = array(
-		'description'       => __( 'Exclude users whose email matches (partial match).', 'typedpress-admin' ),
+		'description'       => __( 'Exclude users whose email matches (partial match).', 'spacepress-admin' ),
 		'type'              => 'string',
 		'sanitize_callback' => 'sanitize_text_field',
 	);
 
 	$params['name_search'] = array(
-		'description'       => __( 'Search users by display name (partial match).', 'typedpress-admin' ),
+		'description'       => __( 'Search users by display name (partial match).', 'spacepress-admin' ),
 		'type'              => 'string',
 		'sanitize_callback' => 'sanitize_text_field',
 	);
 
 	$params['name_search_not'] = array(
-		'description'       => __( 'Exclude users whose display name matches (partial match).', 'typedpress-admin' ),
+		'description'       => __( 'Exclude users whose display name matches (partial match).', 'spacepress-admin' ),
 		'type'              => 'string',
 		'sanitize_callback' => 'sanitize_text_field',
 	);
@@ -414,21 +414,21 @@ function tp_admin_register_user_search_collection_params( $params ) {
 		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $value ) ) {
 			return new \WP_Error(
 				'rest_invalid_param',
-				__( 'Date must be in YYYY-MM-DD format.', 'typedpress-admin' )
+				__( 'Date must be in YYYY-MM-DD format.', 'spacepress-admin' )
 			);
 		}
 		return true;
 	};
 
 	$params['registered_after'] = array(
-		'description'       => __( 'Limit result set to users registered on or after a given date (YYYY-MM-DD).', 'typedpress-admin' ),
+		'description'       => __( 'Limit result set to users registered on or after a given date (YYYY-MM-DD).', 'spacepress-admin' ),
 		'type'              => 'string',
 		'sanitize_callback' => 'sanitize_text_field',
 		'validate_callback' => $validate_date,
 	);
 
 	$params['registered_before'] = array(
-		'description'       => __( 'Limit result set to users registered on or before a given date (YYYY-MM-DD).', 'typedpress-admin' ),
+		'description'       => __( 'Limit result set to users registered on or before a given date (YYYY-MM-DD).', 'spacepress-admin' ),
 		'type'              => 'string',
 		'sanitize_callback' => 'sanitize_text_field',
 		'validate_callback' => $validate_date,
@@ -436,7 +436,7 @@ function tp_admin_register_user_search_collection_params( $params ) {
 
 	return $params;
 }
-add_filter( 'rest_user_collection_params', 'tp_admin_register_user_search_collection_params' );
+add_filter( 'rest_user_collection_params', 'sp_admin_register_user_search_collection_params' );
 
 /**
  * Apply field-specific search params to the user query.
@@ -450,7 +450,7 @@ add_filter( 'rest_user_collection_params', 'tp_admin_register_user_search_collec
  * @param WP_REST_Request $request       The REST request.
  * @return array Modified arguments.
  */
-function tp_admin_apply_user_search_params( $prepared_args, $request ) {
+function sp_admin_apply_user_search_params( $prepared_args, $request ) {
 	if ( ! current_user_can( 'list_users' ) ) {
 		return $prepared_args;
 	}
@@ -490,7 +490,7 @@ function tp_admin_apply_user_search_params( $prepared_args, $request ) {
 
 			// Name search uses first_name and last_name usermeta to match the UI,
 			// which renders names from these meta fields (with display_name as fallback).
-			// See also: tp_admin_ciab_extend_user_search() in settings-users.php.
+			// See also: sp_admin_ciab_extend_user_search() in settings-users.php.
 			if ( ! empty( $search['name'] ) ) {
 				$term               = '%' . $wpdb->esc_like( $search['name'] ) . '%';
 				$query->query_from .= " LEFT JOIN {$wpdb->usermeta} AS na_fn ON ({$wpdb->users}.ID = na_fn.user_id AND na_fn.meta_key = 'first_name')";
@@ -546,4 +546,4 @@ function tp_admin_apply_user_search_params( $prepared_args, $request ) {
 
 	return $prepared_args;
 }
-add_filter( 'rest_user_query', 'tp_admin_apply_user_search_params', 10, 2 );
+add_filter( 'rest_user_query', 'sp_admin_apply_user_search_params', 10, 2 );

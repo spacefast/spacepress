@@ -1,5 +1,5 @@
-import { RadioGroupControl, SelectControl } from '@typedpress-admin/design-system';
-import type { Field } from '@typedpress-admin/dataviews';
+import { RadioGroupControl, SelectControl } from '@spacepress-admin/design-system';
+import type { Field } from '@spacepress-admin/dataviews';
 import { __ } from '@wordpress/i18n';
 import {
 	type Settings,
@@ -11,17 +11,17 @@ import { useSelect } from '@wordpress/data';
 export const fields: Field< Settings >[] = [
 	{
 		id: 'title',
-		label: __( 'Site title', 'typedpress-admin' ),
+		label: __( 'Site title', 'spacepress-admin' ),
 		type: 'text',
 	},
 	{
 		id: 'description',
-		label: __( 'Site description', 'typedpress-admin' ),
+		label: __( 'Site description', 'spacepress-admin' ),
 		type: 'text',
 	},
 	{
 		id: 'language',
-		label: __( 'Site Language', 'typedpress-admin' ),
+		label: __( 'Site Language', 'spacepress-admin' ),
 		type: 'text',
 		Edit( { data, field, onChange } ) {
 			return (
@@ -29,11 +29,11 @@ export const fields: Field< Settings >[] = [
 					label={ field.label }
 					items={ [
 						{
-							label: __( 'English', 'typedpress-admin' ),
+							label: __( 'English', 'spacepress-admin' ),
 							value: '',
 						},
 						{
-							label: __( 'Deutsch', 'typedpress-admin' ),
+							label: __( 'Deutsch', 'spacepress-admin' ),
 							value: 'de_DE',
 						},
 					] }
@@ -47,7 +47,7 @@ export const fields: Field< Settings >[] = [
 	},
 	{
 		id: 'show_on_front',
-		label: __( 'Your homepage displays', 'typedpress-admin' ),
+		label: __( 'Your homepage displays', 'spacepress-admin' ),
 		type: 'text',
 		Edit( { data, field, onChange } ) {
 			return (
@@ -55,13 +55,13 @@ export const fields: Field< Settings >[] = [
 					label={ field.label }
 					items={ [
 						{
-							label: __( 'Your latest posts', 'typedpress-admin' ),
+							label: __( 'Your latest posts', 'spacepress-admin' ),
 							value: 'posts',
 						},
 						{
 							label: __(
 								'A static page (select below)',
-								'typedpress-admin'
+								'spacepress-admin'
 							),
 							value: 'page',
 						},
@@ -76,7 +76,7 @@ export const fields: Field< Settings >[] = [
 	},
 	{
 		id: 'page_on_front',
-		label: __( 'Home page', 'typedpress-admin' ),
+		label: __( 'Home page', 'spacepress-admin' ),
 		type: 'text',
 		Edit( { data, field, onChange } ) {
 			const pages = useSelect( ( select ) => {
@@ -92,7 +92,7 @@ export const fields: Field< Settings >[] = [
 					disabled={ data.show_on_front !== 'page' || ! pages }
 					items={ [
 						{
-							label: __( '— Select —', 'typedpress-admin' ),
+							label: __( '— Select —', 'spacepress-admin' ),
 							value: '0',
 						},
 						...( pages || [] ).map( ( page: Page ) => ( {
@@ -110,7 +110,7 @@ export const fields: Field< Settings >[] = [
 	},
 	{
 		id: 'page_for_posts',
-		label: __( 'Posts page', 'typedpress-admin' ),
+		label: __( 'Posts page', 'spacepress-admin' ),
 		type: 'text',
 		Edit( { data, field, onChange } ) {
 			const pages = useSelect( ( select ) => {

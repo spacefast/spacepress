@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Brick\Math\Internal;
+namespace SpacePress\Identity\Vendor\Brick\Math\Internal;
 
-use TypedPress\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
 
 use function is_int;
 use function sprintf;

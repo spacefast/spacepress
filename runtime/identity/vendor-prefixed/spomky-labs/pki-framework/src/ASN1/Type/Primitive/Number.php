@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
 
-use TypedPress\Identity\Vendor\Brick\Math\BigInteger;
-use TypedPress\Identity\Vendor\Brick\Math\Exception\MathException;
+use SpacePress\Identity\Vendor\Brick\Math\BigInteger;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\MathException;
 use function gettype;
 use InvalidArgumentException;
 use function is_int;
 use function is_scalar;
 use function is_string;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util\BigInt;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util\BigInt;
 use function sprintf;
 use function strval;
 

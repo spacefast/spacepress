@@ -9,8 +9,8 @@ for (const file of manifest.files) {
   const actual = createHash('sha256').update(await readFile(join(root,file.file))).digest('hex');
   if (actual !== file.sha256) throw new Error(`Pinned upstream source changed: ${file.file}`);
 }
-// And a template holds only upstream files besides its astro.config.mjs (which adds tpEmdash()),
-// its own package.json (replaced by this folder's) and, for blank, the TypedPress app's typedpress.config.ts:
+// And a template holds only upstream files besides its astro.config.mjs (which adds spEmdash()),
+// its own package.json (replaced by this folder's) and, for blank, the SpacePress app's spacepress.config.ts:
 // no adapter code next to the template, and no tsconfig `paths` redirecting its imports.
 const pinned = new Set(manifest.files.map(file => file.file));
 async function* walk(dir) {
@@ -19,7 +19,7 @@ async function* walk(dir) {
     if (entry.isDirectory()) yield* walk(path); else yield relative(root, path).split('\\').join('/');
   }
 }
-const allowed = new Set(['astro.config.mjs', 'typedpress.config.ts']);
+const allowed = new Set(['astro.config.mjs', 'spacepress.config.ts']);
 const generated = /^(dist|node_modules|\.astro)$/;
 for (const template of ['blank', 'starter', 'blog']) {
   for (const entry of await readdir(join(root, template), { withFileTypes: true })) {
@@ -34,9 +34,9 @@ for (const template of ['blank', 'starter', 'blog']) {
   }
 }
 // The compiled reading-time algorithm is the official one, with its import renamed and its
-// Unicode-property regex spelled out as code point ranges (TypedPress refuses property escapes).
+// Unicode-property regex spelled out as code point ranges (SpacePress refuses property escapes).
 const original = await readFile(join(root,'blog/src/utils/reading-time.ts'),'utf8');
-const adapted = await readFile(join(root,'tp/backend/reading-time.ts'),'utf8');
+const adapted = await readFile(join(root,'sp/backend/reading-time.ts'),'utf8');
 const property = /^\s*\/\\p\{Script=Han\}.*\/gu;$/m;
 const spelled = /^\s*\/\[\\u\{1100\}[^\n]*\/gu;$/m;
 const strip = (text) => text.replace(/^\/\/ Han, Hangul[^\n]*\n(\/\/[^\n]*\n){2}/m, '');

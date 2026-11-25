@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest;
 
 use LogicException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Name;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extensions;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest\Attribute\ExtensionRequestValue;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Name;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extensions;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest\Attribute\ExtensionRequestValue;
 use UnexpectedValueException;
 
 /**

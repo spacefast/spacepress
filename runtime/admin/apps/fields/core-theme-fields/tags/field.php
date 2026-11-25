@@ -2,12 +2,12 @@
 /**
  * Tags field definition for core theme fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'               => 'array',
-	'label'              => __( 'Tags', 'typedpress-admin' ),
+	'label'              => __( 'Tags', 'spacepress-admin' ),
 	'enableGlobalSearch' => true,
 	'enableSorting'      => false,
 	'filterBy'           => array(

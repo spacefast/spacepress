@@ -1,6 +1,6 @@
-import { integer } from "typedpress";
-import { products } from "typedpress:db";
-import { Pagination } from "typedpress/app";
+import { integer } from "spacepress";
+import { products } from "spacepress:db";
+import { Pagination } from "spacepress/app";
 import { get_option } from "php/wordpress";
 export const search = { catalogPage: integer().min(1).default(1) };
 export default async function CategoryPage({ item, search }) {

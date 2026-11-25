@@ -2,12 +2,12 @@
 /**
  * Featured image field definition for core post fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'          => 'media',
-	'label'         => __( 'Featured Image', 'typedpress-admin' ),
+	'label'         => __( 'Featured Image', 'spacepress-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 );

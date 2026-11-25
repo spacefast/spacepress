@@ -6,7 +6,7 @@ import { chromium } from "playwright-core";
 
 const base = new URL(process.env.SITE_URL).origin;
 let browser;
-before(async () => { browser = await chromium.launch({ executablePath: process.env.TP_CHROMIUM }); });
+before(async () => { browser = await chromium.launch({ executablePath: process.env.SP_CHROMIUM }); });
 after(() => browser?.close());
 
 async function open(t, path, options = {}) {
@@ -23,14 +23,14 @@ async function open(t, path, options = {}) {
   return page;
 }
 
-const sandbox = "tp-sandbox[default-tab='migration.sql']";
+const sandbox = "sp-sandbox[default-tab='migration.sql']";
 
 test("handbook shows its contents and highlights the inline examples", async (t) => {
   const page = await open(t, "/handbook/");
   const chapters = await page.getByRole("complementary", { name: "Handbook contents" }).locator("a").evaluateAll((links) => links.map((link) => link.hash.slice(1)));
   assert.ok(chapters.includes("data-modeling") && chapters.includes("deploy-cli"));
   for (const chapter of chapters) assert.equal(await page.locator(`[id="${chapter}"]`).count(), 1, chapter);
-  await page.locator("tp-code.tp-drawn").first().waitFor();
+  await page.locator("sp-code.sp-drawn").first().waitFor();
   await page.locator(sandbox).scrollIntoViewIfNeeded();
   await page.locator(`${sandbox}[data-ready]`).waitFor();
   const sql = await page.locator(sandbox).evaluate((element) => element.outputs[element.selectedOutput]);
@@ -41,7 +41,7 @@ test("handbook shows its contents and highlights the inline examples", async (t)
 test("handbook renders readable source without JavaScript", async (t) => {
   const page = await open(t, "/handbook/", { javaScriptEnabled: false });
   assert.match(await page.locator("h1").textContent(), /SpacePress Handbook/);
-  assert.match(await page.locator("tp-code").first().textContent(), /typedpress/);
+  assert.match(await page.locator("sp-code").first().textContent(), /spacepress/);
 });
 
 test("home and synced reference fit a narrow viewport", async (t) => {
@@ -61,16 +61,16 @@ test("reference navigation opens synced Markdown and its code examples", async (
   assert.ok(await page.getByRole("complementary", { name: "On this page" }).locator("a").count() > 0);
   const code = page.locator(".sp-docs-article pre code").filter({ hasText: "wp.posts.extend" }).first();
   await code.waitFor({ state: "attached" });
-  assert.match(await code.textContent(), /import \{ wp \} from "typedpress"/);
+  assert.match(await code.textContent(), /import \{ wp \} from "spacepress"/);
 });
 
 async function tasks(t) {
   const page = await open(t, "/play/?example=tasks");
-  const play = page.locator("tp-play[data-ready]");
-  const pane = play.locator(".tp-pane").first();
+  const play = page.locator("sp-play[data-ready]");
+  const pane = play.locator(".sp-pane").first();
   await pane.getByRole("textbox").waitFor();
   await play.evaluate((element) => {
-    const lines = element.files["tp/schema.ts"].split("\n");
+    const lines = element.files["sp/schema.ts"].split("\n");
     const line = lines.findIndex((text) => text.includes("done: boolean()"));
     element.editor.focus({ lineNumber: line + 1, character: lines[line].length });
   });
@@ -82,18 +82,18 @@ test("playground generates a migration and reopens a shared edit", async (t) => 
   const page = await tasks(t);
   const added = "priority: integer().default(0),";
   await page.keyboard.insertText(`\n  ${added}`);
-  await page.waitForFunction(() => Object.values(document.querySelector("tp-play").outputs).some((text) => text.includes("ADD COLUMN `priority`")));
-  const paths = await page.locator("tp-play").evaluate((element) => Object.keys(element.outputs).filter((path) => path.endsWith("/migration.sql")).sort());
+  await page.waitForFunction(() => Object.values(document.querySelector("sp-play").outputs).some((text) => text.includes("ADD COLUMN `priority`")));
+  const paths = await page.locator("sp-play").evaluate((element) => Object.keys(element.outputs).filter((path) => path.endsWith("/migration.sql")).sort());
   assert.equal(paths.length, 2, "the initial and incremental SQL migrations are both present");
   assert.match(paths[1], /\/\d{14}_[a-z0-9]+_.*\/migration\.sql$/);
   await page.getByRole("button", { name: "Share", exact: true }).click();
-  const link = page.locator(".tp-shared a");
+  const link = page.locator(".sp-shared a");
   await link.waitFor();
   const url = new URL(await link.getAttribute("href"), base);
   assert.match(url.search, /^\?s=[0-9a-f]{10}$/);
   const other = await open(t, url.pathname + url.search);
-  await other.locator("tp-play[data-ready]").waitFor();
-  assert.ok(await other.locator("tp-play").evaluate((element, text) => element.files["tp/schema.ts"].includes(text), added));
+  await other.locator("sp-play[data-ready]").waitFor();
+  assert.ok(await other.locator("sp-play").evaluate((element, text) => element.files["sp/schema.ts"].includes(text), added));
 });
 
 test("playground announces a syntax error with its source location", async (t) => {
@@ -101,8 +101,8 @@ test("playground announces a syntax error with its source location", async (t) =
   await page.keyboard.insertText(" ((");
   await page.getByRole("status").filter({ hasText: /\d+ problems?\. Showing output from the last passing build/ }).waitFor();
   await page.locator(".sp-inline-diag.is-error").first().waitFor();
-  const location = await page.locator("tp-play").evaluate((element) => element.lastDiagnostics[0].location);
-  assert.equal(location.file, "tp/schema.ts");
+  const location = await page.locator("sp-play").evaluate((element) => element.lastDiagnostics[0].location);
+  assert.equal(location.file, "sp/schema.ts");
   assert.ok(location.line > 0 && location.column > 0);
 });
 
@@ -116,9 +116,9 @@ test("seeded examples match the JSON API and open in the playground", async (t) 
   assert.deepEqual(await cards.locator("h3").allTextContents(), examples.map(({ title }) => title));
   assert.equal(await cards.first().getByRole("link", { name: /Source/ }).getAttribute("href"), examples[0].githubUrl);
   await cards.first().getByRole("link", { name: /Open in Playground/ }).click();
-  await page.locator("tp-play[data-ready]").waitFor();
+  await page.locator("sp-play[data-ready]").waitFor();
   assert.equal(await page.getByLabel("Example", { exact: true }).inputValue(), "website");
-  assert.match(await page.locator("tp-play .tp-status").textContent(), /^Built in \d+ ms: \d+ files/);
+  assert.match(await page.locator("sp-play .sp-status").textContent(), /^Built in \d+ ms: \d+ files/);
 });
 
 test("Run in WordPress points to ZIPs reachable across origins", async (t) => {
@@ -130,7 +130,7 @@ test("Run in WordPress points to ZIPs reachable across origins", async (t) => {
   assert.equal(url.origin, "https://playground.wordpress.net");
   const { steps } = JSON.parse(decodeURIComponent(url.hash.slice(1)));
   const zips = steps.filter(({ pluginData }) => pluginData?.url?.includes("/playground-plugins/")).map(({ pluginData }) => pluginData.url);
-  assert.deepEqual(zips.sort(), ["admin", "identity", "runtime"].map((slug) => `${base}/playground-plugins/typedpress-${slug}.zip`));
+  assert.deepEqual(zips.sort(), ["admin", "identity", "runtime"].map((slug) => `${base}/playground-plugins/spacepress-${slug}.zip`));
   const index = await fetch(`${base}/playground-plugins/`);
   assert.equal(index.status, 200);
   assert.deepEqual((await index.json()).plugins.map((path) => new URL(path, base).href).sort(), zips);
@@ -168,7 +168,7 @@ test("blog navigation shows a synced WordPress post and its comments", async (t)
   await page.waitForURL(/\/blog\/[\w-]+\/$/);
   assert.equal(await page.locator("article h1").textContent(), title);
   assert.ok(await page.getByRole("heading", { name: "Comments", exact: true }).isVisible());
-  const { data } = await (await fetch(`${base}/wp-json/typedpress/v1/posts`)).json();
+  const { data } = await (await fetch(`${base}/wp-json/spacepress/v1/posts`)).json();
   const listed = data.find(({ slug }) => page.url().endsWith(`/${slug}/`));
   assert.ok(listed);
   const core = await (await fetch(`${base}/wp-json/wp/v2/posts/${listed.id}`)).json();
@@ -176,9 +176,9 @@ test("blog navigation shows a synced WordPress post and its comments", async (t)
 });
 
 test("visitors cannot list shared edits or start the star refresh", async () => {
-  const shares = await fetch(`${base}/wp-json/typedpress/v1/shares`);
+  const shares = await fetch(`${base}/wp-json/spacepress/v1/shares`);
   assert.ok([401, 403].includes(shares.status), `shares answered ${shares.status}`);
-  const stars = await fetch(`${base}/wp-json/typedpress/v1/actions/refreshStarsNow`, {
+  const stars = await fetch(`${base}/wp-json/spacepress/v1/actions/refreshStarsNow`, {
     method: "POST", headers: { "content-type": "application/json" }, body: "{}",
   });
   assert.ok([401, 403].includes(stars.status), `refreshStarsNow answered ${stars.status}`);

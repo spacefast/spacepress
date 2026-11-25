@@ -9,7 +9,7 @@ import { lineSolid } from '@wordpress/icons';
 import { store as coreStore } from '@wordpress/core-data';
 import { __ } from '@wordpress/i18n';
 import type { Attachment, Post } from '@wordpress/core-data';
-import type { DataFormControlProps } from '@typedpress-admin/dataviews';
+import type { DataFormControlProps } from '@spacepress-admin/dataviews';
 
 export const FeaturedImageEdit = ({ data, field, onChange }: DataFormControlProps<Post>) => {
 	const { id } = field;
@@ -82,7 +82,7 @@ export const FeaturedImageEdit = ({ data, field, onChange }: DataFormControlProp
 												}}
 											/>
 											<span className="fields-controls__featured-image-title">
-												{__('Choose an image…', 'typedpress-admin')}
+												{__('Choose an image…', 'spacepress-admin')}
 											</span>
 										</>
 									)}

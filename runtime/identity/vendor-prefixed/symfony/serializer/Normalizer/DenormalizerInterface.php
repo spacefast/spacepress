@@ -9,15 +9,15 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\ExceptionInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\ExtraAttributesException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\RuntimeException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedValueException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\ExceptionInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\ExtraAttributesException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\RuntimeException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedValueException;
 
 /**
  * @author Jordi Boggiano <j.boggiano@seld.be>

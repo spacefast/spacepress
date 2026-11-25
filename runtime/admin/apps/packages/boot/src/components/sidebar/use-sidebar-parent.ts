@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { privateApis as routePrivateApis } from '@wordpress/route';
-import { unlock } from '@typedpress-admin/admin-toolkit';
+import { unlock } from '@spacepress-admin/admin-toolkit';
 import { useSelect } from '@wordpress/data';
-import { store as tpAdminStore } from '../../store';
+import { store as spAdminStore } from '../../store';
 import {
 	findDrilldownParent,
 	findDropdownParent,
@@ -41,7 +41,7 @@ const getParentId = (
 export function useSidebarParent() {
 	const matches = useMatches();
 	const menuItems = useSelect(
-		( select ) => select( tpAdminStore ).getMenuItems(),
+		( select ) => select( spAdminStore ).getMenuItems(),
 		[]
 	);
 

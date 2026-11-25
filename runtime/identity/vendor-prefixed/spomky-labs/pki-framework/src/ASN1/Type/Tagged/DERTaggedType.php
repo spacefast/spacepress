@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged;
 
 use function mb_strlen;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
 
 /**
  * Intermediate class to store tagged DER data.

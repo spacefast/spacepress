@@ -1,10 +1,10 @@
 <?php declare(strict_types = 1);
 
-namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeVisitor;
+namespace SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeVisitor;
 
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\AbstractNodeVisitor;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Attribute;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\AbstractNodeVisitor;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Attribute;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
 
 final class CloningVisitor extends AbstractNodeVisitor
 {

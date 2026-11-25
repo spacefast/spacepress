@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util;
 
-use TypedPress\Identity\Vendor\Brick\Math\BigInteger;
+use SpacePress\Identity\Vendor\Brick\Math\BigInteger;
 use InvalidArgumentException;
 use Stringable;
 use Throwable;

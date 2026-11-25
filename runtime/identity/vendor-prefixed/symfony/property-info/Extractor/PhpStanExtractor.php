@@ -9,32 +9,32 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\ContextFactory;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\InvalidTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ParamTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocChildNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTextNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ReturnTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\VarTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyDescriptionExtractorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Util\PhpStanTypeHelper;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\StringTypeResolver;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Types\ContextFactory;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\InvalidTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ParamTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocChildNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTextNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ReturnTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\VarTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyDescriptionExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Util\PhpStanTypeHelper;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\StringTypeResolver;
 
 /**
  * Extracts data using PHPStan parser.
@@ -100,7 +100,7 @@ final class PhpStanExtractor implements PropertyDescriptionExtractorInterface, P
      */
     public function getTypes(string $class, string $property, array $context = []): ?array
     {
-        typedpress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
+        spacepress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
 
         /** @var PhpDocNode|null $docNode */
         [$docNode, $source, $prefix, $declaringClass] = $this->getDocBlock($class, $property);
@@ -179,7 +179,7 @@ final class PhpStanExtractor implements PropertyDescriptionExtractorInterface, P
      */
     public function getTypesFromConstructor(string $class, string $property): ?array
     {
-        typedpress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getTypeFromConstructor()" instead.', __METHOD__, self::class);
+        spacepress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getTypeFromConstructor()" instead.', __METHOD__, self::class);
 
         if (null === $tagDocNode = $this->getDocBlockFromConstructor($class, $property)) {
             return $this->getTypes($class, $property);

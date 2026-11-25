@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 final class Security
 {
@@ -54,14 +54,14 @@ final class Security
             "detail" => wp_json_encode($detail),
             "created_at" => time(),
         ]);
-        foreach (get_option("tp_identity_webhooks", []) as $endpoint) {
+        foreach (get_option("sp_identity_webhooks", []) as $endpoint) {
             $this->db->insert("deliveries", [
                 "event_id" => $id,
                 "endpoint_id" => $endpoint["id"],
                 "next_at" => time(),
             ]);
         }
-        do_action("tp_identity_session_event", $type, $uid, $id);
+        do_action("sp_identity_session_event", $type, $uid, $id);
     }
     /** @var (\Closure(): int)|null the limiter's clock, for tests; null is `time()` */
     public static ?\Closure $clock = null;
@@ -216,7 +216,7 @@ final class Security
     ): void {
         $ok = wp_mail(
             $email,
-            sprintf(__("Your %s code", "typedpress-identity"), get_bloginfo("name")),
+            sprintf(__("Your %s code", "spacepress-identity"), get_bloginfo("name")),
             sprintf(
                 "Your code is %s.\n\nIt expires in five minutes. Request: %s.\nIf you did not request it, ignore this message.",
                 $code,

@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Uid;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Uid;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\Exception\InvalidArgumentException;
 
 /**
  * @internal

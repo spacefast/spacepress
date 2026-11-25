@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension;
 
 use ArrayIterator;
 use function count;
 use Countable;
 use IteratorAggregate;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\AccessDescription\AccessDescription;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\AccessDescription\AuthorityAccessDescription;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\AccessDescription\AccessDescription;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\AccessDescription\AuthorityAccessDescription;
 
 /**
  * Implements 'Authority Information Access' extension.

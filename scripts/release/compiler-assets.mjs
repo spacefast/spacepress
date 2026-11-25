@@ -12,14 +12,14 @@ if (!directory || !/^[a-f0-9]{40}$/.test(revision ?? "")) throw new Error("Usage
 const version = await releaseVersion();
 const present = new Set(await readdir(directory));
 const expected = releaseTargets.map((target) => assetName({ version, target }));
-const missing = ["typedpress.wasm", ...expected.flatMap((name) => [name, `${name}.sha256`])].filter((name) => !present.has(name));
+const missing = ["spacepress.wasm", ...expected.flatMap((name) => [name, `${name}.sha256`])].filter((name) => !present.has(name));
 if (missing.length) throw new Error(`Release assets missing: ${missing.join(", ")}`);
-const stray = [...present].filter((name) => /^typedpress-v.+\.tar\.gz$/.test(name) && !expected.includes(name));
+const stray = [...present].filter((name) => /^spacepress-v.+\.tar\.gz$/.test(name) && !expected.includes(name));
 if (stray.length) throw new Error(`Unexpected compiler archives (wrong version or target): ${stray.join(", ")}`);
 const files = {};
-for (const name of ["typedpress.wasm", ...expected].sort()) {
+for (const name of ["spacepress.wasm", ...expected].sort()) {
   files[name] = createHash("sha256").update(await readFile(path.join(directory, name))).digest("hex");
-  if (name === "typedpress.wasm") continue;
+  if (name === "spacepress.wasm") continue;
   const receipt = (await readFile(path.join(directory, `${name}.sha256`), "utf8")).trim();
   if (receipt !== `${files[name]}  ${name}`) throw new Error(`${name}.sha256 does not match the archive.`);
 }

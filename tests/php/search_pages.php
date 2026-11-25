@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 /*
  * `<Search>` and `<SearchResults>` (docs/decisions/2026-11-14-search.md): tests/fixtures/search, built
- * by `typedpress build`, on WordPress with php -S. Each page is fetched as a browser with JavaScript off
+ * by `spacepress build`, on WordPress with php -S. Each page is fetched as a browser with JavaScript off
  * would. Prints one JSON object of what each step saw.
  *
- *   TP_WP_THEMES=1 php tests/php/search_pages.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/search_pages.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -15,10 +15,10 @@ require __DIR__ . '/wp.php';
 $site = wpSite('search-pages', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor'], 'muPlugins' => ['host' => <<<'PHP'
     <?php
     // A host that keeps cached pages: the page cache records what cacheable renders read.
-    add_action('tp_purge_urls', static function (array $paths): void {});
+    add_action('sp_purge_urls', static function (array $paths): void {});
     PHP]]);
 wp_set_current_user(1);
-$db = \TypedPress\db();
+$db = \SpacePress\db();
 foreach (['Tea ceremony', 'Tea gardens', 'Tea history', 'Coffee notes'] as $t) {
     $db->insert('notes', ['title' => $t, 'status' => 'published']);
 }
@@ -65,18 +65,18 @@ function seen(array $r): array
         'cache' => $r['headers']['cache-control'][0] ?? null,
         'robots header' => $r['headers']['x-robots-tag'][0] ?? null,
         'robots meta' => str_contains($r['body'], 'noindex'),
-        'count' => $texts("//*[@class='typedpress-search-count']")[0] ?? null,
-        'results' => array_map(static fn ($a) => trim($a->textContent) . ' ' . parse_url($a->getAttribute('href'), PHP_URL_PATH), iterator_to_array($x->query("//li[@class='typedpress-search-result']/a"))),
-        'groups' => $texts("//section[@class='typedpress-search-group']/h2"),
-        'more' => array_map(static fn ($a) => parse_url($a->getAttribute('href'), PHP_URL_PATH) . '?' . parse_url($a->getAttribute('href'), PHP_URL_QUERY), iterator_to_array($x->query("//p[@class='typedpress-search-more']/a"))),
-        'pages' => array_map(static fn ($a) => trim($a->textContent) . ' ' . parse_url($a->getAttribute('href'), PHP_URL_QUERY), iterator_to_array($x->query("//nav[contains(@class,'typedpress-pagination')]//a"))),
-        'too long' => $texts("//*[@class='typedpress-search-too-long']")[0] ?? null,
+        'count' => $texts("//*[@class='spacepress-search-count']")[0] ?? null,
+        'results' => array_map(static fn ($a) => trim($a->textContent) . ' ' . parse_url($a->getAttribute('href'), PHP_URL_PATH), iterator_to_array($x->query("//li[@class='spacepress-search-result']/a"))),
+        'groups' => $texts("//section[@class='spacepress-search-group']/h2"),
+        'more' => array_map(static fn ($a) => parse_url($a->getAttribute('href'), PHP_URL_PATH) . '?' . parse_url($a->getAttribute('href'), PHP_URL_QUERY), iterator_to_array($x->query("//p[@class='spacepress-search-more']/a"))),
+        'pages' => array_map(static fn ($a) => trim($a->textContent) . ' ' . parse_url($a->getAttribute('href'), PHP_URL_QUERY), iterator_to_array($x->query("//nav[contains(@class,'spacepress-pagination')]//a"))),
+        'too long' => $texts("//*[@class='spacepress-search-too-long']")[0] ?? null,
         'input' => ($i = $x->query("//form[@role='search']//input[@type='search']")->item(0)) ? [$i->getAttribute('name'), $i->getAttribute('maxlength'), $i->getAttribute('value')] : null,
     ];
 }
 
 global $wpdb;
-$reads = static fn (): int => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}tp__app_reads");
+$reads = static fn (): int => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}sp__app_reads");
 $out = [];
 // The bare form: cacheable, indexable, and the form posts nowhere but a GET with `q`.
 $home = fetch("$url/");

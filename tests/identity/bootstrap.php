@@ -20,10 +20,10 @@ function rejects(callable $fn, string $code, string $name = ''): void
 {
     try {
         $fn();
-    } catch (\TypedPress\Identity\Failure $e) {
+    } catch (\SpacePress\Identity\Failure $e) {
         check($e->kind === $code, ($name ?: $code) . ' (got ' . $e->kind . ')');
         return;
-    } catch (\TypedPress\Identity\Protocol\OAuthError $e) {
+    } catch (\SpacePress\Identity\Protocol\OAuthError $e) {
         check($e->error === $code, ($name ?: $code) . ' (got ' . $e->error . ')');
         return;
     }

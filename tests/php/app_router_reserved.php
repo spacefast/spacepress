@@ -5,9 +5,9 @@ declare(strict_types=1);
 /*
  * A root catch-all `route.ts` over HTTP (tests/app_router.rs
  * `a_root_catch_all_leaves_reserved_paths_alone`): the fixture tests/fixtures/app-router-reserved,
- * built by `typedpress build`, served by php -S. Prints one JSON object: label => [status, body].
+ * built by `spacepress build`, served by php -S. Prints one JSON object: label => [status, body].
  *
- *   TP_WP_THEMES=1 php tests/php/app_router_reserved.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/app_router_reserved.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -31,7 +31,7 @@ echo json_encode([
     'connector GET' => answer("$url/__spacefast/connectors/crm/list_deals"),
     'connector POST' => answer("$url/__spacefast/connectors/crm/create_deal", 'POST'),
     'space client' => answer("$url/__spacefast/client.js"),
-    'first' => answer("$url/__tp/client.js"),
+    'first' => answer("$url/__sp/client.js"),
     'rest' => answer("$url/wp-json/"),
 ], JSON_UNESCAPED_SLASHES), "\n";
 $site->destroy();

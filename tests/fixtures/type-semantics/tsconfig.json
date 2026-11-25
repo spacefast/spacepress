@@ -5,9 +5,9 @@
     "target": "ES2023",
     "module": "Preserve",
     "moduleResolution": "Bundler",
-    "paths": { "typedpress": ["../../../types/typedpress/index.d.ts"] },
+    "paths": { "spacepress": ["../../../types/spacepress/index.d.ts"] },
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["typedpress.config.ts", "shapes.ts"]
+  "include": ["spacepress.config.ts", "shapes.ts"]
 }

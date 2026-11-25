@@ -1,10 +1,10 @@
 // `typeof navigator` / `typeof process` and `navigator.platform` / `process.platform`, as npm
 // packages detect Windows (picomatch 4.0.7's isWindows is included verbatim). Both `typeof` forms
 // are the constant "object"; the two reads are strings computed by PHP when it runs
-// (TypedPress\Host), never on the build machine. Every action runs under Node and as compiled PHP on the
+// (SpacePress\Host), never on the build machine. Every action runs under Node and as compiled PHP on the
 // same machine; the JSON results must be byte-identical. See
 // docs/decisions/2026-11-14-host-platform-detection.md.
-import { defineConfig, mutation } from "typedpress";
+import { defineConfig, mutation } from "spacepress";
 import { detection as detectionImpl, guarded as guardedImpl, members as membersImpl, picomatch as picomatchImpl, platforms as platformsImpl, shadowed as shadowedImpl, withEnv as withEnvImpl } from "./host-platform-helpers.mjs";
 
 const run = (handler: () => unknown) => mutation({}, handler);
@@ -28,7 +28,7 @@ function typedShadowImpl(process: { platform: string }): string {
 }
 
 function typedEnvImpl(): string[] {
-  return [process.platform, process.env.TP_HOST_PLATFORM_UNSET ?? "unset"];
+  return [process.platform, process.env.SP_HOST_PLATFORM_UNSET ?? "unset"];
 }
 
 export const picomatch = run(() => picomatchImpl());

@@ -1,5 +1,5 @@
-import { useViewConfig } from '@typedpress-admin/views';
-import type { Action, RenderModalProps } from '@typedpress-admin/dataviews';
+import { useViewConfig } from '@spacepress-admin/views';
+import type { Action, RenderModalProps } from '@spacepress-admin/dataviews';
 import type { User } from '@wordpress/core-data';
 import { store as coreStore } from '@wordpress/core-data';
 import { useDispatch, useSelect } from '@wordpress/data';
@@ -15,7 +15,7 @@ import {
 	Button,
 	// Popovers cannot be used in an DataViews actions modal.
 	// https://github.com/WordPress/gutenberg/issues/71463
-	// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
+	// eslint-disable-next-line @spacepress-admin/design-system/use-new-components
 	SelectControl,
 } from '@wordpress/components';
 import { CurrentUserWarning } from '../current-user-warning';
@@ -52,14 +52,14 @@ const UpdateUserRoleModal = ( {
 			await dispatch.__experimentalBatch( updates );
 			const successMessage =
 				items.length === 1
-					? __( 'User updated.', 'typedpress-admin' )
+					? __( 'User updated.', 'spacepress-admin' )
 					: sprintf(
 							/* translators: %d: The number of users. */
 							_n(
 								'%d user updated.',
 								'%d users updated.',
 								items.length,
-								'typedpress-admin'
+								'spacepress-admin'
 							),
 							items.length
 					  );
@@ -82,7 +82,7 @@ const UpdateUserRoleModal = ( {
 							/* translators: %s: an error message */
 							__(
 								'An error occurred while updating user: %s',
-								'typedpress-admin'
+								'spacepress-admin'
 							),
 							errorMessages
 					  )
@@ -90,7 +90,7 @@ const UpdateUserRoleModal = ( {
 							/* translators: %s: an error message */
 							__(
 								'Some errors occurred while updating the users: %s',
-								'typedpress-admin'
+								'spacepress-admin'
 							),
 							errorMessages
 					  );
@@ -119,13 +119,13 @@ const UpdateUserRoleModal = ( {
 	return (
 		<VStack>
 			<Text>
-				{ __( 'You have specified these users:', 'typedpress-admin' ) }
+				{ __( 'You have specified these users:', 'spacepress-admin' ) }
 			</Text>
 			{ items.map( ( user ) => (
 				<Text key={ user.id }>
 					{ sprintf(
 						// Translators: %1$d is the user ID, %2$s is the username.
-						__( 'ID #%1$d: %2$s', 'typedpress-admin' ),
+						__( 'ID #%1$d: %2$s', 'spacepress-admin' ),
 						user.id,
 						user.username
 					) }
@@ -136,31 +136,31 @@ const UpdateUserRoleModal = ( {
 			<SelectControl
 				__nextHasNoMarginBottom
 				__next40pxDefaultSize
-				label={ __( 'Select a role:', 'typedpress-admin' ) }
+				label={ __( 'Select a role:', 'spacepress-admin' ) }
 				options={ [
 					{
 						value: '',
-						label: __( '— Select —', 'typedpress-admin' ),
+						label: __( '— Select —', 'spacepress-admin' ),
 					},
 					{
 						value: 'administrator',
-						label: __( 'Administrator', 'typedpress-admin' ),
+						label: __( 'Administrator', 'spacepress-admin' ),
 					},
 					{
 						value: 'editor',
-						label: __( 'Editor', 'typedpress-admin' ),
+						label: __( 'Editor', 'spacepress-admin' ),
 					},
 					{
 						value: 'author',
-						label: __( 'Author', 'typedpress-admin' ),
+						label: __( 'Author', 'spacepress-admin' ),
 					},
 					{
 						value: 'contributor',
-						label: __( 'Contributor', 'typedpress-admin' ),
+						label: __( 'Contributor', 'spacepress-admin' ),
 					},
 					{
 						value: 'subscriber',
-						label: __( 'Subscriber', 'typedpress-admin' ),
+						label: __( 'Subscriber', 'spacepress-admin' ),
 					},
 				] }
 				onChange={ setSelectedRole }
@@ -174,7 +174,7 @@ const UpdateUserRoleModal = ( {
 					disabled={ isBusy }
 					accessibleWhenDisabled
 				>
-					{ __( 'Cancel', 'typedpress-admin' ) }
+					{ __( 'Cancel', 'spacepress-admin' ) }
 				</Button>
 				<Button
 					__next40pxDefaultSize
@@ -184,7 +184,7 @@ const UpdateUserRoleModal = ( {
 					disabled={ isBusy || ! selectedRole }
 					accessibleWhenDisabled
 				>
-					{ __( 'Confirm Update', 'typedpress-admin' ) }
+					{ __( 'Confirm Update', 'spacepress-admin' ) }
 				</Button>
 			</HStack>
 		</VStack>
@@ -215,7 +215,7 @@ export const useUpdateUserRoleAction = (): Action< User > | null => {
 
 		return {
 			id: 'update-user-role',
-			label: __( 'Update Role', 'typedpress-admin' ),
+			label: __( 'Update Role', 'spacepress-admin' ),
 			icon: people,
 			supportsBulk: true,
 			hideModalHeader: true,

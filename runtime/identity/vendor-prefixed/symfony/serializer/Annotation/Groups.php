@@ -9,16 +9,16 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Annotation;
 
-class_exists(\TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Groups::class);
+class_exists(\SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Groups::class);
 
 if (false) {
     /**
-     * @deprecated since Symfony 7.4, use {@see \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Groups} instead
+     * @deprecated since Symfony 7.4, use {@see \SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Groups} instead
      */
     #[\Attribute(\Attribute::TARGET_METHOD | \Attribute::TARGET_PROPERTY | \Attribute::TARGET_CLASS)]
-    class Groups extends \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Groups
+    class Groups extends \SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Groups
     {
     }
 }

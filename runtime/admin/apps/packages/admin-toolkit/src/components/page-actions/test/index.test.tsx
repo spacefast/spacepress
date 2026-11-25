@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { Action } from '@typedpress-admin/dataviews';
+import type { Action } from '@spacepress-admin/dataviews';
 import PageActions, { type PageActionConfig } from '../index';
 
 const mockRegistry = {};

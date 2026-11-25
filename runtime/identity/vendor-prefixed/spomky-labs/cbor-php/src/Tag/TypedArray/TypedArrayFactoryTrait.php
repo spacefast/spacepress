@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace SpacePress\Identity\Vendor\CBOR\Tag\TypedArray;
 
-use TypedPress\Identity\Vendor\CBOR\CBORObject;
-use TypedPress\Identity\Vendor\CBOR\Tag;
+use SpacePress\Identity\Vendor\CBOR\CBORObject;
+use SpacePress\Identity\Vendor\CBOR\Tag;
 
 /**
  * The two factories every typed array tag shares.

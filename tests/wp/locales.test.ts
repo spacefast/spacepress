@@ -1,8 +1,8 @@
 // Localization on WordPress (§7.3): Polylang owns each post's language and its translation group,
-// TypedPress writes them through Polylang's API and keeps synced columns equal across the group. Group and
-// language assertions read Polylang's own functions through WP-CLI, not TypedPress's view of them.
+// SpacePress writes them through Polylang's API and keeps synced columns equal across the group. Group and
+// language assertions read Polylang's own functions through WP-CLI, not SpacePress's view of them.
 // Pipeline semantics (validation, 409s, fallback edge cases) are proven in tests/php; this file
-// proves what Polylang and MySQL add. `phrases` (table()) uses TypedPress's own group column.
+// proves what Polylang and MySQL add. `phrases` (table()) uses SpacePress's own group column.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -24,7 +24,7 @@ async function pair(tag: string) {
 }
 
 test("Polylang treats localized post types as translatable and has every configured language", () => {
-  const out = JSON.parse(wp("eval", `echo wp_json_encode([pll_is_translated_post_type('tp_tours'), pll_is_translated_post_type('tp_posts'), pll_languages_list(['fields' => 'slug']), pll_default_language()]);`));
+  const out = JSON.parse(wp("eval", `echo wp_json_encode([pll_is_translated_post_type('sp_tours'), pll_is_translated_post_type('sp_posts'), pll_languages_list(['fields' => 'slug']), pll_default_language()]);`));
   assert.deepEqual(out, [true, false, ["en", "de", "fr"], "en"]);
 });
 
@@ -43,15 +43,15 @@ test("a synced column change through the API reaches the translation's postmeta,
   await ok("PATCH", `/tours/${fr.id}`, { as: "editor", body: { price: 4, summary: "Feuilles chaudes" } });
   const both = await ok("GET", "/tours" + qs({ locale: "*", where: { id: { in: [en.id, fr.id] } }, orderBy: "id" }), { as: "editor" });
   assert.deepEqual(both.map((r: any) => [r.locale, r.price, r.summary]), [["en", 4, "Hot leaves"], ["fr", 4, "Feuilles chaudes"]]);
-  assert.equal(wp("eval", `echo get_post_meta(${en.id}, 'tp_price', true);`), "4");
+  assert.equal(wp("eval", `echo get_post_meta(${en.id}, 'sp_price', true);`), "4");
   assert.deepEqual(await log([en.id, fr.id]), [`${fr.id}=fr:4 by Editor`, `${en.id}=en:4 by Editor`]);
 });
 
 test("a synced column change saved in the editor (core REST) runs the sibling's pipeline too", async () => {
   const { en, fr } = await pair("Editor");
-  const saved = await http("POST", `${core}/tp_tours/${en.id}`, { as: "editor", body: { acf: { tp_price: 6 } } });
+  const saved = await http("POST", `${core}/sp_tours/${en.id}`, { as: "editor", body: { acf: { sp_price: 6 } } });
   assert.equal(saved.status, 200, JSON.stringify(saved.json));
-  assert.equal(wp("eval", `echo get_post_meta(${fr.id}, 'tp_price', true);`), "6");
+  assert.equal(wp("eval", `echo get_post_meta(${fr.id}, 'sp_price', true);`), "6");
   assert.deepEqual(await log([en.id, fr.id]), [`${en.id}=en:6 by Editor`, `${fr.id}=fr:6 by Editor`]);
   const revisions = await ok("GET", `/tours/${fr.id}/revisions`, { as: "editor" });
   assert.equal(revisions.length, 2);
@@ -87,7 +87,7 @@ test("a translation linked outside the API (Polylang's +) adopts the group's syn
   const en = await ok("POST", "/tours", { as: "editor", body: { title: `Admin ${run}`, price: 7, tags: ["coffee"] } });
   const de = Number(wp("eval", `
     wp_set_current_user(get_user_by('login', 'editor')->ID);
-    $id = pll_insert_post(['post_type' => 'tp_tours', 'post_title' => 'Admin DE ${run}', 'post_status' => 'publish'], 'de');
+    $id = pll_insert_post(['post_type' => 'sp_tours', 'post_title' => 'Admin DE ${run}', 'post_status' => 'publish'], 'de');
     pll_save_post_translations(['en' => ${en.id}, 'de' => $id]);
     echo $id;`));
   const row = await ok("GET", `/tours/${de}`, { as: "editor" });
@@ -101,24 +101,24 @@ test("a translation linked outside the API (Polylang's +) adopts the group's syn
 test("a link made outside the API: adoption a hook would split is rolled back; the link stands, as for editor saves", async () => {
   const en = await ok("POST", "/tours", { as: "editor", body: { title: `Linked ${run}`, price: 7 } });
   const out = JSON.parse(wp("eval", `
-    $de = pll_insert_post(['post_type' => 'tp_tours', 'post_title' => 'Bump DE ${run}', 'post_status' => 'publish'], 'de');
+    $de = pll_insert_post(['post_type' => 'sp_tours', 'post_title' => 'Bump DE ${run}', 'post_status' => 'publish'], 'de');
     try {
       pll_save_post_translations(['en' => ${en.id}, 'de' => $de]);
       $result = 'adopted';
-    } catch (\\TypedPress\\HttpError $e) {
+    } catch (\\SpacePress\\HttpError $e) {
       $result = $e->status . ' ' . $e->errorCode;
     }
     echo wp_json_encode([$result, $de]);`));
   // The adoption that would leave en=7, de=8 is refused and rolled back (no adopted price, no hook
   // effects); like an editor save (design-wp-parity §1.7), the link Polylang already wrote stands.
-  assert.deepEqual([out[0], wp("eval", `echo get_post_meta(${out[1]}, 'tp_price', true);`)], ["409 conflict", ""]);
+  assert.deepEqual([out[0], wp("eval", `echo get_post_meta(${out[1]}, 'sp_price', true);`)], ["409 conflict", ""]);
   assert.deepEqual(await log([out[1]]), []);
   assert.deepEqual(polylang(en.id)[1], { en: en.id, de: out[1] });
 });
 
 test("a hook failing after a translation joined leaves Polylang's group as it was", () => {
   const out = JSON.parse(wp("eval", `
-    $db = \\TypedPress\\Wp\\Plugin::instance()->db();
+    $db = \\SpacePress\\Wp\\Plugin::instance()->db();
     $en = $db->insert('tours', ['title' => 'Rollback ${run}'], true)[0]['id'];
     try {
       $db->transaction(function () use ($db, $en) {
@@ -144,11 +144,11 @@ test("tables keep their own translation group", async () => {
 
 test("posts that predate localization become default-locale rows; Polylang's default follows locales.default", async () => {
   const id = Number(wp("eval", `
-    $id = wp_insert_post(['post_type' => 'tp_tours', 'post_title' => 'Legacy ${run}', 'post_status' => 'publish']);
+    $id = wp_insert_post(['post_type' => 'sp_tours', 'post_title' => 'Legacy ${run}', 'post_status' => 'publish']);
     wp_delete_object_term_relationships($id, 'language');
     PLL()->model->update_default_lang('fr');
-    delete_option('tp_polylang_languages');
-    \\TypedPress\\Wp\\Polylang::ensureLanguages();
+    delete_option('sp_polylang_languages');
+    \\SpacePress\\Wp\\Polylang::ensureLanguages();
     echo $id;`));
   assert.deepEqual([polylang(id)[0], wp("eval", "echo pll_default_language();")], ["en", "en"]);
   assert.deepEqual(titles(await ok("GET", "/tours" + qs({ where: { id } }))), [`en:Legacy ${run}`]);
@@ -156,20 +156,20 @@ test("posts that predate localization become default-locale rows; Polylang's def
 
 test("a write based on a group another connection changed first is refused, not committed divergent", async () => {
   const { en, fr } = await pair("Race");
-  // Inside one TypedPress transaction: read the group (the snapshot), let a second MySQL connection commit
+  // Inside one SpacePress transaction: read the group (the snapshot), let a second MySQL connection commit
   // a synced change, then write. Both a stale update and a stale join must fail with 409 conflict.
   const out = JSON.parse(wp("eval", `
-    $db = \\TypedPress\\Wp\\Plugin::instance()->db();
+    $db = \\SpacePress\\Wp\\Plugin::instance()->db();
     $other = new mysqli(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME);
     $race = function (callable $write) use ($db, $other): string {
       try {
         $db->transaction(function () use ($db, $other, $write) {
           $db->findMany('tours', ['where' => ['id' => ['in' => [${en.id}, ${fr.id}]]], 'locale' => '*']);
-          $other->query("UPDATE wp_postmeta SET meta_value = meta_value + 1 WHERE post_id IN (${en.id}, ${fr.id}) AND meta_key = 'tp_price'");
+          $other->query("UPDATE wp_postmeta SET meta_value = meta_value + 1 WHERE post_id IN (${en.id}, ${fr.id}) AND meta_key = 'sp_price'");
           $write();
         });
         return 'committed';
-      } catch (\\TypedPress\\HttpError $e) {
+      } catch (\\SpacePress\\HttpError $e) {
         return $e->status . ' ' . $e->errorCode;
       }
     };
@@ -225,13 +225,13 @@ test("sync pulls a localized collection as one record per locale, and a pushed t
 
 test("a core create with `locale` keeps core's own post fields and other plugins' meta", async () => {
   const author = harness.users.author.id;
-  const made = await http("POST", `${core}/tp_tours`, { as: "editor", body: {
+  const made = await http("POST", `${core}/sp_tours`, { as: "editor", body: {
     title: `Core fields ${run}`, status: "publish", locale: "de", author, menu_order: 7, meta: { other_plugin_note: "kept" },
   } });
   assert.equal(made.status, 201, JSON.stringify(made.json));
   const id = made.json.id;
   const post = JSON.parse(wp("eval", `$p = get_post(${id}); echo wp_json_encode([(int) $p->post_author, (int) $p->menu_order, get_post_meta(${id}, 'other_plugin_note', true), pll_get_post_language(${id})]);`));
-  assert.deepEqual(post, [author, 7, "kept", "de"], "author, menu order and the other plugin's meta survive TypedPress's write");
-  const asAuthor = await http("POST", `${core}/tp_tours`, { as: "author", body: { title: `Other author ${run}`, locale: "de", author: harness.users.editor.id } });
+  assert.deepEqual(post, [author, 7, "kept", "de"], "author, menu order and the other plugin's meta survive SpacePress's write");
+  const asAuthor = await http("POST", `${core}/sp_tours`, { as: "author", body: { title: `Other author ${run}`, locale: "de", author: harness.users.editor.id } });
   assert.equal(asAuthor.status, 403, "an author can't create as someone else, as core checks");
 });

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception;
 
 use RuntimeException;
 

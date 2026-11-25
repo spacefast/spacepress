@@ -9,12 +9,12 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\Encoder;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\Encoder;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\CsvEncoder;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Encoder\CsvEncoder;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
 
 /**
  * A helper providing autocompletion for available CsvEncoder options.
@@ -68,7 +68,7 @@ final class CsvEncoderContextBuilder implements ContextBuilderInterface
      */
     public function withEscapeChar(?string $escapeChar): static
     {
-        typedpress_identity_vendor_trigger_deprecation('symfony/serializer', '7.2', 'The "%s" method is deprecated. It will be removed in 8.0.', __METHOD__);
+        spacepress_identity_vendor_trigger_deprecation('symfony/serializer', '7.2', 'The "%s" method is deprecated. It will be removed in 8.0.', __METHOD__);
 
         if (null !== $escapeChar && \strlen($escapeChar) > 1) {
             throw new InvalidArgumentException(\sprintf('The "%s" escape character must be empty or a single character.', $escapeChar));

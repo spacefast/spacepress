@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Signature;
+namespace SpacePress\Identity\Vendor\Cose\Signature;
 
-use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
-use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use TypedPress\Identity\Vendor\Cose\Structure\CoseStructure;
+use SpacePress\Identity\Vendor\CBOR\ByteStringObject;
+use SpacePress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use SpacePress\Identity\Vendor\Cose\Structure\CoseStructure;
 
 /**
  * The Sig_structure of a COSE_Sign1 (RFC 9052 section 4.4).

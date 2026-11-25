@@ -1,6 +1,6 @@
-//! Astro's `src/content.config.ts` read as TypedPress kinds (docs/decisions/2026-11-14-astro-content-config.md).
+//! Astro's `src/content.config.ts` read as SpacePress kinds (docs/decisions/2026-11-14-astro-content-config.md).
 //!
-//! A TypedPress project may keep the content collections of an Astro site it grew from:
+//! A SpacePress project may keep the content collections of an Astro site it grew from:
 //!
 //! ```ts
 //! // src/content.config.ts
@@ -15,11 +15,11 @@
 //! ```
 //!
 //! Each collection becomes a `collection()` whose files sync from the glob's folder, exactly as if
-//! `tp/` declared it: `export const blog = collection({ ...fields }, { sync: "src/content/blog/**/*.md" })`.
-//! The file is read, never run: Astro's modules are not TypedPress's to evaluate, so only the plain forms
+//! `sp/` declared it: `export const blog = collection({ ...fields }, { sync: "src/content/blog/**/*.md" })`.
+//! The file is read, never run: Astro's modules are not SpacePress's to evaluate, so only the plain forms
 //! Astro's documentation writes are understood, and anything else is a build error at its place.
 //!
-//! The module this writes is TypeScript in TypedPress's own forms, loaded like any module under `tp/`:
+//! The module this writes is TypeScript in SpacePress's own forms, loaded like any module under `sp/`:
 //! the kinds are then checked, compiled and synced by the code that handles every kind.
 
 use crate::diag::{self, Code, Diag, Result, Span};
@@ -33,10 +33,10 @@ use std::path::{Path, PathBuf};
 
 /// Where Astro keeps its collections, relative to the project root.
 pub const CONFIG: &str = "src/content.config.ts";
-/// The module the collections are written into, as if it were under `tp/` (it never is on disk).
-pub const MODULE: &str = "tp/_astro_content.ts";
+/// The module the collections are written into, as if it were under `sp/` (it never is on disk).
+pub const MODULE: &str = "sp/_astro_content.ts";
 
-/// One field of a collection, as the TypeScript expression of its TypedPress builder.
+/// One field of a collection, as the TypeScript expression of its SpacePress builder.
 struct Field {
     name: String,
     builder: String,
@@ -53,7 +53,7 @@ struct Collection {
     nested: bool,
 }
 
-/// The TypedPress module for `src/content.config.ts`, or `None` when the project has none.
+/// The SpacePress module for `src/content.config.ts`, or `None` when the project has none.
 pub fn module(fs: &dyn crate::loader::Fs, root: &Path) -> Result<Option<(PathBuf, String)>> {
     let path = root.join(CONFIG);
     if !fs.is_file(&path) {
@@ -70,7 +70,7 @@ pub fn module(fs: &dyn crate::loader::Fs, root: &Path) -> Result<Option<(PathBuf
 fn write(collections: &[Collection]) -> String {
     // The builders under names no collection can take (a collection may be called `text`).
     let mut out = String::from(
-        "// Generated from src/content.config.ts: each Astro content collection as a TypedPress kind.\nimport { collection as __collection, text as __text, slug as __slug, richText as __richText, number as __number, integer as __integer, boolean as __boolean, date as __date, url as __url, email as __email, json as __json, select as __select } from \"typedpress\";\n",
+        "// Generated from src/content.config.ts: each Astro content collection as a SpacePress kind.\nimport { collection as __collection, text as __text, slug as __slug, richText as __richText, number as __number, integer as __integer, boolean as __boolean, date as __date, url as __url, email as __email, json as __json, select as __select } from \"spacepress\";\n",
     );
     for c in collections {
         let mut fields: Vec<String> = c
@@ -79,7 +79,7 @@ fn write(collections: &[Collection]) -> String {
             .map(|f| format!("{}: {}", key(&f.name), f.builder))
             .collect();
         // A folder tree's file name is its slug; a flat folder's slug follows the title, as
-        // `typedpress sync` names its files by slug.
+        // `spacepress sync` names its files by slug.
         fields.push(if c.nested {
             "slug: __slug()".into()
         } else {
@@ -109,30 +109,30 @@ fn key(name: &str) -> String {
     }
 }
 
-/// Fields TypedPress adds to a synced, hierarchical kind with drafts, or that its files never hold.
+/// Fields SpacePress adds to a synced, hierarchical kind with drafts, or that its files never hold.
 const RESERVED: &[(&str, &str)] = &[
     ("id", "every kind has an integer `id`"),
-    ("uid", "TypedPress's sync identifies each file by `uid`"),
+    ("uid", "SpacePress's sync identifies each file by `uid`"),
     ("slug", "the file's name is its slug"),
     ("body", "the Markdown below the front matter is the body"),
     ("parent", "the file's folder is its parent"),
-    ("order", "TypedPress adds `order` to a folder tree"),
-    ("status", "TypedPress adds `status` for drafts"),
-    ("publishedAt", "TypedPress adds `publishedAt` for drafts"),
-    ("locale", "TypedPress reserves it for translations"),
-    ("translations", "TypedPress reserves it for translations"),
-    ("translationOf", "TypedPress reserves it for translations"),
-    ("translationGroup", "TypedPress reserves it for translations"),
+    ("order", "SpacePress adds `order` to a folder tree"),
+    ("status", "SpacePress adds `status` for drafts"),
+    ("publishedAt", "SpacePress adds `publishedAt` for drafts"),
+    ("locale", "SpacePress reserves it for translations"),
+    ("translations", "SpacePress reserves it for translations"),
+    ("translationOf", "SpacePress reserves it for translations"),
+    ("translationGroup", "SpacePress reserves it for translations"),
 ];
 
-/// Collection names TypedPress serves a route of its own under (extract.rs `RESERVED_COLLECTIONS`).
+/// Collection names SpacePress serves a route of its own under (extract.rs `RESERVED_COLLECTIONS`).
 const RESERVED_KINDS: &[&str] = &[
     "media", "files", "globals", "actions", "me", "_schema", "auth", "services", "search",
 ];
-/// WordPress post types are at most 20 characters, and TypedPress's are `tp_<name>`.
-const MAX_NAME: usize = 20 - "tp_".len();
+/// WordPress post types are at most 20 characters, and SpacePress's are `sp_<name>`.
+const MAX_NAME: usize = 20 - "sp_".len();
 
-/// A name TypedPress can use as an identifier: a letter, then letters, digits and underscores.
+/// A name SpacePress can use as an identifier: a letter, then letters, digits and underscores.
 fn ident(name: &str) -> bool {
     let mut chars = name.chars();
     chars.next().is_some_and(|c| c.is_ascii_alphabetic()) && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
@@ -248,22 +248,22 @@ fn read(source: &str, file: u32) -> Result<Vec<Collection>> {
         let key = span(file, p.key.span());
         let physical = crate::schema::physical_name(&name);
         if !ident(&name) || name.starts_with("__") {
-            return Err(Diag::new(key, format!("collection `{name}` can't be a TypedPress kind's name"))
+            return Err(Diag::new(key, format!("collection `{name}` can't be a SpacePress kind's name"))
                 .help("name it with letters, digits and underscores, starting with a letter: it is the kind's API name")
                 .code(Code::Schema));
         }
         if RESERVED_KINDS.contains(&physical.as_str()) {
             return Err(
-                Diag::new(key, format!("collection `{name}` can't be a TypedPress kind's name"))
+                Diag::new(key, format!("collection `{name}` can't be a SpacePress kind's name"))
                     .help(format!(
-                        "TypedPress serves a route of its own at `{physical}`; rename the collection"
+                        "SpacePress serves a route of its own at `{physical}`; rename the collection"
                     ))
                     .code(Code::Schema),
             );
         }
         if physical.len() > MAX_NAME {
-            return Err(Diag::new(key, format!("collection `{name}` can't be a TypedPress kind's name"))
-                .help(format!("a kind is a WordPress post type `tp_{physical}`, at most 20 characters; use a name of at most {MAX_NAME}"))
+            return Err(Diag::new(key, format!("collection `{name}` can't be a SpacePress kind's name"))
+                .help(format!("a kind is a WordPress post type `sp_{physical}`, at most 20 characters; use a name of at most {MAX_NAME}"))
                 .code(Code::Schema));
         }
         out.push(c);
@@ -300,7 +300,7 @@ fn lone_surrogate(file: u32, s: oxc_span::Span) -> Diag {
 fn unsupported(file: u32, s: oxc_span::Span, what: &str, help: &str) -> Diag {
     Diag::new(
         span(file, s),
-        format!("{what} in src/content.config.ts can't be read as a TypedPress kind"),
+        format!("{what} in src/content.config.ts can't be read as a SpacePress kind"),
     )
     .help(help)
     .code(Code::Schema)
@@ -311,13 +311,13 @@ impl<'s> Reader<'s> {
         span(self.file, s)
     }
 
-    /// The kind for one collection, or `None` for a collection whose files aren't TypedPress's (any
-    /// loader other than `glob()`, such as `tpLoader()` reading a TypedPress site, stays Astro's).
+    /// The kind for one collection, or `None` for a collection whose files aren't SpacePress's (any
+    /// loader other than `glob()`, such as `spLoader()` reading a SpacePress site, stays Astro's).
     fn define(&self, name: &str, value: &a::Expression<'_>) -> Result<Option<Collection>> {
         let fail = |s: oxc_span::Span, what: &str, help: &str| {
             Diag::new(
                 self.at(s),
-                format!("{what} in src/content.config.ts can't be read as a TypedPress kind"),
+                format!("{what} in src/content.config.ts can't be read as a SpacePress kind"),
             )
             .help(help)
             .code(Code::Schema)
@@ -358,7 +358,7 @@ impl<'s> Reader<'s> {
             return Err(fail(
                 id.span,
                 &format!("the loader `{}` of `{name}`", id.name),
-                "write the loader in place, `loader: glob({ pattern, base })`, so TypedPress can read which files it syncs",
+                "write the loader in place, `loader: glob({ pattern, base })`, so SpacePress can read which files it syncs",
             ));
         }
         if !matches!(called(loader), Some((_, "glob"))) {
@@ -369,7 +369,7 @@ impl<'s> Reader<'s> {
             return Err(fail(
                 call.span,
                 &format!("collection `{name}` without a schema"),
-                "add `schema: z.object({ title: z.string() })`: TypedPress needs the fields to make a kind",
+                "add `schema: z.object({ title: z.string() })`: SpacePress needs the fields to make a kind",
             ));
         };
         let schema = match schema.get_inner_expression() {
@@ -391,7 +391,7 @@ impl<'s> Reader<'s> {
             if !ident(&f.name) {
                 return Err(Diag::new(
                     self.at(f.key),
-                    format!("field `{}` of `{name}` can't be a TypedPress field", f.name),
+                    format!("field `{}` of `{name}` can't be a SpacePress field", f.name),
                 )
                 .help("name it with letters, digits and underscores, starting with a letter")
                 .code(Code::Schema));
@@ -399,7 +399,7 @@ impl<'s> Reader<'s> {
             if let Some((_, why)) = RESERVED.iter().find(|(r, _)| *r == f.name) {
                 return Err(Diag::new(
                     self.at(f.span),
-                    format!("field `{}` of `{name}` can't be a TypedPress field", f.name),
+                    format!("field `{}` of `{name}` can't be a SpacePress field", f.name),
                 )
                 .help(format!("{why}; rename the field"))
                 .code(Code::Schema));
@@ -413,7 +413,7 @@ impl<'s> Reader<'s> {
                 fail(
                     schema.span(),
                     &format!("collection `{name}` without a title"),
-                    "add `title: z.string()` (or `name`): a TypedPress kind has a title, the post's title in WordPress",
+                    "add `title: z.string()` (or `name`): a SpacePress kind has a title, the post's title in WordPress",
                 )
             })?;
         Ok(Some(Collection {
@@ -431,12 +431,12 @@ impl<'s> Reader<'s> {
         }))
     }
 
-    /// `glob({ pattern, base })` → TypedPress's sync pattern for the base folder.
+    /// `glob({ pattern, base })` → SpacePress's sync pattern for the base folder.
     fn glob(&self, loader: &a::Expression<'_>, name: &str) -> Result<(String, bool)> {
         let fail = |s: oxc_span::Span, help: &str| {
             Diag::new(
                 self.at(s),
-                format!("the loader of `{name}` can't be read as a TypedPress kind's files"),
+                format!("the loader of `{name}` can't be read as a SpacePress kind's files"),
             )
             .help(help.to_string())
             .code(Code::Schema)
@@ -444,13 +444,13 @@ impl<'s> Reader<'s> {
         let a::Expression::CallExpression(call) = loader.get_inner_expression() else {
             return Err(fail(
                 loader.span(),
-                "use `glob({ pattern: \"**/*.md\", base: \"./src/content/<name>\" })`: TypedPress syncs a folder of Markdown files",
+                "use `glob({ pattern: \"**/*.md\", base: \"./src/content/<name>\" })`: SpacePress syncs a folder of Markdown files",
             ));
         };
         if !matches!(call.callee.get_inner_expression(), a::Expression::Identifier(i) if i.name == "glob") {
             return Err(fail(
                 call.span,
-                "use `glob({ pattern: \"**/*.md\", base: \"./src/content/<name>\" })`: TypedPress syncs a folder of Markdown files; a remote or `file()` loader has no files for it",
+                "use `glob({ pattern: \"**/*.md\", base: \"./src/content/<name>\" })`: SpacePress syncs a folder of Markdown files; a remote or `file()` loader has no files for it",
             ));
         }
         let Some(a::Expression::ObjectExpression(options)) = call
@@ -479,7 +479,7 @@ impl<'s> Reader<'s> {
                 Some("generateId") => {
                     return Err(fail(
                         p.span,
-                        "remove `generateId`: a TypedPress kind's entry is named by its file, its slug",
+                        "remove `generateId`: a SpacePress kind's entry is named by its file, its slug",
                     ));
                 }
                 _ => return Err(fail(p.span, "`glob` takes `pattern` and `base`")),
@@ -500,7 +500,7 @@ impl<'s> Reader<'s> {
                 return Err(fail(
                     pattern_span,
                     &format!(
-                        "the pattern `{pattern}` isn't one TypedPress syncs: use \"**/*.md\" or \"*.md\"; TypedPress syncs every Markdown file in the folder, so .mdx, .json and patterns that leave files out (`_drafts`) aren't read"
+                        "the pattern `{pattern}` isn't one SpacePress syncs: use \"**/*.md\" or \"*.md\"; SpacePress syncs every Markdown file in the folder, so .mdx, .json and patterns that leave files out (`_drafts`) aren't read"
                     ),
                 ));
             }
@@ -535,7 +535,7 @@ impl<'s> Reader<'s> {
         if base.0 != "object" || !chain.is_empty() {
             return Err(Diag::new(
                 self.at(schema.span()),
-                "the schema in src/content.config.ts can't be read as a TypedPress kind",
+                "the schema in src/content.config.ts can't be read as a SpacePress kind",
             )
             .help("write it as `z.object({ ... })`; extend, merge, transforms and refinements aren't read")
             .code(Code::Schema));
@@ -548,7 +548,7 @@ impl<'s> Reader<'s> {
         else {
             return Err(Diag::new(
                 self.at(schema.span()),
-                "the schema in src/content.config.ts can't be read as a TypedPress kind",
+                "the schema in src/content.config.ts can't be read as a SpacePress kind",
             )
             .help("pass `z.object` an object of fields")
             .code(Code::Schema));
@@ -558,7 +558,7 @@ impl<'s> Reader<'s> {
             let a::ObjectPropertyKind::ObjectProperty(p) = prop else {
                 return Err(Diag::new(
                     self.at(prop.span()),
-                    "a spread in the schema can't be read as a TypedPress kind",
+                    "a spread in the schema can't be read as a SpacePress kind",
                 )
                 .help("write each field out")
                 .code(Code::Schema));
@@ -566,7 +566,7 @@ impl<'s> Reader<'s> {
             let Some(name) = property_name(self.file, p)? else {
                 return Err(Diag::new(
                     self.at(p.span),
-                    "a computed field name can't be read as a TypedPress kind",
+                    "a computed field name can't be read as a SpacePress kind",
                 )
                 .help("name the field")
                 .code(Code::Schema));
@@ -593,7 +593,7 @@ impl<'s> Reader<'s> {
             let a::Expression::CallExpression(call) = current else {
                 return Err(Diag::new(
                     self.at(current.span()),
-                    "this field type can't be read as a TypedPress field",
+                    "this field type can't be read as a SpacePress field",
                 )
                 .help("write fields with `z.` (`z.string()`, `z.number()`, ...)")
                 .code(Code::Schema));
@@ -604,16 +604,16 @@ impl<'s> Reader<'s> {
                 a::Expression::Identifier(f) => {
                     let help = match f.name.as_str() {
                         "image" => {
-                            "keep the image's URL as `z.string()` and the file in the media library or public/: an `image()` path is resolved by Astro's build, which TypedPress doesn't run"
+                            "keep the image's URL as `z.string()` and the file in the media library or public/: an `image()` path is resolved by Astro's build, which SpacePress doesn't run"
                         }
                         "reference" => {
-                            "keep the referenced entry's slug as `z.string()`, or declare the relation in tp/ with ref()"
+                            "keep the referenced entry's slug as `z.string()`, or declare the relation in sp/ with ref()"
                         }
                         _ => "write the field with `z.`",
                     };
                     return Err(Diag::new(
                         self.at(call.span),
-                        format!("`{}()` has no TypedPress field type", f.name),
+                        format!("`{}()` has no SpacePress field type", f.name),
                     )
                     .help(help)
                     .code(Code::Schema));
@@ -621,7 +621,7 @@ impl<'s> Reader<'s> {
                 _ => {
                     return Err(Diag::new(
                         self.at(call.span),
-                        "this field type can't be read as a TypedPress field",
+                        "this field type can't be read as a SpacePress field",
                     )
                     .help("write fields with `z.` (`z.string()`, `z.number()`, ...)")
                     .code(Code::Schema));
@@ -656,7 +656,7 @@ impl<'s> Reader<'s> {
         let refuse = |s: oxc_span::Span, what: String, help: &str| {
             Diag::new(
                 self.at(s),
-                format!("field `{name}`: {what} has no TypedPress field type"),
+                format!("field `{name}`: {what} has no SpacePress field type"),
             )
             .help(help.to_string())
             .code(Code::Schema)
@@ -674,7 +674,7 @@ impl<'s> Reader<'s> {
             "number" | "coerce.number" => ("__number()".to_string(), false),
             "boolean" | "coerce.boolean" => ("__boolean()".to_string(), false),
             // Astro's own example: a date written `2022-07-08` or `'Jul 08 2022'` in front matter.
-            // TypedPress stores a calendar date and reads `YYYY-MM-DD`; a sync with another form is refused
+            // SpacePress stores a calendar date and reads `YYYY-MM-DD`; a sync with another form is refused
             // at the file, by the field's own check.
             "date" | "coerce.date" => ("__date()".to_string(), false),
             "enum" => {
@@ -761,7 +761,7 @@ impl<'s> Reader<'s> {
                         return Err(refuse(
                             item_span,
                             format!("a list of `z.{other}()`"),
-                            "a list holds strings, numbers or enum values; keep other lists in tp/ as a repeater()",
+                            "a list holds strings, numbers or enum values; keep other lists in sp/ as a repeater()",
                         ));
                     }
                 }
@@ -769,18 +769,18 @@ impl<'s> Reader<'s> {
             other => {
                 let help = match other {
                     "object" => {
-                        "a nested object has no plain field: declare the kind in tp/ with group(), or flatten it"
+                        "a nested object has no plain field: declare the kind in sp/ with group(), or flatten it"
                     }
                     "union" | "discriminatedUnion" | "intersection" => {
-                        "a field holds one type: pick it, or declare the kind in tp/"
+                        "a field holds one type: pick it, or declare the kind in sp/"
                     }
                     "record" | "map" | "unknown" | "any" => {
-                        "a field has a known type; use json() in a kind declared in tp/"
+                        "a field has a known type; use json() in a kind declared in sp/"
                     }
                     "bigint" => "use z.number()",
                     "literal" => "use z.enum([...]) with the one value",
                     _ => {
-                        "TypedPress maps z.string(), z.number(), z.boolean(), z.date(), z.enum() and z.array() of strings, numbers or enum values"
+                        "SpacePress maps z.string(), z.number(), z.boolean(), z.date(), z.enum() and z.array() of strings, numbers or enum values"
                     }
                 };
                 return Err(refuse(base_span, format!("`z.{other}()`"), help));
@@ -866,7 +866,7 @@ impl<'s> Reader<'s> {
                     return Err(refuse(
                         *mspan,
                         format!("`.{other}()` on `z.{base}()`"),
-                        "TypedPress maps .optional(), .default(), .min(), .max(), .int(), .url() and .email(); transforms, refinements and other modifiers aren't read",
+                        "SpacePress maps .optional(), .default(), .min(), .max(), .int(), .url() and .email(); transforms, refinements and other modifiers aren't read",
                     ));
                 }
             }

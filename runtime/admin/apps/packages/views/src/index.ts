@@ -1,11 +1,11 @@
-// View state for TypedPress Admin's lists: @wordpress/views, with TypedPress's own view-config hook (TypedPress
+// View state for SpacePress Admin's lists: @wordpress/views, with SpacePress's own view-config hook (SpacePress
 // Admin's fields: tabs, quick and add forms, labels, actions) and its DataViews layout wrapper.
 import { useMemo } from '@wordpress/element';
 import {
 	useView as useUpstreamView,
 	loadView as loadUpstreamView,
 } from '@wordpress/views';
-import type { View } from '@typedpress-admin/dataviews';
+import type { View } from '@spacepress-admin/dataviews';
 
 type Config = Parameters< typeof useUpstreamView >[ 0 ];
 type Overrides = Config[ 'activeViewOverrides' ];

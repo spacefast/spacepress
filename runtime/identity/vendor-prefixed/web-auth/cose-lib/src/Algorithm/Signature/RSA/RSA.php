@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature\RSA;
+namespace SpacePress\Identity\Vendor\Cose\Algorithm\Signature\RSA;
 
-use TypedPress\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
-use TypedPress\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\OpenSslError;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\Signature;
-use TypedPress\Identity\Vendor\Cose\Key\Key;
-use TypedPress\Identity\Vendor\Cose\Key\RsaKey;
-use TypedPress\Identity\Vendor\Cose\Key\RsaKeyValidator;
+use SpacePress\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
+use SpacePress\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\OpenSslError;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\Signature;
+use SpacePress\Identity\Vendor\Cose\Key\Key;
+use SpacePress\Identity\Vendor\Cose\Key\RsaKey;
+use SpacePress\Identity\Vendor\Cose\Key\RsaKeyValidator;
 use InvalidArgumentException;
 use function openssl_pkey_get_private;
 use function openssl_pkey_get_public;

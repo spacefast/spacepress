@@ -2,29 +2,29 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
 
 use ArrayIterator;
 use function count;
 use Countable;
 use IteratorAggregate;
 use LogicException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\AuthorityKeyIdentifierExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\BasicConstraintsExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePoliciesExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CRLDistributionPointsExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\ExtendedKeyUsageExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Extension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\InhibitAnyPolicyExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\IssuerAlternativeNameExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\KeyUsageExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\NameConstraintsExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\PolicyConstraintsExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\PolicyMappingsExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\SubjectAlternativeNameExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\SubjectKeyIdentifierExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\AuthorityKeyIdentifierExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\BasicConstraintsExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePoliciesExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CRLDistributionPointsExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\ExtendedKeyUsageExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Extension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\InhibitAnyPolicyExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\IssuerAlternativeNameExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\KeyUsageExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\NameConstraintsExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\PolicyConstraintsExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\PolicyMappingsExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\SubjectAlternativeNameExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\SubjectKeyIdentifierExtension;
 use function sprintf;
 use Traversable;
 use UnexpectedValueException;

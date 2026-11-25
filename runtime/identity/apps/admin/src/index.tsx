@@ -514,8 +514,8 @@ function AuthenticationPanel() {
         </p>
         <p>
           External providers: {data?.providers.join(", ") || "None configured"}.
-          Set TP_IDENTITY_GOOGLE_CLIENT_ID and
-          TP_IDENTITY_GOOGLE_CLIENT_SECRET to enable Google.
+          Set SP_IDENTITY_GOOGLE_CLIENT_ID and
+          SP_IDENTITY_GOOGLE_CLIENT_SECRET to enable Google.
         </p>
         <p>
           Email transport: {data?.email.transport}. {data?.email.diagnostics}

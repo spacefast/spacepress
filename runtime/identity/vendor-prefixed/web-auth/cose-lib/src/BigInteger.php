@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose;
+namespace SpacePress\Identity\Vendor\Cose;
 
-use TypedPress\Identity\Vendor\Brick\Math\BigInteger as BrickBigInteger;
-use TypedPress\Identity\Vendor\Brick\Math\Exception\MathException;
+use SpacePress\Identity\Vendor\Brick\Math\BigInteger as BrickBigInteger;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\MathException;
 use function chr;
 use function hex2bin;
 use function strlen;

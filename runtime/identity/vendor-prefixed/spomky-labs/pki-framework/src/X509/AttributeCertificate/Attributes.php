@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection\SequenceOfAttributes;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute\AccessIdentityAttributeValue;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute\AuthenticationInfoAttributeValue;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute\ChargingIdentityAttributeValue;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute\GroupAttributeValue;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute\RoleAttributeValue;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection\SequenceOfAttributes;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute\AccessIdentityAttributeValue;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute\AuthenticationInfoAttributeValue;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute\ChargingIdentityAttributeValue;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute\GroupAttributeValue;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute\RoleAttributeValue;
 
 /**
  * Implements *Attributes* ASN.1 type of *AttributeCertificateInfo*.

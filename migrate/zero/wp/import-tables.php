@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /** Copy a Zero export's tables into the target WordPress site's namespace. */
-function typedpress_migrate_tables(wpdb $db, string $manifest, bool $apply): array
+function spacepress_migrate_tables(wpdb $db, string $manifest, bool $apply): array
 {
     $text = file_get_contents($manifest);
     if ($text === false) {
@@ -26,7 +26,7 @@ function typedpress_migrate_tables(wpdb $db, string $manifest, bool $apply): arr
     if (!preg_match('/\A[A-Za-z][A-Za-z0-9_]{0,35}\z/', $prefix)) {
         throw new RuntimeException('Invalid WordPress site prefix');
     }
-    $lock = 'tp-import-' . substr(hash('sha256', DB_NAME . "\0" . $prefix), 0, 40);
+    $lock = 'sp-import-' . substr(hash('sha256', DB_NAME . "\0" . $prefix), 0, 40);
     if ((int) $db->get_var($db->prepare('SELECT GET_LOCK(%s, 10)', $lock)) !== 1) {
         throw new RuntimeException('Another import is running for this WordPress site');
     }

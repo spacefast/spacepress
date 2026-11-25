@@ -16,52 +16,52 @@
 }
 
 @media not ( prefers-reduced-motion: reduce ) {
-	.typedpress-admin-layout__canvas .interface-interface-skeleton__header {
-		view-transition-name: typedpress-admin--canvas-header;
+	.spacepress-admin-layout__canvas .interface-interface-skeleton__header {
+		view-transition-name: spacepress-admin--canvas-header;
 	}
 
-	.typedpress-admin-layout__canvas .interface-interface-skeleton__sidebar {
-		view-transition-name: typedpress-admin--canvas-sidebar;
+	.spacepress-admin-layout__canvas .interface-interface-skeleton__sidebar {
+		view-transition-name: spacepress-admin--canvas-sidebar;
 	}
 
-	.typedpress-admin-layout.has-full-canvas
-		.typedpress-admin-layout__canvas
-		.typedpress-admin-site-icon-link,
-	.typedpress-admin-layout:not( .has-full-canvas )
-		.typedpress-admin-site-hub
-		.typedpress-admin-site-icon-link {
-		view-transition-name: typedpress-admin--site-icon-link;
+	.spacepress-admin-layout.has-full-canvas
+		.spacepress-admin-layout__canvas
+		.spacepress-admin-site-icon-link,
+	.spacepress-admin-layout:not( .has-full-canvas )
+		.spacepress-admin-site-hub
+		.spacepress-admin-site-icon-link {
+		view-transition-name: spacepress-admin--site-icon-link;
 	}
 
 	html:not( .is-safari ) {
-		.typedpress-admin-layout__surface.is-stage {
-			view-transition-name: typedpress-admin--stage;
+		.spacepress-admin-layout__surface.is-stage {
+			view-transition-name: spacepress-admin--stage;
 		}
 
-		.typedpress-admin-layout__surface.is-inspector {
-			view-transition-name: typedpress-admin--inspector;
+		.spacepress-admin-layout__surface.is-inspector {
+			view-transition-name: spacepress-admin--inspector;
 		}
 
-		.typedpress-admin-layout__canvas:not( .is-full-canvas ),
-		.typedpress-admin-layout__canvas.is-full-canvas
+		.spacepress-admin-layout__canvas:not( .is-full-canvas ),
+		.spacepress-admin-layout__canvas.is-full-canvas
 			.interface-interface-skeleton__content {
-			view-transition-name: typedpress-admin--canvas;
+			view-transition-name: spacepress-admin--canvas;
 		}
 	}
 
 	html.is-safari {
-		.typedpress-admin-layout__surface.is-stage {
-			view-transition-name: typedpress-admin-safari--stage;
+		.spacepress-admin-layout__surface.is-stage {
+			view-transition-name: spacepress-admin-safari--stage;
 		}
 
-		.typedpress-admin-layout__surface.is-inspector {
-			view-transition-name: typedpress-admin-safari--inspector;
+		.spacepress-admin-layout__surface.is-inspector {
+			view-transition-name: spacepress-admin-safari--inspector;
 		}
 
-		.typedpress-admin-layout__canvas:not( .is-full-canvas ),
-		.typedpress-admin-layout__canvas.is-full-canvas
+		.spacepress-admin-layout__canvas:not( .is-full-canvas ),
+		.spacepress-admin-layout__canvas.is-full-canvas
 			.interface-interface-skeleton__content {
-			view-transition-name: typedpress-admin-safari--canvas;
+			view-transition-name: spacepress-admin-safari--canvas;
 		}
 	}
 
@@ -70,43 +70,43 @@
 	// Not an ideal solution, ideally we use navigate({viewTransition: false}),
 	// but it doesn't seem to work.
 	.components-popover:first-of-type {
-		view-transition-name: typedpress-admin--components-popover;
+		view-transition-name: spacepress-admin--components-popover;
 	}
 }
 
-::view-transition-group( typedpress-admin--canvas-header ),
-::view-transition-group( typedpress-admin--canvas-sidebar ),
-::view-transition-group( typedpress-admin-safari--canvas ),
-::view-transition-group( typedpress-admin--canvas ) {
+::view-transition-group( spacepress-admin--canvas-header ),
+::view-transition-group( spacepress-admin--canvas-sidebar ),
+::view-transition-group( spacepress-admin-safari--canvas ),
+::view-transition-group( spacepress-admin--canvas ) {
 	z-index: 1;
 }
 
-::view-transition-group( typedpress-admin--site-icon-link ) {
+::view-transition-group( spacepress-admin--site-icon-link ) {
 	z-index: 2;
 }
 
-::view-transition-new( typedpress-admin--site-icon-link ),
-::view-transition-old( typedpress-admin--site-icon-link ) {
+::view-transition-new( spacepress-admin--site-icon-link ),
+::view-transition-old( spacepress-admin--site-icon-link ) {
 	animation: none;
 }
 
-::view-transition-new( typedpress-admin-safari--canvas ),
-::view-transition-old( typedpress-admin-safari--canvas ),
-::view-transition-new( typedpress-admin-safari--stage ),
-::view-transition-old( typedpress-admin-safari--stage ),
-::view-transition-old( typedpress-admin-safari--inspector ),
-::view-transition-old( typedpress-admin-safari--inspector ) {
+::view-transition-new( spacepress-admin-safari--canvas ),
+::view-transition-old( spacepress-admin-safari--canvas ),
+::view-transition-new( spacepress-admin-safari--stage ),
+::view-transition-old( spacepress-admin-safari--stage ),
+::view-transition-old( spacepress-admin-safari--inspector ),
+::view-transition-old( spacepress-admin-safari--inspector ) {
 	width: auto;
 }
 
 // Safari trips up with using object fit on the pseudo images and filling out
 // background.
-::view-transition-new( typedpress-admin--canvas ),
-::view-transition-old( typedpress-admin--canvas ),
-::view-transition-new( typedpress-admin--stage ),
-::view-transition-old( typedpress-admin--stage ),
-::view-transition-new( typedpress-admin--inspector ),
-::view-transition-old( typedpress-admin--inspector ) {
+::view-transition-new( spacepress-admin--canvas ),
+::view-transition-old( spacepress-admin--canvas ),
+::view-transition-new( spacepress-admin--stage ),
+::view-transition-old( spacepress-admin--stage ),
+::view-transition-new( spacepress-admin--inspector ),
+::view-transition-old( spacepress-admin--inspector ) {
 	background: colors.$white;
 	border-radius: 8px;
 	width: 100%;
@@ -116,23 +116,23 @@
 	overflow: hidden;
 }
 
-::view-transition-new( typedpress-admin--canvas ),
-::view-transition-old( typedpress-admin--canvas ) {
+::view-transition-new( spacepress-admin--canvas ),
+::view-transition-old( spacepress-admin--canvas ) {
 	object-position: center top;
 }
 
-::view-transition-old( typedpress-admin-safari--inspector ):only-child,
-::view-transition-old( typedpress-admin--inspector ):only-child,
-::view-transition-old( typedpress-admin-safari--stage ):only-child,
-::view-transition-old( typedpress-admin--stage ):only-child {
+::view-transition-old( spacepress-admin-safari--inspector ):only-child,
+::view-transition-old( spacepress-admin--inspector ):only-child,
+::view-transition-old( spacepress-admin-safari--stage ):only-child,
+::view-transition-old( spacepress-admin--stage ):only-child {
 	animation-name: zoomOut;
 	will-change: transform, opacity;
 }
 
-::view-transition-new( typedpress-admin-safari--inspector ):only-child,
-::view-transition-new( typedpress-admin--inspector ):only-child,
-::view-transition-new( typedpress-admin-safari--stage ):only-child,
-::view-transition-new( typedpress-admin--stage ):only-child {
+::view-transition-new( spacepress-admin-safari--inspector ):only-child,
+::view-transition-new( spacepress-admin--inspector ):only-child,
+::view-transition-new( spacepress-admin-safari--stage ):only-child,
+::view-transition-new( spacepress-admin--stage ):only-child {
 	animation-name: zoomIn;
 	will-change: transform, opacity;
 }
@@ -161,14 +161,14 @@
 	}
 }
 
-::view-transition-new( typedpress-admin-safari--canvas ):only-child,
-::view-transition-new( typedpress-admin--canvas ):only-child {
+::view-transition-new( spacepress-admin-safari--canvas ):only-child,
+::view-transition-new( spacepress-admin--canvas ):only-child {
 	animation-name: slideFromRight;
 	will-change: transform;
 }
 
-::view-transition-old( typedpress-admin-safari--canvas ):only-child,
-::view-transition-old( typedpress-admin--canvas ):only-child {
+::view-transition-old( spacepress-admin-safari--canvas ):only-child,
+::view-transition-old( spacepress-admin--canvas ):only-child {
 	animation-name: slideToRight;
 	will-change: transform;
 }
@@ -196,12 +196,12 @@
 	}
 }
 
-::view-transition-new( typedpress-admin--canvas-header ):only-child {
+::view-transition-new( spacepress-admin--canvas-header ):only-child {
 	animation-name: slideHeaderFromTop;
 	will-change: transform;
 }
 
-::view-transition-old( typedpress-admin--canvas-header ):only-child {
+::view-transition-old( spacepress-admin--canvas-header ):only-child {
 	animation-name: slideHeaderToTop;
 	will-change: transform;
 }
@@ -218,12 +218,12 @@
 	}
 }
 
-::view-transition-new( typedpress-admin--canvas-sidebar ):only-child {
+::view-transition-new( spacepress-admin--canvas-sidebar ):only-child {
 	animation-name: slideSidebarFromRight;
 	will-change: transform;
 }
 
-::view-transition-old( typedpress-admin--canvas-sidebar ):only-child {
+::view-transition-old( spacepress-admin--canvas-sidebar ):only-child {
 	animation-name: slideSidebarToRight;
 	will-change: transform;
 }

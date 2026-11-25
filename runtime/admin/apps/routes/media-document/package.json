@@ -1,5 +1,5 @@
 {
-	"name": "@typedpress-admin/route-media-document",
+	"name": "@spacepress-admin/route-media-document",
 	"version": "1.0.0",
 	"private": true,
 	"license": "GPL-2.0-or-later",
@@ -7,6 +7,6 @@
 		"path": "/media/$id"
 	},
 	"dependencies": {
-		"@typedpress-admin/schema": "workspace:*"
+		"@spacepress-admin/schema": "workspace:*"
 	}
 }

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
 
 /**
  * Implement Internationalized String Preparation as specified by RFC 4518.

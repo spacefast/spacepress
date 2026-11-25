@@ -134,9 +134,9 @@ impl Plugin {
     }
 
     fn validate(&self) -> Result<()> {
-        if !slug(&self.slug) || self.slug == "typedpress" || self.slug.starts_with("typedpress-") {
+        if !slug(&self.slug) || self.slug == "spacepress" || self.slug.starts_with("spacepress-") {
             return Err(invalid(format!(
-                "invalid or reserved plugin slug `{}` (typedpress-* belongs to generated plugins)",
+                "invalid or reserved plugin slug `{}` (spacepress-* belongs to generated plugins)",
                 self.slug
             )));
         }
@@ -277,7 +277,7 @@ pub fn resolve(config: &Config, required: &[Plugin]) -> Result<Plan> {
     Ok(plan)
 }
 
-/// `supported.json`: the plugins and version ranges the TypedPress team tests.
+/// `supported.json`: the plugins and version ranges the SpacePress team tests.
 #[derive(Deserialize)]
 struct Supported {
     plugins: BTreeMap<String, Range>,
@@ -294,10 +294,10 @@ fn supported() -> Supported {
     serde_json::from_str(include_str!("supported.json")).expect("src/wp_plugins/supported.json is valid")
 }
 
-const ISSUES: &str = "https://github.com/spacefast/zero/issues";
+const ISSUES: &str = "https://github.com/spacefast/spacepress/issues";
 
-/// One warning per declared plugin outside `supported.json`. TypedPress still installs it: this is advice,
-/// not a refusal, because TypedPress does not support every WordPress plugin.
+/// One warning per declared plugin outside `supported.json`. SpacePress still installs it: this is advice,
+/// not a refusal, because SpacePress does not support every WordPress plugin.
 pub fn unsupported(config: &Config) -> Vec<String> {
     let supported = supported();
     config
@@ -305,7 +305,7 @@ pub fn unsupported(config: &Config) -> Vec<String> {
         .iter()
         .filter_map(|p| {
             let reason = match supported.plugins.get(&p.slug) {
-                None => format!("plugin {} {} is not supported by the TypedPress team", p.slug, p.version),
+                None => format!("plugin {} {} is not supported by the SpacePress team", p.slug, p.version),
                 Some(r)
                     if !version::at_least(&p.version, &r.min)
                         || r.below.as_ref().is_some_and(|below| version::at_least(&p.version, below)) =>
@@ -315,14 +315,14 @@ pub fn unsupported(config: &Config) -> Vec<String> {
                         None => format!(">= {}", r.min),
                     };
                     format!(
-                        "plugin {} {} is outside the version range the TypedPress team supports ({range})",
+                        "plugin {} {} is outside the version range the SpacePress team supports ({range})",
                         p.slug, p.version
                     )
                 }
                 Some(_) => return None,
             };
             Some(format!(
-                "{reason}. TypedPress installs it, but doesn't test it; TypedPress doesn't support every WordPress plugin. To ask for support, open an issue: {ISSUES}"
+                "{reason}. SpacePress installs it, but doesn't test it; SpacePress doesn't support every WordPress plugin. To ask for support, open an issue: {ISSUES}"
             ))
         })
         .collect()
@@ -394,15 +394,15 @@ mod tests {
         .unwrap();
         let warnings = unsupported(&config);
         assert_eq!(warnings.len(), 3, "{warnings:#?}");
-        assert!(warnings[0].starts_with("plugin hello-dolly 1.7.2 is not supported by the TypedPress team."));
+        assert!(warnings[0].starts_with("plugin hello-dolly 1.7.2 is not supported by the SpacePress team."));
         assert!(warnings[1].starts_with(
-            "plugin polylang 4.0 is outside the version range the TypedPress team supports (>= 3.9, < 4)."
+            "plugin polylang 4.0 is outside the version range the SpacePress team supports (>= 3.9, < 4)."
         ));
         assert!(warnings[2].starts_with("plugin secure-custom-fields 6.9.6 is outside"));
         assert!(warnings.iter().all(|w| w.ends_with(ISSUES)));
     }
 
-    /// TypedPress installs its platform pins itself, so they must sit inside the ranges it claims to support.
+    /// SpacePress installs its platform pins itself, so they must sit inside the ranges it claims to support.
     #[test]
     fn platform_pins_are_supported() {
         let plugins = crate::platform::plugins(true);

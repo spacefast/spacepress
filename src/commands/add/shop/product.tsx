@@ -1,4 +1,4 @@
-import { Html } from "typedpress/app";
+import { Html } from "spacepress/app";
 import { get_option } from "php/wordpress";
 export default function ProductPage({ item }) {
   const currency = String(get_option("woocommerce_currency"));

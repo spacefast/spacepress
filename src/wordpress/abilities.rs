@@ -1,7 +1,7 @@
-//! WordPress abilities from `"php/wordpress"`: the committed lock `tp/_generated/abilities.json`, its JSON
+//! WordPress abilities from `"php/wordpress"`: the committed lock `sp/_generated/abilities.json`, its JSON
 //! Schemas as compiler types and TypeScript, and the app's own abilities typed from the schema.
 //!
-//! The lock is written by `typedpress abilities pull` (src/commands/abilities.rs). Building reads only the
+//! The lock is written by `spacepress abilities pull` (src/commands/abilities.rs). Building reads only the
 //! lock; nothing here touches the network.
 
 use crate::schema::{ColType, Schema};
@@ -34,7 +34,7 @@ pub fn own_inputs(schema: &Schema) -> BTreeMap<String, (Vec<String>, Vec<String>
 }
 
 /// Where the lock lives in a project.
-pub const LOCK: &str = "tp/_generated/abilities.json";
+pub const LOCK: &str = "sp/_generated/abilities.json";
 
 /// One locked ability: what `GET /wp-abilities/v1/abilities` returned for it.
 #[derive(Debug, Clone)]
@@ -385,7 +385,7 @@ fn own_readonly(schema: &Schema) -> Vec<String> {
 }
 
 /// The app's own abilities, typed from the schema: one entry per operation
-/// `runtime/TypedPress/Wp/Abilities/Register::build` registers, with the same names and input properties
+/// `runtime/SpacePress/Wp/Abilities/Register::build` registers, with the same names and input properties
 /// (`wordpress_own_abilities_match_the_registered_ones` in tests/compiler_contracts.rs runs both and
 /// compares them). Results the runtime publishes no output schema for are `unknown`.
 fn own(schema: &Schema) -> Own {
@@ -627,7 +627,7 @@ struct Own {
     personal: BTreeSet<String>,
 }
 
-/// The stock and fulfilment operations `TypedPress\Commerce\Operations` registers for this schema,
+/// The stock and fulfilment operations `SpacePress\Commerce\Operations` registers for this schema,
 /// with their schemas: none without `product({ inventory: true })`, and `complete-order` only
 /// with an `order()` beside it.
 pub fn commerce_operations(schema: &Schema) -> Vec<(String, Value)> {
@@ -639,7 +639,7 @@ pub fn commerce_operations(schema: &Schema) -> Vec<(String, Value)> {
     {
         return Vec::new();
     }
-    let shapes: Value = serde_json::from_str(include_str!("../../runtime/TypedPress/Commerce/operations.json"))
+    let shapes: Value = serde_json::from_str(include_str!("../../runtime/SpacePress/Commerce/operations.json"))
         .expect("commerce operation schemas");
     shapes
         .as_object()
@@ -727,7 +727,7 @@ pub fn kebab(name: &str) -> String {
     s
 }
 
-/// The `tp/_generated/db.d.ts` block that types `abilities.call` for every catalog entry.
+/// The `sp/_generated/db.d.ts` block that types `abilities.call` for every catalog entry.
 pub fn gen_ts(catalog: &Catalog) -> String {
     if catalog.abilities.is_empty() {
         return String::new();

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-use TypedPress\Identity\Vendor\Symfony\Polyfill\Php83 as p;
+use SpacePress\Identity\Vendor\Symfony\Polyfill\Php83 as p;
 
 if (\PHP_VERSION_ID >= 80300) {
     return;
@@ -35,6 +35,6 @@ if (!function_exists('ldap_exop_sync') && function_exists('ldap_exop')) {
     function ldap_exop_sync(\LDAP\Connection $ldap, string $request_oid, ?string $request_data = null, ?array $controls = null, &$response_data = null, &$response_oid = null): bool { return ldap_exop($ldap, $request_oid, $request_data, $response_data, $response_oid); }
 }
 
-if (!function_exists('typedpress_identity_vendor_ldap_connect_wallet') && function_exists('ldap_connect')) {
-    function typedpress_identity_vendor_ldap_connect_wallet(?string $uri, string $wallet, #[\SensitiveParameter] string $password, int $auth_mode = \GSLC_SSL_NO_AUTH): \LDAP\Connection|false { return ldap_connect($uri, $wallet, $password, $auth_mode); }
+if (!function_exists('spacepress_identity_vendor_ldap_connect_wallet') && function_exists('ldap_connect')) {
+    function spacepress_identity_vendor_ldap_connect_wallet(?string $uri, string $wallet, #[\SensitiveParameter] string $password, int $auth_mode = \GSLC_SSL_NO_AUTH): \LDAP\Connection|false { return ldap_connect($uri, $wallet, $password, $auth_mode); }
 }

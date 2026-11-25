@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
+namespace SpacePress\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
 
-use TypedPress\Identity\Vendor\Cose\Key\Key;
+use SpacePress\Identity\Vendor\Cose\Key\Key;
 use const E_USER_WARNING;
 use function hash;
 use function trigger_error;
@@ -22,8 +22,8 @@ use function trigger_error;
  * a COSE object signed here is read as WalnutDSA by every conforming implementation, and a genuine WalnutDSA object
  * is routed to this class. No WebAuthn authenticator emits -260, so the only deployments this construction can serve
  * are those that use it on both ends. The fully-specified EdDSA identifiers are
- * {@see \TypedPress\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified\Ed25519} (-19) and
- * {@see \TypedPress\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified\Ed448} (-53).
+ * {@see \SpacePress\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified\Ed25519} (-19) and
+ * {@see \SpacePress\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified\Ed448} (-53).
  *
  * Because of that, creating this algorithm emits an E_USER_WARNING unless the caller explicitly acknowledges what it
  * is by passing `acknowledgeNonStandardAlgorithm: true`. From v5.0.0 the same call without that acknowledgement will

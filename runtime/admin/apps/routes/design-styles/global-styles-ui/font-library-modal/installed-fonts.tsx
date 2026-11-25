@@ -1,7 +1,7 @@
 import type {
 	FontFamilyPreset,
 	GlobalStylesConfig,
-} from '@typedpress-admin/global-styles-engine';
+} from '@spacepress-admin/global-styles-engine';
 import {
 	Button,
 	__experimentalConfirmDialog as ConfirmDialog,
@@ -122,7 +122,7 @@ function InstalledFonts() {
 				type: 'success',
 				message: __(
 					'Font family updated successfully.',
-					'typedpress-admin'
+					'spacepress-admin'
 				),
 			} );
 		} catch ( error ) {
@@ -132,7 +132,7 @@ function InstalledFonts() {
 					/* translators: %s: error message */
 					__(
 						'There was an error updating the font family. %s',
-						'typedpress-admin'
+						'spacepress-admin'
 					),
 					( error as Error ).message
 				),
@@ -167,7 +167,7 @@ function InstalledFonts() {
 		).length;
 		return sprintf(
 			/* translators: 1: Active font variants, 2: Total font variants. */
-			__( '%1$d/%2$d variants active', 'typedpress-admin' ),
+			__( '%1$d/%2$d variants active', 'spacepress-admin' ),
 			variantsActive,
 			variantsInstalled
 		);
@@ -266,7 +266,7 @@ function InstalledFonts() {
 									<Text as="p">
 										{ __(
 											'No fonts installed.',
-											'typedpress-admin'
+											'spacepress-admin'
 										) }
 									</Text>
 								) }
@@ -278,7 +278,7 @@ function InstalledFonts() {
 												_x(
 													'Theme',
 													'font source',
-													'typedpress-admin'
+													'spacepress-admin'
 												)
 											}
 										</h2>
@@ -323,7 +323,7 @@ function InstalledFonts() {
 												_x(
 													'Custom',
 													'font source',
-													'typedpress-admin'
+													'spacepress-admin'
 												)
 											}
 										</h2>
@@ -389,12 +389,12 @@ function InstalledFonts() {
 										);
 										setNotice( null );
 									} }
-									label={ __( 'Back', 'typedpress-admin' ) }
+									label={ __( 'Back', 'spacepress-admin' ) }
 								/>
 								<Heading
 									level={ 2 }
 									size={ 13 }
-									className="typedpress-admin-global-styles-header"
+									className="spacepress-admin-global-styles-header"
 								>
 									{ libraryFontSelected?.name }
 								</Heading>
@@ -415,14 +415,14 @@ function InstalledFonts() {
 							<Text>
 								{ __(
 									'Choose font variants. Keep in mind that too many variants could make your site slower.',
-									'typedpress-admin'
+									'spacepress-admin'
 								) }
 							</Text>
 							<Spacer margin={ 4 } />
 							<VStack spacing={ 0 }>
 								<CheckboxControl
 									className="font-library-modal__select-all"
-									label={ __( 'Select all', 'typedpress-admin' ) }
+									label={ __( 'Select all', 'spacepress-admin' ) }
 									checked={ isSelectAllChecked }
 									onChange={ toggleSelectAll }
 									indeterminate={ isIndeterminate }
@@ -471,7 +471,7 @@ function InstalledFonts() {
 								variant="tertiary"
 								onClick={ handleUninstallClick }
 							>
-								{ __( 'Delete', 'typedpress-admin' ) }
+								{ __( 'Delete', 'spacepress-admin' ) }
 							</Button>
 						) }
 						<Button
@@ -481,7 +481,7 @@ function InstalledFonts() {
 							disabled={ ! fontFamiliesHasChanges }
 							accessibleWhenDisabled
 						>
-							{ __( 'Update', 'typedpress-admin' ) }
+							{ __( 'Update', 'spacepress-admin' ) }
 						</Button>
 					</HStack>
 				</>
@@ -525,7 +525,7 @@ function ConfirmDeleteDialog( {
 				type: 'success',
 				message: __(
 					'Font family uninstalled successfully.',
-					'typedpress-admin'
+					'spacepress-admin'
 				),
 			} );
 		} catch ( error ) {
@@ -534,7 +534,7 @@ function ConfirmDeleteDialog( {
 				message:
 					__(
 						'There was an error uninstalling the font family.',
-						'typedpress-admin'
+						'spacepress-admin'
 					) + ( error as Error ).message,
 			} );
 		}
@@ -547,8 +547,8 @@ function ConfirmDeleteDialog( {
 	return (
 		<ConfirmDialog
 			isOpen={ isOpen }
-			cancelButtonText={ __( 'Cancel', 'typedpress-admin' ) }
-			confirmButtonText={ __( 'Delete', 'typedpress-admin' ) }
+			cancelButtonText={ __( 'Cancel', 'spacepress-admin' ) }
+			confirmButtonText={ __( 'Delete', 'spacepress-admin' ) }
 			onCancel={ handleCancelUninstall }
 			onConfirm={ handleConfirmUninstall }
 			size="medium"
@@ -558,7 +558,7 @@ function ConfirmDeleteDialog( {
 					/* translators: %s: Name of the font. */
 					__(
 						'Are you sure you want to delete "%s" font and all its variants and assets?',
-						'typedpress-admin'
+						'spacepress-admin'
 					),
 					font.name
 				) }

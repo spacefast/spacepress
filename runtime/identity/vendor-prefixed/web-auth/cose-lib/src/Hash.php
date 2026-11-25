@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose;
+namespace SpacePress\Identity\Vendor\Cose;
 
 /**
  * @internal

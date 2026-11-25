@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\StringPreparer;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\StringPreparer;
 
 /**
  * Implements 'caseIgnoreMatch' matching rule.

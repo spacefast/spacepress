@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 /*
- * `apiReference()` from "typedpress/content" (tests/app_router.rs `api_reference_renders_openapi_as_pages`):
+ * `apiReference()` from "spacepress/content" (tests/app_router.rs `api_reference_renders_openapi_as_pages`):
  * tests/fixtures/api-reference as built, served by php -S, read over HTTP. Prints one JSON object.
  *
- *   TP_WP_THEMES=1 php tests/php/api_reference.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/api_reference.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';

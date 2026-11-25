@@ -61,10 +61,10 @@ export default function PreviewTypography( {
 			} }
 		>
 			<span style={ headingPreviewStyle }>
-				{ _x( 'A', 'Uppercase letter A', 'typedpress-admin' ) }
+				{ _x( 'A', 'Uppercase letter A', 'spacepress-admin' ) }
 			</span>
 			<span style={ bodyPreviewStyle }>
-				{ _x( 'a', 'Lowercase letter A', 'typedpress-admin' ) }
+				{ _x( 'a', 'Lowercase letter A', 'spacepress-admin' ) }
 			</span>
 		</motion.div>
 	);

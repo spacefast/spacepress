@@ -1,5 +1,5 @@
 export interface FrontendOptions {
-  /** The TypedPress project directory. Defaults to the current directory. */
+  /** The SpacePress project directory. Defaults to the current directory. */
   root?: string;
   /** Public browser entries, relative to root. Defaults to { main: "browser/index.ts" }. */
   entries?: Record<string, string>;

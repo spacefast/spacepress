@@ -1,1 +1,1 @@
-export { MediaLibrary as default } from '@typedpress-admin/schema';
+export { MediaLibrary as default } from '@spacepress-admin/schema';

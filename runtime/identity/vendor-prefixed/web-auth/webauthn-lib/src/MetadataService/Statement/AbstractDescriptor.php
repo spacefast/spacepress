@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\MetadataService\Statement;
+namespace SpacePress\Identity\Vendor\Webauthn\MetadataService\Statement;
 
-use TypedPress\Identity\Vendor\Webauthn\Exception\MetadataStatementLoadingException;
+use SpacePress\Identity\Vendor\Webauthn\Exception\MetadataStatementLoadingException;
 
 abstract class AbstractDescriptor
 {

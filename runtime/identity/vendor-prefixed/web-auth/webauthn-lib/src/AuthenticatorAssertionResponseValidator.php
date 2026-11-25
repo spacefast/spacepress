@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn;
+namespace SpacePress\Identity\Vendor\Webauthn;
 
-use TypedPress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use TypedPress\Identity\Vendor\Psr\Log\LoggerInterface;
-use TypedPress\Identity\Vendor\Psr\Log\NullLogger;
+use SpacePress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use SpacePress\Identity\Vendor\Psr\Log\LoggerInterface;
+use SpacePress\Identity\Vendor\Psr\Log\NullLogger;
 use Throwable;
-use function typedpress_identity_vendor_trigger_deprecation as trigger_deprecation;
-use TypedPress\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManager;
-use TypedPress\Identity\Vendor\Webauthn\Event\AuthenticatorAssertionResponseValidationFailedEvent;
-use TypedPress\Identity\Vendor\Webauthn\Event\AuthenticatorAssertionResponseValidationSucceededEvent;
-use TypedPress\Identity\Vendor\Webauthn\Event\BackupEligibilityChangedEvent;
-use TypedPress\Identity\Vendor\Webauthn\Event\BackupStatusChangedEvent;
-use TypedPress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use TypedPress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use TypedPress\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
-use TypedPress\Identity\Vendor\Webauthn\MetadataService\CanLogData;
+use function spacepress_identity_vendor_trigger_deprecation as trigger_deprecation;
+use SpacePress\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManager;
+use SpacePress\Identity\Vendor\Webauthn\Event\AuthenticatorAssertionResponseValidationFailedEvent;
+use SpacePress\Identity\Vendor\Webauthn\Event\AuthenticatorAssertionResponseValidationSucceededEvent;
+use SpacePress\Identity\Vendor\Webauthn\Event\BackupEligibilityChangedEvent;
+use SpacePress\Identity\Vendor\Webauthn\Event\BackupStatusChangedEvent;
+use SpacePress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use SpacePress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use SpacePress\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use SpacePress\Identity\Vendor\Webauthn\MetadataService\CanLogData;
 
 class AuthenticatorAssertionResponseValidator implements CanLogData, CanDispatchEvents
 {
@@ -48,7 +48,7 @@ class AuthenticatorAssertionResponseValidator implements CanLogData, CanDispatch
         ?string $userHandle,
     ): CredentialRecord {
         if ($credentialRecord instanceof PublicKeyCredentialSource) {
-            typedpress_identity_vendor_trigger_deprecation(
+            spacepress_identity_vendor_trigger_deprecation(
                 'web-auth/webauthn-lib',
                 '5.3',
                 'Passing a PublicKeyCredentialSource to "%s::check()" is deprecated, pass a CredentialRecord instead.',

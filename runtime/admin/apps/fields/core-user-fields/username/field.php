@@ -2,12 +2,12 @@
 /**
  * Username field definition for core user fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Username', 'typedpress-admin' ),
+	'label'              => __( 'Username', 'spacepress-admin' ),
 	'enableSorting'      => true,
 	'enableHiding'       => false,
 	'enableGlobalSearch' => true,

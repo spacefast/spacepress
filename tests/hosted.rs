@@ -14,10 +14,10 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     let project = work.path().join("app");
     write(
         &project,
-        "typedpress.config.ts",
-        "import { defineConfig, global, text, mutation } from 'typedpress'; import { message } from './tp/message'; import { suffix } from 'shared'; const __settings = global({ label: text().default('Ready') }); export { __settings as settings }; const __version = mutation({ access: 'anyone' }, () => { return message + suffix; }); export { __version as version }; export default defineConfig({});",
+        "spacepress.config.ts",
+        "import { defineConfig, global, text, mutation } from 'spacepress'; import { message } from './sp/message'; import { suffix } from 'shared'; const __settings = global({ label: text().default('Ready') }); export { __settings as settings }; const __version = mutation({ access: 'anyone' }, () => { return message + suffix; }); export { __version as version }; export default defineConfig({});",
     );
-    write(&project, "tp/message.ts", "export const message = 'v1';");
+    write(&project, "sp/message.ts", "export const message = 'v1';");
     write(
         &project,
         "node_modules/shared/package.json",
@@ -31,34 +31,34 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     write(&project, "public/logo.svg", "<svg/>");
     write(
         &project,
-        "tp/_generated/migrations/0001_adopt.sql",
+        "sp/_generated/migrations/0001_adopt.sql",
         "SELECT 'archived only';",
     );
     write(
         &project,
-        "tp/_generated/migrations/snapshot.json",
+        "sp/_generated/migrations/snapshot.json",
         r#"{"version":2,"tables":{}}"#,
     );
     write(&project, "unrelated.ts", "this is not an input");
-    let first = work.path().join("tp");
-    let sources = typedpress::bundle::sources(&project, &first).unwrap();
-    let vendor = fs::read(first.join("vendor.typedpress.json")).unwrap();
-    let captured: typedpress::bundle::SourceBundle = serde_json::from_slice(&vendor).unwrap();
+    let first = work.path().join("sp");
+    let sources = spacepress::bundle::sources(&project, &first).unwrap();
+    let vendor = fs::read(first.join("vendor.spacepress.json")).unwrap();
+    let captured: spacepress::bundle::SourceBundle = serde_json::from_slice(&vendor).unwrap();
     assert!(captured.files.contains_key("node_modules/shared/index.js"));
-    let app: typedpress::bundle::SourceBundle =
-        serde_json::from_slice(&fs::read(first.join("app.typedpress.json")).unwrap()).unwrap();
+    let app: spacepress::bundle::SourceBundle =
+        serde_json::from_slice(&fs::read(first.join("app.spacepress.json")).unwrap()).unwrap();
     assert!(!app.files.contains_key("unrelated.ts"));
-    write(&project, "tp/message.ts", "export const message = 'v2';");
+    write(&project, "sp/message.ts", "export const message = 'v2';");
     let second = work.path().join("second");
-    let later = typedpress::bundle::sources(&project, &second).unwrap();
+    let later = spacepress::bundle::sources(&project, &second).unwrap();
     assert_eq!(sources.vendor_sha256, later.vendor_sha256);
     assert_ne!(sources.app_sha256, later.app_sha256);
-    assert_eq!(vendor, fs::read(second.join("vendor.typedpress.json")).unwrap());
+    assert_eq!(vendor, fs::read(second.join("vendor.spacepress.json")).unwrap());
     fs::remove_dir_all(&project).unwrap();
     let compiled_first = work.path().join("compiled-first");
     let compiled_second = work.path().join("compiled-second");
-    let manifest = typedpress::bundle::compile(&first, &compiled_first, &first, None).unwrap();
-    assert_eq!(manifest["compiler"], typedpress::bundle::VERSION);
+    let manifest = spacepress::bundle::compile(&first, &compiled_first, &first, None).unwrap();
+    assert_eq!(manifest["compiler"], spacepress::bundle::VERSION);
     assert_eq!(
         fs::read_to_string(compiled_first.join("source-migrations/0001_adopt.sql")).unwrap(),
         "SELECT 'archived only';"
@@ -71,19 +71,19 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     let older = work.path().join("older");
     fs::create_dir(&older).unwrap();
     fs::copy(
-        first.join("vendor.typedpress.json"),
-        older.join("vendor.typedpress.json"),
+        first.join("vendor.spacepress.json"),
+        older.join("vendor.spacepress.json"),
     )
     .unwrap();
     let mut app: serde_json::Value =
-        serde_json::from_slice(&fs::read(first.join("app.typedpress.json")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(first.join("app.spacepress.json")).unwrap()).unwrap();
     let files = app["files"].as_object_mut().unwrap();
     for name in ["0001_adopt.sql", "snapshot.json"] {
-        let text = files.remove(&format!("tp/_generated/migrations/{name}")).unwrap();
-        files.insert(format!("tp/migrations/{name}"), text);
+        let text = files.remove(&format!("sp/_generated/migrations/{name}")).unwrap();
+        files.insert(format!("sp/migrations/{name}"), text);
     }
     let app = serde_json::to_vec(&app).unwrap();
-    fs::write(older.join("app.typedpress.json"), &app).unwrap();
+    fs::write(older.join("app.spacepress.json"), &app).unwrap();
     let mut manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(first.join("manifest.json")).unwrap()).unwrap();
     manifest["app_sha256"] = {
@@ -96,12 +96,12 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     };
     fs::write(older.join("manifest.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
     let compiled_older = work.path().join("compiled-older");
-    let refusal = typedpress::bundle::compile(&older, &compiled_older, &older, None).unwrap_err();
-    assert!(refusal.message.contains("tp/migrations/ moved"), "{refusal:?}");
+    let refusal = spacepress::bundle::compile(&older, &compiled_older, &older, None).unwrap_err();
+    assert!(refusal.message.contains("sp/migrations/ moved"), "{refusal:?}");
     assert!(!compiled_older.exists());
-    let path = "plugins/typedpress-app-app/tp/app/functions.php";
+    let path = "plugins/spacepress-app-app/sp/app/functions.php";
     let before = fs::read(compiled_first.join(path)).unwrap();
-    let compiled = std::process::Command::new(env!("CARGO_BIN_EXE_typedpress"))
+    let compiled = std::process::Command::new(env!("CARGO_BIN_EXE_spacepress"))
         .arg("compile-sources")
         .arg(&second)
         .arg(&compiled_second)
@@ -116,7 +116,7 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     );
     assert_ne!(before, fs::read(compiled_second.join(path)).unwrap());
     assert_eq!(before, fs::read(compiled_first.join(path)).unwrap());
-    assert!(typedpress::bundle::compile(&second, &compiled_first, &second, None).is_err());
+    assert!(spacepress::bundle::compile(&second, &compiled_first, &second, None).is_err());
     let client_before = fs::read(compiled_first.join("client/client.js")).unwrap();
     assert!(client_before.len() > 1000);
     assert!(fs::metadata(compiled_first.join("client/client.d.ts")).unwrap().len() > 1000);
@@ -155,11 +155,11 @@ void label; void version;
         String::from_utf8_lossy(&types.stdout),
         String::from_utf8_lossy(&types.stderr)
     );
-    fs::write(second.join("vendor.typedpress.json"), b"{}").unwrap();
-    let error = typedpress::bundle::compile(&second, &work.path().join("tampered"), &second, None).unwrap_err();
+    fs::write(second.join("vendor.spacepress.json"), b"{}").unwrap();
+    let error = spacepress::bundle::compile(&second, &work.path().join("tampered"), &second, None).unwrap_err();
     assert!(error.message.contains("hash mismatch"));
     assert_eq!(
-        fs::read(compiled_first.join("plugins/typedpress-app-app/public/logo.svg")).unwrap(),
+        fs::read(compiled_first.join("plugins/spacepress-app-app/public/logo.svg")).unwrap(),
         b"<svg/>"
     );
 }
@@ -170,19 +170,19 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
     let project = work.path().join("app");
     write(
         &project,
-        "typedpress.config.ts",
-        "import { defineConfig } from 'typedpress'; export default defineConfig({});",
+        "spacepress.config.ts",
+        "import { defineConfig } from 'spacepress'; export default defineConfig({});",
     );
     write(&project, "public/nested/unsafe.PHP", "<?php echo 'no';");
     let upload = work.path().join("upload");
-    assert!(typedpress::bundle::sources(&project, &upload).is_err());
+    assert!(spacepress::bundle::sources(&project, &upload).is_err());
     assert!(!upload.exists());
     fs::remove_dir_all(project.join("public")).unwrap();
     let bundle = work.path().join("bundle");
-    typedpress::bundle::sources(&project, &bundle).unwrap();
+    spacepress::bundle::sources(&project, &bundle).unwrap();
     write(&bundle, "public/nested/unsafe.PHP", "<?php echo 'no';");
     let output = work.path().join("compiled");
-    assert!(typedpress::bundle::compile(&bundle, &output, &bundle, None).is_err());
+    assert!(spacepress::bundle::compile(&bundle, &output, &bundle, None).is_err());
     assert!(!output.exists());
     fs::remove_dir_all(bundle.join("public")).unwrap();
     #[cfg(unix)]
@@ -190,20 +190,20 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
         fs::create_dir(bundle.join("public")).unwrap();
         write(work.path(), "outside.txt", "private");
         std::os::unix::fs::symlink(work.path().join("outside.txt"), bundle.join("public/linked.txt")).unwrap();
-        assert!(typedpress::bundle::compile(&bundle, &output, &bundle, None).is_err());
+        assert!(spacepress::bundle::compile(&bundle, &output, &bundle, None).is_err());
         assert!(!output.exists());
         fs::remove_dir_all(bundle.join("public")).unwrap();
         std::os::unix::fs::symlink(&project, bundle.join("public")).unwrap();
-        assert!(typedpress::bundle::compile(&bundle, &output, &bundle, None).is_err());
+        assert!(spacepress::bundle::compile(&bundle, &output, &bundle, None).is_err());
         assert!(!output.exists());
         write(work.path(), "outside.ts", "export const value = 1;");
         std::os::unix::fs::symlink(work.path().join("outside.ts"), project.join("outside.ts")).unwrap();
         write(
             &project,
-            "typedpress.config.ts",
-            "import { defineConfig } from 'typedpress'; import { value } from './outside'; export default defineConfig({ name: String(value) });",
+            "spacepress.config.ts",
+            "import { defineConfig } from 'spacepress'; import { value } from './outside'; export default defineConfig({ name: String(value) });",
         );
-        assert!(typedpress::bundle::sources(&project, &work.path().join("escape")).is_err());
+        assert!(spacepress::bundle::sources(&project, &work.path().join("escape")).is_err());
     }
 }
 
@@ -214,18 +214,18 @@ fn hosted_bundles_enforce_the_import_fence() {
     let project = work.path().join("app");
     write(
         &project,
-        "typedpress.config.ts",
-        "import { defineConfig, mutation } from 'typedpress'; import { message } from './tp/message'; export const hello = mutation({ access: 'anyone' }, () => { return message; }); export default defineConfig({});",
+        "spacepress.config.ts",
+        "import { defineConfig, mutation } from 'spacepress'; import { message } from './sp/message'; export const hello = mutation({ access: 'anyone' }, () => { return message; }); export default defineConfig({});",
     );
-    write(&project, "tp/message.ts", "export const message = 'kept';");
+    write(&project, "sp/message.ts", "export const message = 'kept';");
     let bundle = work.path().join("bundle");
-    typedpress::bundle::sources(&project, &bundle).unwrap();
-    // Rewrite the capture so the helper sits at the project root, outside tp/.
-    let app = bundle.join(typedpress::bundle::APP_FILE);
+    spacepress::bundle::sources(&project, &bundle).unwrap();
+    // Rewrite the capture so the helper sits at the project root, outside sp/.
+    let app = bundle.join(spacepress::bundle::APP_FILE);
     let mut captured: serde_json::Value = serde_json::from_slice(&fs::read(&app).unwrap()).unwrap();
     let old = |s: &str| {
-        s.replace("tp/message.ts", "lib/message.ts")
-            .replace("./tp/message", "./lib/message")
+        s.replace("sp/message.ts", "lib/message.ts")
+            .replace("./sp/message", "./lib/message")
     };
     for map in ["files", "canonical"] {
         let entries = captured[map].as_object_mut().unwrap();
@@ -238,7 +238,7 @@ fn hosted_bundles_enforce_the_import_fence() {
     assert!(captured["files"].get("lib/message.ts").is_some(), "{captured}");
     let bytes = serde_json::to_vec(&captured).unwrap();
     fs::write(&app, &bytes).unwrap();
-    let manifest_path = bundle.join(typedpress::bundle::MANIFEST_FILE);
+    let manifest_path = bundle.join(spacepress::bundle::MANIFEST_FILE);
     let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
     use sha2::Digest as _;
     manifest["app_sha256"] = sha2::Sha256::digest(&bytes)
@@ -249,41 +249,41 @@ fn hosted_bundles_enforce_the_import_fence() {
     fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
     fs::remove_dir_all(&project).unwrap();
     let compiled = work.path().join("compiled");
-    let refusal = typedpress::bundle::compile(&bundle, &compiled, &bundle, None).unwrap_err();
-    assert!(refusal.message.contains("outside tp/"), "{refusal:?}");
+    let refusal = spacepress::bundle::compile(&bundle, &compiled, &bundle, None).unwrap_err();
+    assert!(refusal.message.contains("outside sp/"), "{refusal:?}");
     assert!(!compiled.exists());
 }
 
-/// A hosted compile types `abilities.call` from the captured `tp/_generated/abilities.json`: the bundle's
+/// A hosted compile types `abilities.call` from the captured `sp/_generated/abilities.json`: the bundle's
 /// file system is rooted at its own module directory, not at the app's name.
 #[test]
 fn captured_ability_lock_types_hosted_calls() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("calls");
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/abilities-call");
-    for file in ["typedpress.config.ts", "tp/_generated/abilities.json"] {
+    for file in ["spacepress.config.ts", "sp/_generated/abilities.json"] {
         write(&project, file, &fs::read_to_string(fixture.join(file)).unwrap());
     }
     let bundle = work.path().join("bundle");
-    typedpress::bundle::sources(&project, &bundle).unwrap();
+    spacepress::bundle::sources(&project, &bundle).unwrap();
     fs::remove_dir_all(&project).unwrap();
     // Without the lock the call is `unknown ability \`acme/site-info\``, so compiling is the proof.
     let compiled = work.path().join("compiled");
-    if let Err(e) = typedpress::bundle::compile(&bundle, &compiled, &bundle, None) {
+    if let Err(e) = spacepress::bundle::compile(&bundle, &compiled, &bundle, None) {
         panic!("{}", e.message);
     }
     // A captured lock must be at the current path.
-    let app = bundle.join(typedpress::bundle::APP_FILE);
+    let app = bundle.join(spacepress::bundle::APP_FILE);
     let mut captured: serde_json::Value = serde_json::from_slice(&fs::read(&app).unwrap()).unwrap();
     for map in ["files", "canonical"] {
         let entries = captured[map].as_object_mut().unwrap();
         let moved: Vec<(String, serde_json::Value)> = std::mem::take(entries)
             .into_iter()
             .map(|(k, v)| {
-                let k = k.replace("tp/_generated/abilities.json", "tp/abilities.json");
+                let k = k.replace("sp/_generated/abilities.json", "sp/abilities.json");
                 let v = match v {
                     serde_json::Value::String(s) => {
-                        s.replace("tp/_generated/abilities.json", "tp/abilities.json").into()
+                        s.replace("sp/_generated/abilities.json", "sp/abilities.json").into()
                     }
                     v => v,
                 };
@@ -292,10 +292,10 @@ fn captured_ability_lock_types_hosted_calls() {
             .collect();
         entries.extend(moved);
     }
-    assert!(captured["files"].get("tp/abilities.json").is_some(), "{captured}");
+    assert!(captured["files"].get("sp/abilities.json").is_some(), "{captured}");
     let bytes = serde_json::to_vec(&captured).unwrap();
     fs::write(&app, &bytes).unwrap();
-    let manifest_path = bundle.join(typedpress::bundle::MANIFEST_FILE);
+    let manifest_path = bundle.join(spacepress::bundle::MANIFEST_FILE);
     let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
     use sha2::Digest as _;
     manifest["app_sha256"] = sha2::Sha256::digest(&bytes)
@@ -305,7 +305,7 @@ fn captured_ability_lock_types_hosted_calls() {
         .into();
     fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
     let older = work.path().join("compiled-older");
-    let refusal = typedpress::bundle::compile(&bundle, &older, &bundle, None).unwrap_err();
-    assert!(refusal.message.contains("tp/abilities.json moved"), "{refusal:?}");
+    let refusal = spacepress::bundle::compile(&bundle, &older, &bundle, None).unwrap_err();
+    assert!(refusal.message.contains("sp/abilities.json moved"), "{refusal:?}");
     assert!(!older.exists());
 }

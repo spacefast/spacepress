@@ -24,36 +24,36 @@ add_filter('wp_theme_json_data_theme', static function () use (&$themeData): WP_
 });
 $css = static function (): string {
     wp_clean_theme_json_cache();
-    wp_dequeue_style('typedpress-theme');
-    wp_deregister_style('typedpress-theme');
-    \TypedPress\Wp\ThemeStyles::enqueue();
-    \TypedPress\Wp\ThemeStyles::enqueue();
-    $after = wp_styles()->get_data('typedpress-theme', 'after');
+    wp_dequeue_style('spacepress-theme');
+    wp_deregister_style('spacepress-theme');
+    \SpacePress\Wp\ThemeStyles::enqueue();
+    \SpacePress\Wp\ThemeStyles::enqueue();
+    $after = wp_styles()->get_data('spacepress-theme', 'after');
     eq('the semantic sheet is enqueued once', count($after), 1);
 
     return implode('', $after);
 };
 
-check('normal WordPress pages do not enqueue app aliases', !wp_style_is('typedpress-theme', 'enqueued'));
+check('normal WordPress pages do not enqueue app aliases', !wp_style_is('spacepress-theme', 'enqueued'));
 $before = $css();
 foreach ([
-    '--tp--color--background:var(--wp--preset--color--paper);',
-    '--tp--color--foreground:#112233;',
-    '--tp--color--link:#234567;',
-    '--tp--font-family--body:Georgia, serif;',
-    '--tp--font-size--body:1.125rem;',
-    '--tp--line-height--body:1.8;',
-    '--tp--spacing--block:2rem;',
-    '--tp--spacing--page:3rem;',
-    '--tp--width--content:44rem;',
-    '--tp--width--wide:80rem;',
+    '--sp--color--background:var(--wp--preset--color--paper);',
+    '--sp--color--foreground:#112233;',
+    '--sp--color--link:#234567;',
+    '--sp--font-family--body:Georgia, serif;',
+    '--sp--font-size--body:1.125rem;',
+    '--sp--line-height--body:1.8;',
+    '--sp--spacing--block:2rem;',
+    '--sp--spacing--page:3rem;',
+    '--sp--width--content:44rem;',
+    '--sp--width--wide:80rem;',
 ] as $declaration) {
     check('active theme: ' . $declaration, str_contains($before, $declaration), $before);
 }
 
 $themeData['styles']['elements']['link']['color']['text'] = ['ref' => 'styles.color.text'];
 $referenced = $css();
-check('theme references resolve against the merged styles', str_contains($referenced, '--tp--color--link:#112233;'), $referenced);
+check('theme references resolve against the merged styles', str_contains($referenced, '--sp--color--link:#112233;'), $referenced);
 $themeData['styles']['elements']['link']['color']['text'] = '#234567';
 foreach ([
     'rgba(10,20,30,0.8)',
@@ -64,15 +64,15 @@ foreach ([
 ] as $color) {
     $themeData['styles']['color']['background'] = $color;
     $colored = $css();
-    check('CSS color functions remain usable: ' . $color, str_contains($colored, '--tp--color--background:' . $color . ';'), $colored);
+    check('CSS color functions remain usable: ' . $color, str_contains($colored, '--sp--color--background:' . $color . ';'), $colored);
 }
 foreach (['rgba(10,20,30,expression(alert(1)))', 'rgba(10,20,30,0.8);color:red', 'rgba(10,20,30,/*comment*/0.8)', 'rgba(10,20,30,0.8\\9)', 'color-mix(in srgb, url(https://example.test/x), red)'] as $color) {
     $themeData['styles']['color']['background'] = $color;
     $rejected = $css();
-    check('unsafe color functions use the fallback', str_contains($rejected, '--tp--color--background:Canvas;'), $rejected);
+    check('unsafe color functions use the fallback', str_contains($rejected, '--sp--color--background:Canvas;'), $rejected);
 }
 $themeData['styles']['color']['background'] = 'var:preset|color|paper';
-eq('color function allowance does not leak outside alias serialization', safecss_filter_attr('--tp--color--background:rgba(10,20,30,0.8)'), '');
+eq('color function allowance does not leak outside alias serialization', safecss_filter_attr('--sp--color--background:rgba(10,20,30,0.8)'), '');
 
 // A Site Editor save changes the aliases without building the app again.
 wp_set_current_user(1);
@@ -88,17 +88,17 @@ wp_update_post(['ID' => $post['ID'], 'post_content' => wp_json_encode([
     ],
 ])]);
 $after = $css();
-foreach (['--tp--color--background:#ffeedc;', '--tp--color--foreground:#231100;', '--tp--color--link:#006644;',
-    '--tp--font-family--body:monospace;', '--tp--font-size--body:1.5rem;', '--tp--spacing--block:4rem;', '--tp--width--content:52rem;'] as $declaration) {
+foreach (['--sp--color--background:#ffeedc;', '--sp--color--foreground:#231100;', '--sp--color--link:#006644;',
+    '--sp--font-family--body:monospace;', '--sp--font-size--body:1.5rem;', '--sp--spacing--block:4rem;', '--sp--width--content:52rem;'] as $declaration) {
     check('owner styles: ' . $declaration, str_contains($after, $declaration), $after);
 }
-check('owner styles keep unspecified theme values', str_contains($after, '--tp--line-height--body:1.8;') && str_contains($after, '--tp--width--wide:80rem;'), $after);
+check('owner styles keep unspecified theme values', str_contains($after, '--sp--line-height--body:1.8;') && str_contains($after, '--sp--width--wide:80rem;'), $after);
 
 wp_update_post(['ID' => $post['ID'], 'post_content' => wp_json_encode(['version' => 3, 'isGlobalStylesUserThemeJSON' => true])]);
 $themeData = ['version' => 3, 'styles' => ['color' => ['background' => 'red;}</style><script>injected</script>'], 'typography' => ['fontFamily' => 'serif;--injected:1']]];
 add_filter('wp_theme_json_data_default', static fn (): WP_Theme_JSON_Data => new WP_Theme_JSON_Data(['version' => 3], 'default'));
 $empty = $css();
-foreach (['--tp--color--background:Canvas;', '--tp--color--foreground:CanvasText;', '--tp--font-family--body:inherit;', '--tp--font-size--body:inherit;', '--tp--spacing--block:1.5rem;', '--tp--width--content:40rem;'] as $declaration) {
+foreach (['--sp--color--background:Canvas;', '--sp--color--foreground:CanvasText;', '--sp--font-family--body:inherit;', '--sp--font-size--body:inherit;', '--sp--spacing--block:1.5rem;', '--sp--width--content:40rem;'] as $declaration) {
     check('missing or unsafe values use defaults: ' . $declaration, str_contains($empty, $declaration), $empty);
 }
 check('theme values cannot close the style or inject declarations', !str_contains($empty, '<') && !str_contains($empty, 'injected'), $empty);

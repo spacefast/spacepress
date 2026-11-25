@@ -18,7 +18,7 @@ pub struct Hook {
     pub params: Vec<(String, Ty)>,
     /// What a filter returns: its first parameter's type.
     pub returns: Ty,
-    /// The handler may be `async`: TypedPress fires this hook itself and awaits nothing WordPress wouldn't.
+    /// The handler may be `async`: SpacePress fires this hook itself and awaits nothing WordPress wouldn't.
     pub async_handler: bool,
 }
 
@@ -94,13 +94,13 @@ pub fn function(name: &str) -> Option<Function> {
     })
 }
 
-/// What app and plugin code may not do through "php/wordpress": the list `TypedPress\Wp\Guard` enforces
+/// What app and plugin code may not do through "php/wordpress": the list `SpacePress\Wp\Guard` enforces
 /// at runtime, read here so a literal option name is refused at build time with the same reason.
-const GUARD: &str = include_str!("../../runtime/TypedPress/Wp/guard.json");
+const GUARD: &str = include_str!("../../runtime/SpacePress/Wp/guard.json");
 
 fn guard() -> &'static Value {
     static PARSED: OnceLock<Value> = OnceLock::new();
-    PARSED.get_or_init(|| serde_json::from_str(GUARD).expect("runtime/TypedPress/Wp/guard.json is JSON"))
+    PARSED.get_or_init(|| serde_json::from_str(GUARD).expect("runtime/SpacePress/Wp/guard.json is JSON"))
 }
 
 /// `"read"` or `"write"` for a catalog function that takes an option name first, else None.
@@ -111,7 +111,7 @@ pub fn option_access(function: &str) -> Option<&'static str> {
 }
 
 /// Why `name` is a protected option, and whether it may still be read; None for an ordinary
-/// option. Compared as `TypedPress\Wp\Guard::protects` does: trimmed, lowercased, printable ASCII only.
+/// option. Compared as `SpacePress\Wp\Guard::protects` does: trimmed, lowercased, printable ASCII only.
 pub fn protected_option(name: &str) -> Option<(&'static str, bool)> {
     let name = name.trim_matches([' ', '\t', '\n', '\r', '\0', '\x0b']);
     if name.bytes().any(|b| !(0x20..=0x7e).contains(&b)) {
@@ -271,14 +271,14 @@ mod tests {
     }
 
     #[test]
-    fn typedpress_own_hooks_are_catalog_entries() {
+    fn spacepress_own_hooks_are_catalog_entries() {
         // In the catalog, so a misspelt file name is offered it ("did you mean").
         let names: Vec<&str> = hook_names().collect();
         assert_eq!(
-            crate::diag::suggest("typedpress_woo_order_stok", names.iter().copied()).as_deref(),
-            Some("typedpress_woo_order_stock")
+            crate::diag::suggest("spacepress_woo_order_stok", names.iter().copied()).as_deref(),
+            Some("spacepress_woo_order_stock")
         );
-        let stock = hook("typedpress_woo_order_stock").unwrap();
+        let stock = hook("spacepress_woo_order_stock").unwrap();
         assert!(!stock.filter && stock.async_handler);
         assert_eq!(
             stock.params[3],
@@ -291,7 +291,7 @@ mod tests {
         assert!(
             names
                 .iter()
-                .all(|n| *n == "typedpress_woo_order_stock" || !hook(n).unwrap().async_handler)
+                .all(|n| *n == "spacepress_woo_order_stock" || !hook(n).unwrap().async_handler)
         );
     }
 
@@ -315,7 +315,7 @@ mod tests {
         assert!(protected_option(" Active_Plugins ").is_some());
         assert!(protected_option("wp_user_roles").is_some() && protected_option("sfz_0123_user_roles").is_some());
         assert!(protected_option("jetpack_private_options").is_some_and(|(_, read)| !read));
-        assert!(protected_option("tp_runtime_secret").is_some_and(|(_, read)| !read));
+        assert!(protected_option("sp_runtime_secret").is_some_and(|(_, read)| !read));
         assert!(protected_option("activ\u{e9}_plugins").is_some());
         assert_eq!(protected_option("fns_last_note"), None);
         assert_eq!(protected_option("blogname"), None);

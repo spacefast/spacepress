@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Uid\Factory;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Uid\Factory;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\TimeBasedUidInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\TimeBasedUidInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Uid\Uuid;
 
 class TimeBasedUuidFactory
 {

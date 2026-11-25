@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\CBOR\Tag;
+namespace SpacePress\Identity\Vendor\CBOR\Tag;
 
-use TypedPress\Identity\Vendor\CBOR\CBORObject;
-use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthTextStringObject;
-use TypedPress\Identity\Vendor\CBOR\Normalizable;
-use TypedPress\Identity\Vendor\CBOR\Tag;
-use TypedPress\Identity\Vendor\CBOR\TextStringObject;
+use SpacePress\Identity\Vendor\CBOR\CBORObject;
+use SpacePress\Identity\Vendor\CBOR\IndefiniteLengthTextStringObject;
+use SpacePress\Identity\Vendor\CBOR\Normalizable;
+use SpacePress\Identity\Vendor\CBOR\Tag;
+use SpacePress\Identity\Vendor\CBOR\TextStringObject;
 use InvalidArgumentException;
 
 /**

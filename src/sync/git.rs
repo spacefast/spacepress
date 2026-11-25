@@ -12,8 +12,8 @@ pub fn commit(project: &Path, paths: &[PathBuf], message: &str) -> Result<bool, 
         .arg(project)
         .args(["rev-parse", "--is-inside-work-tree"])
         .output();
-    // Conflict files are the user's working files under the ignored .tp/; only the bases are committed.
-    let conflicts = project.join(".tp/conflicts");
+    // Conflict files are the user's working files under the ignored .sp/; only the bases are committed.
+    let conflicts = project.join(".sp/conflicts");
     let paths: Vec<PathBuf> = paths.iter().filter(|p| !p.starts_with(&conflicts)).cloned().collect();
     // A path that's gone and was never tracked (written and moved within the run) isn't a change.
     let tracked = |p: &PathBuf| {
@@ -40,10 +40,10 @@ pub fn commit(project: &Path, paths: &[PathBuf], message: &str) -> Result<bool, 
             .output()
             .map_err(|e| e.to_string())
     };
-    // `-A` stages deletions and renames too. The base lives under `.tp/`, which an ignore file of the
-    // repository around the project (`.tp/` at its root, say) may hide whatever the project's own
+    // `-A` stages deletions and renames too. The base lives under `.sp/`, which an ignore file of the
+    // repository around the project (`.sp/` at its root, say) may hide whatever the project's own
     // `.gitignore` re-includes: it is the one path added with `-f`, as `--pr` adds it.
-    let base = project.join(".tp/sync-base.json");
+    let base = project.join(".sp/sync-base.json");
     let (forced, plain): (Vec<PathBuf>, Vec<PathBuf>) = paths.iter().cloned().partition(|p| *p == base);
     for (args, paths) in [(&["add", "-A"][..], &plain), (&["add", "-A", "-f"][..], &forced)] {
         if paths.is_empty() {
@@ -65,23 +65,23 @@ pub fn commit(project: &Path, paths: &[PathBuf], message: &str) -> Result<bool, 
     Ok(true)
 }
 
-/// `.tp/*` ignored except the bases, added to `.gitignore` when absent (design §5.4 step 6).
+/// `.sp/*` ignored except the bases, added to `.gitignore` when absent (design §5.4 step 6).
 /// Ok(true) when it changed the file.
 pub fn ignore_build_output(project: &Path) -> Result<bool, String> {
     let path = project.join(".gitignore");
     let current = std::fs::read_to_string(&path).unwrap_or_default();
-    if current.lines().any(|l| l.trim() == "!.tp/sync-base.json") {
+    if current.lines().any(|l| l.trim() == "!.sp/sync-base.json") {
         return Ok(false);
     }
     let mut next = current
         .lines()
-        .filter(|l| !matches!(l.trim(), ".tp" | ".tp/" | "/.tp" | "/.tp/"))
+        .filter(|l| !matches!(l.trim(), ".sp" | ".sp/" | "/.sp" | "/.sp/"))
         .collect::<Vec<_>>()
         .join("\n");
     if !next.is_empty() {
         next.push('\n');
     }
-    next.push_str(".tp/*\n!.tp/sync-base.json\n");
+    next.push_str(".sp/*\n!.sp/sync-base.json\n");
     std::fs::write(&path, next).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(true)
 }

@@ -5,8 +5,8 @@
 use crate::schema::{ColType, Column};
 use indexmap::IndexMap;
 
-/// TypedPress segments a kind's URL can't start with: WordPress's own entry points and TypedPress's.
-pub const RESERVED_TP_SEGMENTS: &[&str] = &[
+/// SpacePress segments a kind's URL can't start with: WordPress's own entry points and SpacePress's.
+pub const RESERVED_SP_SEGMENTS: &[&str] = &[
     "wp-admin",
     "wp-json",
     "wp-content",
@@ -17,7 +17,7 @@ pub const RESERVED_TP_SEGMENTS: &[&str] = &[
     "wp-sitemap.xml",
     "xmlrpc.php",
     "feed",
-    "__tp",
+    "__sp",
     "__spacefast",
     "llms.txt",
     "robots.txt",
@@ -38,7 +38,7 @@ pub const RESERVED_TP_SEGMENTS: &[&str] = &[
     "wp-trackback.php",
     "wp-comments-post.php",
     "wp-mail.php",
-    // The host's and TypedPress's own entry points.
+    // The host's and SpacePress's own entry points.
     ".well-known",
     "identity",
     "index.php",
@@ -155,13 +155,13 @@ pub fn check(pattern: &str, kind: &UrlKind<'_>) -> Result<Vec<Segment>, Invalid>
             "start it with your own literal segment, e.g. \"/blog/:slug\": WordPress's posts, pages, archives and feeds own every other first segment (a hierarchical kind may be \"/:path\")",
         ));
     }
-    if let Some(reserved) = RESERVED_TP_SEGMENTS
+    if let Some(reserved) = RESERVED_SP_SEGMENTS
         .iter()
         .find(|r| r.eq_ignore_ascii_case(segments[0]))
     {
         return Err(invalid(
             format!(
-                "the url pattern \"{pattern}\" starts with `/{reserved}`, which WordPress or TypedPress already serves"
+                "the url pattern \"{pattern}\" starts with `/{reserved}`, which WordPress or SpacePress already serves"
             ),
             "start the pattern with your own segment, e.g. \"/blog/:slug\"",
         ));
@@ -470,7 +470,7 @@ mod tests {
         assert!(message("/../:slug").contains("can't keep as written"));
         assert!(message("/x/./:slug").contains("can't keep as written"));
         assert!(message("/wp-json/:slug").contains("already serves"));
-        assert!(message("/__tp/:slug").contains("already serves"));
+        assert!(message("/__sp/:slug").contains("already serves"));
         assert!(message("/category/:slug").contains("already serves"));
         assert!(message("/blog/:title").contains("doesn't identify an item"));
         assert!(message("/n/:slug/:slug").contains("appears twice"));

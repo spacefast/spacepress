@@ -1,1 +1,1 @@
-<?php return array('name' => '@typedpress-admin/screens', 'dependencies' => array('react', 'react-dom', 'wp-api-fetch', 'wp-components'), 'moduleDependencies' => array('@typedpress-admin/dataviews', '@typedpress-admin/views'), 'version' => 'efd09be8dcb4c249b36f');
+<?php return array('name' => '@spacepress-admin/screens', 'dependencies' => array('react', 'react-dom', 'wp-api-fetch', 'wp-components'), 'moduleDependencies' => array('@spacepress-admin/dataviews', '@spacepress-admin/views'), 'version' => '83d47cf2a6c86af8f7a3');

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 final class Webhooks
 {
@@ -23,7 +23,7 @@ final class Webhooks
             );
         }
         $id = hash("sha256", $url);
-        $endpoints = get_option("tp_identity_webhooks", []);
+        $endpoints = get_option("sp_identity_webhooks", []);
         foreach ($endpoints as $endpoint) {
             if ($endpoint["id"] === $id) {
                 throw new Failure(
@@ -39,16 +39,16 @@ final class Webhooks
             "url" => $url,
             "secret" => Security::seal($secret),
         ];
-        update_option("tp_identity_webhooks", $endpoints, false);
+        update_option("sp_identity_webhooks", $endpoints, false);
         return ["id" => $id, "secret" => $secret];
     }
     public static function remove(string $id): void
     {
         update_option(
-            "tp_identity_webhooks",
+            "sp_identity_webhooks",
             array_values(
                 array_filter(
-                    get_option("tp_identity_webhooks", []),
+                    get_option("sp_identity_webhooks", []),
                     fn($endpoint) => $endpoint["id"] !== $id,
                 ),
             ),
@@ -66,7 +66,7 @@ final class Webhooks
                     $endpoint["id"],
                 ),
             ],
-            get_option("tp_identity_webhooks", []),
+            get_option("sp_identity_webhooks", []),
         );
     }
 }

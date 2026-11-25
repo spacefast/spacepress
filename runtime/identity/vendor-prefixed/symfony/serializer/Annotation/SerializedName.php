@@ -9,16 +9,16 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Annotation;
 
-class_exists(\TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName::class);
+class_exists(\SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName::class);
 
 if (false) {
     /**
-     * @deprecated since Symfony 7.4, use {@see \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName} instead
+     * @deprecated since Symfony 7.4, use {@see \SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName} instead
      */
     #[\Attribute(\Attribute::TARGET_METHOD | \Attribute::TARGET_PROPERTY)]
-    class SerializedName extends \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName
+    class SerializedName extends \SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName
     {
     }
 }

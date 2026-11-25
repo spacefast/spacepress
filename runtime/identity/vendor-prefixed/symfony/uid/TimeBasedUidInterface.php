@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Uid;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Uid;
 
 /**
  * Interface to describe UIDs that contain a DateTimeImmutable as part of their behaviour.

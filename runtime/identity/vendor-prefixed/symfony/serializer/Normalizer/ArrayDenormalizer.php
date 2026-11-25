@@ -9,17 +9,17 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\UnionType;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type\UnionType;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
 
 /**
  * Denormalizes arrays of objects.

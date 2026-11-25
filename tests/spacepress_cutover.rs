@@ -1,4 +1,4 @@
-//! Verifies SpacePress config, module specifiers (`spacepress`, `spacefast/app`, `spacepress:db`),
+//! Verifies SpacePress config, built-in module specifiers and their compatibility aliases,
 //! `spacepress.source-bundle.v1` capture/compile, and `connectors.call()` compilation.
 
 #[cfg(feature = "host")]
@@ -6,7 +6,7 @@
 fn spacepress_config_and_connectors_compile_to_store() {
     let temp = tempfile::tempdir().unwrap();
     let project = temp.path().join("project");
-    std::fs::create_dir_all(project.join("tp")).unwrap();
+    std::fs::create_dir_all(project.join("sp")).unwrap();
 
     std::fs::write(
         project.join("spacepress.config.ts"),
@@ -30,30 +30,30 @@ export default defineConfig({ name: "my-spacepress-app" });
     .unwrap();
 
     let captured_dir = temp.path().join("captured");
-    let manifest = typedpress::host::sources(&project, &captured_dir).unwrap();
+    let manifest = spacepress::host::sources(&project, &captured_dir).unwrap();
     assert_eq!(manifest.format, "spacepress.source-bundle.v1");
     assert_eq!(manifest.name, "my-spacepress-app");
     assert!(captured_dir.join("app.spacepress.json").is_file());
     assert!(captured_dir.join("vendor.spacepress.json").is_file());
 
     let store_dir = temp.path().join("store");
-    let stored = typedpress::host::compile_to_store(&captured_dir, &store_dir, &captured_dir, None).unwrap();
+    let stored = spacepress::host::compile_to_store(&captured_dir, &store_dir, &captured_dir, None).unwrap();
     assert_eq!(stored.manifest.name, "my-spacepress-app");
 
     let app_plugin = store_dir
         .join("app")
         .join(&stored.manifest.app)
-        .join("plugins/typedpress-app-my-spacepress-app/tp/app/functions.php");
+        .join("plugins/spacepress-app-my-spacepress-app/sp/app/functions.php");
     let php = std::fs::read_to_string(&app_plugin).unwrap();
     assert!(
-        php.contains("\\TypedPress\\Connectors::call("),
+        php.contains("\\SpacePress\\Connectors::call("),
         "expected compiled connectors call in functions.php:\n{php}"
     );
 
     let runtime_connectors = store_dir
         .join("runtime")
         .join(&stored.manifest.runtime)
-        .join("typedpress-runtime/tp/Connectors.php");
+        .join("spacepress-runtime/sp/Connectors.php");
     assert!(
         runtime_connectors.is_file(),
         "expected embedded Connectors.php at {}",
@@ -63,10 +63,10 @@ export default defineConfig({ name: "my-spacepress-app" });
 
 #[cfg(feature = "host")]
 #[test]
-fn spacefast_app_module_specifier_and_spacepress_db_compile() {
+fn spacefast_module_aliases_compile_from_captured_sources() {
     let temp = tempfile::tempdir().unwrap();
     let project = temp.path().join("project");
-    std::fs::create_dir_all(project.join("tp")).unwrap();
+    std::fs::create_dir_all(project.join("sp")).unwrap();
 
     std::fs::write(
         project.join("spacepress.config.ts"),
@@ -84,15 +84,15 @@ export default defineConfig({ name: "notes-app" });
     .unwrap();
 
     std::fs::write(
-        project.join("tp/actions.ts"),
+        project.join("sp/actions.ts"),
         r#"
-import { query, db } from "spacefast/app";
-import { notes } from "spacepress:db";
+import { query } from "@spacefast/spacepress";
+import { notes } from "@spacefast/spacepress:db";
 
 export const countNotes = query(
     { access: "anyone" },
     async () => {
-        const rows = await db.query.notes.findMany();
+        const rows = await notes.list({ limit: 5 });
         return { count: rows.length };
     },
 );
@@ -101,11 +101,11 @@ export const countNotes = query(
     .unwrap();
 
     let captured_dir = temp.path().join("captured");
-    let manifest = typedpress::host::sources(&project, &captured_dir).unwrap();
+    let manifest = spacepress::host::sources(&project, &captured_dir).unwrap();
     assert_eq!(manifest.format, "spacepress.source-bundle.v1");
 
     let store_dir = temp.path().join("store");
-    let stored = typedpress::host::compile_to_store(&captured_dir, &store_dir, &captured_dir, None).unwrap();
+    let stored = spacepress::host::compile_to_store(&captured_dir, &store_dir, &captured_dir, None).unwrap();
     assert_eq!(stored.manifest.name, "notes-app");
 }
 
@@ -115,17 +115,17 @@ export const countNotes = query(
 fn compile_config(config: &str) -> Result<String, String> {
     let temp = tempfile::tempdir().unwrap();
     let project = temp.path().join("project");
-    std::fs::create_dir_all(project.join("tp")).unwrap();
+    std::fs::create_dir_all(project.join("sp")).unwrap();
     std::fs::write(project.join("spacepress.config.ts"), config).unwrap();
     let captured = temp.path().join("captured");
-    let manifest = typedpress::host::sources(&project, &captured).map_err(|d| d.message)?;
+    let manifest = spacepress::host::sources(&project, &captured).map_err(|d| d.message)?;
     let store = temp.path().join("store");
-    let stored = typedpress::host::compile_to_store(&captured, &store, &captured, None)
+    let stored = spacepress::host::compile_to_store(&captured, &store, &captured, None)
         .map_err(|d| format!("{} ({})", d.message, d.help.unwrap_or_default()))?;
     let functions = store
         .join("app")
         .join(&stored.manifest.app)
-        .join(format!("plugins/typedpress-app-{}/tp/app/functions.php", manifest.name));
+        .join(format!("plugins/spacepress-app-{}/sp/app/functions.php", manifest.name));
     Ok(std::fs::read_to_string(functions).unwrap())
 }
 
@@ -152,10 +152,10 @@ export default defineConfig({ name: "outbox-app" });
     // The PHP formatter pads calls; compare without whitespace.
     let flat: String = php.chars().filter(|c| !c.is_whitespace()).collect();
     for call in [
-        "\\TypedPress\\Connectors::enqueue('fulfilment','create_shipment',(new\\TypedPress\\JsObject(array('order'=>$order))),(new\\TypedPress\\JsObject(array('key'=>",
+        "\\SpacePress\\Connectors::enqueue('fulfilment','create_shipment',(new\\SpacePress\\JsObject(array('order'=>$order))),(new\\SpacePress\\JsObject(array('key'=>",
         "'delay'=>30",
-        "\\TypedPress\\Connectors::enqueue('fulfilment','ping',null,null)",
-        "\\TypedPress\\Connectors::call('crm','find',(new\\TypedPress\\JsObject(array('q'=>$order))))",
+        "\\SpacePress\\Connectors::enqueue('fulfilment','ping',null,null)",
+        "\\SpacePress\\Connectors::call('crm','find',(new\\SpacePress\\JsObject(array('q'=>$order))))",
     ] {
         assert!(flat.contains(call), "expected `{call}` in functions.php:\n{php}");
     }

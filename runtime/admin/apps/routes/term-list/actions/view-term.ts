@@ -1,14 +1,14 @@
 import { __ } from '@wordpress/i18n';
 import { external } from '@wordpress/icons';
 import type { Term } from '@wordpress/core-data';
-import type { Action } from '@typedpress-admin/dataviews';
+import type { Action } from '@spacepress-admin/dataviews';
 
 /**
  * Action to view a taxonomy term in the frontend
  */
 export const viewTermAction: Action< Term > = {
 	id: 'view-term',
-	label: __( 'View', 'typedpress-admin' ),
+	label: __( 'View', 'spacepress-admin' ),
 	isPrimary: false,
 	supportsBulk: false,
 	icon: external,

@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\String;
+namespace SpacePress\Identity\Vendor\Symfony\Component\String;
 
-use TypedPress\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
 
 /**
  * Represents a string of Unicode grapheme clusters encoded as UTF-8.
@@ -106,7 +106,7 @@ class UnicodeString extends AbstractUnicodeString
             return false;
         }
 
-        if (false === $grapheme = grapheme_extract($this->string, \strlen($suffix), \TP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES, \strlen($this->string) - \strlen($suffix))) {
+        if (false === $grapheme = grapheme_extract($this->string, \strlen($suffix), \SP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES, \strlen($this->string) - \strlen($suffix))) {
             $grapheme = '';
         }
 
@@ -363,7 +363,7 @@ class UnicodeString extends AbstractUnicodeString
             return false;
         }
 
-        if (false === $grapheme = grapheme_extract($this->string, \strlen($prefix), \TP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES)) {
+        if (false === $grapheme = grapheme_extract($this->string, \strlen($prefix), \SP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES)) {
             $grapheme = '';
         }
 
@@ -415,7 +415,7 @@ class UnicodeString extends AbstractUnicodeString
     public function __unserialize(array $data): void
     {
         if ($wakeup = self::class !== (new \ReflectionMethod($this, '__wakeup'))->class && self::class === (new \ReflectionMethod($this, '__unserialize'))->class) {
-            typedpress_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Implementing "%s::__wakeup()" is deprecated, use "__unserialize()" instead.', get_debug_type($this));
+            spacepress_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Implementing "%s::__wakeup()" is deprecated, use "__unserialize()" instead.', get_debug_type($this));
         }
 
         if (($data['string'] ?? null) instanceof \Stringable || ($data["\0*\0string"] ?? null) instanceof \Stringable) {
@@ -433,7 +433,7 @@ class UnicodeString extends AbstractUnicodeString
                 return;
             }
 
-            typedpress_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Passing more than just key "string" to "%s::__unserialize()" is deprecated, populate properties in "%s::__unserialize()" instead.', self::class, get_debug_type($this));
+            spacepress_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Passing more than just key "string" to "%s::__unserialize()" is deprecated, populate properties in "%s::__unserialize()" instead.', self::class, get_debug_type($this));
 
             \Closure::bind(function ($data) use ($wakeup) {
                 foreach ($data as $key => $value) {
@@ -456,7 +456,7 @@ class UnicodeString extends AbstractUnicodeString
      */
     public function __wakeup(): void
     {
-        typedpress_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Calling "%s::__wakeup()" is deprecated, use "__unserialize()" instead.', get_debug_type($this));
+        spacepress_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Calling "%s::__wakeup()" is deprecated, use "__unserialize()" instead.', get_debug_type($this));
 
         if (!\is_string($this->string)) {
             throw new \BadMethodCallException('Cannot unserialize '.__CLASS__);

@@ -1,5 +1,5 @@
 import { __, sprintf } from '@wordpress/i18n';
-import { EmptyState } from '@typedpress-admin/design-system';
+import { EmptyState } from '@spacepress-admin/design-system';
 
 interface UserListEmptyStateProps {
 	slug: string;
@@ -10,26 +10,26 @@ export function UserListEmptyState( { slug }: UserListEmptyStateProps ) {
 	let description: string;
 
 	if ( slug === 'all' ) {
-		title = __( 'No users', 'typedpress-admin' );
-		description = __( 'Any users will appear here.', 'typedpress-admin' );
+		title = __( 'No users', 'spacepress-admin' );
+		description = __( 'Any users will appear here.', 'spacepress-admin' );
 	} else {
 		// Get translatable role name
 		const getRoleName = ( role: string ) => {
 			switch ( role ) {
 				case 'administrator':
-					return __( 'administrator', 'typedpress-admin' );
+					return __( 'administrator', 'spacepress-admin' );
 				case 'shop_manager':
-					return __( 'store manager', 'typedpress-admin' );
+					return __( 'store manager', 'spacepress-admin' );
 				case 'customer':
-					return __( 'customer', 'typedpress-admin' );
+					return __( 'customer', 'spacepress-admin' );
 				case 'subscriber':
-					return __( 'subscriber', 'typedpress-admin' );
+					return __( 'subscriber', 'spacepress-admin' );
 				case 'contributor':
-					return __( 'contributor', 'typedpress-admin' );
+					return __( 'contributor', 'spacepress-admin' );
 				case 'author':
-					return __( 'author', 'typedpress-admin' );
+					return __( 'author', 'spacepress-admin' );
 				case 'editor':
-					return __( 'editor', 'typedpress-admin' );
+					return __( 'editor', 'spacepress-admin' );
 				default:
 					// Fallback for custom roles
 					return role.replace( /_/g, ' ' );
@@ -39,12 +39,12 @@ export function UserListEmptyState( { slug }: UserListEmptyStateProps ) {
 		const roleName = getRoleName( slug );
 		title = sprintf(
 			/* translators: %s: role name (e.g., administrator, shop manager) */
-			__( 'No %s', 'typedpress-admin' ),
+			__( 'No %s', 'spacepress-admin' ),
 			roleName
 		);
 		description = sprintf(
 			/* translators: %s: role name (e.g., administrator, shop manager) */
-			__( 'Any users with the %s role will appear here.', 'typedpress-admin' ),
+			__( 'Any users with the %s role will appear here.', 'spacepress-admin' ),
 			roleName
 		);
 	}

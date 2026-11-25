@@ -2,12 +2,12 @@
 /**
  * Post field definition for core user fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'          => 'integer',
-	'label'         => __( 'Posts', 'typedpress-admin' ),
+	'label'         => __( 'Posts', 'spacepress-admin' ),
 	'defaultValue'  => 0,
 	'enableSorting' => true,
 	'filterBy'      => array(

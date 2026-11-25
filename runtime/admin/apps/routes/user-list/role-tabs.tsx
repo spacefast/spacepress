@@ -1,8 +1,8 @@
 import { __ } from '@wordpress/i18n';
 import { useSelect } from '@wordpress/data';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components -- See: ARC-1359
-import { Tabs } from '@typedpress-admin/design-system';
-import { store as coreDataNextStore } from '@typedpress-admin/core-data-next';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components -- See: ARC-1359
+import { Tabs } from '@spacepress-admin/design-system';
+import { store as coreDataNextStore } from '@spacepress-admin/core-data-next';
 
 export const RoleTabs = ( {
 	onChange,

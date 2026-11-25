@@ -9,11 +9,11 @@ async function call(name: string, input: object): Promise<{ status: number; body
   return { status: response.status, body: await response.json() };
 }
 const captured = (to: string): string | null => {
-  const out = wp("eval", `$f = WP_CONTENT_DIR . '/typedpress-test-mail/' . sanitize_file_name(${JSON.stringify(to)}) . '.txt'; echo is_file($f) ? file_get_contents($f) : '__none__';`);
+  const out = wp("eval", `$f = WP_CONTENT_DIR . '/spacepress-test-mail/' . sanitize_file_name(${JSON.stringify(to)}) . '.txt'; echo is_file($f) ? file_get_contents($f) : '__none__';`);
   return out === "__none__" ? null : out;
 };
-const runQueue = () => wp("action-scheduler", "run", "--hooks=tp_job");
-const mailJobs = () => JSON.parse(wp("eval", `global $wpdb; echo wp_json_encode($wpdb->get_results("SELECT state, attempts FROM {$wpdb->prefix}tp__jobs WHERE job = 'typedpress.mail'", ARRAY_A));`)) as { state: string }[];
+const runQueue = () => wp("action-scheduler", "run", "--hooks=sp_job");
+const mailJobs = () => JSON.parse(wp("eval", `global $wpdb; echo wp_json_encode($wpdb->get_results("SELECT state, attempts FROM {$wpdb->prefix}sp__jobs WHERE job = 'spacepress.mail'", ARRAY_A));`)) as { state: string }[];
 
 test("migrated ctx.email.send queues with the write, sends after commit, and never after a rollback", async () => {
   const rolled = await call("join", { email: "rolled@example.test", fail: true });
@@ -35,6 +35,6 @@ test("migrated ctx.email.send queues with the write, sends after commit, and nev
   assert.equal(captured("pinged@example.test"), "pong");
   assert.deepEqual(mailJobs().map((j) => j.state).sort(), ["done", "done"]);
   // The signup row committed with its mail.
-  const rows = JSON.parse(wp("eval", `global $wpdb; echo wp_json_encode($wpdb->get_col("SELECT email FROM wp_import_${process.env.TP_SIGNUPS_HASH} ORDER BY id"));`));
+  const rows = JSON.parse(wp("eval", `global $wpdb; echo wp_json_encode($wpdb->get_col("SELECT email FROM wp_import_${process.env.SP_SIGNUPS_HASH} ORDER BY id"));`));
   assert.deepEqual(rows, ["joined@example.test"]);
 });

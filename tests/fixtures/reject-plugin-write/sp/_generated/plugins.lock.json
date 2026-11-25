@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "plugins": {
+    "seo": {
+      "package": "spacepress-plugin-x",
+      "version": "0.1.0",
+      "integrity": "sha256-0ff989a2780a247f1233a404c5166a4410782f16bb93450477e5db8c7cb5be43",
+      "grant": {
+        "read": [
+          "posts"
+        ],
+        "write": [
+          "posts.summary"
+        ],
+        "delete": [],
+        "hooks": [
+          "posts.beforeCreate"
+        ],
+        "actions": [],
+        "http": [],
+        "env": [],
+        "mail": [],
+        "jobs": [],
+        "timers": [],
+        "abilities": [],
+        "wpHooks": [],
+        "php": []
+      }
+    }
+  }
+}

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Count `typedpress-migrate --from zero app` outcomes over a corpus of 0.8 projects.
+"""Count `spacepress-migrate --from zero app` outcomes over a corpus of 0.8 projects.
 
-Usage: migrate/zero/migrate-census.py [--zero target/debug/typedpress-migrate] [--json] [--flag <converter flag>]... [corpus-dir ...]
+Usage: migrate/zero/migrate-census.py [--zero target/debug/spacepress-migrate] [--json] [--flag <converter flag>]... [corpus-dir ...]
 
 An app is a 0.8 project directory, or a stored finalize payload: a directory with
 `finalize.json` (the `{ artifact, endpointSources }` a 0.8 publish kept) and, when the
 published source was recovered, a `source/` directory beside it. Such an app runs as
-`typedpress-migrate --from zero app --manifest finalize.json [source]`; without `source/`
+`spacepress-migrate --from zero app --manifest finalize.json [source]`; without `source/`
 it is refused at `/source` ("source not recoverable"), never accepted.
 
 The default corpus is migrate/tests/app-migrate/corpus: 0.8 projects copied from
@@ -114,7 +114,7 @@ def run(first, project, scratch, extra):
 
 
 def main(argv):
-    first = os.environ.get("TP_MIGRATE_BIN") or os.path.join(ROOT, "target/debug/typedpress-migrate")
+    first = os.environ.get("SP_MIGRATE_BIN") or os.path.join(ROOT, "target/debug/spacepress-migrate")
     as_json = False
     extra = []
     paths = []

@@ -1,5 +1,5 @@
 import { db, integer, text } from "spacepress";
-import { get_current_user_id, get_post, get_userdata } from "php/wordpress";
+import { get_current_user_id, get_post, get_userdata, home_url, is_user_logged_in, wp_login_url } from "php/wordpress";
 import { buckets, tasks } from "spacepress:db";
 import { Comments, Link, Live, useFormState, type PageProps } from "spacepress/app";
 import { ChecklistEditor } from "../components/ChecklistEditor";
@@ -47,8 +47,6 @@ import {
   toggleTask,
   updateTask,
 } from "../server";
-
-export const guard = "authenticated";
 
 export const search = {
   view: text().optional(),
@@ -134,9 +132,11 @@ export default async function TodoWorkspacePage({
   const flagFilter: TodoFlagFilter | null = asOptionalFlagFilter(search.flag);
   const showDoneColumn = search.showDone === "1";
 
-  const currentUserId = get_current_user_id();
-  const currentUser = get_userdata(currentUserId);
+  const signedIn = is_user_logged_in();
+  const currentUserId = signedIn ? get_current_user_id() : 0;
+  const currentUser = signedIn ? get_userdata(currentUserId) : false;
   const currentUserName = currentUser !== false ? currentUser.display_name : "Me";
+  const loginHref = wp_login_url(home_url("/"));
 
   const createState = useFormState(createTask);
   const updateState = useFormState(updateTask);
@@ -243,7 +243,9 @@ export default async function TodoWorkspacePage({
   const headerSubtitle = activeBucket
     ? `Open tasks in ${activeBucket.name} (${activeBucket.kind}).`
     : activeLayout === "board" && boardScopeView === "all"
-      ? "Drag cards across any taxonomy group — Status, Project, Area, Resource, or Priority."
+      ? signedIn
+        ? "Drag cards across any taxonomy group — Status, Project, Area, Resource, or Priority."
+        : "Browse cards across any taxonomy group — Status, Project, Area, Resource, or Priority."
       : meta.subtitle;
 
   const selectedTask = selectedTaskId
@@ -430,30 +432,34 @@ export default async function TodoWorkspacePage({
           </div>
         )}
 
-        <details className="todo-new-bucket">
-          <summary>+ New column, project or area</summary>
-          <form action={createBucket} className="todo-new-bucket__form">
-            <input
-              name="name"
-              placeholder="Bucket or column name"
-              className="field-input"
-              required
-              maxLength={80}
-            />
-            <select name="kind" className="field-select">
-              <option value="project" selected>Project</option>
-              <option value="area">Area</option>
-              <option value="resource">Resource</option>
-              <option value="status">Status column</option>
-            </select>
-            <button className="btn btn--subtle btn--xs">Create bucket</button>
-            {bucketState.error && <p className="form-banner form-banner--error">{bucketState.error.message}</p>}
-          </form>
-        </details>
+        {signedIn && (
+          <details className="todo-new-bucket">
+            <summary>+ New column, project or area</summary>
+            <form action={createBucket} className="todo-new-bucket__form">
+              <input
+                name="name"
+                placeholder="Bucket or column name"
+                className="field-input"
+                required
+                maxLength={80}
+              />
+              <select name="kind" className="field-select">
+                <option value="project" selected>Project</option>
+                <option value="area">Area</option>
+                <option value="resource">Resource</option>
+                <option value="status">Status column</option>
+              </select>
+              <button className="btn btn--subtle btn--xs">Create bucket</button>
+              {bucketState.error && <p className="form-banner form-banner--error">{bucketState.error.message}</p>}
+            </form>
+          </details>
+        )}
 
         <div className="todo-sidebar__footer">
           <TodoShortcuts hasInspector={selectedTask !== null} />
-          <a href="/wp-admin/new/screens/todo-admin-screen" className="sp-topbar__link">DataViews ↗</a>
+          {signedIn && (
+            <a href="/wp-admin/new/screens/todo-admin-screen" className="sp-topbar__link">DataViews ↗</a>
+          )}
         </div>
       </aside>
 
@@ -534,7 +540,7 @@ export default async function TodoWorkspacePage({
               >
                 {showDoneColumn ? "✓ Done column" : "+ Done column"}
               </Link>
-              <KanbanDragController groupBy={boardGroup} />
+              {signedIn && <KanbanDragController groupBy={boardGroup} />}
             </div>
           )}
 
@@ -582,72 +588,81 @@ export default async function TodoWorkspacePage({
           </div>
         </div>
 
-        {/* Progressive Quick-Add Composer */}
-        <form action={createTask} className="quick-add">
-          <div className="quick-add__top">
-            <span className="quick-add__plus" aria-hidden="true">+</span>
-            <input
-              id="quick-add-title"
-              name="title"
-              type="text"
-              className="quick-add__title"
-              placeholder="New task… press N anywhere to capture"
-              required
-              maxLength={240}
-              defaultValue={createState.values.title ?? ""}
-            />
-            <button className="btn btn--primary">Add task</button>
-          </div>
-          <div className="quick-add__controls">
-            <div className="quick-add__meta">
-              <select name="statusBucket" className="field-select" aria-label="Status bucket">
-                <option value="inbox" selected={meta.defaultStatus === "inbox"}>Inbox</option>
-                <option value="now" selected={meta.defaultStatus === "now"}>Now</option>
-                <option value="follow-up" selected={meta.defaultStatus === "follow-up"}>Follow-up</option>
-                <option value="later" selected={meta.defaultStatus === "later"}>Later</option>
-              </select>
-              <select name="priority" className="field-select" aria-label="Priority">
-                <option value="none" selected>No priority</option>
-                <option value="high">High priority</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
-              <select name="visibility" className="field-select" aria-label="Visibility">
-                <option value="private" selected={activeView !== "team"}>Private</option>
-                <option value="team" selected={activeView === "team"}>Shared with Team</option>
-              </select>
-              <select name="paraBucketId" className="field-select" aria-label="Project or area">
-                <option value="" selected={activeBucket === null}>No project / area</option>
-                {paraBuckets.map((bucket) => (
-                  <option
-                    key={bucket.id}
-                    value={String(bucket.id)}
-                    selected={activeBucket !== null && activeBucket.id === bucket.id}
-                  >
-                    {bucket.name} ({bucket.kind})
-                  </option>
-                ))}
-              </select>
+        {/* Progressive Quick-Add Composer (or Read-Only Preview Notice) */}
+        {signedIn ? (
+          <form action={createTask} className="quick-add">
+            <div className="quick-add__top">
+              <span className="quick-add__plus" aria-hidden="true">+</span>
               <input
-                name="scheduledDate"
-                type="date"
-                className="field-input"
-                aria-label="Schedule date"
-                title="Schedule date"
+                id="quick-add-title"
+                name="title"
+                type="text"
+                className="quick-add__title"
+                placeholder="New task… press N anywhere to capture"
+                required
+                maxLength={240}
+                defaultValue={createState.values.title ?? ""}
               />
+              <button className="btn btn--primary">Add task</button>
             </div>
+            <div className="quick-add__controls">
+              <div className="quick-add__meta">
+                <select name="statusBucket" className="field-select" aria-label="Status bucket">
+                  <option value="inbox" selected={meta.defaultStatus === "inbox"}>Inbox</option>
+                  <option value="now" selected={meta.defaultStatus === "now"}>Now</option>
+                  <option value="follow-up" selected={meta.defaultStatus === "follow-up"}>Follow-up</option>
+                  <option value="later" selected={meta.defaultStatus === "later"}>Later</option>
+                </select>
+                <select name="priority" className="field-select" aria-label="Priority">
+                  <option value="none" selected>No priority</option>
+                  <option value="high">High priority</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+                <select name="visibility" className="field-select" aria-label="Visibility">
+                  <option value="private" selected={activeView !== "team"}>Private</option>
+                  <option value="team" selected={activeView === "team"}>Shared with Team</option>
+                </select>
+                <select name="paraBucketId" className="field-select" aria-label="Project or area">
+                  <option value="" selected={activeBucket === null}>No project / area</option>
+                  {paraBuckets.map((bucket) => (
+                    <option
+                      key={bucket.id}
+                      value={String(bucket.id)}
+                      selected={activeBucket !== null && activeBucket.id === bucket.id}
+                    >
+                      {bucket.name} ({bucket.kind})
+                    </option>
+                  ))}
+                </select>
+                <input
+                  name="scheduledDate"
+                  type="date"
+                  className="field-input"
+                  aria-label="Schedule date"
+                  title="Schedule date"
+                />
+              </div>
+            </div>
+            {createState.error && (
+              <p role="alert" className="form-banner form-banner--error">
+                {createState.error.message}
+              </p>
+            )}
+            {createState.result && (
+              <p role="status" className="form-banner form-banner--ok">
+                Added “{createState.result.title}”.
+              </p>
+            )}
+          </form>
+        ) : (
+          <div className="preview-banner" role="note">
+            <span>
+              <strong>Read-only demo preview.</strong> Sign in to add, edit, check off, or drag tasks.
+            </span>
+            <a href={loginHref} className="btn btn--primary btn--xs">Sign in to edit</a>
           </div>
-          {createState.error && (
-            <p role="alert" className="form-banner form-banner--error">
-              {createState.error.message}
-            </p>
-          )}
-          {createState.result && (
-            <p role="status" className="form-banner form-banner--ok">
-              Added “{createState.result.title}”.
-            </p>
-          )}
-        </form>
+        )}
 
         {/* Feedback Banners */}
         {toggleState.result && toggleState.result.unblockedCount > 0 && (
@@ -730,7 +745,7 @@ export default async function TodoWorkspacePage({
                           return (
                             <article
                               key={task.id}
-                              draggable="true"
+                              draggable={signedIn ? "true" : undefined}
                               data-task-row="true"
                               data-kanban-task-id={String(task.id)}
                               className={
@@ -744,11 +759,20 @@ export default async function TodoWorkspacePage({
                               }
                             >
                               <div className="kanban-card__top">
-                                <TaskCheckButton
-                                  taskId={task.id}
-                                  completed={isDone}
-                                  label={isDone ? `Reopen ${task.title}` : `Complete ${task.title}`}
-                                />
+                                {signedIn ? (
+                                  <TaskCheckButton
+                                    taskId={task.id}
+                                    completed={isDone}
+                                    label={isDone ? `Reopen ${task.title}` : `Complete ${task.title}`}
+                                  />
+                                ) : (
+                                  <span
+                                    className={isDone ? "todo-check todo-check--done todo-check--readonly" : "todo-check todo-check--readonly"}
+                                    aria-hidden="true"
+                                  >
+                                    {isDone ? <span className="todo-check__mark">✓</span> : null}
+                                  </span>
+                                )}
                                 <Link href={`/?${inspectQuery}`} className="kanban-card__title task-row__title">
                                   {task.title}
                                 </Link>
@@ -813,7 +837,7 @@ export default async function TodoWorkspacePage({
                       )}
                     </div>
 
-                    {!col.isCompleted && (
+                    {signedIn && !col.isCompleted && (
                       <details className="kanban-col__add">
                         <summary>+ Add card</summary>
                         <form action={createTask} className="kanban-col__add-form">
@@ -870,11 +894,20 @@ export default async function TodoWorkspacePage({
 
                 return (
                   <article key={task.id} className={rowClass} role="listitem" data-task-row="true">
-                    <TaskCheckButton
-                      taskId={task.id}
-                      completed={isDone}
-                      label={isDone ? `Reopen ${task.title}` : `Complete ${task.title}`}
-                    />
+                    {signedIn ? (
+                      <TaskCheckButton
+                        taskId={task.id}
+                        completed={isDone}
+                        label={isDone ? `Reopen ${task.title}` : `Complete ${task.title}`}
+                      />
+                    ) : (
+                      <span
+                        className={isDone ? "todo-check todo-check--done todo-check--readonly" : "todo-check todo-check--readonly"}
+                        aria-hidden="true"
+                      >
+                        {isDone ? <span className="todo-check__mark">✓</span> : null}
+                      </span>
+                    )}
                     <div className="task-row__body">
                       <div className="task-row__top">
                         <Link href={`/?${inspectQuery}`} className="task-row__title">
@@ -949,14 +982,14 @@ export default async function TodoWorkspacePage({
                           {assignee.initials}
                         </span>
                       )}
-                      {!isDone && status !== "now" && (
+                      {signedIn && !isDone && status !== "now" && (
                         <form action={moveTaskBucket} className="inline-form">
                           <input type="hidden" name="id" value={task.id} />
                           <input type="hidden" name="statusBucket" value="now" />
                           <button className="btn btn--subtle btn--xs" title="Move to Now">Now</button>
                         </form>
                       )}
-                      {!isDone && (
+                      {signedIn && !isDone && (
                         <form action={snoozeTask} className="inline-form">
                           <input type="hidden" name="id" value={task.id} />
                           <input type="hidden" name="days" value={1} />
@@ -964,7 +997,7 @@ export default async function TodoWorkspacePage({
                         </form>
                       )}
                       <Link href={`/?${inspectQuery}`} className="btn btn--subtle btn--xs">
-                        Edit
+                        {signedIn ? "Edit" : "View"}
                       </Link>
                     </div>
                   </article>
@@ -996,214 +1029,281 @@ export default async function TodoWorkspacePage({
             </Link>
           </div>
 
-          <div className="inspector__quickbar">
-            <form action={toggleTask} className="inline-form">
-              <input type="hidden" name="id" value={selectedTask.id} />
-              <button className="btn btn--primary btn--xs">
-                {selectedTask.completedAt ? "Reopen task" : "Complete"}
-              </button>
-            </form>
-            {selectedTask.completedAt === null && selectedTask.recurringDays > 0 && (
-              <form action={completeAndStopRecurring} className="inline-form">
+          {signedIn ? (
+            <>
+              <div className="inspector__quickbar">
+                <form action={toggleTask} className="inline-form">
+                  <input type="hidden" name="id" value={selectedTask.id} />
+                  <button className="btn btn--primary btn--xs">
+                    {selectedTask.completedAt ? "Reopen task" : "Complete"}
+                  </button>
+                </form>
+                {selectedTask.completedAt === null && selectedTask.recurringDays > 0 && (
+                  <form action={completeAndStopRecurring} className="inline-form">
+                    <input type="hidden" name="id" value={selectedTask.id} />
+                    <button className="btn btn--subtle btn--xs">Complete &amp; stop recurring</button>
+                  </form>
+                )}
+                {selectedTask.completedAt === null && (
+                  <form action={snoozeTask} className="inline-form">
+                    <input type="hidden" name="id" value={selectedTask.id} />
+                    <input type="hidden" name="days" value={7} />
+                    <button className="btn btn--subtle btn--xs">Snooze +7d</button>
+                  </form>
+                )}
+                <form action={deleteTask} className="inline-form">
+                  <input type="hidden" name="id" value={selectedTask.id} />
+                  <button className="btn btn--danger btn--xs">Trash</button>
+                </form>
+              </div>
+
+              {/* Interactive Subtask Checklist Island */}
+              <ChecklistEditor taskId={selectedTask.id} initialItems={selectedChecklistItems} />
+
+              <form action={updateTask} className="inspector__card">
                 <input type="hidden" name="id" value={selectedTask.id} />
-                <button className="btn btn--subtle btn--xs">Complete &amp; stop recurring</button>
-              </form>
-            )}
-            {selectedTask.completedAt === null && (
-              <form action={snoozeTask} className="inline-form">
-                <input type="hidden" name="id" value={selectedTask.id} />
-                <input type="hidden" name="days" value={7} />
-                <button className="btn btn--subtle btn--xs">Snooze +7d</button>
-              </form>
-            )}
-            <form action={deleteTask} className="inline-form">
-              <input type="hidden" name="id" value={selectedTask.id} />
-              <button className="btn btn--danger btn--xs">Trash</button>
-            </form>
-          </div>
 
-          {/* Interactive Subtask Checklist Island */}
-          <ChecklistEditor taskId={selectedTask.id} initialItems={selectedChecklistItems} />
+                <div className="inspector__field">
+                  <label className="inspector__label" htmlFor="edit-title">Title</label>
+                  <input
+                    id="edit-title"
+                    name="title"
+                    className="field-input"
+                    required
+                    maxLength={240}
+                    defaultValue={selectedTask.title}
+                  />
+                </div>
 
-          <form action={updateTask} className="inspector__card">
-            <input type="hidden" name="id" value={selectedTask.id} />
+                <div className="inspector__field">
+                  <label className="inspector__label" htmlFor="edit-notes">Short notes</label>
+                  <textarea
+                    id="edit-notes"
+                    name="notes"
+                    className="field-textarea"
+                    maxLength={600}
+                    defaultValue={selectedTask.notes ?? ""}
+                    placeholder="Concise summary shown in the task list…"
+                  />
+                </div>
 
-            <div className="inspector__field">
-              <label className="inspector__label" htmlFor="edit-title">Title</label>
-              <input
-                id="edit-title"
-                name="title"
-                className="field-input"
-                required
-                maxLength={240}
-                defaultValue={selectedTask.title}
-              />
-            </div>
+                <div className="inspector__field">
+                  <label className="inspector__label" htmlFor="edit-url">Action URL</label>
+                  <input
+                    id="edit-url"
+                    name="url"
+                    type="url"
+                    className="field-input"
+                    defaultValue={selectedTask.url ?? ""}
+                    placeholder="https://…"
+                  />
+                </div>
 
-            <div className="inspector__field">
-              <label className="inspector__label" htmlFor="edit-notes">Short notes</label>
-              <textarea
-                id="edit-notes"
-                name="notes"
-                className="field-textarea"
-                maxLength={600}
-                defaultValue={selectedTask.notes ?? ""}
-                placeholder="Concise summary shown in the task list…"
-              />
-            </div>
+                <div className="inspector__grid">
+                  <div className="inspector__field">
+                    <label className="inspector__label" htmlFor="edit-status">Status bucket</label>
+                    <select id="edit-status" name="statusBucket" className="field-select">
+                      <option value="inbox" selected={selectedStatus === "inbox"}>Inbox</option>
+                      <option value="now" selected={selectedStatus === "now"}>Now</option>
+                      <option value="follow-up" selected={selectedStatus === "follow-up"}>Follow-up</option>
+                      <option value="later" selected={selectedStatus === "later"}>Later</option>
+                    </select>
+                  </div>
+                  <div className="inspector__field">
+                    <label className="inspector__label" htmlFor="edit-priority">Priority</label>
+                    <select id="edit-priority" name="priority" className="field-select">
+                      <option value="none" selected={selectedTask.priority === "none"}>None</option>
+                      <option value="low" selected={selectedTask.priority === "low"}>Low</option>
+                      <option value="medium" selected={selectedTask.priority === "medium"}>Medium</option>
+                      <option value="high" selected={selectedTask.priority === "high"}>High</option>
+                    </select>
+                  </div>
+                </div>
 
-            <div className="inspector__field">
-              <label className="inspector__label" htmlFor="edit-url">Action URL</label>
-              <input
-                id="edit-url"
-                name="url"
-                type="url"
-                className="field-input"
-                defaultValue={selectedTask.url ?? ""}
-                placeholder="https://…"
-              />
-            </div>
+                <div className="inspector__grid">
+                  <div className="inspector__field">
+                    <label className="inspector__label" htmlFor="edit-visibility">Visibility</label>
+                    <select id="edit-visibility" name="visibility" className="field-select">
+                      <option value="private" selected={selectedTask.visibility === "private"}>Private</option>
+                      <option value="team" selected={selectedTask.visibility === "team"}>Shared with Team</option>
+                    </select>
+                  </div>
+                  <div className="inspector__field">
+                    <label className="inspector__label" htmlFor="edit-assignee">Assignee</label>
+                    <select id="edit-assignee" name="assigneeId" className="field-select">
+                      <option value="" selected={selectedTask.assigneeId === null}>Unassigned</option>
+                      <option value={String(currentUserId)} selected={selectedTask.assigneeId === currentUserId}>
+                        {currentUserName} (me)
+                      </option>
+                      {selectedTask.assigneeId !== null && selectedTask.assigneeId !== currentUserId && (
+                        <option value={String(selectedTask.assigneeId)} selected>
+                          User #{selectedTask.assigneeId}
+                        </option>
+                      )}
+                    </select>
+                  </div>
+                </div>
 
-            <div className="inspector__grid">
-              <div className="inspector__field">
-                <label className="inspector__label" htmlFor="edit-status">Status bucket</label>
-                <select id="edit-status" name="statusBucket" className="field-select">
-                  <option value="inbox" selected={selectedStatus === "inbox"}>Inbox</option>
-                  <option value="now" selected={selectedStatus === "now"}>Now</option>
-                  <option value="follow-up" selected={selectedStatus === "follow-up"}>Follow-up</option>
-                  <option value="later" selected={selectedStatus === "later"}>Later</option>
-                </select>
-              </div>
-              <div className="inspector__field">
-                <label className="inspector__label" htmlFor="edit-priority">Priority</label>
-                <select id="edit-priority" name="priority" className="field-select">
-                  <option value="none" selected={selectedTask.priority === "none"}>None</option>
-                  <option value="low" selected={selectedTask.priority === "low"}>Low</option>
-                  <option value="medium" selected={selectedTask.priority === "medium"}>Medium</option>
-                  <option value="high" selected={selectedTask.priority === "high"}>High</option>
-                </select>
-              </div>
-            </div>
+                <div className="inspector__field">
+                  <span className="inspector__label">Projects, Areas &amp; Resources</span>
+                  <ParaBucketPicker
+                    buckets={selectedPickerBuckets}
+                    initialCsv={selectedParaIds}
+                  />
+                </div>
 
-            <div className="inspector__grid">
-              <div className="inspector__field">
-                <label className="inspector__label" htmlFor="edit-visibility">Visibility</label>
-                <select id="edit-visibility" name="visibility" className="field-select">
-                  <option value="private" selected={selectedTask.visibility === "private"}>Private</option>
-                  <option value="team" selected={selectedTask.visibility === "team"}>Shared with Team</option>
-                </select>
-              </div>
-              <div className="inspector__field">
-                <label className="inspector__label" htmlFor="edit-assignee">Assignee</label>
-                <select id="edit-assignee" name="assigneeId" className="field-select">
-                  <option value="" selected={selectedTask.assigneeId === null}>Unassigned</option>
-                  <option value={String(currentUserId)} selected={selectedTask.assigneeId === currentUserId}>
-                    {currentUserName} (me)
-                  </option>
-                  {selectedTask.assigneeId !== null && selectedTask.assigneeId !== currentUserId && (
-                    <option value={String(selectedTask.assigneeId)} selected>
-                      User #{selectedTask.assigneeId}
-                    </option>
-                  )}
-                </select>
-              </div>
-            </div>
+                <div className="inspector__grid">
+                  <div className="inspector__field">
+                    <label className="inspector__label" htmlFor="edit-schedule">Schedule date</label>
+                    <input
+                      id="edit-schedule"
+                      name="scheduledDate"
+                      type="date"
+                      className="field-input"
+                      defaultValue={selectedTask.scheduledAt ? selectedTask.scheduledAt.slice(0, 10) : ""}
+                    />
+                  </div>
+                  <div className="inspector__field">
+                    <label className="inspector__label" htmlFor="edit-pending">Promote to</label>
+                    <select id="edit-pending" name="pendingBucket" className="field-select">
+                      <option value="now" selected={(selectedTask.pendingBucket ?? "now") === "now"}>Now</option>
+                      <option value="inbox" selected={selectedTask.pendingBucket === "inbox"}>Inbox</option>
+                      <option value="follow-up" selected={selectedTask.pendingBucket === "follow-up"}>Follow-up</option>
+                      <option value="later" selected={selectedTask.pendingBucket === "later"}>Later</option>
+                    </select>
+                  </div>
+                </div>
 
-            <div className="inspector__field">
-              <span className="inspector__label">Projects, Areas &amp; Resources</span>
-              <ParaBucketPicker
-                buckets={selectedPickerBuckets}
-                initialCsv={selectedParaIds}
-              />
-            </div>
-
-            <div className="inspector__grid">
-              <div className="inspector__field">
-                <label className="inspector__label" htmlFor="edit-schedule">Schedule date</label>
-                <input
-                  id="edit-schedule"
-                  name="scheduledDate"
-                  type="date"
-                  className="field-input"
-                  defaultValue={selectedTask.scheduledAt ? selectedTask.scheduledAt.slice(0, 10) : ""}
-                />
-              </div>
-              <div className="inspector__field">
-                <label className="inspector__label" htmlFor="edit-pending">Promote to</label>
-                <select id="edit-pending" name="pendingBucket" className="field-select">
-                  <option value="now" selected={(selectedTask.pendingBucket ?? "now") === "now"}>Now</option>
-                  <option value="inbox" selected={selectedTask.pendingBucket === "inbox"}>Inbox</option>
-                  <option value="follow-up" selected={selectedTask.pendingBucket === "follow-up"}>Follow-up</option>
-                  <option value="later" selected={selectedTask.pendingBucket === "later"}>Later</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="inspector__grid">
-              <div className="inspector__field">
-                <label className="inspector__label" htmlFor="edit-recurring">Repeat every (days)</label>
-                <input
-                  id="edit-recurring"
-                  name="recurringDays"
-                  type="number"
-                  min={0}
-                  max={3650}
-                  className="field-input"
-                  defaultValue={selectedTask.recurringDays}
-                />
-              </div>
-              <div className="inspector__field">
-                <label className="inspector__label" htmlFor="edit-blocker">Blocked by</label>
-                <select id="edit-blocker" name="blockedBy" className="field-select">
-                  <option value="" selected={selectedTask.blockedBy === null}>None (unblocked)</option>
-                  {blockerCandidates.map((candidate) => (
-                    <option
-                      key={candidate.id}
-                      value={String(candidate.id)}
-                      selected={selectedTask.blockedBy === candidate.id}
-                    >
-                      {candidate.title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <button className="btn btn--primary">Save changes</button>
-            {updateState.error && (
-              <p role="alert" className="form-banner form-banner--error">
-                {updateState.error.message}
-              </p>
-            )}
-            {updateState.result && (
-              <p role="status" className="form-banner form-banner--ok">
-                Saved changes.
-              </p>
-            )}
-          </form>
-
-          {/* Progressive Move Helper (for touch / no-JS board fallback) */}
-          {activeLayout === "board" && boardGroup !== "priority" && (
-            <form action={moveTaskColumn} className="inspector__card">
-              <input type="hidden" name="id" value={selectedTask.id} />
-              <input type="hidden" name="groupBy" value={boardGroup} />
-              <div className="inspector__field">
-                <label className="inspector__label" htmlFor="move-col-select">Move card to column</label>
-                <div className="checklist-add">
-                  <select id="move-col-select" name="targetBucketId" className="field-select checklist-add__input">
-                    <option value="">Unassigned</option>
-                    {allBuckets
-                      .filter((b) => b.kind === boardGroup && b.parent > 0)
-                      .map((b) => (
-                        <option key={b.id} value={String(b.id)} selected={selectedTask.bucketIds.includes(b.id)}>
-                          {b.name}
+                <div className="inspector__grid">
+                  <div className="inspector__field">
+                    <label className="inspector__label" htmlFor="edit-recurring">Repeat every (days)</label>
+                    <input
+                      id="edit-recurring"
+                      name="recurringDays"
+                      type="number"
+                      min={0}
+                      max={3650}
+                      className="field-input"
+                      defaultValue={selectedTask.recurringDays}
+                    />
+                  </div>
+                  <div className="inspector__field">
+                    <label className="inspector__label" htmlFor="edit-blocker">Blocked by</label>
+                    <select id="edit-blocker" name="blockedBy" className="field-select">
+                      <option value="" selected={selectedTask.blockedBy === null}>None (unblocked)</option>
+                      {blockerCandidates.map((candidate) => (
+                        <option
+                          key={candidate.id}
+                          value={String(candidate.id)}
+                          selected={selectedTask.blockedBy === candidate.id}
+                        >
+                          {candidate.title}
                         </option>
                       ))}
-                  </select>
-                  <button className="btn btn--subtle btn--xs">Move</button>
+                    </select>
+                  </div>
                 </div>
+
+                <button className="btn btn--primary">Save changes</button>
+                {updateState.error && (
+                  <p role="alert" className="form-banner form-banner--error">
+                    {updateState.error.message}
+                  </p>
+                )}
+                {updateState.result && (
+                  <p role="status" className="form-banner form-banner--ok">
+                    Saved changes.
+                  </p>
+                )}
+              </form>
+
+              {/* Progressive Move Helper (for touch / no-JS board fallback) */}
+              {activeLayout === "board" && boardGroup !== "priority" && (
+                <form action={moveTaskColumn} className="inspector__card">
+                  <input type="hidden" name="id" value={selectedTask.id} />
+                  <input type="hidden" name="groupBy" value={boardGroup} />
+                  <div className="inspector__field">
+                    <label className="inspector__label" htmlFor="move-col-select">Move card to column</label>
+                    <div className="checklist-add">
+                      <select id="move-col-select" name="targetBucketId" className="field-select checklist-add__input">
+                        <option value="">Unassigned</option>
+                        {allBuckets
+                          .filter((b) => b.kind === boardGroup && b.parent > 0)
+                          .map((b) => (
+                            <option key={b.id} value={String(b.id)} selected={selectedTask.bucketIds.includes(b.id)}>
+                              {b.name}
+                            </option>
+                          ))}
+                      </select>
+                      <button className="btn btn--subtle btn--xs">Move</button>
+                    </div>
+                  </div>
+                </form>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="inspector__card">
+                <h2 className="inspector-readonly__title">{selectedTask.title}</h2>
+                {selectedTask.notes && <p className="inspector-readonly__notes">{selectedTask.notes}</p>}
+                <div className="task-row__meta">
+                  {selectedTask.priority !== "none" && (
+                    <span className={`chip chip--priority-${selectedTask.priority}`}>{selectedTask.priority}</span>
+                  )}
+                  {taskParaBuckets(selectedTask, allBuckets).map((bucket) => (
+                    <span key={bucket.id} className="chip">
+                      <span
+                        className="chip__dot"
+                        style={{ backgroundColor: bucket.color ?? "#64748b" }}
+                        aria-hidden="true"
+                      />
+                      {bucket.name}
+                    </span>
+                  ))}
+                  {selectedTask.scheduledAt && (
+                    <span className="chip chip--schedule">◫ {selectedTask.scheduledAt.slice(0, 10)}</span>
+                  )}
+                  {selectedTask.recurringDays > 0 && (
+                    <span className="chip">↻ {selectedTask.recurringDays}d</span>
+                  )}
+                  {selectedTask.url && (
+                    <a href={selectedTask.url} target="_blank" rel="noreferrer" className="chip chip--link">
+                      Link ↗
+                    </a>
+                  )}
+                </div>
+                <a
+                  href={wp_login_url(home_url(`/?${buildQuery({ ...baseState, task: selectedTask.id })}`))}
+                  className="btn btn--primary btn--xs"
+                >
+                  Sign in to edit this task
+                </a>
               </div>
-            </form>
+
+              {selectedChecklistItems.length > 0 && (
+                <section className="inspector__card checklist-card" aria-label="Subtask checklist">
+                  <div className="checklist-card__head">
+                    <span className="inspector__label">Checklist</span>
+                    <span className="checklist-card__count">
+                      {checklistProgress(selectedTask.checklist).done}/{selectedChecklistItems.length}
+                    </span>
+                  </div>
+                  <ul className="checklist-list">
+                    {selectedChecklistItems.map((entry) => (
+                      <li key={entry.index} className={entry.done ? "checklist-item checklist-item--done" : "checklist-item"}>
+                        <span
+                          className={entry.done ? "todo-check todo-check--sm todo-check--done todo-check--readonly" : "todo-check todo-check--sm todo-check--readonly"}
+                          aria-hidden="true"
+                        >
+                          <span className="todo-check__mark">{entry.done ? "✓" : ""}</span>
+                        </span>
+                        <span className="checklist-item__label">{entry.label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </>
           )}
 
           {/* Native WordPress Comments for Task Notes & Discussion */}

@@ -10,6 +10,8 @@ export const tasks = createTasksCollection({
   label: "Tasks",
   url: "/tasks/:slug",
   sync: "content/tasks/*.md",
+  // Read-only anonymous preview for live demos; all writes stay authenticated.
+  anonymousRead: true,
 });
 
 export const settings = createTodoSettings();

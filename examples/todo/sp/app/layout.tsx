@@ -29,14 +29,14 @@ export default async function RootLayout({ children }: LayoutProps) {
           <Link href="/?view=now&layout=list" className="sp-topbar__link sp-topbar__link--desktop">List</Link>
           <Link href="/?view=all&layout=board" className="sp-topbar__link sp-topbar__link--desktop">Board</Link>
           <Link href="/?view=team" className="sp-topbar__link sp-topbar__link--desktop">Team</Link>
-          <a href="/wp-admin/new/" className="sp-topbar__link">Admin</a>
+          {signedIn && <a href="/wp-admin/new/" className="sp-topbar__link">Admin</a>}
           {account !== false ? (
             <span className="sp-topbar__user" title={account.user_email}>
               <span className="avatar-badge">{account.display_name.slice(0, 2).toUpperCase()}</span>
               <span className="sp-topbar__link--desktop">{account.display_name}</span>
             </span>
           ) : (
-            <a href={wp_login_url(home_url("/"))} className="sp-topbar__link">Sign in</a>
+            <a href={wp_login_url(home_url("/"))} className="btn btn--primary btn--xs">Sign in</a>
           )}
         </nav>
       </header>

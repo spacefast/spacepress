@@ -862,6 +862,44 @@ kbd {
   color: #ffffff;
 }
 
+.todo-check--readonly {
+  cursor: default;
+  pointer-events: none;
+}
+
+.preview-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-subtle);
+  color: var(--ink-secondary);
+  font-size: 13px;
+}
+
+.preview-banner strong {
+  color: var(--ink-primary);
+}
+
+.inspector-readonly__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink-primary);
+}
+
+.inspector-readonly__notes {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-secondary);
+}
+
 .todo-check__mark {
   font-size: 12px;
   font-weight: 700;

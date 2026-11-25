@@ -6,7 +6,7 @@ Reusable GTD + PARA task and Kanban board module for [SpacePress](https://spacep
 
 - **WordPress-native data model (`./schema`):**
   - `createTodoBuckets()` — a hierarchical WordPress `taxonomy()` with `kind` (`status`, `project`, `area`, `resource`), `color`, and `sortOrder`. Workflow statuses (`inbox`, `now`, `follow-up`, `later`) and PARA buckets live in the same vocabulary, or a host app can pass its own shared taxonomy into `createTasksCollection({ buckets })`.
-  - `createTasksCollection({ buckets })` — a WordPress `collection()` with `revisions`, `softDelete`, native WordPress `comments`, private-by-default or team-shared `access`, optional `assigneeId`, `repeater()` subtask `checklist`, `completedAt`, `scheduledAt` + `pendingBucket`, self-referencing `blockedBy`, and `recurringDays`.
+  - `createTasksCollection({ buckets, anonymousRead? })` — a WordPress `collection()` with `revisions`, `softDelete`, native WordPress `comments`, private-by-default or team-shared `access` (plus optional `anonymousRead: true` for read-only public/demo previews while writes stay authenticated), optional `assigneeId`, `repeater()` subtask `checklist`, `completedAt`, `scheduledAt` + `pendingBucket`, self-referencing `blockedBy`, and `recurringDays`.
   - `createTodoSettings()` — workspace global settings (`workspaceName`, `tagline`, `defaultLayout`, `defaultBoardGroup`).
 - **Pure domain helpers (`./domain`):**
   - Generic taxonomy bucket transitions (`replaceKindBucket`, `replaceStatusBucket`, `appendBucketUnique`, `removeBucketId`, `bucketIdsForKind`)

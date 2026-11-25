@@ -65,6 +65,8 @@ export interface TodoTasksOptions<TBuckets = TodoBucketsKind> {
   label?: string;
   url?: `/${string}`;
   sync?: `${string}/*.md` | `${string}/*.json`;
+  /** Allow anonymous visitors read-only access (e.g. for public demos). Writes stay authenticated. Defaults to `false`. */
+  anonymousRead?: boolean;
 }
 
 export function createTasksCollection<TBuckets extends TodoBucketsKind = TodoBucketsKind>(
@@ -115,13 +117,21 @@ export function createTasksCollection<TBuckets extends TodoBucketsKind = TodoBuc
       softDelete: true,
       sync: options.sync,
       access: {
-        read: (ctx) => {
-          if (!ctx.user) return { ownerId: -1 };
-          if (ctx.user.role === "admin") return true;
-          return {
-            OR: [{ ownerId: ctx.user.id }, { assigneeId: ctx.user.id }, { visibility: "team" }],
-          };
-        },
+        read: options.anonymousRead
+          ? (ctx) => {
+              if (!ctx.user) return true;
+              if (ctx.user.role === "admin") return true;
+              return {
+                OR: [{ ownerId: ctx.user.id }, { assigneeId: ctx.user.id }, { visibility: "team" }],
+              };
+            }
+          : (ctx) => {
+              if (!ctx.user) return { ownerId: -1 };
+              if (ctx.user.role === "admin") return true;
+              return {
+                OR: [{ ownerId: ctx.user.id }, { assigneeId: ctx.user.id }, { visibility: "team" }],
+              };
+            },
         create: "authenticated",
         update: (ctx) => {
           if (!ctx.user) return { ownerId: -1 };

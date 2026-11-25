@@ -110,6 +110,15 @@ try {
   await page.click("button.measure");
   await page.waitForFunction(() => document.querySelector("button.measure").textContent !== "unmeasured", null, { timeout: 15000 });
   const ref = await page.textContent("button.measure");
+  // Handlers that call each other: a click's handler awaits another one and calls two more, and
+  // the one a mount callback started without waiting has filled its state.
+  const relayText = (name) => page.textContent(`[data-wp-interactive='clients/Relay'] .relay-${name}`);
+  await page.click("button.relay-run");
+  await page.waitForFunction(() => document.querySelector(".relay-steps").textContent.endsWith("done"), null, { timeout: 15000 })
+    .catch((e) => { throw new Error(`${e.message}\nwarnings: ${JSON.stringify(warnings)}`); });
+  await page.click("button.relay-show");
+  await page.waitForFunction(() => document.querySelector(".relay-shown").textContent !== "unseen", null, { timeout: 15000 });
+  const relay = { total: await relayText("total"), steps: await relayText("steps"), shown: await relayText("shown") };
   // A CSS module's renamed class, switched by state, styles the element from the linked stylesheet.
   const toggle = "[data-wp-interactive='clients/Toggle']";
   const look = () => page.$eval(toggle, (el) => [el.className, getComputedStyle(el).color, el.textContent]);
@@ -196,7 +205,7 @@ try {
   };
   await signedIn.close();
   const liveRequests = requests.filter((r) => decodeURIComponent(r).replace(/[?&].*$/, "").endsWith("/_live") || decodeURIComponent(r).includes("rest_route=/spacepress/v1/_live")).length;
-  process.stdout.write(JSON.stringify({ abilityRuns, refused, signed, live: { before: liveBefore, loading: loadingAttr, write: write.status, after: liveAfter, polled: liveRequests > 0 }, client, before, after, hydration, output, items, seen, ref, toggleBefore, toggleAfter, shelfSteps, kept, warnings, responses }));
+  process.stdout.write(JSON.stringify({ abilityRuns, refused, signed, live: { before: liveBefore, loading: loadingAttr, write: write.status, after: liveAfter, polled: liveRequests > 0 }, client, before, after, hydration, output, items, seen, ref, relay, toggleBefore, toggleAfter, shelfSteps, kept, warnings, responses }));
 } finally {
   await browser.close();
 }

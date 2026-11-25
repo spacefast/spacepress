@@ -2008,8 +2008,8 @@ fn frontend_modes_on_wordpress() {
 /// to a store module that runs in the browser without a bundler. Driven here under Node against a
 /// stand-in `@wordpress/interactivity` (tests/differential/client): state getters recompute from
 /// context, an async handler awaits a server action through the typed client (its Ability), setters
-/// with an updater, effects, mount, window events, `withSyncEvent` for `preventDefault`, and
-/// shared state.
+/// with an updater, effects, mount, window events, `withSyncEvent` for `preventDefault`, shared
+/// state, and handlers that call each other.
 #[test]
 fn client_components_compile_to_interactivity_stores() {
     let project = fixture("client-components", "stores");
@@ -2114,6 +2114,15 @@ fn client_components_compile_to_interactivity_stores() {
         effects,
         serde_json::json!({ "mounted": -1, "n": 10, "items": 2, "shown": 2, "seen": 100, "width": 777, "submitted": { "n": 0, "prevented": true },
             "ref": { "tag": "OUTPUT", "asked": ["[data-sp-ref=\"box\"]"] }, "detached": "none" })
+    );
+    // A handler calls another one of its component as the runtime's own actions call each other:
+    // a plain one answers at once (in a nested callback too), an awaited one gives its answer
+    // back, and a mount callback that starts an async one returns before it has finished.
+    let relay = drive("clients/Relay", "relay.mjs");
+    assert_eq!(
+        relay,
+        serde_json::json!({ "twice": 8, "loadedAtMount": 0, "loaded": 105, "total": 210,
+            "steps": "start,run,a,b,done", "shown": "105" })
     );
     // The server HTML carries the directives the store answers to.
     let functions = std::fs::read_to_string(plugin.join("sp/app/functions.php")).unwrap();
@@ -3604,6 +3613,13 @@ fn client_components_hydrate_in_the_browser() {
     );
     // `ref={box}` on the `<output>`: a handler reads that element through `box.current`.
     assert_eq!(seen["ref"], "OUTPUT", "{seen}");
+    // Handlers that call each other, on the runtime itself: the click's handler awaits one and
+    // calls two more, and the one the mount callback started has finished by then.
+    assert_eq!(
+        seen["relay"],
+        serde_json::json!({ "total": "210", "steps": "start,run,a,b,done", "shown": "105" }),
+        "{seen}"
+    );
     // The CSS module's class is renamed on both sides, and the stylesheet the page links applies.
     assert_eq!(
         (&seen["toggleBefore"], &seen["toggleAfter"]),

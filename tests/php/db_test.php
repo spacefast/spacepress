@@ -700,8 +700,11 @@ $rmMig = static function (string $id) use ($wp): void {
     @rmdir($dir);
 };
 $childrenBefore = $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]);
-$writeMig('20261121000001_000001_note', 'ALTER TABLE `{prefix}sp_locations` ADD COLUMN `note` LONGTEXT;');
+// A compiled baseline can still carry the SQL and hash from before the rename.
+$legacySql = 'ALTER TABLE `{prefix}tp_locations` ADD COLUMN `note` LONGTEXT;';
+$writeMig('20261121000001_000001_note', $legacySql);
 eq('`wp spacepress migrate` applies the pending folder', $wp->wpCli(['migrate']), [0, ['data' => ['applied' => ['20261121000001_000001_note']]]]);
+eq('replaying old SQL records the original file hash', $wp->scalar('SELECT `sql` FROM {prefix}sp__migrations WHERE `app` = ? AND `id` = ?', ['dbtest', '20261121000001_000001_note']), hash('sha256', $legacySql));
 eq('child rows survive the parent change (no cascade fired)', $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]), $childrenBefore);
 eq('the table has the new column and the ledger the migration', [
     $wp->scalar('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$wp->connection()->prefix() . 'sp_locations', 'note']),

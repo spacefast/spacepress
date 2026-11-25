@@ -258,7 +258,11 @@ final class Migrator
         foreach ($this->migrationFiles() as $id => $file) {
             $raw = (string) file_get_contents($file);
             $hashes[$id] = hash('sha256', $raw);
-            $migrations[$id] = self::statements(str_replace('{prefix}', $this->db->prefix(), $raw));
+            $prefix = $this->db->prefix();
+            $migrations[$id] = array_map(
+                static fn (string $statement): string => str_replace('{prefix}', $prefix, Legacy::migrationStatement($statement)),
+                self::statements($raw),
+            );
         }
 
         return ['migrations' => $migrations, 'hashes' => $hashes, 'done' => array_flip($this->hasLedger() ? $this->done() : [])];

@@ -89,7 +89,7 @@ export const opsDashboard = adminDashboard({
   description: "Live editorial & sales overview",
   access: "editor",
   widgets: [
-    "sp/content-overview",
+    "tp/content-overview",
     { widget: salesPulse, width: 2, height: 2 },
   ],
 });

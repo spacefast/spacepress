@@ -471,6 +471,11 @@ impl DashboardExtractor<'_, '_> {
                 }),
             Value::Str(s) if BUILTIN_WIDGETS.contains(&s.as_ref()) => Ok(s.to_string()),
             Value::Str(s) => {
+                if let Some(legacy) = s.strip_prefix("tp/")
+                    && let Some(current) = BUILTIN_WIDGETS.iter().find(|id| id.strip_prefix("sp/") == Some(legacy))
+                {
+                    return Ok((*current).to_string());
+                }
                 let mut d = Diag::new(span, format!("unknown built-in dashboard widget `{s}`"));
                 d = match suggest(s, BUILTIN_WIDGETS.iter().copied()) {
                     Some(hit) => d.help(format!("did you mean `\"{hit}\"`?")),

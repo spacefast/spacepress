@@ -140,6 +140,21 @@ pub fn build(
         .unwrap_or_else(|| "app".into());
     let mut ext =
         extract::extract(&config, &mut ev, config_span, &dir_name).map_err(|d| d.phase(diag::Code::Schema))?;
+    // Hosts adapting an old capture record the original root as an alias. Resolve sync
+    // directories after evaluation, including patterns supplied through constants or helpers.
+    if loader::legacy_capture(&*program.fs, root) {
+        for collection in ext.schema.collections.values_mut() {
+            if let Some(sync) = &mut collection.sync
+                && let Some(dir) = sync["dir"].as_str()
+            {
+                if dir == "tp" {
+                    sync["dir"] = crate::layout::ROOT.into();
+                } else if let Some(rest) = dir.strip_prefix("tp/") {
+                    sync["dir"] = format!("{}/{rest}", crate::layout::ROOT).into();
+                }
+            }
+        }
+    }
     wp_hooks(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     let blocks = components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     app::register(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;

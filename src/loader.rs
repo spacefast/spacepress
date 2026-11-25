@@ -975,6 +975,11 @@ fn load_query_asset(
     Ok(id)
 }
 
+/// A host that moved an earlier capture's source files keeps the old root as a canonical alias.
+pub(crate) fn legacy_capture(fs: &dyn Fs, root: &Path) -> bool {
+    fs.captured() && fs.canonicalize(&root.join("tp")).ok().as_deref() == Some(&root.join(crate::layout::ROOT))
+}
+
 /// A stylesheet or static asset import: no code, so its module has an empty body, and the file
 /// itself is read into `program.assets` (copied to `sp/app/assets/<stem>-<hash>.<ext>`). For
 /// stylesheets, local relative `@import` rules and relative `url(...)` references are bundled and
@@ -1037,7 +1042,11 @@ fn load_asset(
         asset.file = format!("{}{relative}", crate::assets::UNBUILT_STYLE);
     }
     if let Some(url) = bundled_url {
-        if !url.strip_prefix("/spacepress-styles/assets/").is_some_and(|file| {
+        let file = url.strip_prefix("/spacepress-styles/assets/").or_else(|| {
+            url.strip_prefix("/typedpress-styles/assets/")
+                .filter(|_| legacy_capture(fs, &program.root))
+        });
+        if !file.is_some_and(|file| {
             file.ends_with(".css")
                 && file
                     .bytes()

@@ -46,11 +46,12 @@ fn build(project: &Path) {
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let root = repo();
     let types = root.join("types/spacepress/index.d.ts");
+    let server = root.join("types/spacepress/server.d.ts");
     // fetch, process and node:crypto come from the standard declarations (tests/host-types).
     let node = root.join("tests/host-types/node_modules/@types");
     assert!(node.join("node").is_dir(), "run: npm ci --prefix tests/host-types");
     std::fs::write(project.join("tsconfig.json"), serde_json::json!({
-        "compilerOptions": {"target":"ES2022", "lib":["ES2022"], "module":"ESNext", "moduleResolution":"bundler", "strict":true,"noEmit":true,"types":["node"],"typeRoots":[node],"paths":{"spacepress":[types]}},
+        "compilerOptions": {"target":"ES2022", "lib":["ES2022"], "module":"ESNext", "moduleResolution":"bundler", "strict":true,"noEmit":true,"types":["node"],"typeRoots":[node],"paths":{"spacepress":[types],"spacepress/server":[server]}},
         "include":["spacepress.config.ts","sp/_generated/db.d.ts","sp/server/**/*.ts","sp/shared/**/*.ts","sp/app/**/route.ts"]
     }).to_string()).unwrap();
     let checked = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))

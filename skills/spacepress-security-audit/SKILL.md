@@ -24,7 +24,7 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    - Verify private fields (emails, tokens, internal notes) declare field-level `.access()` so REST, pages, and clients strip them automatically.
 
 2. Audit every `sp/app/**/page.tsx` and `sp/app/**/route.ts`:
-   - Confirm visitor-facing reads import kinds from `"spacepress/server/db"` (which enforces `.access()` rules) instead of bypassing them with trusted `db` from `"spacepress"`.
+   - Confirm visitor-facing reads import kinds from `"spacepress/server/db"` (which enforces `.access()` rules) instead of bypassing them with trusted `db` from `"spacepress/server"`.
    - Confirm custom `route.ts` handlers export an explicit `guard` (or verify webhook signatures before mutating data).
 
 3. Audit every `query()`, `mutation()`, and `job()`:

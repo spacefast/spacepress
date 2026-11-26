@@ -30,9 +30,9 @@ Define WordPress collections, custom SQL tables, access rules, hooks, server act
 // spacepress.config.ts
 import {
   wp, table, text, integer, boolean,
-  ref, mutation, job, HttpError, defineConfig,
+  ref, mutation, job, defineConfig,
 } from "spacepress";
-import { tasks } from "spacepress:db";
+import { HttpError } from "spacepress/server";
 
 // Native WordPress posts extended with typed fields, URL routing, comments & Markdown sync
 export const posts = wp.posts.extend({
@@ -73,7 +73,7 @@ Render server-side TSX pages in `sp/app/` (compiled directly to PHP) with `"use 
 
 ```tsx
 // sp/app/page.tsx
-import { posts } from "spacepress:db";
+import { posts } from "spacepress/server/db";
 import { Link } from "spacepress/app";
 
 export const metadata = { title: "Home" };

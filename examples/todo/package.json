@@ -1,0 +1,8 @@
+{
+  "name": "spacepress-example-todo",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@spacepress/todo": "file:../../packages/todo"
+  }
+}

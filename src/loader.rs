@@ -2459,7 +2459,7 @@ fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span, conditions:
         || target.ends_with(".d.mts")
         || !matches!(
             path.extension().and_then(|extension| extension.to_str()),
-            Some("ts" | "mts" | "js" | "mjs" | "cjs")
+            Some("ts" | "tsx" | "mts" | "js" | "mjs" | "cjs")
         )
     {
         return Err(package_error(

@@ -4327,9 +4327,9 @@ fn a_plugin_package_runs_under_its_locked_grant() {
     );
 }
 
-/// A plugin package may ship `"use client"` islands. Each one is a `browser` entry in the lock, so
-/// a new island is a lock diff the owner reviews: `--frozen` refuses one the lock doesn't list, and
-/// an entry the owner removed stays removed.
+/// A plugin package may ship `"use client"` islands. Each one is a `browser` entry in the lock, by
+/// path and a hash of its code, so a new or changed island is a lock diff the owner reviews:
+/// `--frozen` refuses one the lock doesn't list, and an entry the owner removed stays removed.
 #[test]
 fn a_plugin_island_is_a_browser_entry_in_its_lock() {
     let tmp = tempfile::tempdir().unwrap();
@@ -4337,39 +4337,60 @@ fn a_plugin_island_is_a_browser_entry_in_its_lock() {
     copy(&root().join("tests/fixtures/plugin-client"), &project);
     let island = "node_modules/spacepress-plugin-widget/src/Counter.tsx";
     let lock = project.join("sp/_generated/plugins.lock.json");
+    let build = |args: &[&str]| {
+        let out = first().args(args).arg(&project).output().unwrap();
+        (out.status.code(), String::from_utf8_lossy(&out.stderr).into_owned())
+    };
+    let browser = || -> Vec<String> {
+        let lock: serde_json::Value = serde_json::from_slice(&std::fs::read(&lock).unwrap()).unwrap();
+        serde_json::from_value(lock["plugins"]["widget"]["grant"]["browser"].clone()).unwrap()
+    };
 
-    let refused = first().args(["build", "--frozen"]).arg(&project).output().unwrap();
-    let stderr = String::from_utf8_lossy(&refused.stderr);
-    assert_eq!(refused.status.code(), Some(1), "{stderr}");
+    let (code, stderr) = build(&["build", "--frozen"]);
+    assert_eq!(code, Some(1), "{stderr}");
     assert!(
         stderr.contains("plugin \"widget\" (spacepress-plugin-widget@1.0.0) isn't in"),
         "{stderr}"
     );
 
-    let out = first().arg("build").arg(&project).output().unwrap();
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(out.status.success(), "{stderr}");
-    assert!(stderr.contains(&format!("+ browser: {island}")), "{stderr}");
-    let written: serde_json::Value = serde_json::from_slice(&std::fs::read(&lock).unwrap()).unwrap();
-    assert_eq!(
-        written["plugins"]["widget"]["grant"]["browser"],
-        serde_json::json!([island])
-    );
-    let out = first().args(["build", "--frozen"]).arg(&project).output().unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let (code, stderr) = build(&["build"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    let approved = browser();
+    assert_eq!(approved.len(), 1, "{approved:?}");
+    assert!(approved[0].starts_with(&format!("{island}@sha256-")), "{approved:?}");
+    assert!(stderr.contains(&format!("+ browser: {}", approved[0])), "{stderr}");
+    let (code, stderr) = build(&["build", "--frozen"]);
+    assert_eq!(code, Some(0), "{stderr}");
+
+    // New code at the approved path: --frozen refuses it; a plain build records it as a diff.
+    let source = project.join(island);
+    let original = std::fs::read_to_string(&source).unwrap();
+    std::fs::write(&source, original.replace("setN(n + 1)", "setN(n + 2)")).unwrap();
+    let (code, stderr) = build(&["build", "--frozen"]);
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(stderr.contains(&format!("grants it only {}", approved[0])), "{stderr}");
+    assert!(stderr.contains(&format!("--> {island}:1:1")), "{stderr}");
+    let (code, stderr) = build(&["build"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stderr.contains(&format!("- browser: {}", approved[0])), "{stderr}");
+    assert_ne!(browser(), approved);
+    std::fs::write(&source, original).unwrap();
+    let (code, stderr) = build(&["build"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(browser(), approved);
 
     // The owner removes the island from the grant; the unchanged package is refused, with or
     // without --frozen, at the island's file.
-    let mut narrowed = written.clone();
+    let mut narrowed: serde_json::Value = serde_json::from_slice(&std::fs::read(&lock).unwrap()).unwrap();
     narrowed["plugins"]["widget"]["grant"]["browser"] = serde_json::json!([]);
     std::fs::write(&lock, serde_json::to_string_pretty(&narrowed).unwrap()).unwrap();
     for args in [&["build"][..], &["build", "--frozen"]] {
-        let refused = first().args(args).arg(&project).output().unwrap();
-        let stderr = String::from_utf8_lossy(&refused.stderr);
-        assert_eq!(refused.status.code(), Some(1), "{args:?}: {stderr}");
+        let (code, stderr) = build(args);
+        assert_eq!(code, Some(1), "{args:?}: {stderr}");
         assert!(
             stderr.contains(&format!(
-                "plugin \"widget\" ships the browser island {island}; sp/_generated/plugins.lock.json grants it no `browser`"
+                "plugin \"widget\" ships the browser island {}; sp/_generated/plugins.lock.json grants it no `browser`",
+                approved[0]
             )),
             "{args:?}: {stderr}"
         );
@@ -6449,6 +6470,12 @@ fn an_installed_component_library_supplies_blocks_styles_and_islands() {
         .collect();
     assert!(
         stores.iter().any(|f| f.starts_with("toggle.") && f.ends_with(".js")),
+        "{stores:?}"
+    );
+    assert!(
+        stores
+            .iter()
+            .any(|f| f.starts_with("disclosure.") && f.ends_with(".js")),
         "{stores:?}"
     );
 }

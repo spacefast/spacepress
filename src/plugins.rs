@@ -32,8 +32,9 @@ pub const KINDS: &[(&str, &str)] = &[
     // PHP functions imported from "php/wordpress" (later "php/<slug>" or "php"), recorded as
     // `<source>:<function>`.
     ("php", "calls the PHP function"),
-    // `"use client"` modules the plugin's package ships, by project-relative path. Browser code
-    // runs outside the compiler's capability checks, so each island is a lock entry the owner reviews.
+    // `"use client"` modules the plugin's package ships, as `<project-relative path>@sha256-<hex>`.
+    // Browser code runs outside the compiler's capability checks, so each island, and each change
+    // to its code, is a lock entry the owner reviews.
     ("browser", "ships the browser island"),
 ];
 
@@ -50,7 +51,7 @@ pub struct Plugin {
     pub version: String,
     /// `sha256-<hex>` over every module the plugin's package reaches, by project-relative path.
     pub integrity: String,
-    /// The `"use client"` modules the package reaches, by project-relative path, each with its span.
+    /// The `"use client"` modules the package reaches, as `<path>@<digest>`, each with its span.
     pub islands: Vec<(String, Span)>,
 }
 
@@ -265,20 +266,19 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
             })
             .collect();
         files.sort();
+        // Each island by path and a hash of its browser code (the island and the relative modules
+        // it imports), so a package update that changes an approved island is a lock change too.
         plugins[i].islands = files
             .iter()
-            .filter_map(|(name, id)| {
-                let m = &program.modules[*id];
-                m.use_client.then(|| {
-                    (
-                        name.clone(),
-                        Span {
-                            file: m.file,
-                            start: 0,
-                            end: 0,
-                        },
-                    )
-                })
+            .filter(|(_, m)| program.modules[*m].use_client)
+            .map(|(name, m)| {
+                let module = &program.modules[*m];
+                let span = Span {
+                    file: module.file,
+                    start: 0,
+                    end: 0,
+                };
+                (format!("{name}@{}", browser_digest(program, *m, &project)), span)
             })
             .collect();
         let mut hash = Sha256::new();
@@ -297,6 +297,42 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
         plugins[i].integrity = format!("sha256-{}", crate::hex(hash.finalize()));
     }
     Ok(())
+}
+
+/// `sha256-<hex>` over a `"use client"` module and every module it imports, by project-relative path.
+fn browser_digest(program: &Program, island: usize, project: &Path) -> String {
+    let mut reached = BTreeSet::from([island]);
+    let mut queue = vec![island];
+    while let Some(m) = queue.pop() {
+        for (spec, _) in import_spans(program, m) {
+            if let Some(&target) = program.resolved.get(&(m, spec))
+                && reached.insert(target)
+            {
+                queue.push(target);
+            }
+        }
+    }
+    let mut files: Vec<(String, &Path)> = reached
+        .iter()
+        .map(|&m| {
+            let path = program.modules[m].path.as_path();
+            let name = path
+                .strip_prefix(project)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            (name, path)
+        })
+        .collect();
+    files.sort();
+    let mut hash = Sha256::new();
+    for (name, path) in files {
+        hash.update(name.as_bytes());
+        hash.update([0]);
+        hash.update(program.fs.read_to_string(path).unwrap_or_default().as_bytes());
+        hash.update([0]);
+    }
+    format!("sha256-{}", crate::hex(hash.finalize()))
 }
 
 /// What the build decided about the plugins.

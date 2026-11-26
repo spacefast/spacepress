@@ -152,6 +152,29 @@ export function CopyButtons({ label }: { label: string }) {
 }
 ```
 
+## Components from npm packages
+
+An installed package can ship `.tsx` components, both server components and
+`"use client"` islands, plus the stylesheets they need. Import them from a page,
+a layout, or a file in `sp/components/`:
+
+```tsx
+// sp/components/docs.tsx
+import "@acme/docs-ui/styles.css";
+export { Callout, Steps, Step } from "@acme/docs-ui";
+export const blocks = ["Callout", "Steps", "Step"];
+```
+
+A package exports a stylesheet like any other file, with an `exports` entry such
+as `"./styles.css": "./src/styles.css"`. A stylesheet that a block component
+file imports links on every route, because content can place the block on any
+page. A package that calls `definePlugin()` can ship islands too. Each one is a
+`browser` entry in `sp/_generated/plugins.lock.json`: its path in the package,
+such as `spacepress-plugin-widget/src/Counter.tsx`, and a hash of its code and
+the modules it imports. A new or changed island shows up as a lock
+change to review, and `spacepress build --frozen` refuses one the lock doesn't
+list.
+
 ## Static export
 
 Set `output: "static"` in `defineConfig()` and export `staticParams()` on dynamic routes, then run `spacepress export` to emit a standalone static site to `sp/dist/static/`.

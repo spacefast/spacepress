@@ -4545,6 +4545,123 @@ fn a_plugin_package_runs_under_its_locked_grant() {
     );
 }
 
+/// A `"use client"` route file is a page, not an island: two of them with the same default export
+/// name build.
+#[test]
+fn use_client_route_files_are_pages_not_islands() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("clientroutes");
+    for (file, source) in [
+        (
+            "spacepress.config.ts",
+            "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"clientroutes\" });\n",
+        ),
+        (
+            "sp/app/page.tsx",
+            "\"use client\";\nexport default function Page() { return <main>Home</main>; }\n",
+        ),
+        (
+            "sp/app/about/page.tsx",
+            "\"use client\";\nexport default function Page() { return <main>About</main>; }\n",
+        ),
+    ] {
+        let path = project.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    }
+    let out = first().arg("check").arg(&project).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+/// A plugin package may ship `"use client"` islands. Each one is a `browser` entry in the lock, by
+/// `<package>/<path>` and a hash of its code, so a new or changed island is a lock diff the owner
+/// reviews: `--frozen` refuses one the lock doesn't list, and the owner can remove an entry, which
+/// the unchanged package then can't add back.
+#[test]
+fn a_plugin_island_is_a_browser_entry_in_its_lock() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("widget");
+    copy(&root().join("tests/fixtures/plugin-client"), &project);
+    let island = "node_modules/spacepress-plugin-widget/src/Counter.tsx";
+    let entry = "spacepress-plugin-widget/src/Counter.tsx";
+    let lock = project.join("sp/_generated/plugins.lock.json");
+    // `CI` makes every build frozen; this test also needs the builds that update the lock.
+    let build = |args: &[&str]| {
+        let out = first().args(args).env_remove("CI").arg(&project).output().unwrap();
+        (out.status.code(), String::from_utf8_lossy(&out.stderr).into_owned())
+    };
+    let browser = || -> Vec<String> {
+        let lock: serde_json::Value = serde_json::from_slice(&std::fs::read(&lock).unwrap()).unwrap();
+        serde_json::from_value(lock["plugins"]["widget"]["grant"]["browser"].clone()).unwrap()
+    };
+
+    let (code, stderr) = build(&["build", "--frozen"]);
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(
+        stderr.contains("plugin \"widget\" (spacepress-plugin-widget@1.0.0) isn't in"),
+        "{stderr}"
+    );
+
+    let (code, stderr) = build(&["build"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    let approved = browser();
+    assert_eq!(approved.len(), 1, "{approved:?}");
+    assert!(approved[0].starts_with(&format!("{entry}@sha256-")), "{approved:?}");
+    assert!(stderr.contains(&format!("+ browser: {}", approved[0])), "{stderr}");
+    let (code, stderr) = build(&["build", "--frozen"]);
+    assert_eq!(code, Some(0), "{stderr}");
+
+    // New code at the approved path: --frozen refuses it; a plain build records it as a diff.
+    let source = project.join(island);
+    let original = std::fs::read_to_string(&source).unwrap();
+    std::fs::write(&source, original.replace("setN(n + 1)", "setN(n + 2)")).unwrap();
+    let (code, stderr) = build(&["build", "--frozen"]);
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(stderr.contains(&format!("grants it only {}", approved[0])), "{stderr}");
+    assert!(stderr.contains(&format!("--> {island}:1:1")), "{stderr}");
+    let (code, stderr) = build(&["build"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stderr.contains(&format!("- browser: {}", approved[0])), "{stderr}");
+    assert_ne!(browser(), approved);
+    std::fs::write(&source, original).unwrap();
+    let (code, stderr) = build(&["build"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(browser(), approved);
+
+    // A stylesheet the island's own stylesheet `@import`s is browser code too.
+    let theme = project.join("node_modules/spacepress-plugin-widget/src/theme.css");
+    std::fs::write(&theme, ".counter { color: blue; }\n").unwrap();
+    let (code, stderr) = build(&["build", "--frozen"]);
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(stderr.contains(&format!("grants it only {}", approved[0])), "{stderr}");
+    // A plain build reads it as a package update and records it, not as an owner's narrowing.
+    let (code, stderr) = build(&["build"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stderr.contains(&format!("- browser: {}", approved[0])), "{stderr}");
+    std::fs::write(&theme, ".counter { color: red; }\n").unwrap();
+    let (code, stderr) = build(&["build"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(browser(), approved);
+
+    // The owner removes the island from the grant; the unchanged package is refused, with or
+    // without --frozen, at the island's file.
+    let mut narrowed: serde_json::Value = serde_json::from_slice(&std::fs::read(&lock).unwrap()).unwrap();
+    narrowed["plugins"]["widget"]["grant"]["browser"] = serde_json::json!([]);
+    std::fs::write(&lock, serde_json::to_string_pretty(&narrowed).unwrap()).unwrap();
+    for args in [&["build"][..], &["build", "--frozen"]] {
+        let (code, stderr) = build(args);
+        assert_eq!(code, Some(1), "{args:?}: {stderr}");
+        assert!(
+            stderr.contains(&format!(
+                "plugin \"widget\" ships the browser island {}; sp/_generated/plugins.lock.json grants it no `browser`",
+                approved[0]
+            )),
+            "{args:?}: {stderr}"
+        );
+        assert!(stderr.contains(&format!("--> {island}:1:1")), "{args:?}: {stderr}");
+    }
+}
+
 /// One large imported function in the shape of picomatch's `parse.js`: a token loop whose
 /// branches push, pop, slice and copy token objects that point at each other through `prev`.
 /// The effects solver once re-ran every rule over every fact on each pass, which took minutes
@@ -6576,6 +6693,99 @@ fn refused_helper_chain_stays_linear_on_speculative_retries() {
             "unexpected diagnostic ({entry}):\n{stderr}"
         );
     }
+}
+
+/// A component library that isn't a plugin: its server components are the app's Markdown blocks,
+/// its stylesheet export links on every route content renders on, and its `"use client"` component
+/// compiles to a store, though none of its `.tsx` sits in a `components/` folder.
+#[test]
+fn an_installed_component_library_supplies_blocks_styles_and_islands() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("pkgui");
+    copy(&root().join("tests/fixtures/package-components"), &project);
+    let out = first().arg("build").arg(&project).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let app = project.join("sp/dist/wp-content/plugins/spacepress-app-pkgui/sp/app");
+    let schema = std::fs::read_to_string(app.join("schema.php")).unwrap();
+    assert!(schema.contains("'pkgui/callout' => ['tag' => 'Callout'"), "{schema}");
+    let styles: Vec<&str> = schema.lines().filter(|l| l.contains("'styles' => [")).collect();
+    assert!(!styles.is_empty(), "{schema}");
+    for line in styles {
+        assert!(
+            line.contains("'styles' => ['site-") && line.contains("styles-"),
+            "{line}"
+        );
+    }
+    let assets: Vec<String> = std::fs::read_dir(app.join("assets"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    let sheet = assets
+        .iter()
+        .find(|f| f.starts_with("styles-"))
+        .expect("the package's stylesheet");
+    assert!(
+        std::fs::read_to_string(app.join("assets").join(sheet))
+            .unwrap()
+            .contains(".acme-callout")
+    );
+    let stores: Vec<String> = std::fs::read_dir(app.join("client"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        stores.iter().any(|f| f.starts_with("toggle.") && f.ends_with(".js")),
+        "{stores:?}"
+    );
+    assert!(
+        stores
+            .iter()
+            .any(|f| f.starts_with("disclosure.") && f.ends_with(".js")),
+        "{stores:?}"
+    );
+}
+
+/// A package hoisted out of the project (a workspace's `node_modules` one folder up) builds the same
+/// output and the same plugin lock wherever the checkout sits: islands and lock files are named by
+/// package, not by path.
+#[test]
+fn a_hoisted_package_builds_the_same_wherever_it_is_installed() {
+    let build = |fixture: &str, at: &Path| -> PathBuf {
+        let workspace = at.join("ws");
+        let project = workspace.join("app");
+        copy(&root().join(fixture), &project);
+        std::fs::rename(project.join("node_modules"), workspace.join("node_modules")).unwrap();
+        let out = first().arg("build").arg(&project).env_remove("CI").output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        project
+    };
+    let (one, two) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let schema = |project: &Path| {
+        std::fs::read_to_string(project.join("sp/dist/wp-content/plugins/spacepress-app-pkgui/sp/app/schema.php"))
+            .unwrap()
+    };
+    let (a, b) = (
+        build("tests/fixtures/package-components", one.path()),
+        build("tests/fixtures/package-components", two.path()),
+    );
+    let (sa, sb) = (schema(&a), schema(&b));
+    assert!(sa.contains("'@acme/docs-ui/src/ui/client.tsx#Toggle'"), "{sa}");
+    for dir in [one.path(), two.path()] {
+        let dir = dir.to_string_lossy();
+        assert!(
+            !sa.contains(dir.trim_start_matches("/private")) && !sb.contains(dir.trim_start_matches("/private")),
+            "{sa}"
+        );
+    }
+    assert_eq!(sa, sb);
+    let (one, two) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let lock = |project: &Path| std::fs::read_to_string(project.join("sp/_generated/plugins.lock.json")).unwrap();
+    let (la, lb) = (
+        lock(&build("tests/fixtures/plugin-client", one.path())),
+        lock(&build("tests/fixtures/plugin-client", two.path())),
+    );
+    assert!(la.contains("spacepress-plugin-widget/src/Counter.tsx@sha256-"), "{la}");
+    assert_eq!(la, lb);
 }
 
 /// A constant's declared type crosses imports, aliased re-exports and `export *`: compiled code

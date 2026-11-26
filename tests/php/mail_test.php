@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
- * mail.send from "spacepress" on an in-process WordPress (tests/php/wp.php): message
+ * mail.send from "spacepress/server" on an in-process WordPress (tests/php/wp.php): message
  * normalization, header and address safety, the transactional queue, wp_mail hand-off arguments,
  * the host transport filter and retries. Delivery is drained through Action Scheduler.
  */

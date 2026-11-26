@@ -14,7 +14,7 @@
 | `render(entry)` / `<Content />` | `<Content value={item.body} />` | |
 | `Astro.props`, frontmatter variables | component props, the component body | |
 | `<a href="/x">` | `<Link href="/x">` | |
-| `client:load` / `client:visible` island | `"use client"` component, `useState` from `"spacepress/client"` | npm imports: flag |
+| `client:load` / `client:visible` island | `"use client"` component, `useState` from `"react"` | npm imports: flag |
 | `client:only` | `"use client"` component | renders on the server too |
 | `public/` | `public/` | |
 | `astro:assets` `<Image>` | `<img>` with a `public/` or media URL | by hand |

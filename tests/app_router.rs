@@ -2124,6 +2124,16 @@ fn client_components_compile_to_interactivity_stores() {
         serde_json::json!({ "summed": { "total": 10, "kind": "some" }, "fetched": ["/items.json"], "written": ["/docs/next"],
             "title": "/docs/next", "copied": "/docs/next", "href": "/docs/next" })
     );
+    // Callbacks that run after their handler returns read derived values, refs and other
+    // handlers through the handler's scope; handlers call each other (an async one awaited);
+    // block scopes, a self-calling `const` arrow, parameter defaults, rest and destructuring,
+    // `for await` and a `function` expression. `log` is
+    // "<got> <was> <seen> <ticks> <later> <heard> <tag> <odd> <sum> <pick> <n>".
+    let later = drive("clients/Later", "later.mjs");
+    assert_eq!(
+        later,
+        serde_json::json!({ "log": "2 2 3,0,3 3 4 3 BUTTON 2 3 13 3", "n": 3 })
+    );
     // The server HTML carries the directives the store answers to.
     let functions = std::fs::read_to_string(plugin.join("sp/app/functions.php")).unwrap();
     // A server component a client component renders stays a server component: Badge (in a file
@@ -2250,6 +2260,30 @@ fn refuses_client_code_outside_the_subset() {
         )],
         "`fetch` isn't available in the browser",
         "sp/components/A.tsx:4:",
+    );
+    // `this` has no receiver in client code: refused with a diagnostic, not emitted as an arrow
+    // parameter named `this`.
+    rejects(
+        &dir,
+        &[(
+            "sp/components/A.tsx",
+            &component(
+                "export function A() { const [n, setN] = useState(0); return <b onClick={() => { document.body.addEventListener(\"click\", function () { this.remove(); }); }}>{n}</b>; }",
+            ),
+        )],
+        "`this` isn't supported in client code",
+        "sp/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "sp/components/A.tsx",
+            &component(
+                "export function A() { const [n, setN] = useState(0); return <b onClick={() => { for (var i = 0; i < 2; i++) setTimeout(() => setN(i)); }}>{n}</b>; }",
+            ),
+        )],
+        "`var` isn't supported in client code",
+        "sp/components/A.tsx:3:",
     );
     // Page properties can be set; props can't, even inside a loop.
     rejects(
@@ -3637,6 +3671,8 @@ fn client_components_hydrate_in_the_browser() {
     );
     // `ref={box}` on the `<output>`: a handler reads that element through `box.current`.
     assert_eq!(seen["ref"], "OUTPUT", "{seen}");
+    // The Later store under the real runtime: deferred callbacks keep the handler's scope.
+    assert_eq!(seen["later"], "2 2 3,0,3 3 4 3 BUTTON 2 3 13 3", "{seen}");
     // The CSS module's class is renamed on both sides, and the stylesheet the page links applies.
     assert_eq!(
         (&seen["toggleBefore"], &seen["toggleAfter"]),

@@ -6,6 +6,7 @@ import { Guestbook } from "../components/Guestbook";
 import { Card } from "../components/Card";
 import { Switch } from "../components/Switch";
 import { Loops } from "../components/Loops";
+import { Later } from "../components/Later";
 
 export default function Home() {
   return (
@@ -18,6 +19,7 @@ export default function Home() {
       <Shelf books={[{ id: 1, title: "Dune" }, { id: 2, title: "Emma" }]} />
       <Guestbook limit={10} />
       <Loops items={[2, 5, -1]} />
+      <Later items={[2, 5, -1]} />
     </main>
   );
 }

@@ -9,7 +9,7 @@
 // All of it is git-ignored. Run `bun scripts/build.mjs` after changing browser/ or examples/;
 // `spacepress dev` rebuilds the pages itself. Build the compiler wasm and showcase zips first
 // with `npm run wasm && npm run showcase` in www/.
-import { readFileSync, writeFileSync, statSync, mkdirSync, copyFileSync, existsSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, statSync, mkdirSync, copyFileSync, existsSync, readdirSync, rmSync, renameSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateAiAssets } from "./generate-ai-assets.mjs";
@@ -27,6 +27,23 @@ mkdirSync(join(out, "playground-plugins"), { recursive: true });
 const sources = Bun.spawnSync(["node", join(here, "sources.mjs")]);
 if (sources.exitCode !== 0) throw new Error(`sources.mjs failed:\n${sources.stderr.toString()}`);
 
+// Bun 1.3 links local dependencies back to their source tree. Stage this package's
+// current files inside node_modules so both the native and browser compilers can read them.
+const docsSource = join(site, "..", "packages", "docs");
+const docsPackage = join(site, "node_modules", "@spacepress", "docs");
+const packageFiles = ["package.json"];
+for (const entry of readdirSync(join(docsSource, "src"), { recursive: true, withFileTypes: true })) {
+  if (entry.isFile()) packageFiles.push(relative(docsSource, join(entry.parentPath, entry.name)));
+}
+for (const file of packageFiles) {
+  const target = join(docsPackage, file);
+  mkdirSync(dirname(target), { recursive: true });
+  const temporary = `${target}.copy-${process.pid}`;
+  copyFileSync(join(docsSource, file), temporary);
+  renameSync(temporary, target);
+}
+
+const aiStats = generateAiAssets();
 const runData = Bun.spawnSync(["node", join(here, "run-data.ts")], { cwd: site });
 if (runData.exitCode !== 0) throw new Error(`run-data.ts failed:\n${runData.stderr.toString()}`);
 writeFileSync(join(out, "play-data.json"), runData.stdout);
@@ -70,7 +87,6 @@ const notice = ["@pierre/diffs", "@pierre/trees"].map((pkg) => {
 }).join("\n\n----------------------------------------\n\n");
 writeFileSync(join(out, "third-party-licenses.txt"), `This site renders code, file trees and diffs with these libraries.\nsite.js contains parts of them.\n\n${notice}\n`);
 
-const aiStats = generateAiAssets();
 let ghStars = { repo: "spacefast/spacepress", public: false, stars: null };
 if (process.env.WWW_FETCH_GITHUB_STARS === "1") try {
   const gh = Bun.spawnSync(["gh", "api", "repos/spacefast/spacepress", "--jq", "{public:(.visibility==\"public\"),stars:.stargazers_count}"]);

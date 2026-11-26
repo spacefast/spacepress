@@ -3,6 +3,7 @@
 /.showcase/
 /public/
 /sp/data/sources.ts
+/sp/data/doc-sources.ts
 # spacepress dev's local WordPress, and spacepress build's output.
 .sp/*
 !.sp/sync-base.json

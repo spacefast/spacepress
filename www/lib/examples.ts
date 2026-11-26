@@ -34,10 +34,10 @@ export function sources(dir: string, roots = readdirSync(dir)): Request["files"]
   const walk = (sub: string, names: string[]) => {
     for (const name of [...names].sort()) {
       const rel = sub ? `${sub}/${name}` : name;
-      const installed = rel === "node_modules" || sub.startsWith("node_modules");
+      const installed = rel === "node_modules" || rel.startsWith("node_modules/");
       if (!installed && (skip.has(rel) || anyDepth.has(name))) continue;
       // Of a package, the compiler reads its code and package.json; licenses and docs stay behind.
-      if (installed && rel !== "node_modules" && !/\.(c?m?js|json)$/.test(name) && !lstatSync(path.join(dir, rel)).isDirectory()) continue;
+      if (installed && rel !== "node_modules" && !/\.(c?m?js|tsx?|css|json)$/.test(name) && !lstatSync(path.join(dir, rel)).isDirectory()) continue;
       const stat = lstatSync(path.join(dir, rel));
       if (stat.isDirectory()) walk(rel, readdirSync(path.join(dir, rel)));
       else if (stat.isFile()) files[rel] = readFileSync(path.join(dir, rel), "utf8");

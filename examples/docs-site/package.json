@@ -1,0 +1,8 @@
+{
+  "name": "spacepress-example-docs-site",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@spacepress/docs": "file:../../packages/docs"
+  }
+}

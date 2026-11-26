@@ -34,7 +34,7 @@ function run(command, args, { capture = false, env = process.env, timeout = 600_
 }
 
 try {
-  for (const entry of ["spacepress.config.ts", "tsconfig.json", "sp", "public", "content", "scripts/seed.mjs"]) {
+  for (const entry of ["spacepress.config.ts", "tsconfig.json", "sp", "public", "content", "scripts/seed.mjs", "node_modules/@spacepress/docs"]) {
     cpSync(join(site, entry), join(project, entry), {
       recursive: true,
       filter: (source) => relative(site, source) !== "sp/dist",

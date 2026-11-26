@@ -1,0 +1,4 @@
+node_modules/
+sp/dist/
+.sp/*
+!.sp/sync-base.json

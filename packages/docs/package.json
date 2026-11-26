@@ -1,0 +1,43 @@
+{
+  "name": "@spacepress/docs",
+  "version": "0.1.0",
+  "description": "A documentation site for SpacePress apps: a docs collection, a three-column layout, search, page actions, and Markdown components (callouts, cards, steps, tabs, accordions, file trees, badges, and more)",
+  "license": "MIT",
+  "homepage": "https://github.com/spacefast/spacepress/tree/main/packages/docs#readme",
+  "type": "module",
+  "engines": {
+    "node": ">=22.23.4"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./schema": {
+      "types": "./src/schema.ts",
+      "default": "./src/schema.ts"
+    },
+    "./blocks": {
+      "types": "./src/blocks.ts",
+      "default": "./src/blocks.ts"
+    },
+    "./docs.css": "./src/docs.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spacefast/spacepress.git",
+    "directory": "packages/docs"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

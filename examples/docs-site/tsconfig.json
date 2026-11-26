@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "spacepress",
+    "strict": true,
+    "noEmit": true,
+    "types": [],
+    "rootDirs": [".", "./sp/_generated/types"],
+    "paths": {
+      "spacepress": ["../../types/spacepress/index.d.ts"],
+      "spacepress/app": ["../../types/spacepress/app.d.ts"],
+      "spacepress/server/db": ["../../types/spacepress/server-db.d.cts"],
+      "spacepress/react": ["../../packages/client/src/react.d.ts"],
+      "react": ["../../types/spacepress/react-shim.d.ts"],
+      "spacepress/jsx-runtime": ["../../types/spacepress/jsx-runtime.d.ts"],
+      "spacepress/jsx-dev-runtime": ["../../types/spacepress/jsx-dev-runtime.d.ts"],
+      "@spacepress/docs": ["../../packages/docs/src/index.ts"],
+      "@spacepress/docs/*": ["../../packages/docs/src/*.ts"],
+      "spacepress/content": ["../../types/spacepress/content.d.ts"]
+    }
+  },
+  "include": [
+    "spacepress.config.ts",
+    "sp/**/*.ts",
+    "sp/**/*.tsx",
+    "../../types/spacepress/assets.d.ts",
+    "../../types/spacepress/server-db.d.cts"
+  ],
+  "exclude": ["sp/_generated/client", "sp/dist", "node_modules"]
+}

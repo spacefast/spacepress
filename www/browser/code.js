@@ -193,7 +193,7 @@ function enhanceProsePre(pre) {
 let pendingTimer = null;
 
 function collectJobs(root = document) {
-  const prosePres = [...root.querySelectorAll(".sp-prose pre, pre.spacepress-code, pre.wp-block-code")]
+  const prosePres = [...root.querySelectorAll(".sd-prose pre, .sp-prose pre, pre.spacepress-code, pre.wp-block-code")]
     .filter((n) => !n.classList.contains("sp-drawn") && !n.closest("sp-code, sp-diff, sp-tree, sp-example, sp-sandbox, sp-play"));
 
   return [

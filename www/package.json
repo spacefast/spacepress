@@ -7,12 +7,13 @@
     "showcase": "node scripts/build-showcase.ts",
     "build": "node scripts/build-site.mjs",
     "bundle": "bun scripts/build.mjs",
-    "test": "node scripts/test-fresh.mjs",
+    "test": "npm test --prefix ../packages/docs && node scripts/test-fresh.mjs",
     "seed": "node scripts/seed.mjs"
   },
   "dependencies": {
     "@pierre/diffs": "1.6.4",
-    "@pierre/trees": "1.0.0"
+    "@pierre/trees": "1.0.0",
+    "@spacepress/docs": "file:../packages/docs"
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.1.18",

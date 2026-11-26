@@ -5,7 +5,7 @@ export const template = "blank";
 
 export const metadata = {
   title: { default: "SpacePress — The TypeScript Framework for WordPress", template: "%s · SpacePress" },
-  description: "Write TypeScript schemas, server actions, background jobs, and React TSX pages. SpacePress compiles them with Rust into native PHP, SQL migrations, OpenAPI, and WordPress plugins — zero Node.js in production.",
+  description: "Write TypeScript schemas, queries and mutations, background jobs, and React TSX pages. SpacePress compiles them with Rust into native PHP, SQL migrations, OpenAPI, and WordPress plugins — zero Node.js in production.",
   scripts: ["/site.js"],
   // Strichpunkt Sans and JetBrains Mono, the two faces site.css names (a stylesheet can't @import).
   links: [

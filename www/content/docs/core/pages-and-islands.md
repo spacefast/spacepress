@@ -15,6 +15,7 @@ SpacePress compiles TSX pages and layouts in `sp/app/` directly into server-rend
 - `sp/app/not-found.tsx` and `sp/app/login.tsx` — custom 404 and custom WordPress sign-in screens.
 - `export const search = { page: integer().default(1) }` — typed query string parsing.
 - `export const guard = "authenticated"` — route-level authorization.
+- `import type { PageProps, LayoutProps, StaticParams } from "./$types"` — the route's own props, generated per folder; see [Per-route types](/docs/getting-started/project-structure#per-route-types-types). On a route bound to a kind's `url`, `item` is the matched row.
 
 With `template = "theme"`, WordPress renders the TSX page in the block theme's
 **Page content** block (`<!-- wp:sp/page /-->`). Use the Site Editor to change
@@ -23,7 +24,7 @@ your layout supplies those elements.
 
 ## Built-in server components (`spacepress/app`)
 
-Use `<Link>` (Interactivity Router navigation), `<Content>` (block content via `the_content`), `<Html>` (sanitized HTML), `<Comments>`, `<Pagination>`, `<Search>`, `<SearchResults>`, `<LoginForm>`, `<TemplatePart>`, `<Live id="...">`, and `useFormState(action)` for progressive zero-JS `<form action={myAction}>` submissions.
+Use `<Link>` (Interactivity Router navigation), `<Content>` (block content via `the_content`), `<Html>` (sanitized HTML), `<Comments>`, `<Pagination>`, `<Search>`, `<SearchResults>`, `<LoginForm>`, `<TemplatePart>`, `<Live id="...">`, and `useFormState(action)` for `<form action={myAction}>` submissions that work without JavaScript.
 
 ### Forms that post to an action
 
@@ -122,9 +123,85 @@ until the commenter has an approved comment. Editors manage the thread under
 You can pass the same post to `<Comments>` on another page. Both places show
 the same WordPress comment thread.
 
-## `"use client"` interactive islands (`"react"` & `"spacepress/react"`)
+## "use client" interactive islands
 
-Start a component file with `"use client";`. Import standard React hooks (`useState`, `useEffect`, `useRef`) from `"react"`, SpacePress client hooks (`useLive`, `useMutation`, `useMount`, `useEvent`, `sharedState`, `uploadFile`) from `"spacepress/react"`, and typed client references (`api`) from `"../_generated/api"`. SpacePress renders the initial HTML in PHP and compiles the interactive logic into a WordPress Interactivity API store with zero React shipped to the page. Importing `"spacepress/server"` or `"spacepress/server/*"` inside a `"use client"` component is refused at build time — use `api` from `_generated/api` or `spacepress/client` instead.
+Start a component file with `"use client";`. Import standard React hooks (`useState`, `useEffect`, `useRef`) from `"react"`, SpacePress client hooks (`useLive`, `useMutation`, `useMount`, `useEvent`, `sharedState`, `uploadFile`) from `"spacepress/react"`, and typed references (`api`) from `"../_generated/api"`. SpacePress renders the initial HTML in PHP and compiles the interactive logic into a WordPress Interactivity API store. No React ships to the page.
+
+<Warning title="Server modules stay on the server">
+A `"use client"` file can't import `"spacepress/server"`, `"spacepress/server/*"`, `"spacepress/app"` or `"spacepress/content"`, directly or through another module. The build refuses it. Read and write data through `api` instead.
+</Warning>
+
+### Live reads and mutations with `api`
+
+`spacepress build` writes `sp/_generated/api`: typed references to every kind, action, global and file bucket, with no server code in them. Pass them to the hooks:
+
+```tsx
+// sp/components/TaskList.tsx
+"use client";
+import { useState } from "react";
+import { useLive, useMutation } from "spacepress/react";
+import { api } from "../_generated/api";
+
+export function TaskList({ project }: { project: number }) {
+  const [title, setTitle] = useState("");
+  const tasks = useLive(api.tasks.list({ where: { done: false }, limit: 20 }));
+  const add = useMutation(api.actions.addTask);
+  const problem = add.error?.message;
+  return (
+    <div>
+      <ul>
+        {(tasks.data ?? []).map((task) => <li key={task.id}>{task.title}</li>)}
+      </ul>
+      <input value={title} onInput={(event) => setTitle((event.target as HTMLInputElement).value)} />
+      <button
+        type="button"
+        disabled={add.pending}
+        onClick={async () => {
+          await add.mutate({ title, project });
+          setTitle("");
+        }}
+      >
+        Add
+      </button>
+      {problem && <p role="alert">{problem}</p>}
+    </div>
+  );
+}
+```
+
+- **`useLive(api.<kind>.list(query))`** or **`useLive(api.<kind>.get(id))`** returns `{ data, error, loading }`. The server answers the read as the visitor in the first render, so `data` is there before any script runs. The browser then subscribes to the same read and updates `data` when the rows change. The query takes `where`, `orderBy`, `limit`, `offset`, `with` and `columns`, typed by the kind.
+- **`useMutation(api.actions.<name>)`** returns `{ mutate, pending, error, reset }`. `mutate(input)` runs the query or mutation as the app's WordPress Ability, with the visitor's REST nonce, and resolves to its result. `pending` and `error` are reactive state.
+- A string such as `useLive("tasks")` is refused. So is importing these hooks from `"spacepress/client"`.
+
+### Upload a file from an island
+
+`uploadFile(bucket, file)` sends a browser `File` or `Blob` to a [`files()` bucket](/docs/core/actions-jobs-routes#private-files) and resolves to the stored file's `id`, `filename`, `mime`, `size` and a signed `url`. The bucket must be a string literal naming an exported bucket; the build checks it. Call it in an event handler or effect:
+
+```tsx
+"use client";
+import { useState } from "react";
+import { uploadFile } from "spacepress/react";
+
+export function Attach() {
+  const [name, setName] = useState("");
+  const onChange = async (event: Event) => {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const saved = await uploadFile("attachments", file);
+    setName(saved.filename);
+  };
+  return (
+    <label>
+      Attach a file <input type="file" onChange={onChange} />
+      {name && <span>Uploaded {name}</span>}
+    </label>
+  );
+}
+```
+
+An `onDrop` handler can read `event.dataTransfer.files` too. The bucket's `create` rule decides who may upload.
+
+### Browser code in handlers and effects
 
 Handlers and effects take ordinary browser code: loops (`for`, `for…of`, `for…in`, `while`, `do…while`) with `break`, `continue` and labels, `switch`, `try`, `throw`, and nested callbacks, including `async` ones such as a click listener that awaits `navigator.clipboard.writeText(…)`. They can call browser globals such as `fetch`, `localStorage`, `setTimeout`, `requestAnimationFrame`, `IntersectionObserver` and `URL`, and set page properties such as `document.title` or `window.location.href`. State still changes only through its setter, and props are read-only.
 
@@ -168,12 +245,15 @@ export const blocks = ["Callout", "Steps", "Step"];
 A package exports a stylesheet like any other file, with an `exports` entry such
 as `"./styles.css": "./src/styles.css"`. A stylesheet that a block component
 file imports links on every route, because content can place the block on any
-page. A package that calls `definePlugin()` can ship islands too. Each one is a
-`browser` entry in `sp/_generated/plugins.lock.json`: its path in the package,
-such as `spacepress-plugin-widget/src/Counter.tsx`, and a hash of its code and
-the modules it imports. A new or changed island shows up as a lock
-change to review, and `spacepress build --frozen` refuses one the lock doesn't
-list.
+page. [`@spacepress/docs`](/docs/integrations/docs-package) is a package built
+this way.
+
+A package that calls `definePlugin()` can ship islands too. Each one is a
+`browser` entry in `sp/_generated/plugins.lock.json`, named by its path in the
+package and a hash of its code and everything it imports, stylesheets and
+assets included: `spacepress-plugin-widget/src/Counter.tsx@sha256-…`. A new or
+changed island shows up as a lock change to review, and
+`spacepress build --frozen` refuses one the lock doesn't list.
 
 ## Static export
 

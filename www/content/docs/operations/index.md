@@ -6,9 +6,36 @@ order: 4
 status: published
 publishedAt: 2026-11-21T09:13:00.000Z
 ---
-- **[CLI & Deployment](/docs/operations/cli-and-deploy)** — complete command reference, plugin packaging, `spacepress push`, `doctor`, and sealed mode.
-- **[SpacePress Admin](/docs/operations/admin)** covers native content editing and experimental Gutenberg collaboration.
-- **[MCP & AI Agents](/docs/operations/mcp-and-agents)** — `spacepress init`, `spacepress mcp`, WordPress Abilities API, and `runtimeSchema`.
-- **[Deploy on Spacefast](/docs/operations/deploy-spacefast)** — zero-config cloud deployment built for SpacePress.
-- **[Deploy on Pressable & WordPress.com (WP Cloud)](/docs/operations/deploy-wp-cloud)** — managed WordPress deployment on WP Cloud (Pressable and plugin-enabled WordPress.com sites).
-- **[Deploy on Self-hosted WordPress](/docs/operations/deploy-self-hosted)** — server requirements, VPS, Docker, LAMP/LEMP, `SP_STORE_DIR`, standalone plugins, and cron setup.
+<CardGroup cols={2}>
+<Card title="CLI & Deployment" icon="square-terminal" href="/docs/operations/cli-and-deploy">
+The command reference, plugin packaging, `spacepress push`, `doctor`, and sealed mode.
+</Card>
+
+<Card title="MCP & AI Agents" icon="bot" href="/docs/operations/mcp-and-agents">
+`spacepress init`, `spacepress mcp`, the agent skills, and WordPress Abilities.
+</Card>
+
+<Card title="SpacePress Admin" icon="pencil" href="/docs/operations/admin">
+Content editing and experimental Gutenberg collaboration.
+</Card>
+
+<Card title="Upgrade to SpacePress" icon="refresh-cw" href="/docs/operations/upgrade-to-spacepress">
+Move a project and a site from a pre-release build to the SpacePress names.
+</Card>
+</CardGroup>
+
+## Hosting
+
+<CardGroup cols={3}>
+<Card title="Spacefast" icon="zap" href="/docs/operations/deploy-spacefast">
+Managed hosting built for SpacePress.
+</Card>
+
+<Card title="Pressable & WordPress.com" icon="cloud" href="/docs/operations/deploy-wp-cloud">
+WP Cloud sites with plugins enabled.
+</Card>
+
+<Card title="Self-hosted WordPress" icon="server" href="/docs/operations/deploy-self-hosted">
+VPS, Docker, or any LAMP/LEMP host.
+</Card>
+</CardGroup>

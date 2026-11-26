@@ -21,10 +21,23 @@ The script rewrites the tracked files and their paths to the current names:
 
 - the config file becomes `spacepress.config.ts`
 - the app folder becomes `sp/`
-- imports become `"spacepress"`, `"spacepress/app"` and `"spacepress/server/db"`
+- module names become `spacepress` (`"typedpress/app"` becomes `"spacepress/app"`)
 - the CLI dev dependency becomes `spacepress`
 
-It refuses to run when a renamed path already exists. Review the staged diff, run `npm install` and `spacepress build`, and commit. Your committed migrations under `sp/_generated/migrations/` keep their IDs, and the table names inside them change to match the site's renamed tables. Don't regenerate or renumber them. The site's ledger keeps the hash each one had when it was applied, and it already counts them as applied.
+It refuses to run when a renamed path already exists. Review the staged diff and run `npm install`.
+
+The rename keeps each import's shape, but the current compiler splits server imports by where the code runs. Run `spacepress check` and fix what it names; each message gives the new import:
+
+| Before | Now |
+|---|---|
+| `import { db, HttpError, once, mail } from "spacepress"` | `from "spacepress/server"` |
+| `"spacepress:db"` | `"spacepress/server/db"` |
+| `"php/wordpress"` | `"spacepress/server/wp"` |
+| `useLive`, `useMount`, `useEvent`, `sharedState` from `"spacepress/client"` | `from "spacepress/react"`, and `useState`, `useEffect`, `useRef` from `"react"` |
+| `useLive("notes", { limit: 10 })` | `useLive(api.notes.list({ limit: 10 }))` with `api` from `"../_generated/api"` |
+| `PageProps<"notes/[slug]">` | `import type { PageProps } from "./$types"` (with `rootDirs`; see [Project Structure](/docs/getting-started/project-structure#per-route-types-types)) |
+
+Then run `spacepress build` and commit. Your committed migrations under `sp/_generated/migrations/` keep their IDs, and the table names inside them change to match the site's renamed tables. Don't regenerate or renumber them. The site's ledger keeps the hash each one had when it was applied, and it already counts them as applied.
 
 ## 2. Upgrade the site
 

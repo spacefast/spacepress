@@ -369,6 +369,26 @@ enum Resolved {
     Global(&'static str),
 }
 
+#[derive(Clone)]
+struct Refinement {
+    path: String,
+    yes: Option<Ty>,
+    no: Option<Ty>,
+}
+
+impl Refinement {
+    fn branches(path: String, mut yes: Ty, mut no: Ty, negate: bool) -> Self {
+        if negate {
+            std::mem::swap(&mut yes, &mut no);
+        }
+        Self {
+            path,
+            yes: Some(yes),
+            no: Some(no),
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(super) enum DbMode {
     /// Full database reads/writes and host effects (hooks, actions, jobs, routes, pages).
@@ -3310,13 +3330,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
     // ---- narrowing ------------------------------------------------------------
 
     /// `x`, `!x`, `x === null`, `x != null`, `x && ...` narrow `x` in branches.
-    fn narrowing(&mut self, test: &Expr) -> Vec<(String, Ty, Ty)> {
+    fn narrowing(&mut self, test: &Expr) -> Vec<Refinement> {
         let mut out = Vec::new();
         self.collect_narrowing(test, false, &mut out);
         out
     }
 
-    fn collect_narrowing(&mut self, test: &Expr, negate: bool, out: &mut Vec<(String, Ty, Ty)>) {
+    fn collect_narrowing(&mut self, test: &Expr, negate: bool, out: &mut Vec<Refinement>) {
         match &test.kind {
             ExprKind::Call {
                 callee,
@@ -3331,18 +3351,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     && let Some((path, original)) = self.path_ty(argument)
                 {
                     let refined = *target;
-                    out.push(if negate {
-                        (path, original.clone(), refined)
-                    } else {
-                        (path, refined, original)
-                    });
+                    out.push(Refinement::branches(path, refined, original, negate));
                 }
             }
             ExprKind::Ident(_) | ExprKind::Member { .. } | ExprKind::Chain(_) => {
                 if let Some((n, t)) = self.path_ty(test) {
                     // A truthy value is neither nullish nor `false`.
                     let (yes, no) = (t.non_null().without_bool(false), t.clone());
-                    out.push(if negate { (n, no, yes) } else { (n, yes, no) });
+                    out.push(Refinement::branches(n, yes, no, negate));
                 }
             }
             ExprKind::Unary(UnOp::Not, inner) => self.collect_narrowing(inner, !negate, out),
@@ -3357,11 +3373,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     && !self.classes[&id].javascript
                 {
                     let instance = self.classes[&id].instance.clone();
-                    out.push(if negate {
-                        (path, original.clone(), instance)
-                    } else {
-                        (path, instance, original)
-                    });
+                    out.push(Refinement::branches(path, instance, original, negate));
                 }
             }
             // `"key" in x` keeps the object-union members that declare `key` (TypeScript's `in`
@@ -3374,11 +3386,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // TypeScript narrows `unknown` to `object & Record<key, unknown>`; reads
                     // through it stay checked (`dataGet`), whatever object the value is.
                     let yes = Ty::Obj([(key.clone(), (Ty::Unknown, false))].into_iter().collect());
-                    out.push(if negate {
-                        (path, Ty::Unknown, yes)
-                    } else {
-                        (path, yes, Ty::Unknown)
-                    });
+                    out.push(Refinement::branches(path, yes, Ty::Unknown, negate));
                 } else if let ExprKind::Str(key) = &key.kind
                     && let Some((path, original)) = self.path_ty(object)
                     && let Ty::Union(items) = &original
@@ -3402,6 +3410,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 }
                                 None => miss.push(item.clone()),
                             },
+                            // A nullish operand throws before either branch (`"k" in x!`).
+                            Ty::Null | Ty::Undefined | Ty::Void => {}
                             other => {
                                 hit.push(other.clone());
                                 miss.push(other.clone());
@@ -3409,7 +3419,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                     }
                     let (yes, no) = (Ty::union(hit), Ty::union(miss));
-                    out.push(if negate { (path, no, yes) } else { (path, yes, no) });
+                    out.push(Refinement::branches(path, yes, no, negate));
                 }
             }
             ExprKind::IsNullish(inner, negated) => {
@@ -3421,7 +3431,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     } else {
                         (t.non_null(), t.nullish())
                     };
-                    out.push((n, yes, no));
+                    out.push(Refinement::branches(n, yes, no, false));
                 }
             }
             ExprKind::Binary(op @ (BinOp::Eq | BinOp::Ne), l, r) => {
@@ -3441,11 +3451,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     let hit = scalar_typeof_part(&original, &target, true);
                     let miss = scalar_typeof_part(&original, &target, false);
-                    out.push(if (*op == BinOp::Eq) != negate {
-                        (path, hit, miss)
-                    } else {
-                        (path, miss, hit)
-                    });
+                    out.push(Refinement::branches(path, hit, miss, (*op == BinOp::Ne) != negate));
                     return;
                 }
                 // `item.layout === "hero"` picks that member of a blocks item union.
@@ -3469,7 +3475,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     } else {
                         (Ty::union(miss), Ty::union(hit))
                     };
-                    out.push((n, yes, no));
+                    out.push(Refinement::branches(n, yes, no, false));
                     return;
                 }
                 // `user === false` and `user !== false` split a union on its boolean literal, as
@@ -3486,11 +3492,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     let hit = Ty::union(items.iter().filter(|item| item.bool_literal() == Some(value)).cloned());
                     let miss = t.without_bool(value);
-                    out.push(if (*op == BinOp::Eq) != negate {
-                        (n, hit, miss)
-                    } else {
-                        (n, miss, hit)
-                    });
+                    out.push(Refinement::branches(n, hit, miss, (*op == BinOp::Ne) != negate));
+                    return;
+                }
+                // `x === "editor"` and `x !== "editor"` narrow a string, string-literal union, or
+                // unknown value to the matched literal on one side and remove it on the other.
+                let str_lit = match (&l.kind, &r.kind) {
+                    (_, ExprKind::Str(value)) => Some((l, value.as_str())),
+                    (ExprKind::Str(value), _) => Some((r, value.as_str())),
+                    _ => None,
+                };
+                if let Some((subject, value)) = str_lit
+                    && let Some((n, t)) = self.path_ty(subject)
+                    && t.can_be_str_literal(value)
+                {
+                    let hit = t.str_literal_part(value);
+                    let miss = t.without_str(value);
+                    out.push(Refinement::branches(n, hit, miss, (*op == BinOp::Ne) != negate));
                     return;
                 }
                 let (subject, other) = match (&l.kind, &r.kind) {
@@ -3516,7 +3534,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     } else {
                         (remaining, target)
                     };
-                    out.push((n, yes, no));
+                    out.push(Refinement::branches(n, yes, no, false));
                 }
             }
             ExprKind::Logical(op @ (LogOp::And | LogOp::Or), l, r) if (*op == LogOp::And) != negate => {
@@ -3530,26 +3548,45 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.fx().scopes.pop();
                 let right = out.split_off(start + left.len());
                 out.truncate(start);
-                out.extend(
-                    left.into_iter()
-                        .filter(|(name, _, _)| self.refinement_survives(r, name)),
-                );
-                out.extend(right);
-                // Both operands hold only on the conjunction's true side or
-                // the disjunction's false side. Keep the other side conservative:
-                // the declared type, or for a member path (`input.q`, which has no
-                // declaration of its own) both sides together, the type it had.
-                for entry in &mut out[start..] {
-                    entry.2 = self
-                        .declared_path_ty(&entry.0)
-                        .unwrap_or_else(|| Ty::union([entry.1.clone(), entry.2.clone()]));
+                let mut left_by_path = HashMap::new();
+                let mut right_by_path = HashMap::new();
+                let mut order = Vec::new();
+                // A comparison may read a type computed before a write elsewhere in the logical
+                // test. Drop facts on paths that the test can change.
+                for fact in left
+                    .into_iter()
+                    .filter(|fact| self.refinement_survives(test, &fact.path))
+                {
+                    if !left_by_path.contains_key(&fact.path) {
+                        order.push(fact.path.clone());
+                    }
+                    left_by_path.insert(fact.path, (fact.yes, fact.no));
+                }
+                for fact in right
+                    .into_iter()
+                    .filter(|fact| self.refinement_survives(test, &fact.path))
+                {
+                    if !left_by_path.contains_key(&fact.path) && !right_by_path.contains_key(&fact.path) {
+                        order.push(fact.path.clone());
+                    }
+                    right_by_path.insert(fact.path, (fact.yes, fact.no));
+                }
+                for path in order {
+                    let (left_yes, left_no) = left_by_path.remove(&path).unwrap_or_default();
+                    let (right_yes, right_no) = right_by_path.remove(&path).unwrap_or_default();
+                    // Both tests hold on the conjunction side. If one test supplies no fact on
+                    // the other side, keep the incoming type by leaving that side without an
+                    // override. In particular, the left test can skip an optional member read.
+                    let yes = right_yes.or(left_yes);
+                    let no = left_no.zip(right_no).map(|(left, right)| Ty::union([left, right]));
+                    out.push(Refinement { path, yes, no });
                 }
             }
             ExprKind::Logical(LogOp::And | LogOp::Or, _, _) => {
                 let start = out.len();
                 self.collect_narrowing(test, !negate, out);
-                for (_, yes, no) in &mut out[start..] {
-                    std::mem::swap(yes, no);
+                for fact in &mut out[start..] {
+                    std::mem::swap(&mut fact.yes, &mut fact.no);
                 }
             }
             _ => {}
@@ -3566,9 +3603,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         !self.effects.changes_refinement(expression.span, local.binding, &view)
     }
 
-    /// `ctx.user` → ("ctx.user", its type) for paths rooted at a local.
-    fn path_ty(&mut self, e: &Expr) -> Option<(String, Ty)> {
+    /// `ctx.user` → ("ctx.user", its type) for paths rooted at a local. For `x!` it is the type of
+    /// `x` itself: the assertion doesn't remove `null` from the path, so neither may a branch.
+    fn path_ty(&mut self, mut e: &Expr) -> Option<(String, Ty)> {
         let path = self.path_of(e)?;
+        while let ExprKind::NonNull(inner) = &e.kind {
+            e = inner;
+        }
         let saved_tmp = self.fx().tmp;
         let t = self.expr(e).ok().map(|o| o.ty);
         self.fx().tmp = saved_tmp;
@@ -3599,17 +3640,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         matches!(&e.kind, ExprKind::Ident(name) if self.scope_local(name).is_some_and(|local| local.native_object))
     }
 
-    /// The type a path had before any narrowing in the current branch stack (outermost entry).
-    fn declared_path_ty(&self, name: &str) -> Option<Ty> {
-        self.fx
-            .as_ref()?
-            .scopes
-            .iter()
-            .find_map(|s| s.get(name))
-            .or_else(|| self.scope_local(name))
-            .map(|l| l.ty.clone())
-    }
-
     /// A narrowed type recorded for a member path (`ctx.user` after `if (ctx.user)`).
     fn narrowed_path(&self, path: &str) -> Option<Ty> {
         self.fx
@@ -3627,9 +3657,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             })
     }
 
-    fn apply_narrowing(&mut self, n: &[(String, Ty, Ty)], truthy: bool) {
-        for (name, yes, no) in n {
-            let t = if truthy { yes.clone() } else { no.clone() };
+    fn apply_narrowing(&mut self, facts: &[Refinement], truthy: bool) {
+        for Refinement { path: name, yes, no } in facts {
+            let Some(t) = (if truthy { yes } else { no }).clone() else {
+                continue;
+            };
             if name.contains('.') {
                 let mut parts = name.split('.');
                 let (binding, mut constraint) = match self.resolve(parts.next().unwrap(), Span::NONE) {

@@ -6407,4 +6407,15 @@ fn an_installed_component_library_supplies_blocks_styles_and_islands() {
         stores.iter().any(|f| f.starts_with("toggle.") && f.ends_with(".js")),
         "{stores:?}"
     );
+
+/// A constant's declared type crosses imports, aliased re-exports and `export *`: compiled code
+/// that indexes an imported `Record<string, string>` with a string reads it as that record, not as
+/// the object literal's fixed keys, and renders a missing key as undefined.
+#[test]
+fn imported_constants_keep_their_declared_types() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("annotations");
+    copy(&root().join("tests/fixtures/imported-annotations"), &project);
+    let out = first().arg("build").arg(&project).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 }

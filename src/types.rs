@@ -243,6 +243,37 @@ impl Ty {
         }
     }
 
+    /// The type without the string literal `value`: what `x !== "draft"` leaves of
+    /// `"draft" | "published"`. A plain `string` is left as it is.
+    pub fn without_str(&self, value: &str) -> Ty {
+        match self {
+            Ty::Union(items) => Ty::union(items.iter().filter(|t| t.str_literal() != Some(value)).cloned()),
+            t if t.str_literal() == Some(value) => Ty::Never,
+            other => other.clone(),
+        }
+    }
+
+    /// The part of this type that strictly equals the string literal `value`: what `x === "draft"`
+    /// leaves of `x`. A literal member keeps its freshness. A `string` or `unknown` member
+    /// becomes a fresh literal, so `let y = x` still widens to `string`.
+    pub fn str_literal_part(&self, value: &str) -> Ty {
+        match self {
+            Ty::Union(items) => Ty::union(items.iter().map(|t| t.str_literal_part(value))),
+            Ty::Str | Ty::Unknown => Ty::FreshStrLit(value.to_string()),
+            t if t.str_literal() == Some(value) => t.clone(),
+            _ => Ty::Never,
+        }
+    }
+
+    /// Whether a value of this type can strictly equal the string literal `value`.
+    pub fn can_be_str_literal(&self, value: &str) -> bool {
+        match self {
+            Ty::Union(items) => items.iter().any(|t| t.can_be_str_literal(value)),
+            Ty::Str | Ty::Unknown => true,
+            t => t.str_literal() == Some(value),
+        }
+    }
+
     pub fn nullish(&self) -> Ty {
         match self {
             Ty::Union(items) => Ty::union(items.iter().map(Ty::nullish)),
@@ -285,6 +316,13 @@ impl Ty {
     pub fn bool_literal(&self) -> Option<bool> {
         match self {
             Ty::BoolLit(value) | Ty::FreshBoolLit(value) => Some(*value),
+            _ => None,
+        }
+    }
+
+    pub fn str_literal(&self) -> Option<&str> {
+        match self {
+            Ty::StrLit(value) | Ty::FreshStrLit(value) => Some(value.as_str()),
             _ => None,
         }
     }

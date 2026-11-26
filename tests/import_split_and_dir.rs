@@ -68,8 +68,8 @@ export const addNote = mutation({ access: "anyone" }, async ({ title }: { title:
         "sp/components/Counter.tsx",
         r#""use client";
 import { useEffect, useRef, useState } from "react";
-import { sharedState, useEvent, useLive, useMount } from "@spacepress/client/react";
-import { addNote } from "../schema";
+import { sharedState, useEvent, useLive, useMount, useMutation } from "spacepress/react";
+import { api } from "../_generated/api";
 
 export const shared = sharedState({ clicks: 0 });
 
@@ -77,7 +77,8 @@ export function Counter({ start }: { start: number }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [count, setCount] = useState(start);
   const [ready, setReady] = useState(false);
-  const notes = useLive<{ id: number; title: string }>("notes", { limit: 10 });
+  const notes = useLive(api.notes.list({ limit: 10 }));
+  const add = useMutation(api.actions.addNote);
   useMount(() => { setReady(true); });
   useEffect(() => {
     if (shared.clicks > 0) buttonRef.current?.focus();
@@ -87,10 +88,10 @@ export function Counter({ start }: { start: number }) {
   });
   return (
     <div>
-      <button ref={buttonRef} type="button" disabled={!ready} onClick={async () => {
+      <button ref={buttonRef} type="button" disabled={!ready || add.pending} onClick={async () => {
         setCount(count + 1);
         shared.clicks += 1;
-        await addNote({ title: "Note" });
+        await add.mutate({ title: "Note" });
       }}>
         {count} ({notes.data?.length ?? 0})
       </button>
@@ -104,11 +105,12 @@ export function Counter({ start }: { start: number }) {
         "sp/app/page.tsx",
         r#"import { notes } from "spacepress/server/db";
 import { Link, useFormState } from "spacepress/server/app";
+import type { PageProps } from "./$types";
 import { esc_html } from "spacepress/server/wp";
 import { addNote } from "../schema";
 import { Counter } from "../components/Counter";
 
-export default async function Home() {
+export default async function Home(_props: PageProps) {
   const rows = await notes.list({ limit: 5 });
   const state = useFormState(addNote);
   return (
@@ -126,7 +128,31 @@ export default async function Home() {
 "#,
     );
     let built = compile_ok(root);
-    assert!(built.schema.islands.contains_key("split-demo/Counter"));
+    let island = built
+        .schema
+        .islands
+        .get("split-demo/Counter")
+        .expect("Counter island should compile");
+    assert!(
+        island.source.contains("__spMutate(context.add, \"addNote\""),
+        "expected compiled useMutation helper in island JS:\n{}",
+        island.source
+    );
+    assert!(
+        built.api_js.contains("addNote: actionRef(\"addNote\", \"mutation\""),
+        "expected generated api.js action ref:\n{}",
+        built.api_js
+    );
+    assert!(
+        built.api_d_ts.contains("readonly notes:") && built.api_d_ts.contains("readonly addNote:"),
+        "expected generated api.d.ts declarations:\n{}",
+        built.api_d_ts
+    );
+    assert!(
+        built.route_type_files.iter().any(|(p, _)| p == "sp/app/$types.d.ts"),
+        "expected generated per-route $types.d.ts: {:?}",
+        built.route_type_files
+    );
     let routes = built.routes_ts.as_deref().unwrap_or("");
     assert!(
         routes.contains("declare module \"spacepress/server/app\""),
@@ -207,10 +233,7 @@ fn moved_and_legacy_specifiers_give_clear_diagnostics() {
             "spacepress/server/content",
         ),
         ("import { esc_html } from \"php/wordpress\";", "spacepress/server/wp"),
-        (
-            "import { useState } from \"spacepress/client\";",
-            "@spacepress/client/react",
-        ),
+        ("import { useState } from \"spacepress/client\";", "spacepress/client"),
     ];
     for (import_line, expected_target) in cases {
         let tmp = tempfile::tempdir().unwrap();
@@ -226,6 +249,37 @@ fn moved_and_legacy_specifiers_give_clear_diagnostics() {
         assert!(
             msg.contains(expected_target),
             "expected diagnostic for `{import_line}` to point to `{expected_target}`, got:\n{msg}"
+        );
+    }
+
+    // Inside `"use client"`, importing hooks from `spacepress/client` points directly to `react` / `spacepress/react`,
+    // and stringly-typed `useLive("notes")` is refused in favor of `useLive(api.notes.list(...))`.
+    for (body, expected) in [
+        (
+            "import { useState } from \"spacepress/client\";\nexport function A() { const [n] = useState(0); return <b>{n}</b>; }\n",
+            "\"react\"",
+        ),
+        (
+            "import { useLive } from \"spacepress/client\";\nexport function A() { const xs = useLive(null as any); return <b>{xs.loading ? 1 : 0}</b>; }\n",
+            "\"spacepress/react\"",
+        ),
+        (
+            "import { useLive } from \"spacepress/react\";\nexport function A() { const xs = useLive(\"notes\"); return <b>{xs.loading ? 1 : 0}</b>; }\n",
+            "`useLive` takes a typed query from `_generated/api`, not a string",
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(
+            root,
+            "spacepress.config.ts",
+            "import { defineConfig, table, text } from \"spacepress\";\nexport const notes = table({ title: text() });\nexport default defineConfig({ name: \"client-diag\" });\n",
+        );
+        write(root, "sp/components/A.tsx", &format!("\"use client\";\n{body}"));
+        let msg = compile_err(root);
+        assert!(
+            msg.contains(expected),
+            "expected diagnostic `{expected}` for:\n{body}\ngot:\n{msg}"
         );
     }
 }
@@ -316,6 +370,9 @@ export default async function Home() {
     );
     assert!(root.join("cms/_generated/db.d.ts").is_file());
     assert!(root.join("cms/_generated/routes.d.ts").is_file());
+    assert!(root.join("cms/_generated/types/cms/app/$types.d.ts").is_file());
+    assert!(root.join("cms/_generated/api.js").is_file());
+    assert!(root.join("cms/_generated/api.d.ts").is_file());
     assert!(root.join("cms/_generated/openapi.json").is_file());
     assert!(root.join("cms/_generated/client/index.ts").is_file());
     assert!(root.join("cms/_generated/migrations").is_dir());

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { bind, createClient, SpacePressError } from '../src/index.mjs';
-import { createHooks, getClient, setClient, sharedState, uploadFile, useLive } from '../src/react.mjs';
+import { createHooks, getClient, setClient, sharedState, uploadFile, useLive, useMutation } from '../src/react.mjs';
 
 const SCHEMA = {
   name: 'demo',
@@ -94,14 +94,19 @@ test('@spacepress/client createClient refuses missing SCHEMA and maps WordPress 
   });
 });
 
-test('@spacepress/client/react exports hooks and uploadFile uses bound client', async () => {
+test('spacepress/react (@spacepress/client/react) supports typed api refs for useLive, useMutation, and uploadFile', async () => {
   const shared = sharedState({ count: 0 });
   assert.deepEqual(shared, { count: 0 });
-  assert.deepEqual(useLive('posts', {}, { enabled: false }), { data: undefined, error: undefined, loading: false });
+  assert.throws(() => useLive('posts'), TypeError);
+  const liveRef = { __sp: 'query', kind: 'posts', op: 'list', args: { limit: 5 } };
+  assert.deepEqual(useLive(liveRef, { enabled: false }), { data: undefined, error: undefined, loading: false });
   assert.equal(typeof createHooks, 'function');
 
   const uploaded = { id: 7, bucket: 'inbox', filename: 'a.txt', mime: 'text/plain', size: 2, ownerId: 1, createdAt: '2026-11-26T00:00:00Z', url: 'https://demo.test/f/7' };
   setClient({
+    actions: {
+      ping: async (input) => ({ ok: true, echo: input }),
+    },
     files: {
       inbox: {
         upload: async () => uploaded,
@@ -109,7 +114,9 @@ test('@spacepress/client/react exports hooks and uploadFile uses bound client', 
     },
   });
   assert.ok(getClient());
+  const pingAction = useMutation({ __sp: 'action', name: 'ping', kind: 'mutation' });
+  assert.deepEqual(await pingAction.mutate({ hi: 1 }), { ok: true, echo: { hi: 1 } });
   assert.deepEqual(await uploadFile('inbox', new Blob(['hi']), { filename: 'a.txt' }), uploaded);
   setClient(null);
-  await assert.rejects(() => uploadFile('inbox', new Blob(['hi'])), /requires a bound @spacepress\/client/);
+  await assert.rejects(() => uploadFile('inbox', new Blob(['hi'])), /requires a bound SpacePress client/);
 });

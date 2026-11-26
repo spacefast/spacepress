@@ -661,11 +661,12 @@ impl Compiler<'_, '_> {
             .body
             .iter()
             .find_map(|stmt| match stmt {
-                // "spacepress/server" and "spacepress/server/app" re-export request/context types.
+                // "spacepress/server", "spacepress/server/app", and generated "./$types" re-export route/context types.
                 Stmt::Import { source, specs, .. }
                     if source == crate::loader::SP_MODULE
                         || source == crate::loader::SERVER_MODULE
-                        || source == crate::loader::APP_MODULE =>
+                        || source == crate::loader::APP_MODULE
+                        || crate::loader::is_route_types_import(source) =>
                 {
                     specs.iter().find_map(|spec| match &spec.imported {
                         ImportName::Named(imported) if spec.local == name => Some(imported.clone()),

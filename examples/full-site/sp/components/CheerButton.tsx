@@ -1,22 +1,21 @@
 "use client";
 // Rendered on the server like any component, then hydrated with the Interactivity API: a click
-// calls the `cheer` action and shows the stored count it returns.
+// calls the `cheer` action via `useMutation(api.actions.cheer)` and shows the stored count.
 import { useState } from "react";
-import { cheer } from "../actions";
+import { useMutation } from "spacepress/react";
+import { api } from "../_generated/api";
 
 export function CheerButton({ noteId, count: initial }: { noteId: number; count: number }) {
   const [count, setCount] = useState(initial);
-  const [busy, setBusy] = useState(false);
+  const cheer = useMutation(api.actions.cheer);
   const label = count === 1 ? "1 cheer" : `${count} cheers`;
   return (
     <button
       type="button"
       className="cheer"
-      disabled={busy}
+      disabled={cheer.pending}
       onClick={async () => {
-        setBusy(true);
-        setCount((await cheer({ noteId })).count);
-        setBusy(false);
+        setCount((await cheer.mutate({ noteId })).count);
       }}
     >
       {label}

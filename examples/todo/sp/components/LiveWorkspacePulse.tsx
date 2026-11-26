@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { useLive, useMount } from "@spacepress/client/react";
+import { useLive, useMount } from "spacepress/react";
+import { api } from "../_generated/api";
 
 export function LiveWorkspacePulse({ initialOpen }: { initialOpen: number }) {
   const [connected, setConnected] = useState(false);
-  const live = useLive<{ id: number }>("tasks", {
+  const live = useLive(api.tasks.list({
     where: { completedAt: { isNull: true } },
     columns: { id: true },
     limit: 200,
-  });
+  }));
   const count = live.data ? live.data.length : initialOpen;
   useMount(() => {
     setConnected(true);

@@ -213,6 +213,13 @@ pub(super) fn emit_project(project: &Path, built: &Built) -> std::io::Result<()>
             let _ = std::fs::remove_file(project.join(layout.routes_types()));
         }
     }
+    let route_types_root = project.join(layout.route_types_dir());
+    let _ = std::fs::remove_dir_all(&route_types_root);
+    for (rel, content) in &built.route_type_files {
+        write(&route_types_root.join(rel), content)?;
+    }
+    write(&project.join(layout.api_js()), &built.api_js)?;
+    write(&project.join(layout.api_types()), &built.api_d_ts)?;
     if let Some(lock) = &built.plugin_lock {
         write(
             &project.join(layout.plugins_lock()),

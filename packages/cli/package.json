@@ -38,6 +38,16 @@
       "browser": "./types/stubs/server-wp.mjs",
       "default": "./types/stubs/server-wp.mjs"
     },
+    "./client": {
+      "types": "./client/index.d.ts",
+      "import": "./client/index.mjs",
+      "default": "./client/index.mjs"
+    },
+    "./react": {
+      "types": "./client/react.d.ts",
+      "import": "./client/react.mjs",
+      "default": "./client/react.mjs"
+    },
     "./danger": {
       "types": "./types/danger.d.ts"
     },
@@ -49,7 +59,7 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["bin", "lib", "types", "LICENSE", "README.md"],
+  "files": ["bin", "client", "lib", "types", "LICENSE", "README.md"],
   "scripts": {
     "prepack": "node scripts/prepare.mjs",
     "postinstall": "node bin/install.mjs",

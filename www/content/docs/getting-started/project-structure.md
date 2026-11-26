@@ -53,7 +53,7 @@ The import path tells you where the code runs:
 | `"spacepress/server/content"` | Server only (PHP) | `nav`, `pager`, `headings`, `apiReference` |
 | `"spacepress/server/wp"` | Server only (PHP) | WordPress core functions, `abilities`, `Handler<"...">`, `WP_Post`/`WP_User`/`WP_Query` |
 | `"react"` | Browser (`"use client"`) | Standard React hooks (`useState`, `useEffect`, `useRef`) lowered to the WordPress Interactivity API |
-| `"@spacepress/client"` & `"@spacepress/client/react"` | Browser / Node / Bun / Deno | Typed `fetch` client (`bind`, `createClient`, WP Abilities calls) and React hooks (`createHooks`, `useLive`, `useMount`, `useEvent`, `sharedState`, `uploadFile`) |
+| `"spacepress/client"` & `"spacepress/react"` (also `@spacepress/client` & `@spacepress/client/react`) | Browser / Node / Bun / Deno | Typed `fetch` client (`bind`, `createClient`, WP Abilities calls) and React hooks (`useLive`, `useMutation`, `createHooks`, `useMount`, `useEvent`, `sharedState`, `uploadFile`) driven by typed `_generated/api` refs |
 
 Importing `"spacepress/server"` or `"spacepress/server/*"` inside a `"use client"` component is refused at build time and throws in browser bundles.
 

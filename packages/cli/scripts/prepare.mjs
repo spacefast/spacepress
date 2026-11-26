@@ -19,5 +19,14 @@ for (const entry of await readdir(sourceStubs, { withFileTypes: true })) {
     await copyFile(new URL(entry.name, sourceStubs), new URL(entry.name, packageStubs));
   }
 }
+const sourceClient = new URL('../../client/src/', import.meta.url);
+const packageClient = new URL('../client/', import.meta.url);
+await rm(packageClient, { recursive: true, force: true });
+await mkdir(packageClient, { recursive: true });
+for (const entry of await readdir(sourceClient, { withFileTypes: true })) {
+  if (entry.isFile() && /\.(mjs|d\.ts)$/.test(entry.name)) {
+    await copyFile(new URL(entry.name, sourceClient), new URL(entry.name, packageClient));
+  }
+}
 await copyFile(new URL('../../../LICENSE', import.meta.url), new URL('../LICENSE', import.meta.url));
 await copyFile(new URL('../../../runtime/SpacePress/Cli/commands.json', import.meta.url), new URL('../lib/commands.json', import.meta.url));

@@ -1,5 +1,32 @@
-// @spacepress/client/react: React hooks for external React frontends and SpacePress "use client" components.
+// spacepress/react (and @spacepress/client/react): React hooks for external React frontends and
+// SpacePress "use client" components.
 import type { Query, SpacePressError } from "./index.d.ts";
+
+/** Typed descriptor returned by `api.<kind>.list(...)` / `api.<kind>.get(...)` from `_generated/api`. */
+export interface LiveQueryRef<T = unknown> {
+  readonly __sp: "query";
+  readonly kind: string;
+  readonly op: "list" | "get";
+  readonly id?: string | number;
+  readonly args: Record<string, unknown>;
+  readonly __type?: T;
+}
+
+/** Typed descriptor exported under `api.actions.<name>` from `_generated/api`. */
+export interface ActionRef<Input = void, Output = unknown, Kind extends "query" | "mutation" = "mutation"> {
+  readonly __sp: "action";
+  readonly name: string;
+  readonly kind: Kind;
+  readonly ability?: string;
+  readonly __input?: Input;
+  readonly __output?: Output;
+}
+
+export type MutationArgs<Input> =
+  [Input] extends [never] ? [] :
+  [Input] extends [void] ? [] :
+  Record<string, never> extends Input ? [input?: Input] :
+  [input: Input];
 
 /** The parts of React the hooks use (React 18 and later, Preact through `preact/compat`). */
 export interface ReactLike {
@@ -32,19 +59,24 @@ export interface UseMutationOptions<A extends unknown[]> {
 export interface Mutation<A extends unknown[], R> {
   mutate(...args: A): Promise<R>;
   pending: boolean;
-  error: Error | undefined;
+  error: { code: string; message: string } | undefined;
   reset(): void;
 }
 
 export interface Hooks {
-  useQuery<T>(query: Query<T> | null | undefined | false, options?: UseQueryOptions<T>): QueryState<T>;
+  useQuery<T>(query: Query<T> | LiveQueryRef<T> | null | undefined | false, options?: UseQueryOptions<T>): QueryState<T>;
+  useLive<T>(query: LiveQueryRef<T> | Query<T> | null | undefined | false, options?: UseQueryOptions<T>): LiveState<T>;
+  useMutation<Input, Output, Kind extends "query" | "mutation">(
+    action: ActionRef<Input, Output, Kind>,
+    options?: UseMutationOptions<MutationArgs<Input>>,
+  ): Mutation<MutationArgs<Input>, Output>;
   useMutation<A extends unknown[], R>(run: (...args: A) => Promise<R>, options?: UseMutationOptions<A>): Mutation<A, R>;
 }
 
-/** Create React `useQuery` and `useMutation` hooks bound to your React instance. */
+/** Create React `useQuery`, `useLive`, and `useMutation` hooks bound to your React instance. */
 export declare function createHooks(React: ReactLike): Hooks;
 
-/** Configure the `@spacepress/client` instance used by `useLive` and `uploadFile` in external React apps/tests. */
+/** Configure the SpacePress client instance used by `useLive`, `useMutation`, and `uploadFile` in external React apps/tests. */
 export declare function setClient(client: unknown): void;
 export declare function getClient(): unknown;
 
@@ -72,15 +104,23 @@ export interface LiveState<T> {
 }
 
 /**
- * A list read the browser keeps current: `useLive("todos", { where: { done: false }, limit: 20 })`.
- * The server answers it in the first render, as the visitor; the page then subscribes to the same
- * read through the app's typed client, so another visitor's write shows without a reload.
+ * A typed live read kept current by SpacePress: `useLive(api.todos.list({ where: { done: false }, limit: 20 }))`.
+ * In `"use client"` components, the server answers it in the first render as the visitor and the browser
+ * subscribes to the same read automatically.
  */
-export declare function useLive<T = any>(
-  kind: string,
-  query?: Record<string, unknown>,
+export declare function useLive<T>(
+  query: LiveQueryRef<T> | Query<T>,
   options?: { enabled?: boolean },
-): LiveState<T[]>;
+): LiveState<T>;
+
+/**
+ * Bind a typed action reference from `_generated/api` (`useMutation(api.actions.addNote)`):
+ * returns `{ mutate, pending, error, reset }`. In `"use client"` components, `pending` and `error`
+ * are reactive Interactivity API state and `mutate(...)` calls the action's WordPress Ability run route.
+ */
+export declare function useMutation<Input, Output, Kind extends "query" | "mutation">(
+  action: ActionRef<Input, Output, Kind>,
+): Mutation<MutationArgs<Input>, Output>;
 
 /** Metadata returned by `uploadFile(bucket, file, opts?)`. */
 export interface UploadedFile {
@@ -95,7 +135,7 @@ export interface UploadedFile {
 }
 
 /**
- * Upload a browser `File` or `Blob` to a registered `files()` private bucket via `@spacepress/client`
+ * Upload a browser `File` or `Blob` to a registered `files()` private bucket via `spacepress/client`
  * (using the page's REST nonce). Must be called inside a `"use client"` event handler or effect with
  * a string literal naming an exported bucket: `const uploaded = await uploadFile("inbox", file)`.
  */

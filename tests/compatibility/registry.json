@@ -1172,7 +1172,7 @@
       "code": "F1003",
       "fixture": "tests/fixtures/reject-client-npm",
       "message": "a \"use client\" component can't import \"dayjs\"",
-      "guidance": "Client components run in the browser without a bundler: import \"react\", \"@spacepress/client/react\", and relative modules only."
+      "guidance": "Client components run in the browser without a bundler: import \"react\", \"spacepress/react\", \"../_generated/api\", and relative modules only."
     },
     {
       "id": "jsx-use-client-root",

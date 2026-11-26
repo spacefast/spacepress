@@ -37,9 +37,12 @@ pub const WORDPRESS_MODULE: &str = "spacepress/server/wp";
 pub const DB_MODULE: &str = "spacepress/server/db";
 /// Standard React hooks in `"use client"` components (`useState`, `useEffect`, `useRef`).
 pub const REACT_MODULE: &str = "react";
-/// SpacePress client React hooks (`useLive`, `useMount`, `useEvent`, `sharedState`, `uploadFile`).
+/// SpacePress client React hooks (`useLive`, `useMutation`, `useMount`, `useEvent`, `sharedState`, `uploadFile`).
+pub const SP_REACT_MODULE: &str = "spacepress/react";
+/// SpacePress typed client SDK (`bind`, `createClient`, `SpacePressError`, ...).
+pub const SP_CLIENT_MODULE: &str = "spacepress/client";
+/// Standalone browser client package aliases (`@spacepress/client` and `@spacepress/client/react`).
 pub const CLIENT_REACT_MODULE: &str = "@spacepress/client/react";
-/// SpacePress typed client SDK (`@spacepress/client`).
 pub const CLIENT_SDK_MODULE: &str = "@spacepress/client";
 
 /// Whether `spec` is a server-only SpacePress module (`spacepress/server` or `spacepress/server/*`).
@@ -47,9 +50,69 @@ pub fn is_server_module(spec: &str) -> bool {
     spec == SERVER_MODULE || spec.starts_with("spacepress/server/")
 }
 
+/// Whether `spec` is SpacePress's React hooks module (`spacepress/react` or `@spacepress/client/react`).
+pub fn is_client_react_module(spec: &str) -> bool {
+    spec == SP_REACT_MODULE || spec == CLIENT_REACT_MODULE
+}
+
+/// Whether `spec` is SpacePress's client SDK module (`spacepress/client` or `@spacepress/client`).
+pub fn is_client_sdk_module(spec: &str) -> bool {
+    spec == SP_CLIENT_MODULE || spec == CLIENT_SDK_MODULE
+}
+
 /// Whether `spec` is a browser/client module recognized in `"use client"` components.
 pub fn client_builtin_module(spec: &str) -> bool {
-    spec == REACT_MODULE || spec == CLIENT_REACT_MODULE || spec == CLIENT_SDK_MODULE
+    spec == REACT_MODULE || is_client_react_module(spec) || is_client_sdk_module(spec)
+}
+
+/// Whether a relative import `spec` from `from_file` targets `<dir>/_generated/api` (the zero-server-code
+/// generated client/island API bridge).
+pub fn is_generated_api_import(
+    project_root: &Path,
+    layout: &crate::layout::Layout,
+    from_file: &Path,
+    spec: &str,
+) -> bool {
+    if !spec.starts_with('.') {
+        return false;
+    }
+    let Some(parent) = from_file.parent() else {
+        return false;
+    };
+    let joined = normalize_path(&parent.join(spec));
+    let base = normalize_path(&project_root.join(layout.generated()).join("api"));
+    if joined == base {
+        return true;
+    }
+    for ext in ["js", "mjs", "ts", "d.ts"] {
+        let mut with_ext = base.as_os_str().to_os_string();
+        with_ext.push(".");
+        with_ext.push(ext);
+        if joined.as_os_str() == with_ext {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether a type-only import targets a generated per-route `./$types` declaration.
+pub fn is_route_types_import(spec: &str) -> bool {
+    matches!(spec, "./$types" | "./$types.ts" | "./$types.d.ts")
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// Modules the compiler provides itself on the server; nothing is loaded for them. Node built-ins
@@ -820,7 +883,7 @@ fn load_module(
                         format!("a \"use client\" component can't import \"{spec}\": server APIs run only on the server"),
                     )
                     .help(
-                        "move server work into a query() or mutation() action and call it from the client component, or read data via @spacepress/client",
+                        "move server work into a query() or mutation() action and call it via _generated/api (or spacepress/client / @spacepress/client)",
                     )
                     .code(diag::Code::Import),
                 );
@@ -840,18 +903,21 @@ fn load_module(
             if client_builtin_module(&spec) {
                 continue;
             }
+            if is_generated_api_import(&program.root, &program.layout, path, &spec) {
+                continue;
+            }
             if !spec.starts_with('.') {
                 diagnostics.push(
                     Diag::new(span, format!("a \"use client\" component can't import \"{spec}\""))
                         .help(
-                            "\"use client\" components compile to the WordPress Interactivity API: import React hooks from \"react\", SpacePress hooks from \"@spacepress/client/react\", and relative modules",
+                            "\"use client\" components compile to the WordPress Interactivity API: import React hooks from \"react\", SpacePress hooks from \"spacepress/react\", generated `api` from \"../_generated/api\", and relative modules",
                         )
                         .code(diag::Code::Import),
                 );
                 continue;
             }
         } else {
-            if spec == CLIENT_REACT_MODULE || spec == CLIENT_SDK_MODULE {
+            if is_client_react_module(&spec) || is_client_sdk_module(&spec) {
                 diagnostics.push(
                     Diag::new(span, format!("\"{spec}\" runs in the browser, not on the server"))
                         .help(
@@ -874,6 +940,9 @@ fn load_module(
                 );
                 continue;
             }
+            if is_generated_api_import(&program.root, &program.layout, path, &spec) {
+                continue;
+            }
         }
         if builtin_module(&spec) {
             continue;
@@ -891,7 +960,7 @@ fn load_module(
         if spec == "php" || spec.starts_with("php/") {
             diagnostics.push(
                 Diag::new(span, format!("\"{spec}\" isn't available"))
-                    .help("WordPress core is \"spacepress/server/wp\"; plugin modules and PHP built-ins are not available yet")
+                    .help("WordPress core is \"spacepress/server/wp\"; plugin modules and PHP built-ins (future \"spacepress/server/php/*\") are not available yet")
                     .code(diag::Code::Import),
             );
             continue;
@@ -1554,10 +1623,6 @@ fn legacy_specifier_diag(spec: &str) -> Option<(String, String)> {
             "\"php/wordpress\" moved to \"spacepress/server/wp\"".into(),
             "replace `from \"php/wordpress\"` with `from \"spacepress/server/wp\"`".into(),
         )),
-        "spacepress/client" => Some((
-            "\"spacepress/client\" was split into \"react\" and \"@spacepress/client/react\"".into(),
-            "import `useState`, `useEffect`, `useRef` from \"react\" and `useLive`, `useMount`, `useEvent`, `sharedState`, `uploadFile` from \"@spacepress/client/react\"".into(),
-        )),
         _ => None,
     }
 }
@@ -1595,9 +1660,10 @@ fn import_source(s: &Stmt) -> Option<(String, Span)> {
             type_only,
             span,
         } => {
-            // Type-only imports are erased; they never load code.
+            // Type-only imports are erased; they never load code. Generated `./$types` files may
+            // not exist yet on a fresh clone before `spacepress build`, so skip resolving them.
             if *type_only || (!specs.is_empty() && specs.iter().all(|s| s.type_only)) {
-                if source.starts_with('.') {
+                if source.starts_with('.') && !is_route_types_import(source) {
                     Some((source.clone(), *span))
                 } else {
                     None

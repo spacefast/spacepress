@@ -48,10 +48,20 @@
       ],
       "react": [
         "../../types/spacepress/react.d.ts"
+      ],
+      "spacepress/client": [
+        "../../packages/client/src/index.d.ts"
+      ],
+      "spacepress/react": [
+        "../../packages/client/src/react.d.ts"
       ]
     },
     "allowImportingTsExtensions": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "rootDirs": [
+      ".",
+      "./sp/_generated/types"
+    ]
   },
   "include": [
     "spacepress.config.ts",

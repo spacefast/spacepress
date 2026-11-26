@@ -121,9 +121,9 @@ until the commenter has an approved comment. Editors manage the thread under
 You can pass the same post to `<Comments>` on another page. Both places show
 the same WordPress comment thread.
 
-## `"use client"` interactive islands (`"react"` & `"@spacepress/client/react"`)
+## `"use client"` interactive islands (`"react"` & `"spacepress/react"`)
 
-Start a component file with `"use client";`. Import standard React hooks (`useState`, `useEffect`, `useRef`) from `"react"` and SpacePress client hooks (`useLive`, `useMount`, `useEvent`, `sharedState`, `uploadFile`) from `"@spacepress/client/react"`. SpacePress renders the initial HTML in PHP and compiles the interactive logic into a WordPress Interactivity API store with zero React shipped to the page. Importing `"spacepress/server"` or `"spacepress/server/*"` inside a `"use client"` component is refused at build time — call a `query()` or `mutation()` action or read via `@spacepress/client` instead.
+Start a component file with `"use client";`. Import standard React hooks (`useState`, `useEffect`, `useRef`) from `"react"`, SpacePress client hooks (`useLive`, `useMutation`, `useMount`, `useEvent`, `sharedState`, `uploadFile`) from `"spacepress/react"`, and typed client references (`api`) from `"../_generated/api"`. SpacePress renders the initial HTML in PHP and compiles the interactive logic into a WordPress Interactivity API store with zero React shipped to the page. Importing `"spacepress/server"` or `"spacepress/server/*"` inside a `"use client"` component is refused at build time — use `api` from `_generated/api` or `spacepress/client` instead.
 
 ## Static export
 

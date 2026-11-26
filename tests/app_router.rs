@@ -522,6 +522,8 @@ fn generated_routes_type_links_and_params() {
                     "spacepress/server/app": [types.join("server-app.d.ts")],
                     "spacepress/server/content": [types.join("server-content.d.ts")],
                     "spacepress/server/wp": [types.join("server-wp.d.ts")],
+                    "spacepress/client": [root().join("packages/client/src/index.d.ts")],
+                    "spacepress/react": [root().join("packages/client/src/react.d.ts")],
                     "spacepress/*": [types.join("*.d.ts")],
                 },
             },
@@ -2297,10 +2299,10 @@ fn refuses_client_code_outside_the_subset() {
             "sp/components/A.tsx:3:",
         );
     }
-    // `useLive`: a query the server and the browser both have (props and literals), and no `seed`.
+    // `useLive`: a typed query from `_generated/api` (props and literals only, no string kind, no `seed`).
     let live = |body: &str| {
         component(&format!(
-            "import {{ useLive }} from \"@spacepress/client/react\";\nexport function A({{ n }}: {{ n: number }}) {{ {body} }}"
+            "import {{ useLive }} from \"spacepress/react\";\nimport {{ api }} from \"../_generated/api\";\nexport function A({{ n }}: {{ n: number }}) {{ {body} }}"
         ))
     };
     rejects(
@@ -2313,12 +2315,12 @@ fn refuses_client_code_outside_the_subset() {
             (
                 "sp/components/A.tsx",
                 &live(
-                    "const [k, setK] = useState(5); const xs = useLive(\"notes\", { limit: k }); return <b onClick={() => setK(1)}>{xs.loading ? 1 : 0}</b>;",
+                    "const [k, setK] = useState(5); const xs = useLive(api.notes.list({ limit: k })); return <b onClick={() => setK(1)}>{xs.loading ? 1 : 0}</b>;",
                 ),
             ),
         ],
         "a `useLive` query reads props and literals only",
-        "sp/components/A.tsx:4:",
+        "sp/components/A.tsx:5:",
     );
     rejects(
         &dir,
@@ -2329,11 +2331,28 @@ fn refuses_client_code_outside_the_subset() {
             ),
             (
                 "sp/components/A.tsx",
-                &live("const xs = useLive(\"notes\", { limit: n }, { seed: 1 }); return <b>{xs.loading ? 1 : 0}</b>;"),
+                &live(
+                    "const xs = useLive(api.notes.list({ limit: n }), { seed: 1 }); return <b>{xs.loading ? 1 : 0}</b>;",
+                ),
             ),
         ],
         "`useLive` options are `{ enabled }`",
-        "sp/components/A.tsx:4:",
+        "sp/components/A.tsx:5:",
+    );
+    rejects(
+        &dir,
+        &[
+            (
+                "sp/schema.ts",
+                "import { table, text } from \"spacepress\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+            ),
+            (
+                "sp/components/A.tsx",
+                &live("const xs = useLive(\"notes\", { limit: n }); return <b>{xs.loading ? 1 : 0}</b>;"),
+            ),
+        ],
+        "`useLive` takes a typed query from `_generated/api`, not a string",
+        "sp/components/A.tsx:5:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -2371,6 +2390,8 @@ fn forms_work_without_javascript() {
                     "spacepress/server/app": [types.join("server-app.d.ts")],
                     "spacepress/server/content": [types.join("server-content.d.ts")],
                     "spacepress/server/wp": [types.join("server-wp.d.ts")],
+                    "spacepress/client": [root().join("packages/client/src/index.d.ts")],
+                    "spacepress/react": [root().join("packages/client/src/react.d.ts")],
                     "spacepress/*": [types.join("*.d.ts")],
                 },
             },

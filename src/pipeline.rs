@@ -27,6 +27,12 @@ pub struct Built {
     pub gen_ts: String,
     /// `sp/_generated/routes.d.ts`, when the app has `sp/app/` routes.
     pub routes_ts: Option<String>,
+    /// Per-route `./$types.d.ts` declarations under `<dir>/_generated/types/`.
+    pub route_type_files: Vec<(String, String)>,
+    /// Zero-server-code `<dir>/_generated/api.js` runtime bridge.
+    pub api_js: String,
+    /// Strongly typed `<dir>/_generated/api.d.ts` declarations matching `api_js`.
+    pub api_d_ts: String,
     /// Destructive steps in the new migrations.
     pub warnings: Vec<String>,
     /// Compile-time OXC AST lint warnings (e.g. `capital_P_dangit`), with auto-fix spans.
@@ -463,6 +469,8 @@ pub fn build(
         }
     }
     let client_files = client::files(&schema, &action_results, runtime);
+    let api_js = client::api_js(&schema);
+    let api_d_ts = client::api_d_ts(&schema);
     let openapi = crate::openapi::document(&schema);
     let unsupported_plugins = ext.plugins.as_ref().map(wp_plugins::unsupported).unwrap_or_default();
     // Only a project that imports "php/wordpress" maps it in tsconfig, so only then is it augmented.
@@ -483,6 +491,7 @@ pub fn build(
             .filter_map(|c| c.url.clone().map(|u| (c.key.clone(), u)))
             .collect::<Vec<_>>(),
     );
+    let route_type_files = crate::app::route_type_files(&program.app, &program.layout);
     let references = schema
         .runtime_schema
         .is_some()
@@ -497,6 +506,8 @@ pub fn build(
         plugins: ext.plugins,
         unsupported_plugins,
         client_files,
+        api_js,
+        api_d_ts,
         openapi,
         schema,
         functions_php,
@@ -504,6 +515,7 @@ pub fn build(
         migrations,
         gen_ts,
         routes_ts,
+        route_type_files,
         warnings,
         lint_warnings,
         hints: ext.hints,

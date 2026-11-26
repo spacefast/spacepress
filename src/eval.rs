@@ -1102,11 +1102,19 @@ impl<'p> Evaluator<'p> {
         if source == crate::loader::REACT_MODULE && self.program.modules[from].use_client {
             return react_client_export(name, span);
         }
-        if source == crate::loader::CLIENT_REACT_MODULE {
-            return client_react_export(name, span);
+        if crate::loader::is_client_react_module(source) {
+            return client_react_export(source, name, span);
         }
-        if source == crate::loader::CLIENT_SDK_MODULE {
-            return client_sdk_export(name, span);
+        if crate::loader::is_client_sdk_module(source) {
+            return client_sdk_export(source, name, span);
+        }
+        if crate::loader::is_generated_api_import(
+            &self.program.root,
+            &self.program.layout,
+            &self.program.modules[from].path,
+            source,
+        ) {
+            return Ok(Value::Undef);
         }
         if source == crate::loader::CONTENT_MODULE {
             return crate::compile::CONTENT_EXPORTS
@@ -4639,9 +4647,7 @@ fn react_client_export(name: &str, span: Span) -> R<Value> {
         return err_help(
             span,
             format!("`{name}` is a SpacePress hook, not a \"react\" export"),
-            format!(
-                "import it from \"@spacepress/client/react\": `import {{ {name} }} from \"@spacepress/client/react\"`"
-            ),
+            format!("import it from \"spacepress/react\": `import {{ {name} }} from \"spacepress/react\"`"),
         );
     }
     err_help(
@@ -4653,6 +4659,9 @@ fn react_client_export(name: &str, span: Span) -> R<Value> {
 
 const CLIENT_REACT_TYPES: &[&str] = &[
     "LiveState",
+    "LiveQueryRef",
+    "ActionRef",
+    "MutationArgs",
     "UploadedFile",
     "QueryState",
     "UseQueryOptions",
@@ -4663,7 +4672,7 @@ const CLIENT_REACT_TYPES: &[&str] = &[
     "Apply",
 ];
 
-fn client_react_export(name: &str, span: Span) -> R<Value> {
+fn client_react_export(source: &str, name: &str, span: Span) -> R<Value> {
     if let Some(h) = crate::client_component::CLIENT_HOOKS.iter().find(|h| **h == name) {
         return Ok(Value::Builtin(Builtin::Client(h)));
     }
@@ -4673,41 +4682,43 @@ fn client_react_export(name: &str, span: Span) -> R<Value> {
     if crate::client_component::REACT_HOOKS.contains(&name) {
         return err_help(
             span,
-            format!("`{name}` comes from \"react\", not \"@spacepress/client/react\""),
+            format!("`{name}` comes from \"react\", not \"{source}\""),
             format!("write `import {{ {name} }} from \"react\"`"),
         );
     }
-    if matches!(name, "useQuery" | "useMutation" | "createHooks" | "useCart") {
+    if matches!(name, "useQuery" | "createHooks" | "useCart") {
         return err_help(
             span,
             format!("`{name}` is for external React frontends or @spacepress/frontend islands"),
-            "in SpacePress Interactivity API \"use client\" components, use `useLive` from \"@spacepress/client/react\" and imported server actions",
+            "in SpacePress Interactivity API \"use client\" components, use `useLive(api.<kind>.list(...))` and `useMutation(api.actions.<name>)` from \"spacepress/react\"",
         );
     }
-    let mut d = Diag::new(
-        span,
-        format!("\"@spacepress/client/react\" has no export named `{name}`"),
-    );
+    let mut d = Diag::new(span, format!("\"{source}\" has no export named `{name}`"));
     if let Some(s) = suggest(name, crate::client_component::CLIENT_HOOKS.iter().copied()) {
         d = d.help(format!("did you mean `{s}`?"));
     }
     Err(Ctl::Err(d))
 }
 
-fn client_sdk_export(name: &str, span: Span) -> R<Value> {
-    if name == "uploadFile" {
+fn client_sdk_export(source: &str, name: &str, span: Span) -> R<Value> {
+    if crate::client_component::REACT_HOOKS.contains(&name) {
         return err_help(
             span,
-            "`uploadFile` is exported from \"@spacepress/client/react\"",
-            "write `import { uploadFile } from \"@spacepress/client/react\"`",
+            format!("`{name}` moved from \"{source}\" to \"react\""),
+            format!("write `import {{ {name} }} from \"react\"`"),
+        );
+    }
+    if crate::client_component::CLIENT_HOOKS.contains(&name) {
+        return err_help(
+            span,
+            format!("`{name}` is exported from \"spacepress/react\", not \"{source}\""),
+            format!("write `import {{ {name} }} from \"spacepress/react\"`"),
         );
     }
     err_help(
         span,
-        format!(
-            "`{name}` from \"@spacepress/client\" can't be called directly in an Interactivity API \"use client\" component"
-        ),
-        "import server actions from your app modules, or use `useLive` and `uploadFile` from \"@spacepress/client/react\"; for full client SDK usage, use a `@spacepress/frontend` browser entry or external frontend",
+        format!("`{name}` from \"{source}\" can't be called directly in an Interactivity API \"use client\" component"),
+        "use `useLive(api.<kind>.list(...))`, `useMutation(api.actions.<name>)`, and `uploadFile` from \"spacepress/react\"; for full client SDK usage, use a `@spacepress/frontend` browser entry or external frontend",
     )
 }
 

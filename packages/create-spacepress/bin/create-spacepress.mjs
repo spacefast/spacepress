@@ -72,6 +72,7 @@ async function main() {
           text
             .replaceAll('sp/dist', `${appDir}/dist`)
             .replaceAll('sp/_generated', `${appDir}/_generated`)
+            .replaceAll('./sp/_generated', `./${appDir}/_generated`)
             .replaceAll('sp/app', `${appDir}/app`)
             .replaceAll('"sp"', JSON.stringify(appDir))
             .replaceAll('`sp/`', `\`${appDir}/\``),

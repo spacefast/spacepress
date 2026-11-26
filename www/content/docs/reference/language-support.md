@@ -1243,7 +1243,7 @@ Evidence: `tests/app_router.rs` (`forms_work_without_javascript`)
 
 Status: **refused**. Diagnostic: `F1003`.
 
-Client components run in the browser without a bundler: import "react", "@spacepress/client/react", and relative modules only.
+Client components run in the browser without a bundler: import "react", "spacepress/react", "../_generated/api", and relative modules only.
 
 Evidence: `tests/fixtures/reject-client-npm`
 

@@ -278,7 +278,7 @@ export function Part2ServerAndUI() {
                 <td><code>&lt;Link&gt;</code> (client-side router navigation), <code>&lt;Content&gt;</code>, <code>&lt;Html&gt;</code>, <code>&lt;Comments&gt;</code>, <code>&lt;Pagination&gt;</code>, <code>&lt;Search&gt;</code>, <code>&lt;SearchResults&gt;</code>, <code>&lt;TemplatePart&gt;</code>, <code>&lt;Live&gt;</code>, <code>useFormState()</code>.</td>
               </tr>
               <tr>
-                <td><code>&quot;use client&quot;</code> (<code>react</code> + <code>@spacepress/client/react</code>)</td>
+                <td><code>&quot;use client&quot;</code> (<code>react</code> + <code>spacepress/react</code> + <code>_generated/api</code>)</td>
                 <td>Compiles server HTML + a WordPress Interactivity API module supporting <code>useState</code>, <code>useEffect</code>, <code>useMount</code>, <code>useEvent</code>, <code>useRef</code>, <code>sharedState</code>, and real-time <code>useLive()</code> subscriptions.</td>
               </tr>
             </tbody>

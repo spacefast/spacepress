@@ -1207,6 +1207,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     namespace,
                     &root.closure.func,
                     module,
+                    program,
                     &actions,
                     &file_buckets,
                     &assets,
@@ -4842,6 +4843,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             && self.client.is_some()
         {
             return self.client_live_seed(field, span);
+        }
+        if n.starts_with(client::MUTATION_SEED) && self.client.is_some() {
+            return self.client_mutation_seed();
         }
         match self.resolve(n, span)? {
             Resolved::Local(l) => Ok(Out {

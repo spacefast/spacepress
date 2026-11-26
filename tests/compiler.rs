@@ -1626,7 +1626,7 @@ export default defineConfig({ name: "island-upload" });
         tmp.join("sp/components/Dropzone.tsx"),
         r#""use client";
 import { useState } from "react";
-import { uploadFile } from "@spacepress/client/react";
+import { uploadFile } from "spacepress/react";
 
 export function Dropzone() {
   const [name, setName] = useState("");
@@ -1681,7 +1681,7 @@ export default function Page() {
     std::fs::write(
         tmp.join("sp/components/Dropzone.tsx"),
         r#""use client";
-import { uploadFile } from "@spacepress/client/react";
+import { uploadFile } from "spacepress/react";
 export function Dropzone() {
   const onChange = async (event: Event) => {
     await uploadFile("inboxFile", (event.target as HTMLInputElement).files![0]);

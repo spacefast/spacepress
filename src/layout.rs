@@ -186,6 +186,18 @@ impl Layout {
         self.rel("_generated/routes.d.ts")
     }
 
+    pub fn route_types_dir(&self) -> String {
+        self.rel("_generated/types")
+    }
+
+    pub fn api_js(&self) -> String {
+        self.rel("_generated/api.js")
+    }
+
+    pub fn api_types(&self) -> String {
+        self.rel("_generated/api.d.ts")
+    }
+
     pub fn client(&self) -> String {
         self.rel("_generated/client")
     }

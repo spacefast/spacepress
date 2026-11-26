@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { useMount, useEvent, sharedState } from "@spacepress/client/react";
+import { useMount, useEvent, sharedState } from "spacepress/react";
 
 export const cart = sharedState({ items: 0 });
 

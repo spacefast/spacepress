@@ -32,6 +32,16 @@
       "browser": "./stubs/server-wp.mjs",
       "default": "./stubs/server-wp.mjs"
     },
+    "./client": {
+      "types": "../../packages/client/src/index.d.ts",
+      "import": "../../packages/client/src/index.mjs",
+      "default": "../../packages/client/src/index.mjs"
+    },
+    "./react": {
+      "types": "../../packages/client/src/react.d.ts",
+      "import": "../../packages/client/src/react.mjs",
+      "default": "../../packages/client/src/react.mjs"
+    },
     "./danger": {
       "types": "./danger.d.ts"
     },

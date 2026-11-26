@@ -27,8 +27,18 @@
       ],
       "spacepress/danger": [
         "../../types/spacepress/danger.d.ts"
+      ],
+      "spacepress/client": [
+        "../../packages/client/src/index.d.ts"
+      ],
+      "spacepress/react": [
+        "../../packages/client/src/react.d.ts"
       ]
-    }
+    },
+    "rootDirs": [
+      ".",
+      "./sp/_generated/types"
+    ]
   },
   "include": [
     "spacepress.config.ts",

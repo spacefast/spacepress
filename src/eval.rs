@@ -1054,6 +1054,58 @@ impl<'p> Evaluator<'p> {
             })
     }
 
+    /// The declared type of `name` as `source` exports it (`export const ICONS: Record<string,
+    /// string> = …`), so compiled code reading the import types it as its module declared it.
+    /// Follows `export { x }`, `export { x } from` and `export * from` through other modules, and
+    /// a re-exported import keeps the annotation its own import carried.
+    fn import_ann(&self, from: usize, source: &str, name: &str) -> Option<(TyAnn, usize)> {
+        let mut seen = HashSet::new();
+        let mut target = *self.program.resolved.get(&(from, source.to_string()))?;
+        let mut name = name.to_string();
+        while seen.insert((target, name.clone())) {
+            let module = &self.program.modules[target];
+            // The local name `name` is exported under: itself, or `export { local as name }`.
+            let mut local = name.clone();
+            let mut next = None;
+            for stmt in &module.body {
+                match stmt {
+                    Stmt::ExportNames { names, from, .. } => {
+                        if let Some((l, _)) = names.iter().find(|(_, exported)| *exported == name) {
+                            match from {
+                                Some(src) => {
+                                    next = self
+                                        .program
+                                        .resolved
+                                        .get(&(target, src.clone()))
+                                        .map(|&t| (t, l.clone()))
+                                }
+                                None => local = l.clone(),
+                            }
+                        }
+                    }
+                    Stmt::ExportAll { from: src, .. } if next.is_none() => {
+                        if let Some(&t) = self.program.resolved.get(&(target, src.clone()))
+                            && self.exports[t].contains_key(&name)
+                        {
+                            next = Some((t, name.clone()));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if next.is_none()
+                && let Some(scope) = &self.module_scopes[target]
+                && let Some(b) = scope.vars.borrow().get(&local)
+            {
+                return b.ann.clone();
+            }
+            let (t, n) = next?;
+            target = t;
+            name = n;
+        }
+        None
+    }
+
     fn import_value(&mut self, from: usize, source: &str, name: &str, span: Span) -> R<Value> {
         if source == SP_MODULE {
             return sp_export(name, span);
@@ -1241,6 +1293,11 @@ impl<'p> Evaluator<'p> {
                     }
                 }
             };
+            let ann = match &spec.imported {
+                ImportName::Named(n) => self.import_ann(id, source, n),
+                ImportName::Default => self.import_ann(id, source, "default"),
+                ImportName::Namespace => None,
+            };
             scope.vars.borrow_mut().insert(
                 spec.local.clone(),
                 Binding {
@@ -1248,7 +1305,7 @@ impl<'p> Evaluator<'p> {
                     value,
                     mutable: false,
                     module_level: true,
-                    ann: None,
+                    ann,
                 },
             );
         }

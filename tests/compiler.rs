@@ -6358,3 +6358,15 @@ fn refused_helper_chain_stays_linear_on_speculative_retries() {
         );
     }
 }
+
+/// A constant's declared type crosses imports, aliased re-exports and `export *`: compiled code
+/// that indexes an imported `Record<string, string>` with a string reads it as that record, not as
+/// the object literal's fixed keys, and renders a missing key as undefined.
+#[test]
+fn imported_constants_keep_their_declared_types() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("annotations");
+    copy(&root().join("tests/fixtures/imported-annotations"), &project);
+    let out = first().arg("build").arg(&project).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}

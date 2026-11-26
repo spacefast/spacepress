@@ -3402,6 +3402,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 }
                                 None => miss.push(item.clone()),
                             },
+                            // `"k" in null` throws, so a true branch never holds null (`"k" in x!`).
+                            Ty::Null | Ty::Undefined => miss.push(item.clone()),
                             other => {
                                 hit.push(other.clone());
                                 miss.push(other.clone());

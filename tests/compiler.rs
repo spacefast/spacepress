@@ -1971,6 +1971,10 @@ const bc = (v: "b" | "c") => v;
 export const m = mutation({}, async ({ a, b }: { a: "x" | "y"; b: "b" | "c" }) => { if (a === "x" && b === "b") return "b"; return xy(a) + bc(b); });"#,
         // `x!` narrows the true branch.
         r#"export const m = mutation({}, async ({ x }: { x: string | null }) => { if (x! === "a") return x.length; if (typeof x! === "string") return x.length; return 0; });"#,
+        // `"k" in x!` throws on null, so its true branch holds no null.
+        r#"type A = { k: number }; type B = { j: number };
+const get = (n: number): A | B | null => (n > 0 ? { k: 1 } : n < 0 ? { j: 2 } : null);
+export const m = mutation({}, async ({ n }: { n: number }) => { const x = get(n); if ("k" in x!) return x.k; return 0; });"#,
     ] {
         let out = check(source);
         assert!(

@@ -32,7 +32,7 @@ pub const KINDS: &[(&str, &str)] = &[
     // PHP functions imported from "php/wordpress" (later "php/<slug>" or "php"), recorded as
     // `<source>:<function>`.
     ("php", "calls the PHP function"),
-    // `"use client"` modules the plugin's package ships, as `<project-relative path>@sha256-<hex>`.
+    // `"use client"` modules the plugin's package ships, as `<package>/<path>@sha256-<hex>`.
     // Browser code runs outside the compiler's capability checks, so each island, and each change
     // to its code, is a lock entry the owner reviews.
     ("browser", "ships the browser island"),
@@ -266,8 +266,10 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
             })
             .collect();
         files.sort();
-        // Each island by path and a hash of its browser code (the island and the relative modules
-        // it imports), so a package update that changes an approved island is a lock change too.
+        // Each island by `<package>/<path in package>` and a hash of its browser code (the island and
+        // the relative modules it imports), so a package update that changes an approved island is a
+        // lock change too. Neither depends on where the package sits on disk: a linked or hoisted
+        // package resolves outside the project.
         plugins[i].islands = files
             .iter()
             .filter(|(_, m)| program.modules[*m].use_client)
@@ -278,7 +280,8 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
                     start: 0,
                     end: 0,
                 };
-                (format!("{name}@{}", browser_digest(program, *m, &project)), span)
+                let path = in_package(&plugins[i], &module.path).unwrap_or_else(|| name.clone());
+                (format!("{path}@{}", browser_digest(program, *m, &plugins[i])), span)
             })
             .collect();
         let mut hash = Sha256::new();
@@ -299,8 +302,19 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
     Ok(())
 }
 
-/// `sha256-<hex>` over a `"use client"` module and every module it imports, by project-relative path.
-fn browser_digest(program: &Program, island: usize, project: &Path) -> String {
+/// `<package>/<path>` for a file inside the plugin's package.
+fn in_package(plugin: &Plugin, path: &Path) -> Option<String> {
+    let rest = path.strip_prefix(&plugin.root).ok()?;
+    Some(format!(
+        "{}/{}",
+        plugin.package,
+        rest.to_string_lossy().replace('\\', "/")
+    ))
+}
+
+/// `sha256-<hex>` over a `"use client"` module and every module it imports, each named as
+/// [`in_package`] names it (the file name alone for one outside the package).
+fn browser_digest(program: &Program, island: usize, plugin: &Plugin) -> String {
     let mut reached = BTreeSet::from([island]);
     let mut queue = vec![island];
     while let Some(m) = queue.pop() {
@@ -316,11 +330,8 @@ fn browser_digest(program: &Program, island: usize, project: &Path) -> String {
         .iter()
         .map(|&m| {
             let path = program.modules[m].path.as_path();
-            let name = path
-                .strip_prefix(project)
-                .unwrap_or(path)
-                .to_string_lossy()
-                .replace('\\', "/");
+            let name = in_package(plugin, path)
+                .unwrap_or_else(|| path.file_name().unwrap_or_default().to_string_lossy().into_owned());
             (name, path)
         })
         .collect();

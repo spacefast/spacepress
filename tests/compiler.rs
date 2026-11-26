@@ -4328,17 +4328,20 @@ fn a_plugin_package_runs_under_its_locked_grant() {
 }
 
 /// A plugin package may ship `"use client"` islands. Each one is a `browser` entry in the lock, by
-/// path and a hash of its code, so a new or changed island is a lock diff the owner reviews:
-/// `--frozen` refuses one the lock doesn't list, and an entry the owner removed stays removed.
+/// `<package>/<path>` and a hash of its code, so a new or changed island is a lock diff the owner
+/// reviews: `--frozen` refuses one the lock doesn't list, and the owner can remove an entry, which
+/// the unchanged package then can't add back.
 #[test]
 fn a_plugin_island_is_a_browser_entry_in_its_lock() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().join("widget");
     copy(&root().join("tests/fixtures/plugin-client"), &project);
     let island = "node_modules/spacepress-plugin-widget/src/Counter.tsx";
+    let entry = "spacepress-plugin-widget/src/Counter.tsx";
     let lock = project.join("sp/_generated/plugins.lock.json");
+    // `CI` makes every build frozen; this test also needs the builds that update the lock.
     let build = |args: &[&str]| {
-        let out = first().args(args).arg(&project).output().unwrap();
+        let out = first().args(args).env_remove("CI").arg(&project).output().unwrap();
         (out.status.code(), String::from_utf8_lossy(&out.stderr).into_owned())
     };
     let browser = || -> Vec<String> {
@@ -4357,7 +4360,7 @@ fn a_plugin_island_is_a_browser_entry_in_its_lock() {
     assert_eq!(code, Some(0), "{stderr}");
     let approved = browser();
     assert_eq!(approved.len(), 1, "{approved:?}");
-    assert!(approved[0].starts_with(&format!("{island}@sha256-")), "{approved:?}");
+    assert!(approved[0].starts_with(&format!("{entry}@sha256-")), "{approved:?}");
     assert!(stderr.contains(&format!("+ browser: {}", approved[0])), "{stderr}");
     let (code, stderr) = build(&["build", "--frozen"]);
     assert_eq!(code, Some(0), "{stderr}");

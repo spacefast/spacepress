@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "spacepress",
+    "strict": true,
+    "noEmit": true,
+    "types": [],
+    "paths": {
+      "spacepress": ["../../types/spacepress/index.d.ts"],
+      "spacepress/app": ["../../types/spacepress/app.d.ts"],
+      "spacepress/client": ["../../types/spacepress/client.d.ts"],
+      "spacepress/jsx-runtime": ["../../types/spacepress/jsx-runtime.d.ts"],
+      "spacepress/jsx-dev-runtime": ["../../types/spacepress/jsx-dev-runtime.d.ts"],
+      "php/wordpress": ["../../types/spacepress/wordpress.d.ts"],
+      "@spacepress/docs": ["../../packages/docs/src/index.ts"],
+      "@spacepress/docs/*": ["../../packages/docs/src/*.ts"],
+      "spacepress/content": ["../../types/spacepress/content.d.ts"]
+    }
+  },
+  "include": [
+    "spacepress.config.ts",
+    "sp/**/*.ts",
+    "sp/**/*.tsx",
+    "../../types/spacepress/assets.d.ts",
+    "../../types/spacepress/db.d.cts"
+  ],
+  "exclude": ["sp/_generated/client", "sp/dist", "node_modules"]
+}

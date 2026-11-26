@@ -1910,7 +1910,8 @@ fn string_literal_and_disjunction_narrowing_in_branches_and_ternaries() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
         tmp.path().join("spacepress.config.ts"),
-        r#"import { defineConfig, db, mutation, select, table, text } from "spacepress";
+        r#"import { defineConfig, mutation, select, table, text } from "spacepress";
+import { db } from "spacepress/server";
 
 export const tasks = table({
   title: text(),

@@ -110,6 +110,31 @@ enum LoopStep {
     Leave(Flow),
 }
 
+/// The names a module exports itself: its exported declarations and `export { … }` lists,
+/// with or without `from`. `export *` never overrides these.
+fn own_exports(body: &[Stmt]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    for stmt in body {
+        match stmt {
+            Stmt::Exported(inner) => {
+                let mut names = Vec::new();
+                match inner.as_ref() {
+                    Stmt::Decl { pat, .. } => pat.bindings(&mut names),
+                    Stmt::Func(f) => names.extend(f.name.as_deref().map(|n| (n, f.span))),
+                    _ => {}
+                }
+                out.extend(names.into_iter().map(|(n, _)| n.to_string()));
+            }
+            Stmt::ExportNames { names, .. } => out.extend(names.iter().map(|(_, exported)| exported.clone())),
+            Stmt::ExportDefault(_) => {
+                out.insert("default".to_string());
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 fn loop_step(flow: Flow, labels: &[String]) -> LoopStep {
     match flow {
         Flow::Normal | Flow::Continue(None) => LoopStep::Next,
@@ -978,7 +1003,14 @@ impl<'p> Evaluator<'p> {
                         .filter(|(k, _)| *k != "default")
                         .map(|(k, v)| (k.clone(), v.clone()))
                         .collect();
-                    self.exports[id].extend(all);
+                    // A module's own exports win over `export *` wherever they sit, and the first
+                    // star that has a name keeps it, as `import_ann` reads them.
+                    let own = own_exports(&self.program.modules[id].body);
+                    for (k, v) in all {
+                        if !own.contains(&k) {
+                            self.exports[id].entry(k).or_insert(v);
+                        }
+                    }
                 }
                 Stmt::ExportDefault(e) => {
                     let v = self.eval(e, &scope)?;
@@ -1074,6 +1106,77 @@ impl<'p> Evaluator<'p> {
                     },
                 )
             })
+    }
+
+    /// The declared type of `name` as `source` exports it (`export const ICONS: Record<string,
+    /// string> = …`), so compiled code reading the import types it as its module declared it.
+    /// Follows `export { x }`, `export { x } from` and `export * from` through other modules, and
+    /// a re-exported import keeps the annotation its own import carried.
+    fn import_ann(&self, from: usize, source: &str, name: &str) -> Option<(TyAnn, usize)> {
+        let mut seen = HashSet::new();
+        let mut target = *self.program.resolved.get(&(from, source.to_string()))?;
+        let mut name = name.to_string();
+        while seen.insert((target, name.clone())) {
+            let module = &self.program.modules[target];
+            // The local name `name` is exported under: itself, or `export { local as name }`.
+            let mut local = name.clone();
+            let mut next = None;
+            // A local export wins over `export *`, as in ESM.
+            let mut star = None;
+            let mut exported_here = false;
+            for stmt in &module.body {
+                match stmt {
+                    Stmt::Exported(inner) => {
+                        let mut names = Vec::new();
+                        match inner.as_ref() {
+                            Stmt::Decl { pat, .. } => pat.bindings(&mut names),
+                            Stmt::Func(f) => names.extend(f.name.as_deref().map(|n| (n, f.span))),
+                            _ => {}
+                        }
+                        exported_here |= names.iter().any(|(n, _)| *n == name);
+                    }
+                    Stmt::ExportNames { names, from, .. } => {
+                        if let Some((l, _)) = names.iter().find(|(_, exported)| *exported == name) {
+                            match from {
+                                Some(src) => {
+                                    next = self
+                                        .program
+                                        .resolved
+                                        .get(&(target, src.clone()))
+                                        .map(|&t| (t, l.clone()))
+                                }
+                                None => {
+                                    local = l.clone();
+                                    exported_here = true;
+                                }
+                            }
+                        }
+                    }
+                    Stmt::ExportDefault(_) => exported_here |= name == "default",
+                    Stmt::ExportAll { from: src, .. } if star.is_none() && name != "default" => {
+                        if let Some(&t) = self.program.resolved.get(&(target, src.clone()))
+                            && self.exports[t].contains_key(&name)
+                        {
+                            star = Some((t, name.clone()));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if next.is_none() && !exported_here {
+                next = star;
+            }
+            if next.is_none()
+                && let Some(scope) = &self.module_scopes[target]
+                && let Some(b) = scope.vars.borrow().get(&local)
+            {
+                return b.ann.clone();
+            }
+            let (t, n) = next?;
+            target = t;
+            name = n;
+        }
+        None
     }
 
     fn import_value(&mut self, from: usize, source: &str, name: &str, span: Span) -> R<Value> {
@@ -1276,6 +1379,11 @@ impl<'p> Evaluator<'p> {
                     }
                 }
             };
+            let ann = match &spec.imported {
+                ImportName::Named(n) => self.import_ann(id, source, n),
+                ImportName::Default => self.import_ann(id, source, "default"),
+                ImportName::Namespace => None,
+            };
             scope.vars.borrow_mut().insert(
                 spec.local.clone(),
                 Binding {
@@ -1283,7 +1391,7 @@ impl<'p> Evaluator<'p> {
                     value,
                     mutable: false,
                     module_level: true,
-                    ann: None,
+                    ann,
                 },
             );
         }
@@ -4808,7 +4916,9 @@ fn hoist(body: &[Stmt], scope: &Rc<Scope>) {
 /// `var` belongs to the nearest function or module, even when its declaration
 /// sits in a branch that never executes. Do not traverse nested functions.
 fn hoist_vars(body: &[Stmt], scope: &Rc<Scope>) {
+    // Only `var x: T` types its binding: in `var { a }: { a: T }` the type is the whole pattern's.
     fn binding(pat: &Pat, ann: &Option<TyAnn>, scope: &Rc<Scope>) {
+        let ann = &ann.as_ref().filter(|_| matches!(pat, Pat::Id(..))).cloned();
         let mut names = Vec::new();
         pat.bindings(&mut names);
         for (name, _) in names {

@@ -1,4 +1,4 @@
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 import { notFound, type PageProps, type RouteRequest } from "spacepress/app";
 
 export const metadata = ({ params }: PageProps<"notes/[slug]">) => ({

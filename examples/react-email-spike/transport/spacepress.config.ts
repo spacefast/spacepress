@@ -1,4 +1,5 @@
-import { defineConfig, mail, mutation } from "spacepress";
+import { defineConfig, mutation } from "spacepress";
+import { mail } from "spacepress/server";
 import Welcome from "./emails/welcome";
 
 export const invite = mutation({ access: "anyone" }, async ({ html, plainText }: {

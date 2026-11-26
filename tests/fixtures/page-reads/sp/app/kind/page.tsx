@@ -1,4 +1,4 @@
-import { notes } from "spacepress:db";
+import { notes } from "spacepress/server/db";
 
 export default async function Kind() {
   const rows = await notes.list({ orderBy: { id: "asc" } });

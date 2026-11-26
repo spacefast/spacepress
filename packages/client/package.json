@@ -1,0 +1,38 @@
+{
+  "name": "@spacepress/client",
+  "version": "0.1.0",
+  "description": "Typed browser and server fetch client and React hooks for SpacePress sites",
+  "license": "MIT",
+  "homepage": "https://github.com/spacefast/spacepress/tree/main/packages/client#readme",
+  "bugs": "https://github.com/spacefast/spacepress/issues",
+  "keywords": ["spacepress", "wordpress", "client", "react", "sdk", "abilities"],
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.mjs"
+    },
+    "./react": {
+      "types": "./src/react.d.ts",
+      "default": "./src/react.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["src", "LICENSE", "README.md"],
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spacefast/spacepress.git",
+    "directory": "packages/client"
+  },
+  "publishConfig": { "access": "public" }
+}

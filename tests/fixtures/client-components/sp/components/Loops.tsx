@@ -1,5 +1,6 @@
 "use client";
-import { useState, useEvent } from "spacepress/client";
+import { useState } from "react";
+import { useEvent } from "spacepress/react";
 
 // Ordinary browser code in handlers: loops with labels, `break` and `continue`, `switch`,
 // `for … in`, an async callback that awaits inside an async handler, browser globals, and

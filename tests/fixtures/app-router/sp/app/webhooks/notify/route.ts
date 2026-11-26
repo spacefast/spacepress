@@ -1,4 +1,5 @@
-import { db, env, type RouteRequest } from "spacepress";
+import { env, type RouteRequest } from "spacepress";
+import { db } from "spacepress/server";
 
 // A raw signed webhook: the sender signs the body; the handler runs as the system, so it reads
 // the draft an anonymous visitor can't.

@@ -2,7 +2,7 @@ import { Code, ProjectExplorer, Sandbox, Tree } from "../Code";
 
 const PROJECT_TREE = `my-app/
   spacepress.config.ts   Config entry & re-exports
-  tsconfig.json          TypeScript paths ("spacepress", "spacepress:db")
+  tsconfig.json          TypeScript paths ("spacepress", "spacepress/server/db")
   sp/
     schema.ts            Collections, SQL tables, globals, taxonomies
     server.ts            Actions, background jobs, helpers
@@ -20,7 +20,8 @@ const PROJECT_TREE = `my-app/
   emails/                React Email templates rendered by mail.render()
   public/                Static assets served at site root`;
 
-const COMPILER_SANDBOX = `import { collection, table, text, integer, slug, ref, action, db, defineConfig } from "spacepress";
+const COMPILER_SANDBOX = `import { collection, table, text, integer, slug, ref, action, defineConfig } from "spacepress";
+import { db } from "spacepress/server";
 
 export const guides = collection({
   title: text().min(1).max(120),
@@ -126,7 +127,7 @@ export function Part1Foundation() {
           A SpacePress application is a regular TypeScript repository whose single source of truth is <code>spacepress.config.ts</code> and the modules under <code>sp/</code>. Instead of running a separate Node.js backend beside WordPress, SpacePress compiles your TypeScript directly into native PHP, SQL migrations, TypeScript types, OpenAPI 3.1, and standard WordPress plugins.
         </p>
         <div className="sp-callout is-info">
-          <strong>Pre-release package &amp; CLI naming:</strong> SpacePress is the framework and platform brand (<code>spacepress.dev</code>). While preparing its 1.0 release, the Rust CLI binary, npm package, config filename, and virtual imports remain spelled <code>spacepress</code> (<code>spacepress.config.ts</code>, <code>sp/</code>, <code>import ... from &quot;spacepress&quot;</code>, <code>spacepress:db</code>).
+          <strong>Pre-release package &amp; CLI naming:</strong> SpacePress is the framework and platform brand (<code>spacepress.dev</code>). While preparing its 1.0 release, the Rust CLI binary, npm package, config filename, and virtual imports remain spelled <code>spacepress</code> (<code>spacepress.config.ts</code>, <code>sp/</code>, <code>import ... from &quot;spacepress&quot;</code>, <code>spacepress/server/*</code>).
         </div>
         <Tree text={PROJECT_TREE} />
         <h3>Explore a complete multi-file SpacePress app</h3>
@@ -319,18 +320,18 @@ export function Part1Foundation() {
         </p>
         <ul>
           <li>
-            <strong>Visitor-scoped Kind API (<code>import &#123; posts &#125; from &quot;spacepress:db&quot;</code>):</strong> Every call (<code>list</code>, <code>paginate</code>, <code>get</code>, <code>count</code>, <code>create</code>, <code>update</code>, <code>delete</code>) enforces the current visitor&apos;s access rules, draft visibility, and field masks. Use <code>posts.system.*</code> only when intentionally escalating to trusted system access.
+            <strong>Visitor-scoped Kind API (<code>import &#123; posts &#125; from &quot;spacepress/server/db&quot;</code>):</strong> Every call (<code>list</code>, <code>paginate</code>, <code>get</code>, <code>count</code>, <code>create</code>, <code>update</code>, <code>delete</code>) enforces the current visitor&apos;s access rules, draft visibility, and field masks. Use <code>posts.system.*</code> only when intentionally escalating to trusted system access.
           </li>
           <li>
-            <strong>Trusted Database API (<code>import &#123; db &#125; from &quot;spacepress&quot;</code>):</strong> Drizzle-inspired relational queries (<code>db.query.&lt;kind&gt;.findMany()</code>, <code>findFirst()</code>), writes (<code>db.insert()</code>, <code>db.update()</code>, <code>db.delete()</code> with <code>.returning()</code>), and <code>db.globals.&lt;key&gt;.get()</code> / <code>.update()</code>. Ideal inside hooks, background jobs, and already-authorized server actions.
+            <strong>Trusted Database API (<code>import &#123; db &#125; from &quot;spacepress/server&quot;</code>):</strong> Drizzle-inspired relational queries (<code>db.query.&lt;kind&gt;.findMany()</code>, <code>findFirst()</code>), writes (<code>db.insert()</code>, <code>db.update()</code>, <code>db.delete()</code> with <code>.returning()</code>), and <code>db.globals.&lt;key&gt;.get()</code> / <code>.update()</code>. Ideal inside hooks, background jobs, and already-authorized server actions.
           </li>
         </ul>
 
         <Code
           file="query-examples.ts"
           note="Visitor-scoped vs trusted queries"
-          code={`import { db } from "spacepress";
-import { posts } from "spacepress:db";
+          code={`import { db } from "spacepress/server";
+import { posts } from "spacepress/server/db";
 
 // Visitor-scoped: enforces read rules, draft visibility & field masks
 const { rows, cursor } = await posts.paginate({

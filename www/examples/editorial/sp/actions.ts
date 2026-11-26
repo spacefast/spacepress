@@ -1,5 +1,6 @@
-import { mutation, HttpError } from "spacepress";
-import { articles, claps } from "spacepress:db";
+import { mutation } from "spacepress";
+import { HttpError } from "spacepress/server";
+import { articles, claps } from "spacepress/server/db";
 
 export const clap = mutation({ access: "anyone" }, async ({ articleId }: { articleId: number }) => {
   const article = await articles.get(articleId);

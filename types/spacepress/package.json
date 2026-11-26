@@ -1,16 +1,49 @@
 {
   "name": "spacepress",
   "license": "MIT",
+  "type": "module",
   "types": "index.d.ts",
   "exports": {
     ".": {
       "types": "./index.d.ts"
     },
     "./app": {
-      "types": "./app.d.ts"
+      "types": "./app.d.ts",
+      "browser": "./stubs/app.mjs",
+      "default": "./stubs/app.mjs"
+    },
+    "./content": {
+      "types": "./content.d.ts",
+      "browser": "./stubs/content.mjs",
+      "default": "./stubs/content.mjs"
+    },
+    "./server": {
+      "types": "./server.d.ts",
+      "browser": "./stubs/server.mjs",
+      "default": "./stubs/server.mjs"
+    },
+    "./server/db": {
+      "types": "./server-db.d.cts",
+      "browser": "./stubs/server-db.mjs",
+      "default": "./stubs/server-db.mjs"
+    },
+    "./server/wp": {
+      "types": "./server-wp.d.ts",
+      "browser": "./stubs/server-wp.mjs",
+      "default": "./stubs/server-wp.mjs"
     },
     "./client": {
-      "types": "./client.d.ts"
+      "types": "../../packages/client/src/index.d.ts",
+      "import": "../../packages/client/src/index.mjs",
+      "default": "../../packages/client/src/index.mjs"
+    },
+    "./react": {
+      "types": "../../packages/client/src/react.d.ts",
+      "import": "../../packages/client/src/react.mjs",
+      "default": "../../packages/client/src/react.mjs"
+    },
+    "./danger": {
+      "types": "./danger.d.ts"
     },
     "./jsx-runtime": {
       "types": "./jsx-runtime.d.ts"
@@ -18,11 +51,6 @@
     "./jsx-dev-runtime": {
       "types": "./jsx-dev-runtime.d.ts"
     },
-    "./content": {
-      "types": "./content.d.ts"
-    },
-    "./danger": {
-      "types": "./danger.d.ts"
-    }
+    "./package.json": "./package.json"
   }
 }

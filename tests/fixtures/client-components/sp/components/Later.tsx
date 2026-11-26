@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "spacepress/client";
+import { useState, useRef } from "react";
 
 // Code that runs after its handler returns, and handlers calling each other: a timer, a listener
 // and a promise callback read a derived value, a ref and another handler; an async handler awaits

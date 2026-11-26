@@ -1,5 +1,5 @@
-import { db } from "spacepress";
-import type { Handler } from "php/wordpress";
+import { db } from "spacepress/server";
+import type { Handler } from "spacepress/server/wp";
 import { stockMovements } from "../schema";
 
 const logStock: Handler<"spacepress_woo_order_stock"> = async (drive, order, change, reason) => {

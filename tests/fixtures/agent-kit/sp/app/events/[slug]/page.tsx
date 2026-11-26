@@ -1,4 +1,4 @@
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 import { notFound, type PageProps } from "spacepress/app";
 
 export default async function Event({ params }: PageProps<"events/[slug]">) {

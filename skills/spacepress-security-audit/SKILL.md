@@ -1,6 +1,6 @@
 ---
 name: spacepress-security-audit
-description: "Use when auditing or hardening a SpacePress project's authorization and safety: checking collection/table access rules, field-level .access(), visitor-scoped spacepress:db vs trusted db, HTTP route guards, and WordPress Abilities readonly/destructive annotations."
+description: "Use when auditing or hardening a SpacePress project's authorization and safety: checking collection/table access rules, field-level .access(), visitor-scoped spacepress/server/db vs trusted db from spacepress/server, HTTP route guards, and WordPress Abilities readonly/destructive annotations."
 compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `spacepress` CLI and Node.js 22+."
 ---
 
@@ -24,7 +24,7 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    - Verify private fields (emails, tokens, internal notes) declare field-level `.access()` so REST, pages, and clients strip them automatically.
 
 2. Audit every `sp/app/**/page.tsx` and `sp/app/**/route.ts`:
-   - Confirm visitor-facing reads import kinds from `"spacepress:db"` (which enforces `.access()` rules) instead of bypassing them with trusted `db` from `"spacepress"`.
+   - Confirm visitor-facing reads import kinds from `"spacepress/server/db"` (which enforces `.access()` rules) instead of bypassing them with trusted `db` from `"spacepress"`.
    - Confirm custom `route.ts` handlers export an explicit `guard` (or verify webhook signatures before mutating data).
 
 3. Audit every `query()`, `mutation()`, and `job()`:
@@ -33,7 +33,8 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 
    ```ts
    // sp/security-example.ts
-   import { table, text, integer, mutation, db, HttpError } from "spacepress";
+   import { table, text, integer, mutation } from "spacepress";
+   import { db, HttpError } from "spacepress/server";
 
    export const privateNotes = table({
      ownerId: integer(),
@@ -67,7 +68,7 @@ Run `spacepress check` and `spacepress doctor` to confirm every updated rule and
 
 ## Failure modes / debugging
 
-- **Empty query results for signed-out visitors:** Confirm the kind's `access.read` permits `"anyone"` when public pages read from `"spacepress:db"`.
+- **Empty query results for signed-out visitors:** Confirm the kind's `access.read` permits `"anyone"` when public pages read from `"spacepress/server/db"`.
 - **Field missing in API response:** Check whether a field-level `.access()` rule restricts it for the caller's role.
 
 ## Escalation

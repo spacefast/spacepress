@@ -1,4 +1,4 @@
-import { docs } from "spacepress:db";
+import { docs } from "spacepress/server/db";
 import { Content, Link, type PageProps, type ReactNode } from "spacepress/app";
 import { nav, pager, headings, type NavItem } from "spacepress/content";
 

@@ -1,24 +1,8 @@
 // Reusable SpacePress schema factories for @spacepress/todo.
 // Host apps call createTodoBuckets() / createTasksCollection() in sp/schema.ts,
 // or pass their own shared hierarchical taxonomy into createTasksCollection({ buckets }).
-import {
-  type AnyCollection,
-  boolean,
-  collection,
-  global,
-  HttpError,
-  integer,
-  ref,
-  repeater,
-  richText,
-  select,
-  slug,
-  taxonomy,
-  terms,
-  text,
-  timestamp,
-  url,
-} from "spacepress";
+import { type AnyCollection, boolean, collection, global, integer, ref, repeater, richText, select, slug, taxonomy, terms, text, timestamp, url } from "spacepress";
+import { HttpError } from "spacepress/server";
 import {
   TODO_BOARD_GROUPS,
   TODO_BUCKET_KINDS,

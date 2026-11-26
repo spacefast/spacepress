@@ -517,6 +517,13 @@ fn generated_routes_type_links_and_params() {
                 "allowImportingTsExtensions": true,
                 "paths": {
                     "spacepress": [types.join("index.d.ts")],
+                    "spacepress/server": [types.join("server.d.ts")],
+                    "spacepress/server/db": [types.join("server-db.d.cts")],
+                    "spacepress/app": [types.join("app.d.ts")],
+                    "spacepress/content": [types.join("content.d.ts")],
+                    "spacepress/server/wp": [types.join("server-wp.d.ts")],
+                    "spacepress/client": [root().join("packages/client/src/index.d.ts")],
+                    "spacepress/react": [root().join("packages/client/src/react.d.ts")],
                     "spacepress/*": [types.join("*.d.ts")],
                 },
             },
@@ -1460,7 +1467,7 @@ fn refuses_prebuilt_pages_that_depend_on_the_request() {
         &[
             (
                 "sp/app/_lib/who.ts",
-                "import { is_user_logged_in } from \"php/wordpress\";\nexport function who(): string { return is_user_logged_in() ? \"you\" : \"guest\"; }\n",
+                "import { is_user_logged_in } from \"spacepress/server/wp\";\nexport function who(): string { return is_user_logged_in() ? \"you\" : \"guest\"; }\n",
             ),
             (
                 "sp/app/hello/page.tsx",
@@ -2167,8 +2174,7 @@ fn client_components_compile_to_interactivity_stores() {
 #[test]
 fn refuses_client_code_outside_the_subset() {
     let dir = std::env::temp_dir().join(format!("spacepress-client-reject-{}", std::process::id()));
-    let component =
-        |body: &str| format!("\"use client\";\nimport {{ useState }} from \"spacepress/client\";\n{body}\n");
+    let component = |body: &str| format!("\"use client\";\nimport {{ useState }} from \"react\";\n{body}\n");
     rejects(
         &dir,
         &[(
@@ -2178,8 +2184,7 @@ fn refuses_client_code_outside_the_subset() {
         "a client component returns one element",
         "sp/components/A.tsx:3:",
     );
-    let refs =
-        |body: &str| format!("\"use client\";\nimport {{ useRef, useState }} from \"spacepress/client\";\n{body}\n");
+    let refs = |body: &str| format!("\"use client\";\nimport {{ useRef, useState }} from \"react\";\n{body}\n");
     rejects(
         &dir,
         &[(
@@ -2361,10 +2366,10 @@ fn refuses_client_code_outside_the_subset() {
             "sp/components/A.tsx:3:",
         );
     }
-    // `useLive`: a query the server and the browser both have (props and literals), and no `seed`.
+    // `useLive`: a typed query from `_generated/api` (props and literals only, no string kind, no `seed`).
     let live = |body: &str| {
         component(&format!(
-            "import {{ useLive }} from \"spacepress/client\";\nexport function A({{ n }}: {{ n: number }}) {{ {body} }}"
+            "import {{ useLive }} from \"spacepress/react\";\nimport {{ api }} from \"../_generated/api\";\nexport function A({{ n }}: {{ n: number }}) {{ {body} }}"
         ))
     };
     rejects(
@@ -2377,12 +2382,12 @@ fn refuses_client_code_outside_the_subset() {
             (
                 "sp/components/A.tsx",
                 &live(
-                    "const [k, setK] = useState(5); const xs = useLive(\"notes\", { limit: k }); return <b onClick={() => setK(1)}>{xs.loading ? 1 : 0}</b>;",
+                    "const [k, setK] = useState(5); const xs = useLive(api.notes.list({ limit: k })); return <b onClick={() => setK(1)}>{xs.loading ? 1 : 0}</b>;",
                 ),
             ),
         ],
         "a `useLive` query reads props and literals only",
-        "sp/components/A.tsx:4:",
+        "sp/components/A.tsx:5:",
     );
     rejects(
         &dir,
@@ -2393,11 +2398,28 @@ fn refuses_client_code_outside_the_subset() {
             ),
             (
                 "sp/components/A.tsx",
-                &live("const xs = useLive(\"notes\", { limit: n }, { seed: 1 }); return <b>{xs.loading ? 1 : 0}</b>;"),
+                &live(
+                    "const xs = useLive(api.notes.list({ limit: n }), { seed: 1 }); return <b>{xs.loading ? 1 : 0}</b>;",
+                ),
             ),
         ],
         "`useLive` options are `{ enabled }`",
-        "sp/components/A.tsx:4:",
+        "sp/components/A.tsx:5:",
+    );
+    rejects(
+        &dir,
+        &[
+            (
+                "sp/schema.ts",
+                "import { table, text } from \"spacepress\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+            ),
+            (
+                "sp/components/A.tsx",
+                &live("const xs = useLive(\"notes\", { limit: n }); return <b>{xs.loading ? 1 : 0}</b>;"),
+            ),
+        ],
+        "`useLive` takes a typed query from `_generated/api`, not a string",
+        "sp/components/A.tsx:5:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -2428,7 +2450,17 @@ fn forms_work_without_javascript() {
                 "target": "ES2022", "lib": ["ES2022", "DOM"], "module": "ESNext", "moduleResolution": "bundler",
                 "strict": true, "noEmit": true, "types": [], "jsx": "react-jsx", "jsxImportSource": "spacepress",
                 "allowImportingTsExtensions": true,
-                "paths": { "spacepress": [types.join("index.d.ts")], "spacepress/*": [types.join("*.d.ts")] },
+                "paths": {
+                    "spacepress": [types.join("index.d.ts")],
+                    "spacepress/server": [types.join("server.d.ts")],
+                    "spacepress/server/db": [types.join("server-db.d.cts")],
+                    "spacepress/app": [types.join("app.d.ts")],
+                    "spacepress/content": [types.join("content.d.ts")],
+                    "spacepress/server/wp": [types.join("server-wp.d.ts")],
+                    "spacepress/client": [root().join("packages/client/src/index.d.ts")],
+                    "spacepress/react": [root().join("packages/client/src/react.d.ts")],
+                    "spacepress/*": [types.join("*.d.ts")],
+                },
             },
             "include": ["spacepress.config.ts", "sp", "typed.ts"],
         })
@@ -4618,7 +4650,7 @@ fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
     .unwrap();
     std::fs::write(
         project.join("sp/components/Badge.tsx"),
-        "\"use client\";\nimport { useState } from \"spacepress/client\";\nimport icon from \"./icon.svg\";\nimport inlineIcon from \"./icon.svg?inline\";\nexport function Badge() {\n  const [alt, setAlt] = useState(false);\n  return <button type=\"button\" onClick={() => setAlt(!alt)}><img className=\"client-img\" src={alt ? inlineIcon : icon} alt=\"Badge\" /></button>;\n}\n",
+        "\"use client\";\nimport { useState } from \"react\";\nimport icon from \"./icon.svg\";\nimport inlineIcon from \"./icon.svg?inline\";\nexport function Badge() {\n  const [alt, setAlt] = useState(false);\n  return <button type=\"button\" onClick={() => setAlt(!alt)}><img className=\"client-img\" src={alt ? inlineIcon : icon} alt=\"Badge\" /></button>;\n}\n",
     )
     .unwrap();
     std::fs::write(
@@ -6227,7 +6259,7 @@ fn static_export_refuses_what_needs_a_server() {
     );
     write(
         "sp/components/Ping.tsx",
-        "\"use client\";\nimport { useState } from \"spacepress/client\";\nimport { ping } from \"../actions\";\nexport function Ping() { const [n, setN] = useState(0); return <button type=\"button\" onClick={async () => setN(await ping({}))}>{n}</button>; }\n",
+        "\"use client\";\nimport { useState } from \"react\";\nimport { ping } from \"../actions\";\nexport function Ping() { const [n, setN] = useState(0); return <button type=\"button\" onClick={async () => setN(await ping({}))}>{n}</button>; }\n",
     );
     write(
         "sp/app/page.tsx",
@@ -6259,7 +6291,7 @@ fn static_export_refuses_what_needs_a_server() {
     // A page that asks WordPress who the visitor is: refused at build, at the call.
     write(
         "sp/app/page.tsx",
-        "import { is_user_logged_in } from \"php/wordpress\";\nexport default function Home() { return <main>{is_user_logged_in() ? \"you\" : \"guest\"}</main>; }\n",
+        "import { is_user_logged_in } from \"spacepress/server/wp\";\nexport default function Home() { return <main>{is_user_logged_in() ? \"you\" : \"guest\"}</main>; }\n",
     );
     let out = first().arg("export").arg(project).output().unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -6482,7 +6514,7 @@ fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str, 
 
 /// Issue #311: every read a `sp/app/` page can make runs as the visitor, on WordPress over
 /// HTTP. A collection whose read rule shows drafts to staff only, read through each path a page
-/// has (tests/php/page_reads.php): a page's and a layout's `db.query`, the `"spacepress:db"` kind API,
+/// has (tests/php/page_reads.php): a page's and a layout's `db.query`, the `"spacepress/server/db"` kind API,
 /// the Markdown twin, a `route.ts` handler, and the two kinds of read in an action a `"use client"`
 /// component calls. A signed-out visitor never sees the draft; an editor does. An editor's render
 /// is never shared, so the anonymous page after it is still the anonymous one.

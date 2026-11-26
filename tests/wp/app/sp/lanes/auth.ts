@@ -2,7 +2,8 @@
 // exports registers under its export name, and a name another lane or the app uses fails the build.
 // Lane E (§6.2): members are WordPress users, plus a collection any signed-in viewer (guests
 // included) may write and one that subscribers and up may write, for the guest role ladder.
-import { blocks, boolean, collection, date, db, email, group, HttpError, integer, repeater, select, text, timestamp, userProjection, table, ref } from "spacepress";
+import { blocks, boolean, collection, date, email, group, integer, repeater, select, text, timestamp, userProjection, table, ref } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 export const members = userProjection({
   email: email().unique().max(191),

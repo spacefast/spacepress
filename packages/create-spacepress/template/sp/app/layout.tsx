@@ -1,4 +1,4 @@
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 import { Link, type LayoutProps } from "spacepress/app";
 import "./site.css";
 

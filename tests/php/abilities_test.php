@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
- * abilities.call from "php/wordpress" (SpacePress\Wp\Abilities\Call) on an in-process WordPress: another
+ * abilities.call from "spacepress/server/wp" (SpacePress\Wp\Abilities\Call) on an in-process WordPress: another
  * plugin's ability runs through core's execute() for the current user, with core's input and
  * permission checks, and its WP_Errors become HttpErrors; the app's own abilities are callable too.
  */

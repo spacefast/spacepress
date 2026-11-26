@@ -1,4 +1,5 @@
-import { boolean, db, email, HttpError, mutation } from "spacepress";
+import { boolean, email, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 import { entries } from "./schema";
 
 export const subscribe = mutation({ access: "anyone" }, async ({ email, seats, weekly, note }: { email: string; seats: number; weekly: boolean; note?: string; password?: string }) => {

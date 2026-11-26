@@ -1,5 +1,6 @@
-import { adminScreen, db, HttpError, item, mutation, query } from "spacepress";
-import { abilities } from "php/wordpress";
+import { adminScreen, item, mutation, query } from "spacepress";
+import { db, HttpError } from "spacepress/server";
+import { abilities } from "spacepress/server/wp";
 import { stockMovements } from "./schema";
 
 export const restock = mutation({

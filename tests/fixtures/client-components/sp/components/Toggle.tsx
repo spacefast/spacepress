@@ -1,7 +1,7 @@
 // A comment and another directive may come before "use client": it still marks a client component.
 "use strict";
 "use client";
-import { useState } from "spacepress/client";
+import { useState } from "react";
 import styles from "./toggle.module.css";
 
 export function Toggle() {

@@ -1,8 +1,6 @@
 // Negative checks: each @ts-expect-error must be consumed by a real mistake.
-import {
-  blocks, boolean, collection, db, defineConfig, global, HttpError, integer, media, repeater, richText, select, text, url,
-  table, ref, taxonomy, terms, mutation, query,
-} from "spacepress";
+import { blocks, boolean, collection, defineConfig, global, integer, media, repeater, richText, select, text, url, table, ref, taxonomy, terms, mutation, query } from "spacepress";
+import { HttpError } from "spacepress/server";
 import { authors, comments, items, locations, posts, entities, settings, shoppingList, UNITS } from "./schema";
 import type { AppRelations } from "./register";
 
@@ -87,19 +85,16 @@ items.on({
   // @ts-expect-error misspelled hook name
   beforeCreated(data: unknown) {
     void data;
-  },
-});
+  }, });
 
 items.on({
   beforeUpdate(patch) {
     // @ts-expect-error quantity is a number
     patch.quantity = "lots";
-  },
-  // @ts-expect-error afterCreate receives a row, not a string
+  }, // @ts-expect-error afterCreate receives a row, not a string
   afterCreate(row: string) {
     void row;
-  },
-});
+  }, });
 
 mutation({}, ({ itemId }: { itemId: number }) => {
   // @ts-expect-error itemId is a number
@@ -134,22 +129,18 @@ text().validate((v) => (v > 3 ? true : "short")).optional();
 // Access (§1.6)
 collection({ title: text() }, {
   // @ts-expect-error "moderator" is not a role
-  access: { read: "moderator" },
-});
+  access: { read: "moderator" }, });
 table({ body: text() }, {
   // @ts-expect-error create access rules return booleans
-  access: { create: (ctx) => ({ body: ctx.user?.name ?? "" }) },
-});
+  access: { create: (ctx) => ({ body: ctx.user?.name ?? "" }) }, });
 table({ body: text() }, {
   // @ts-expect-error filter values must match the field
-  access: { update: () => ({ body: 1 }) },
-});
+  access: { update: () => ({ body: 1 }) }, });
 // @ts-expect-error drafts can't be turned off for editor collections
 collection({ body: text() }, { drafts: false });
 collection({ body: text().optional() }, {
   // @ts-expect-error the title column must be a NOT NULL text column
-  title: "body",
-});
+  title: "body", });
 
 async function v1Queries() {
   // @ts-expect-error `has` is for list columns; title is a scalar
@@ -181,17 +172,14 @@ posts.on({
     void ctx.user.id;
     // @ts-expect-error there is no build target on ctx
     void ctx.target;
-  },
-  // @ts-expect-error the trailing argument is HookCtx, not a user
+  }, // @ts-expect-error the trailing argument is HookCtx, not a user
   beforeDelete(row, user: { role: string; email: string }) {
     void row, user;
-  },
-});
+  }, });
 
 mutation({
   // @ts-expect-error access is a gate: no filters
-  access: () => ({ id: 1 }),
-}, ({ id }: { id: number }, ctx) => ctx.user?.role === "admin" && id);
+  access: () => ({ id: 1 }), }, ({ id }: { id: number }, ctx) => ctx.user?.role === "admin" && id);
 
 // @ts-expect-error the handler comes after the options
 mutation({ handler: async () => 1 });
@@ -202,8 +190,7 @@ mutation({ rateLimit: "10 per minute" }, async () => 1);
 
 defineConfig({
   // @ts-expect-error there is no build target option
-  target: "wp",
-});
+  target: "wp", });
 
 // Globals (§1.5)
 // @ts-expect-error global field defaults are typed: postsPerPage is an integer
@@ -222,6 +209,7 @@ void v1Queries; void authors; void comments; void settings;
 // fetch and crypto are the standard globals, not "spacepress" exports.
 // @ts-expect-error "spacepress" has no fetch
 export { fetch } from "spacepress";
+import { db } from "spacepress/server";
 // @ts-expect-error "spacepress" has no crypto
 export { crypto } from "spacepress";
 // @ts-expect-error destructiveMigrations lives only on "spacepress/danger", never the main barrel

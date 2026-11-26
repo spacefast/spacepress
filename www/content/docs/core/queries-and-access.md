@@ -1,17 +1,17 @@
 ---
 uid: zr_863af58e96e756fc5907
 title: Queries & Access Control
-description: Visitor-scoped spacepress:db queries, trusted db queries, filtering operators, and declarative access rules.
+description: Visitor-scoped spacepress/server/db queries, trusted db queries, filtering operators, and declarative access rules.
 order: 2
 status: published
 publishedAt: 2026-11-21T09:05:00.000Z
 ---
 ## Visitor-scoped vs trusted database APIs
 
-Import named kinds from `"spacepress:db"` for visitor-scoped operations that automatically enforce access rules, draft visibility, and field masks:
+Import named kinds from `"spacepress/server/db"` for visitor-scoped operations that automatically enforce access rules, draft visibility, and field masks:
 
 ```ts
-import { posts } from "spacepress:db";
+import { posts } from "spacepress/server/db";
 
 const published = await posts.list({
   where: { tags: { has: "release" } },
@@ -27,7 +27,7 @@ const all = await posts.system.list({ limit: 100 });
 Inside hooks, jobs, and trusted server actions, you can also use the Drizzle-inspired `db` API from `"spacepress"`:
 
 ```ts
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 
 const row = await db.query.posts.findFirst({ where: { slug: "hello" } });
 const [created] = await db.insert(tasks).values({ title: "Ship v1" }).returning();

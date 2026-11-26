@@ -1,5 +1,6 @@
-import { db, HttpError, job, type HookCtx } from "spacepress";
-import { shoppingList } from "spacepress:db";
+import { job, type HookCtx } from "spacepress";
+import { db, HttpError } from "spacepress/server";
+import { shoppingList } from "spacepress/server/db";
 
 export const DAY_MS = 86_400_000;
 export const WINDOW_DAYS = 14;

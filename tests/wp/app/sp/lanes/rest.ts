@@ -3,8 +3,9 @@
 //
 // Lane R (core `/wp/v2` under SpacePress's rules): an admin-only collection, one whose read rule is a
 // per-owner filter, and one with an admin-only field.
-import { blocks, collection, db, group, HttpError, integer, json, repeater, richText, slug, text, table, ref, taxonomy, query, mutation } from "spacepress";
-import { jottings, vault as vaultKind } from "spacepress:db";
+import { blocks, collection, group, integer, json, repeater, richText, slug, text, table, ref, taxonomy, query, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
+import { jottings, vault as vaultKind } from "spacepress/server/db";
 
 export const vault = collection({ title: text(), code: text().optional() },
   { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
@@ -75,7 +76,7 @@ export const gated = collection({
   },
 });
 
-// The query API (spec §3): `jottings.list/paginate/get/count/create/update/delete` from "spacepress:db" run as
+// The query API (spec §3): `jottings.list/paginate/get/count/create/update/delete` from "spacepress/server/db" run as
 // the visitor; `jottings.system.*` is trusted. Editors read every memo, others only published ones and
 // their own drafts.
 export const jottings = collection({ title: text(), note: text().optional(), ownerId: integer().optional() }, {

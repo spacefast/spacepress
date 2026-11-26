@@ -66,11 +66,14 @@ export function KanbanDragController({ groupBy }: { groupBy: string }) {
       event.preventDefault();
       col.removeAttribute("data-drop-active");
 
-      const dt = (event as DragEvent).dataTransfer;
-      const fromTransfer = dt ? Number.parseInt(dt.getData("text/plain") || "0", 10) : 0;
-      const taskId = fromTransfer > 0 ? fromTransfer : dragState.taskId;
+      const localTaskId = dragState.taskId;
       dragState.taskId = 0;
-      if (!Number.isInteger(taskId) || taskId <= 0) return;
+      if (!Number.isInteger(localTaskId) || localTaskId <= 0) return;
+
+      const dt = (event as DragEvent).dataTransfer;
+      const transferText = dt ? dt.getData("text/plain").trim() : "";
+      if (transferText !== "" && transferText !== String(localTaskId)) return;
+      const taskId = localTaskId;
 
       const bucketAttr = col.getAttribute("data-kanban-bucket-id") ?? "";
       const priorityAttr = col.getAttribute("data-kanban-priority") ?? "";

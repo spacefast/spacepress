@@ -799,6 +799,7 @@ export type MoveTaskColumnOutput = {
 export interface ToggleChecklistItemInput {
 	id: number | string;
 	index: number | string;
+	expectedLabel?: string;
 }
 export type ToggleChecklistItemOutput = {
 	id: number;
@@ -806,6 +807,14 @@ export type ToggleChecklistItemOutput = {
 		label: string;
 		done: boolean;
 	})[];
+	stale: boolean;
+} | {
+	id: number;
+	checklist: ({
+		label: string;
+		done: boolean;
+	})[];
+	stale: boolean;
 };
 export interface AddChecklistItemInput {
 	id: number | string;
@@ -821,6 +830,7 @@ export type AddChecklistItemOutput = {
 export interface RemoveChecklistItemInput {
 	id: number | string;
 	index: number | string;
+	expectedLabel?: string;
 }
 export type RemoveChecklistItemOutput = {
 	id: number;
@@ -828,6 +838,14 @@ export type RemoveChecklistItemOutput = {
 		label: string;
 		done: boolean;
 	})[];
+	stale: boolean;
+} | {
+	id: number;
+	checklist: ({
+		label: string;
+		done: boolean;
+	})[];
+	stale: boolean;
 };
 export interface SnoozeTaskInput {
 	id: number | string;

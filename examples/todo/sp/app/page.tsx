@@ -79,8 +79,8 @@ function buildQuery(params: QueryState): string {
   if (params.view) parts.push(`view=${encodeURIComponent(params.view)}`);
   if (params.bucket) parts.push(`bucket=${encodeURIComponent(params.bucket)}`);
   if (params.q) parts.push(`q=${encodeURIComponent(params.q)}`);
-  if (params.layout && params.layout !== "list") parts.push(`layout=${encodeURIComponent(params.layout)}`);
-  if (params.groupBy && params.groupBy !== "status") parts.push(`groupBy=${encodeURIComponent(params.groupBy)}`);
+  if (params.layout) parts.push(`layout=${encodeURIComponent(params.layout)}`);
+  if (params.groupBy) parts.push(`groupBy=${encodeURIComponent(params.groupBy)}`);
   if (params.priority) parts.push(`priority=${encodeURIComponent(params.priority)}`);
   if (params.flag) parts.push(`flag=${encodeURIComponent(params.flag)}`);
   if (params.showDone === "1") parts.push("showDone=1");
@@ -157,7 +157,16 @@ export default async function TodoWorkspacePage({
     sortOrder: row.sortOrder,
   }));
 
-  const rawTasks = await tasks.list({ orderBy: { updatedAt: "desc" }, limit: 250 });
+  const PAGE_SIZE = 250;
+  const firstBatch = await tasks.list({ orderBy: { updatedAt: "desc" }, limit: PAGE_SIZE, offset: 0 });
+  const rawTasks = [...firstBatch];
+  if (firstBatch.length === PAGE_SIZE) {
+    for (let offset = PAGE_SIZE; offset < 2000; offset += PAGE_SIZE) {
+      const batch = await tasks.list({ orderBy: { updatedAt: "desc" }, limit: PAGE_SIZE, offset });
+      for (const row of batch) rawTasks.push(row);
+      if (batch.length < PAGE_SIZE) break;
+    }
+  }
   const allTasks: TodoTask[] = rawTasks.map((row) => ({
     id: row.id,
     title: decodeWpText(row.title),
@@ -204,8 +213,10 @@ export default async function TodoWorkspacePage({
   );
 
   // For the optional Completed column on the Kanban board, include matching completed tasks too.
+  // When already in `view=done`, `visibleTasks` already holds the matching completed tasks.
+  const effectiveShowDone = showDoneColumn || activeView === "done";
   const boardPool: TodoTask[] =
-    activeLayout === "board" && showDoneColumn
+    activeLayout === "board" && effectiveShowDone && activeView !== "done"
       ? [
           ...visibleTasks,
           ...filterTasksForView(
@@ -223,7 +234,7 @@ export default async function TodoWorkspacePage({
       : visibleTasks;
 
   const kanbanColumns =
-    activeLayout === "board" ? buildKanbanColumns(boardPool, allBuckets, boardGroup, showDoneColumn) : [];
+    activeLayout === "board" ? buildKanbanColumns(boardPool, allBuckets, boardGroup, effectiveShowDone) : [];
 
   const statusBuckets = allBuckets.filter((b) => b.kind === "status" && b.parent > 0);
   const paraBuckets = allBuckets.filter((b) => b.kind !== "status" && b.parent > 0);
@@ -248,12 +259,41 @@ export default async function TodoWorkspacePage({
         : "Browse cards across any taxonomy group — Status, Project, Area, Resource, or Priority."
       : meta.subtitle;
 
-  const selectedTask = selectedTaskId
-    ? allTasks.find((t) => t.id === selectedTaskId) ?? null
+  let selectedRawTask = selectedTaskId
+    ? rawTasks.find((t) => t.id === selectedTaskId) ?? null
     : null;
-  const selectedRawTask = selectedTask
-    ? rawTasks.find((t) => t.id === selectedTask.id) ?? null
+  if (selectedTaskId !== null && selectedRawTask === null) {
+    selectedRawTask = await tasks.get(selectedTaskId);
+  }
+  const selectedTask: TodoTask | null = selectedRawTask
+    ? {
+        id: selectedRawTask.id,
+        title: decodeWpText(selectedRawTask.title),
+        slug: selectedRawTask.slug ?? "",
+        notes: selectedRawTask.notes ?? null,
+        details: selectedRawTask.details ?? null,
+        url: selectedRawTask.url ?? null,
+        priority: selectedRawTask.priority,
+        visibility: selectedRawTask.visibility,
+        assigneeId: selectedRawTask.assigneeId ?? null,
+        checklist: selectedRawTask.checklist ?? [],
+        bucketIds: selectedRawTask.bucketIds,
+        ownerId: selectedRawTask.ownerId,
+        completedAt: selectedRawTask.completedAt ?? null,
+        scheduledAt: selectedRawTask.scheduledAt ?? null,
+        pendingBucket: asOptionalStatusSlug(selectedRawTask.pendingBucket),
+        blockedBy: selectedRawTask.blockedBy ?? null,
+        recurringDays: selectedRawTask.recurringDays,
+        createdAt: selectedRawTask.createdAt,
+        updatedAt: selectedRawTask.updatedAt,
+      }
     : null;
+  const currentBlockerOutsideCandidates =
+    selectedTask !== null &&
+    selectedTask.blockedBy !== null &&
+    !openTasks.some((t) => t.id === selectedTask.blockedBy)
+      ? await tasks.get(selectedTask.blockedBy)
+      : null;
 
   const baseState: QueryState = {
     view: activeView,
@@ -493,8 +533,8 @@ export default async function TodoWorkspacePage({
 
             <form method="get" action="/" className="todo-search">
               <input type="hidden" name="view" value={activeView} />
-              {activeLayout !== "list" && <input type="hidden" name="layout" value={activeLayout} />}
-              {boardGroup !== "status" && <input type="hidden" name="groupBy" value={boardGroup} />}
+              <input type="hidden" name="layout" value={activeLayout} />
+              <input type="hidden" name="groupBy" value={boardGroup} />
               {activeBucketSlug && <input type="hidden" name="bucket" value={activeBucketSlug} />}
               {priorityFilter && <input type="hidden" name="priority" value={priorityFilter} />}
               {flagFilter && <input type="hidden" name="flag" value={flagFilter} />}
@@ -1191,6 +1231,14 @@ export default async function TodoWorkspacePage({
                     <label className="inspector__label" htmlFor="edit-blocker">Blocked by</label>
                     <select id="edit-blocker" name="blockedBy" className="field-select">
                       <option value="" selected={selectedTask.blockedBy === null}>None (unblocked)</option>
+                      {selectedTask.blockedBy !== null &&
+                        !blockerCandidates.some((c) => c.id === selectedTask.blockedBy) && (
+                          <option value={String(selectedTask.blockedBy)} selected>
+                            {currentBlockerOutsideCandidates
+                              ? decodeWpText(currentBlockerOutsideCandidates.title)
+                              : `Task #${selectedTask.blockedBy}`}
+                          </option>
+                        )}
                       {blockerCandidates.map((candidate) => (
                         <option
                           key={candidate.id}

@@ -364,7 +364,15 @@ export const moveTaskColumn = mutation(
 
 export const toggleChecklistItem = mutation(
   { access: "authenticated" },
-  async ({ id, index }: { id: number | string; index: number | string }) => {
+  async ({
+    id,
+    index,
+    expectedLabel,
+  }: {
+    id: number | string;
+    index: number | string;
+    expectedLabel?: string;
+  }) => {
     const taskId = parseOptionalInt(id);
     const itemIndex = typeof index === "number" ? index : Number.parseInt(index, 10);
     if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
@@ -372,13 +380,16 @@ export const toggleChecklistItem = mutation(
     if (!task) throw new HttpError(404, "not_found", "Task not found.");
     const list = task.checklist ?? [];
     if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= list.length) {
-      throw new HttpError(422, "invalid_input", "Checklist item not found.", "/index");
+      return { id: task.id, checklist: list.map((entry) => ({ label: entry.label, done: entry.done })), stale: true };
+    }
+    if (expectedLabel !== undefined && list[itemIndex]!.label !== expectedLabel) {
+      return { id: task.id, checklist: list.map((entry) => ({ label: entry.label, done: entry.done })), stale: true };
     }
     const next: TodoChecklistItem[] = list.map((entry, idx) =>
       idx === itemIndex ? { label: entry.label, done: !entry.done } : { label: entry.label, done: entry.done },
     );
     await tasks.update(task.id, { checklist: next });
-    return { id: task.id, checklist: next };
+    return { id: task.id, checklist: next, stale: false };
   },
 );
 
@@ -404,7 +415,15 @@ export const addChecklistItem = mutation(
 
 export const removeChecklistItem = mutation(
   { access: "authenticated" },
-  async ({ id, index }: { id: number | string; index: number | string }) => {
+  async ({
+    id,
+    index,
+    expectedLabel,
+  }: {
+    id: number | string;
+    index: number | string;
+    expectedLabel?: string;
+  }) => {
     const taskId = parseOptionalInt(id);
     const itemIndex = typeof index === "number" ? index : Number.parseInt(index, 10);
     if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
@@ -412,7 +431,10 @@ export const removeChecklistItem = mutation(
     if (!task) throw new HttpError(404, "not_found", "Task not found.");
     const list = task.checklist ?? [];
     if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= list.length) {
-      throw new HttpError(422, "invalid_input", "Checklist item not found.", "/index");
+      return { id: task.id, checklist: list.map((entry) => ({ label: entry.label, done: entry.done })), stale: true };
+    }
+    if (expectedLabel !== undefined && list[itemIndex]!.label !== expectedLabel) {
+      return { id: task.id, checklist: list.map((entry) => ({ label: entry.label, done: entry.done })), stale: true };
     }
     const next: TodoChecklistItem[] = [];
     for (let i = 0; i < list.length; i += 1) {
@@ -422,7 +444,7 @@ export const removeChecklistItem = mutation(
       }
     }
     await tasks.update(task.id, { checklist: next });
-    return { id: task.id, checklist: next };
+    return { id: task.id, checklist: next, stale: false };
   },
 );
 
@@ -520,9 +542,9 @@ export const updateTask = mutation(
 
     await tasks.update(existing.id, {
       title,
-      notes: normalizeOptionalText(input.notes),
-      details: normalizeOptionalText(input.details),
-      url: cleanUrl,
+      notes: input.notes !== undefined ? normalizeOptionalText(input.notes) : existing.notes,
+      details: input.details !== undefined ? normalizeOptionalText(input.details) : existing.details,
+      url: input.url !== undefined ? cleanUrl : existing.url,
       priority,
       visibility,
       assigneeId,

@@ -43,14 +43,14 @@ export type MoveTaskBucketOutput = { id: number; statusBucket: "inbox" | "now" |
 export interface MoveTaskColumnInput { id: number | string; groupBy: string; targetBucketId?: number | string | null; targetPriority?: string | null; complete?: boolean }
 export type MoveTaskColumnOutput = { id: number; completed: boolean } | { id: number; completed: boolean };
 
-export interface ToggleChecklistItemInput { id: number | string; index: number | string }
-export type ToggleChecklistItemOutput = { id: number; checklist: ({ label: string; done: boolean })[] };
+export interface ToggleChecklistItemInput { id: number | string; index: number | string; expectedLabel?: string }
+export type ToggleChecklistItemOutput = { id: number; checklist: ({ label: string; done: boolean })[]; stale: boolean } | { id: number; checklist: ({ label: string; done: boolean })[]; stale: boolean };
 
 export interface AddChecklistItemInput { id: number | string; label: string }
 export type AddChecklistItemOutput = { id: number; checklist: ({ label: string; done: boolean })[] };
 
-export interface RemoveChecklistItemInput { id: number | string; index: number | string }
-export type RemoveChecklistItemOutput = { id: number; checklist: ({ label: string; done: boolean })[] };
+export interface RemoveChecklistItemInput { id: number | string; index: number | string; expectedLabel?: string }
+export type RemoveChecklistItemOutput = { id: number; checklist: ({ label: string; done: boolean })[]; stale: boolean } | { id: number; checklist: ({ label: string; done: boolean })[]; stale: boolean };
 
 export interface SnoozeTaskInput { id: number | string; days: number | string }
 export type SnoozeTaskOutput = { id: number; scheduledAt: string };

@@ -39,7 +39,11 @@ export function ChecklistEditor({
                   if (busy) return;
                   setBusy(true);
                   try {
-                    const res = await toggleChecklistItem({ id: taskId, index: entry.index });
+                    const res = await toggleChecklistItem({
+                      id: taskId,
+                      index: entry.index,
+                      expectedLabel: entry.label,
+                    });
                     setItems(res.checklist.map((c, idx) => ({ index: idx, label: c.label, done: c.done })));
                   } finally {
                     setBusy(false);
@@ -58,7 +62,11 @@ export function ChecklistEditor({
                   if (busy) return;
                   setBusy(true);
                   try {
-                    const res = await removeChecklistItem({ id: taskId, index: entry.index });
+                    const res = await removeChecklistItem({
+                      id: taskId,
+                      index: entry.index,
+                      expectedLabel: entry.label,
+                    });
                     setItems(res.checklist.map((c, idx) => ({ index: idx, label: c.label, done: c.done })));
                   } finally {
                     setBusy(false);

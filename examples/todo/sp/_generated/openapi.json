@@ -2389,7 +2389,8 @@
                 "type": "object",
                 "properties": {
                   "id": { "type": ["number", "string"] },
-                  "index": { "type": ["number", "string"] }
+                  "index": { "type": ["number", "string"] },
+                  "expectedLabel": { "type": "string" }
                 },
                 "required": ["id", "index"]
               }
@@ -2404,24 +2405,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "id": { "type": ["number", "null"] },
-                        "checklist": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "label": { "type": "string" },
-                              "done": { "type": "boolean" }
-                            },
-                            "required": ["label", "done"]
-                          }
-                        }
-                      },
-                      "required": ["id", "checklist"]
-                    }
+                    "data": {}
                   },
                   "required": ["data"]
                 }
@@ -2515,7 +2499,8 @@
                 "type": "object",
                 "properties": {
                   "id": { "type": ["number", "string"] },
-                  "index": { "type": ["number", "string"] }
+                  "index": { "type": ["number", "string"] },
+                  "expectedLabel": { "type": "string" }
                 },
                 "required": ["id", "index"]
               }
@@ -2530,24 +2515,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "id": { "type": ["number", "null"] },
-                        "checklist": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "label": { "type": "string" },
-                              "done": { "type": "boolean" }
-                            },
-                            "required": ["label", "done"]
-                          }
-                        }
-                      },
-                      "required": ["id", "checklist"]
-                    }
+                    "data": {}
                   },
                   "required": ["data"]
                 }

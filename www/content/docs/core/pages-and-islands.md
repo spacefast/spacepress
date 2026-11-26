@@ -122,7 +122,7 @@ the same WordPress comment thread.
 
 ## `"use client"` interactive islands (`spacepress/client`)
 
-Start a component file with `"use client";`. SpacePress renders its initial HTML in PHP and compiles the interactive logic into a WordPress Interactivity API store supporting `useState`, `useEffect`, `useMount`, `useEvent`, `useRef`, `sharedState`, `uploadFile(bucket, file, opts?)` for private file buckets, and live-updating `useLive(kind, query)` subscriptions.
+Start a component file with `"use client";`. SpacePress renders its initial HTML in PHP and compiles the interactive logic into a WordPress Interactivity API store supporting `useState`, `useEffect`, `useMount`, `useEvent`, `useRef`, `sharedState`, `uploadFile(bucket, file, opts?)` for private file buckets, and live-updating `useLive(kind, query)` subscriptions. A handler can call another handler of its component, and `await` an async one for its answer.
 
 ## Static export
 

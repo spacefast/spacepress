@@ -1180,8 +1180,12 @@ impl Analysis {
                                 ));
                             }
                         },
-                        // Another handler of this component, run in the same scope.
-                        Some(Binding::Action) => format!("(yield* actions.{n}({}))", argv()?),
+                        // Another handler of this component: the store's own action, called as
+                        // the runtime's actions call each other, in the same scope. A plain
+                        // handler returns its value; an async one (a generator) returns a
+                        // promise, which an `await` yields like any other. So the call is valid
+                        // in a handler that is not a generator, and in a callback inside one.
+                        Some(Binding::Action) => format!("actions.{n}({})", argv()?),
                         _ => format!("{}{}({})", js(callee)?, if *optional { "?." } else { "" }, argv()?),
                     },
                     _ => format!("{}{}({})", js(callee)?, if *optional { "?." } else { "" }, argv()?),

@@ -706,12 +706,15 @@ fn components(
             && crate::plugins::package_root(program, &m.path).is_some_and(|root| Some(&root) != app.as_ref())
     }) {
         let exports = ev.run_module(module.id)?;
-        let path = module
-            .path
-            .strip_prefix(&program.root)
-            .unwrap_or(&module.path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        // Named by package, not by where it's installed: a hoisted package sits outside the project.
+        let path = crate::plugins::package_path(program, &module.path).unwrap_or_else(|| {
+            module
+                .path
+                .strip_prefix(&program.root)
+                .unwrap_or(&module.path)
+                .to_string_lossy()
+                .replace('\\', "/")
+        });
         for (export, value) in &exports {
             let Value::Closure(closure) = value else { continue };
             // A default export is a component when its function has a component's name. A barrel

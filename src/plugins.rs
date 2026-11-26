@@ -256,12 +256,14 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
         let mut files: Vec<(String, usize)> = seen
             .iter()
             .map(|&m| {
+                // By package, so the hash is the same wherever the package is installed.
                 let path = &program.modules[m].path;
-                let name = path
-                    .strip_prefix(&project)
-                    .unwrap_or(path)
-                    .to_string_lossy()
-                    .replace('\\', "/");
+                let name = package_path(program, path).unwrap_or_else(|| {
+                    path.strip_prefix(&project)
+                        .unwrap_or(path)
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                });
                 (name, m)
             })
             .collect();
@@ -291,13 +293,19 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
             hash.update(program.fs.read(&program.modules[m].path).unwrap_or_default());
             hash.update([0]);
         }
+        // An island's browser code reaches files that aren't modules (a stylesheet's `@import`s,
+        // its `url()` assets): a change to one is a change to the package, not an owner's edit.
+        for (island, _) in &plugins[i].islands {
+            hash.update(island.as_bytes());
+            hash.update([0]);
+        }
         plugins[i].integrity = format!("sha256-{}", crate::hex(hash.finalize()));
     }
     Ok(())
 }
 
 /// `<package>/<path in package>` for a file in an installed package, named by its own manifest.
-fn package_path(program: &Program, path: &Path) -> Option<String> {
+pub(crate) fn package_path(program: &Program, path: &Path) -> Option<String> {
     let root = package_root(program, path)?;
     let name = program
         .fs

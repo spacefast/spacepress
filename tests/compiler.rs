@@ -4422,7 +4422,14 @@ fn a_plugin_island_is_a_browser_entry_in_its_lock() {
     let (code, stderr) = build(&["build", "--frozen"]);
     assert_eq!(code, Some(1), "{stderr}");
     assert!(stderr.contains(&format!("grants it only {}", approved[0])), "{stderr}");
+    // A plain build reads it as a package update and records it, not as an owner's narrowing.
+    let (code, stderr) = build(&["build"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stderr.contains(&format!("- browser: {}", approved[0])), "{stderr}");
     std::fs::write(&theme, ".counter { color: red; }\n").unwrap();
+    let (code, stderr) = build(&["build"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(browser(), approved);
 
     // The owner removes the island from the grant; the unchanged package is refused, with or
     // without --frozen, at the island's file.
@@ -6524,4 +6531,47 @@ fn an_installed_component_library_supplies_blocks_styles_and_islands() {
             .any(|f| f.starts_with("disclosure.") && f.ends_with(".js")),
         "{stores:?}"
     );
+}
+
+/// A package hoisted out of the project (a workspace's `node_modules` one folder up) builds the same
+/// output and the same plugin lock wherever the checkout sits: islands and lock files are named by
+/// package, not by path.
+#[test]
+fn a_hoisted_package_builds_the_same_wherever_it_is_installed() {
+    let build = |fixture: &str, at: &Path| -> PathBuf {
+        let workspace = at.join("ws");
+        let project = workspace.join("app");
+        copy(&root().join(fixture), &project);
+        std::fs::rename(project.join("node_modules"), workspace.join("node_modules")).unwrap();
+        let out = first().arg("build").arg(&project).env_remove("CI").output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        project
+    };
+    let (one, two) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let schema = |project: &Path| {
+        std::fs::read_to_string(project.join("sp/dist/wp-content/plugins/spacepress-app-pkgui/sp/app/schema.php"))
+            .unwrap()
+    };
+    let (a, b) = (
+        build("tests/fixtures/package-components", one.path()),
+        build("tests/fixtures/package-components", two.path()),
+    );
+    let (sa, sb) = (schema(&a), schema(&b));
+    assert!(sa.contains("'@acme/docs-ui/src/ui/client.tsx#Toggle'"), "{sa}");
+    for dir in [one.path(), two.path()] {
+        let dir = dir.to_string_lossy();
+        assert!(
+            !sa.contains(dir.trim_start_matches("/private")) && !sb.contains(dir.trim_start_matches("/private")),
+            "{sa}"
+        );
+    }
+    assert_eq!(sa, sb);
+    let (one, two) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let lock = |project: &Path| std::fs::read_to_string(project.join("sp/_generated/plugins.lock.json")).unwrap();
+    let (la, lb) = (
+        lock(&build("tests/fixtures/plugin-client", one.path())),
+        lock(&build("tests/fixtures/plugin-client", two.path())),
+    );
+    assert!(la.contains("spacepress-plugin-widget/src/Counter.tsx@sha256-"), "{la}");
+    assert_eq!(la, lb);
 }

@@ -124,6 +124,30 @@ the same WordPress comment thread.
 
 Start a component file with `"use client";`. SpacePress renders its initial HTML in PHP and compiles the interactive logic into a WordPress Interactivity API store supporting `useState`, `useEffect`, `useMount`, `useEvent`, `useRef`, `sharedState`, `uploadFile(bucket, file, opts?)` for private file buckets, and live-updating `useLive(kind, query)` subscriptions.
 
+Handlers and effects take ordinary browser code: loops (`for`, `for…of`, `for…in`, `while`, `do…while`) with `break`, `continue` and labels, `switch`, `try`, `throw`, and nested callbacks, including `async` ones such as a click listener that awaits `navigator.clipboard.writeText(…)`. They can call browser globals such as `fetch`, `localStorage`, `setTimeout`, `requestAnimationFrame`, `IntersectionObserver` and `URL`, and set page properties such as `document.title` or `window.location.href`. State still changes only through its setter, and props are read-only.
+
+```tsx
+"use client";
+import { useMount } from "spacepress/client";
+
+export function CopyButtons({ label }: { label: string }) {
+  useMount(() => {
+    for (const pre of Array.from(document.querySelectorAll("pre"))) {
+      if (pre.querySelector(".copy")) continue;
+      const button = document.createElement("button");
+      button.className = "copy";
+      button.textContent = label;
+      button.addEventListener("click", async () => {
+        await navigator.clipboard.writeText(pre.textContent ?? "");
+        button.textContent = "Copied";
+      });
+      pre.append(button);
+    }
+  });
+  return <span hidden />;
+}
+```
+
 ## Components from npm packages
 
 An installed package can ship `.tsx` components, both server components and

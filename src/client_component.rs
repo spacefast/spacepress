@@ -94,6 +94,10 @@ pub struct Analysis {
     /// Each `useRef()` an element's `ref={name}` attached, with that attribute's place in the
     /// source (generator A records them; a conditional's element compiles twice).
     pub refs: BTreeMap<String, (u32, u32)>,
+    /// Names the module declares or imports at its top level. One that shares a browser global's
+    /// name (`const fetch = …`) is the module's, which the browser doesn't have, so it is refused
+    /// rather than read as the global.
+    pub module_names: BTreeSet<String>,
 }
 
 pub(crate) fn refuse(span: Span, message: impl Into<String>, help: impl Into<String>) -> Diag {
@@ -203,6 +207,22 @@ pub fn analyse(
     for (local, name) in imported {
         if server_actions.contains(&name) {
             a.bindings.insert(local, Binding::ServerAction(name));
+        }
+    }
+    for stmt in &module.body {
+        let stmt = match stmt {
+            Stmt::Exported(inner) => &**inner,
+            s => s,
+        };
+        match stmt {
+            Stmt::Decl { pat, .. } => {
+                let mut names = Vec::new();
+                pat.bindings(&mut names);
+                a.module_names.extend(names.into_iter().map(|(n, _)| n.to_string()));
+            }
+            Stmt::Func(func) => a.module_names.extend(func.name.clone()),
+            Stmt::Import { specs, .. } => a.module_names.extend(specs.iter().map(|s| s.local.clone())),
+            _ => {}
         }
     }
     // Module-level shared state.
@@ -814,7 +834,10 @@ impl Analysis {
     /// One action or callback: an async handler is a generator (each `await` a `yield`), and a
     /// handler that touches the event's sync-only API is wrapped in `withSyncEvent`.
     fn function(&self, name: &str, f: &Func, pad: &str) -> Result<String> {
-        let mut scope = Scope::default();
+        let mut scope = Scope {
+            awaits: if f.is_async { Awaits::Yield } else { Awaits::Refuse },
+            ..Scope::default()
+        };
         let mut params = Vec::new();
         for p in &f.params {
             match &p.pat {
@@ -862,26 +885,200 @@ impl Analysis {
         Ok(format!("{head}{body}{pad}}}{},\n", if sync { ")" } else { "" }))
     }
 
+    /// Statements one level in from `pad`.
+    fn block(&self, stmts: &[Stmt], scope: &mut Scope, pad: &str) -> Result<String> {
+        let inner = format!("{pad}  ");
+        let mut o = String::new();
+        for s in stmts {
+            o.push_str(&self.stmt(s, scope, &inner)?);
+        }
+        Ok(o)
+    }
+
+    /// A binding pattern (`x`, `{ a, b: [c] }`, `[first, ...rest]`), its names added to `scope`.
+    /// Default values are read in the scope before the pattern's own names.
+    fn pat(&self, p: &Pat, scope: &mut Scope) -> Result<String> {
+        Ok(match p {
+            Pat::Id(n, _) => {
+                scope.locals.insert(n.clone());
+                n.clone()
+            }
+            Pat::Obj { props, rest, .. } => {
+                let mut parts = Vec::new();
+                for (key, pat) in props {
+                    parts.push(format!("{}: {}", js_str(key), self.pat(pat, scope)?));
+                }
+                if let Some((n, _)) = rest {
+                    scope.locals.insert(n.clone());
+                    parts.push(format!("...{n}"));
+                }
+                format!("{{ {} }}", parts.join(", "))
+            }
+            Pat::Arr { elems, rest, .. } => {
+                let mut parts = Vec::new();
+                for el in elems {
+                    parts.push(match el {
+                        Some(pat) => self.pat(pat, scope)?,
+                        None => String::new(),
+                    });
+                }
+                if let Some((n, _)) = rest {
+                    scope.locals.insert(n.clone());
+                    parts.push(format!("...{n}"));
+                } else if matches!(elems.last(), Some(None)) {
+                    // `[a, ]` is one element; a trailing hole needs its own comma.
+                    parts.push(String::new());
+                }
+                format!("[{}]", parts.join(", "))
+            }
+            Pat::Default(pat, default) => {
+                let value = self.js(default, scope)?;
+                format!("{} = {value}", self.pat(pat, scope)?)
+            }
+        })
+    }
+
+    fn decl_kind(kind: DeclKind) -> &'static str {
+        match kind {
+            DeclKind::Const => "const",
+            _ => "let",
+        }
+    }
+
     fn stmt(&self, s: &Stmt, scope: &mut Scope, pad: &str) -> Result<String> {
         Ok(match s {
             Stmt::Expr(e) => format!("{pad}{};\n", self.js(e, scope)?),
             Stmt::Return(None, _) => format!("{pad}return;\n"),
             Stmt::Return(Some(e), _) => format!("{pad}return {};\n", self.js(e, scope)?),
-            Stmt::Decl {
-                kind,
-                pat: Pat::Id(n, _),
+            Stmt::Decl { kind, pat, init, .. } => {
+                // The initializer can't see the names it declares.
+                let value = init.as_ref().map(|e| self.js(e, scope)).transpose()?;
+                let k = Self::decl_kind(*kind);
+                let target = self.pat(pat, scope)?;
+                match value {
+                    Some(v) => format!("{pad}{k} {target} = {v};\n"),
+                    None => format!("{pad}{k} {target};\n"),
+                }
+            }
+            Stmt::For {
                 init,
+                test,
+                update,
+                body,
                 ..
             } => {
-                scope.locals.insert(n.clone());
-                let k = match kind {
-                    DeclKind::Const => "const",
-                    _ => "let",
+                // Names the header declares belong to the loop.
+                let mut inner = scope.clone();
+                let head = match init.as_deref() {
+                    None => String::new(),
+                    Some(Stmt::Block(_)) => {
+                        return Err(refuse(
+                            crate::compile::stmt_span(s),
+                            "a `for` header in a client handler declares one variable",
+                            "declare the others before the loop",
+                        ));
+                    }
+                    Some(s) => self
+                        .stmt(s, &mut inner, "")?
+                        .trim_end()
+                        .trim_end_matches(';')
+                        .to_string(),
                 };
-                match init {
-                    Some(e) => format!("{pad}{k} {n} = {};\n", self.js(e, scope)?),
-                    None => format!("{pad}{k} {n};\n"),
+                let test = test
+                    .as_ref()
+                    .map(|e| self.js(e, &inner))
+                    .transpose()?
+                    .unwrap_or_default();
+                let update = update
+                    .as_ref()
+                    .map(|e| self.js(e, &inner))
+                    .transpose()?
+                    .unwrap_or_default();
+                let body = self.block(body, &mut inner, pad)?;
+                format!("{pad}for ({head}; {test}; {update}) {{\n{body}{pad}}}\n")
+            }
+            Stmt::ForOf {
+                is_await,
+                kind,
+                pat,
+                iter,
+                body,
+                span,
+            } => {
+                if *is_await && scope.awaits != Awaits::Await {
+                    return Err(refuse(
+                        *span,
+                        "`for await` runs only inside an async callback here",
+                        "await each value in a plain `for (const x of xs)` loop",
+                    ));
                 }
+                let iter = self.js(iter, scope)?;
+                let mut inner = scope.clone();
+                let target = self.pat(pat, &mut inner)?;
+                let body = self.block(body, &mut inner, pad)?;
+                let k = Self::decl_kind(*kind);
+                let each = if *is_await { "for await" } else { "for" };
+                format!("{pad}{each} ({k} {target} of {iter}) {{\n{body}{pad}}}\n")
+            }
+            Stmt::ForIn {
+                kind,
+                target,
+                iter,
+                body,
+                ..
+            } => {
+                let iter = self.js(iter, scope)?;
+                let mut inner = scope.clone();
+                let head = match kind {
+                    Some(k) => {
+                        let ExprKind::Ident(n) = &target.kind else {
+                            unreachable!("a `for … in` declaration binds an identifier")
+                        };
+                        inner.locals.insert(n.clone());
+                        format!("{} {n}", Self::decl_kind(*k))
+                    }
+                    None => {
+                        self.assignable(target, &inner)?;
+                        self.js(target, &inner)?
+                    }
+                };
+                let body = self.block(body, &mut inner, pad)?;
+                format!("{pad}for ({head} in {iter}) {{\n{body}{pad}}}\n")
+            }
+            Stmt::While(test, body) => {
+                let test = self.js(test, scope)?;
+                let body = self.block(body, &mut scope.clone(), pad)?;
+                format!("{pad}while ({test}) {{\n{body}{pad}}}\n")
+            }
+            Stmt::DoWhile(body, test) => {
+                let body = self.block(body, &mut scope.clone(), pad)?;
+                format!("{pad}do {{\n{body}{pad}}} while ({});\n", self.js(test, scope)?)
+            }
+            Stmt::Break(label, _) => match label {
+                Some(l) => format!("{pad}break {l};\n"),
+                None => format!("{pad}break;\n"),
+            },
+            Stmt::Continue(label, _) => match label {
+                Some(l) => format!("{pad}continue {l};\n"),
+                None => format!("{pad}continue;\n"),
+            },
+            Stmt::Labeled(label, body, _) => {
+                format!("{pad}{label}:\n{}", self.stmt(body, scope, pad)?)
+            }
+            Stmt::Throw(e) => format!("{pad}throw {};\n", self.js(e, scope)?),
+            Stmt::Switch { disc, cases, .. } => {
+                let mut o = format!("{pad}switch ({}) {{\n", self.js(disc, scope)?);
+                // The cases share one scope, as in JavaScript.
+                let mut inner = scope.clone();
+                for (test, body) in cases {
+                    match test {
+                        Some(t) => o.push_str(&format!("{pad}  case {}:\n", self.js(t, &inner)?)),
+                        None => o.push_str(&format!("{pad}  default:\n")),
+                    }
+                    o.push_str(&self.block(body, &mut inner, &format!("{pad}  "))?);
+                }
+                o.push_str(&format!("{pad}}}\n"));
+                o
             }
             Stmt::If(c, t, e) => {
                 let mut o = format!("{pad}if ({}) {{\n", self.js(c, scope)?);
@@ -945,7 +1142,7 @@ impl Analysis {
                 return Err(refuse(
                     crate::compile::stmt_span(other),
                     "this statement isn't supported in a client handler yet",
-                    "use expressions, `const`, `if`, `try` and `return` in handlers",
+                    "use expressions, declarations, `if`, loops, `switch`, `try`, `throw` and `return` in handlers",
                 ));
             }
         })
@@ -989,26 +1186,7 @@ impl Analysis {
                         format!("write `{n}(…)`"),
                     ));
                 }
-                None if matches!(
-                    n.as_str(),
-                    "Math"
-                        | "JSON"
-                        | "Number"
-                        | "String"
-                        | "Boolean"
-                        | "Array"
-                        | "Object"
-                        | "Date"
-                        | "console"
-                        | "window"
-                        | "document"
-                        | "undefined"
-                        | "NaN"
-                        | "Infinity"
-                ) =>
-                {
-                    n.clone()
-                }
+                None if self.is_global(n) => n.clone(),
                 None => {
                     return Err(refuse(
                         e.span,
@@ -1066,7 +1244,17 @@ impl Analysis {
                 format!("{}{}[{}]", js(obj)?, if *optional { "?." } else { "" }, js(index)?)
             }
             ExprKind::Chain(x) | ExprKind::NonNull(x) | ExprKind::As(x, _) => js(x)?,
-            ExprKind::Await(x) => format!("(yield {})", js(x)?),
+            ExprKind::Await(x) => match scope.awaits {
+                Awaits::Yield => format!("(yield {})", js(x)?),
+                Awaits::Await => format!("(await {})", js(x)?),
+                Awaits::Refuse => {
+                    return Err(refuse(
+                        e.span,
+                        "`await` is only valid in an async function",
+                        "mark the function that awaits `async`",
+                    ));
+                }
+            },
             ExprKind::In(k, o) => format!("({} in {})", js(k)?, js(o)?),
             ExprKind::Instanceof(l, r) => format!("({} instanceof {})", js(l)?, js(r)?),
             ExprKind::Assign { op, target, value } => {
@@ -1125,7 +1313,11 @@ impl Analysis {
                                         format!("write `{n}((value) => …)`"),
                                     ));
                                 };
-                                let mut inner = scope.clone();
+                                // The updater is a plain arrow: `await` can't go in it.
+                                let mut inner = Scope {
+                                    awaits: Awaits::Refuse,
+                                    ..scope.clone()
+                                };
                                 inner.locals.insert(pn.clone());
                                 let FnBody::Expr(body) = &f.body else {
                                     return Err(refuse(
@@ -1181,37 +1373,55 @@ impl Analysis {
                             }
                         },
                         // Another handler of this component, run in the same scope.
-                        Some(Binding::Action) => format!("(yield* actions.{n}({}))", argv()?),
+                        Some(Binding::Action) if scope.awaits == Awaits::Yield => {
+                            format!("(yield* actions.{n}({}))", argv()?)
+                        }
+                        // Outside the handler's generator (a nested callback), a plain call.
+                        Some(Binding::Action) => format!("actions.{n}({})", argv()?),
                         _ => format!("{}{}({})", js(callee)?, if *optional { "?." } else { "" }, argv()?),
                     },
                     _ => format!("{}{}({})", js(callee)?, if *optional { "?." } else { "" }, argv()?),
                 }
             }
             ExprKind::Func(f) => {
-                let mut inner = scope.clone();
-                let mut params = Vec::new();
-                for p in &f.params {
-                    let Pat::Id(n, _) = &p.pat else {
-                        return Err(refuse(
-                            p.span,
-                            "callback parameters are plain names here",
-                            "write `(item) => …`",
-                        ));
-                    };
-                    inner.locals.insert(n.clone());
-                    params.push(n.clone());
-                }
-                if f.is_async {
+                if f.is_generator {
                     return Err(refuse(
                         f.span,
-                        "an async callback inside a handler isn't supported",
-                        "make the handler itself async",
+                        "a generator function inside a handler isn't supported",
+                        "write an ordinary or async callback",
                     ));
                 }
+                // A nested callback is a real JavaScript function: inside an async one `await`
+                // stays `await`; only the handler itself is a generator that yields.
+                let mut inner = Scope {
+                    awaits: if f.is_async { Awaits::Await } else { Awaits::Refuse },
+                    ..scope.clone()
+                };
+                let mut params = Vec::new();
+                for p in &f.params {
+                    if p.rest {
+                        let Pat::Id(n, _) = &p.pat else {
+                            return Err(refuse(
+                                p.span,
+                                "a rest parameter is a plain name",
+                                "write `(...items) => …`",
+                            ));
+                        };
+                        inner.locals.insert(n.clone());
+                        params.push(format!("...{n}"));
+                        continue;
+                    }
+                    let mut param = self.pat(&p.pat, &mut inner)?;
+                    if let Some(d) = &p.default {
+                        param = format!("{param} = {}", self.js(d, &inner)?);
+                    }
+                    params.push(param);
+                }
+                let head = format!("{}({}) =>", if f.is_async { "async " } else { "" }, params.join(", "));
                 match &f.body {
-                    FnBody::Expr(b) => format!("(({}) => {})", params.join(", "), self.js(b, &inner)?),
+                    FnBody::Expr(b) => format!("({head} {})", self.js(b, &inner)?),
                     FnBody::Block(stmts) => {
-                        let mut o = format!("(({}) => {{\n", params.join(", "));
+                        let mut o = format!("({head} {{\n");
                         for s in stmts {
                             o.push_str(&self.stmt(s, &mut inner, "      ")?);
                         }
@@ -1255,6 +1465,11 @@ impl Analysis {
         })
     }
 
+    /// A name the browser itself has: a JavaScript or browser global the module doesn't shadow.
+    fn is_global(&self, n: &str) -> bool {
+        BROWSER_GLOBALS.contains(&n) && !self.module_names.contains(n)
+    }
+
     /// State changes go through setters, so markup and effects always see the context's value.
     fn assignable(&self, target: &Expr, scope: &Scope) -> Result<()> {
         let mut root = target;
@@ -1271,6 +1486,9 @@ impl Analysis {
                     format!("write `{s}(next)`"),
                 )),
                 Some(Binding::Shared) => Ok(()),
+                // `window.location.href = url`, `document.title = t`: a property of the page, not
+                // the component's state. The global itself is never reassigned.
+                None if self.is_global(n) && !std::ptr::eq(root, target) => Ok(()),
                 Some(Binding::State { .. } | Binding::Prop) if !std::ptr::eq(root, target) => Err(refuse(
                     target.span,
                     format!("changing a field of `{n}` in place isn't seen by React"),
@@ -1287,11 +1505,101 @@ impl Analysis {
     }
 }
 
-/// Locals declared inside a handler.
+/// Locals declared inside a handler, and what `await` compiles to where the code runs.
 #[derive(Debug, Default, Clone)]
 pub struct Scope {
     pub locals: BTreeSet<String>,
+    pub awaits: Awaits,
 }
+
+/// What `await x` compiles to.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Awaits {
+    /// Outside any async function (a derived value, a plain handler or callback): an error.
+    #[default]
+    Refuse,
+    /// In an async handler, which the Interactivity runtime runs as a generator: `(yield x)`.
+    Yield,
+    /// In an async callback nested inside a handler, an ordinary async function: `(await x)`.
+    Await,
+}
+
+/// Globals a client component may name: the JavaScript built-ins and the browser APIs a React
+/// component reaches for. A prop, state value or local of the same name is found first.
+const BROWSER_GLOBALS: &[&str] = &[
+    // JavaScript
+    "undefined",
+    "NaN",
+    "Infinity",
+    "globalThis",
+    "Math",
+    "JSON",
+    "Number",
+    "String",
+    "Boolean",
+    "Array",
+    "Object",
+    "Date",
+    "Promise",
+    "Map",
+    "Set",
+    "WeakMap",
+    "WeakSet",
+    "Symbol",
+    "RegExp",
+    "Error",
+    "TypeError",
+    "RangeError",
+    "Intl",
+    "parseInt",
+    "parseFloat",
+    "isNaN",
+    "isFinite",
+    "encodeURIComponent",
+    "decodeURIComponent",
+    "encodeURI",
+    "decodeURI",
+    "structuredClone",
+    "queueMicrotask",
+    "console",
+    // The browser
+    "window",
+    "document",
+    "navigator",
+    "location",
+    "history",
+    "localStorage",
+    "sessionStorage",
+    "fetch",
+    "setTimeout",
+    "clearTimeout",
+    "setInterval",
+    "clearInterval",
+    "requestAnimationFrame",
+    "cancelAnimationFrame",
+    "matchMedia",
+    "getComputedStyle",
+    "IntersectionObserver",
+    "ResizeObserver",
+    "MutationObserver",
+    "URL",
+    "URLSearchParams",
+    "AbortController",
+    "TextEncoder",
+    "TextDecoder",
+    "FormData",
+    "Headers",
+    "Blob",
+    "File",
+    "HTMLElement",
+    "HTMLInputElement",
+    "Element",
+    "Node",
+    "Event",
+    "CustomEvent",
+    "KeyboardEvent",
+    "MouseEvent",
+];
 
 fn binop(op: BinOp) -> &'static str {
     match op {
@@ -1386,6 +1694,38 @@ fn stmt_exprs(s: &Stmt, f: &mut dyn FnMut(&Expr)) {
             e.iter().flatten().for_each(|s| stmt_exprs(s, f));
         }
         Stmt::Block(b) => b.iter().for_each(|s| stmt_exprs(s, f)),
+        Stmt::For {
+            init,
+            test,
+            update,
+            body,
+            ..
+        } => {
+            init.iter().for_each(|s| stmt_exprs(s, f));
+            test.iter().chain(update).for_each(&mut *f);
+            body.iter().for_each(|s| stmt_exprs(s, f));
+        }
+        Stmt::ForOf { iter, body, .. } => {
+            f(iter);
+            body.iter().for_each(|s| stmt_exprs(s, f));
+        }
+        Stmt::ForIn { target, iter, body, .. } => {
+            f(target);
+            f(iter);
+            body.iter().for_each(|s| stmt_exprs(s, f));
+        }
+        Stmt::While(test, body) | Stmt::DoWhile(body, test) => {
+            f(test);
+            body.iter().for_each(|s| stmt_exprs(s, f));
+        }
+        Stmt::Labeled(_, body, _) => stmt_exprs(body, f),
+        Stmt::Switch { disc, cases, .. } => {
+            f(disc);
+            for (test, body) in cases {
+                test.iter().for_each(&mut *f);
+                body.iter().for_each(|s| stmt_exprs(s, f));
+            }
+        }
         Stmt::Try {
             block,
             handler,
@@ -1418,4 +1758,180 @@ fn visit_deep(e: &Expr, f: &mut dyn FnMut(&Expr)) {
             func_exprs(func, &mut |y| visit_deep(y, f));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The store module for the component `source` exports, or the first refusal's message.
+    fn store(source: &str) -> std::result::Result<String, String> {
+        let dir = tempfile::tempdir().unwrap();
+        let entry = dir.path().join("spacepress.config.ts");
+        std::fs::write(&entry, "export default {};\n").unwrap();
+        std::fs::create_dir_all(dir.path().join("sp/components")).unwrap();
+        std::fs::write(
+            dir.path().join("sp/components/A.tsx"),
+            format!("\"use client\";\n{source}\n"),
+        )
+        .unwrap();
+        let program = crate::loader::load(&entry).map_err(|d| d.message)?;
+        let (_, id) = program.components.first().expect("the component module");
+        let module = &program.modules[*id];
+        let func = module
+            .body
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Exported(inner) => match &**inner {
+                    Stmt::Func(f) => Some(f.clone()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("an exported component");
+        let analysis = analyse(
+            "app/A".into(),
+            &func,
+            module,
+            crate::loader::CLIENT_MODULE,
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            &[],
+        )
+        .map_err(|d| d.message)?;
+        analysis.store().map_err(|d| d.message)
+    }
+
+    const IMPORTS: &str = "import { useMount, useEvent, useState } from \"spacepress/client\";";
+
+    #[test]
+    fn handlers_compile_loops_switch_labels_and_throw() {
+        let out = store(&format!(
+            "{IMPORTS}
+export function A({{ items }}: {{ items: number[] }}) {{
+  const [n, setN] = useState(0);
+  useMount(() => {{
+    let total = 0;
+    for (let i = 0; i < items.length; i++) {{ if (items[i] < 0) continue; total += items[i]; }}
+    for (const [k, v] of Object.entries({{ a: 1 }})) {{ total += v; }}
+    for (const {{ x, y = n }} of [{{ x: 1 }}]) {{ total += x + y; }}
+    for (const key in {{ a: 1 }}) {{ if (key === \"a\") break; }}
+    outer: for (const a of items) {{ for (const b of items) {{ if (a === b) continue outer; break outer; }} }}
+    while (total > 100) {{ total -= 1; }}
+    do {{ total++; }} while (total < 0);
+    switch (total) {{ case 0: setN(0); break; default: {{ setN(total); }} }}
+    if (total < -1) throw new Error(\"negative\");
+  }});
+  return <b>{{n}}</b>;
+}}"
+        ))
+        .unwrap();
+        for expected in [
+            "for (let i = 0; (i < context.items.length); (i++)) {",
+            "continue;",
+            "for (const [k, v] of Object.entries(",
+            "for (const { \"x\": x, \"y\": y = context.n } of",
+            "for (const key in ({ \"a\": 1 })) {",
+            "outer:\n",
+            "continue outer;",
+            "break outer;",
+            "while ((total > 100)) {",
+            "} while ((total < 0));",
+            "switch (total) {",
+            "case 0:",
+            "default:",
+            "throw new Error(\"negative\");",
+        ] {
+            assert!(out.contains(expected), "{expected:?} in:\n{out}");
+        }
+    }
+
+    #[test]
+    fn async_callbacks_inside_handlers_await_and_the_handler_yields() {
+        let out = store(&format!(
+            "{IMPORTS}
+export function A({{ label }}: {{ label: string }}) {{
+  const [open, setOpen] = useState(false);
+  useEvent(\"keydown\", async (event) => {{
+    const res = await fetch(\"/x.json\");
+    document.body.addEventListener(\"click\", async () => {{
+      await navigator.clipboard.writeText(label);
+      setTimeout(() => {{ document.title = label; }}, 10);
+    }});
+    if (res.ok) window.location.href = \"/next\";
+    setOpen(!open);
+  }}, \"document\");
+  return <b>{{open ? 1 : 0}}</b>;
+}}"
+        ))
+        .unwrap();
+        assert!(out.contains("*onKeydown1(event) {"), "{out}");
+        assert!(out.contains("const res = (yield fetch(\"/x.json\"));"), "{out}");
+        assert!(out.contains("(async () => {"), "{out}");
+        assert!(
+            out.contains("(await navigator.clipboard.writeText(context.label));"),
+            "{out}"
+        );
+        assert!(out.contains("(window.location.href = \"/next\")"), "{out}");
+        assert!(out.contains("(document.title = context.label)"), "{out}");
+    }
+
+    #[test]
+    fn browser_globals_yield_to_the_components_own_names() {
+        // A prop named like a global is the prop.
+        let out = store(&format!(
+            "{IMPORTS}
+export function A({{ location }}: {{ location: string }}) {{
+  const [n, setN] = useState(0);
+  useMount(() => {{ setN(parseInt(location, 10)); localStorage.setItem(\"k\", String(n)); }});
+  return <b>{{n}}</b>;
+}}"
+        ))
+        .unwrap();
+        assert!(out.contains("parseInt(context.location, 10)"), "{out}");
+        assert!(out.contains("localStorage.setItem("), "{out}");
+        // A module-level name that shadows a global is the server's, not the browser's.
+        let err = store(&format!(
+            "{IMPORTS}
+const fetch = 1;
+export function A() {{ const [n, setN] = useState(0); useMount(() => {{ setN(fetch); }}); return <b>{{n}}</b>; }}"
+        ))
+        .unwrap_err();
+        assert!(err.contains("`fetch` isn't available in the browser"), "{err}");
+    }
+
+    #[test]
+    fn refusals_that_still_hold() {
+        for (body, refusal) in [
+            // A prop is read-only, in place or whole.
+            (
+                "useMount(() => { label.length = 0; });",
+                "changing a field of `label` in place",
+            ),
+            ("useMount(() => { label = \"x\"; });", "`label` can't be assigned here"),
+            // A global is never reassigned itself.
+            ("useMount(() => { window = null; });", "`window` can't be assigned here"),
+            // `await` in a callback that isn't async (the parser refuses it first).
+            (
+                "useMount(async () => { [1].forEach((x) => { await fetch(\"/\"); }); });",
+                "`await` is only allowed within async functions",
+            ),
+            (
+                "useMount(() => { await fetch(\"/\"); });",
+                "`await` is only allowed within async functions",
+            ),
+            ("useMount(() => { for await (const x of []) {} });", "`for await`"),
+            (
+                "useMount(() => { setN(secret); });",
+                "`secret` isn't available in the browser",
+            ),
+        ] {
+            let err = store(&format!(
+                "{IMPORTS}
+export function A({{ label }}: {{ label: string }}) {{ const [n, setN] = useState(0); {body} return <b>{{n}}</b>; }}"
+            ))
+            .unwrap_err();
+            assert!(err.contains(refusal), "{body}: expected {refusal:?}, got {err:?}");
+        }
+    }
 }

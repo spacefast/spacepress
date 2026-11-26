@@ -2115,6 +2115,15 @@ fn client_components_compile_to_interactivity_stores() {
         serde_json::json!({ "mounted": -1, "n": 10, "items": 2, "shown": 2, "seen": 100, "width": 777, "submitted": { "n": 0, "prevented": true },
             "ref": { "tag": "OUTPUT", "asked": ["[data-sp-ref=\"box\"]"] }, "detached": "none" })
     );
+    // Loops, labels, `switch` and `for … in` in a handler; an async handler whose nested async
+    // callback awaits browser APIs (`fetch`, `navigator.clipboard`, `setTimeout`, `Promise`) and
+    // assigns `document.title` and `window.location.href`.
+    let loops = drive("clients/Loops", "loops.mjs");
+    assert_eq!(
+        loops,
+        serde_json::json!({ "summed": { "total": 10, "kind": "some" }, "fetched": ["/items.json"], "written": ["/docs/next"],
+            "title": "/docs/next", "copied": "/docs/next", "href": "/docs/next" })
+    );
     // The server HTML carries the directives the store answers to.
     let functions = std::fs::read_to_string(plugin.join("sp/app/functions.php")).unwrap();
     // A server component a client component renders stays a server component: Badge (in a file
@@ -2229,6 +2238,30 @@ fn refuses_client_code_outside_the_subset() {
         )],
         "`secret` isn't available in the browser",
         "sp/components/A.tsx:4:",
+    );
+    // A browser global the module shadows is the module's own value, which the browser lacks.
+    rejects(
+        &dir,
+        &[(
+            "sp/components/A.tsx",
+            &component(
+                "const fetch = 1;\nexport function A() { const [n, setN] = useState(0); return <b onClick={() => setN(fetch)}>{n}</b>; }",
+            ),
+        )],
+        "`fetch` isn't available in the browser",
+        "sp/components/A.tsx:4:",
+    );
+    // Page properties can be set; props can't, even inside a loop.
+    rejects(
+        &dir,
+        &[(
+            "sp/components/A.tsx",
+            &component(
+                "export function A({ xs }: { xs: number[] }) { const [n, setN] = useState(0); return <b onClick={() => { for (let i = 0; i < 2; i++) { document.title = String(i); xs = []; } }}>{n}</b>; }",
+            ),
+        )],
+        "`xs` can't be assigned here",
+        "sp/components/A.tsx:3:",
     );
     rejects(
         &dir,

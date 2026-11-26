@@ -551,7 +551,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CTX_SERVICE",
         feature: "ctx.{service}",
-        v2: "the matching \"spacepress\" export (db, mail, env, fetch) or a WordPress API",
+        v2: "db or mail from \"spacepress/server\", env from \"spacepress\", the global fetch, or a WordPress API",
         fix: "Port the service call to its v2 export, or drop it if v2 does the work.",
         test: |p, r| {
             p.contains("/ctx/")

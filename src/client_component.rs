@@ -1098,12 +1098,14 @@ impl Analysis {
         self.stmts(stmts, scope, &format!("{pad}  "))
     }
 
-    /// Statements at `pad`. A function declared among them is in scope in all of them, as a
-    /// block's function declarations are hoisted in JavaScript.
+    /// Statements at `pad`. A binding belongs to the whole block, even before its declaration.
+    /// JavaScript itself checks whether a lexical binding has been initialized when it is read.
     fn stmts(&self, stmts: &[Stmt], scope: &mut Scope, pad: &str) -> Result<String> {
         for s in stmts {
-            if let Stmt::Func(f) = s {
-                scope.locals.extend(f.name.clone());
+            match s {
+                Stmt::Func(f) => scope.locals.extend(f.name.clone()),
+                Stmt::Decl { pat, .. } => scope.bind_pattern(pat),
+                _ => {}
             }
         }
         let mut o = String::new();
@@ -1162,9 +1164,7 @@ impl Analysis {
         // has no receiver to pass, so it is left out and the read itself is refused.
         let params = if f.receives_this { &f.params[1..] } else { &f.params[..] };
         for p in params {
-            let mut names = Vec::new();
-            p.pat.bindings(&mut names);
-            scope.locals.extend(names.into_iter().map(|(n, _)| n.to_string()));
+            scope.bind_pattern(&p.pat);
         }
         let mut out = Vec::new();
         for p in params {
@@ -1202,11 +1202,8 @@ impl Analysis {
                 kind, pat, init, span, ..
             } => {
                 let k = Self::decl_kind(*kind, *span)?;
-                // The declared names are in scope in their own initializer, as in JavaScript: a
-                // function can call itself (`const tick = () => requestAnimationFrame(tick)`).
-                let mut names = Vec::new();
-                pat.bindings(&mut names);
-                scope.locals.extend(names.into_iter().map(|(n, _)| n.to_string()));
+                // The loop header calls `stmt` directly, without the block's pre-pass.
+                scope.bind_pattern(pat);
                 let value = init.as_ref().map(|e| self.js(e, scope)).transpose()?;
                 let target = self.pat(pat, scope)?;
                 match value {
@@ -1808,6 +1805,12 @@ pub struct Scope {
 const SCOPED: &str = "__spScope";
 
 impl Scope {
+    fn bind_pattern(&mut self, pat: &Pat) {
+        let mut names = Vec::new();
+        pat.bindings(&mut names);
+        self.locals.extend(names.into_iter().map(|(name, _)| name.to_string()));
+    }
+
     /// An expression that calls `getContext()` or `getElement()` when it runs (a derived value,
     /// an action, a ref). The runtime has a scope while a handler runs, but not in a timer,
     /// listener or promise callback it set up; there the expression runs in the handler's scope.

@@ -34,8 +34,9 @@ export function Later({ items }: { items: number[] }) {
         seen.push(items.length);
     }
     {
+      function firstItem() { return items[0]; }
       const items = [0];
-      seen.push(items.length * 0);
+      seen.push(firstItem());
     }
     seen.push(items.length);
     let ticks = 0;

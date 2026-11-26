@@ -52,7 +52,7 @@ The conversion is done by you, file by file, with the table in
    A Markdown page (`src/pages/about.md`) becomes `sp/app/about/page.md` without its `layout:`.
 
 5. Islands. A component with `client:load` (React, Preact, Svelte, Vue) becomes a `"use client"`
-   component under `sp/components/` with `useState` from `"spacepress/client"`. It cannot import npm
+   component under `sp/components/` with `useState` from `"react"`. It cannot import npm
    packages: flag any island that does.
 
 6. Files. `public/` stays. Images an `image()` field or `astro:assets` resolved go to `public/` or

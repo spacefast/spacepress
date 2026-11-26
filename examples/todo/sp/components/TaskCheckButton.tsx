@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { toggleTask } from "../server";
+import { useMutation } from "spacepress/react";
+import { api } from "../_generated/api";
 
 export function TaskCheckButton({
   taskId,
@@ -13,19 +14,17 @@ export function TaskCheckButton({
   label: string;
 }) {
   const [done, setDone] = useState(completed);
-  const [busy, setBusy] = useState(false);
+  const toggle = useMutation(api.actions.toggleTask);
 
   const onToggle = async () => {
-    if (busy) return;
-    setBusy(true);
+    if (toggle.pending) return;
     setDone(!done);
     try {
-      const result = await toggleTask({ id: taskId });
+      const result = await toggle.mutate({ id: taskId });
       setDone(result.completed);
       window.location.reload();
     } catch {
       setDone(completed);
-      setBusy(false);
     }
   };
 
@@ -35,7 +34,7 @@ export function TaskCheckButton({
       className={done ? "todo-check todo-check--done" : "todo-check"}
       aria-label={label}
       aria-pressed={done}
-      disabled={busy}
+      disabled={toggle.pending}
       onClick={onToggle}
     >
       <span className="todo-check__mark" aria-hidden="true">

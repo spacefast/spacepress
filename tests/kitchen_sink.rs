@@ -32,10 +32,10 @@ const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 const MODULES: &[(&str, &str)] = &[
     ("spacepress", "index.d.ts"),
     ("spacepress/server", "server.d.ts"),
-    ("spacepress/server/app", "server-app.d.ts"),
-    ("spacepress/server/content", "server-content.d.ts"),
+    ("spacepress/app", "app.d.ts"),
+    ("spacepress/content", "content.d.ts"),
     ("spacepress/server/wp", "server-wp.d.ts"),
-    ("react", "react.d.ts"),
+    ("react", "react-shim.d.ts"),
 ];
 
 /// Interfaces whose methods an app calls on a value it gets from a module: (module, interface,
@@ -651,13 +651,10 @@ fn unused(types: &Path, app: &Path) -> BTreeSet<String> {
             }
         }
     }
-    // The compiler's own list of what "spacepress/server/app" exports, so the declarations cannot fall behind it.
+    // The compiler's own list of what "spacepress/app" exports, so the declarations cannot fall behind it.
     for name in spacepress::app::EXPORTS {
-        if !used
-            .called
-            .contains(&("spacepress/server/app".to_string(), name.to_string()))
-        {
-            missing.insert(format!("spacepress/server/app::{name}"));
+        if !used.called.contains(&("spacepress/app".to_string(), name.to_string())) {
+            missing.insert(format!("spacepress/app::{name}"));
         }
     }
 
@@ -798,12 +795,12 @@ fn coverage_check_requires_a_real_use() {
         std::fs::copy(real.join(file), types.join(file)).unwrap();
     }
     // A namespace export the regex this replaced did not see.
-    let mut app_types = std::fs::read_to_string(types.join("server-app.d.ts")).unwrap();
+    let mut app_types = std::fs::read_to_string(types.join("app.d.ts")).unwrap();
     app_types.push_str("\nexport declare namespace Probe { function run(): void }\n");
-    std::fs::write(types.join("server-app.d.ts"), app_types).unwrap();
+    std::fs::write(types.join("app.d.ts"), app_types).unwrap();
     std::fs::write(
         app.join("sp/app/page.tsx"),
-        r#"import { Html, Link, notFound } from "spacepress/server/app";
+        r#"import { Html, Link, notFound } from "spacepress/app";
 import { text } from "spacepress";
 import { db, mail } from "spacepress/server";
 import styles from "./page.module.css";
@@ -822,9 +819,9 @@ export default function Page() {
     .unwrap();
     let missing = unused(&types, &app);
     for name in [
-        "spacepress/server/app::Html",
-        "spacepress/server/app::notFound",
-        "spacepress/server/app::Probe",
+        "spacepress/app::Html",
+        "spacepress/app::notFound",
+        "spacepress/app::Probe",
         "mail.render",
         "mail.send",
         "db.delete",
@@ -839,7 +836,7 @@ export default function Page() {
         assert!(missing.contains(name), "{name} should be reported: {missing:?}");
     }
     for name in [
-        "spacepress/server/app::Link",
+        "spacepress/app::Link",
         "spacepress::text",
         "ColumnBuilder.optional",
         "page export default",

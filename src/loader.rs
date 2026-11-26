@@ -26,9 +26,9 @@ pub(crate) fn email_module(root: &Path, path: &Path) -> bool {
 /// Server-only runtime APIs (`db`, `HttpError`, `once`, `mail`, `connectors`).
 pub const SERVER_MODULE: &str = "spacepress/server";
 /// Page and layout helpers for `<dir>/app/` and components (docs/spec/rendering.md §2–§4).
-pub const APP_MODULE: &str = "spacepress/server/app";
+pub const APP_MODULE: &str = "spacepress/app";
 /// Navigation and OpenAPI helpers for server pages (src/compile/content.rs).
-pub const CONTENT_MODULE: &str = "spacepress/server/content";
+pub const CONTENT_MODULE: &str = "spacepress/content";
 /// Opt-in CLI-only destructive migration escape hatch (ADR 2026-11-21 §3).
 pub const DANGER_MODULE: &str = "spacepress/danger";
 /// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
@@ -48,6 +48,11 @@ pub const CLIENT_SDK_MODULE: &str = "@spacepress/client";
 /// Whether `spec` is a server-only SpacePress module (`spacepress/server` or `spacepress/server/*`).
 pub fn is_server_module(spec: &str) -> bool {
     spec == SERVER_MODULE || spec.starts_with("spacepress/server/")
+}
+
+/// Whether `spec` is compiled server-only in SpacePress (refused inside `"use client"` components).
+pub fn is_server_only_module(spec: &str) -> bool {
+    is_server_module(spec) || spec == APP_MODULE || spec == CONTENT_MODULE
 }
 
 /// Whether `spec` is SpacePress's React hooks module (`spacepress/react` or `@spacepress/client/react`).
@@ -876,7 +881,7 @@ fn load_module(
         // Client boundary: "use client" components run in the browser and may never import
         // server-only modules (`spacepress/server` or `spacepress/server/*`).
         if is_client {
-            if is_server_module(&spec) {
+            if is_server_only_module(&spec) {
                 diagnostics.push(
                     Diag::new(
                         span,
@@ -951,7 +956,7 @@ fn load_module(
             diagnostics.push(
                 Diag::new(span, format!("\"{spec}\" isn't available"))
                     .help(
-                        "available server modules: \"spacepress/server\", \"spacepress/server/db\", \"spacepress/server/app\", \"spacepress/server/content\", and \"spacepress/server/wp\"",
+                        "available server modules: \"spacepress/server\", \"spacepress/server/db\", and \"spacepress/server/wp\" (page and content helpers are \"spacepress/app\" and \"spacepress/content\")",
                     )
                     .code(diag::Code::Import),
             );
@@ -1611,14 +1616,6 @@ fn legacy_specifier_diag(spec: &str) -> Option<(String, String)> {
             "\"spacepress:db\" moved to \"spacepress/server/db\"".into(),
             "replace `from \"spacepress:db\"` with `from \"spacepress/server/db\"`".into(),
         )),
-        "spacepress/app" => Some((
-            "\"spacepress/app\" moved to \"spacepress/server/app\"".into(),
-            "replace `from \"spacepress/app\"` with `from \"spacepress/server/app\"`".into(),
-        )),
-        "spacepress/content" => Some((
-            "\"spacepress/content\" moved to \"spacepress/server/content\"".into(),
-            "replace `from \"spacepress/content\"` with `from \"spacepress/server/content\"`".into(),
-        )),
         "php/wordpress" => Some((
             "\"php/wordpress\" moved to \"spacepress/server/wp\"".into(),
             "replace `from \"php/wordpress\"` with `from \"spacepress/server/wp\"`".into(),
@@ -1642,8 +1639,8 @@ fn normalize_spacefast_modules(body: &mut [Stmt], commonjs: Option<&mut CommonJs
         let canonical = match spec.as_str() {
             SPACEFAST_APP_MODULE | "@spacefast/spacepress" => SP_MODULE,
             "@spacefast/spacepress/server" => SERVER_MODULE,
-            "@spacefast/spacepress/server/app" => APP_MODULE,
-            "@spacefast/spacepress/server/content" => CONTENT_MODULE,
+            "@spacefast/spacepress/app" => APP_MODULE,
+            "@spacefast/spacepress/content" => CONTENT_MODULE,
             "@spacefast/spacepress/server/db" => DB_MODULE,
             "@spacefast/spacepress/server/wp" => WORDPRESS_MODULE,
             "@spacefast/spacepress/danger" => DANGER_MODULE,

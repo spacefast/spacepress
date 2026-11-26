@@ -1,6 +1,7 @@
+import type { PageProps } from "./$types";
 // The catalog: every published drive, searchable and filtered by media and condition.
 import { select, text } from "spacepress";
-import { Link, type PageProps } from "spacepress/server/app";
+import { Link } from "spacepress/app";
 import { CONDITIONS, MEDIA } from "../schema";
 import { catalog } from "../lib/catalog";
 import { mediaName, money, size, stockLabel } from "./_lib/format";
@@ -10,7 +11,7 @@ export const search = { q: text().max(200).optional(), media: select(MEDIA).opti
 
 type Search = { q: string | null; media: (typeof MEDIA)[number] | null; condition: (typeof CONDITIONS)[number] | null };
 
-export default async function Catalog({ search }: PageProps<"/", Search>) {
+export default async function Catalog({ search }: PageProps<Search>) {
   const rows = await catalog(search.q ?? "", search.media ?? null, search.condition ?? null);
   return (
     <>

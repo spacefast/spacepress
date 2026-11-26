@@ -274,7 +274,7 @@ export function Part2ServerAndUI() {
                 <td>Prebuilds pages into standalone HTML via <code>spacepress export</code> — no WordPress server needed at serve time.</td>
               </tr>
               <tr>
-                <td>Built-in UI primitives (<code>spacepress/server/app</code>)</td>
+                <td>Built-in UI primitives (<code>spacepress/app</code>)</td>
                 <td><code>&lt;Link&gt;</code> (client-side router navigation), <code>&lt;Content&gt;</code>, <code>&lt;Html&gt;</code>, <code>&lt;Comments&gt;</code>, <code>&lt;Pagination&gt;</code>, <code>&lt;Search&gt;</code>, <code>&lt;SearchResults&gt;</code>, <code>&lt;TemplatePart&gt;</code>, <code>&lt;Live&gt;</code>, <code>useFormState()</code>.</td>
               </tr>
               <tr>

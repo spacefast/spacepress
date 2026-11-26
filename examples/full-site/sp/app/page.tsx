@@ -1,5 +1,5 @@
 import { db } from "spacepress/server";
-import { Link } from "spacepress/server/app";
+import { Link } from "spacepress/app";
 import { NoteCard } from "../components/NoteCard";
 
 export const metadata = { title: "Home" };

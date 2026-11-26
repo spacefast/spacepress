@@ -1,4 +1,4 @@
-import { Link } from "spacepress/server/app";
+import { Link } from "spacepress/app";
 
 /** One note in a listing: the fields a listing query returns that the card shows. */
 export function NoteCard({ note }: { note: { id: number; title: string; slug: string | null; dek: string | null } }) {

@@ -21,7 +21,7 @@ The script rewrites the tracked files and their paths to the current names:
 
 - the config file becomes `spacepress.config.ts`
 - the app folder becomes `sp/`
-- imports become `"spacepress"`, `"spacepress/server/app"` and `"spacepress/server/db"`
+- imports become `"spacepress"`, `"spacepress/app"` and `"spacepress/server/db"`
 - the CLI dev dependency becomes `spacepress`
 
 It refuses to run when a renamed path already exists. Review the staged diff, run `npm install` and `spacepress build`, and commit. Your committed migrations under `sp/_generated/migrations/` keep their IDs, and the table names inside them change to match the site's renamed tables. Don't regenerate or renumber them. The site's ledger keeps the hash each one had when it was applied, and it already counts them as applied.

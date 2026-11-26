@@ -145,7 +145,7 @@ test('serves frontend assets only on the route that uses them', { skip: !process
   await file('spacepress.config.ts', 'import { defineConfig } from "spacepress"; export default defineConfig({ name: "frontend-test" });');
   await mkdir(path.join(root, 'sp/app/(site)'));
   await file('sp/app/(site)/layout.tsx', `
-    import type { LayoutProps } from "spacepress/server/app";
+    import type { LayoutProps } from "spacepress/app";
     import "./site.css";
     import { frontend } from "../../_generated/frontend";
     export const metadata = {

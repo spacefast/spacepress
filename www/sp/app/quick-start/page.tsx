@@ -1,4 +1,4 @@
-import { Link } from "spacepress/server/app";
+import { Link } from "spacepress/app";
 import { Cmd, Code, Sandbox } from "../../components/Code";
 import { PageActions } from "../../components/PageActions";
 
@@ -48,7 +48,7 @@ export const clap = action({
 export default defineConfig({ name: "my-app", seed: true });`;
 
 const PAGE_SNIPPET = `import { db } from "spacepress/server";
-import { Link, useFormState } from "spacepress/server/app";
+import { Link, useFormState } from "spacepress/app";
 import { greet } from "../actions";
 
 export const metadata = { title: "Home" };

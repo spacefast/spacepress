@@ -21,7 +21,7 @@ With `template = "theme"`, WordPress renders the TSX page in the block theme's
 the header, footer, or other blocks around it. Use `template = "blank"` when
 your layout supplies those elements.
 
-## Built-in server components (`spacepress/server/app`)
+## Built-in server components (`spacepress/app`)
 
 Use `<Link>` (Interactivity Router navigation), `<Content>` (block content via `the_content`), `<Html>` (sanitized HTML), `<Comments>`, `<Pagination>`, `<Search>`, `<SearchResults>`, `<LoginForm>`, `<TemplatePart>`, `<Live id="...">`, and `useFormState(action)` for progressive zero-JS `<form action={myAction}>` submissions.
 
@@ -49,7 +49,7 @@ export const contact = mutation({ access: "anyone", rateLimit: "5/min" }, async 
 
 ```tsx
 // sp/app/contact/page.tsx
-import { useFormState } from "spacepress/server/app";
+import { useFormState } from "spacepress/app";
 import { contact } from "../../server";
 
 export default function Contact() {
@@ -106,9 +106,10 @@ export const posts = wp.posts.extend({}, {
 Pass the route's post to `<Comments>` in `sp/app/blog/[slug]/page.tsx`.
 
 ```tsx
-import { Comments, type PageProps } from "spacepress/server/app";
+import { Comments } from "spacepress/app";
+import type { PageProps } from "./$types";
 
-export default function Post({ item }: PageProps<"blog/[slug]">) {
+export default function Post({ item }: PageProps) {
 	return <Comments for={item} />;
 }
 ```

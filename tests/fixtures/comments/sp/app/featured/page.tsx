@@ -1,5 +1,5 @@
 import { notes } from "spacepress/server/db";
-import { Comments } from "spacepress/server/app";
+import { Comments } from "spacepress/app";
 
 // The same item and its thread at an address that isn't its permalink: a comment approved on it
 // must purge this page too.

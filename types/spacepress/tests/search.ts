@@ -1,5 +1,5 @@
 // <Search> and <SearchResults> (docs/pages.md, "Search"): the form and the results list.
-import { Search, SearchResults } from "spacepress/server/app";
+import { Search, SearchResults } from "spacepress/app";
 
 export const form = Search({});
 export const labelled = Search({ action: "/find", label: "Search workshops", placeholder: "bread", className: "search" });

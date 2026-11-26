@@ -1,4 +1,4 @@
-import type { LayoutProps } from "spacepress/server/app";
+import type { LayoutProps } from "spacepress/app";
 
 // Woo order reads and stock changes require an administrator.
 export const guard = "admin";

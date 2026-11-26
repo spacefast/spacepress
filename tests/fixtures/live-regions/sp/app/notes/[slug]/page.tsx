@@ -1,4 +1,4 @@
-import { Comments, Live, type PageProps } from "spacepress/server/app";
+import { Comments, Live, type PageProps } from "spacepress/app";
 
 // A live thread: comments are core's, which no SpacePress counter follows, so the region renders and
 // compares on every poll.

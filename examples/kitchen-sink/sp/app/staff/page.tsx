@@ -1,8 +1,8 @@
 import { db } from "spacepress/server";
 import { events } from "spacepress/server/db";
 import { current_user_can } from "spacepress/server/wp";
-import { Html, useFormState } from "spacepress/server/app";
-import { apiReference } from "spacepress/server/content";
+import { Html, useFormState } from "spacepress/app";
+import { apiReference } from "spacepress/content";
 import { checkSchedule, postAnnouncement } from "../../server";
 
 export const metadata = { title: "Staff" };

@@ -1,8 +1,9 @@
 import { integer, text } from "spacepress";
+import type { PageProps } from "./$types";
 import { db } from "spacepress/server";
 import { get_current_user_id, get_post, get_userdata, home_url, is_user_logged_in, wp_login_url } from "spacepress/server/wp";
 import { buckets, tasks } from "spacepress/server/db";
-import { Comments, Link, Live, useFormState, type PageProps } from "spacepress/server/app";
+import { Comments, Link, Live, useFormState } from "spacepress/app";
 import { ChecklistEditor } from "../components/ChecklistEditor";
 import { KanbanDragController } from "../components/KanbanDragController";
 import { LiveWorkspacePulse } from "../components/LiveWorkspacePulse";
@@ -105,9 +106,7 @@ function commentCountFor(taskId: number): number {
 
 export default async function TodoWorkspacePage({
   search,
-}: PageProps<
-  "/",
-  {
+}: PageProps<{
     view?: string;
     bucket?: string;
     q?: string;

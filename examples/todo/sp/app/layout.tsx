@@ -1,6 +1,6 @@
 import { db } from "spacepress/server";
 import { get_current_user_id, get_userdata, home_url, is_user_logged_in, wp_login_url } from "spacepress/server/wp";
-import { Link, type LayoutProps } from "spacepress/server/app";
+import { Link, type LayoutProps } from "spacepress/app";
 import "./todo.css";
 
 export const template = "blank";

@@ -104,7 +104,7 @@ const MODULES: &[Module] = &[
                 static_output: Some(StaticOutput {
                     after: "import { ApiFields }",
                     insert: include_str!("add/api-reference/static-params.tsx"),
-                    import: ("type PageProps }", "type PageProps, type StaticParams }"),
+                    import: ("import type { PageProps }", "import type { PageProps, StaticParams }"),
                 }),
                 what: "/api/<tag>/<operation>: parameters, body, responses and a request to copy",
                 when: When::Always,

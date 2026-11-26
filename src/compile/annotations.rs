@@ -176,8 +176,8 @@ impl Compiler<'_, '_> {
                         return Ok(ty);
                     }
                 }
-                // `StaticParams<"blog/[slug]">`: the list a prebuilt page's `staticParams` returns,
-                // one entry of that route's params per page to build.
+                // `StaticParams` (from `./$types`) or `StaticParams<"blog/[slug]">`: the list a
+                // prebuilt page's `staticParams` returns, one entry of that route's params per page.
                 if self.sp_type_import(module, name).as_deref() == Some("StaticParams") {
                     let file = match args.as_slice() {
                         [TyAnn::StrLit(id)] => self
@@ -185,7 +185,20 @@ impl Compiler<'_, '_> {
                             .app
                             .as_ref()
                             .and_then(|app| app.routes.iter().find(|r| r.id == *id).and_then(|r| r.page.clone())),
-                        [] => None,
+                        [] => {
+                            let prog = self.ev_program();
+                            prog.modules[module]
+                                .path
+                                .strip_prefix(prog.layout.root_path(&prog.root))
+                                .ok()
+                                .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+                                .filter(|rel| {
+                                    self.schema
+                                        .app
+                                        .as_ref()
+                                        .is_some_and(|app| app.routes.iter().any(|r| r.page.as_deref() == Some(rel)))
+                                })
+                        }
                         _ => {
                             return err(
                                 *span,
@@ -661,7 +674,7 @@ impl Compiler<'_, '_> {
             .body
             .iter()
             .find_map(|stmt| match stmt {
-                // "spacepress/server", "spacepress/server/app", and generated "./$types" re-export route/context types.
+                // "spacepress/server", "spacepress/app", and generated "./$types" re-export route/context types.
                 Stmt::Import { source, specs, .. }
                     if source == crate::loader::SP_MODULE
                         || source == crate::loader::SERVER_MODULE

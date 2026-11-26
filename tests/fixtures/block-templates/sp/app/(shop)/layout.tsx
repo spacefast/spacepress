@@ -1,4 +1,4 @@
-import type { LayoutProps } from "spacepress/server/app";
+import type { LayoutProps } from "spacepress/app";
 
 // A route group's root layout: nothing above it but app/layout.tsx's chrome-less root, so it is
 // nested and renders. (A group layout that is the outermost one is a root, and under the theme's

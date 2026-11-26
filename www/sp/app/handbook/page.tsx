@@ -1,4 +1,4 @@
-import { Link } from "spacepress/server/app";
+import { Link } from "spacepress/app";
 import { PageActions } from "../../components/PageActions";
 import { Part1Foundation } from "../../components/guide/Part1Foundation";
 import { Part2ServerAndUI } from "../../components/guide/Part2ServerAndUI";

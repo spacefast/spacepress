@@ -1,4 +1,4 @@
-import { TemplatePart, type LayoutProps } from "spacepress/server/app";
+import { TemplatePart, type LayoutProps } from "spacepress/app";
 
 // Places the theme's header itself, and its own footer: the blank template, by default.
 export default function Studio({ children }: LayoutProps) {

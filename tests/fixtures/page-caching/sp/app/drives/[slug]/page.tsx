@@ -1,5 +1,5 @@
 import { db } from "spacepress/server";
-import type { PageProps } from "spacepress/server/app";
+import type { PageProps } from "spacepress/app";
 
 export default async function Drive({ item }: PageProps<"drives/[slug]">) {
   const shop = await db.globals.shop.get();

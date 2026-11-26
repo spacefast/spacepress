@@ -1,4 +1,4 @@
-import { LoginForm, type LoginProps } from "spacepress/server/app";
+import { LoginForm, type LoginProps } from "spacepress/app";
 
 export const metadata = { title: "Sign in" };
 

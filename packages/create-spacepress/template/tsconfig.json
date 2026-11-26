@@ -11,7 +11,7 @@
     "rootDirs": [".", "./sp/_generated/types"],
     "types": ["node"],
     "paths": {
-      "react": ["./node_modules/spacepress/types/react.d.ts"]
+      "react": ["./node_modules/spacepress/types/react-shim.d.ts"]
     }
   },
   "include": ["spacepress.config.ts", "*.client.ts", "sp"],

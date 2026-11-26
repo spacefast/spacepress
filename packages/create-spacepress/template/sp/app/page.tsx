@@ -1,5 +1,5 @@
 import { db } from "spacepress/server";
-import { Link, useFormState } from "spacepress/server/app";
+import { Link, useFormState } from "spacepress/app";
 import { greet } from "../actions";
 
 export default async function Home() {

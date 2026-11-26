@@ -2,7 +2,7 @@
 
 export {};
 
-declare module "spacepress/server/app" {
+declare module "spacepress/app" {
   interface Routes {
     "shelf.html": { path: `/shelf.html`; params: {  } };
   }

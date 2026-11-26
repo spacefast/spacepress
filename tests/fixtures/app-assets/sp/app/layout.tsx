@@ -1,4 +1,4 @@
-import type { LayoutProps } from "spacepress/server/app";
+import type { LayoutProps } from "spacepress/app";
 import "./site.css";
 
 // Draws its own header and footer: the blank block template, so the theme's parts don't double them

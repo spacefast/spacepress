@@ -1,4 +1,4 @@
-import { useFormState } from "spacepress/server/app";
+import { useFormState } from "spacepress/app";
 import { contactKitchen } from "../../server";
 
 export const metadata = { title: "Contact the kitchen" };

@@ -1,4 +1,4 @@
-import type { LayoutProps } from "spacepress/server/app";
+import type { LayoutProps } from "spacepress/app";
 
 export const guard = "authenticated";
 

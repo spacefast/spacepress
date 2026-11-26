@@ -1,4 +1,4 @@
-// "spacepress/server/app": pages, layouts and HTTP routes under <dir>/app/ (docs/spec/rendering.md §2–§4).
+// "spacepress/app": pages, layouts and HTTP routes under <dir>/app/ (docs/spec/rendering.md §2–§4).
 // Types only: the compiler lowers these to PHP; nothing here runs in Node or the browser.
 /// <reference path="./assets.d.ts" />
 import type { AccessCtx, Action, RouteRequest, RouteResponse } from "./index.d.ts";

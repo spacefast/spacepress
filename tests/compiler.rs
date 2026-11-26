@@ -1865,7 +1865,7 @@ export default defineConfig({ name: "routes-dts-key" });
     .unwrap();
     std::fs::write(
         tmp.join("sp/app/entities/[slug]/page.tsx"),
-        r#"import { notFound, type PageProps } from "spacepress/server/app";
+        r#"import { notFound, type PageProps } from "spacepress/app";
 
 export default function EntityPage({ item }: PageProps<"entities/[slug]">) {
   if (!item) notFound();

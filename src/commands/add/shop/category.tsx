@@ -1,6 +1,6 @@
 import { integer } from "spacepress";
 import { products } from "spacepress/server/db";
-import { Pagination } from "spacepress/server/app";
+import { Pagination } from "spacepress/app";
 import { get_option } from "spacepress/server/wp";
 export const search = { catalogPage: integer().min(1).default(1) };
 export default async function CategoryPage({ item, search }) {

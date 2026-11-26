@@ -1184,7 +1184,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             if *dep_type_only || (!dep_specs.is_empty() && dep_specs.iter().all(|d| d.type_only)) {
                                 continue;
                             }
-                            if crate::loader::is_server_module(dep) {
+                            if crate::loader::is_server_only_module(dep) {
                                 let helper_rel = m.path.strip_prefix(&program.root).unwrap_or(&m.path).display();
                                 return err_help(
                                     *span,

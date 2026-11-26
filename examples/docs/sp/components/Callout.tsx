@@ -1,6 +1,6 @@
 // Server components content may use as blocks: `<Callout type="tip">…</Callout>` in a Markdown
 // file is one block in the editor, rendered through this component.
-import type { ReactNode } from "spacepress/server/app";
+import type { ReactNode } from "spacepress/app";
 
 export const blocks = ["Callout", "Badge"];
 

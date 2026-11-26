@@ -3,7 +3,7 @@ import type {
   LayoutProps as BaseLayoutProps,
   PageProps as BasePageProps,
   StaticParams as BaseStaticParams,
-} from "spacepress/server/app";
+} from "spacepress/app";
 
 export type PageProps<S = Record<string, any>> = BasePageProps<"source", S>;
 export type LayoutProps = BaseLayoutProps<"source">;

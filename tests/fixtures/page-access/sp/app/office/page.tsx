@@ -1,4 +1,4 @@
-import { Live } from "spacepress/server/app";
+import { Live } from "spacepress/app";
 
 export const guard = "admin";
 

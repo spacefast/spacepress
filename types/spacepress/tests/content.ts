@@ -1,5 +1,5 @@
 // "spacepress/content" types: what nav(), pager() and headings() give a docs page.
-import { nav, pager, headings, type NavItem, type Heading } from "spacepress/server/content";
+import { nav, pager, headings, type NavItem, type Heading } from "spacepress/content";
 
 declare const docs: unknown;
 declare const item: { id: number; content: string | null };
@@ -23,7 +23,7 @@ export async function docsPage(): Promise<string[]> {
 }
 
 // apiReference(): an OpenAPI document as tags, operations and fields a page maps over.
-import { apiReference, type ApiField, type ApiOperation } from "spacepress/server/content";
+import { apiReference, type ApiField, type ApiOperation } from "spacepress/content";
 
 export function reference(): string[] {
   const api = apiReference();

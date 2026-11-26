@@ -1,4 +1,4 @@
-import { Content, type PageProps } from "spacepress/server/app";
+import { Content, type PageProps } from "spacepress/app";
 
 export const metadata = ({ item }: PageProps<"notes/[slug]">) => ({ title: item.title });
 

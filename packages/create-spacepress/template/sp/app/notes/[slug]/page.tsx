@@ -1,9 +1,10 @@
-import { Content, Link, type PageProps } from "spacepress/server/app";
+import { Content, Link } from "spacepress/app";
+import type { PageProps } from "./$types";
 
 // SpacePress supplies the note for this slug. Missing notes use not-found.tsx.
-export const metadata = ({ item }: PageProps<"notes/[slug]">) => ({ title: item.title });
+export const metadata = ({ item }: PageProps) => ({ title: item.title });
 
-export default function Note({ item }: PageProps<"notes/[slug]">) {
+export default function Note({ item }: PageProps) {
   return (
     <article>
       <p><Link href="/notes">← All notes</Link></p>

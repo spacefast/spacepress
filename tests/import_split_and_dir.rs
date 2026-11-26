@@ -104,7 +104,7 @@ export function Counter({ start }: { start: number }) {
         root,
         "sp/app/page.tsx",
         r#"import { notes } from "spacepress/server/db";
-import { Link, useFormState } from "spacepress/server/app";
+import { Link, useFormState } from "spacepress/app";
 import type { PageProps } from "./$types";
 import { esc_html } from "spacepress/server/wp";
 import { addNote } from "../schema";
@@ -155,8 +155,8 @@ export default async function Home(_props: PageProps) {
     );
     let routes = built.routes_ts.as_deref().unwrap_or("");
     assert!(
-        routes.contains("declare module \"spacepress/server/app\""),
-        "routes.d.ts should augment spacepress/server/app, got:\n{routes}"
+        routes.contains("declare module \"spacepress/app\""),
+        "routes.d.ts should augment spacepress/app, got:\n{routes}"
     );
     assert!(
         built.gen_ts.contains("declare module \"spacepress/server/wp\""),
@@ -170,8 +170,8 @@ fn use_client_refuses_direct_and_transitive_server_imports() {
     for server_spec in [
         "spacepress/server",
         "spacepress/server/db",
-        "spacepress/server/app",
-        "spacepress/server/content",
+        "spacepress/app",
+        "spacepress/content",
         "spacepress/server/wp",
     ] {
         let tmp = tempfile::tempdir().unwrap();
@@ -227,11 +227,6 @@ fn moved_and_legacy_specifiers_give_clear_diagnostics() {
         ("import { HttpError } from \"spacepress\";", "spacepress/server"),
         ("import { mail } from \"spacepress\";", "spacepress/server"),
         ("import { posts } from \"spacepress:db\";", "spacepress/server/db"),
-        ("import { Link } from \"spacepress/app\";", "spacepress/server/app"),
-        (
-            "import { nav } from \"spacepress/content\";",
-            "spacepress/server/content",
-        ),
         ("import { esc_html } from \"php/wordpress\";", "spacepress/server/wp"),
         ("import { useState } from \"spacepress/client\";", "spacepress/client"),
     ];

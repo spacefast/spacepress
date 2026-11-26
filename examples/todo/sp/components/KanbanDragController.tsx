@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { sharedState, useEvent } from "@spacepress/client/react";
-import { moveTaskColumn } from "../server";
+import { sharedState, useEvent, useMutation } from "spacepress/react";
+import { api } from "../_generated/api";
 
 export const dragState = sharedState({ taskId: 0 });
 
 export function KanbanDragController({ groupBy }: { groupBy: string }) {
-  const [moving, setMoving] = useState(false);
+  const move = useMutation(api.actions.moveTaskColumn);
 
   useEvent(
     "dragstart",
@@ -80,9 +79,8 @@ export function KanbanDragController({ groupBy }: { groupBy: string }) {
       const priorityAttr = col.getAttribute("data-kanban-priority") ?? "";
       const completeAttr = col.getAttribute("data-kanban-complete") === "true";
 
-      setMoving(true);
       try {
-        await moveTaskColumn({
+        await move.mutate({
           id: taskId,
           groupBy,
           targetBucketId: bucketAttr === "" ? null : Number.parseInt(bucketAttr, 10),
@@ -91,14 +89,14 @@ export function KanbanDragController({ groupBy }: { groupBy: string }) {
         });
         window.location.reload();
       } catch {
-        setMoving(false);
+        // Error state is kept on `move.error`.
       }
     },
     "document",
   );
 
   return (
-    <span className="kanban-status" role="status" aria-live="polite" hidden={!moving}>
+    <span className="kanban-status" role="status" aria-live="polite" hidden={!move.pending}>
       Moving card…
     </span>
   );

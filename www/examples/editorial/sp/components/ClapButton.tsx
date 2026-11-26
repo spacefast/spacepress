@@ -1,20 +1,19 @@
 "use client";
 import { useState } from "react";
-import { clap } from "../actions";
+import { useMutation } from "spacepress/react";
+import { api } from "../_generated/api";
 
 export function ClapButton({ articleId, initial }: { articleId: number; initial: number }) {
   const [count, setCount] = useState(initial);
-  const [busy, setBusy] = useState(false);
+  const clap = useMutation(api.actions.clap);
 
   return (
     <button
       type="button"
-      disabled={busy}
+      disabled={clap.pending}
       onClick={async () => {
-        setBusy(true);
-        const res = await clap({ articleId });
+        const res = await clap.mutate({ articleId });
         setCount(res.count);
-        setBusy(false);
       }}
     >
       {count} {count === 1 ? "clap" : "claps"}

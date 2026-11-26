@@ -2,7 +2,7 @@
 
 export {};
 
-declare module "spacepress/server/app" {
+declare module "spacepress/app" {
   interface Routes {
     "api/registration": { path: `/api/registration`; params: {  } };
     "api/schedule": { path: `/api/schedule`; params: {  } };

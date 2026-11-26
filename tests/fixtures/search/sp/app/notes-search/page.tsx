@@ -1,5 +1,5 @@
 import { integer, text } from "spacepress";
-import { Search, SearchResults, type PageProps } from "spacepress/server/app";
+import { Search, SearchResults, type PageProps } from "spacepress/app";
 
 export const search = { q: text().optional(), page: integer().default(1) };
 

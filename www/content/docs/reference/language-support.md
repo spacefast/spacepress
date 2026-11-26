@@ -1203,7 +1203,7 @@ Evidence: `tests/app_router.rs` (`client_components_compile_to_interactivity_sto
 
 Status: **supported**.
 
-`<Comments for={item} />` from "spacepress/server/app" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props.
+`<Comments for={item} />` from "spacepress/app" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props.
 
 Evidence: `tests/app_router.rs` (`comments_follow_the_kind_policy_on_every_path`)
 
@@ -1211,7 +1211,7 @@ Evidence: `tests/app_router.rs` (`comments_follow_the_kind_policy_on_every_path`
 
 Status: **supported**.
 
-`<Pagination page={search.page} pages={n} />` from "spacepress/server/app" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page.
+`<Pagination page={search.page} pages={n} />` from "spacepress/app" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page.
 
 Evidence: `tests/app_router.rs` (`app_router_serves_pages_on_wordpress`)
 
@@ -1219,7 +1219,7 @@ Evidence: `tests/app_router.rs` (`app_router_serves_pages_on_wordpress`)
 
 Status: **supported**.
 
-`<Search />` and `<SearchResults q={search.q} />` from "spacepress/server/app" are a search form that works without JavaScript (a GET with `q`) and the matching rows the visitor may read, each its title linked to its kind's URL; one kind pages with `page`, every kind groups per kind. A page that searched is private, noindex and never recorded for purges.
+`<Search />` and `<SearchResults q={search.q} />` from "spacepress/app" are a search form that works without JavaScript (a GET with `q`) and the matching rows the visitor may read, each its title linked to its kind's URL; one kind pages with `page`, every kind groups per kind. A page that searched is private, noindex and never recorded for purges.
 
 Evidence: `tests/app_router.rs` (`search_pages_answer_as_the_visitor`)
 
@@ -1227,7 +1227,7 @@ Evidence: `tests/app_router.rs` (`search_pages_answer_as_the_visitor`)
 
 Status: **supported**.
 
-`<Live id="notes">…</Live>` from "spacepress/server/app" marks part of a server page the browser keeps current: when something the page read for it changes, the region is rendered again as the visitor and updated in place through the Interactivity router. `id` is a literal, unique on the page; `<Live>` belongs in server components (a client component uses `useLive`).
+`<Live id="notes">…</Live>` from "spacepress/app" marks part of a server page the browser keeps current: when something the page read for it changes, the region is rendered again as the visitor and updated in place through the Interactivity router. `id` is a literal, unique on the page; `<Live>` belongs in server components (a client component uses `useLive`).
 
 Evidence: `tests/app_router.rs` (`live_regions_update_in_the_browser`)
 
@@ -1235,7 +1235,7 @@ Evidence: `tests/app_router.rs` (`live_regions_update_in_the_browser`)
 
 Status: **supported**.
 
-`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from "spacepress/server/app" reads the result or the error once; its `error.fields` and `values` are keyed by the action's input fields. A field inside the form with a literal `name` that isn't one of the action's inputs is a build error, and each named field gets `aria-invalid` and the typed value back after an error by itself. `method` and `encType` on such a form, and an action form inside a "use client" component, are build errors.
+`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from "spacepress/app" reads the result or the error once; its `error.fields` and `values` are keyed by the action's input fields. A field inside the form with a literal `name` that isn't one of the action's inputs is a build error, and each named field gets `aria-invalid` and the typed value back after an error by itself. `method` and `encType` on such a form, and an action form inside a "use client" component, are build errors.
 
 Evidence: `tests/app_router.rs` (`forms_work_without_javascript`)
 

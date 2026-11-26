@@ -57,7 +57,7 @@ export default function Home() { return <p>Signed-in home</p>; }"#,
         ),
         (
             "sp/app/links/page.tsx",
-            r#"import { Link } from "spacepress/server/app";
+            r#"import { Link } from "spacepress/app";
 export default function Links() {
   return <main>
     <Link href="/?s=drives" prefetch={undefined} requireAuth={undefined}>Search</Link>
@@ -519,8 +519,8 @@ fn generated_routes_type_links_and_params() {
                     "spacepress": [types.join("index.d.ts")],
                     "spacepress/server": [types.join("server.d.ts")],
                     "spacepress/server/db": [types.join("server-db.d.cts")],
-                    "spacepress/server/app": [types.join("server-app.d.ts")],
-                    "spacepress/server/content": [types.join("server-content.d.ts")],
+                    "spacepress/app": [types.join("app.d.ts")],
+                    "spacepress/content": [types.join("content.d.ts")],
                     "spacepress/server/wp": [types.join("server-wp.d.ts")],
                     "spacepress/client": [root().join("packages/client/src/index.d.ts")],
                     "spacepress/react": [root().join("packages/client/src/react.d.ts")],
@@ -534,7 +534,7 @@ fn generated_routes_type_links_and_params() {
     .unwrap();
     std::fs::write(
         project.join("sp/app/_lib/links.tsx"),
-        r#"import { Link, type PageProps } from "spacepress/server/app";
+        r#"import { Link, type PageProps } from "spacepress/app";
 export const ok = [<Link href="/notes/anything">x</Link>, <Link href="/docs">x</Link>, <Link href="/docs/a/b">x</Link>, <Link href="https://example.com">x</Link>];
 // @ts-expect-error: no route serves /nowhere
 export const missing = <Link href="/nowhere">x</Link>;
@@ -1053,7 +1053,7 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "sp/app/api/page.tsx",
-            "import { apiReference } from \"spacepress/server/content\";\nconst file = \"x.json\";\nexport default function P() { return <p>{apiReference(file).title}</p>; }\n",
+            "import { apiReference } from \"spacepress/content\";\nconst file = \"x.json\";\nexport default function P() { return <p>{apiReference(file).title}</p>; }\n",
         )],
         "`apiReference()` takes the path of a JSON file in `public/`, as a string literal",
         "sp/app/api/page.tsx:3",
@@ -1062,7 +1062,7 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "sp/app/api/page.tsx",
-            "import { apiReference } from \"spacepress/server/content\";\nexport default function P() { return <p>{apiReference(\"../secrets.json\").title}</p>; }\n",
+            "import { apiReference } from \"spacepress/content\";\nexport default function P() { return <p>{apiReference(\"../secrets.json\").title}</p>; }\n",
         )],
         "`apiReference()` takes the path of a JSON file in `public/`",
         "sp/app/api/page.tsx:2",
@@ -1316,7 +1316,7 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "sp/app/page.tsx",
-            "import { redirect } from \"spacepress/server/app\";\nexport default function P() { redirect(\"javascript:alert(1)\"); }\n",
+            "import { redirect } from \"spacepress/app\";\nexport default function P() { redirect(\"javascript:alert(1)\"); }\n",
         )],
         "isn't a URL a page can redirect to",
         "sp/app/page.tsx:2:",
@@ -1325,7 +1325,7 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "sp/app/page.tsx",
-            "import { Link } from \"spacepress/server/app\";\nexport default function P() { return <Link href=\"//evil.example\">x</Link>; }\n",
+            "import { Link } from \"spacepress/app\";\nexport default function P() { return <Link href=\"//evil.example\">x</Link>; }\n",
         )],
         "isn't a URL a link can point to",
         "sp/app/page.tsx:2:",
@@ -1506,7 +1506,7 @@ fn prerender_and_static_params_reach_the_route_table() {
     );
     write(
         "sp/app/tags/[tag]/page.tsx",
-        "import type { PageProps, StaticParams } from \"spacepress/server/app\";\nexport const prerender = true;\nexport async function staticParams(): Promise<StaticParams<\"tags/[tag]\">> { return [\"news\", \"notes\"].map((tag) => ({ tag })); }\nexport default function P({ params }: PageProps<\"tags/[tag]\">) { return <p>{params.tag}</p>; }\n",
+        "import type { PageProps, StaticParams } from \"spacepress/app\";\nexport const prerender = true;\nexport async function staticParams(): Promise<StaticParams<\"tags/[tag]\">> { return [\"news\", \"notes\"].map((tag) => ({ tag })); }\nexport default function P({ params }: PageProps<\"tags/[tag]\">) { return <p>{params.tag}</p>; }\n",
     );
     build(project);
     let schema =
@@ -2387,8 +2387,8 @@ fn forms_work_without_javascript() {
                     "spacepress": [types.join("index.d.ts")],
                     "spacepress/server": [types.join("server.d.ts")],
                     "spacepress/server/db": [types.join("server-db.d.cts")],
-                    "spacepress/server/app": [types.join("server-app.d.ts")],
-                    "spacepress/server/content": [types.join("server-content.d.ts")],
+                    "spacepress/app": [types.join("app.d.ts")],
+                    "spacepress/content": [types.join("content.d.ts")],
                     "spacepress/server/wp": [types.join("server-wp.d.ts")],
                     "spacepress/client": [root().join("packages/client/src/index.d.ts")],
                     "spacepress/react": [root().join("packages/client/src/react.d.ts")],
@@ -2402,7 +2402,7 @@ fn forms_work_without_javascript() {
     .unwrap();
     std::fs::write(
         project.join("typed.ts"),
-        r#"import { useFormState } from "spacepress/server/app";
+        r#"import { useFormState } from "spacepress/app";
 import { subscribe } from "./sp/server";
 const state = useFormState(subscribe);
 export const seats: number | undefined = state.result?.seats;
@@ -3121,7 +3121,7 @@ fn refuses_search_it_cannot_link() {
     );
     let page = |body: &str| {
         format!(
-            "import {{ Search, SearchResults }} from \"spacepress/server/app\";\nexport default function P() {{\n  return {body};\n}}\n"
+            "import {{ Search, SearchResults }} from \"spacepress/app\";\nexport default function P() {{\n  return {body};\n}}\n"
         )
     };
     rejects(
@@ -3172,7 +3172,7 @@ fn refuses_comments_without_the_kind_option() {
             schema,
             (
                 "sp/app/memos/[slug]/page.tsx",
-                "import { Comments, type PageProps } from \"spacepress/server/app\";\nexport default function Memo({ item }: PageProps<\"memos/[slug]\">) {\n  return <Comments for={item} />;\n}\n",
+                "import { Comments, type PageProps } from \"spacepress/app\";\nexport default function Memo({ item }: PageProps<\"memos/[slug]\">) {\n  return <Comments for={item} />;\n}\n",
             ),
         ],
         "`memos` has comments off",
@@ -3184,7 +3184,7 @@ fn refuses_comments_without_the_kind_option() {
             schema,
             (
                 "sp/app/page.tsx",
-                "import { Comments } from \"spacepress/server/app\";\nexport default function Home() {\n  return <Comments for={{ id: 1 }} />;\n}\n",
+                "import { Comments } from \"spacepress/app\";\nexport default function Home() {\n  return <Comments for={{ id: 1 }} />;\n}\n",
             ),
         ],
         "`<Comments for>` takes a row of a collection",
@@ -3202,9 +3202,7 @@ fn refuses_forms_it_cannot_post() {
         "import { text, mutation } from \"spacepress\";\nexport const send = mutation({ access: \"anyone\" }, async ({ name }: { name: string }) => { return name; });\n",
     );
     let page = |body: &str| {
-        format!(
-            "import {{ useFormState }} from \"spacepress/server/app\";\nimport {{ send }} from \"../server\";\n{body}\n"
-        )
+        format!("import {{ useFormState }} from \"spacepress/app\";\nimport {{ send }} from \"../server\";\n{body}\n")
     };
     rejects(
         &dir,
@@ -3526,9 +3524,7 @@ fn live_regions_update_in_the_browser() {
 fn refuses_live_regions_it_cannot_name() {
     let dir = std::env::temp_dir().join(format!("spacepress-live-reject-{}", std::process::id()));
     let page = |body: &str| {
-        format!(
-            "import {{ Live }} from \"spacepress/server/app\";\nexport default function Home() {{\n  return {body};\n}}\n"
-        )
+        format!("import {{ Live }} from \"spacepress/app\";\nexport default function Home() {{\n  return {body};\n}}\n")
     };
     rejects(
         &dir,
@@ -3551,7 +3547,7 @@ fn refuses_pagination_without_its_numbers() {
     let dir = std::env::temp_dir().join(format!("spacepress-pagination-reject-{}", std::process::id()));
     let page = |body: &str| {
         format!(
-            "import {{ Pagination }} from \"spacepress/server/app\";\nexport default function Home() {{\n  return {body};\n}}\n"
+            "import {{ Pagination }} from \"spacepress/app\";\nexport default function Home() {{\n  return {body};\n}}\n"
         )
     };
     rejects(
@@ -4590,7 +4586,7 @@ fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
     .unwrap();
     std::fs::write(
         project.join("sp/app/page.tsx"),
-        "import { Image } from \"spacepress/server/app\";\nimport \"./small.css\";\nimport \"./large.css\";\nimport heroUrl from \"./hero.png\";\nimport heroMeta from \"./hero.png?meta\";\nimport heroInline from \"./hero.png?inline\";\nimport rawNote from \"./note.txt?raw\";\nimport standaloneCssUrl from \"./standalone.css?url\";\nimport { Badge } from \"../components/Badge\";\nexport default function Home() {\n  return (\n    <main data-raw={rawNote} data-css-url={standaloneCssUrl}>\n      <Image className=\"priority-img\" src={heroMeta} alt=\"Hero\" priority />\n      <Image className=\"lazy-img\" src={heroUrl} alt=\"Lazy\" />\n      <img className=\"plain-img\" src={heroUrl} alt=\"Plain\" />\n      <img className=\"inline-img\" src={heroInline} alt=\"Inline\" />\n      <Badge />\n    </main>\n  );\n}\n",
+        "import { Image } from \"spacepress/app\";\nimport \"./small.css\";\nimport \"./large.css\";\nimport heroUrl from \"./hero.png\";\nimport heroMeta from \"./hero.png?meta\";\nimport heroInline from \"./hero.png?inline\";\nimport rawNote from \"./note.txt?raw\";\nimport standaloneCssUrl from \"./standalone.css?url\";\nimport { Badge } from \"../components/Badge\";\nexport default function Home() {\n  return (\n    <main data-raw={rawNote} data-css-url={standaloneCssUrl}>\n      <Image className=\"priority-img\" src={heroMeta} alt=\"Hero\" priority />\n      <Image className=\"lazy-img\" src={heroUrl} alt=\"Lazy\" />\n      <img className=\"plain-img\" src={heroUrl} alt=\"Plain\" />\n      <img className=\"inline-img\" src={heroInline} alt=\"Inline\" />\n      <Badge />\n    </main>\n  );\n}\n",
     )
     .unwrap();
 
@@ -4768,7 +4764,7 @@ fn doctor_finds_broken_links_and_anchors_on_a_site() {
     );
 }
 
-/// `apiReference()` from "spacepress/server/content": the app's own OpenAPI document, and one in `public/`,
+/// `apiReference()` from "spacepress/content": the app's own OpenAPI document, and one in `public/`,
 /// rendered by pages as an API reference, on WordPress over HTTP (tests/php/api_reference.php).
 #[test]
 fn api_reference_renders_openapi_as_pages() {
@@ -5081,7 +5077,7 @@ fn public_files_serve_at_the_site_root() {
 
 /// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
 /// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
-/// `nav`, `pager` and `headings` from "spacepress/server/content", on WordPress over HTTP (tests/php/docs_kind.php).
+/// `nav`, `pager` and `headings` from "spacepress/content", on WordPress over HTTP (tests/php/docs_kind.php).
 #[test]
 fn docs_kind_serves_a_folder_tree_with_navigation() {
     let project = fixture("docs-kind", "serve");
@@ -6214,7 +6210,7 @@ fn static_export_refuses_what_needs_a_server() {
     // A link to a page the export doesn't contain.
     write(
         "sp/app/page.tsx",
-        "import { Link } from \"spacepress/server/app\";\nexport default function Home() { return <main><Link href=\"/elsewhere\">x</Link></main>; }\n",
+        "import { Link } from \"spacepress/app\";\nexport default function Home() { return <main><Link href=\"/elsewhere\">x</Link></main>; }\n",
     );
     let out = first().arg("export").arg(project).output().unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -6238,7 +6234,7 @@ fn static_export_refuses_what_needs_a_server() {
     // A page that redirects.
     write(
         "sp/app/page.tsx",
-        "import { redirect } from \"spacepress/server/app\";\nexport default function Home() { redirect(\"/elsewhere\"); }\n",
+        "import { redirect } from \"spacepress/app\";\nexport default function Home() { redirect(\"/elsewhere\"); }\n",
     );
     let out = first().arg("export").arg(project).output().unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -6745,7 +6741,7 @@ fn login_tsx_is_the_sign_in_page() {
         &dir,
         &[(
             "sp/app/login.tsx",
-            "import { LoginForm } from \"spacepress/server/app\";\nexport default function P() { return <LoginForm action=\"/x\" />; }\n",
+            "import { LoginForm } from \"spacepress/app\";\nexport default function P() { return <LoginForm action=\"/x\" />; }\n",
         )],
         "`<LoginForm>` has no prop `action`",
         "sp/app/login.tsx",
@@ -6754,7 +6750,7 @@ fn login_tsx_is_the_sign_in_page() {
         &dir,
         &[(
             "sp/app/login.tsx",
-            "import { LoginForm } from \"spacepress/server/app\";\nexport default function P() { return <LoginForm links={1} />; }\n",
+            "import { LoginForm } from \"spacepress/app\";\nexport default function P() { return <LoginForm links={1} />; }\n",
         )],
         "`<LoginForm links>` takes",
         "sp/app/login.tsx",
@@ -7135,8 +7131,8 @@ fn one_sign_in_page_under_a_subdirectory() {
         &login,
         source
             .replace(
-                "import { LoginForm, type LoginProps } from \"spacepress/server/app\";",
-                "import { LoginForm, redirect, type LoginProps } from \"spacepress/server/app\";",
+                "import { LoginForm, type LoginProps } from \"spacepress/app\";",
+                "import { LoginForm, redirect, type LoginProps } from \"spacepress/app\";",
             )
             .replace(
                 "export default function Login({ errors, messages, registerUrl }: LoginProps) {",
@@ -7510,7 +7506,7 @@ fn root_layout_chrome_without_a_template_is_hinted() {
         "sp/app/page.tsx",
         "export default function Home() { return <h1>Home</h1>; }\n",
     );
-    let chrome = "import type { LayoutProps } from \"spacepress/server/app\";\nexport default function Root({ children }: LayoutProps) { return <div><header>Site</header>{children}</div>; }\n";
+    let chrome = "import type { LayoutProps } from \"spacepress/app\";\nexport default function Root({ children }: LayoutProps) { return <div><header>Site</header>{children}</div>; }\n";
     let hint = "renders markup around {children}, which the theme's header and footer replace";
     let out = check(&[("sp/app/layout.tsx", chrome), page]);
     assert!(out.contains(&format!("hint: app/layout.tsx {hint}")), "{out}");
@@ -7526,7 +7522,7 @@ fn root_layout_chrome_without_a_template_is_hinted() {
     // Saying which template it renders in, or placing only its children, is no hint.
     let blank = format!("export const template = \"blank\";\n{chrome}");
     assert!(!check(&[("sp/app/layout.tsx", &blank), page]).contains(hint));
-    let bare = "import type { LayoutProps } from \"spacepress/server/app\";\nexport default function Root({ children }: LayoutProps) { return <>{children}</>; }\n";
+    let bare = "import type { LayoutProps } from \"spacepress/app\";\nexport default function Root({ children }: LayoutProps) { return <>{children}</>; }\n";
     assert!(!check(&[("sp/app/layout.tsx", bare), page]).contains(hint));
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -7618,7 +7614,7 @@ fn fixed_script_modules_carry_a_build_version() {
     std::fs::write(
         &page,
         source
-            .replacen("import ", "import { Link } from \"spacepress/server/app\";\nimport ", 1)
+            .replacen("import ", "import { Link } from \"spacepress/app\";\nimport ", 1)
             .replace("<main>", "<main>\n      <Link href=\"/\">home</Link>"),
     )
     .unwrap();

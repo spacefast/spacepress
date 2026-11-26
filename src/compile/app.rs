@@ -49,7 +49,7 @@ impl Compiler<'_, '_> {
         Ty::Obj(props)
     }
 
-    /// Whether `ann` names a props type `"spacepress/server/app"` or generated `"./$types"` exports.
+    /// Whether `ann` names a props type `"spacepress/app"` or generated `"./$types"` exports.
     pub(super) fn app_props_annotation(&self, ann: &TyAnn, module: usize) -> bool {
         let TyAnn::Ref(name, _, _) = ann else { return false };
         self.ev_program().modules[module].body.iter().any(|stmt| match stmt {

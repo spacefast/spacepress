@@ -49,8 +49,8 @@ The import path tells you where the code runs:
 | `"spacepress"` | Anywhere (DSL & types) | `defineConfig`, `collection`, `table`, `global`, `query`, `mutation`, `job`, `cron`, `env`, field builders, shared types |
 | `"spacepress/server"` | Server only (PHP) | `db`, `HttpError`, `once`, `mail`, `connectors` |
 | `"spacepress/server/db"` | Server only (PHP) | App kinds by registered name (`import { posts } from "spacepress/server/db"`) |
-| `"spacepress/server/app"` | Server only (PHP) | Page/layout helpers (`Link`, `Content`, `Html`, `Image`, `Live`, `useFormState`, `notFound`, `redirect`, `PageProps`, `LayoutProps`) |
-| `"spacepress/server/content"` | Server only (PHP) | `nav`, `pager`, `headings`, `apiReference` |
+| `"spacepress/app"` | Pages & layouts | Page/layout UI & routing primitives (`Link`, `Content`, `Html`, `Image`, `Live`, `useFormState`, `notFound`, `redirect`; per-route `PageProps`/`LayoutProps`/`StaticParams` via `./$types`) |
+| `"spacepress/content"` | Pages & layouts | `nav`, `pager`, `headings`, `apiReference` |
 | `"spacepress/server/wp"` | Server only (PHP) | WordPress core functions, `abilities`, `Handler<"...">`, `WP_Post`/`WP_User`/`WP_Query` |
 | `"react"` | Browser (`"use client"`) | Standard React hooks (`useState`, `useEffect`, `useRef`) lowered to the WordPress Interactivity API |
 | `"spacepress/client"` & `"spacepress/react"` (also `@spacepress/client` & `@spacepress/client/react`) | Browser / Node / Bun / Deno | Typed `fetch` client (`bind`, `createClient`, WP Abilities calls) and React hooks (`useLive`, `useMutation`, `createHooks`, `useMount`, `useEvent`, `sharedState`, `uploadFile`) driven by typed `_generated/api` refs |

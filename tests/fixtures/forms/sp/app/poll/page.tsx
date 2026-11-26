@@ -1,5 +1,5 @@
 import { entries } from "spacepress/server/db";
-import { useFormState } from "spacepress/server/app";
+import { useFormState } from "spacepress/app";
 import { close } from "../../server";
 
 // A form whose button the server renders disabled once the poll is closed: the swap must keep it so.

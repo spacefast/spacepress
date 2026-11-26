@@ -7,6 +7,16 @@
     ".": {
       "types": "./index.d.ts"
     },
+    "./app": {
+      "types": "./app.d.ts",
+      "browser": "./stubs/app.mjs",
+      "default": "./stubs/app.mjs"
+    },
+    "./content": {
+      "types": "./content.d.ts",
+      "browser": "./stubs/content.mjs",
+      "default": "./stubs/content.mjs"
+    },
     "./server": {
       "types": "./server.d.ts",
       "browser": "./stubs/server.mjs",
@@ -16,16 +26,6 @@
       "types": "./server-db.d.cts",
       "browser": "./stubs/server-db.mjs",
       "default": "./stubs/server-db.mjs"
-    },
-    "./server/app": {
-      "types": "./server-app.d.ts",
-      "browser": "./stubs/server-app.mjs",
-      "default": "./stubs/server-app.mjs"
-    },
-    "./server/content": {
-      "types": "./server-content.d.ts",
-      "browser": "./stubs/server-content.mjs",
-      "default": "./stubs/server-content.mjs"
     },
     "./server/wp": {
       "types": "./server-wp.d.ts",

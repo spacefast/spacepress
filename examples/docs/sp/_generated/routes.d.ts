@@ -2,7 +2,7 @@
 
 export {};
 
-declare module "spacepress/server/app" {
+declare module "spacepress/app" {
   interface Routes {
     "docs/[...path]": { path: `/docs/${string}`; params: { path: string[] }; item: import("spacepress").RegisteredKinds extends { docs: { $inferSelect: infer R } } ? R : Record<string, unknown> };
     "about": { path: `/about`; params: {  } };

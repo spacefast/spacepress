@@ -1,4 +1,4 @@
-import { Comments, Content, notFound } from "spacepress/server/app";
+import { Comments, Content, notFound } from "spacepress/app";
 import type { PageProps } from "./$types";
 
 export const metadata = ({ item }: PageProps) => ({ title: item?.title ?? "Recipe", description: item?.excerpt ?? "" });

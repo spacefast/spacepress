@@ -2,7 +2,7 @@
 
 export {};
 
-declare module "spacepress/server/app" {
+declare module "spacepress/app" {
   interface Routes {
     "api/feed.json": { path: `/api/feed.json`; params: {  } };
     "notes/featured": { path: `/notes/featured`; params: {  } };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { sharedState, useEvent } from "@spacepress/client/react";
+import { sharedState, useEvent } from "spacepress/react";
 
 export const shortcutState = sharedState({ activeIndex: -1 });
 

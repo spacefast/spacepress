@@ -1,4 +1,4 @@
-import { Link } from "spacepress/server/app";
+import { Link } from "spacepress/app";
 
 export default function Other() {
   return (

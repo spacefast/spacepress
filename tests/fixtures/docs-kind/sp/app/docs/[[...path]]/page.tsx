@@ -1,6 +1,6 @@
 import { docs } from "spacepress/server/db";
-import { Content, Link, type PageProps, type ReactNode } from "spacepress/server/app";
-import { nav, pager, headings, type NavItem } from "spacepress/server/content";
+import { Content, Link, type PageProps, type ReactNode } from "spacepress/app";
+import { nav, pager, headings, type NavItem } from "spacepress/content";
 
 /** The tree, one level per call: `children` is empty below the last level nav() reads. */
 function Tree({ items }: { items: NavItem[] }): ReactNode {

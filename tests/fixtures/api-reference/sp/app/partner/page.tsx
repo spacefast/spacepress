@@ -1,4 +1,4 @@
-import { apiReference } from "spacepress/server/content";
+import { apiReference } from "spacepress/content";
 
 // A document from public/: its fields, nested, as one line each.
 export default function Partner() {

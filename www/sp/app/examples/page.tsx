@@ -1,5 +1,5 @@
 import { examples } from "spacepress/server/db";
-import { Link } from "spacepress/server/app";
+import { Link } from "spacepress/app";
 import { refreshStars } from "../../server";
 
 export const metadata = {

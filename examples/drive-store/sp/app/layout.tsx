@@ -1,5 +1,5 @@
 import { db } from "spacepress/server";
-import { Link, type LayoutProps } from "spacepress/server/app";
+import { Link, type LayoutProps } from "spacepress/app";
 import { home_url, is_user_logged_in, wp_login_url } from "spacepress/server/wp";
 import "./site.css";
 

@@ -2,7 +2,7 @@
 
 export {};
 
-declare module "spacepress/server/app" {
+declare module "spacepress/app" {
   interface Routes {
     "docs/operations/deploy-pressable": { path: `/docs/operations/deploy-pressable`; params: {  } };
     "docs/operations/deploy-wordpress-com": { path: `/docs/operations/deploy-wordpress-com`; params: {  } };

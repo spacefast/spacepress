@@ -1,4 +1,4 @@
-import { Html } from "spacepress/server/app";
+import { Html } from "spacepress/app";
 import { get_option } from "spacepress/server/wp";
 export default function ProductPage({ item }) {
   const currency = String(get_option("woocommerce_currency"));

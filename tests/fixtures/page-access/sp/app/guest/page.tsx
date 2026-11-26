@@ -1,4 +1,4 @@
-import type { Guard } from "spacepress/server/app";
+import type { Guard } from "spacepress/app";
 
 export const guard: Guard = ({ user }) => user === null;
 

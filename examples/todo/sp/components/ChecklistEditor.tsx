@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { addChecklistItem, removeChecklistItem, toggleChecklistItem } from "../server";
+import { useMutation } from "spacepress/react";
+import { api } from "../_generated/api";
 
 export function ChecklistEditor({
   taskId,
@@ -12,8 +13,11 @@ export function ChecklistEditor({
 }) {
   const [items, setItems] = useState(initialItems);
   const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
+  const addItem = useMutation(api.actions.addChecklistItem);
+  const removeItem = useMutation(api.actions.removeChecklistItem);
+  const toggleItem = useMutation(api.actions.toggleChecklistItem);
 
+  const busy = addItem.pending || removeItem.pending || toggleItem.pending;
   const doneCount = items.filter((entry) => entry.done).length;
   const currentVersion = items
     .map((entry) => `${entry.done ? "1" : "0"}:${entry.label.length}:${entry.label}`)
@@ -40,18 +44,13 @@ export function ChecklistEditor({
                 disabled={busy}
                 onClick={async () => {
                   if (busy) return;
-                  setBusy(true);
-                  try {
-                    const res = await toggleChecklistItem({
-                      id: taskId,
-                      index: entry.index,
-                      expectedLabel: entry.label,
-                      expectedVersion: currentVersion,
-                    });
-                    setItems(res.checklist.map((c, idx) => ({ index: idx, label: c.label, done: c.done })));
-                  } finally {
-                    setBusy(false);
-                  }
+                  const res = await toggleItem.mutate({
+                    id: taskId,
+                    index: entry.index,
+                    expectedLabel: entry.label,
+                    expectedVersion: currentVersion,
+                  });
+                  setItems(res.checklist.map((c, idx) => ({ index: idx, label: c.label, done: c.done })));
                 }}
               >
                 <span className="todo-check__mark" aria-hidden="true">{entry.done ? "✓" : ""}</span>
@@ -64,18 +63,13 @@ export function ChecklistEditor({
                 disabled={busy}
                 onClick={async () => {
                   if (busy) return;
-                  setBusy(true);
-                  try {
-                    const res = await removeChecklistItem({
-                      id: taskId,
-                      index: entry.index,
-                      expectedLabel: entry.label,
-                      expectedVersion: currentVersion,
-                    });
-                    setItems(res.checklist.map((c, idx) => ({ index: idx, label: c.label, done: c.done })));
-                  } finally {
-                    setBusy(false);
-                  }
+                  const res = await removeItem.mutate({
+                    id: taskId,
+                    index: entry.index,
+                    expectedLabel: entry.label,
+                    expectedVersion: currentVersion,
+                  });
+                  setItems(res.checklist.map((c, idx) => ({ index: idx, label: c.label, done: c.done })));
                 }}
               >
                 ×
@@ -100,14 +94,9 @@ export function ChecklistEditor({
             event.preventDefault();
             const clean = draft.trim();
             if (clean === "") return;
-            setBusy(true);
-            try {
-              const res = await addChecklistItem({ id: taskId, label: clean });
-              setItems(res.checklist.map((c, idx) => ({ index: idx, label: c.label, done: c.done })));
-              setDraft("");
-            } finally {
-              setBusy(false);
-            }
+            const res = await addItem.mutate({ id: taskId, label: clean });
+            setItems(res.checklist.map((c, idx) => ({ index: idx, label: c.label, done: c.done })));
+            setDraft("");
           }}
         />
         <button
@@ -117,14 +106,9 @@ export function ChecklistEditor({
           onClick={async () => {
             const clean = draft.trim();
             if (clean === "" || busy) return;
-            setBusy(true);
-            try {
-              const res = await addChecklistItem({ id: taskId, label: clean });
-              setItems(res.checklist.map((c, idx) => ({ index: idx, label: c.label, done: c.done })));
-              setDraft("");
-            } finally {
-              setBusy(false);
-            }
+            const res = await addItem.mutate({ id: taskId, label: clean });
+            setItems(res.checklist.map((c, idx) => ({ index: idx, label: c.label, done: c.done })));
+            setDraft("");
           }}
         >
           Add

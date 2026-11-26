@@ -1,4 +1,4 @@
-import { redirect } from "spacepress/server/app";
+import { redirect } from "spacepress/app";
 
 export const route = { id: "kitchen.start" };
 

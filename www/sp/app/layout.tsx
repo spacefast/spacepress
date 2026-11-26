@@ -1,4 +1,4 @@
-import { Link, type LayoutProps } from "spacepress/server/app";
+import { Link, type LayoutProps } from "spacepress/app";
 import "./site.css";
 
 export const template = "blank";

@@ -19,11 +19,11 @@
       "spacepress/server/db": [
         "../../types/spacepress/server-db.d.cts"
       ],
-      "spacepress/server/app": [
-        "../../types/spacepress/server-app.d.ts"
+      "spacepress/app": [
+        "../../types/spacepress/app.d.ts"
       ],
-      "spacepress/server/content": [
-        "../../types/spacepress/server-content.d.ts"
+      "spacepress/content": [
+        "../../types/spacepress/content.d.ts"
       ],
       "spacepress/server/wp": [
         "../../types/spacepress/server-wp.d.ts"

@@ -1117,11 +1117,11 @@ pub(super) fn app(
         entries.push(entry(
             "",
             "review",
-            "ctx.email.send becomes mail.send from \"spacepress\": the message is queued in the handler's transaction and handed to the site's transport after commit. It resolves true once queued, where 0.8 resolved on transport acceptance; check the job queue for refusals. On Spacefast, from must stay on the Space's sending domain",
+            "ctx.email.send becomes mail.send from \"spacepress/server\": the message is queued in the handler's transaction and handed to the site's transport after commit. It resolves true once queued, where 0.8 resolved on transport acceptance; check the job queue for refusals. On Spacefast, from must stay on the Space's sending domain",
         ));
     }
     let mut config = String::from(
-        "import { query as __z08Query, mutation as __z08Mutation, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, number as __z08Number, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"spacepress\";\n",
+        "import { query as __z08Query, mutation as __z08Mutation, boolean as __z08Boolean, defineConfig as __z08Config, json as __z08Json, number as __z08Number, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, type InferSelectModel } from \"spacepress\";\nimport { db as __z08Db, HttpError as __z08HttpError, mail as __z08Mail, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"spacepress/server\";\n",
     );
     if uses_crypto {
         config.push_str(CRYPTO_PRELUDE);

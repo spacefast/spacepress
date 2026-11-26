@@ -24,7 +24,7 @@ const published = await posts.list({
 const all = await posts.system.list({ limit: 100 });
 ```
 
-Inside hooks, jobs, and trusted server actions, you can also use the Drizzle-inspired `db` API from `"spacepress"`:
+Inside hooks, jobs, and trusted server actions, you can also use the Drizzle-inspired `db` API from `"spacepress/server"`:
 
 ```ts
 import { db } from "spacepress/server";

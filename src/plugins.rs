@@ -32,6 +32,10 @@ pub const KINDS: &[(&str, &str)] = &[
     // PHP functions imported from "php/wordpress" (later "php/<slug>" or "php"), recorded as
     // `<source>:<function>`.
     ("php", "calls the PHP function"),
+    // `"use client"` modules the plugin's package ships, as `<package>/<path>@sha256-<hex>`.
+    // Browser code runs outside the compiler's capability checks, so each island, and each change
+    // to its code, is a lock entry the owner reviews.
+    ("browser", "ships the browser island"),
 ];
 
 pub const LOCK_PATH: &str = "sp/_generated/plugins.lock.json";
@@ -47,6 +51,8 @@ pub struct Plugin {
     pub version: String,
     /// `sha256-<hex>` over every module the plugin's package reaches, by project-relative path.
     pub integrity: String,
+    /// The `"use client"` modules the package reaches, as `<path>@<digest>`, each with its span.
+    pub islands: Vec<(String, Span)>,
 }
 
 /// A capability one compiled function of a plugin uses.
@@ -182,6 +188,7 @@ pub fn identify(program: &Program, name: &str, span: Span) -> Result<Plugin> {
         version: field("version"),
         root,
         integrity: String::new(),
+        islands: Vec::new(),
     })
 }
 
@@ -246,48 +253,111 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
                 }
             }
         }
-        // Browser code isn't a capability a plugin's lock can grant yet (the TSX decision record):
-        // a plugin package ships server code only. Component libraries that aren't plugins may.
-        if let Some(m) = seen.iter().map(|&m| &program.modules[m]).find(|m| m.use_client) {
-            return Err(Diag::new(
-                Span {
-                    file: m.file,
-                    start: 0,
-                    end: 0,
-                },
-                format!(
-                    "plugin \"{}\" can't ship the \"use client\" component {}",
-                    plugins[i].name,
-                    m.path.strip_prefix(&project).unwrap_or(&m.path).display()
-                ),
-            )
-            .code(Code::PluginIsolation)
-            .help("plugins ship server code only; publish interactive components in a package that doesn't call definePlugin()"));
-        }
-        let mut files: Vec<(String, &Path)> = seen
+        let mut files: Vec<(String, usize)> = seen
             .iter()
             .map(|&m| {
+                // By package, so the hash is the same wherever the package is installed.
                 let path = &program.modules[m].path;
-                (
+                let name = package_path(program, path).unwrap_or_else(|| {
                     path.strip_prefix(&project)
                         .unwrap_or(path)
                         .to_string_lossy()
-                        .replace('\\', "/"),
-                    path.as_path(),
-                )
+                        .replace('\\', "/")
+                });
+                (name, m)
             })
             .collect();
         files.sort();
+        // Each island by `<package>/<path in package>` and a hash of its browser code (the island and
+        // what it imports), so a package update that changes an approved island is a lock change
+        // too. Neither depends on where the package sits on disk: a linked or hoisted package
+        // resolves outside the project.
+        plugins[i].islands = files
+            .iter()
+            .filter(|(_, m)| program.modules[*m].use_client)
+            .map(|(name, m)| {
+                let module = &program.modules[*m];
+                let span = Span {
+                    file: module.file,
+                    start: 0,
+                    end: 0,
+                };
+                let path = package_path(program, &module.path).unwrap_or_else(|| name.clone());
+                (format!("{path}@{}", browser_digest(program, *m)), span)
+            })
+            .collect();
         let mut hash = Sha256::new();
-        for (name, path) in files {
+        for (name, m) in files {
             hash.update(name.as_bytes());
             hash.update([0]);
-            hash.update(program.fs.read_to_string(path).unwrap_or_default().as_bytes());
+            hash.update(program.fs.read(&program.modules[m].path).unwrap_or_default());
+            hash.update([0]);
+        }
+        // An island's browser code reaches files that aren't modules (a stylesheet's `@import`s,
+        // its `url()` assets): a change to one is a change to the package, not an owner's edit.
+        for (island, _) in &plugins[i].islands {
+            hash.update(island.as_bytes());
             hash.update([0]);
         }
         plugins[i].integrity = format!("sha256-{}", crate::hex(hash.finalize()));
     }
     Ok(())
+}
+
+/// `<package>/<path in package>` for a file in an installed package, named by its own manifest.
+pub(crate) fn package_path(program: &Program, path: &Path) -> Option<String> {
+    let root = package_root(program, path)?;
+    let name = program
+        .fs
+        .read_to_string(&root.join("package.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<Json>(&s).ok())?
+        .get("name")?
+        .as_str()?
+        .to_string();
+    let rest = path.strip_prefix(&root).ok()?;
+    Some(format!("{name}/{}", rest.to_string_lossy().replace('\\', "/")))
+}
+
+/// `sha256-<hex>` over a `"use client"` module and every module it imports, each named as
+/// [`package_path`] names it (the file name alone otherwise). A stylesheet counts as its bundled
+/// output, so the files it `@import`s and the assets its `url()`s name count too.
+fn browser_digest(program: &Program, island: usize) -> String {
+    let mut reached = BTreeSet::from([island]);
+    let mut queue = vec![island];
+    while let Some(m) = queue.pop() {
+        for (spec, _) in import_spans(program, m) {
+            if let Some(&target) = program.resolved.get(&(m, spec))
+                && reached.insert(target)
+            {
+                queue.push(target);
+            }
+        }
+    }
+    let mut files: Vec<(String, usize)> = reached
+        .iter()
+        .map(|&m| {
+            let path = program.modules[m].path.as_path();
+            let name = package_path(program, path)
+                .unwrap_or_else(|| path.file_name().unwrap_or_default().to_string_lossy().into_owned());
+            (name, m)
+        })
+        .collect();
+    files.sort();
+    let mut hash = Sha256::new();
+    for (name, m) in files {
+        hash.update(name.as_bytes());
+        hash.update([0]);
+        match program.assets.get(&m) {
+            Some(asset) => {
+                hash.update(&asset.bytes);
+                hash.update(asset.text.as_deref().unwrap_or_default().as_bytes());
+            }
+            None => hash.update(program.fs.read(&program.modules[m].path).unwrap_or_default()),
+        }
+        hash.update([0]);
+    }
+    format!("sha256-{}", crate::hex(hash.finalize()))
 }
 
 /// What the build decided about the plugins.
@@ -371,6 +441,21 @@ pub fn settle(
         Some(lock) => parse_lock(lock)?,
         None => BTreeMap::new(),
     };
+    // Islands are uses registration implies: granted like any other, never part of a handler's flow.
+    let uses: Vec<Use> = uses
+        .iter()
+        .cloned()
+        .chain(plugins.iter().enumerate().flat_map(|(plugin, p)| {
+            p.islands.iter().map(move |(path, span)| Use {
+                plugin,
+                function: String::new(),
+                kind: "browser",
+                value: path.clone(),
+                span: *span,
+            })
+        }))
+        .collect();
+    let uses = uses.as_slice();
     let mut entries = serde_json::Map::new();
     let mut changes = Vec::new();
     let mut report = Vec::new();

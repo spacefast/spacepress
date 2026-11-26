@@ -693,26 +693,40 @@ fn components(
     // sp/components/ re-exports it: a page may import it from the package directly.
     let listed: std::collections::HashSet<usize> = program.components.iter().map(|(_, m)| *m).collect();
     let span_key = |f: &crate::ir::Func| (f.span.file, f.span.start, f.span.end);
-    let compiled: std::collections::HashSet<_> = client_roots
+    let mut compiled: std::collections::HashSet<_> = client_roots
         .iter()
         .chain(&server_roots)
         .map(|r| span_key(&r.closure.func))
         .collect();
-    for module in program
-        .modules
-        .iter()
-        .filter(|m| m.use_client && !listed.contains(&m.id))
-    {
+    // Only installed packages: a `"use client"` route file in sp/app/ is a page, not an island.
+    let app = crate::plugins::package_root(program, &program.modules[program.entry].path);
+    for module in program.modules.iter().filter(|m| {
+        m.use_client
+            && !listed.contains(&m.id)
+            && crate::plugins::package_root(program, &m.path).is_some_and(|root| Some(&root) != app.as_ref())
+    }) {
         let exports = ev.run_module(module.id)?;
-        let path = module
-            .path
-            .strip_prefix(&program.root)
-            .unwrap_or(&module.path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        // Named by package, not by where it's installed: a hoisted package sits outside the project.
+        let path = crate::plugins::package_path(program, &module.path).unwrap_or_else(|| {
+            module
+                .path
+                .strip_prefix(&program.root)
+                .unwrap_or(&module.path)
+                .to_string_lossy()
+                .replace('\\', "/")
+        });
         for (export, value) in &exports {
             let Value::Closure(closure) = value else { continue };
-            if !export.starts_with(|c: char| c.is_ascii_uppercase()) || compiled.contains(&span_key(&closure.func)) {
+            // A default export is a component when its function has a component's name. A barrel
+            // and the module it re-exports hold the same closure: it compiles once.
+            let component = export.starts_with(|c: char| c.is_ascii_uppercase())
+                || (export == "default"
+                    && closure
+                        .func
+                        .name
+                        .as_deref()
+                        .is_some_and(|n| n.starts_with(|c: char| c.is_ascii_uppercase())));
+            if !component || !compiled.insert(span_key(&closure.func)) {
                 continue;
             }
             let stem = path.trim_end_matches(".tsx");

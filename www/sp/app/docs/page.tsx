@@ -1,4 +1,4 @@
-import { docs } from "spacepress:db";
+import { docs } from "spacepress/server/db";
 import { Link } from "spacepress/app";
 import { nav } from "spacepress/content";
 

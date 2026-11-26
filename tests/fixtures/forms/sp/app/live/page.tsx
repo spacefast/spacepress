@@ -1,4 +1,4 @@
-import { entries } from "spacepress:db";
+import { entries } from "spacepress/server/db";
 import { Live, useFormState } from "spacepress/app";
 import { sign } from "../../server";
 

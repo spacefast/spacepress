@@ -1,4 +1,5 @@
-import { defineConfig, db, job, mail, table, text, mutation } from "spacepress";
+import { defineConfig, job, table, text, mutation } from "spacepress";
+import { db, mail } from "spacepress/server";
 
 // The build-store lane edits BUILD_LABEL per build: the same app, different action code.
 export const notes = table({ title: text() }, { sync: "content/notes/*.json" });

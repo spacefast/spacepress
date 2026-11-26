@@ -1,7 +1,5 @@
-import {
-  date, db, defineConfig, email, HttpError,
-  integer, job, json, table, text, timestamp, userProjection, type AccessConfig, number, select, ref, query, mutation,
-} from "spacepress";
+import { date, defineConfig, email, integer, job, json, table, text, timestamp, userProjection, type AccessConfig, number, select, ref, query, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 import { HEALTH } from "./sp/lib/health";
 
 const access = {

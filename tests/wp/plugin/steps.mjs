@@ -11,7 +11,8 @@ export const welcome = mutation({ access: "editor" }, async (i: { to: string }) 
 const entries = (fields = "") => `export const entries = table({
   body: text().optional(),${fields}
 });`;
-const app = (parts, options = "") => `import { collection, defineConfig, mail, table, text, mutation } from "spacepress";
+const app = (parts, options = "") => `import { collection, defineConfig, table, text, mutation } from "spacepress";
+import { mail } from "spacepress/server";
 ${parts.join("\n")}
 ${actions}
 export default defineConfig({ name: "pluginlane"${options} });

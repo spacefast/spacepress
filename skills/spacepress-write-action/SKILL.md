@@ -26,8 +26,9 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 
    ```ts
    // sp/server/ratings.ts
-   import { query, mutation, job, HttpError } from "spacepress";
-   import { ratings } from "spacepress:db";
+   import { query, mutation, job } from "spacepress";
+   import { HttpError } from "spacepress/server";
+   import { ratings } from "spacepress/server/db";
 
    export const rate = mutation({ access: "subscriber" },
      async ({ recipe, stars }: { recipe: number; stars: number }) => {
@@ -59,7 +60,7 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    a `GET`), at the line that writes. Its Ability is marked read-only, and no form posts to it. A
    `mutation()` runs in one transaction.
 
-4. Import kinds from `"spacepress:db"`. In a query or mutation they read and write as the caller, so
+4. Import kinds from `"spacepress/server/db"`. In a query or mutation they read and write as the caller, so
    the kind's access rules apply: `list`, `get`, `count`, `paginate`, `create`, `update`, `delete`.
    Use `<kind>.system.*` only where the caller's rights must not limit the work. A job has no
    caller and always runs as the system.

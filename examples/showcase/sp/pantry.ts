@@ -1,13 +1,5 @@
-import {
-  boolean,
-  date,
-  db,
-  HttpError,
-  integer,
-  table,
-  text,
-  type InferSelectModel, select, ref, mutation,
-} from "spacepress";
+import { boolean, date, integer, table, text, type InferSelectModel, select, ref, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 import { stories } from "./stories";
 
 export const locations = table(

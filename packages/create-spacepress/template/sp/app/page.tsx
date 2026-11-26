@@ -1,4 +1,4 @@
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 import { Link, useFormState } from "spacepress/app";
 import { greet } from "../actions";
 

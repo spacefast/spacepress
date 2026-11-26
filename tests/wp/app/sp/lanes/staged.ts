@@ -3,7 +3,8 @@
 //
 // Staged versions (docs/staged.md): a public kind with a URL, an owner-filtered update rule, a field
 // only admins read and set, a unique field, and a hook that records every update of a row.
-import { collection, db, integer, richText, slug, table, text } from "spacepress";
+import { collection, integer, richText, slug, table, text } from "spacepress";
+import { db } from "spacepress/server";
 
 export const bulletins = collection({
   title: text().min(1).max(80),

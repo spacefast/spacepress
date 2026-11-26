@@ -1,9 +1,10 @@
-import { Content, Link, type PageProps } from "spacepress/app";
+import { Content, Link } from "spacepress/app";
+import type { PageProps } from "./$types";
 
 // plants' `url` is /plants/:slug, so this page receives the plant as `item`, read as the visitor.
-export const metadata = ({ item }: PageProps<"plants/[slug]">) => ({ title: item.title, description: item.summary ?? undefined });
+export const metadata = ({ item }: PageProps) => ({ title: item.title, description: item.summary ?? undefined });
 
-export default function Plant({ item }: PageProps<"plants/[slug]">) {
+export default function Plant({ item }: PageProps) {
   return (
     <article className="plant">
       <p className="back"><Link href="/">← All plants</Link></p>

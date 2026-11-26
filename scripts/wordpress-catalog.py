@@ -24,8 +24,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "src/wordpress/catalog.json"
-# The generated half of types/spacepress/wordpress.d.ts, between these markers.
-TYPES = ROOT / "types/spacepress/wordpress.d.ts"
+# The generated half of types/spacepress/server-wp.d.ts, between these markers.
+TYPES = ROOT / "types/spacepress/server-wp.d.ts"
 BEGIN, END = "// BEGIN GENERATED: scripts/wordpress-catalog.py", "// END GENERATED"
 CACHE = ROOT / "tests/wp/cache/catalog"
 

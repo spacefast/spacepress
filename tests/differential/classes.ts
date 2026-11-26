@@ -1,4 +1,5 @@
-import { table, defineConfig, db, mutation } from "spacepress";
+import { table, defineConfig, mutation } from "spacepress";
+import { db } from "spacepress/server";
 
 const run = (handler: () => unknown) => mutation({}, handler);
 

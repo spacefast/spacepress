@@ -1,4 +1,4 @@
-import type { Href } from "./app";
+import type { Href } from "./app.d.ts";
 
 // "spacepress/content": navigation for a hierarchical kind's pages. Runs as the visitor; drafts and
 // items the visitor may not read are in no tree, pager or link.

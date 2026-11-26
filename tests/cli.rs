@@ -1839,9 +1839,17 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
                 "types": [], "skipLibCheck": true,
                 "paths": {
                     "spacepress": [root().join("types/spacepress/index.d.ts")],
+                    "spacepress/server": [root().join("types/spacepress/server.d.ts")],
+                    "spacepress/server/db": [root().join("types/spacepress/server-db.d.cts")],
+                    "spacepress/app": [root().join("types/spacepress/app.d.ts")],
+                    "spacepress/content": [root().join("types/spacepress/content.d.ts")],
+                    "spacepress/server/wp": [root().join("types/spacepress/server-wp.d.ts")],
+                    "spacepress/client": [root().join("packages/client/src/index.d.ts")],
+                    "spacepress/react": [root().join("packages/client/src/react.d.ts")],
                     "spacepress/*": [root().join("types/spacepress/*.d.ts")],
-                    "spacepress:db": [root().join("types/spacepress/db.d.cts")],
-                    "php/wordpress": [root().join("types/spacepress/wordpress.d.ts")],
+                    "react": [root().join("types/spacepress/react-shim.d.ts")],
+                    "@spacepress/client": [root().join("packages/client/src/index.d.ts")],
+                    "@spacepress/client/react": [root().join("packages/client/src/react.d.ts")],
                 }
             },
             "include": ["sp/**/*.ts", "sp/**/*.tsx"],
@@ -2244,9 +2252,17 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
                 "types": [],
                 "paths": {
                     "spacepress": [root().join("types/spacepress/index.d.ts")],
+                    "spacepress/server": [root().join("types/spacepress/server.d.ts")],
+                    "spacepress/server/db": [root().join("types/spacepress/server-db.d.cts")],
+                    "spacepress/app": [root().join("types/spacepress/app.d.ts")],
+                    "spacepress/content": [root().join("types/spacepress/content.d.ts")],
+                    "spacepress/server/wp": [root().join("types/spacepress/server-wp.d.ts")],
+                    "spacepress/client": [root().join("packages/client/src/index.d.ts")],
+                    "spacepress/react": [root().join("packages/client/src/react.d.ts")],
                     "spacepress/*": [root().join("types/spacepress/*.d.ts")],
-                    "spacepress:db": [root().join("types/spacepress/db.d.cts")],
-                    "php/wordpress": [root().join("types/spacepress/wordpress.d.ts")],
+                    "react": [root().join("types/spacepress/react-shim.d.ts")],
+                    "@spacepress/client": [root().join("packages/client/src/index.d.ts")],
+                    "@spacepress/client/react": [root().join("packages/client/src/react.d.ts")],
                 }
             }
         }))

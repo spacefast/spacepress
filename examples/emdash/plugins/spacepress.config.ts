@@ -1,7 +1,5 @@
-import {
-  boolean, collection, db, defineConfig, group, integer,
-  json, repeater, richText, table, text, select, query, mutation, HttpError,
-} from "spacepress";
+import { boolean, collection, defineConfig, group, integer, json, repeater, richText, table, text, select, query, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 // The four field-kit data shapes become native Secure Custom Fields controls.
 export const entries = collection({

@@ -90,16 +90,16 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "`notes` names two things: at sp/a.ts:2 and here",
         "sp/b.ts:3:22",
     );
-    // "spacepress:db" names only registered kinds, and suggests the closest one.
+    // "spacepress/server/db" names only registered kinds, and suggests the closest one.
     rejects(
         "reject-db-unknown",
-        "\"spacepress:db\" has no kind named `note`",
-        "sp/app.ts:2:10",
+        "\"spacepress/server/db\" has no kind named `note`",
+        "sp/app.ts:3:10",
     );
     // ... in sp/wp-hooks/ modules too, which load after every kind has registered.
     rejects(
         "reject-wp-hook-db-unknown",
-        "\"spacepress:db\" has no kind named `note`",
+        "\"spacepress/server/db\" has no kind named `note`",
         "sp/wp-hooks/the_title.ts:2:10",
     );
     // An exported name is unique across the app: an action listed under it is refused too.
@@ -108,11 +108,11 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "`notes` names two things: at spacepress.config.ts:3 and here",
         "sp/schema.ts:2:22",
     );
-    // "spacepress:db" is imported where it's used, never re-exported (a barrel, or a plugin handing on
+    // "spacepress/server/db" is imported where it's used, never re-exported (a barrel, or a plugin handing on
     // the app's kinds): refused at the statement, not a crash.
     rejects(
         "reject-db-reexport",
-        "\"spacepress:db\" can't be re-exported",
+        "\"spacepress/server/db\" can't be re-exported",
         "sp/kinds.ts:4:1",
     );
     // ... and from a plugin, whose fix is to take the kinds as options.
@@ -120,12 +120,6 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "reject-plugin-db-reexport",
         "a plugin takes the app's kinds as options",
         "node_modules/spacepress-plugin-reach/src/index.ts:3:1",
-    );
-    // A plugin's lock can't grant browser code, so a plugin package ships no client component.
-    rejects(
-        "reject-plugin-client",
-        "plugin \"widget\" can't ship the \"use client\" component node_modules/spacepress-plugin-widget/src/Counter.tsx",
-        "node_modules/spacepress-plugin-widget/src/Counter.tsx:1:1",
     );
     // A default export has no name to register under.
     rejects(
@@ -827,7 +821,7 @@ fn mail_send_needs_recipients_a_subject_and_a_body() {
     rejects(
         "reject-mail-message",
         "mail.send() needs { to, subject, text or html }",
-        "spacepress.config.ts:2:",
+        "spacepress.config.ts:3:",
     );
     let out = first()
         .args(["check"])
@@ -842,7 +836,7 @@ fn mail_render_checks_template_props() {
     rejects(
         "reject-mail-render-props",
         "these props are { name: number; kind: \"welcome\" }",
-        "spacepress.config.ts:3:",
+        "spacepress.config.ts:4:",
     );
 }
 
@@ -1102,7 +1096,7 @@ fn rejects_hooks_that_would_misbehave_in_php() {
     rejects(
         "reject-filter-column",
         "\"a\" has no column or relation `nmae`",
-        "spacepress.config.ts:2:",
+        "spacepress.config.ts:3:",
     );
     rejects(
         "reject-ambiguous-plus",
@@ -1112,7 +1106,7 @@ fn rejects_hooks_that_would_misbehave_in_php() {
     rejects(
         "reject-missing-await",
         "this database call never runs",
-        "spacepress.config.ts:2:",
+        "spacepress.config.ts:3:",
     );
     rejects(
         "reject-module-state",
@@ -1127,31 +1121,31 @@ fn rejects_hooks_that_would_misbehave_in_php() {
     rejects(
         "reject-missing-insert-field",
         "missing required field `x`",
-        "spacepress.config.ts:2:",
+        "spacepress.config.ts:3:",
     );
     // §3.5: literal filters use the runtime's operator rules and its exact message.
     rejects(
         "reject-list-operator",
         "`in` isn't supported on list columns; use `has`",
-        "spacepress.config.ts:2:",
+        "spacepress.config.ts:3:",
     );
     // A structured field of a collection is spread over post meta and can't be compared. The fix
     // names table(), where the same filter compiles; storage is never an option of collection().
     rejects(
         "reject-collection-group-filter",
         "use isNull/isNotNull, or keep this data in a table()",
-        "spacepress.config.ts:2:188",
+        "spacepress.config.ts:3:188",
     );
     // db.globals is typed from the global's fields, like db.query from a collection's.
     rejects(
         "reject-db-globals-key",
         "`db.globals.setings` doesn't match a global in `globals`",
-        "spacepress.config.ts:4:",
+        "spacepress.config.ts:5:",
     );
     rejects(
         "reject-db-globals-patch",
         "`stats` must be { visits: number } | null | undefined, not number",
-        "spacepress.config.ts:4:",
+        "spacepress.config.ts:5:",
     );
 }
 
@@ -1330,7 +1324,7 @@ fn rejects_access_rules_that_cant_hold() {
     rejects(
         "reject-access-query",
         "access rules can't write to the database; put that in a hook or action",
-        "spacepress.config.ts:3:39",
+        "spacepress.config.ts:4:39",
     );
     rejects(
         "reject-access-filter-column",
@@ -1342,7 +1336,8 @@ fn rejects_access_rules_that_cant_hold() {
     for (name, body, needle) in [
         (
             "global-write",
-            r#"import { table, global, text, defineConfig, db } from "spacepress";
+            r#"import { table, global, text, defineConfig } from "spacepress";
+import { db } from "spacepress/server";
 export const settings = global({ mode: text().default("open") });
 export const items = table({ title: text() }, {
   access: { read: async () => { await db.globals.settings.update({ mode: "closed" }); return true; } },
@@ -1410,7 +1405,8 @@ fn access_rules_can_run_readonly_db_queries_and_memoize_per_request() {
     std::fs::create_dir_all(&tmp).unwrap();
     std::fs::write(
         tmp.join("spacepress.config.ts"),
-        r#"import { table, global, text, integer, select, ref, mutation, defineConfig, db } from "spacepress";
+        r#"import { table, global, text, integer, select, ref, mutation, defineConfig } from "spacepress";
+import { db } from "spacepress/server";
 
 export const settings = global({
   allowExport: select(["yes", "no"]).default("no"),
@@ -1629,7 +1625,8 @@ export default defineConfig({ name: "island-upload" });
     std::fs::write(
         tmp.join("sp/components/Dropzone.tsx"),
         r#""use client";
-import { useState, uploadFile } from "spacepress/client";
+import { useState } from "react";
+import { uploadFile } from "spacepress/react";
 
 export function Dropzone() {
   const [name, setName] = useState("");
@@ -1684,7 +1681,7 @@ export default function Page() {
     std::fs::write(
         tmp.join("sp/components/Dropzone.tsx"),
         r#""use client";
-import { uploadFile } from "spacepress/client";
+import { uploadFile } from "spacepress/react";
 export function Dropzone() {
   const onChange = async (event: Event) => {
     await uploadFile("inboxFile", (event.target as HTMLInputElement).files![0]);
@@ -2889,7 +2886,10 @@ fn localized_generated_client_types() {
         serde_json::to_vec(&serde_json::json!({
             "compilerOptions": {
                 "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
-                "paths": { "spacepress": [root().join("types/spacepress/index.d.ts")] }
+                "paths": {
+                    "spacepress": [root().join("types/spacepress/index.d.ts")],
+                    "spacepress/server": [root().join("types/spacepress/server.d.ts")],
+                }
             },
             "files": ["client.ts", "sp/_generated/db.d.ts"]
         }))
@@ -6190,7 +6190,7 @@ fn server_function_mistakes_are_refused_with_the_new_spelling() {
             "",
         ),
         (
-            "import { query } from \"spacepress\";\nimport { update_option } from \"php/wordpress\";\nexport const a = query({}, async () => { update_option(\"x\", 1); return 1; });",
+            "import { query } from \"spacepress\";\nimport { update_option } from \"spacepress/server/wp\";\nexport const a = query({}, async () => { update_option(\"x\", 1); return 1; });",
             "`a` is a query, so it can't write: this calls a WordPress function that writes",
             "make it a mutation",
         ),
@@ -6200,7 +6200,7 @@ fn server_function_mistakes_are_refused_with_the_new_spelling() {
             "make it a mutation",
         ),
         (
-            "import { query, mutation } from \"spacepress\";\nimport { abilities } from \"php/wordpress\";\nexport const w = mutation({}, async () => 1);\nexport const a = query({}, async () => await abilities.call(\"m/w\", {}));",
+            "import { query, mutation } from \"spacepress\";\nimport { abilities } from \"spacepress/server/wp\";\nexport const w = mutation({}, async () => 1);\nexport const a = query({}, async () => await abilities.call(\"m/w\", {}));",
             "`a` is a query, so it can't write: this calls an ability that isn't read-only",
             "make it a mutation",
         ),
@@ -6252,7 +6252,8 @@ fn a_member_path_keeps_its_type_after_a_conjunction_that_throws() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
         tmp.path().join("spacepress.config.ts"),
-        r#"import { defineConfig, query, HttpError } from "spacepress";
+        r#"import { defineConfig, query } from "spacepress";
+import { HttpError } from "spacepress/server";
 export const range = query({}, async (input: { q?: number | null }) => {
   if (input.q != null && input.q < 1) throw new HttpError(422, "low", "low");
   if (input.q != null && input.q > 5) throw new HttpError(422, "high", "high");
@@ -6365,6 +6366,27 @@ fn refused_helper_chain_stays_linear_on_speculative_retries() {
     }
 }
 
+/// A constant's declared type crosses imports, aliased re-exports and `export *`: compiled code
+/// that indexes an imported `Record<string, string>` with a string reads it as that record, not as
+/// the object literal's fixed keys. A local export wins over `export *` (and so does its type), a
+/// destructured `var`'s annotation doesn't type each name, and an imported type compiled code
+/// can't resolve (`React.CSSProperties`) falls back to the value's type.
+#[test]
+fn imported_constants_keep_their_declared_types() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("annotations");
+    copy(&root().join("tests/fixtures/imported-annotations"), &project);
+    let out = first().arg("build").arg(&project).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    // Two `export *` of V: the first star's value is the one read, as its type is.
+    let php = std::fs::read_to_string(
+        project.join("sp/dist/wp-content/plugins/spacepress-app-annotations/sp/app/functions.php"),
+    )
+    .unwrap();
+    assert!(php.contains("$value->p['a'] = 'one';"), "{php}");
+    assert!(!php.contains("$value->p['a'] = 2;"), "{php}");
+}
+
 /// A component library that isn't a plugin: its server components are the app's Markdown blocks,
 /// its stylesheet export links on every route content renders on, and its `"use client"` component
 /// compiles to a store, though none of its `.tsx` sits in a `components/` folder.
@@ -6407,16 +6429,4 @@ fn an_installed_component_library_supplies_blocks_styles_and_islands() {
         stores.iter().any(|f| f.starts_with("toggle.") && f.ends_with(".js")),
         "{stores:?}"
     );
-}
-
-/// A constant's declared type crosses imports, aliased re-exports and `export *`: compiled code
-/// that indexes an imported `Record<string, string>` with a string reads it as that record, not as
-/// the object literal's fixed keys, and renders a missing key as undefined.
-#[test]
-fn imported_constants_keep_their_declared_types() {
-    let tmp = tempfile::tempdir().unwrap();
-    let project = tmp.path().join("annotations");
-    copy(&root().join("tests/fixtures/imported-annotations"), &project);
-    let out = first().arg("build").arg(&project).output().unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 }

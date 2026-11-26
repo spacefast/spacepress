@@ -1,7 +1,5 @@
-import {
-  boolean, collection, date, integer, media, richText,
-  table, text, timestamp, type AccessCtx, number, select, ref, db,
-} from "spacepress";
+import { boolean, collection, date, integer, media, richText, table, text, timestamp, type AccessCtx, number, select, ref } from "spacepress";
+import { db } from "spacepress/server";
 import { ownerId, ownFood, ownPet, queueStockCheck } from "./pantry";
 
 export function owned(ctx: AccessCtx) {

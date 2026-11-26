@@ -1,10 +1,7 @@
 // The phase-1 blog, frozen: tests/fixtures/blog/schema.php is what `spacepress build` emits for it, and the
 // PHP suites (tests/php/blog_app.php) run against that schema. examples/blog grows; this file does not.
-import {
-  collection, global, text, integer, boolean, timestamp, richText, media, slug, select,
-  repeater, group, blocks, email, url, defineConfig, db, HttpError,
-  table, ref, query, mutation,
-} from "spacepress";
+import { collection, global, text, integer, boolean, timestamp, richText, media, slug, select, repeater, group, blocks, email, url, defineConfig, table, ref, query, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 export const authors = collection({
   name: text().max(80),

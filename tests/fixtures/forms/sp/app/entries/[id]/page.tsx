@@ -1,4 +1,4 @@
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 import { notFound, type PageProps } from "spacepress/app";
 import { remove } from "../../../server";
 

@@ -1,5 +1,6 @@
-import { db, mutation } from "spacepress";
-import { notes } from "spacepress:db";
+import { mutation } from "spacepress";
+import { db } from "spacepress/server";
+import { notes } from "spacepress/server/db";
 
 // An action's `db` is trusted (spec §3): it reads every row, as the system does.
 export const trustedTitles = mutation({ access: "anyone" }, async () => {
@@ -7,7 +8,7 @@ export const trustedTitles = mutation({ access: "anyone" }, async () => {
   return rows.map((n) => n.title).join(",");
 });
 
-// The kind API from "spacepress:db" reads as the action's caller.
+// The kind API from "spacepress/server/db" reads as the action's caller.
 export const visitorTitles = mutation({ access: "anyone" }, async () => {
   const rows = await notes.list({ orderBy: { id: "asc" } });
   return rows.map((n) => n.title).join(",");

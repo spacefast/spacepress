@@ -1,5 +1,5 @@
 // GET /shelf.html: a route answers on the site's own path, outside /wp-json.
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 import escapeHtml from "escape-html";
 import ms from "ms";
 

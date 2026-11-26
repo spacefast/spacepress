@@ -1,5 +1,5 @@
 import type { InferSelectModel } from "spacepress";
-import { drives } from "spacepress:db";
+import { drives } from "spacepress/server/db";
 import { drives as driveKind } from "../schema";
 
 type Drive = InferSelectModel<typeof driveKind>;

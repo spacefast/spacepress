@@ -1,5 +1,6 @@
-import { job, HttpError, mutation } from "spacepress";
-import { examples, shares } from "spacepress:db";
+import { job, mutation } from "spacepress";
+import { HttpError } from "spacepress/server";
+import { examples, shares } from "spacepress/server/db";
 
 // Saves a playground edit and answers with its key; /play?s=<key> opens it. Only the files the
 // visitor changed are stored, and at most 200 KB of them.

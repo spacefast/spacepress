@@ -49,8 +49,9 @@ pub struct Plugin {
     pub root: PathBuf,
     pub package: String,
     pub version: String,
-    /// `sha256-<hex>` over every module the plugin's package reaches, by project-relative path.
+    /// `sha256-<hex>` over every module the plugin reaches, named by package.
     pub integrity: String,
+    legacy_integrity: Option<String>,
     /// The `"use client"` modules the package reaches, as `<path>@<digest>`, each with its span.
     pub islands: Vec<(String, Span)>,
 }
@@ -188,6 +189,7 @@ pub fn identify(program: &Program, name: &str, span: Span) -> Result<Plugin> {
         version: field("version"),
         root,
         integrity: String::new(),
+        legacy_integrity: None,
         islands: Vec::new(),
     })
 }
@@ -253,17 +255,17 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
                 }
             }
         }
+        let relative_name = |m: usize| {
+            let path = &program.modules[m].path;
+            path.strip_prefix(&project)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/")
+        };
         let mut files: Vec<(String, usize)> = seen
             .iter()
             .map(|&m| {
-                // By package, so the hash is the same wherever the package is installed.
-                let path = &program.modules[m].path;
-                let name = package_path(program, path).unwrap_or_else(|| {
-                    path.strip_prefix(&project)
-                        .unwrap_or(path)
-                        .to_string_lossy()
-                        .replace('\\', "/")
-                });
+                let name = package_path(program, &program.modules[m].path).unwrap_or_else(|| relative_name(m));
                 (name, m)
             })
             .collect();
@@ -286,13 +288,29 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
                 (format!("{path}@{}", browser_digest(program, *m)), span)
             })
             .collect();
-        let mut hash = Sha256::new();
-        for (name, m) in files {
-            hash.update(name.as_bytes());
-            hash.update([0]);
-            hash.update(program.fs.read(&program.modules[m].path).unwrap_or_default());
-            hash.update([0]);
+        let hash_files = |files: Vec<(String, usize)>, legacy: bool| {
+            let mut hash = Sha256::new();
+            for (name, m) in files {
+                hash.update(name.as_bytes());
+                hash.update([0]);
+                let path = &program.modules[m].path;
+                if legacy {
+                    hash.update(program.fs.read_to_string(path).unwrap_or_default().as_bytes());
+                } else {
+                    hash.update(program.fs.read(path).unwrap_or_default());
+                }
+                hash.update([0]);
+            }
+            hash
+        };
+        // A prior compiler used paths relative to the project. Recognize that digest so
+        // upgrading the compiler alone can't reset an owner's narrowed grant.
+        if plugins[i].islands.is_empty() {
+            let mut legacy: Vec<_> = seen.iter().map(|&m| (relative_name(m), m)).collect();
+            legacy.sort();
+            plugins[i].legacy_integrity = Some(format!("sha256-{}", crate::hex(hash_files(legacy, true).finalize())));
         }
+        let mut hash = hash_files(files, false);
         // An island's browser code reaches files that aren't modules (a stylesheet's `@import`s,
         // its `url()` assets): a change to one is a change to the package, not an owner's edit.
         for (island, _) in &plugins[i].islands {
@@ -489,8 +507,9 @@ pub fn settle(
             }
             Some((integrity, granted)) => {
                 let excess = excess(granted);
+                let source_changed = *integrity != p.integrity && p.legacy_integrity.as_ref() != Some(integrity);
                 match excess {
-                    None if !frozen && *integrity != p.integrity => {
+                    None if !frozen && source_changed => {
                         changes.push(format!(
                             "plugin \"{}\" ({}@{}): new package source, grant unchanged",
                             p.name, p.package, p.version
@@ -498,7 +517,7 @@ pub fn settle(
                         ("locked", granted.clone())
                     }
                     None => ("locked", granted.clone()),
-                    Some(u) if frozen || *integrity == p.integrity => {
+                    Some(u) if frozen || !source_changed => {
                         let allowed: Vec<_> = granted[u.kind].iter().cloned().collect();
                         let only = if allowed.is_empty() {
                             format!("grants it no `{}`", u.kind)

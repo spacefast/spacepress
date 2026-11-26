@@ -533,7 +533,7 @@ fn scan(path: &Path, app: &Path, used: &mut Used) {
             && let BindingPattern::BindingIdentifier(id) = &decl.id
             && let Some(init) = &decl.init
             && matches!(unwrap(init), Expression::CallExpression(_))
-            && let Some((module, name)) = chain_root(init).and_then(&resolve)
+            && let Some((module, name)) = chain_root(init).and_then(resolve)
         {
             bound_from.insert(id.symbol_id.get().unwrap(), (module.clone(), name.clone()));
         }

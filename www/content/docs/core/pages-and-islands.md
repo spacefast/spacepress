@@ -126,6 +126,32 @@ the same WordPress comment thread.
 
 Start a component file with `"use client";`. Import standard React hooks (`useState`, `useEffect`, `useRef`) from `"react"`, SpacePress client hooks (`useLive`, `useMutation`, `useMount`, `useEvent`, `sharedState`, `uploadFile`) from `"spacepress/react"`, and typed client references (`api`) from `"../_generated/api"`. SpacePress renders the initial HTML in PHP and compiles the interactive logic into a WordPress Interactivity API store with zero React shipped to the page. Importing `"spacepress/server"` or `"spacepress/server/*"` inside a `"use client"` component is refused at build time — use `api` from `_generated/api` or `spacepress/client` instead.
 
+Handlers and effects take ordinary browser code: loops (`for`, `for…of`, `for…in`, `while`, `do…while`) with `break`, `continue` and labels, `switch`, `try`, `throw`, and nested callbacks, including `async` ones such as a click listener that awaits `navigator.clipboard.writeText(…)`. They can call browser globals such as `fetch`, `localStorage`, `setTimeout`, `requestAnimationFrame`, `IntersectionObserver` and `URL`, and set page properties such as `document.title` or `window.location.href`. State still changes only through its setter, and props are read-only.
+
+A callback that runs later, such as a timer, an event listener or a promise callback, can read derived values and refs and call the component's other handlers: the compiler runs those reads in the scope of the handler that set the callback up (the Interactivity API's `withScope`). A handler can call another handler; `await` the call when the other handler is `async`. `this`, `arguments` and `var` aren't supported in client code: read the element from the event or a `useRef()`, use a rest parameter, and declare with `let` or `const`.
+
+```tsx
+"use client";
+import { useMount } from "spacepress/react";
+
+export function CopyButtons({ label }: { label: string }) {
+  useMount(() => {
+    for (const pre of Array.from(document.querySelectorAll("pre"))) {
+      if (pre.querySelector(".copy")) continue;
+      const button = document.createElement("button");
+      button.className = "copy";
+      button.textContent = label;
+      button.addEventListener("click", async () => {
+        await navigator.clipboard.writeText(pre.textContent ?? "");
+        button.textContent = "Copied";
+      });
+      pre.append(button);
+    }
+  });
+  return <span hidden />;
+}
+```
+
 ## Components from npm packages
 
 An installed package can ship `.tsx` components, both server components and

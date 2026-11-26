@@ -270,7 +270,12 @@ fn register_guard(
     Ok(())
 }
 
-pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extract::Extracted) -> Result<(), Diag> {
+pub fn register(
+    program: &loader::Program,
+    ev: &mut eval::Evaluator,
+    ext: &mut extract::Extracted,
+    block_modules: &[usize],
+) -> Result<(), Diag> {
     if program.app.routes.is_empty() && program.app.not_found.is_none() && program.app.login.is_none() {
         return Ok(());
     }
@@ -458,7 +463,8 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         .iter()
         .filter_map(|(name, c)| c.url.clone().map(|u| (name.clone(), u)))
         .collect();
-    // A page's stylesheets: what its layouts (root first) and the page itself import.
+    // A page's stylesheets: what its layouts (root first) and the page itself import, then the
+    // block components content may render on it.
     let module_of = |file: &str| program.app_files.iter().find(|(p, _)| p == file).map(|(_, m)| *m);
     prebuilt(program, &files, &kinds, ext.schema.output)?;
     let output = ext.schema.output;
@@ -468,6 +474,7 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
             .iter()
             .chain((r.kind == RouteKind::Page).then_some(&r.file))
             .filter_map(|f| module_of(f))
+            .chain(block_modules.iter().copied())
             .collect();
         AppRoute {
             plan: None,

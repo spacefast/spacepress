@@ -1607,9 +1607,14 @@ function wordPressError(wpCode, message, givenStatus, body, data) {
 		default: if (code === "") code = status ? "http_error" : "error";
 	}
 	const pointer = typeof data.pointer === "string" ? data.pointer : typeof body.pointer === "string" ? body.pointer : undefined;
+	let title = typeof body.title === "string" ? body.title : typeof data.title === "string" ? data.title : undefined;
+	// Core adds status-only data to permission errors, moving the original data into additional_data.
+	if (title === undefined && Array.isArray(body.additional_data)) {
+		title = body.additional_data.find((entry) => isObject(entry) && typeof entry.title === "string")?.title;
+	}
 	return new SpacePressError({
 		type: typeof body.type === "string" ? body.type : "about:blank",
-		title: typeof body.title === "string" ? body.title : typeof data.title === "string" ? data.title : code,
+		title: title ?? code,
 		status: status || 500,
 		code,
 		detail: message,

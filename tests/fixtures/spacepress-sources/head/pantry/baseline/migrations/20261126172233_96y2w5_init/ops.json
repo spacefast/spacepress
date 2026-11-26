@@ -1,10 +1,11 @@
 {
   "version": 1,
-  "id": "20261121194720_4czn3y_init",
+  "id": "20261126172233_96y2w5_init",
   "ops": [
     {
       "op": "createTable",
       "table": "locations",
+      "physicalTable": "{prefix}sp_locations",
       "def": {
         "editor": false,
         "drafts": false,
@@ -130,6 +131,7 @@
     {
       "op": "createTable",
       "table": "items",
+      "physicalTable": "{prefix}sp_items",
       "def": {
         "editor": false,
         "drafts": false,
@@ -345,6 +347,7 @@
     {
       "op": "createTable",
       "table": "shopping_list",
+      "physicalTable": "{prefix}sp_shopping_list",
       "def": {
         "editor": false,
         "drafts": false,
@@ -499,6 +502,7 @@
     {
       "op": "createTable",
       "table": "sp__revisions",
+      "physicalTable": "{prefix}sp__revisions",
       "def": {
         "editor": false,
         "drafts": false,

@@ -1,4 +1,4 @@
-import type { PageProps } from "spacepress/app";
+import type { PageProps } from "spacepress/server/app";
 
 export const prerender = true;
 

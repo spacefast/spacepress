@@ -1,6 +1,7 @@
-import { db, env } from "spacepress";
-import { sanitize_title } from "php/wordpress";
-import type { RouteRequest, RouteResponse } from "spacepress/app";
+import { env } from "spacepress";
+import { db } from "spacepress/server";
+import { sanitize_title } from "spacepress/server/wp";
+import type { RouteRequest, RouteResponse } from "spacepress/server/app";
 import { events } from "../../../schema";
 
 export const signature = { secret: env("KITCHEN_REGISTRATION_SECRET"), header: "x-kitchen-signature", scheme: "hmac-sha256" };

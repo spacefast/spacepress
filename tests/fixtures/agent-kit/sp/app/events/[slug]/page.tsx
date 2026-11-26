@@ -1,5 +1,5 @@
-import { db } from "spacepress";
-import { notFound, type PageProps } from "spacepress/app";
+import { db } from "spacepress/server";
+import { notFound, type PageProps } from "spacepress/server/app";
 
 export default async function Event({ params }: PageProps<"events/[slug]">) {
   const event = await db.query.cookingEvents.findFirst({ where: { slug: params.slug } });

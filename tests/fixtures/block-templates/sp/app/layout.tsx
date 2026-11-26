@@ -1,4 +1,4 @@
-import { Link, type LayoutProps } from "spacepress/app";
+import { Link, type LayoutProps } from "spacepress/server/app";
 
 export const metadata = {
   title: { default: "Field Notes", template: "%s · Field Notes" },

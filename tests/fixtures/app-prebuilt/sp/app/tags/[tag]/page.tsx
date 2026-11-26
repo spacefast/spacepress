@@ -1,5 +1,5 @@
-import { get_option } from "php/wordpress";
-import type { PageProps, StaticParams } from "spacepress/app";
+import { get_option } from "spacepress/server/wp";
+import type { PageProps, StaticParams } from "spacepress/server/app";
 
 export const prerender = true;
 

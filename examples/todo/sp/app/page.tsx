@@ -1,7 +1,8 @@
-import { db, integer, text } from "spacepress";
-import { get_current_user_id, get_post, get_userdata, home_url, is_user_logged_in, wp_login_url } from "php/wordpress";
-import { buckets, tasks } from "spacepress:db";
-import { Comments, Link, Live, useFormState, type PageProps } from "spacepress/app";
+import { integer, text } from "spacepress";
+import { db } from "spacepress/server";
+import { get_current_user_id, get_post, get_userdata, home_url, is_user_logged_in, wp_login_url } from "spacepress/server/wp";
+import { buckets, tasks } from "spacepress/server/db";
+import { Comments, Link, Live, useFormState, type PageProps } from "spacepress/server/app";
 import { ChecklistEditor } from "../components/ChecklistEditor";
 import { KanbanDragController } from "../components/KanbanDragController";
 import { LiveWorkspacePulse } from "../components/LiveWorkspacePulse";

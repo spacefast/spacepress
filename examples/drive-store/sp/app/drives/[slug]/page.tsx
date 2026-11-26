@@ -1,5 +1,5 @@
-import { categories, tags } from "spacepress:db";
-import { Comments, Content, Link, Live, notFound, type PageProps } from "spacepress/app";
+import { categories, tags } from "spacepress/server/db";
+import { Comments, Content, Link, Live, notFound, type PageProps } from "spacepress/server/app";
 import { mediaName, money, size, stockLabel } from "../../_lib/format";
 
 export const metadata = ({ item }: PageProps<"drives/[slug]">) => ({

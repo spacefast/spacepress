@@ -1,12 +1,8 @@
 /**
- * `"php/wordpress"`: WordPress core from a SpacePress app. Map it next to `"spacepress"` in tsconfig.json:
+ * `"spacepress/server/wp"`: WordPress core from a SpacePress app.
  *
- * ```json
- * "paths": { "spacepress": [".../types/index.d.ts"], "php/wordpress": [".../types/wordpress.d.ts"] }
- * ```
- *
- * `spacepress build` augments `Abilities` in `sp/_generated/db.d.ts` with the app's own abilities and those locked in
- * `sp/_generated/abilities.json` (`spacepress abilities pull --site <url>`).
+ * `spacepress build` augments `Abilities` in `<dir>/_generated/db.d.ts` with the app's own abilities
+ * and those locked in `<dir>/_generated/abilities.json` (`spacepress abilities pull --site <url>`).
  */
 
 /** Ability name → `{ input; output }`, generated into `sp/_generated/db.d.ts`. */
@@ -44,7 +40,7 @@ export type HookName = keyof Hooks;
  * filter's returns the filtered value (its first argument's type).
  *
  * ```ts
- * import type { Handler } from "php/wordpress";
+ * import type { Handler } from "spacepress/server/wp";
  * const frame: Handler<"the_content"> = (content) => `<div class="frame">${content}</div>`;
  * export default frame;
  * ```

@@ -1,5 +1,5 @@
 // `export const template` and <TemplatePart> (docs/pages.md "Block templates").
-import { TemplatePart, type Template } from "spacepress/app";
+import { TemplatePart, type Template } from "spacepress/server/app";
 
 export const theme: Template = "theme";
 export const blank: Template = "blank";

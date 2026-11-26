@@ -1,5 +1,5 @@
-import { notes } from "spacepress:db";
-import { Live } from "spacepress/app";
+import { notes } from "spacepress/server/db";
+import { Live } from "spacepress/server/app";
 
 export default async function Home() {
   const all = await notes.list({ orderBy: { id: "asc" } });

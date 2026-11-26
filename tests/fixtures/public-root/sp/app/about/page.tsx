@@ -1,4 +1,4 @@
-import { Link } from "spacepress/app";
+import { Link } from "spacepress/server/app";
 
 // Links to public files keep their paths, though the root `[slug]` route matches them too; a link to
 // a page is written at the page's one address.

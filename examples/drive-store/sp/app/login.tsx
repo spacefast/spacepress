@@ -1,7 +1,7 @@
 // The shop's sign-in page. wp-login.php renders this inside the root layout; the form still posts
 // to wp-login.php, so WordPress's password check, SpacePress's sign-in protections and the second-factor
 // step all apply. Lost password, reset and register keep WordPress's own screens.
-import { LoginForm, type LoginProps } from "spacepress/app";
+import { LoginForm, type LoginProps } from "spacepress/server/app";
 
 export const metadata = { title: "Sign in" };
 

@@ -1,4 +1,4 @@
-import { notFound, type PageProps, type StaticParams } from "spacepress/app";
+import { notFound, type PageProps, type StaticParams } from "spacepress/server/app";
 
 export const prerender = true;
 export const metadata = { title: "Visit the teaching kitchen" };

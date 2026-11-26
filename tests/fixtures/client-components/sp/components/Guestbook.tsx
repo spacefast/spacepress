@@ -1,5 +1,5 @@
 "use client";
-import { useLive } from "spacepress/client";
+import { useLive } from "@spacepress/client/react";
 
 // A read the browser keeps current: the server answers it in the first render, and the page
 // subscribes to it through the app's typed client.

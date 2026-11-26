@@ -236,7 +236,7 @@ impl Compiler<'_, '_> {
                             }
                         }
                         if let Stmt::Import { source, specs, .. } = stmt
-                            && source == crate::loader::SP_MODULE
+                            && (source == crate::loader::SP_MODULE || source == crate::loader::SERVER_MODULE)
                         {
                             for spec in specs {
                                 if spec.local == *name
@@ -661,9 +661,11 @@ impl Compiler<'_, '_> {
             .body
             .iter()
             .find_map(|stmt| match stmt {
-                // "spacepress/app" re-exports the request and response types for route files.
+                // "spacepress/server" and "spacepress/server/app" re-export request/context types.
                 Stmt::Import { source, specs, .. }
-                    if source == crate::loader::SP_MODULE || source == crate::loader::APP_MODULE =>
+                    if source == crate::loader::SP_MODULE
+                        || source == crate::loader::SERVER_MODULE
+                        || source == crate::loader::APP_MODULE =>
                 {
                     specs.iter().find_map(|spec| match &spec.imported {
                         ImportName::Named(imported) if spec.local == name => Some(imported.clone()),

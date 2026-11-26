@@ -1,6 +1,6 @@
-import { docs } from "spacepress:db";
-import { Link } from "spacepress/app";
-import { nav } from "spacepress/content";
+import { docs } from "spacepress/server/db";
+import { Link } from "spacepress/server/app";
+import { nav } from "spacepress/server/content";
 
 export const metadata = {
   title: "Reference",

@@ -1,4 +1,5 @@
-import { text, table, db, type HookCtx, type User, type Role, type RouteRequest, type RouteResponse } from "spacepress";
+import { text, table, type HookCtx, type User, type Role, type RouteRequest, type RouteResponse } from "spacepress";
+import { db } from "spacepress/server";
 
 export const notes = table({ body: text(), author: text() });
 

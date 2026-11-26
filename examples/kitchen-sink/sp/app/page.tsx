@@ -1,6 +1,7 @@
-import { db, integer } from "spacepress";
-import { events } from "spacepress:db";
-import { Link, Pagination, type PageProps } from "spacepress/app";
+import { integer } from "spacepress";
+import { db } from "spacepress/server";
+import { events } from "spacepress/server/db";
+import { Link, Pagination, type PageProps } from "spacepress/server/app";
 import { WorkshopBoard } from "../components/WorkshopBoard";
 
 export const search = { page: integer().min(1).default(1) };

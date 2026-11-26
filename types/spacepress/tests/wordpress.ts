@@ -1,7 +1,7 @@
 // "php/wordpress" ability calls type-check against the generated Abilities map.
-import { abilities } from "php/wordpress";
+import { abilities } from "spacepress/server/wp";
 
-declare module "php/wordpress" {
+declare module "spacepress/server/wp" {
   interface Abilities {
     "acme/site-info": { input: { field: "name" | "url" }; output: { value: string } };
     "acme/ping": { input: { loud?: boolean }; output: "pong" };
@@ -23,7 +23,7 @@ export async function refused(): Promise<void> {
   await abilities.call("acme/unknown", {});
 }
 
-import type { Handler, WP_Post, WP_Query } from "php/wordpress";
+import type { Handler, WP_Post, WP_Query } from "spacepress/server/wp";
 
 export const frame: Handler<"the_content"> = (content) => `<div>${content}</div>`;
 export const saved: Handler<"save_post"> = (postId: number, post: WP_Post, update: boolean) => {

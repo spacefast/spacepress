@@ -22,7 +22,7 @@ const result = await build({
   platform: "node",
   jsx: "automatic",
   external: ["react", "react-dom", "react/jsx-runtime"],
-  alias: { "spacepress/client": path.join(here, "spacepress-client.mjs") },
+  alias: { "@spacepress/client/react": path.join(here, "../../../packages/client/src/react.mjs") },
   write: true,
   logLevel: "silent",
 });

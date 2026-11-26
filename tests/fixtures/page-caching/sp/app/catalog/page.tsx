@@ -1,5 +1,6 @@
-import { db, text } from "spacepress";
-import type { PageProps } from "spacepress/app";
+import { text } from "spacepress";
+import { db } from "spacepress/server";
+import type { PageProps } from "spacepress/server/app";
 
 export const search = { media: text().optional() };
 

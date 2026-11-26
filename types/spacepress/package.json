@@ -1,16 +1,39 @@
 {
   "name": "spacepress",
   "license": "MIT",
+  "type": "module",
   "types": "index.d.ts",
   "exports": {
     ".": {
       "types": "./index.d.ts"
     },
-    "./app": {
-      "types": "./app.d.ts"
+    "./server": {
+      "types": "./server.d.ts",
+      "browser": "./stubs/server.mjs",
+      "default": "./stubs/server.mjs"
     },
-    "./client": {
-      "types": "./client.d.ts"
+    "./server/db": {
+      "types": "./server-db.d.cts",
+      "browser": "./stubs/server-db.mjs",
+      "default": "./stubs/server-db.mjs"
+    },
+    "./server/app": {
+      "types": "./server-app.d.ts",
+      "browser": "./stubs/server-app.mjs",
+      "default": "./stubs/server-app.mjs"
+    },
+    "./server/content": {
+      "types": "./server-content.d.ts",
+      "browser": "./stubs/server-content.mjs",
+      "default": "./stubs/server-content.mjs"
+    },
+    "./server/wp": {
+      "types": "./server-wp.d.ts",
+      "browser": "./stubs/server-wp.mjs",
+      "default": "./stubs/server-wp.mjs"
+    },
+    "./danger": {
+      "types": "./danger.d.ts"
     },
     "./jsx-runtime": {
       "types": "./jsx-runtime.d.ts"
@@ -18,11 +41,6 @@
     "./jsx-dev-runtime": {
       "types": "./jsx-dev-runtime.d.ts"
     },
-    "./content": {
-      "types": "./content.d.ts"
-    },
-    "./danger": {
-      "types": "./danger.d.ts"
-    }
+    "./package.json": "./package.json"
   }
 }

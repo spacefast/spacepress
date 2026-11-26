@@ -1,5 +1,6 @@
 // GET /api/feed.json: a public JSON Feed on the site's own path, outside /wp-json.
-import { db, type RouteRequest } from "spacepress";
+import { type RouteRequest } from "spacepress";
+import { db } from "spacepress/server";
 
 export const guard = "anyone";
 

@@ -1,6 +1,7 @@
 import { Code, ProjectExplorer, Sandbox } from "../Code";
 
-const HOOKS_SANDBOX = `import { table, text, integer, timestamp, job, jobs, db, HttpError, defineConfig } from "spacepress";
+const HOOKS_SANDBOX = `import { table, text, integer, timestamp, job, jobs, defineConfig } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 export const invoices = table({
   customer: text().max(120),
@@ -32,9 +33,8 @@ export const syncInvoice = job({
 
 export default defineConfig({ name: "hooks-demo" });`;
 
-const ACTIONS_FILES_SANDBOX = `import {
-  table, text, integer, file, files, action, job, jobs, env, db, HttpError, defineConfig,
-} from "spacepress";
+const ACTIONS_FILES_SANDBOX = `import { table, text, integer, file, files, action, job, jobs, env, defineConfig } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 // Private file bucket: downloads use signed 5-minute URLs when loaded via \`with\`
 export const briefs = files({
@@ -86,7 +86,7 @@ export default defineConfig({
 });`;
 
 const WP_HOOK_CODE = `// sp/wp-hooks/the_content.ts
-import type { Handler } from "php/wordpress";
+import type { Handler } from "spacepress/server/wp";
 
 export const priority = 20;
 
@@ -97,7 +97,8 @@ const wrapContent: Handler<"the_content"> = (content) => {
 export default wrapContent;`;
 
 const ROUTE_CODE = `// sp/app/api/feed.json/route.ts
-import { db, type RouteRequest } from "spacepress";
+import { type RouteRequest } from "spacepress";
+import { db } from "spacepress/server";
 
 export const guard = "anyone";
 
@@ -191,7 +192,7 @@ export function Part2ServerAndUI() {
 
         <h3>Typed WordPress Core Hooks (<code>sp/wp-hooks/</code>)</h3>
         <p>
-          Need to tap directly into WordPress core filters or actions (<code>the_content</code>, <code>pre_get_posts</code>, <code>wp_head</code>, <code>wp_mail</code>, <code>save_post</code>, etc.)? Place a file in <code>sp/wp-hooks/&lt;hook&gt;.ts</code> using the typed <code>Handler&lt;&quot;...&quot;&gt;</code> helper from <code>&quot;php/wordpress&quot;</code>.
+          Need to tap directly into WordPress core filters or actions (<code>the_content</code>, <code>pre_get_posts</code>, <code>wp_head</code>, <code>wp_mail</code>, <code>save_post</code>, etc.)? Place a file in <code>sp/wp-hooks/&lt;hook&gt;.ts</code> using the typed <code>Handler&lt;&quot;...&quot;&gt;</code> helper from <code>&quot;spacepress/server/wp&quot;</code>.
         </p>
         <Code file="sp/wp-hooks/the_content.ts" note="Compiled to add_filter()" code={WP_HOOK_CODE} />
       </section>
@@ -273,11 +274,11 @@ export function Part2ServerAndUI() {
                 <td>Prebuilds pages into standalone HTML via <code>spacepress export</code> — no WordPress server needed at serve time.</td>
               </tr>
               <tr>
-                <td>Built-in UI primitives (<code>spacepress/app</code>)</td>
+                <td>Built-in UI primitives (<code>spacepress/server/app</code>)</td>
                 <td><code>&lt;Link&gt;</code> (client-side router navigation), <code>&lt;Content&gt;</code>, <code>&lt;Html&gt;</code>, <code>&lt;Comments&gt;</code>, <code>&lt;Pagination&gt;</code>, <code>&lt;Search&gt;</code>, <code>&lt;SearchResults&gt;</code>, <code>&lt;TemplatePart&gt;</code>, <code>&lt;Live&gt;</code>, <code>useFormState()</code>.</td>
               </tr>
               <tr>
-                <td><code>&quot;use client&quot;</code> (<code>spacepress/client</code>)</td>
+                <td><code>&quot;use client&quot;</code> (<code>react</code> + <code>@spacepress/client/react</code>)</td>
                 <td>Compiles server HTML + a WordPress Interactivity API module supporting <code>useState</code>, <code>useEffect</code>, <code>useMount</code>, <code>useEvent</code>, <code>useRef</code>, <code>sharedState</code>, and real-time <code>useLive()</code> subscriptions.</td>
               </tr>
             </tbody>

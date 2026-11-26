@@ -26,7 +26,7 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    `sp/DATABASE.md`, on how tables work.
 
 2. Export the kind from a file under `sp/` (by convention `sp/schema.ts`). The export name is
-   the kind's name in TypeScript: the typed client and `spacepress:db`. Its storage name, the snake_case
+   the kind's name in TypeScript: the typed client and `spacepress/server/db`. Its storage name, the snake_case
    form (`shoppingList` is `shopping_list`), is what the API path and the site commands take; the
    `schema` tool lists both (`path` is the storage name).
 

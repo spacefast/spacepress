@@ -1,6 +1,6 @@
-import { db } from "spacepress";
-import { get_permalink, wp_strip_all_tags } from "php/wordpress";
-import type { RouteRequest, RouteResponse } from "spacepress/app";
+import { db } from "spacepress/server";
+import { get_permalink, wp_strip_all_tags } from "spacepress/server/wp";
+import type { RouteRequest, RouteResponse } from "spacepress/server/app";
 
 export const guard = "anyone";
 

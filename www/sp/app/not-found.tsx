@@ -1,4 +1,4 @@
-import { Link } from "spacepress/app";
+import { Link } from "spacepress/server/app";
 
 export const metadata = {
   title: "Page Not Found",

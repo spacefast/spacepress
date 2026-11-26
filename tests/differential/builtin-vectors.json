@@ -1000,7 +1000,7 @@
   },
   {
     "name": "globalNamespaceKinds",
-    "declarations": "import {db as namespaceDb} from 'spacepress'; const foldedNamespaceKinds=[typeof JSON,typeof console,typeof namespaceDb];",
+    "declarations": "import {db as namespaceDb} from 'spacepress/server'; const foldedNamespaceKinds=[typeof JSON,typeof console,typeof namespaceDb];",
     "expression": "[typeof Math,...foldedNamespaceKinds]",
     "fold": true
   },

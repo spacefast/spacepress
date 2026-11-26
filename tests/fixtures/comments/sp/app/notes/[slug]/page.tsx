@@ -1,4 +1,4 @@
-import { Comments, type PageProps } from "spacepress/app";
+import { Comments, type PageProps } from "spacepress/server/app";
 
 export default function Note({ item }: PageProps<"notes/[slug]">) {
   return (

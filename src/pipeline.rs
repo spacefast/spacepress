@@ -49,6 +49,8 @@ pub struct Built {
     /// `sp/_generated/theme.css`: Tailwind v4 tokens on WordPress's preset
     /// variables ([`crate::theme`]).
     pub theme_css: String,
+    /// Resolved project directory layout (`defineConfig({ dir })`, default `"sp"`).
+    pub layout: crate::layout::Layout,
 }
 
 /// The schema ledger, committed with the project: `snapshot.json` and the numbered SQL that
@@ -60,8 +62,15 @@ pub const OLD_LEDGER: &str = "sp/migrations";
 
 /// The refusal for a project whose ledger is still at [`OLD_LEDGER`].
 pub fn moved_ledger() -> Diag {
-    Diag::new(Span::NONE, format!("{OLD_LEDGER}/ moved to {LEDGER}/")).help(format!(
-        "move it with `mkdir -p sp/_generated && rmdir {LEDGER} 2>/dev/null; git mv {OLD_LEDGER} {LEDGER}`, then build again"
+    moved_ledger_for(&crate::layout::Layout::default())
+}
+
+pub fn moved_ledger_for(layout: &crate::layout::Layout) -> Diag {
+    let old = layout.old_ledger();
+    let ledger = layout.migrations();
+    let generated = layout.generated();
+    Diag::new(Span::NONE, format!("{old}/ moved to {ledger}/")).help(format!(
+        "move it with `mkdir -p {generated} && rmdir {ledger} 2>/dev/null; git mv {old} {ledger}`, then build again"
     ))
 }
 
@@ -122,7 +131,7 @@ pub fn build(
         .path
         .parent()
         .expect("the entry has a directory");
-    if let Some((message, help)) = crate::layout::old_in_checkout(|p| program.fs.exists(p), root) {
+    if let Some((message, help)) = crate::layout::old_in_checkout_for(|p| program.fs.exists(p), root, &program.layout) {
         return Err(Diag::new(Span::NONE, message).help(help).phase(diag::Code::Schema));
     }
     let mut ev = eval::Evaluator::new(program);
@@ -183,7 +192,8 @@ pub fn build(
     let theme = read_theme(program)?;
     // Each collection hook kind: its compiled functions, by owning plugin (None: the app).
     let mut hooks: HookFunctions = indexmap::IndexMap::new();
-    let plugin_lock = read_plugin_lock(program, &project.join(crate::plugins::LOCK_PATH))?;
+    let plugin_lock_rel = program.layout.plugins_lock();
+    let plugin_lock = read_plugin_lock(program, &project.join(&plugin_lock_rel), &plugin_lock_rel)?;
     let previous_value;
     let mut personal_actions = Vec::new();
     let (functions, slots, settled) = {
@@ -478,10 +488,11 @@ pub fn build(
         .is_some()
         .then(|| crate::runtime_schema::references(&schema, &program.root));
     let theme_css = crate::theme::tokens(theme.as_ref().unwrap_or(&serde_json::Value::Null));
-    let lint_warnings = crate::lint::check_project(root);
+    let lint_warnings = crate::lint::check_project_with_layout(root, &program.layout);
     Ok(Built {
         theme,
         theme_css,
+        layout: program.layout.clone(),
         references,
         plugins: ext.plugins,
         unsupported_plugins,
@@ -689,54 +700,47 @@ fn components(
 }
 
 /// The committed plugin grant, read like the other compiler inputs; absent until the first build.
-fn read_plugin_lock(program: &loader::Program, path: &Path) -> Result<Option<serde_json::Value>, Diag> {
+fn read_plugin_lock(program: &loader::Program, path: &Path, lock_rel: &str) -> Result<Option<serde_json::Value>, Diag> {
     if !program.fs.exists(path) {
         return Ok(None);
     }
-    let bad = |e: String| {
-        Diag::new(Span::NONE, format!("{}: {e}", crate::plugins::LOCK_PATH)).code(diag::Code::PluginCapability)
-    };
+    let bad = |e: String| Diag::new(Span::NONE, format!("{lock_rel}: {e}")).code(diag::Code::PluginCapability);
     let text = program.fs.read_to_string(path).map_err(|e| bad(e.to_string()))?;
     serde_json::from_str(&text).map(Some).map_err(|e| bad(e.to_string()))
 }
 
-/// `sp/_generated/abilities.json` beside the program's `spacepress.config.ts`, through the program's file system,
+/// `<dir>/_generated/abilities.json` beside the program's `spacepress.config.ts`, through the program's file system,
 /// so a hosted source bundle (rooted at its own module directory, whatever `project` names) and the
 /// browser read the same lock the command line does. Absent means no locked abilities.
 fn read_lock(program: &loader::Program) -> Result<Vec<crate::wordpress::abilities::Locked>, Diag> {
     let entry = &program.modules[program.entry].path;
-    let path = entry
-        .parent()
-        .expect("the entry has a directory")
-        .join(crate::wordpress::abilities::LOCK);
+    let lock_rel = program.layout.abilities_lock();
+    let path = entry.parent().expect("the entry has a directory").join(&lock_rel);
     let path = path.as_path();
     if !program.fs.exists(path) {
         return Ok(Vec::new());
     }
-    let text = program.fs.read_to_string(path).map_err(|e| {
-        Diag::new(
-            Span::NONE,
-            format!("can't read {}: {e}", crate::wordpress::abilities::LOCK),
-        )
-    })?;
+    let text = program
+        .fs
+        .read_to_string(path)
+        .map_err(|e| Diag::new(Span::NONE, format!("can't read {lock_rel}: {e}")))?;
     crate::wordpress::abilities::parse_lock(&text).map_err(|m| Diag::new(Span::NONE, m).phase(diag::Code::Import))
 }
 
-/// `sp/theme.json` beside the program's `spacepress.config.ts`, read like the abilities lock so the
+/// `<dir>/theme.json` beside the program's `spacepress.config.ts`, read like the abilities lock so the
 /// command line, the browser and a hosted source bundle see the same file. Absent means no styles of
 /// the project's own.
 fn read_theme(program: &loader::Program) -> Result<Option<serde_json::Value>, Diag> {
     let entry = &program.modules[program.entry].path;
-    let path = entry
-        .parent()
-        .expect("the entry has a directory")
-        .join(crate::theme::FILE);
+    let theme_rel = program.layout.theme_file();
+    let path = entry.parent().expect("the entry has a directory").join(&theme_rel);
     if !program.fs.exists(&path) {
         return Ok(None);
     }
-    let text = program.fs.read_to_string(&path).map_err(|e| {
-        Diag::new(Span::NONE, format!("can't read {}: {e}", crate::theme::FILE)).phase(diag::Code::Import)
-    })?;
+    let text = program
+        .fs
+        .read_to_string(&path)
+        .map_err(|e| Diag::new(Span::NONE, format!("can't read {theme_rel}: {e}")).phase(diag::Code::Import))?;
     crate::theme::parse(&text)
         .map(Some)
         .map_err(|m| Diag::new(Span::NONE, m).phase(diag::Code::Schema))

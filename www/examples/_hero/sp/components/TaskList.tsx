@@ -2,9 +2,10 @@
 // WordPress renders this list in PHP, with the rows already in it. In the browser the Interactivity
 // API takes it over: `useLive` keeps the read current, and a tick or a new task calls an action.
 // Open the site in two windows: a change in one shows in the other, with no reload.
-import { useLive, useState } from "spacepress/client";
+import { useState } from "react";
+import { useLive } from "@spacepress/client/react";
 import type { InferSelectModel } from "spacepress";
-import { addTask, setDone, tasks as table } from "../schema";
+import { addTask, setDone, type tasks as table } from "../schema";
 
 type Task = InferSelectModel<typeof table>;
 

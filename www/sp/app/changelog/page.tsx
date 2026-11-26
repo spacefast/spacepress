@@ -1,4 +1,4 @@
-import { Link } from "spacepress/app";
+import { Link } from "spacepress/server/app";
 import { PageActions } from "../../components/PageActions";
 
 export const metadata = {

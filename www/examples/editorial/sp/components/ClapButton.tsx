@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "spacepress/client";
+import { useState } from "react";
 import { clap } from "../actions";
 
 export function ClapButton({ articleId, initial }: { articleId: number; initial: number }) {

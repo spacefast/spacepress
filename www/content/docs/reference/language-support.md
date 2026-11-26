@@ -667,7 +667,7 @@ Evidence: `tests/compiler_contracts.rs` (`undefined_bindings_are_located_refusal
 
 Status: **refused**. Diagnostic: `F4001`.
 
-abilities.call from "php/wordpress" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in sp/_generated/abilities.json by `spacepress abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
+abilities.call from "spacepress/server/wp" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in sp/_generated/abilities.json by `spacepress abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
 
 Evidence: `tests/fixtures/reject-ability-unknown`
 
@@ -739,7 +739,7 @@ Evidence: `tests/compiler_contracts.rs` (`wp_hooks_register_in_file_order_with_t
 
 Status: **refused**. Diagnostic: `F2001`.
 
-"php/wordpress" exports the catalog's WordPress functions only: each is admitted when its PHP signature maps soundly (no by-reference parameters, no echoing template tags, no reliance on request globals). Anything else is refused at the import with the list of admitted functions. Template tags such as the_title echo; use their get_ form (get_the_title, once admitted) or a wp-hooks/ filter.
+"spacepress/server/wp" exports the catalog's WordPress functions only: each is admitted when its PHP signature maps soundly (no by-reference parameters, no echoing template tags, no reliance on request globals). Anything else is refused at the import with the list of admitted functions. Template tags such as the_title echo; use their get_ form (get_the_title, once admitted) or a wp-hooks/ filter.
 
 Evidence: `tests/fixtures/reject-wp-function-unknown`
 
@@ -795,7 +795,7 @@ Evidence: `tests/fixtures/reject-plugin-isolation`
 
 Status: **refused**. Diagnostic: `F1201`.
 
-A plugin can't import "spacepress:db": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it.
+A plugin can't import "spacepress/server/db": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it.
 
 Evidence: `tests/fixtures/reject-plugin-db`
 
@@ -1203,7 +1203,7 @@ Evidence: `tests/app_router.rs` (`client_components_compile_to_interactivity_sto
 
 Status: **supported**.
 
-`<Comments for={item} />` from "spacepress/app" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props.
+`<Comments for={item} />` from "spacepress/server/app" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props.
 
 Evidence: `tests/app_router.rs` (`comments_follow_the_kind_policy_on_every_path`)
 
@@ -1211,7 +1211,7 @@ Evidence: `tests/app_router.rs` (`comments_follow_the_kind_policy_on_every_path`
 
 Status: **supported**.
 
-`<Pagination page={search.page} pages={n} />` from "spacepress/app" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page.
+`<Pagination page={search.page} pages={n} />` from "spacepress/server/app" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page.
 
 Evidence: `tests/app_router.rs` (`app_router_serves_pages_on_wordpress`)
 
@@ -1219,7 +1219,7 @@ Evidence: `tests/app_router.rs` (`app_router_serves_pages_on_wordpress`)
 
 Status: **supported**.
 
-`<Search />` and `<SearchResults q={search.q} />` from "spacepress/app" are a search form that works without JavaScript (a GET with `q`) and the matching rows the visitor may read, each its title linked to its kind's URL; one kind pages with `page`, every kind groups per kind. A page that searched is private, noindex and never recorded for purges.
+`<Search />` and `<SearchResults q={search.q} />` from "spacepress/server/app" are a search form that works without JavaScript (a GET with `q`) and the matching rows the visitor may read, each its title linked to its kind's URL; one kind pages with `page`, every kind groups per kind. A page that searched is private, noindex and never recorded for purges.
 
 Evidence: `tests/app_router.rs` (`search_pages_answer_as_the_visitor`)
 
@@ -1227,7 +1227,7 @@ Evidence: `tests/app_router.rs` (`search_pages_answer_as_the_visitor`)
 
 Status: **supported**.
 
-`<Live id="notes">…</Live>` from "spacepress/app" marks part of a server page the browser keeps current: when something the page read for it changes, the region is rendered again as the visitor and updated in place through the Interactivity router. `id` is a literal, unique on the page; `<Live>` belongs in server components (a client component uses `useLive`).
+`<Live id="notes">…</Live>` from "spacepress/server/app" marks part of a server page the browser keeps current: when something the page read for it changes, the region is rendered again as the visitor and updated in place through the Interactivity router. `id` is a literal, unique on the page; `<Live>` belongs in server components (a client component uses `useLive`).
 
 Evidence: `tests/app_router.rs` (`live_regions_update_in_the_browser`)
 
@@ -1235,7 +1235,7 @@ Evidence: `tests/app_router.rs` (`live_regions_update_in_the_browser`)
 
 Status: **supported**.
 
-`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from "spacepress/app" reads the result or the error once; its `error.fields` and `values` are keyed by the action's input fields. A field inside the form with a literal `name` that isn't one of the action's inputs is a build error, and each named field gets `aria-invalid` and the typed value back after an error by itself. `method` and `encType` on such a form, and an action form inside a "use client" component, are build errors.
+`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from "spacepress/server/app" reads the result or the error once; its `error.fields` and `values` are keyed by the action's input fields. A field inside the form with a literal `name` that isn't one of the action's inputs is a build error, and each named field gets `aria-invalid` and the typed value back after an error by itself. `method` and `encType` on such a form, and an action form inside a "use client" component, are build errors.
 
 Evidence: `tests/app_router.rs` (`forms_work_without_javascript`)
 
@@ -1243,7 +1243,7 @@ Evidence: `tests/app_router.rs` (`forms_work_without_javascript`)
 
 Status: **refused**. Diagnostic: `F1003`.
 
-Client components run in the browser without a bundler: import "spacepress/client" and relative modules only.
+Client components run in the browser without a bundler: import "react", "@spacepress/client/react", and relative modules only.
 
 Evidence: `tests/fixtures/reject-client-npm`
 

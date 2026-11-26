@@ -1,5 +1,5 @@
-import { db } from "spacepress";
-import { Link, type LayoutProps } from "spacepress/app";
+import { db } from "spacepress/server";
+import { Link, type LayoutProps } from "spacepress/server/app";
 import "./site.css";
 
 // Use a blank WordPress block template so this layout owns the header and footer.

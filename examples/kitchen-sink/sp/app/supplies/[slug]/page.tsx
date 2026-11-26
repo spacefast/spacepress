@@ -1,4 +1,4 @@
-import { Content, Link, notFound, type PageProps } from "spacepress/app";
+import { Content, Link, notFound, type PageProps } from "spacepress/server/app";
 
 export const metadata = ({ item }: PageProps<"supplies/[slug]">) => ({ title: item?.name ?? "Kitchen supplies" });
 

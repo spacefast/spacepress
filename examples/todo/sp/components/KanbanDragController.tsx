@@ -1,6 +1,7 @@
 "use client";
 
-import { sharedState, useEvent, useState } from "spacepress/client";
+import { useState } from "react";
+import { sharedState, useEvent } from "@spacepress/client/react";
 import { moveTaskColumn } from "../server";
 
 export const dragState = sharedState({ taskId: 0 });

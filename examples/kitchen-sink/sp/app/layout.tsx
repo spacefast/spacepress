@@ -1,5 +1,5 @@
-import { db } from "spacepress";
-import { Image, Link, TemplatePart, type LayoutProps } from "spacepress/app";
+import { db } from "spacepress/server";
+import { Image, Link, TemplatePart, type LayoutProps } from "spacepress/server/app";
 import logo from "./whisk.svg";
 import "./site.css";
 

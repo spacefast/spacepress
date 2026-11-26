@@ -1,6 +1,6 @@
-import { db } from "spacepress";
-import { get_current_user_id, home_url, is_user_logged_in, wp_login_url } from "php/wordpress";
-import { Comments, Content, Live, notFound, useFormState, type PageProps } from "spacepress/app";
+import { db } from "spacepress/server";
+import { get_current_user_id, home_url, is_user_logged_in, wp_login_url } from "spacepress/server/wp";
+import { Comments, Content, Live, notFound, useFormState, type PageProps } from "spacepress/server/app";
 import { bookSeats, cancelSeats } from "../../../server";
 import styles from "./workshop.module.css";
 

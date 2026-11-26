@@ -31,64 +31,73 @@ const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 /// The modules an app imports from, with the file that declares each.
 const MODULES: &[(&str, &str)] = &[
     ("spacepress", "index.d.ts"),
-    ("spacepress/app", "app.d.ts"),
-    ("spacepress/client", "client.d.ts"),
-    ("spacepress/content", "content.d.ts"),
-    ("php/wordpress", "wordpress.d.ts"),
+    ("spacepress/server", "server.d.ts"),
+    ("spacepress/server/app", "server-app.d.ts"),
+    ("spacepress/server/content", "server-content.d.ts"),
+    ("spacepress/server/wp", "server-wp.d.ts"),
+    ("react", "react.d.ts"),
 ];
 
 /// Interfaces whose methods an app calls on a value it gets from a module: (module, interface,
 /// label in a failure, the ways the example reaches a value of it).
 const INTERFACES: &[(&str, &str, &str, &[Reach])] = &[
     ("spacepress", "ColumnBuilder", "ColumnBuilder", &[Reach::Builder]),
-    ("spacepress", "Database", "db", &[Reach::Member("spacepress", "db")]),
+    (
+        "spacepress",
+        "Database",
+        "db",
+        &[Reach::Member("spacepress/server", "db")],
+    ),
     (
         "spacepress",
         "InsertBuilder",
         "db.insert()",
-        &[Reach::Chain("spacepress", "db")],
+        &[Reach::Chain("spacepress/server", "db")],
     ),
     (
         "spacepress",
         "UpdateBuilder",
         "db.update()",
-        &[Reach::Chain("spacepress", "db")],
+        &[Reach::Chain("spacepress/server", "db")],
     ),
     (
         "spacepress",
         "UpdateSetQuery",
         "db.update().set()",
-        &[Reach::Chain("spacepress", "db")],
+        &[Reach::Chain("spacepress/server", "db")],
     ),
     (
         "spacepress",
         "DeleteQuery",
         "db.delete()",
-        &[Reach::Chain("spacepress", "db")],
+        &[Reach::Chain("spacepress/server", "db")],
     ),
     (
         "spacepress",
         "WriteQuery",
         "a db write",
-        &[Reach::Chain("spacepress", "db")],
+        &[Reach::Chain("spacepress/server", "db")],
     ),
     (
         "spacepress",
         "CollectionQuery",
         "db.query.<kind>",
-        &[Reach::MemberOf("spacepress", "db", "query")],
+        &[Reach::MemberOf("spacepress/server", "db", "query")],
     ),
     (
         "spacepress",
         "GlobalApi",
         "db.globals.<global>",
-        &[Reach::MemberOf("spacepress", "db", "globals")],
+        &[Reach::MemberOf("spacepress/server", "db", "globals")],
     ),
     (
         "spacepress",
         "KindApi",
-        "<kind> from spacepress:db",
-        &[Reach::Import("spacepress:db"), Reach::SystemOf("spacepress:db")],
+        "<kind> from spacepress/server/db",
+        &[
+            Reach::Import("spacepress/server/db"),
+            Reach::SystemOf("spacepress/server/db"),
+        ],
     ),
     ("spacepress", "Job", "<job>", &[Reach::Chain("spacepress", "job")]),
     ("spacepress", "CollectionHooks", "collection hook", &[Reach::HookKey]),
@@ -145,10 +154,15 @@ const NOT_USED: &[(&str, &str)] = &[
         "defineConfig.runtimeSchema",
         "the example commits no site-made schema changes",
     ),
+    // The example uses the default `sp/` app root directory; tests/import_split_and_dir.rs covers custom `dir`.
+    (
+        "defineConfig.dir",
+        "the example uses the default sp/ app root directory",
+    ),
     // Connectors are a host's (`sp_connectors_call`); the example runs on plain WordPress, where a
     // call answers 503. tests/spacepress_cutover.rs and tests/php/connectors_test.php cover them.
     (
-        "spacepress::connectors",
+        "spacepress/server::connectors",
         "connectors need a host transport the example site lacks",
     ),
     (
@@ -637,10 +651,13 @@ fn unused(types: &Path, app: &Path) -> BTreeSet<String> {
             }
         }
     }
-    // The compiler's own list of what "spacepress/app" exports, so the declarations cannot fall behind it.
+    // The compiler's own list of what "spacepress/server/app" exports, so the declarations cannot fall behind it.
     for name in spacepress::app::EXPORTS {
-        if !used.called.contains(&("spacepress/app".to_string(), name.to_string())) {
-            missing.insert(format!("spacepress/app::{name}"));
+        if !used
+            .called
+            .contains(&("spacepress/server/app".to_string(), name.to_string()))
+        {
+            missing.insert(format!("spacepress/server/app::{name}"));
         }
     }
 
@@ -690,9 +707,9 @@ fn unused(types: &Path, app: &Path) -> BTreeSet<String> {
     if !used
         .member_calls
         .iter()
-        .any(|(module, _, path)| module == "spacepress:db" && path.len() == 2 && path[0] == "system")
+        .any(|(module, _, path)| module == "spacepress/server/db" && path.len() == 2 && path[0] == "system")
     {
-        missing.insert("<kind>.system from spacepress:db".to_string());
+        missing.insert("<kind>.system from spacepress/server/db".to_string());
     }
 
     // The files a sp/app/ tree may hold, and every export a page or route may have.
@@ -781,13 +798,14 @@ fn coverage_check_requires_a_real_use() {
         std::fs::copy(real.join(file), types.join(file)).unwrap();
     }
     // A namespace export the regex this replaced did not see.
-    let mut app_types = std::fs::read_to_string(types.join("app.d.ts")).unwrap();
+    let mut app_types = std::fs::read_to_string(types.join("server-app.d.ts")).unwrap();
     app_types.push_str("\nexport declare namespace Probe { function run(): void }\n");
-    std::fs::write(types.join("app.d.ts"), app_types).unwrap();
+    std::fs::write(types.join("server-app.d.ts"), app_types).unwrap();
     std::fs::write(
         app.join("sp/app/page.tsx"),
-        r#"import { Html, Link, notFound } from "spacepress/app";
-import { db, mail, text } from "spacepress";
+        r#"import { Html, Link, notFound } from "spacepress/server/app";
+import { text } from "spacepress";
+import { db, mail } from "spacepress/server";
 import styles from "./page.module.css";
 // mail.render(Template, props) and text().unique() in a comment are not uses.
 const note = "db.delete(rows) and .validate() in a string are not uses either";
@@ -804,9 +822,9 @@ export default function Page() {
     .unwrap();
     let missing = unused(&types, &app);
     for name in [
-        "spacepress/app::Html",
-        "spacepress/app::notFound",
-        "spacepress/app::Probe",
+        "spacepress/server/app::Html",
+        "spacepress/server/app::notFound",
+        "spacepress/server/app::Probe",
         "mail.render",
         "mail.send",
         "db.delete",
@@ -815,13 +833,13 @@ export default function Page() {
         // `Math.min(a, b)` is no column modifier.
         "ColumnBuilder.min",
         "db.insert().values",
-        "<kind>.system from spacepress:db",
+        "<kind>.system from spacepress/server/db",
         "a CSS module import whose classes are used",
     ] {
         assert!(missing.contains(name), "{name} should be reported: {missing:?}");
     }
     for name in [
-        "spacepress/app::Link",
+        "spacepress/server/app::Link",
         "spacepress::text",
         "ColumnBuilder.optional",
         "page export default",

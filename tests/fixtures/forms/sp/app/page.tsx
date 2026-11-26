@@ -1,4 +1,4 @@
-import { Link, useFormState } from "spacepress/app";
+import { Link, useFormState } from "spacepress/server/app";
 import { members, subscribe, vote } from "../server";
 
 export default function Page() {

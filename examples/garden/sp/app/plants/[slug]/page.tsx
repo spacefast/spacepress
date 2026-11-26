@@ -1,4 +1,4 @@
-import { Content, Link, type PageProps } from "spacepress/app";
+import { Content, Link, type PageProps } from "spacepress/server/app";
 
 // plants' `url` is /plants/:slug, so this page receives the plant as `item`, read as the visitor.
 export const metadata = ({ item }: PageProps<"plants/[slug]">) => ({ title: item.title, description: item.summary ?? undefined });

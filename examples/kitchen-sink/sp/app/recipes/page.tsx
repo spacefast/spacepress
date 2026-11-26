@@ -1,6 +1,6 @@
 import { text } from "spacepress";
-import { recipes } from "spacepress:db";
-import { Link, type PageProps } from "spacepress/app";
+import { recipes } from "spacepress/server/db";
+import { Link, type PageProps } from "spacepress/server/app";
 
 export const search = { after: text().optional() };
 export const metadata = { title: "Recipes" };

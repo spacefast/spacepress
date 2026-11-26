@@ -1,5 +1,5 @@
-import { Link } from "spacepress/app";
-import { nav } from "spacepress/content";
+import { Link } from "spacepress/server/app";
+import { nav } from "spacepress/server/content";
 import { handbook } from "../../schema";
 
 export const metadata = { title: "Kitchen handbook" };

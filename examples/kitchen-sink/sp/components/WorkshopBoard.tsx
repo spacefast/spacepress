@@ -1,6 +1,7 @@
 "use client";
 
-import { sharedState, uploadFile, useEffect, useEvent, useLive, useMount, useRef, useState } from "spacepress/client";
+import { useEffect, useRef, useState } from "react";
+import { sharedState, uploadFile, useEvent, useLive, useMount } from "@spacepress/client/react";
 import styles from "./WorkshopBoard.module.css";
 
 export const display = sharedState({ dismissals: 0 });

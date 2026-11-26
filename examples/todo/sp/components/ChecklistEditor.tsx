@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "spacepress/client";
+import { useState } from "react";
 import { addChecklistItem, removeChecklistItem, toggleChecklistItem } from "../server";
 
 export function ChecklistEditor({

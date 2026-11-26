@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "spacepress/client";
+import { useState } from "react";
 import styles from "./counter.module.css";
 
 export function Counter() {

@@ -1,10 +1,11 @@
 {
   "version": 1,
-  "id": "20261121194721_regqey_init",
+  "id": "20261126172235_f9eqmj_init",
   "ops": [
     {
       "op": "createTable",
-      "table": "comments",
+      "table": "cheers",
+      "physicalTable": "{prefix}sp_cheers",
       "def": {
         "editor": false,
         "drafts": false,
@@ -20,7 +21,24 @@
             "default": null,
             "references": null
           },
-          "postId": {
+          "noteId": {
+            "type": "integer",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": true,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": {
+              "table": "notes",
+              "column": "id",
+              "onDelete": "cascade",
+              "onUpdate": null,
+              "unsigned": true
+            }
+          },
+          "count": {
             "type": "integer",
             "notNull": true,
             "primaryKey": false,
@@ -28,50 +46,11 @@
             "unique": false,
             "max": null,
             "enum": null,
-            "default": null,
-            "references": {
-              "table": "posts",
-              "column": "id",
-              "onDelete": "cascade",
-              "onUpdate": null,
-              "unsigned": true
-            }
-          },
-          "name": {
-            "type": "text",
-            "notNull": true,
-            "primaryKey": false,
-            "autoIncrement": false,
-            "unique": false,
-            "max": 60.0,
-            "enum": null,
-            "default": null,
+            "default": 0,
             "references": null
           },
-          "body": {
-            "type": "text",
-            "notNull": true,
-            "primaryKey": false,
-            "autoIncrement": false,
-            "unique": false,
-            "max": 2000.0,
-            "enum": null,
-            "default": null,
-            "references": null
-          },
-          "approved": {
-            "type": "boolean",
-            "notNull": true,
-            "primaryKey": false,
-            "autoIncrement": false,
-            "unique": false,
-            "max": null,
-            "enum": null,
-            "default": false,
-            "references": null
-          },
-          "notifiedAt": {
-            "type": "timestamp",
+          "author": {
+            "type": "integer",
             "notNull": false,
             "primaryKey": false,
             "autoIncrement": false,
@@ -90,17 +69,6 @@
             "max": null,
             "enum": null,
             "default": "1970-01-01T00:00:00.000Z",
-            "references": null
-          },
-          "author": {
-            "type": "integer",
-            "notNull": false,
-            "primaryKey": false,
-            "autoIncrement": false,
-            "unique": false,
-            "max": null,
-            "enum": null,
-            "default": null,
             "references": null
           },
           "updatedAt": {
@@ -161,14 +129,15 @@
         },
         "softDelete": true,
         "queried": [
-          "approved",
-          "id"
+          "id",
+          "noteId"
         ]
       }
     },
     {
       "op": "createTable",
       "table": "sp__revisions",
+      "physicalTable": "{prefix}sp__revisions",
       "def": {
         "editor": false,
         "drafts": false,

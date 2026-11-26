@@ -1,5 +1,5 @@
 import { integer, text } from "spacepress";
-import { Pagination, type PageProps } from "spacepress/app";
+import { Pagination, type PageProps } from "spacepress/server/app";
 
 export const search = { page: integer().default(1), q: text().optional() };
 export const metadata = { title: "Notes", robots: { index: false } };

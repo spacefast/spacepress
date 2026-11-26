@@ -1,4 +1,4 @@
-import { redirect, type Guard, type LayoutProps } from "spacepress/app";
+import { redirect, type Guard, type LayoutProps } from "spacepress/server/app";
 
 export const guard: Guard = ({ user }) => {
   if (user === null) {

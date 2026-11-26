@@ -1,4 +1,4 @@
-import type { LayoutProps } from "spacepress/app";
+import type { LayoutProps } from "spacepress/server/app";
 
 // Signed-in readers only: no page below this layout is public.
 export const guard = "subscriber";

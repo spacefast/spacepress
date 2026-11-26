@@ -1,4 +1,4 @@
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 
 export default async function Home() {
   const notes = await db.query.notes.findMany({ orderBy: { id: "desc" }, limit: 50 });

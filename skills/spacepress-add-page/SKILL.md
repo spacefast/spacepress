@@ -29,8 +29,8 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 
    ```tsx
    // sp/app/recipes/[slug]/page.tsx
-   import { Content, notFound, type PageProps } from "spacepress/app";
-   import { recipes } from "spacepress:db";
+   import { Content, notFound, type PageProps } from "spacepress/server/app";
+   import { recipes } from "spacepress/server/db";
 
    export const metadata = ({ params }: PageProps<"recipes/[slug]">) => ({ title: params.slug });
 
@@ -57,7 +57,7 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 
    ```ts
    // sp/app/api/recipes/route.ts
-   import { recipes } from "spacepress:db";
+   import { recipes } from "spacepress/server/db";
 
    export const guard = "anyone";
 

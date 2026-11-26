@@ -20,7 +20,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::rc::Rc;
 
-/// Hooks `"spacepress/client"` exports.
+/// Standard React hooks supported in `"use client"` components (imported from `"react"`).
+pub const REACT_HOOKS: &[&str] = &["useState", "useEffect", "useRef"];
+
+/// SpacePress-specific client hooks (imported from `"@spacepress/client/react"`).
+pub const CLIENT_HOOKS: &[&str] = &["useMount", "useEvent", "sharedState", "useLive", "uploadFile"];
+
+/// All hooks supported by the Interactivity API client component compiler.
 pub const HOOKS: &[&str] = &[
     "useState",
     "useEffect",
@@ -108,8 +114,9 @@ fn hook<'a>(callee: &Expr, hooks: &'a BTreeMap<String, &'static str>) -> Option<
     }
 }
 
-/// Local names bound to `"spacepress/client"` hooks in `module`, and server actions it imports.
-pub fn imports(module: &Module, client_module: &str) -> (BTreeMap<String, &'static str>, Vec<(String, String)>) {
+/// Local names bound to `"react"` and `"@spacepress/client/react"` hooks in `module`, and server
+/// actions it imports.
+pub fn imports(module: &Module) -> (BTreeMap<String, &'static str>, Vec<(String, String)>) {
     let mut hooks = BTreeMap::new();
     let mut others = Vec::new();
     for stmt in &module.body {
@@ -118,9 +125,15 @@ pub fn imports(module: &Module, client_module: &str) -> (BTreeMap<String, &'stat
                 if spec.type_only {
                     continue;
                 }
-                if source == client_module {
+                if source == crate::loader::REACT_MODULE {
                     if let ImportName::Named(n) = &spec.imported
-                        && let Some(h) = HOOKS.iter().find(|h| **h == n.as_str())
+                        && let Some(h) = REACT_HOOKS.iter().find(|h| **h == n.as_str())
+                    {
+                        hooks.insert(spec.local.clone(), *h);
+                    }
+                } else if source == crate::loader::CLIENT_REACT_MODULE {
+                    if let ImportName::Named(n) = &spec.imported
+                        && let Some(h) = CLIENT_HOOKS.iter().find(|h| **h == n.as_str())
                     {
                         hooks.insert(spec.local.clone(), *h);
                     }
@@ -140,12 +153,11 @@ pub fn analyse(
     namespace: String,
     f: &Func,
     module: &Module,
-    client_module: &str,
     server_actions: &BTreeSet<String>,
     file_buckets: &BTreeSet<String>,
     assets: &[(String, &crate::assets::Asset)],
 ) -> Result<Analysis> {
-    let (hooks, imported) = imports(module, client_module);
+    let (hooks, imported) = imports(module);
     let mut a = Analysis {
         namespace,
         ..Default::default()

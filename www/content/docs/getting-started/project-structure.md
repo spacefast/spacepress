@@ -10,9 +10,9 @@ publishedAt: 2026-11-21T09:02:00.000Z
 
 ```text
 my-app/
-├── spacepress.config.ts   # Entry point: defineConfig() + re-exports
-├── tsconfig.json          # Maps "spacepress", "spacepress/*", "spacepress:db"
-├── sp/
+├── spacepress.config.ts   # Entry point: defineConfig({ dir? }) + re-exports
+├── tsconfig.json          # Standard bundler resolution ("spacepress", "spacepress/server/*", "@spacepress/client")
+├── sp/                    # Default SpacePress app root (customizable via defineConfig({ dir }))
 │   ├── schema.ts          # Collections, SQL tables, globals, taxonomies, stores
 │   ├── server.ts          # Actions, background jobs, mail helpers
 │   ├── app/               # File-based TSX pages, layouts, and route.ts handlers
@@ -24,6 +24,38 @@ my-app/
 ├── emails/                # React Email (.tsx) templates
 └── public/                # Static assets served from site root
 ```
+
+## Customizing the app root directory (`dir`)
+
+SpacePress defaults to `sp/` so it coexists cleanly beside an existing `index.html`, Next.js, or Astro app at the repository root. Set `dir` in `spacepress.config.ts` to move all SpacePress source, `_generated/`, and `dist/` paths into another relative folder (for example `"cms"` or `"backend"`):
+
+```ts
+import { defineConfig } from "spacepress";
+
+export default defineConfig({
+  name: "my-app",
+  dir: "cms",
+});
+```
+
+Every compiler pass, route scanner (`cms/app/`), `cms/wp-hooks/`, `cms/_generated/`, `cms/dist/`, `spacepress add`, `spacepress init`, and `create-spacepress --dir cms` follows the configured `dir`.
+
+## Import boundaries
+
+The import path tells you where the code runs:
+
+| Import path | Runs on | What it provides |
+|---|---|---|
+| `"spacepress"` | Anywhere (DSL & types) | `defineConfig`, `collection`, `table`, `global`, `query`, `mutation`, `job`, `cron`, `env`, field builders, shared types |
+| `"spacepress/server"` | Server only (PHP) | `db`, `HttpError`, `once`, `mail`, `connectors` |
+| `"spacepress/server/db"` | Server only (PHP) | App kinds by registered name (`import { posts } from "spacepress/server/db"`) |
+| `"spacepress/server/app"` | Server only (PHP) | Page/layout helpers (`Link`, `Content`, `Html`, `Image`, `Live`, `useFormState`, `notFound`, `redirect`, `PageProps`, `LayoutProps`) |
+| `"spacepress/server/content"` | Server only (PHP) | `nav`, `pager`, `headings`, `apiReference` |
+| `"spacepress/server/wp"` | Server only (PHP) | WordPress core functions, `abilities`, `Handler<"...">`, `WP_Post`/`WP_User`/`WP_Query` |
+| `"react"` | Browser (`"use client"`) | Standard React hooks (`useState`, `useEffect`, `useRef`) lowered to the WordPress Interactivity API |
+| `"@spacepress/client"` & `"@spacepress/client/react"` | Browser / Node / Bun / Deno | Typed `fetch` client (`bind`, `createClient`, WP Abilities calls) and React hooks (`createHooks`, `useLive`, `useMount`, `useEvent`, `sharedState`, `uploadFile`) |
+
+Importing `"spacepress/server"` or `"spacepress/server/*"` inside a `"use client"` component is refused at build time and throws in browser bundles.
 
 ## What to commit to Git
 

@@ -1,4 +1,5 @@
-import { collection, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, cron, env, global, defineConfig, db , table, userProjection, ref, mutation } from "spacepress";
+import { collection, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, cron, env, global, defineConfig, table, userProjection, ref, mutation } from "spacepress";
+import { db } from "spacepress/server";
 export const audit = table({ note: text() }, { agents: false });
 export const authors = collection({ name: text(), email: email().optional().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true, access: { create: ctx => ctx.data?.uid !== "reserved" } });
 export const decks = files({ accept: ["application/pdf", "image/*"], maxBytes: 20000000, access: { read: "owner", create: ctx => ctx.user !== null, delete: "owner" } });
@@ -25,7 +26,8 @@ export default defineConfig({
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted", "*"] }, { url: "https://example.com/hook", secret: env("OTHER_SECRET"), events: ["members.created"] }],
 });
 
-import { once, type JobCtx, type FieldAccessCtx, type Locale, type LocalizedColumns } from "spacepress";
+import { type JobCtx, type FieldAccessCtx, type Locale, type LocalizedColumns } from "spacepress";
+import { once } from "spacepress/server";
 import { expectType, type Equal } from "./inference";
 
 const localizedBlocks = table({

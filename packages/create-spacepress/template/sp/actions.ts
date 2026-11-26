@@ -1,4 +1,5 @@
-import { HttpError, mutation } from "spacepress";
+import { mutation } from "spacepress";
+import { HttpError } from "spacepress/server";
 
 // The server validates input before calling the handler.
 export const greet = mutation({ access: "anyone" }, ({ name }: { name: string }) => {

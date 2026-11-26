@@ -1,6 +1,6 @@
-import { docs } from "spacepress:db";
-import { Content, Link, type PageProps } from "spacepress/app";
-import { nav, pager } from "spacepress/content";
+import { docs } from "spacepress/server/db";
+import { Content, Link, type PageProps } from "spacepress/server/app";
+import { nav, pager } from "spacepress/server/content";
 
 export const metadata = ({ item }: PageProps<"[...path]">) => ({ title: item.title });
 

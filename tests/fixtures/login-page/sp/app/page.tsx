@@ -1,4 +1,4 @@
-import { LoginForm } from "spacepress/app";
+import { LoginForm } from "spacepress/server/app";
 
 export const metadata = { title: "Home" };
 

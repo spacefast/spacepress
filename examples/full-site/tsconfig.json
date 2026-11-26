@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -10,15 +13,52 @@
     "jsx": "react-jsx",
     "jsxImportSource": "spacepress",
     "paths": {
-      "spacepress": ["../../types/spacepress/index.d.ts"],
-      "spacepress/app": ["../../types/spacepress/app.d.ts"],
-      "spacepress/client": ["../../types/spacepress/client.d.ts"],
-      "spacepress/jsx-runtime": ["../../types/spacepress/jsx-runtime.d.ts"],
-      "spacepress/jsx-dev-runtime": ["../../types/spacepress/jsx-dev-runtime.d.ts"]
+      "spacepress": [
+        "../../types/spacepress/index.d.ts"
+      ],
+      "spacepress/server": [
+        "../../types/spacepress/server.d.ts"
+      ],
+      "spacepress/server/db": [
+        "../../types/spacepress/server-db.d.cts"
+      ],
+      "spacepress/server/app": [
+        "../../types/spacepress/server-app.d.ts"
+      ],
+      "spacepress/server/content": [
+        "../../types/spacepress/server-content.d.ts"
+      ],
+      "spacepress/server/wp": [
+        "../../types/spacepress/server-wp.d.ts"
+      ],
+      "spacepress/danger": [
+        "../../types/spacepress/danger.d.ts"
+      ],
+      "spacepress/jsx-runtime": [
+        "../../types/spacepress/jsx-runtime.d.ts"
+      ],
+      "spacepress/jsx-dev-runtime": [
+        "../../types/spacepress/jsx-dev-runtime.d.ts"
+      ],
+      "@spacepress/client": [
+        "../../packages/client/src/index.d.ts"
+      ],
+      "@spacepress/client/react": [
+        "../../packages/client/src/react.d.ts"
+      ],
+      "react": [
+        "../../types/spacepress/react.d.ts"
+      ]
     },
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["spacepress.config.ts", "sp/**/*.ts", "sp/**/*.tsx"],
-  "exclude": ["sp/dist"]
+  "include": [
+    "spacepress.config.ts",
+    "sp/**/*.ts",
+    "sp/**/*.tsx"
+  ],
+  "exclude": [
+    "sp/dist"
+  ]
 }

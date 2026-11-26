@@ -1,5 +1,5 @@
-import { posts } from "spacepress:db";
-import { Link } from "spacepress/app";
+import { posts } from "spacepress/server/db";
+import { Link } from "spacepress/server/app";
 
 export const metadata = {
   title: "Blog",

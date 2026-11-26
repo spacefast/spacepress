@@ -1,6 +1,6 @@
 import { text } from "spacepress";
-import { shares } from "spacepress:db";
-import type { PageProps } from "spacepress/app";
+import { shares } from "spacepress/server/db";
+import type { PageProps } from "spacepress/server/app";
 
 export const metadata = {
   title: "Playground",

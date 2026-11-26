@@ -1839,9 +1839,15 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
                 "types": [], "skipLibCheck": true,
                 "paths": {
                     "spacepress": [root().join("types/spacepress/index.d.ts")],
+                    "spacepress/server": [root().join("types/spacepress/server.d.ts")],
+                    "spacepress/server/db": [root().join("types/spacepress/server-db.d.cts")],
+                    "spacepress/server/app": [root().join("types/spacepress/server-app.d.ts")],
+                    "spacepress/server/content": [root().join("types/spacepress/server-content.d.ts")],
+                    "spacepress/server/wp": [root().join("types/spacepress/server-wp.d.ts")],
                     "spacepress/*": [root().join("types/spacepress/*.d.ts")],
-                    "spacepress:db": [root().join("types/spacepress/db.d.cts")],
-                    "php/wordpress": [root().join("types/spacepress/wordpress.d.ts")],
+                    "react": [root().join("types/spacepress/react.d.ts")],
+                    "@spacepress/client": [root().join("packages/client/src/index.d.ts")],
+                    "@spacepress/client/react": [root().join("packages/client/src/react.d.ts")],
                 }
             },
             "include": ["sp/**/*.ts", "sp/**/*.tsx"],
@@ -1971,7 +1977,7 @@ fn add_api_reference_renders_per_request_under_a_guarded_layout() {
     .unwrap();
     std::fs::write(
         project.join("sp/app/api/layout.tsx"),
-        "import type { LayoutProps } from \"spacepress/app\";\nexport const guard = \"subscriber\";\nexport default function ApiLayout({ children }: LayoutProps) { return <div>{children}</div>; }\n",
+        "import type { LayoutProps } from \"spacepress/server/app\";\nexport const guard = \"subscriber\";\nexport default function ApiLayout({ children }: LayoutProps) { return <div>{children}</div>; }\n",
     )
     .unwrap();
     let added = add(&project, &["api-reference"]);
@@ -2244,9 +2250,15 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
                 "types": [],
                 "paths": {
                     "spacepress": [root().join("types/spacepress/index.d.ts")],
+                    "spacepress/server": [root().join("types/spacepress/server.d.ts")],
+                    "spacepress/server/db": [root().join("types/spacepress/server-db.d.cts")],
+                    "spacepress/server/app": [root().join("types/spacepress/server-app.d.ts")],
+                    "spacepress/server/content": [root().join("types/spacepress/server-content.d.ts")],
+                    "spacepress/server/wp": [root().join("types/spacepress/server-wp.d.ts")],
                     "spacepress/*": [root().join("types/spacepress/*.d.ts")],
-                    "spacepress:db": [root().join("types/spacepress/db.d.cts")],
-                    "php/wordpress": [root().join("types/spacepress/wordpress.d.ts")],
+                    "react": [root().join("types/spacepress/react.d.ts")],
+                    "@spacepress/client": [root().join("packages/client/src/index.d.ts")],
+                    "@spacepress/client/react": [root().join("packages/client/src/react.d.ts")],
                 }
             }
         }))

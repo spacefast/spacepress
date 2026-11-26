@@ -1,4 +1,4 @@
-import type { LayoutProps } from "spacepress/app";
+import type { LayoutProps } from "spacepress/server/app";
 
 export const guard = "editor";
 

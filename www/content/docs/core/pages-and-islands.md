@@ -21,7 +21,7 @@ With `template = "theme"`, WordPress renders the TSX page in the block theme's
 the header, footer, or other blocks around it. Use `template = "blank"` when
 your layout supplies those elements.
 
-## Built-in server components (`spacepress/app`)
+## Built-in server components (`spacepress/server/app`)
 
 Use `<Link>` (Interactivity Router navigation), `<Content>` (block content via `the_content`), `<Html>` (sanitized HTML), `<Comments>`, `<Pagination>`, `<Search>`, `<SearchResults>`, `<LoginForm>`, `<TemplatePart>`, `<Live id="...">`, and `useFormState(action)` for progressive zero-JS `<form action={myAction}>` submissions.
 
@@ -35,7 +35,8 @@ through `fetch` and the page swaps in place.
 
 ```ts
 // sp/server.ts
-import { db, HttpError, mail, mutation } from "spacepress";
+import { mutation } from "spacepress";
+import { db, HttpError, mail } from "spacepress/server";
 import { messages } from "./schema";
 
 export const contact = mutation({ access: "anyone", rateLimit: "5/min" }, async ({ email, message }: { email: string; message: string }) => {
@@ -48,7 +49,7 @@ export const contact = mutation({ access: "anyone", rateLimit: "5/min" }, async 
 
 ```tsx
 // sp/app/contact/page.tsx
-import { useFormState } from "spacepress/app";
+import { useFormState } from "spacepress/server/app";
 import { contact } from "../../server";
 
 export default function Contact() {
@@ -105,7 +106,7 @@ export const posts = wp.posts.extend({}, {
 Pass the route's post to `<Comments>` in `sp/app/blog/[slug]/page.tsx`.
 
 ```tsx
-import { Comments, type PageProps } from "spacepress/app";
+import { Comments, type PageProps } from "spacepress/server/app";
 
 export default function Post({ item }: PageProps<"blog/[slug]">) {
 	return <Comments for={item} />;
@@ -120,9 +121,9 @@ until the commenter has an approved comment. Editors manage the thread under
 You can pass the same post to `<Comments>` on another page. Both places show
 the same WordPress comment thread.
 
-## `"use client"` interactive islands (`spacepress/client`)
+## `"use client"` interactive islands (`"react"` & `"@spacepress/client/react"`)
 
-Start a component file with `"use client";`. SpacePress renders its initial HTML in PHP and compiles the interactive logic into a WordPress Interactivity API store supporting `useState`, `useEffect`, `useMount`, `useEvent`, `useRef`, `sharedState`, `uploadFile(bucket, file, opts?)` for private file buckets, and live-updating `useLive(kind, query)` subscriptions.
+Start a component file with `"use client";`. Import standard React hooks (`useState`, `useEffect`, `useRef`) from `"react"` and SpacePress client hooks (`useLive`, `useMount`, `useEvent`, `sharedState`, `uploadFile`) from `"@spacepress/client/react"`. SpacePress renders the initial HTML in PHP and compiles the interactive logic into a WordPress Interactivity API store with zero React shipped to the page. Importing `"spacepress/server"` or `"spacepress/server/*"` inside a `"use client"` component is refused at build time — call a `query()` or `mutation()` action or read via `@spacepress/client` instead.
 
 ## Static export
 

@@ -1,4 +1,4 @@
-import { Search } from "spacepress/app";
+import { Search } from "spacepress/server/app";
 
 // The bare form: no query, no read, cacheable.
 export default function Home() {

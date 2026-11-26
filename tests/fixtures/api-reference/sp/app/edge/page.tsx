@@ -1,5 +1,5 @@
-import { Html } from "spacepress/app";
-import { apiReference } from "spacepress/content";
+import { Html } from "spacepress/server/app";
+import { apiReference } from "spacepress/server/content";
 
 // A document with what goes wrong in practice: blocks in a description, a quote in the server,
 // a parameter the operation overrides, allOf, const, two media types and two colliding slugs.

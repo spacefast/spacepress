@@ -1,5 +1,5 @@
-import { signatures } from "spacepress:db";
-import { Live } from "spacepress/app";
+import { signatures } from "spacepress/server/db";
+import { Live } from "spacepress/server/app";
 import { Counter } from "../../components/Counter";
 
 export default async function Board() {

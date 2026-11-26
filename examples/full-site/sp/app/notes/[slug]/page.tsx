@@ -1,5 +1,5 @@
-import { db } from "spacepress";
-import { Content, Link, type PageProps } from "spacepress/app";
+import { db } from "spacepress/server";
+import { Content, Link, type PageProps } from "spacepress/server/app";
 import { CheerButton } from "../../../components/CheerButton";
 import styles from "./note.module.css";
 

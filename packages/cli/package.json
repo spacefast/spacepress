@@ -9,6 +9,46 @@
   "type": "module",
   "engines": { "node": ">=22" },
   "bin": { "spacepress": "bin/spacepress.mjs" },
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts"
+    },
+    "./server": {
+      "types": "./types/server.d.ts",
+      "browser": "./types/stubs/server.mjs",
+      "default": "./types/stubs/server.mjs"
+    },
+    "./server/db": {
+      "types": "./types/server-db.d.cts",
+      "browser": "./types/stubs/server-db.mjs",
+      "default": "./types/stubs/server-db.mjs"
+    },
+    "./server/app": {
+      "types": "./types/server-app.d.ts",
+      "browser": "./types/stubs/server-app.mjs",
+      "default": "./types/stubs/server-app.mjs"
+    },
+    "./server/content": {
+      "types": "./types/server-content.d.ts",
+      "browser": "./types/stubs/server-content.mjs",
+      "default": "./types/stubs/server-content.mjs"
+    },
+    "./server/wp": {
+      "types": "./types/server-wp.d.ts",
+      "browser": "./types/stubs/server-wp.mjs",
+      "default": "./types/stubs/server-wp.mjs"
+    },
+    "./danger": {
+      "types": "./types/danger.d.ts"
+    },
+    "./jsx-runtime": {
+      "types": "./types/jsx-runtime.d.ts"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./types/jsx-dev-runtime.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "files": ["bin", "lib", "types", "LICENSE", "README.md"],
   "scripts": {
     "prepack": "node scripts/prepare.mjs",

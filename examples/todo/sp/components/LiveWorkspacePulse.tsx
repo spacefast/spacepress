@@ -1,6 +1,7 @@
 "use client";
 
-import { useLive, useMount, useState } from "spacepress/client";
+import { useState } from "react";
+import { useLive, useMount } from "@spacepress/client/react";
 
 export function LiveWorkspacePulse({ initialOpen }: { initialOpen: number }) {
   const [connected, setConnected] = useState(false);

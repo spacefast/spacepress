@@ -1,4 +1,5 @@
-import { collection, text, json, global, defineConfig, db, table, mutation } from "spacepress";
+import { collection, text, json, global, defineConfig, table, mutation } from "spacepress";
+import { db } from "spacepress/server";
 export const n = table({ meta: json().optional() });
 export const settings = global({
   title: text().default("Hi"),

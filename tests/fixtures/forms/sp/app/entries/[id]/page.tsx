@@ -1,5 +1,5 @@
-import { db } from "spacepress";
-import { notFound, type PageProps } from "spacepress/app";
+import { db } from "spacepress/server";
+import { notFound, type PageProps } from "spacepress/server/app";
 import { remove } from "../../../server";
 
 // One entry, with a form that deletes it and comes back here: then a 404.

@@ -1,5 +1,5 @@
-import { entries } from "spacepress:db";
-import { Live, useFormState } from "spacepress/app";
+import { entries } from "spacepress/server/db";
+import { Live, useFormState } from "spacepress/server/app";
 import { sign } from "../../server";
 
 // A `<Live>` list and a form that adds to it: a region update while the post is in flight must not

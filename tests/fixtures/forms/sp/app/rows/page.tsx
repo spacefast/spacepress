@@ -1,5 +1,5 @@
-import { entries } from "spacepress:db";
-import { Live, useFormState } from "spacepress/app";
+import { entries } from "spacepress/server/db";
+import { Live, useFormState } from "spacepress/server/app";
 import { rename } from "../../server";
 
 // A form per row for one action, each filled from what is stored: the state of a submit comes back

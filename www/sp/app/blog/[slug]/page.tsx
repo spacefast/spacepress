@@ -1,4 +1,4 @@
-import { Comments, Content, Link, type PageProps } from "spacepress/app";
+import { Comments, Content, Link, type PageProps } from "spacepress/server/app";
 import { PageActions } from "../../../components/PageActions";
 
 export const metadata = ({ item }: PageProps<"blog/[slug]">) => ({

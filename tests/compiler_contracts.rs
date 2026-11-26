@@ -1810,8 +1810,9 @@ export { posts }; export default defineConfig({ name: "flows", use: [sync()] });
     .unwrap();
     std::fs::write(
         tmp.path().join("node_modules/spacepress-plugin-sync/src/index.ts"),
-        r#"import { db, definePlugin, mutation } from "spacepress";
-import { abilities, esc_html } from "php/wordpress";
+        r#"import { definePlugin, mutation } from "spacepress";
+import { db } from "spacepress/server";
+import { abilities, esc_html } from "spacepress/server/wp";
 import { createHmac } from "node:crypto";
 // The send happens in a helper the handler calls with what it read. Package TypeScript compiles
 // as checked JavaScript, where awaiting a helper's result isn't supported, so the helper awaits.
@@ -1857,7 +1858,7 @@ export default () => definePlugin({
         json!(["sync_count", "sync_export", "sync_list", "sync_title"])
     );
     assert_eq!(plugin["inferred"]["abilities"], json!(["flows/posts-list"]));
-    assert_eq!(plugin["inferred"]["php"], json!(["php/wordpress:esc_html"]));
+    assert_eq!(plugin["inferred"]["php"], json!(["spacepress/server/wp:esc_html"]));
     assert_eq!(plugin["inferred"]["wpHooks"], json!([]));
     // Only the handler that reads and then sends, through its helper, is flagged.
     assert_eq!(
@@ -2508,7 +2509,7 @@ fn configuration_refuses_unsupported_coercion_at_the_call_site() {
 fn query_calls_refuse_extra_options_arguments_at_the_call_site() {
     for method in ["findMany", "findFirst"] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, table, db, mutation}} from 'spacepress';\nconst notes = table({{}});\nexport {{ notes }}; const __probe = mutation({{}}, async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}); export {{ __probe as probe }}; export default defineConfig({{ name:'queryarity' }});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, table, mutation}} from 'spacepress'; import {{db}} from 'spacepress/server';\nconst notes = table({{}});\nexport {{ notes }}; const __probe = mutation({{}}, async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}); export {{ __probe as probe }}; export default defineConfig({{ name:'queryarity' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2541,7 +2542,7 @@ fn database_builders_refuse_discarded_arguments_at_the_call_site() {
         "(n++, db.insert(notes).values({count: 1}))",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, table, integer, db, mutation}} from 'spacepress';\nconst notes=table({{count:integer().optional()}});\nexport {{ notes }}; const __probe = mutation({{}}, async()=>{{let n=0; await {expression}; return n;}}); export {{ __probe as probe }}; export default defineConfig({{ name:'builderarity' }});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, table, integer, mutation}} from 'spacepress'; import {{db}} from 'spacepress/server';\nconst notes=table({{count:integer().optional()}});\nexport {{ notes }}; const __probe = mutation({{}}, async()=>{{let n=0; await {expression}; return n;}}); export {{ __probe as probe }}; export default defineConfig({{ name:'builderarity' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2605,7 +2606,7 @@ fn schema_builders_refuse_discarded_arguments_at_the_call_site() {
         "new HttpError(400, 'bad', 'message')",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{text, json, select, defineConfig, HttpError, mutation}} from 'spacepress';\nconst invalid = {expression};\nconst __probe = mutation({{}}, ()=>1); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{text, json, select, defineConfig, mutation}} from 'spacepress'; import {{HttpError}} from 'spacepress/server';\nconst invalid = {expression};\nconst __probe = mutation({{}}, ()=>1); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3515,7 +3516,7 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
     );
 }
 
-/// `abilities.call` from "php/wordpress": a locked ability and the app's own action are typed for the
+/// `abilities.call` from "spacepress/server/wp": a locked ability and the app's own action are typed for the
 /// compiler and for tsc (sp/_generated/db.d.ts), and the compiled handler calls `Call::run` with the input as
 /// a JS value, using the typed result. `Call::run` itself runs on WordPress in tests/php/abilities_test.php.
 #[test]
@@ -3562,7 +3563,7 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
         serde_json::to_vec(&json!({
             "compilerOptions": {
                 "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "types": [],
-                "paths": { "spacepress": [root().join("types/spacepress/index.d.ts")], "php/wordpress": [root().join("types/spacepress/wordpress.d.ts")] }
+                "paths": { "spacepress": [root().join("types/spacepress/index.d.ts")], "spacepress/server": [root().join("types/spacepress/server.d.ts")], "spacepress/server/wp": [root().join("types/spacepress/server-wp.d.ts")] }
             },
             "files": ["spacepress.config.ts", "sp/_generated/db.d.ts"]
         }))
@@ -3605,7 +3606,7 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 /// An app with no registries in `defineConfig` (docs/spec/spec.md §1.1): `notes` and `like` register
-/// from their exports under `sp/`, `like` reaches `notes` through `"spacepress:db"`, and on an
+/// from their exports under `sp/`, `like` reaches `notes` through `"spacepress/server/db"`, and on an
 /// in-process WordPress the action's write lands in the table the export declared.
 #[test]
 fn exported_kinds_and_actions_register_by_name_and_run() {
@@ -3692,7 +3693,7 @@ fn wp_hooks_register_in_file_order_with_their_priorities() {
     );
 }
 
-/// WordPress functions from "php/wordpress" on an in-process WordPress, through the built plugin:
+/// WordPress functions from "spacepress/server/wp" on an in-process WordPress, through the built plugin:
 /// the action runs as the signed-in user, writes an option and a post, reads the post back as a
 /// typed view, and a WP_Error from wp_insert_post is a thrown HttpError.
 #[test]

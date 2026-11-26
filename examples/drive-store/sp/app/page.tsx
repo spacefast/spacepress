@@ -1,6 +1,6 @@
 // The catalog: every published drive, searchable and filtered by media and condition.
 import { select, text } from "spacepress";
-import { Link, type PageProps } from "spacepress/app";
+import { Link, type PageProps } from "spacepress/server/app";
 import { CONDITIONS, MEDIA } from "../schema";
 import { catalog } from "../lib/catalog";
 import { mediaName, money, size, stockLabel } from "./_lib/format";

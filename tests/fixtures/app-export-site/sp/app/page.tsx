@@ -1,5 +1,5 @@
-import { db } from "spacepress";
-import { Link } from "spacepress/app";
+import { db } from "spacepress/server";
+import { Link } from "spacepress/server/app";
 
 export const metadata = { title: "Home" };
 

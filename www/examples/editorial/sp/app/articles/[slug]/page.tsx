@@ -1,5 +1,5 @@
-import { Content, Link, type PageProps } from "spacepress/app";
-import { claps } from "spacepress:db";
+import { Content, Link, type PageProps } from "spacepress/server/app";
+import { claps } from "spacepress/server/db";
 import { ClapButton } from "../../../components/ClapButton";
 
 export const metadata = ({ item }: PageProps<"articles/[slug]">) => ({

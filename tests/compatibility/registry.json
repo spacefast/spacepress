@@ -611,7 +611,7 @@
       "code": "F4001",
       "fixture": "tests/fixtures/reject-ability-unknown",
       "message": "unknown ability `acme/site-infos`",
-      "guidance": "abilities.call from \"php/wordpress\" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in sp/_generated/abilities.json by `spacepress abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability."
+      "guidance": "abilities.call from \"spacepress/server/wp\" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in sp/_generated/abilities.json by `spacepress abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability."
     },
     {
       "id": "wordpress-ability-input",
@@ -680,8 +680,8 @@
       "status": "refused",
       "code": "F2001",
       "fixture": "tests/fixtures/reject-wp-function-unknown",
-      "message": "\"php/wordpress\" has no export named `the_title`",
-      "guidance": "\"php/wordpress\" exports the catalog's WordPress functions only: each is admitted when its PHP signature maps soundly (no by-reference parameters, no echoing template tags, no reliance on request globals). Anything else is refused at the import with the list of admitted functions. Template tags such as the_title echo; use their get_ form (get_the_title, once admitted) or a wp-hooks/ filter."
+      "message": "\"spacepress/server/wp\" has no export named `the_title`",
+      "guidance": "\"spacepress/server/wp\" exports the catalog's WordPress functions only: each is admitted when its PHP signature maps soundly (no by-reference parameters, no echoing template tags, no reliance on request globals). Anything else is refused at the import with the list of admitted functions. Template tags such as the_title echo; use their get_ form (get_the_title, once admitted) or a wp-hooks/ filter."
     },
     {
       "id": "wordpress-function-argument",
@@ -735,8 +735,8 @@
       "status": "refused",
       "code": "F1201",
       "fixture": "tests/fixtures/reject-plugin-db",
-      "message": "plugin \"reach\" can't import \"spacepress:db\": the app's kinds belong to the app",
-      "guidance": "A plugin can't import \"spacepress:db\": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it."
+      "message": "plugin \"reach\" can't import \"spacepress/server/db\": the app's kinds belong to the app",
+      "guidance": "A plugin can't import \"spacepress/server/db\": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it."
     },
     {
       "id": "host-globals",
@@ -1136,35 +1136,35 @@
       "status": "supported",
       "evidence": "tests/app_router.rs",
       "test": "comments_follow_the_kind_policy_on_every_path",
-      "guidance": "`<Comments for={item} />` from \"spacepress/app\" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props."
+      "guidance": "`<Comments for={item} />` from \"spacepress/server/app\" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props."
     },
     {
       "id": "jsx-pagination",
       "status": "supported",
       "evidence": "tests/app_router.rs",
       "test": "app_router_serves_pages_on_wordpress",
-      "guidance": "`<Pagination page={search.page} pages={n} />` from \"spacepress/app\" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page."
+      "guidance": "`<Pagination page={search.page} pages={n} />` from \"spacepress/server/app\" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page."
     },
     {
       "id": "jsx-search",
       "status": "supported",
       "evidence": "tests/app_router.rs",
       "test": "search_pages_answer_as_the_visitor",
-      "guidance": "`<Search />` and `<SearchResults q={search.q} />` from \"spacepress/app\" are a search form that works without JavaScript (a GET with `q`) and the matching rows the visitor may read, each its title linked to its kind's URL; one kind pages with `page`, every kind groups per kind. A page that searched is private, noindex and never recorded for purges."
+      "guidance": "`<Search />` and `<SearchResults q={search.q} />` from \"spacepress/server/app\" are a search form that works without JavaScript (a GET with `q`) and the matching rows the visitor may read, each its title linked to its kind's URL; one kind pages with `page`, every kind groups per kind. A page that searched is private, noindex and never recorded for purges."
     },
     {
       "id": "jsx-live",
       "status": "supported",
       "evidence": "tests/app_router.rs",
       "test": "live_regions_update_in_the_browser",
-      "guidance": "`<Live id=\"notes\">…</Live>` from \"spacepress/app\" marks part of a server page the browser keeps current: when something the page read for it changes, the region is rendered again as the visitor and updated in place through the Interactivity router. `id` is a literal, unique on the page; `<Live>` belongs in server components (a client component uses `useLive`)."
+      "guidance": "`<Live id=\"notes\">…</Live>` from \"spacepress/server/app\" marks part of a server page the browser keeps current: when something the page read for it changes, the region is rendered again as the visitor and updated in place through the Interactivity router. `id` is a literal, unique on the page; `<Live>` belongs in server components (a client component uses `useLive`)."
     },
     {
       "id": "jsx-form-action",
       "status": "supported",
       "evidence": "tests/app_router.rs",
       "test": "forms_work_without_javascript",
-      "guidance": "`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from \"spacepress/app\" reads the result or the error once; its `error.fields` and `values` are keyed by the action's input fields. A field inside the form with a literal `name` that isn't one of the action's inputs is a build error, and each named field gets `aria-invalid` and the typed value back after an error by itself. `method` and `encType` on such a form, and an action form inside a \"use client\" component, are build errors."
+      "guidance": "`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from \"spacepress/server/app\" reads the result or the error once; its `error.fields` and `values` are keyed by the action's input fields. A field inside the form with a literal `name` that isn't one of the action's inputs is a build error, and each named field gets `aria-invalid` and the typed value back after an error by itself. `method` and `encType` on such a form, and an action form inside a \"use client\" component, are build errors."
     },
     {
       "id": "jsx-use-client-npm",
@@ -1172,7 +1172,7 @@
       "code": "F1003",
       "fixture": "tests/fixtures/reject-client-npm",
       "message": "a \"use client\" component can't import \"dayjs\"",
-      "guidance": "Client components run in the browser without a bundler: import \"spacepress/client\" and relative modules only."
+      "guidance": "Client components run in the browser without a bundler: import \"react\", \"@spacepress/client/react\", and relative modules only."
     },
     {
       "id": "jsx-use-client-root",

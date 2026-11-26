@@ -1,7 +1,7 @@
 // Written by `spacepress add api-reference`; yours to change. The app's API reference: every operation
 // of the OpenAPI document `spacepress build` writes, by tag, each linking to its own page.
-import { Html, Link } from "spacepress/app";
-import { apiReference } from "spacepress/content";
+import { Html, Link } from "spacepress/server/app";
+import { apiReference } from "spacepress/server/content";
 
 export const metadata = { title: "API reference", description: "Every operation of this app's HTTP API." };
 

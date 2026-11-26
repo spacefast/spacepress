@@ -1,7 +1,7 @@
 "use client";
 // Rendered on the server like any component, then hydrated with the Interactivity API: a click
 // calls the `cheer` action and shows the stored count it returns.
-import { useState } from "spacepress/client";
+import { useState } from "react";
 import { cheer } from "../actions";
 
 export function CheerButton({ noteId, count: initial }: { noteId: number; count: number }) {

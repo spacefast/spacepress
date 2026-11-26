@@ -1,5 +1,5 @@
-import { Content, Link, notFound, type PageProps } from "spacepress/app";
-import { headings, nav, pager } from "spacepress/content";
+import { Content, Link, notFound, type PageProps } from "spacepress/server/app";
+import { headings, nav, pager } from "spacepress/server/content";
 import { handbook } from "../../../schema";
 
 export default async function Handbook({ item }: PageProps<"handbook/[...path]">) {

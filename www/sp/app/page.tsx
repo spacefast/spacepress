@@ -1,10 +1,8 @@
-import { Link } from "spacepress/app";
+import { Link } from "spacepress/server/app";
 import { Sandbox, Tree } from "../components/Code";
 
 export const metadata = {
-  title: "SpacePress — The TypeScript Framework for WordPress",
-  description: "Write TypeScript schemas, server actions, background jobs, and React TSX pages. SpacePress compiles them with Rust into native PHP, SQL migrations, OpenAPI, and WordPress plugins.",
-};
+  title: "SpacePress — The TypeScript Framework for WordPress", description: "Write TypeScript schemas, server actions, background jobs, and React TSX pages. SpacePress compiles them with Rust into native PHP, SQL migrations, OpenAPI, and WordPress plugins.", };
 
 const AUTHORED_TREE = `my-app/
   spacepress.config.ts   Project config & exports
@@ -44,9 +42,8 @@ const GENERATED_TREE = `my-app/
       spacepress-admin/    Modern Admin at /wp-admin/new/`;
 
 const HERO_SCHEMA_CODE = `import {
-  wp, table, text, integer, boolean,
-  ref, action, db, HttpError, defineConfig,
-} from "spacepress";
+  wp, table, text, integer, boolean, ref, action, defineConfig } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 // Native WordPress posts extended with typed fields, URL routing & Markdown sync
 export const posts = wp.posts.extend({
@@ -79,9 +76,8 @@ export const completeTask = action({
 
 export default defineConfig({ name: "starter" });`;
 
-const HERO_JOBS_CODE = `import {
-  table, text, integer, timestamp, action, job, jobs, db, defineConfig,
-} from "spacepress";
+const HERO_JOBS_CODE = `import { table, text, integer, timestamp, action, job, jobs, defineConfig } from "spacepress";
+import { db } from "spacepress/server";
 
 export const subscriptions = table({
   email: text().max(191).unique(),
@@ -682,7 +678,7 @@ export default function HomePage() {
               <summary>Why do the CLI, config file, and imports say <code>spacepress</code>?</summary>
               <p>
                 SpacePress (<code>spacepress.dev</code>) is the framework brand; while{" "}
-                <Link href="/changelog" className="sp-inline-link">v0 (&ldquo;Istanbul&rdquo;)</Link> prepares for 1.0, the npm package (<code>spacepress</code>), CLI binary, config file (<code>spacepress.config.ts</code>), <code>sp/</code> directory, and imports (<code>&quot;spacepress&quot;</code>, <code>&quot;spacepress:db&quot;</code>) keep the pre-release identifier <code>spacepress</code>.
+                <Link href="/changelog" className="sp-inline-link">v0 (&ldquo;Istanbul&rdquo;)</Link> prepares for 1.0, the npm package (<code>spacepress</code>), CLI binary, config file (<code>spacepress.config.ts</code>), <code>sp/</code> directory (customizable via <code>dir</code>), and imports (<code>&quot;spacepress&quot;</code>, <code>&quot;spacepress/server/*&quot;</code>) keep the pre-release identifier <code>spacepress</code>.
               </p>
             </details>
           </div>

@@ -1,4 +1,4 @@
-import { Comments, Content, notFound, type PageProps } from "spacepress/app";
+import { Comments, Content, notFound, type PageProps } from "spacepress/server/app";
 
 export default function Journal({ item }: PageProps<"journal/[slug]">) {
   if (!item) notFound();

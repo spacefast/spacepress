@@ -1,4 +1,4 @@
-import { home_url } from "php/wordpress";
+import { home_url } from "spacepress/server/wp";
 
 // WordPress signs visitors in and returns them here.
 export const guard = "authenticated";

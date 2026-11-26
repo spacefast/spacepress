@@ -1,16 +1,13 @@
-import { Link } from "spacepress/app";
+import { Link } from "spacepress/server/app";
 import { Cmd, Code, Sandbox } from "../../components/Code";
 import { PageActions } from "../../components/PageActions";
 
 export const metadata = {
-  title: "Quick Start",
-  description: "Go from zero to a running SpacePress application on local WordPress in minutes.",
-};
+  title: "Quick Start", description: "Go from zero to a running SpacePress application on local WordPress in minutes.", };
 
 const STARTER_SCHEMA = `import {
-  collection, table, text, integer, richText, slug, ref,
-  action, db, HttpError, defineConfig,
-} from "spacepress";
+  collection, table, text, integer, richText, slug, ref, action, defineConfig } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 export const notes = collection({
   title: text().min(1).max(120),
@@ -50,18 +47,15 @@ export const clap = action({
 
 export default defineConfig({ name: "my-app", seed: true });`;
 
-const PAGE_SNIPPET = `import { db } from "spacepress";
-import { Link, useFormState } from "spacepress/app";
+const PAGE_SNIPPET = `import { db } from "spacepress/server";
+import { Link, useFormState } from "spacepress/server/app";
 import { greet } from "../actions";
 
 export const metadata = { title: "Home" };
 
 export default async function Home() {
   const latest = await db.query.notes.findMany({
-    columns: { id: true, title: true, slug: true },
-    orderBy: { publishedAt: "desc" },
-    limit: 5,
-  });
+    columns: { id: true, title: true, slug: true }, orderBy: { publishedAt: "desc" }, limit: 5, });
   const state = useFormState(greet);
 
   return (
@@ -85,7 +79,7 @@ export default async function Home() {
 }`;
 
 const ISLAND_SNIPPET = `"use client";
-import { useState } from "spacepress/client";
+import { useState } from "react";
 import { clap } from "../schema";
 
 export function ClapButton({ noteId, initial }: { noteId: number; initial: number }) {

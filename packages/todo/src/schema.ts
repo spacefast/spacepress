@@ -65,7 +65,7 @@ export interface TodoTasksOptions<TBuckets = TodoBucketsKind> {
   label?: string;
   url?: `/${string}`;
   sync?: `${string}/*.md` | `${string}/*.json`;
-  /** Allow anonymous visitors read-only access (e.g. for public demos). Writes stay authenticated. Defaults to `false`. */
+  /** Allow signed-out visitors read-only access to shared (`visibility: "team"`) tasks for public demos. Private tasks stay hidden from anonymous visitors, and all writes stay authenticated. Defaults to `false`. */
   anonymousRead?: boolean;
 }
 
@@ -119,7 +119,7 @@ export function createTasksCollection<TBuckets extends TodoBucketsKind = TodoBuc
       access: {
         read: options.anonymousRead
           ? (ctx) => {
-              if (!ctx.user) return true;
+              if (!ctx.user) return { visibility: "team" };
               if (ctx.user.role === "admin") return true;
               return {
                 OR: [{ ownerId: ctx.user.id }, { assigneeId: ctx.user.id }, { visibility: "team" }],

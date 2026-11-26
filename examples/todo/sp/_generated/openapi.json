@@ -2390,7 +2390,8 @@
                 "properties": {
                   "id": { "type": ["number", "string"] },
                   "index": { "type": ["number", "string"] },
-                  "expectedLabel": { "type": "string" }
+                  "expectedLabel": { "type": "string" },
+                  "expectedVersion": { "type": "string" }
                 },
                 "required": ["id", "index"]
               }
@@ -2500,7 +2501,8 @@
                 "properties": {
                   "id": { "type": ["number", "string"] },
                   "index": { "type": ["number", "string"] },
-                  "expectedLabel": { "type": "string" }
+                  "expectedLabel": { "type": "string" },
+                  "expectedVersion": { "type": "string" }
                 },
                 "required": ["id", "index"]
               }

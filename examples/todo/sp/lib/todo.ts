@@ -405,7 +405,7 @@ export function filterTasksForView(
   for (const task of tasks) {
     const isDone = task.completedAt !== null;
     if (bucketSlug && bucketSlug !== "") {
-      if (isDone) continue;
+      if (view === "done" ? !isDone : isDone) continue;
       if (!taskHasBucketSlug(task, buckets, bucketSlug)) continue;
     } else if (view === "done") {
       if (!isDone) continue;
@@ -559,7 +559,7 @@ export function viewMeta(view: TodoView): { title: string; subtitle: string; def
   if (view === "team") {
     return {
       title: "Shared with Team",
-      subtitle: "Collaborative tasks visible to signed-in teammates on this WordPress site.",
+      subtitle: "Collaborative tasks visible to teammates (and read-only in public previews).",
       defaultStatus: "now",
     };
   }

@@ -10,7 +10,7 @@ export const tasks = createTasksCollection({
   label: "Tasks",
   url: "/tasks/:slug",
   sync: "content/tasks/*.md",
-  // Read-only anonymous preview for live demos; all writes stay authenticated.
+  // Read-only anonymous preview of shared ("team") tasks for live demos; private tasks stay hidden and all writes stay authenticated.
   anonymousRead: true,
 });
 

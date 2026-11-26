@@ -800,6 +800,7 @@ export interface ToggleChecklistItemInput {
 	id: number | string;
 	index: number | string;
 	expectedLabel?: string;
+	expectedVersion?: string;
 }
 export type ToggleChecklistItemOutput = {
 	id: number;
@@ -831,6 +832,7 @@ export interface RemoveChecklistItemInput {
 	id: number | string;
 	index: number | string;
 	expectedLabel?: string;
+	expectedVersion?: string;
 }
 export type RemoveChecklistItemOutput = {
 	id: number;

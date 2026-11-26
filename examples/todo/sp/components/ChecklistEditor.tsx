@@ -15,6 +15,9 @@ export function ChecklistEditor({
   const [busy, setBusy] = useState(false);
 
   const doneCount = items.filter((entry) => entry.done).length;
+  const currentVersion = items
+    .map((entry) => `${entry.done ? "1" : "0"}:${entry.label.length}:${entry.label}`)
+    .join("|");
 
   return (
     <section className="inspector__card checklist-card" aria-label="Subtask checklist">
@@ -43,6 +46,7 @@ export function ChecklistEditor({
                       id: taskId,
                       index: entry.index,
                       expectedLabel: entry.label,
+                      expectedVersion: currentVersion,
                     });
                     setItems(res.checklist.map((c, idx) => ({ index: idx, label: c.label, done: c.done })));
                   } finally {
@@ -66,6 +70,7 @@ export function ChecklistEditor({
                       id: taskId,
                       index: entry.index,
                       expectedLabel: entry.label,
+                      expectedVersion: currentVersion,
                     });
                     setItems(res.checklist.map((c, idx) => ({ index: idx, label: c.label, done: c.done })));
                   } finally {

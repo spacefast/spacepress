@@ -4,6 +4,7 @@ title: Read OXC parser & transformer architecture notes
 notes: Great reference for how SpacePress lowers TypeScript and TSX directly to PHP.
 url: "https://oxc.rs"
 priority: none
+visibility: team
 bucketIds: [zr_10000000000000000005, zr_10000000000000000031]
 ---
 

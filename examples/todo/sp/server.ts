@@ -362,16 +362,22 @@ export const moveTaskColumn = mutation(
   },
 );
 
+function checklistVersion(list: { label: string; done: boolean }[]): string {
+  return list.map((entry) => `${entry.done ? "1" : "0"}:${entry.label.length}:${entry.label}`).join("|");
+}
+
 export const toggleChecklistItem = mutation(
   { access: "authenticated" },
   async ({
     id,
     index,
     expectedLabel,
+    expectedVersion,
   }: {
     id: number | string;
     index: number | string;
     expectedLabel?: string;
+    expectedVersion?: string;
   }) => {
     const taskId = parseOptionalInt(id);
     const itemIndex = typeof index === "number" ? index : Number.parseInt(index, 10);
@@ -380,6 +386,9 @@ export const toggleChecklistItem = mutation(
     if (!task) throw new HttpError(404, "not_found", "Task not found.");
     const list = task.checklist ?? [];
     if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= list.length) {
+      return { id: task.id, checklist: list.map((entry) => ({ label: entry.label, done: entry.done })), stale: true };
+    }
+    if (expectedVersion !== undefined && checklistVersion(list) !== expectedVersion) {
       return { id: task.id, checklist: list.map((entry) => ({ label: entry.label, done: entry.done })), stale: true };
     }
     if (expectedLabel !== undefined && list[itemIndex]!.label !== expectedLabel) {
@@ -419,10 +428,12 @@ export const removeChecklistItem = mutation(
     id,
     index,
     expectedLabel,
+    expectedVersion,
   }: {
     id: number | string;
     index: number | string;
     expectedLabel?: string;
+    expectedVersion?: string;
   }) => {
     const taskId = parseOptionalInt(id);
     const itemIndex = typeof index === "number" ? index : Number.parseInt(index, 10);
@@ -431,6 +442,9 @@ export const removeChecklistItem = mutation(
     if (!task) throw new HttpError(404, "not_found", "Task not found.");
     const list = task.checklist ?? [];
     if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= list.length) {
+      return { id: task.id, checklist: list.map((entry) => ({ label: entry.label, done: entry.done })), stale: true };
+    }
+    if (expectedVersion !== undefined && checklistVersion(list) !== expectedVersion) {
       return { id: task.id, checklist: list.map((entry) => ({ label: entry.label, done: entry.done })), stale: true };
     }
     if (expectedLabel !== undefined && list[itemIndex]!.label !== expectedLabel) {

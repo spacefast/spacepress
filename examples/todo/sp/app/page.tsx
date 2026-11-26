@@ -160,12 +160,13 @@ export default async function TodoWorkspacePage({
   const PAGE_SIZE = 250;
   const firstBatch = await tasks.list({ orderBy: { updatedAt: "desc" }, limit: PAGE_SIZE, offset: 0 });
   const rawTasks = [...firstBatch];
-  if (firstBatch.length === PAGE_SIZE) {
-    for (let offset = PAGE_SIZE; offset < 2000; offset += PAGE_SIZE) {
-      const batch = await tasks.list({ orderBy: { updatedAt: "desc" }, limit: PAGE_SIZE, offset });
-      for (const row of batch) rawTasks.push(row);
-      if (batch.length < PAGE_SIZE) break;
-    }
+  let offset = PAGE_SIZE;
+  let lastCount = firstBatch.length;
+  while (lastCount === PAGE_SIZE) {
+    const batch = await tasks.list({ orderBy: { updatedAt: "desc" }, limit: PAGE_SIZE, offset });
+    for (const row of batch) rawTasks.push(row);
+    lastCount = batch.length;
+    offset += PAGE_SIZE;
   }
   const allTasks: TodoTask[] = rawTasks.map((row) => ({
     id: row.id,
@@ -252,7 +253,9 @@ export default async function TodoWorkspacePage({
       ? "Board"
       : meta.title;
   const headerSubtitle = activeBucket
-    ? `Open tasks in ${activeBucket.name} (${activeBucket.kind}).`
+    ? activeView === "done"
+      ? `Completed tasks in ${activeBucket.name} (${activeBucket.kind}).`
+      : `Open tasks in ${activeBucket.name} (${activeBucket.kind}).`
     : activeLayout === "board" && boardScopeView === "all"
       ? signedIn
         ? "Drag cards across any taxonomy group — Status, Project, Area, Resource, or Priority."

@@ -87,7 +87,7 @@ const tasks = [
     visibility: "private",
     assigneeId: null,
     checklist: [],
-    bucketIds: [3],
+    bucketIds: [3, 11],
     ownerId: 1,
     completedAt: "2026-11-23T18:00:00.000Z",
     scheduledAt: null,
@@ -135,6 +135,14 @@ test("computeTodoViewCounts, filters, and checklist/user helpers", () => {
   assert.deepEqual(
     filterTasksForView(tasks, buckets, "blocked", null, null).map((t) => t.id),
     [102],
+  );
+  assert.deepEqual(
+    filterTasksForView(tasks, buckets, "done", "spacepress", null).map((t) => t.id),
+    [103],
+  );
+  assert.deepEqual(
+    filterTasksForView(tasks, buckets, "all", "spacepress", null).map((t) => t.id),
+    [101, 102],
   );
   assert.deepEqual(checklistProgress(tasks[0].checklist), { done: 1, total: 2 });
   assert.equal(userInitials("Artur Piszek"), "AP");

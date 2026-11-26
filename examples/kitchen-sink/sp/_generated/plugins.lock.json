@@ -26,7 +26,8 @@
         "timers": [],
         "abilities": [],
         "wpHooks": [],
-        "php": []
+        "php": [],
+        "browser": []
       }
     }
   }

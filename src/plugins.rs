@@ -32,6 +32,9 @@ pub const KINDS: &[(&str, &str)] = &[
     // PHP functions imported from "php/wordpress" (later "php/<slug>" or "php"), recorded as
     // `<source>:<function>`.
     ("php", "calls the PHP function"),
+    // `"use client"` modules the plugin's package ships, by project-relative path. Browser code
+    // runs outside the compiler's capability checks, so each island is a lock entry the owner reviews.
+    ("browser", "ships the browser island"),
 ];
 
 pub const LOCK_PATH: &str = "sp/_generated/plugins.lock.json";
@@ -47,6 +50,8 @@ pub struct Plugin {
     pub version: String,
     /// `sha256-<hex>` over every module the plugin's package reaches, by project-relative path.
     pub integrity: String,
+    /// The `"use client"` modules the package reaches, by project-relative path, each with its span.
+    pub islands: Vec<(String, Span)>,
 }
 
 /// A capability one compiled function of a plugin uses.
@@ -182,6 +187,7 @@ pub fn identify(program: &Program, name: &str, span: Span) -> Result<Plugin> {
         version: field("version"),
         root,
         integrity: String::new(),
+        islands: Vec::new(),
     })
 }
 
@@ -246,43 +252,46 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
                 }
             }
         }
-        // Browser code isn't a capability a plugin's lock can grant yet (the TSX decision record):
-        // a plugin package ships server code only. Component libraries that aren't plugins may.
-        if let Some(m) = seen.iter().map(|&m| &program.modules[m]).find(|m| m.use_client) {
-            return Err(Diag::new(
-                Span {
-                    file: m.file,
-                    start: 0,
-                    end: 0,
-                },
-                format!(
-                    "plugin \"{}\" can't ship the \"use client\" component {}",
-                    plugins[i].name,
-                    m.path.strip_prefix(&project).unwrap_or(&m.path).display()
-                ),
-            )
-            .code(Code::PluginIsolation)
-            .help("plugins ship server code only; publish interactive components in a package that doesn't call definePlugin()"));
-        }
-        let mut files: Vec<(String, &Path)> = seen
+        let mut files: Vec<(String, usize)> = seen
             .iter()
             .map(|&m| {
                 let path = &program.modules[m].path;
-                (
-                    path.strip_prefix(&project)
-                        .unwrap_or(path)
-                        .to_string_lossy()
-                        .replace('\\', "/"),
-                    path.as_path(),
-                )
+                let name = path
+                    .strip_prefix(&project)
+                    .unwrap_or(path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                (name, m)
             })
             .collect();
         files.sort();
+        plugins[i].islands = files
+            .iter()
+            .filter_map(|(name, id)| {
+                let m = &program.modules[*id];
+                m.use_client.then(|| {
+                    (
+                        name.clone(),
+                        Span {
+                            file: m.file,
+                            start: 0,
+                            end: 0,
+                        },
+                    )
+                })
+            })
+            .collect();
         let mut hash = Sha256::new();
-        for (name, path) in files {
+        for (name, m) in files {
             hash.update(name.as_bytes());
             hash.update([0]);
-            hash.update(program.fs.read_to_string(path).unwrap_or_default().as_bytes());
+            hash.update(
+                program
+                    .fs
+                    .read_to_string(&program.modules[m].path)
+                    .unwrap_or_default()
+                    .as_bytes(),
+            );
             hash.update([0]);
         }
         plugins[i].integrity = format!("sha256-{}", crate::hex(hash.finalize()));
@@ -371,6 +380,21 @@ pub fn settle(
         Some(lock) => parse_lock(lock)?,
         None => BTreeMap::new(),
     };
+    // Islands are uses registration implies: granted like any other, never part of a handler's flow.
+    let uses: Vec<Use> = uses
+        .iter()
+        .cloned()
+        .chain(plugins.iter().enumerate().flat_map(|(plugin, p)| {
+            p.islands.iter().map(move |(path, span)| Use {
+                plugin,
+                function: String::new(),
+                kind: "browser",
+                value: path.clone(),
+                span: *span,
+            })
+        }))
+        .collect();
+    let uses = uses.as_slice();
     let mut entries = serde_json::Map::new();
     let mut changes = Vec::new();
     let mut report = Vec::new();

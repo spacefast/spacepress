@@ -140,8 +140,10 @@ export const blocks = ["Callout", "Steps", "Step"];
 A package exports a stylesheet like any other file, with an `exports` entry such
 as `"./styles.css": "./src/styles.css"`. A stylesheet that a block component
 file imports links on every route, because content can place the block on any
-page. A package that calls `definePlugin()` ships server code only. Its lock
-can't grant browser code, so a `"use client"` file in it is a build error.
+page. A package that calls `definePlugin()` can ship islands too. Each one is a
+`browser` entry in `sp/_generated/plugins.lock.json`, listed by path, so a new
+island shows up as a lock change to review, and `spacepress build --frozen`
+refuses an island the lock doesn't list.
 
 ## Static export
 

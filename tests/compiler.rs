@@ -121,12 +121,6 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "a plugin takes the app's kinds as options",
         "node_modules/spacepress-plugin-reach/src/index.ts:3:1",
     );
-    // A plugin's lock can't grant browser code, so a plugin package ships no client component.
-    rejects(
-        "reject-plugin-client",
-        "plugin \"widget\" can't ship the \"use client\" component node_modules/spacepress-plugin-widget/src/Counter.tsx",
-        "node_modules/spacepress-plugin-widget/src/Counter.tsx:1:1",
-    );
     // A default export has no name to register under.
     rejects(
         "reject-default-export-kind",
@@ -4331,6 +4325,56 @@ fn a_plugin_package_runs_under_its_locked_grant() {
             "denied": "sp_fetch_host_denied",
         })
     );
+}
+
+/// A plugin package may ship `"use client"` islands. Each one is a `browser` entry in the lock, so
+/// a new island is a lock diff the owner reviews: `--frozen` refuses one the lock doesn't list, and
+/// an entry the owner removed stays removed.
+#[test]
+fn a_plugin_island_is_a_browser_entry_in_its_lock() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("widget");
+    copy(&root().join("tests/fixtures/plugin-client"), &project);
+    let island = "node_modules/spacepress-plugin-widget/src/Counter.tsx";
+    let lock = project.join("sp/_generated/plugins.lock.json");
+
+    let refused = first().args(["build", "--frozen"]).arg(&project).output().unwrap();
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(refused.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("plugin \"widget\" (spacepress-plugin-widget@1.0.0) isn't in"),
+        "{stderr}"
+    );
+
+    let out = first().arg("build").arg(&project).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    assert!(stderr.contains(&format!("+ browser: {island}")), "{stderr}");
+    let written: serde_json::Value = serde_json::from_slice(&std::fs::read(&lock).unwrap()).unwrap();
+    assert_eq!(
+        written["plugins"]["widget"]["grant"]["browser"],
+        serde_json::json!([island])
+    );
+    let out = first().args(["build", "--frozen"]).arg(&project).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+
+    // The owner removes the island from the grant; the unchanged package is refused, with or
+    // without --frozen, at the island's file.
+    let mut narrowed = written.clone();
+    narrowed["plugins"]["widget"]["grant"]["browser"] = serde_json::json!([]);
+    std::fs::write(&lock, serde_json::to_string_pretty(&narrowed).unwrap()).unwrap();
+    for args in [&["build"][..], &["build", "--frozen"]] {
+        let refused = first().args(args).arg(&project).output().unwrap();
+        let stderr = String::from_utf8_lossy(&refused.stderr);
+        assert_eq!(refused.status.code(), Some(1), "{args:?}: {stderr}");
+        assert!(
+            stderr.contains(&format!(
+                "plugin \"widget\" ships the browser island {island}; sp/_generated/plugins.lock.json grants it no `browser`"
+            )),
+            "{args:?}: {stderr}"
+        );
+        assert!(stderr.contains(&format!("--> {island}:1:1")), "{args:?}: {stderr}");
+    }
 }
 
 /// One large imported function in the shape of picomatch's `parse.js`: a token loop whose

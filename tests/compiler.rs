@@ -4327,6 +4327,34 @@ fn a_plugin_package_runs_under_its_locked_grant() {
     );
 }
 
+/// A `"use client"` route file is a page, not an island: two of them with the same default export
+/// name build.
+#[test]
+fn use_client_route_files_are_pages_not_islands() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("clientroutes");
+    for (file, source) in [
+        (
+            "spacepress.config.ts",
+            "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"clientroutes\" });\n",
+        ),
+        (
+            "sp/app/page.tsx",
+            "\"use client\";\nexport default function Page() { return <main>Home</main>; }\n",
+        ),
+        (
+            "sp/app/about/page.tsx",
+            "\"use client\";\nexport default function Page() { return <main>About</main>; }\n",
+        ),
+    ] {
+        let path = project.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    }
+    let out = first().arg("check").arg(&project).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
 /// A plugin package may ship `"use client"` islands. Each one is a `browser` entry in the lock, by
 /// `<package>/<path>` and a hash of its code, so a new or changed island is a lock diff the owner
 /// reviews: `--frozen` refuses one the lock doesn't list, and the owner can remove an entry, which
@@ -4381,6 +4409,14 @@ fn a_plugin_island_is_a_browser_entry_in_its_lock() {
     let (code, stderr) = build(&["build"]);
     assert_eq!(code, Some(0), "{stderr}");
     assert_eq!(browser(), approved);
+
+    // A stylesheet the island's own stylesheet `@import`s is browser code too.
+    let theme = project.join("node_modules/spacepress-plugin-widget/src/theme.css");
+    std::fs::write(&theme, ".counter { color: blue; }\n").unwrap();
+    let (code, stderr) = build(&["build", "--frozen"]);
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(stderr.contains(&format!("grants it only {}", approved[0])), "{stderr}");
+    std::fs::write(&theme, ".counter { color: red; }\n").unwrap();
 
     // The owner removes the island from the grant; the unchanged package is refused, with or
     // without --frozen, at the island's file.

@@ -675,11 +675,13 @@ fn components(
         .chain(&server_roots)
         .map(|r| span_key(&r.closure.func))
         .collect();
-    for module in program
-        .modules
-        .iter()
-        .filter(|m| m.use_client && !listed.contains(&m.id))
-    {
+    // Only installed packages: a `"use client"` route file in sp/app/ is a page, not an island.
+    let app = crate::plugins::package_root(program, &program.modules[program.entry].path);
+    for module in program.modules.iter().filter(|m| {
+        m.use_client
+            && !listed.contains(&m.id)
+            && crate::plugins::package_root(program, &m.path).is_some_and(|root| Some(&root) != app.as_ref())
+    }) {
         let exports = ev.run_module(module.id)?;
         let path = module
             .path

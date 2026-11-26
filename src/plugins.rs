@@ -267,9 +267,9 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
             .collect();
         files.sort();
         // Each island by `<package>/<path in package>` and a hash of its browser code (the island and
-        // the relative modules it imports), so a package update that changes an approved island is a
-        // lock change too. Neither depends on where the package sits on disk: a linked or hoisted
-        // package resolves outside the project.
+        // what it imports), so a package update that changes an approved island is a lock change
+        // too. Neither depends on where the package sits on disk: a linked or hoisted package
+        // resolves outside the project.
         plugins[i].islands = files
             .iter()
             .filter(|(_, m)| program.modules[*m].use_client)
@@ -280,21 +280,15 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
                     start: 0,
                     end: 0,
                 };
-                let path = in_package(&plugins[i], &module.path).unwrap_or_else(|| name.clone());
-                (format!("{path}@{}", browser_digest(program, *m, &plugins[i])), span)
+                let path = package_path(program, &module.path).unwrap_or_else(|| name.clone());
+                (format!("{path}@{}", browser_digest(program, *m)), span)
             })
             .collect();
         let mut hash = Sha256::new();
         for (name, m) in files {
             hash.update(name.as_bytes());
             hash.update([0]);
-            hash.update(
-                program
-                    .fs
-                    .read_to_string(&program.modules[m].path)
-                    .unwrap_or_default()
-                    .as_bytes(),
-            );
+            hash.update(program.fs.read(&program.modules[m].path).unwrap_or_default());
             hash.update([0]);
         }
         plugins[i].integrity = format!("sha256-{}", crate::hex(hash.finalize()));
@@ -302,19 +296,25 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
     Ok(())
 }
 
-/// `<package>/<path>` for a file inside the plugin's package.
-fn in_package(plugin: &Plugin, path: &Path) -> Option<String> {
-    let rest = path.strip_prefix(&plugin.root).ok()?;
-    Some(format!(
-        "{}/{}",
-        plugin.package,
-        rest.to_string_lossy().replace('\\', "/")
-    ))
+/// `<package>/<path in package>` for a file in an installed package, named by its own manifest.
+fn package_path(program: &Program, path: &Path) -> Option<String> {
+    let root = package_root(program, path)?;
+    let name = program
+        .fs
+        .read_to_string(&root.join("package.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<Json>(&s).ok())?
+        .get("name")?
+        .as_str()?
+        .to_string();
+    let rest = path.strip_prefix(&root).ok()?;
+    Some(format!("{name}/{}", rest.to_string_lossy().replace('\\', "/")))
 }
 
 /// `sha256-<hex>` over a `"use client"` module and every module it imports, each named as
-/// [`in_package`] names it (the file name alone for one outside the package).
-fn browser_digest(program: &Program, island: usize, plugin: &Plugin) -> String {
+/// [`package_path`] names it (the file name alone otherwise). A stylesheet counts as its bundled
+/// output, so the files it `@import`s and the assets its `url()`s name count too.
+fn browser_digest(program: &Program, island: usize) -> String {
     let mut reached = BTreeSet::from([island]);
     let mut queue = vec![island];
     while let Some(m) = queue.pop() {
@@ -326,21 +326,27 @@ fn browser_digest(program: &Program, island: usize, plugin: &Plugin) -> String {
             }
         }
     }
-    let mut files: Vec<(String, &Path)> = reached
+    let mut files: Vec<(String, usize)> = reached
         .iter()
         .map(|&m| {
             let path = program.modules[m].path.as_path();
-            let name = in_package(plugin, path)
+            let name = package_path(program, path)
                 .unwrap_or_else(|| path.file_name().unwrap_or_default().to_string_lossy().into_owned());
-            (name, path)
+            (name, m)
         })
         .collect();
     files.sort();
     let mut hash = Sha256::new();
-    for (name, path) in files {
+    for (name, m) in files {
         hash.update(name.as_bytes());
         hash.update([0]);
-        hash.update(program.fs.read_to_string(path).unwrap_or_default().as_bytes());
+        match program.assets.get(&m) {
+            Some(asset) => {
+                hash.update(&asset.bytes);
+                hash.update(asset.text.as_deref().unwrap_or_default().as_bytes());
+            }
+            None => hash.update(program.fs.read(&program.modules[m].path).unwrap_or_default()),
+        }
         hash.update([0]);
     }
     format!("sha256-{}", crate::hex(hash.finalize()))

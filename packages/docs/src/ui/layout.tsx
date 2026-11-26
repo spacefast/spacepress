@@ -2,6 +2,7 @@
 // actions and pager, and the table of contents. All server components: the page works, links and
 // prints without JavaScript; the islands (search, tabs, the enhancer) add to it.
 import { Content, Link, type ReactNode } from "spacepress/app";
+import type { JSX } from "spacepress/jsx-runtime";
 import type { Heading, NavItem, PagerLink } from "spacepress/content";
 import { Icon } from "./Icon";
 
@@ -23,6 +24,7 @@ export interface DocsSite {
   github?: string;
   /** The branch and folder the docs' Markdown lives in, for "Edit this page" (`main/www/content/docs`). */
   editPath?: string;
+  resources?: { title: string; href: string }[];
 }
 
 /** The sidebar: each section a collapsible group, the current page and its ancestors open. */
@@ -34,7 +36,7 @@ export function Sidebar({ items, label = "Docs" }: { items: NavItem[]; label?: s
   );
 }
 
-function SidebarList({ items, depth }: { items: NavItem[]; depth: number }): ReactNode {
+function SidebarList({ items, depth }: { items: NavItem[]; depth: number }): JSX.Element {
   return (
     <ul className={depth === 0 ? "sd-nav sd-nav-root" : "sd-nav"}>
       {items.map((item) =>
@@ -89,7 +91,7 @@ export function Breadcrumbs({ items, home }: { items: NavItem[]; home?: { title:
       <ol>
         {home && (
           <li>
-            <Link href={home.href}>{home.title}</Link>
+            <a href={home.href}>{home.title}</a>
           </li>
         )}
         {path.slice(0, -1).map((item) => (
@@ -181,27 +183,33 @@ export function PageActions({
         <summary className="sd-action" aria-label="More page actions">
           <Icon name="chevron-down" size={14} />
         </summary>
-        <div className="sd-action-list" role="menu">
-          <a role="menuitem" href={markdown}>
+        <div className="sd-action-list">
+          <a href={markdown}>
             <Icon name="file-text" size={16} />
             <span>
               View as Markdown<small>The page as plain text</small>
             </span>
           </a>
-          <a role="menuitem" href={`https://chatgpt.com/?q=${encodeURIComponent(prompt)}`} target="_blank" rel="noopener noreferrer">
+          <a href={`https://chatgpt.com/?q=${encodeURIComponent(prompt)}`} target="_blank" rel="noopener noreferrer">
             <Icon name="message-square" size={16} />
             <span>
               Open in ChatGPT<small>Ask about this page</small>
             </span>
           </a>
-          <a role="menuitem" href={`https://claude.ai/new?q=${encodeURIComponent(prompt)}`} target="_blank" rel="noopener noreferrer">
+          <a href={`https://claude.ai/new?q=${encodeURIComponent(prompt)}`} target="_blank" rel="noopener noreferrer">
             <Icon name="sparkles" size={16} />
             <span>
               Open in Claude<small>Ask about this page</small>
             </span>
           </a>
+          {site.resources?.map((resource) => (
+            <a key={resource.href} href={resource.href}>
+              <Icon name="file-text" size={16} />
+              <span>{resource.title}</span>
+            </a>
+          ))}
           {edit && (
-            <a role="menuitem" href={edit} target="_blank" rel="noopener noreferrer">
+            <a href={edit} target="_blank" rel="noopener noreferrer">
               <Icon name="pencil" size={16} />
               <span>
                 Edit on GitHub<small>Suggest a change</small>
@@ -256,10 +264,10 @@ export function DocPage({
             <Icon name="menu" size={16} />
             <span>Menu</span>
           </summary>
-          <Sidebar items={tree} />
+          <Sidebar items={tree} label={home?.title} />
         </details>
         <div className="sd-desktop-nav">
-          <Sidebar items={tree} />
+          <Sidebar items={tree} label={home?.title} />
         </div>
       </aside>
       <article className="sd-article" data-sd-article="">

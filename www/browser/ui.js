@@ -321,26 +321,6 @@ document.addEventListener("click", (event) => {
     closeNavDrawer();
   }
 
-  // Toggle mobile Reference menu (CSS-collapsed by default on <=820px for zero CLS)
-  const docsToggle = target.closest("[data-docs-nav-toggle]");
-  if (docsToggle) {
-    const wrap = docsToggle.closest(".sp-docs-nav-wrap");
-    if (wrap) {
-      const open = wrap.classList.toggle("is-open");
-      docsToggle.setAttribute("aria-expanded", String(open));
-    }
-    return;
-  }
-
-  // Close mobile Reference drawer when navigating to a doc
-  if (window.innerWidth <= 820 && target.closest(".sp-docs-nav-wrap a")) {
-    const wrap = target.closest(".sp-docs-nav-wrap");
-    if (wrap) {
-      wrap.classList.remove("is-open");
-      wrap.querySelector("[data-docs-nav-toggle]")?.setAttribute("aria-expanded", "false");
-    }
-  }
-
   const anchorBtn = target.closest(".sp-heading-anchor");
   if (anchorBtn) {
     event.preventDefault();
@@ -404,7 +384,7 @@ document.addEventListener("click", (event) => {
   }
 });
 
-// Sticky Table of Contents scroll spy on /handbook and /docs (rebinds after SPA navigation)
+// Sticky Table of Contents scroll spy on /handbook (rebinds after SPA navigation)
 let tocObserver = null;
 let lastTocEl = null;
 
@@ -443,7 +423,7 @@ function bindToc() {
 }
 
 function attachHeadingAnchors() {
-  for (const heading of document.querySelectorAll(".sp-docs-article h2[id], .sp-docs-article h3[id], .sp-guide-section[id] > h2, .sp-guide-article h3[id]")) {
+  for (const heading of document.querySelectorAll(".sp-guide-section[id] > h2, .sp-guide-article h3[id]")) {
     if (heading.querySelector(".sp-heading-anchor")) continue;
     const id = heading.id || heading.closest("section[id]")?.id;
     if (!id) continue;

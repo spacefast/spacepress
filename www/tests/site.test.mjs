@@ -58,10 +58,27 @@ test("reference navigation opens synced Markdown and its code examples", async (
   await page.waitForURL("**/docs/core/pages-and-islands/");
   assert.equal(await page.locator("h1").textContent(), "Pages, Layouts & Interactive Islands");
   assert.ok(await page.getByRole("navigation", { name: "Reference", exact: true }).locator("a").count() > 1);
-  assert.ok(await page.getByRole("complementary", { name: "On this page" }).locator("a").count() > 0);
-  const code = page.locator(".sp-docs-article pre code").filter({ hasText: "wp.posts.extend" }).first();
-  await code.waitFor({ state: "attached" });
+  assert.ok(await page.getByRole("navigation", { name: "On this page" }).locator("a").count() > 0);
+  await page.locator(".sd-prose sp-code.sp-drawn").first().waitFor();
+  assert.ok(await page.getByRole("navigation", { name: "Breadcrumbs" }).getByRole("link", { name: "Core Framework" }).count());
+  assert.ok(await page.getByRole("navigation", { name: "Previous and next pages" }).locator("a").count());
+
+  const plain = await open(t, "/docs/core/pages-and-islands/", { javaScriptEnabled: false, viewport: { width: 390, height: 800 } });
+  const code = plain.locator(".sd-prose pre code").filter({ hasText: "wp.posts.extend" }).first();
   assert.match(await code.textContent(), /import \{ wp \} from "spacepress"/);
+  await plain.locator(".sd-mobile-nav > summary").click();
+  assert.ok(await plain.getByRole("navigation", { name: "Reference", exact: true }).getByRole("link", { name: "Pages, Layouts & Interactive Islands" }).isVisible());
+
+  await page.getByRole("button", { name: "Switch between light and dark" }).click();
+  const theme = await page.locator("html").getAttribute("data-theme");
+  assert.ok(theme === "dark" || theme === "light");
+  await page.reload();
+  await page.waitForFunction((value) => document.documentElement.dataset.theme === value, theme);
+  await page.getByLabel("More page actions").click();
+  const markdown = page.getByRole("link", { name: /View as Markdown/ });
+  assert.equal(await markdown.getAttribute("href"), "/md/docs/core/pages-and-islands.md");
+  const source = page.getByRole("link", { name: /Edit on GitHub/ });
+  assert.match(await source.getAttribute("href"), /www\/content\/docs\/core\/pages-and-islands\.md$/);
 });
 
 async function tasks(t) {

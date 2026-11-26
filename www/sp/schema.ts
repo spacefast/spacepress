@@ -1,13 +1,8 @@
-import { wp, collection, table, text, slug, richText, json, integer, timestamp } from "spacepress";
+import { wp, table, text, json, integer, timestamp } from "spacepress";
 
-// The docs: each file under content/docs/ is one doc. Its name is its slug, its folder its
-// parent, and a folder's index.md the page the folder stands for.
-export const docs = collection({
-  title: text(),
-  slug: slug({ source: "title" }),
-  content: richText().optional(),
-  description: text().optional(),
-}, { label: "Docs", hierarchical: true, url: "/docs/:path", sync: "content/docs/**/*.md", access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+import { createDocsCollection } from "@spacepress/docs/schema";
+
+export const docs = createDocsCollection();
 
 // The blog: WordPress's own posts. Written in the WordPress editor, SpacePress Admin, or as Markdown in
 // content/posts/; `sp/app/blog/[slug]/page.tsx` renders each one in the site's layout. Posts have their

@@ -1977,54 +1977,35 @@ a.sp-deploy-card:hover .sp-wpcloud-logo {
 }
 .sp-callout strong { color: var(--ink); font-weight: 500; }
 
-/* Docs: navigation, article, on-this-page */
-.sp-docs-layout {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 196px;
-  gap: clamp(24px, 2.8vw, 44px);
-  padding: 48px 0 96px;
-  align-items: start;
-}
-@media (max-width: 1120px) {
-  .sp-docs-layout { grid-template-columns: 220px minmax(0, 1fr); }
-  .sp-docs-toc { display: none; }
-}
-@media (max-width: 820px) {
-  .sp-docs-layout { grid-template-columns: minmax(0, 1fr); padding-top: 24px; }
+.sp-reference {
+  --sd-header-height: calc(64px + var(--gutter));
+  --sd-font: var(--font-sans);
+  --sd-font-mono: var(--font-mono);
 }
 
-.sp-docs-nav ul { list-style: none; padding: 0; margin: 0; }
-.sp-docs-nav ul ul { padding-left: 12px; margin: 2px 0 2px 10px; border-left: 1px solid var(--border); }
-.sp-docs-nav li { margin: 1px 0; }
-.sp-docs-nav a {
-  display: block;
-  padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--ink-muted);
-  text-decoration: none;
-  transition: background 0.15s, color 0.15s;
+.sp-reference:has(.sd-docs) {
+  margin-top: var(--gutter);
+  background: var(--sd-bg);
+  color: var(--sd-ink);
+  color-scheme: var(--sd-color-scheme);
 }
-.sp-docs-nav a:hover { color: var(--ink); text-decoration: none; }
-.sp-docs-nav li.is-current > a { background: var(--fill); color: var(--ink); }
+.sp-reference:not(:has(.sd-docs)) .sp-reference-toolbar { display: none; }
+.sp-reference-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  max-width: var(--sd-page-width);
+  margin: 0 auto;
+  padding: 16px 24px 0;
+}
 
-.sp-docs-article {
-  min-width: 0;
-}
-.sp-docs-article h1 {
-  margin: 0 0 14px;
-  font-size: clamp(2rem, 3.6vw, 2.75rem);
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  line-height: 1.08;
-}
 .sp-docs-lead {
   font-size: 1.2rem;
   line-height: 1.5;
   color: var(--ink-secondary);
   margin: 0 0 32px;
 }
-.sp-docs-article pre, .sp-prose pre {
+
+.sp-prose pre {
   background: var(--surface-code);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -2035,7 +2016,7 @@ a.sp-deploy-card:hover .sp-wpcloud-logo {
   line-height: 21px;
   color: var(--ink-secondary);
 }
-.sp-docs-article pre code, .sp-prose pre code { background: none; border: none; padding: 0; font-size: 1em; color: inherit; }
+.sp-prose pre code { background: none; border: none; padding: 0; font-size: 1em; color: inherit; }
 /* Markdown code blocks arrive wrapped in WordPress's code block, which brings the theme's light panel. */
 .sp-prose figure.wp-block-code {
   margin: 20px 0;
@@ -2048,31 +2029,6 @@ a.sp-deploy-card:hover .sp-wpcloud-logo {
 .sp-prose figure.wp-block-code pre,
 .sp-prose figure.wp-block-code sp-code,
 .sp-prose figure.wp-block-code sp-tree { margin: 0; }
-
-.sp-pager {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 56px;
-  padding-top: 24px;
-  border-top: 1px solid var(--border);
-}
-.sp-pager a {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px 18px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  min-width: 0;
-  flex: 1;
-  text-decoration: none;
-  transition: border-color 0.15s;
-}
-.sp-pager a:hover { border-color: var(--border-strong); text-decoration: none; }
-.sp-pager small { font-size: 13px; color: var(--ink-muted); }
-.sp-pager strong { font-size: 15px; font-weight: 500; color: var(--ink); }
-.sp-pager a.is-next { text-align: right; }
 
 /* Quick start: a real sequence, so the steps keep their numbers, without card chrome */
 .sp-steps {
@@ -2501,40 +2457,4 @@ h3:hover .sp-heading-anchor,
 }
 @media (hover: none) {
   .sp-heading-anchor { opacity: 0.5; }
-}
-
-/* Collapsible mobile Reference nav (CSS-collapsed on <=820px for zero CLS) */
-.sp-docs-nav-summary {
-  display: none;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink);
-  text-align: left;
-}
-.sp-docs-nav-summary::after {
-  content: "▾";
-  color: var(--ink-muted);
-}
-.sp-docs-nav-wrap.is-open > .sp-docs-nav-summary::after { content: "▴"; }
-@media (max-width: 820px) {
-  .sp-docs-nav-summary { display: flex; }
-  .sp-docs-nav-wrap > .sp-docs-nav { display: none; }
-  .sp-docs-nav-wrap.is-open > .sp-docs-nav {
-    display: block;
-    margin-top: 10px;
-    padding: 14px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--surface);
-  }
-  .sp-docs-nav .sp-toc-title { display: none; }
 }

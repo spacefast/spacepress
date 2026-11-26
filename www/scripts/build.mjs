@@ -27,6 +27,7 @@ mkdirSync(join(out, "playground-plugins"), { recursive: true });
 const sources = Bun.spawnSync(["node", join(here, "sources.mjs")]);
 if (sources.exitCode !== 0) throw new Error(`sources.mjs failed:\n${sources.stderr.toString()}`);
 
+const aiStats = generateAiAssets();
 const runData = Bun.spawnSync(["node", join(here, "run-data.ts")], { cwd: site });
 if (runData.exitCode !== 0) throw new Error(`run-data.ts failed:\n${runData.stderr.toString()}`);
 writeFileSync(join(out, "play-data.json"), runData.stdout);
@@ -70,7 +71,6 @@ const notice = ["@pierre/diffs", "@pierre/trees"].map((pkg) => {
 }).join("\n\n----------------------------------------\n\n");
 writeFileSync(join(out, "third-party-licenses.txt"), `This site renders code, file trees and diffs with these libraries.\nsite.js contains parts of them.\n\n${notice}\n`);
 
-const aiStats = generateAiAssets();
 let ghStars = { repo: "spacefast/spacepress", public: false, stars: null };
 if (process.env.WWW_FETCH_GITHUB_STARS === "1") try {
   const gh = Bun.spawnSync(["gh", "api", "repos/spacefast/spacepress", "--jq", "{public:(.visibility==\"public\"),stars:.stargazers_count}"]);

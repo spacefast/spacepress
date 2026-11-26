@@ -1,5 +1,11 @@
 import type { NavItem } from "spacepress/content";
-import type { SearchEntry } from "./ui/Search";
+
+export interface SearchEntry {
+  title: string;
+  href: string;
+  section: string;
+  description: string;
+}
 
 /**
  * Every page of a docs tree as a search entry, its section the top-level group it sits in.

@@ -77,6 +77,7 @@ export function generateAiAssets() {
   const postsDir = join(site, "content", "posts");
 
   const docEntries = [];
+  const docSources = {};
   for (const file of walkMd(docsDir).sort()) {
     const rel = relative(docsDir, file).replace(/\\/g, "/");
     const raw = readFileSync(file, "utf8");
@@ -85,6 +86,7 @@ export function generateAiAssets() {
     const docPath = isIndex
       ? rel.replace(/(^|\/)index\.md$/, "")
       : rel.replace(/\.md$/, "");
+    docSources[docPath] = rel;
     const section = docPath.includes("/") ? docPath.split("/")[0] : "overview";
     const title = meta.title || docPath.split("/").pop() || "Reference";
     const description = meta.description || "";
@@ -109,6 +111,10 @@ export function generateAiAssets() {
       mdText,
     });
   }
+
+  const sourceDir = join(site, "sp", "data");
+  mkdirSync(sourceDir, { recursive: true });
+  writeFileSync(join(sourceDir, "doc-sources.ts"), `export const docSources: Record<string, string> = ${JSON.stringify(docSources, null, 2)};\n`);
 
   docEntries.sort((a, b) => a.section.localeCompare(b.section) || a.order - b.order || a.title.localeCompare(b.title));
 

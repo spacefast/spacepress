@@ -46,7 +46,7 @@ export * from "@spacepress/docs/blocks";
 
 <Step title="Render the pages">
 ```tsx title="sp/app/docs/[...path]/page.tsx"
-import { docs } from "spacepress:db";
+import { docs } from "spacepress/server/db";
 import type { PageProps } from "spacepress/app";
 import { headings, nav, pager } from "spacepress/content";
 import { DocPage } from "@spacepress/docs";

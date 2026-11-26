@@ -8,9 +8,9 @@
 export * from "./schema";
 export * from "./blocks";
 export { Breadcrumbs, DocPage, type DocItem, type DocsSite, PageActions, Pager, Sidebar, TableOfContents, trail } from "./ui/layout";
-export { DocsSearch, type SearchEntry } from "./ui/Search";
+export { DocsSearch } from "./ui/Search";
 export { DocsEnhancements } from "./ui/Enhance";
 export { ThemeToggle, themeScript } from "./ui/theme";
 export { DocsShell, type HeaderLink } from "./ui/shell";
 export { hasIcon } from "./ui/Icon";
-export { searchEntries } from "./entries";
+export { searchEntries, type SearchEntry } from "./entries";

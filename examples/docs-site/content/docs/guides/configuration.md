@@ -11,7 +11,7 @@ publishedAt: 2026-11-26T17:23:51.000Z
 `DocsShell` draws the header and footer. It takes the site's `title`, a one-letter `mark`, top `links`, a `github` repository and the `search` entries.
 
 ```tsx title="sp/app/layout.tsx"
-import { docs } from "spacepress:db";
+import { docs } from "spacepress/server/db";
 import type { LayoutProps } from "spacepress/app";
 import { nav } from "spacepress/content";
 import { DocsShell, searchEntries } from "@spacepress/docs";

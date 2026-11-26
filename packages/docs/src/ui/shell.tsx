@@ -3,7 +3,7 @@
 import { Link, type ReactNode } from "spacepress/app";
 import { Icon } from "./Icon";
 import { DocsEnhancements } from "./Enhance";
-import { DocsSearch, type SearchEntry } from "./Search";
+import { DocsSearch } from "./Search";
 import { ThemeToggle } from "./theme";
 
 export interface HeaderLink {
@@ -28,7 +28,7 @@ export function DocsShell({
   /** `owner/name` on GitHub. */
   github?: string;
   /** Every page search can find; without it the header has no search. */
-  search?: SearchEntry[];
+  search?: unknown;
   footer?: ReactNode;
   children?: ReactNode;
 }) {
@@ -43,14 +43,14 @@ export function DocsShell({
           {links.length > 0 && (
             <nav className="sd-header-nav" aria-label="Main">
               {links.map((link) => (
-                <Link key={link.href} href={link.href}>
+                <a key={link.href} href={link.href}>
                   {link.label}
-                </Link>
+                </a>
               ))}
             </nav>
           )}
           <div className="sd-header-actions">
-            {search && <DocsSearch entries={search} />}
+            {Array.isArray(search) && <DocsSearch entries={search} />}
             {github && (
               <a className="sd-icon-button" href={`https://github.com/${github}`} target="_blank" rel="noopener noreferrer" aria-label="GitHub">
                 <Icon name="github" size={16} />

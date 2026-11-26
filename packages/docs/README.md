@@ -1,6 +1,6 @@
 # `@spacepress/docs`
 
-A documentation site for a [SpacePress](https://spacepress.dev) app. The docs are Markdown files in a hierarchical WordPress collection. The package renders them with a three-column layout, search, page actions, a light and dark theme, and Markdown components such as callouts, cards, steps, tabs and file trees.
+A documentation site for a [SpacePress](https://spacepress.dev) app. Docs are Markdown files in a hierarchical WordPress collection. The package renders them with a three-column layout, search, page actions, a light and dark theme, and Markdown components such as callouts, cards, steps, tabs and file trees.
 
 Pages work without JavaScript. Two islands add to them: `DocsSearch` (the search dialog) and `DocsEnhancements` (code copy buttons, "Copy page", heading anchors, the table of contents following the reader, tab strips and the theme switch).
 
@@ -32,7 +32,7 @@ export * from "@spacepress/docs/blocks";
 
 ```tsx
 // sp/app/layout.tsx
-import { docs } from "spacepress:db";
+import { docs } from "spacepress/server/db";
 import type { LayoutProps } from "spacepress/app";
 import { nav } from "spacepress/content";
 import { DocsShell, searchEntries } from "@spacepress/docs";
@@ -50,12 +50,12 @@ export default async function Root({ children }: LayoutProps) {
 
 ```tsx
 // sp/app/docs/[...path]/page.tsx
-import { docs } from "spacepress:db";
-import type { PageProps } from "spacepress/app";
+import { docs } from "spacepress/server/db";
+import type { PageProps } from "./$types";
 import { headings, nav, pager } from "spacepress/content";
 import { DocPage } from "@spacepress/docs";
 
-export default async function Doc({ item, params }: PageProps<"docs/[...path]">) {
+export default async function Doc({ item, params }: PageProps) {
   const { prev, next } = await pager(docs, item);
   const path = params.path.join("/");
   return (
@@ -67,11 +67,12 @@ export default async function Doc({ item, params }: PageProps<"docs/[...path]">)
       headings={headings(item)}
       markdown={`/docs/${path}.md`}
       site={{ title: "Acme Docs", github: "acme/docs", editPath: "main/content/docs" }}
-      source={`${path}.md`}
     />
   );
 }
 ```
+
+Set `source` to the actual Markdown path under `site.editPath` to add an Edit on GitHub link. For a section index, pass its path including `index.md`.
 
 So the remembered theme applies before the page paints, serve `themeScript` as a file in `public/` and list it in the layout's `metadata.scripts`, as above.
 

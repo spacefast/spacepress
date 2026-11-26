@@ -1,4 +1,4 @@
-import { docs } from "spacepress:db";
+import { docs } from "spacepress/server/db";
 import type { LayoutProps } from "spacepress/app";
 import { nav } from "spacepress/content";
 import { DocsShell, searchEntries } from "@spacepress/docs";

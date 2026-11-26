@@ -37,12 +37,17 @@ const examples: Record<string, unknown> = {};
 // what it compiles to. Leave out public/, which contains binary build assets.
 {
   const dir = path.join(here, "..");
-  const files = sources(dir, ["spacepress.config.ts", "tsconfig.json", "sp"]);
+  const files = sources(dir, [
+    "spacepress.config.ts", "tsconfig.json", "sp",
+    "node_modules/@spacepress/docs/package.json", "node_modules/@spacepress/docs/src",
+  ]);
   const history = ledger(dir, false);
   const output = await compileFiles(runRequest("spacepress-site", files, history));
   Object.assign(history.files, Object.fromEntries(output.migrations));
   const lock = JSON.parse(readFileSync(path.join(dir, "sp/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
-  const shown = Object.keys(files).filter((file) => isWritten(file) && file !== "sp/data/sources.ts" && file !== "tsconfig.json");
+  const shown = Object.keys(files).filter((file) => isWritten(file) &&
+    !file.startsWith("node_modules/") && !file.startsWith("sp/data/") &&
+    file !== "tsconfig.json");
   examples.website = {
     title: "spacepress.dev (This website)",
     summary: "The official SpacePress site: its schema, server actions, background jobs, Markdown-synced docs & blog, and TSX pages.",

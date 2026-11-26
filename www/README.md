@@ -4,7 +4,7 @@ The official website and documentation for **SpacePress** (`https://spacepress.d
 
 ## What's Inside
 
-- `spacepress.config.ts` & `sp/schema.ts` — defines the hierarchical `docs` collection (`content/docs/**/*.md`), `posts` (`wp.posts.extend` synced from `content/posts/*.md` with comments), `shares` SQL table (saved Playground edits), and `examples` SQL table (curated showcase with GitHub star counts)
+- `spacepress.config.ts` & `sp/schema.ts` — imports the hierarchical `docs` collection from `@spacepress/docs` (`content/docs/**/*.md`), `posts` (`wp.posts.extend` synced from `content/posts/*.md` with comments), `shares` SQL table (saved Playground edits), and `examples` SQL table (curated showcase with GitHub star counts)
 - `sp/server.ts` — `share` public action, `refreshStars` Action Scheduler background job, and `refreshStarsNow` admin action
 - `sp/app/` — Convex-inspired landing page (`/`), Quick Start (`/quick-start`), 14-section Interactive Engineering Handbook (`/handbook`, with `/guide` redirect), Browser Playground (`/play`), Documentation (`/docs` & `/docs/[...path]`), Examples (`/examples` & `/api/examples.json`), and Blog (`/blog` & `/blog/[slug]`)
 - `browser/` — client scripts bundled into `public/site.js` (`@pierre/diffs`, `@pierre/trees`, `<sp-sandbox>` inline WASM compiler, `<sp-play>` full Playground + WordPress Playground runner, copy buttons, and sticky TOC scroll spy)

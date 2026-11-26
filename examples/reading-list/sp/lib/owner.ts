@@ -1,4 +1,5 @@
-import { HttpError, integer, type AccessCtx, type HookCtx } from "spacepress";
+import { integer, type AccessCtx, type HookCtx } from "spacepress";
+import { HttpError } from "spacepress/server";
 
 // Set by the server from the signed-in user; a client can't write it.
 export const ownerId = integer().access({ create: false, update: false });

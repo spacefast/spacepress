@@ -1,7 +1,8 @@
 // Every action, access rule, and `.validate` closure here runs under Node and as compiled PHP;
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
 import { collection, text, integer, defineConfig, json as jsonField, group, repeater, blocks, table } from "spacepress";
-import { job, once, mutation } from "spacepress"; // lane D
+import { job, mutation } from "spacepress";
+import { once } from "spacepress/server"; // lane D
 import * as ns from "./namespace.mjs";
 import picoish from "./namespace.mjs";
 import { jsAbort as jsAbortImpl, jsCollections as jsCollectionsImpl, jsTimers as jsTimersImpl } from "./stdlib.js";

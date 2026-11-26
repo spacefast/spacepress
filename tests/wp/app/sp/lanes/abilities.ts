@@ -1,6 +1,7 @@
 // Lane fragment for the WP test app; only this lane edits this file. Every kind, action and job it
 // exports registers under its export name, and a name another lane or the app uses fails the build.
-import { adminScreen, db, item, query, mutation, HttpError } from "spacepress";
+import { adminScreen, item, query, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 import { comments } from "../blog/spacepress.config.ts";
 function refsHelper() { return 1; }
 const refsSaved: { f?: () => number } = {};

@@ -1,3 +1,17 @@
 {
-  "compilerOptions": { "jsx": "react-jsx" }
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "rootDirs": [
+      ".",
+      "./sp/_generated/types"
+    ],
+    "paths": {
+      "spacepress/client": [
+        "../../packages/client/src/index.d.ts"
+      ],
+      "spacepress/react": [
+        "../../packages/client/src/react.d.ts"
+      ]
+    }
+  }
 }

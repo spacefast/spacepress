@@ -73,6 +73,28 @@ test('a new project includes the starter sources and the README names an existin
   for (const name of shown) assert.ok(modules.includes(name), `spacepress add ${name} is not a module: ${add.summary}`);
 });
 
+test('scaffolder supports --dir to place the SpacePress app root in a custom folder', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'spacepress-scaffold-dir-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const app = join(root, 'coexist-app');
+  const { SP_BIN: _, ...env } = process.env;
+  const created = (await exec(process.execPath, [command, app, '--dir', 'cms', '--no-install'], { cwd: root, env })).stdout;
+  assert.match(created, /cms\/app\/page\.tsx/);
+  const cfg = await readFile(join(app, 'spacepress.config.ts'), 'utf8');
+  assert.match(cfg, /dir:\s*"cms"/);
+  const tsconfig = JSON.parse(await readFile(join(app, 'tsconfig.json'), 'utf8'));
+  assert.ok(tsconfig.include.includes('cms'));
+  assert.ok(tsconfig.exclude.includes('cms/dist'));
+  const gitignore = await readFile(join(app, '.gitignore'), 'utf8');
+  assert.match(gitignore, /cms\/dist\//);
+  const files = (await readdir(join(app, 'cms'), { recursive: true, withFileTypes: true }))
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(join(app, 'cms'), join(entry.parentPath, entry.name)).split(sep).join('/'))
+    .sort();
+  assert.ok(files.includes('app/page.tsx'));
+  assert.ok(files.includes('actions.ts'));
+});
+
 test('the scaffold builds and renders every page on WordPress', { skip: !process.env.SP_BIN && 'Set SP_BIN to the built compiler to run WordPress' }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'spacepress-starter-'));
   t.after(() => rm(root, { recursive: true, force: true }));

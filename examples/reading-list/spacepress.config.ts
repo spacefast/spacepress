@@ -1,10 +1,8 @@
 // A reading list that uses each part of a SpacePress app once: a WordPress collection, a SQL table,
 // per-user access, hooks, an action, a background job, and (in sp/app/) a public route that
 // uses two npm packages.
-import {
-  collection, table, text, integer, timestamp, richText, slug,
-  defineConfig, job, db, HttpError, ref, mutation,
-} from "spacepress";
+import { collection, table, text, integer, timestamp, richText, slug, defineConfig, job, ref, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 import { mine, ownerId, signedIn } from "./sp/lib/owner";
 
 // A collection is stored as WordPress posts, so it gets the editor, drafts and revisions.

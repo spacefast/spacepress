@@ -1,5 +1,5 @@
 import { defineConfig, mutation } from "spacepress";
-import { esc_html, get_current_user_id, get_option, get_permalink, get_post, get_userdata, update_option, wp_insert_post, current_user_can } from "php/wordpress";
+import { esc_html, get_current_user_id, get_option, get_permalink, get_post, get_userdata, update_option, wp_insert_post, current_user_can } from "spacepress/server/wp";
 // Calls core functions as the signed-in user; an empty title makes wp_insert_post fail.
 export const note = mutation({ access: "anyone" }, (input: { title: string }) => {
   if (!current_user_can("edit_posts")) return { allowed: false };

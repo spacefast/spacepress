@@ -1,4 +1,4 @@
-import { examples } from "spacepress:db";
+import { examples } from "spacepress/server/db";
 
 export const guard = "anyone";
 

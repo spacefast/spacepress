@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "spacepress/client";
+import { useState } from "react";
 import { like } from "../server";
 
 export function LikeButton({ postId, count: initial }: { postId: number; count: number }) {

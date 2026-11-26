@@ -11,8 +11,9 @@ publishedAt: 2026-11-21T09:06:00.000Z
 Export `query(options, handler)` for reads and `mutation(options, handler)` for writes. Both accept validated input and are available to client code and WordPress Abilities.
 
 ```ts
-import { HttpError, mutation } from "spacepress";
-import { tasks } from "spacepress:db";
+import { mutation } from "spacepress";
+import { HttpError } from "spacepress/server";
+import { tasks } from "spacepress/server/db";
 
 export const archiveTask = mutation({ access: "editor", idempotent: true }, async ({ id }: { id: number }) => {
   const row = await tasks.update(id, { done: true });
@@ -30,7 +31,7 @@ Call the mutation at `POST /wp-json/spacepress/v1/actions/archiveTask`. Queries 
 ## Transactional hooks & WordPress hooks
 
 - Chain `.on({ beforeCreate, afterCreate, beforeUpdate, afterUpdate, beforeDelete, afterDelete, afterPublish })` onto any collection or table. Throwing aborts the request and rolls back the transaction.
-- Place typed WordPress core filters/actions in `sp/wp-hooks/<hook>.ts` using `Handler<"...">` from `"php/wordpress"`.
+- Place typed WordPress core filters/actions in `sp/wp-hooks/<hook>.ts` using `Handler<"...">` from `"spacepress/server/wp"`.
 
 ## Custom HTTP routes & private files
 

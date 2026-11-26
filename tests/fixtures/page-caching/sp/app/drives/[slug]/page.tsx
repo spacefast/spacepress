@@ -1,4 +1,4 @@
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 import type { PageProps } from "spacepress/app";
 
 export default async function Drive({ item }: PageProps<"drives/[slug]">) {

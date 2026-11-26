@@ -1,7 +1,7 @@
 "use client";
 // Generator B parity: the first render of client components, compared with React once the
 // compiler's own `data-wp-*` attributes and text spans are set aside.
-import { useState } from "spacepress/client";
+import { useState } from "react";
 
 export function Counter({ start, label }: { start: number; label: string }) {
   const [count, setCount] = useState(start);

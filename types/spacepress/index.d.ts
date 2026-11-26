@@ -1,5 +1,3 @@
-/// <reference path="./db.d.cts" />
-
 /**
  * Type declarations for the `"spacepress"` module.
  *
@@ -52,7 +50,7 @@ export type RetentionConfig =
 /** Which rows a query includes when soft deletes are enabled. Default: `"exclude"`. */
 export type DeletedMode = "exclude" | "include" | "only";
 
-type Awaitable<T> = T | Promise<T>;
+export type Awaitable<T> = T | Promise<T>;
 
 /** Phantom keys: carry type information without showing up in autocomplete. */
 declare const columnBrand: unique symbol;
@@ -1085,7 +1083,7 @@ export interface RevisionDiff<TRow = Record<string, unknown>> {
 }
 
 /**
- * The query API of one kind (spec §3), on what `import { posts } from "spacepress:db"` gives you. Every
+ * The query API of one kind (spec §3), on what `import { posts } from "spacepress/server/db"` gives you. Every
  * call runs as the visitor the request runs as: access rules, draft visibility and field masks
  * apply. Jobs and signed webhooks run as the system. `posts.system` makes the same calls trusted.
  */
@@ -1121,7 +1119,7 @@ export interface KindApi<TSchema extends Schema, TRels, K extends keyof TSchema>
   };
 }
 
-/** The app's kinds by registered name: what `import { posts } from "spacepress:db"` gives you. */
+/** The app's kinds by registered name: what `import { posts } from "spacepress/server/db"` gives you. */
 export type RegisteredKinds = [RegisteredSchema] extends [never]
   ? {}
   : { readonly [K in keyof RegisteredSchema]: RegisteredSchema[K] & KindApi<RegisteredSchema, RegisteredRelations, K> & { readonly system: KindApi<RegisteredSchema, RegisteredRelations, K> } };
@@ -1192,8 +1190,7 @@ export interface Database {
   delete<T extends AnyCollection>(collection: T): DeleteQuery<T>;
 }
 
-/** Available inside hooks and actions; forbidden at build-time evaluation. */
-export declare const db: Database;
+// Note: `db` is exported from `"spacepress/server"`.
 
 // ---------------------------------------------------------------------------
 // 9. Identity and access
@@ -1410,6 +1407,12 @@ export declare function global<TFields extends FieldsConfig>(
 export interface ConfigInput<TLocales extends LocalesConfig = LocalesConfig> {
   /** Project name: plugin slug (`spacepress-<name>`), wp-admin menu, client docs. Default: the project directory name. */
   name?: string;
+  /**
+   * Directory for SpacePress app sources, routes, hooks, `_generated/`, and `dist/`, relative to
+   * `spacepress.config.ts`. Default `"sp"`. Customize this when coexisting with another app in the
+   * same repository.
+   */
+  dir?: string;
   webhooks?: Webhook[];
   /** Import synced content when the standalone plugin starts. Existing editorial content is preserved. */
   seed?: boolean;
@@ -1715,17 +1718,8 @@ export declare function definePlugin<TSchema extends Schema = Schema>(definition
 }): Plugin;
 
 // ---------------------------------------------------------------------------
-// 11. Errors
+// 11. Shared runtime-adjacent types (runtime values live in "spacepress/server")
 // ---------------------------------------------------------------------------
-
-/** Throw from a hook or action to pick the HTTP response. */
-export declare class HttpError extends Error {
-  /** `pointer` names the input field the error is about (`"/email"`), so a form shows it beside that field. */
-  constructor(status: number, code: string, message: string, pointer?: string);
-  readonly status: number;
-  readonly code: string;
-}
-
 
 /** A `job()` or `cron()`: queued with `enqueue`, run off the request by Action Scheduler. */
 export interface Job<TInput = any> {
@@ -1747,7 +1741,7 @@ export declare function job<F extends (input: any, ctx: JobCtx) => Awaitable<voi
 export declare function cron(schedule: string, handler: (input: {}, ctx: JobCtx) => Awaitable<void>): Job<{}>;
 export interface EnqueueOptions { delay?: number; key?: string }
 
-/** The request a `route.ts` (or page) HTTP handler under `sp/app/` receives. Header names are lowercase; the body is the raw text. */
+/** The request a `route.ts` (or page) HTTP handler under `<dir>/app/` receives. Header names are lowercase; the body is the raw text. */
 export interface RouteRequest {
   method: string;
   /**
@@ -1774,7 +1768,6 @@ export interface RouteQuery {
 }
 /** What a route handler returns. Status defaults to 200, body to "", Content-Type to text/plain; charset=utf-8. */
 export interface RouteResponse { status?: number; headers?: Record<string, string>; body?: string }
-export declare function once<T>(key: string, fn: () => Awaitable<T>): Promise<T>;
 
 export type MailAddress = string | { email: string; name?: string | null };
 /**
@@ -1797,32 +1790,6 @@ export interface MailMessage {
   replyTo?: MailAddress | null;
   headers?: Record<string, string> | null;
 }
-/**
- * Email from hooks, actions, routes and jobs. `send` queues the message in the handler's
- * transaction and hands it to the site's mail transport after commit, retrying a refusal; a
- * rollback sends nothing. It resolves to the queued delivery's id, or `""` while a preview binding
- * seeds, which checks the message and queues nothing. `render` turns a React Email
- * template from `emails/` into the `html` and `text` a message carries.
- */
-export declare const mail: {
-  send(message: MailMessage): Promise<{ id: string }>;
-  /** The HTML and plain text of an `emails/` template's default export, rendered with `props`. */
-  render<P>(template: (props: P) => unknown, props: P): { html: string; text: string };
-};
-
-/**
- * Host-managed connectors (a Space's Slack, GitHub, …), reached through the host's
- * `sp_connectors_call` filter. Credentials stay with the host.
- *
- * `call` runs the connector now and resolves to its JSON answer; a refusal is the request's error.
- * `enqueue` queues the call in the handler's transaction, like `mail.send`: a rollback queues
- * nothing, and after commit the job runner makes the call outside the database transaction,
- * retrying a failure with backoff. `key` keeps one queued call per key; `delay` waits that many seconds.
- */
-export declare const connectors: {
-  call(role: string, tool: string, args?: Record<string, unknown>): Promise<unknown>;
-  enqueue(role: string, tool: string, args?: Record<string, unknown>, options?: { key?: string; delay?: number }): Promise<{ id: string }>;
-};
 
 export interface EnvValue { readonly [envBrand]: true }
 export declare function env(name: string): EnvValue;

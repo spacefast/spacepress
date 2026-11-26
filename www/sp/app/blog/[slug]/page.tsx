@@ -1,13 +1,14 @@
-import { Comments, Content, Link, type PageProps } from "spacepress/app";
+import { Comments, Content, Link } from "spacepress/app";
+import type { PageProps } from "./$types";
 import { PageActions } from "../../../components/PageActions";
 
-export const metadata = ({ item }: PageProps<"blog/[slug]">) => ({
+export const metadata = ({ item }: PageProps) => ({
   title: item.title,
   description: item.excerpt ?? undefined,
   canonical: `/blog/${item.slug}`,
 });
 
-export default function BlogPostPage({ item }: PageProps<"blog/[slug]">) {
+export default function BlogPostPage({ item }: PageProps) {
   return (
     <div className="sp-container-narrow" style={{ paddingTop: "44px", paddingBottom: "88px" }}>
       <p style={{ marginBottom: "18px" }}>

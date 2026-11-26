@@ -298,6 +298,7 @@ export interface DashboardContext {
 	declarative_widgets?: DeclarativeWidgetDefinition[];
 	dashboards?: CustomDashboardDefinition[];
 	managed?: boolean;
+	embed?: boolean;
 	sealed?: boolean;
 	has_store?: boolean;
 	identity_active?: boolean;

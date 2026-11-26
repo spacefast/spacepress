@@ -87,6 +87,7 @@ function sp_admin_get_boot_context() {
 			'declarative_widgets'      => function_exists( 'sp_admin_get_declarative_widgets' ) ? sp_admin_get_declarative_widgets() : array(),
 			'dashboards'               => function_exists( 'sp_admin_get_dashboards' ) ? sp_admin_get_dashboards() : array(),
 			'managed'                  => class_exists( '\\SpacePress\\Wp\\Runtime' ) && \SpacePress\Wp\Runtime::managed(),
+			'embed'                    => isset( $_GET['embed'] ) && in_array( (string) $_GET['embed'], array( '1', 'true' ), true ),
 			'sealed'                   => $plugin !== null && $plugin->schema->sealed() !== null,
 			'has_store'                => $plugin !== null && $plugin->schema->commerce() !== null,
 			'identity_active'          => class_exists( '\\SpacePress\\Identity\\Plugin' ),

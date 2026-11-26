@@ -1067,8 +1067,20 @@ impl<'p> Evaluator<'p> {
             // The local name `name` is exported under: itself, or `export { local as name }`.
             let mut local = name.clone();
             let mut next = None;
+            // A local export wins over `export *`, as in ESM.
+            let mut star = None;
+            let mut exported_here = false;
             for stmt in &module.body {
                 match stmt {
+                    Stmt::Exported(inner) => {
+                        let mut names = Vec::new();
+                        match inner.as_ref() {
+                            Stmt::Decl { pat, .. } => pat.bindings(&mut names),
+                            Stmt::Func(f) => names.extend(f.name.as_deref().map(|n| (n, f.span))),
+                            _ => {}
+                        }
+                        exported_here |= names.iter().any(|(n, _)| *n == name);
+                    }
                     Stmt::ExportNames { names, from, .. } => {
                         if let Some((l, _)) = names.iter().find(|(_, exported)| *exported == name) {
                             match from {
@@ -1079,19 +1091,25 @@ impl<'p> Evaluator<'p> {
                                         .get(&(target, src.clone()))
                                         .map(|&t| (t, l.clone()))
                                 }
-                                None => local = l.clone(),
+                                None => {
+                                    local = l.clone();
+                                    exported_here = true;
+                                }
                             }
                         }
                     }
-                    Stmt::ExportAll { from: src, .. } if next.is_none() => {
+                    Stmt::ExportAll { from: src, .. } if star.is_none() => {
                         if let Some(&t) = self.program.resolved.get(&(target, src.clone()))
                             && self.exports[t].contains_key(&name)
                         {
-                            next = Some((t, name.clone()));
+                            star = Some((t, name.clone()));
                         }
                     }
                     _ => {}
                 }
+            }
+            if next.is_none() && !exported_here {
+                next = star;
             }
             if next.is_none()
                 && let Some(scope) = &self.module_scopes[target]
@@ -4694,7 +4712,9 @@ fn hoist(body: &[Stmt], scope: &Rc<Scope>) {
 /// `var` belongs to the nearest function or module, even when its declaration
 /// sits in a branch that never executes. Do not traverse nested functions.
 fn hoist_vars(body: &[Stmt], scope: &Rc<Scope>) {
+    // Only `var x: T` types its binding: in `var { a }: { a: T }` the type is the whole pattern's.
     fn binding(pat: &Pat, ann: &Option<TyAnn>, scope: &Rc<Scope>) {
+        let ann = &ann.as_ref().filter(|_| matches!(pat, Pat::Id(..))).cloned();
         let mut names = Vec::new();
         pat.bindings(&mut names);
         for (name, _) in names {

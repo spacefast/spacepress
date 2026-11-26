@@ -6407,6 +6407,7 @@ fn an_installed_component_library_supplies_blocks_styles_and_islands() {
         stores.iter().any(|f| f.starts_with("toggle.") && f.ends_with(".js")),
         "{stores:?}"
     );
+}
 
 /// A constant's declared type crosses imports, aliased re-exports and `export *`: compiled code
 /// that indexes an imported `Record<string, string>` with a string reads it as that record, not as

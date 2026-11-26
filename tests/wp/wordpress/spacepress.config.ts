@@ -1,5 +1,5 @@
 import { defineConfig, text, mutation } from "spacepress";
-import { abilities, esc_html, get_post, wp_insert_post } from "php/wordpress";
+import { abilities, esc_html, get_post, wp_insert_post } from "spacepress/server/wp";
 
 // Calls another plugin's ability (locked by `spacepress abilities pull`) and core functions as the
 // signed-in user.

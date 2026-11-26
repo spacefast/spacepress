@@ -6,7 +6,8 @@
 // `bulkTourPrice` is one trusted update over two rows of a translation group (hooks once per row).
 // `guest_carts` (cascade) and `guest_notes` (set null) are rows a member owns, for guest pruning.
 // `big_counts` holds integers past 2^53 (BIGINT): compiled arithmetic on them must match JS.
-import { collection, db, integer, text, table, ref, mutation, HttpError } from "spacepress";
+import { collection, integer, text, table, ref, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 import { tours } from "./locales.ts";
 import { members } from "./auth.ts";
 

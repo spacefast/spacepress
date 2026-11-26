@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "spacepress/client";
+import { useState } from "react";
 import { Badge } from "./Badge";
 
 // A client component that renders a server component (Badge.tsx): the badge is server HTML,

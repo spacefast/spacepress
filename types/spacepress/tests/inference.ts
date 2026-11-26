@@ -1,8 +1,6 @@
 // Positive checks: inferred types are exactly what the spec says.
-import {
-  db, defineConfig, text, job, email,
-  type AccessCtx, type BlockValue, type BeforeHookCtx, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx, mutation,
-} from "spacepress";
+import { defineConfig, text, job, email, type AccessCtx, type BlockValue, type BeforeHookCtx, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx, mutation } from "spacepress";
+import { db } from "spacepress/server";
 import { authors, comments, items, locations, notes, posts, entities, settings, shoppingList } from "./schema";
 import type { AppRelations } from "./register";
 

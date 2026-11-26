@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "spacepress/client";
+import { useState } from "react";
 
 // State the browser holds, inside a live region: an update of a sibling must keep it.
 export function Counter() {

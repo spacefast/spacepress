@@ -61,7 +61,7 @@ fn candidate(root: &Path, entries: &mut Vec<Entry>) -> Result<BTreeMap<String, V
     }
     let mut source = BTreeMap::from([(PathBuf::from("spacepress.config.ts"), CONFIG.to_owned())]);
     let mut assets = BTreeMap::new();
-    if let Some((_, schema)) = astro_content::module(&Disk, &root)
+    if let Some((_, schema)) = astro_content::module(&Disk, &root, &spacepress::layout::Layout::default())
         .map_err(|d| fail("/src/content.config.ts", diag::render(&d, &root)).spanned(d.span, &root))?
     {
         source.insert(PathBuf::from("sp/schema.ts"), schema);

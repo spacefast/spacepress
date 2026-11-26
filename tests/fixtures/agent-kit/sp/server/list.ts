@@ -1,5 +1,6 @@
-import { job, db, mutation } from "spacepress";
-import { shoppingList } from "spacepress:db";
+import { job, mutation } from "spacepress";
+import { db } from "spacepress/server";
+import { shoppingList } from "spacepress/server/db";
 
 export const rename = mutation({ access: "editor" }, async ({ id, name }: { id: number; name: string }) => {
   await db.update(shoppingList).set({ name }).where({ id });

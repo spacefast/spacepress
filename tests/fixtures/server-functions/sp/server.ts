@@ -1,4 +1,5 @@
-import { query, mutation, job, cron, HttpError, table, text, integer } from "spacepress";
+import { query, mutation, job, cron, table, text, integer } from "spacepress";
+import { HttpError } from "spacepress/server";
 
 export const notes = table({ title: text(), stamped: text().optional() }, { access: { read: "anyone" } });
 export const ticks = table({ by: text() }, { access: { read: "anyone" } });

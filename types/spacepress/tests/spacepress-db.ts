@@ -1,7 +1,7 @@
-// `import { … } from "spacepress:db"` gives each registered kind by name (docs/spec/spec.md §2.1), typed
+// `import { … } from "spacepress/server/db"` gives each registered kind by name (docs/spec/spec.md §2.1), typed
 // from the registration in register.ts, and refuses a name the app doesn't register.
-import { posts, items } from "spacepress:db";
-import { db } from "spacepress";
+import { posts, items } from "spacepress/server/db";
+import { db } from "spacepress/server";
 import { posts as declared } from "./schema";
 
 // The same kind the module declared: usable wherever the declaration is.
@@ -17,7 +17,7 @@ export async function bump(id: number) {
 }
 
 // @ts-expect-error: not a registered kind
-import { missing } from "spacepress:db";
+import { missing } from "spacepress/server/db";
 void missing;
 
 // The query API (spec §3): each kind lists, pages, gets, counts and writes as the visitor.

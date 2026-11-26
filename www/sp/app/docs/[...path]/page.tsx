@@ -1,14 +1,15 @@
-import { docs } from "spacepress:db";
-import { Content, Link, type PageProps } from "spacepress/app";
+import { docs } from "spacepress/server/db";
+import type { PageProps } from "./$types";
+import { Content, Link } from "spacepress/app";
 import { nav, pager, headings } from "spacepress/content";
 import { PageActions } from "../../../components/PageActions";
 
-export const metadata = ({ item }: PageProps<"docs/[...path]">) => ({
+export const metadata = ({ item }: PageProps) => ({
   title: item.title,
   description: item.description ?? undefined,
 });
 
-export default async function DocPage({ item, params }: PageProps<"docs/[...path]">) {
+export default async function DocPage({ item, params }: PageProps) {
   const tree = await nav(docs, item);
   const { prev, next } = await pager(docs, item);
   const toc = headings(item);

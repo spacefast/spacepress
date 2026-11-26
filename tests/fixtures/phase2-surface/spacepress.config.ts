@@ -1,4 +1,5 @@
-import { collection, text, email, media, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, defineConfig, db, table, userProjection, ref, mutation, HttpError } from "spacepress";
+import { collection, text, email, media, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, defineConfig, table, userProjection, ref, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 import type { FieldAccessCtx as FieldContext, JobCtx } from "spacepress";
 function deny(): never { throw new Error("denied"); }
 async function yes() { return true; }

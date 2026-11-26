@@ -1,4 +1,4 @@
-import { notes } from "spacepress:db";
+import { notes } from "spacepress/server/db";
 import { Live } from "spacepress/app";
 
 export default async function Home() {

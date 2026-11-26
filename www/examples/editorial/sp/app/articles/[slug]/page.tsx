@@ -1,13 +1,14 @@
-import { Content, Link, type PageProps } from "spacepress/app";
-import { claps } from "spacepress:db";
+import { Content, Link } from "spacepress/app";
+import type { PageProps } from "./$types";
+import { claps } from "spacepress/server/db";
 import { ClapButton } from "../../../components/ClapButton";
 
-export const metadata = ({ item }: PageProps<"articles/[slug]">) => ({
+export const metadata = ({ item }: PageProps) => ({
   title: item.title,
   description: item.summary ?? undefined,
 });
 
-export default async function ArticlePage({ item }: PageProps<"articles/[slug]">) {
+export default async function ArticlePage({ item }: PageProps) {
   const row = await claps.get({ articleId: item.id });
   return (
     <article>

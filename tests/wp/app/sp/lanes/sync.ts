@@ -4,7 +4,8 @@
 // Content sync (design §5): `guides` is a post-backed collection synced with Markdown files, and
 // `writers` gives it a uid'd reference target, so tests/wp/sync.test.ts covers bodies, references,
 // drafts and trash against real WordPress.
-import { collection, db, integer, richText, select, slug, table, text, HttpError, ref } from "spacepress";
+import { collection, integer, richText, select, slug, table, text, ref } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 export const writers = collection({
   name: text().max(80),

@@ -183,8 +183,9 @@ fn actions_that_reach_orders_are_marked_personal() {
     let project = tmp.path();
     std::fs::write(
         project.join("spacepress.config.ts"),
-        r#"import { mutation, db, defineConfig, order, product, store } from "spacepress";
-import { abilities } from "php/wordpress";
+        r#"import { mutation, defineConfig, order, product, store } from "spacepress";
+import { db } from "spacepress/server";
+import { abilities } from "spacepress/server/wp";
 export const shop = store({ currency: "EUR", country: "PL" });
 export const products = product({ inventory: true });
 export const orders = order();
@@ -309,7 +310,8 @@ fn commerce_references_names_and_existing_store_scaffolding() {
     std::fs::write(
         project.path().join("spacepress.config.ts"),
         r#"
-import {defineConfig,store,product,productCategory,order,table,ref,text,query,db} from 'spacepress';
+import { defineConfig, store, product, productCategory, order, table, ref, text, query } from 'spacepress';
+import { db } from 'spacepress/server';
 export const shop=store({currency:'USD',country:'PL',shipping:[{name:'Rest  of world',countries:'rest',methods:[]}]});
 export const catalogItems=product();
 export const categories=productCategory();

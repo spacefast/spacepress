@@ -114,7 +114,7 @@ echo 'served from public/' > "$project/public/hello.txt"
 # deploy receiver's.
 mkdir -p "$project/sp/wp-hooks/init"
 cat > "$project/sp/wp-hooks/init/mark.ts" <<'TS'
-import { update_option } from "php/wordpress";
+import { update_option } from "spacepress/server/wp";
 
 export default function () {
   update_option("pluginlane_hook_ran", "yes");

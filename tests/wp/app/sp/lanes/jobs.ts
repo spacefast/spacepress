@@ -2,8 +2,9 @@
 // exports registers under its export name, and a name another lane or the app uses fails the build.
 // Lane D (§6.1): a hook that enqueues, a job with a visible effect that can be made to fail, and an
 // idempotent action built on once().
-import { boolean, collection, db, env, HttpError, job, once, text, table, mutation } from "spacepress";
-import { abilities } from "php/wordpress";
+import { boolean, collection, env, job, text, table, mutation } from "spacepress";
+import { db, HttpError, once } from "spacepress/server";
+import { abilities } from "spacepress/server/wp";
 
 export const jobNotes = table({
   title: text(),

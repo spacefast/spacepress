@@ -1,4 +1,4 @@
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 import { useFormState } from "spacepress/app";
 import { markShipped, processingOrders, restock } from "../../server";
 

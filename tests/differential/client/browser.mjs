@@ -110,6 +110,13 @@ try {
   await page.click("button.measure");
   await page.waitForFunction(() => document.querySelector("button.measure").textContent !== "unmeasured", null, { timeout: 15000 });
   const ref = await page.textContent("button.measure");
+  // Callbacks that run after their handler returns (timers, a listener, promise callbacks) read a
+  // derived value, a ref and another handler under the real runtime, which throws when
+  // `getContext()` runs with no scope; handlers call each other, sync and async.
+  await page.click("button.later");
+  await page.waitForFunction(() => document.querySelector("button.later").textContent.trim() !== "-", null, { timeout: 15000 })
+    .catch((e) => { throw new Error(`${e.message}\nwarnings: ${JSON.stringify(warnings)}`); });
+  const later = (await page.textContent("button.later")).trim();
   // A CSS module's renamed class, switched by state, styles the element from the linked stylesheet.
   const toggle = "[data-wp-interactive='clients/Toggle']";
   const look = () => page.$eval(toggle, (el) => [el.className, getComputedStyle(el).color, el.textContent]);
@@ -196,7 +203,7 @@ try {
   };
   await signedIn.close();
   const liveRequests = requests.filter((r) => decodeURIComponent(r).replace(/[?&].*$/, "").endsWith("/_live") || decodeURIComponent(r).includes("rest_route=/spacepress/v1/_live")).length;
-  process.stdout.write(JSON.stringify({ abilityRuns, refused, signed, live: { before: liveBefore, loading: loadingAttr, write: write.status, after: liveAfter, polled: liveRequests > 0 }, client, before, after, hydration, output, items, seen, ref, toggleBefore, toggleAfter, shelfSteps, kept, warnings, responses }));
+  process.stdout.write(JSON.stringify({ abilityRuns, refused, signed, live: { before: liveBefore, loading: loadingAttr, write: write.status, after: liveAfter, polled: liveRequests > 0 }, client, before, after, hydration, output, items, seen, ref, later, toggleBefore, toggleAfter, shelfSteps, kept, warnings, responses }));
 } finally {
   await browser.close();
 }

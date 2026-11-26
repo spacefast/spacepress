@@ -246,6 +246,24 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
                 }
             }
         }
+        // Browser code isn't a capability a plugin's lock can grant yet (the TSX decision record):
+        // a plugin package ships server code only. Component libraries that aren't plugins may.
+        if let Some(m) = seen.iter().map(|&m| &program.modules[m]).find(|m| m.use_client) {
+            return Err(Diag::new(
+                Span {
+                    file: m.file,
+                    start: 0,
+                    end: 0,
+                },
+                format!(
+                    "plugin \"{}\" can't ship the \"use client\" component {}",
+                    plugins[i].name,
+                    m.path.strip_prefix(&project).unwrap_or(&m.path).display()
+                ),
+            )
+            .code(Code::PluginIsolation)
+            .help("plugins ship server code only; publish interactive components in a package that doesn't call definePlugin()"));
+        }
         let mut files: Vec<(String, &Path)> = seen
             .iter()
             .map(|&m| {

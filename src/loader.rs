@@ -506,23 +506,6 @@ fn jsx_reachability(program: &Program) -> Vec<Diag> {
             start: 0,
             end: 0,
         };
-        // Plugins can't ship browser code until a capability kind covers it (the TSX decision record).
-        if module.path.components().any(|c| c.as_os_str() == "node_modules") {
-            out.push(
-                Diag::new(
-                    at,
-                    format!(
-                        "{} is a \"use client\" file inside an installed package",
-                        module.path.display()
-                    ),
-                )
-                .help(
-                    "plugins can't ship client components yet; keep interactive components in the app's sp/components/",
-                )
-                .code(diag::Code::Import),
-            );
-            continue;
-        }
         if module.path.extension().is_none_or(|e| e != "tsx") {
             out.push(
                 Diag::new(at, "a \"use client\" file is a .tsx component")
@@ -532,6 +515,14 @@ fn jsx_reachability(program: &Program) -> Vec<Diag> {
         }
     }
     out
+}
+
+/// A module of an installed package: below a `node_modules` directory under the project root, or
+/// outside the root altogether (a package a workspace hoisted into a parent's `node_modules`).
+fn installed_source(root: &Path, path: &Path) -> bool {
+    let in_node_modules = |p: &Path| p.components().any(|c| c.as_os_str() == "node_modules");
+    path.strip_prefix(root)
+        .map_or_else(|_| in_node_modules(path), in_node_modules)
 }
 
 /// Server components compiled to PHP, under the SpacePress root (`sp/components/`).
@@ -1505,7 +1496,13 @@ fn parse(
         .directives
         .iter()
         .any(|d| d.directive.as_str() == "use client");
-    if source_type.is_jsx() && !jsx_admitted(path.strip_prefix(root).unwrap_or(path), use_client) {
+    if source_type.is_jsx()
+        && !jsx_admitted(
+            path.strip_prefix(root).unwrap_or(path),
+            use_client,
+            installed_source(root, path),
+        )
+    {
         return Err(Diag::new(
             Span { file, start: 0, end: 0 },
             "JSX files can't be part of a SpacePress config",
@@ -1562,10 +1559,14 @@ fn parse(
 /// JSX compiles only in `.tsx` components, pages and `"use client"` files
 /// (docs/decisions/2026-11-08-tsx-to-php.md); the config graph itself never renders. `path` is
 /// relative to the project root, so a project that itself sits under an `app/` folder gets no
-/// exemption.
-fn jsx_admitted(path: &Path, use_client: bool) -> bool {
+/// exemption. An installed package's `.tsx` is a component library: it parses wherever it sits, and
+/// [`jsx_reachability`] still refuses it when the config, an app module or a hook reaches it.
+fn jsx_admitted(path: &Path, use_client: bool, installed: bool) -> bool {
     if path.extension().and_then(|e| e.to_str()) != Some("tsx") {
         return false;
+    }
+    if installed {
+        return true;
     }
     let in_folder = path
         .components()
@@ -2440,6 +2441,19 @@ fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span, conditions:
     } else {
         path
     };
+    // A stylesheet or file a package exports (`import "@acme/ui/styles.css"`) loads as an asset.
+    if crate::assets::kind(&path).is_some() && fs.is_file(&path) && conditions == Conditions::Import {
+        let resolved = fs
+            .canonicalize(&path)
+            .map_err(|e| package_error(spec, span, &e.to_string()))?;
+        let package = fs
+            .canonicalize(&package)
+            .map_err(|e| package_error(spec, span, &e.to_string()))?;
+        if !resolved.starts_with(package) {
+            return Err(package_error(spec, span, "package source target escapes its package"));
+        }
+        return Ok(resolved);
+    }
     if !fs.is_file(&path)
         || target.ends_with(".d.ts")
         || target.ends_with(".d.mts")

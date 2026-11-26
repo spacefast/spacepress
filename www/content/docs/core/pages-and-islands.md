@@ -124,6 +124,25 @@ the same WordPress comment thread.
 
 Start a component file with `"use client";`. SpacePress renders its initial HTML in PHP and compiles the interactive logic into a WordPress Interactivity API store supporting `useState`, `useEffect`, `useMount`, `useEvent`, `useRef`, `sharedState`, `uploadFile(bucket, file, opts?)` for private file buckets, and live-updating `useLive(kind, query)` subscriptions.
 
+## Components from npm packages
+
+An installed package can ship `.tsx` components, both server components and
+`"use client"` islands, plus the stylesheets they need. Import them from a page,
+a layout, or a file in `sp/components/`:
+
+```tsx
+// sp/components/docs.tsx
+import "@acme/docs-ui/styles.css";
+export { Callout, Steps, Step } from "@acme/docs-ui";
+export const blocks = ["Callout", "Steps", "Step"];
+```
+
+A package exports a stylesheet like any other file, with an `exports` entry such
+as `"./styles.css": "./src/styles.css"`. A stylesheet that a block component
+file imports links on every route, because content can place the block on any
+page. A package that calls `definePlugin()` ships server code only. Its lock
+can't grant browser code, so a `"use client"` file in it is a build error.
+
 ## Static export
 
 Set `output: "static"` in `defineConfig()` and export `staticParams()` on dynamic routes, then run `spacepress export` to emit a standalone static site to `sp/dist/static/`.

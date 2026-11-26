@@ -121,6 +121,12 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "a plugin takes the app's kinds as options",
         "node_modules/spacepress-plugin-reach/src/index.ts:3:1",
     );
+    // A plugin's lock can't grant browser code, so a plugin package ships no client component.
+    rejects(
+        "reject-plugin-client",
+        "plugin \"widget\" can't ship the \"use client\" component node_modules/spacepress-plugin-widget/src/Counter.tsx",
+        "node_modules/spacepress-plugin-widget/src/Counter.tsx:1:1",
+    );
     // A default export has no name to register under.
     rejects(
         "reject-default-export-kind",
@@ -6357,4 +6363,48 @@ fn refused_helper_chain_stays_linear_on_speculative_retries() {
             "unexpected diagnostic ({entry}):\n{stderr}"
         );
     }
+}
+
+/// A component library that isn't a plugin: its server components are the app's Markdown blocks,
+/// its stylesheet export links on every route content renders on, and its `"use client"` component
+/// compiles to a store, though none of its `.tsx` sits in a `components/` folder.
+#[test]
+fn an_installed_component_library_supplies_blocks_styles_and_islands() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("pkgui");
+    copy(&root().join("tests/fixtures/package-components"), &project);
+    let out = first().arg("build").arg(&project).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let app = project.join("sp/dist/wp-content/plugins/spacepress-app-pkgui/sp/app");
+    let schema = std::fs::read_to_string(app.join("schema.php")).unwrap();
+    assert!(schema.contains("'pkgui/callout' => ['tag' => 'Callout'"), "{schema}");
+    let styles: Vec<&str> = schema.lines().filter(|l| l.contains("'styles' => [")).collect();
+    assert!(!styles.is_empty(), "{schema}");
+    for line in styles {
+        assert!(
+            line.contains("'styles' => ['site-") && line.contains("styles-"),
+            "{line}"
+        );
+    }
+    let assets: Vec<String> = std::fs::read_dir(app.join("assets"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    let sheet = assets
+        .iter()
+        .find(|f| f.starts_with("styles-"))
+        .expect("the package's stylesheet");
+    assert!(
+        std::fs::read_to_string(app.join("assets").join(sheet))
+            .unwrap()
+            .contains(".acme-callout")
+    );
+    let stores: Vec<String> = std::fs::read_dir(app.join("client"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        stores.iter().any(|f| f.starts_with("toggle.") && f.ends_with(".js")),
+        "{stores:?}"
+    );
 }

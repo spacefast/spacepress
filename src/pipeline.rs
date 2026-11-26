@@ -157,7 +157,18 @@ pub fn build(
     }
     wp_hooks(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     let blocks = components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
-    app::register(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
+    // Content renders block components on any page, so every route links their stylesheets.
+    let block_modules: Vec<usize> = program
+        .components
+        .iter()
+        .filter(|(path, _)| {
+            blocks
+                .iter()
+                .any(|(c, _)| c.split_once('#').is_some_and(|(p, _)| p == path))
+        })
+        .map(|(_, m)| *m)
+        .collect();
+    app::register(program, &mut ev, &mut ext, &block_modules).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::content_page::register(program, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::commerce::pages(&ext.schema, config_span).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::runtime_schema::apply(runtime_lock.as_ref(), &mut ev, &mut ext)?;
@@ -646,6 +657,43 @@ fn components(
                 &mut server_roots
             };
             roots.push(extract::Root {
+                closure: closure.clone(),
+                slot: Slot::Component {
+                    name: format!("{path}#{export}"),
+                },
+                name: format!("component__{}__{export}", extract::slugify_name(stem).replace('-', "_")),
+                plugin: None,
+            });
+        }
+    }
+    // A `"use client"` component an installed package exports compiles too, though no file in
+    // sp/components/ re-exports it: a page may import it from the package directly.
+    let listed: std::collections::HashSet<usize> = program.components.iter().map(|(_, m)| *m).collect();
+    let span_key = |f: &crate::ir::Func| (f.span.file, f.span.start, f.span.end);
+    let compiled: std::collections::HashSet<_> = client_roots
+        .iter()
+        .chain(&server_roots)
+        .map(|r| span_key(&r.closure.func))
+        .collect();
+    for module in program
+        .modules
+        .iter()
+        .filter(|m| m.use_client && !listed.contains(&m.id))
+    {
+        let exports = ev.run_module(module.id)?;
+        let path = module
+            .path
+            .strip_prefix(&program.root)
+            .unwrap_or(&module.path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for (export, value) in &exports {
+            let Value::Closure(closure) = value else { continue };
+            if !export.starts_with(|c: char| c.is_ascii_uppercase()) || compiled.contains(&span_key(&closure.func)) {
+                continue;
+            }
+            let stem = path.trim_end_matches(".tsx");
+            client_roots.push(extract::Root {
                 closure: closure.clone(),
                 slot: Slot::Component {
                     name: format!("{path}#{export}"),

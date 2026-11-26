@@ -331,6 +331,8 @@ foreach ([
 }
 // A tag inside a code fence is code, not a block.
 $out['blocks fenced'] = \SpacePress\Sync\Markdown::toBlocks("```md\n<Callout type=\"note\">\n```\n");
+// Inside a block too: a fenced tag with an expression prop, or a fenced closing tag, is code.
+$out['blocks fenced inside'] = \SpacePress\Sync\Markdown::toBlocks("<Callout type=\"note\">\n```tsx\n<Shell search={entries()}>\n</Callout>\n```\n</Callout>\n\nAfter.\n");
 
 // Code blocks (docs/decisions/2026-11-13-code-blocks.md): highlighted on the route, with titles,
 // marked lines and a tab group, no script; written back as the same fences.

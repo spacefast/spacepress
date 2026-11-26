@@ -1888,16 +1888,26 @@ export default function EntityPage({ item }: PageProps<"entities/[slug]">) {
 }
 
 /// String literal equality (`x === "a"`) and same-path disjunctions (`x === "a" || x === "b"`)
-/// narrow `x` to the matched literal union on the true branch and exclude matched literals on the
-/// false branch, while disjunctions over distinct paths (`a === "x" || b === "y"`) stay conservative.
+/// narrow `x` to the matched literals on the true branch and remove them on the false branch.
+/// Disjunctions over different paths (`a === "x" || b === "y"`) stay conservative, a literal
+/// narrowed out of `string` still widens to `string` when copied, and `x! === "a"` narrows nothing
+/// out of `x` on the false branch (`x!` asserts, it doesn't check).
 #[test]
 fn string_literal_and_disjunction_narrowing_in_branches_and_ternaries() {
-    let tmp = std::env::temp_dir().join(format!("typedpress-str-or-narrow-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp).unwrap();
+    let check = |source: &str| {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("spacepress.config.ts"),
+            format!("import {{ defineConfig, mutation }} from \"spacepress\";\n{source}\nexport default defineConfig({{ name: \"n\" }});\n"),
+        )
+        .unwrap();
+        first().arg("check").arg(tmp.path()).output().unwrap()
+    };
+
+    let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
-        tmp.join("typedpress.config.ts"),
-        r#"import { defineConfig, db, mutation, select, table, text } from "typedpress";
+        tmp.path().join("spacepress.config.ts"),
+        r#"import { defineConfig, db, mutation, select, table, text } from "spacepress";
 
 export const tasks = table({
   title: text(),
@@ -1930,30 +1940,98 @@ export default defineConfig({ name: "str-or-narrow" });
 "#,
     )
     .unwrap();
-
-    let ok = first().arg("check").arg(&tmp).output().unwrap();
+    let ok = first().arg("check").arg(tmp.path()).output().unwrap();
     assert!(ok.status.success(), "{}", String::from_utf8_lossy(&ok.stderr));
 
-    // Disjunction over DIFFERENT variables must NOT falsely narrow either one.
-    std::fs::write(
-        tmp.join("typedpress.config.ts"),
-        r#"import { defineConfig, mutation } from "typedpress";
+    for source in [
+        // A literal narrowed out of `string` or `unknown` is fresh: a copy widens to `string`.
+        r#"export const m = mutation({}, async ({ s }: { s: string }) => { if (s === "a") { let y = s; y = "b"; return y; } return s; });"#,
+        r#"export const m = mutation({}, async ({ s }: { s: string }) => { if (s === "a") { const list = [s]; list.push("b"); return list.length; } return 0; });"#,
+        r#"export const m = mutation({}, async ({ s }: { s: string }) => { if (s === "a") { const o = { k: s }; o.k = "z"; return o.k; } return s; });"#,
+        r#"export const m = mutation({}, async ({ u }: { u?: unknown }) => { if (u === "a") { let y = u; y = "b"; return y; } return "c"; });"#,
+        // `!==` on a plain `string` keeps `string`; its else branch is the literal.
+        r#"const onlyA = (v: "a") => v;
+export const m = mutation({}, async ({ s }: { s: string }) => { if (s !== "a") { const rest: string = s; return rest; } else { return onlyA(s); } });"#,
+        // `!==` on `unknown`: the else branch is the literal.
+        r#"const onlyA = (v: "a") => v;
+export const m = mutation({}, async ({ u }: { u?: unknown }) => { if (u !== "a") { return "b"; } else { return onlyA(u); } });"#,
+        // A member path narrows like a local.
+        r#"const ab = (v: "a" | "b") => v;
+export const m = mutation({}, async (input: { role: string }) => { if (input.role === "a" || input.role === "b") return ab(input.role); return "a"; });"#,
+        // `!(a || b)` is the false side of the disjunction.
+        r#"const cd = (v: "c" | "d") => v;
+export const m = mutation({}, async ({ s }: { s: "a" | "b" | "c" | "d" }) => { if (!(s === "a" || s === "b")) return cd(s); return "c"; });"#,
+        // The false side of `&&` over two variables keeps both declared types.
+        r#"const xy = (v: "x" | "y") => v;
+const bc = (v: "b" | "c") => v;
+export const m = mutation({}, async ({ a, b }: { a: "x" | "y"; b: "b" | "c" }) => { if (a === "x" && b === "b") return "b"; return xy(a) + bc(b); });"#,
+        // `x!` narrows the true branch.
+        r#"export const m = mutation({}, async ({ x }: { x: string | null }) => { if (x! === "a") return x.length; if (typeof x! === "string") return x.length; return 0; });"#,
+    ] {
+        let out = check(source);
+        assert!(
+            out.status.success(),
+            "{source}\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
 
-export const bad = mutation({}, async ({ a, b }: { a: string; b: string }) => {
-  const onlyA = (x: "x") => x;
-  if (a === "x" || b === "y") {
-    return onlyA(a);
-  }
-  return "x";
-});
-
-export default defineConfig({ name: "str-or-narrow" });
-"#,
-    )
-    .unwrap();
-    let bad = first().arg("check").arg(&tmp).output().unwrap();
-    assert_eq!(bad.status.code(), Some(1), "{}", String::from_utf8_lossy(&bad.stderr));
-    let _ = std::fs::remove_dir_all(&tmp);
+    for (source, message) in [
+        // Disjunction over different variables narrows neither one.
+        (
+            r#"const onlyX = (v: "x") => v;
+export const m = mutation({}, async ({ a, b }: { a: string; b: string }) => { if (a === "x" || b === "y") { return onlyX(a); } return "x"; });"#,
+            "this argument is string, but the function expects \"x\"",
+        ),
+        // A literal narrowed out of a literal union stays that literal, as TypeScript keeps it.
+        (
+            r#"export const m = mutation({}, async ({ u }: { u: "a" | "b" }) => { if (u === "a") { let y = u; y = "b"; return y; } return u; });"#,
+            "can't assign \"b\" to something of type \"a\"",
+        ),
+        (
+            r#"const onlyA = (v: "a") => v;
+export const m = mutation({}, async ({ s }: { s: string }) => { if (s !== "a") { return onlyA(s); } return "x"; });"#,
+            "this argument is string, but the function expects \"a\"",
+        ),
+        (
+            r#"const onlyA = (v: "a") => v;
+export const m = mutation({}, async ({ u }: { u?: unknown }) => { if (u !== "a") { return onlyA(u); } return "a"; });"#,
+            "this argument is unknown | undefined, but the function expects \"a\"",
+        ),
+        (
+            r#"const ab = (v: "a" | "b") => v;
+export const m = mutation({}, async (input: { role: string }) => { if (input.role === "a" || input.role === "c") return ab(input.role); return "a"; });"#,
+            "this argument is \"a\" | \"c\", but the function expects \"a\" | \"b\"",
+        ),
+        (
+            r#"const cd = (v: "c" | "d") => v;
+export const m = mutation({}, async ({ s }: { s: "a" | "b" | "c" | "d" }) => { if (!(s === "a" || s === "b")) return "c"; return cd(s); });"#,
+            "this argument is \"a\" | \"b\", but the function expects \"c\" | \"d\"",
+        ),
+        (
+            r#"const onlyB = (v: "b") => v;
+export const m = mutation({}, async ({ a, b }: { a: "x" | "y"; b: "b" | "c" }) => { if (a === "x" && b === "b") return "b"; return onlyB(b); });"#,
+            "this argument is \"b\" | \"c\", but the function expects \"b\"",
+        ),
+        // `x!` doesn't remove `null` from `x` on the false branch (tsc: TS18047).
+        (
+            r#"export const m = mutation({}, async ({ x }: { x: string | null }) => { if (x! === "a") return 1; return x.length; });"#,
+            "can't read `length`: this might be null (string | null)",
+        ),
+        (
+            r#"export const m = mutation({}, async ({ x }: { x: string | null }) => { if (typeof x! === "number") return 1; return x.length; });"#,
+            "can't read `length`: this might be null (string | null)",
+        ),
+        (
+            r#"export const m = mutation({}, async ({ x }: { x: string | false | null }) => { if (x! === false) return 1; return x.length; });"#,
+            "can't read `length`: this might be null (string | null)",
+        ),
+    ] {
+        let out = check(source);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{source}\n{stderr}");
+        assert!(stderr.contains(message), "{source}\nexpected {message:?} in:\n{stderr}");
+    }
 }
 
 /// A fresh WordPress on SQLite with a built `wp-content` installed, served by `php -S`

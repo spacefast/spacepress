@@ -253,6 +253,19 @@ impl Ty {
         }
     }
 
+    /// The part of this type that strictly equals the string literal `value`: what `x === "draft"`
+    /// leaves of `x`. A literal member keeps its freshness; a `string`, `unknown` or dynamic member
+    /// becomes the fresh literal the comparison wrote, so `let y = x` still widens to `string`
+    /// (as TypeScript widens it).
+    pub fn str_literal_part(&self, value: &str) -> Ty {
+        match self {
+            Ty::Union(items) => Ty::union(items.iter().map(|t| t.str_literal_part(value))),
+            Ty::Str | Ty::Unknown | Ty::Dynamic => Ty::FreshStrLit(value.to_string()),
+            t if t.str_literal() == Some(value) => t.clone(),
+            _ => Ty::Never,
+        }
+    }
+
     /// Whether a value of this type can strictly equal the string literal `value`.
     pub fn can_be_str_literal(&self, value: &str) -> bool {
         match self {

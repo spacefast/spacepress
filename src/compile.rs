@@ -3433,7 +3433,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     && let Some((n, t)) = self.path_ty(subject)
                     && t.can_be_str_literal(value)
                 {
-                    let hit = Ty::StrLit(value.to_string());
+                    let hit = t.str_literal_part(value);
                     let miss = t.without_str(value);
                     out.push(if (*op == BinOp::Eq) != negate {
                         (n, hit, miss)
@@ -3537,9 +3537,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         !self.effects.changes_refinement(expression.span, local.binding, &view)
     }
 
-    /// `ctx.user` → ("ctx.user", its type) for paths rooted at a local.
-    fn path_ty(&mut self, e: &Expr) -> Option<(String, Ty)> {
+    /// `ctx.user` → ("ctx.user", its type) for paths rooted at a local. For `x!` it is the type of
+    /// `x` itself: the assertion doesn't remove `null` from the path, so neither may a branch.
+    fn path_ty(&mut self, mut e: &Expr) -> Option<(String, Ty)> {
         let path = self.path_of(e)?;
+        while let ExprKind::NonNull(inner) = &e.kind {
+            e = inner;
+        }
         let saved_tmp = self.fx().tmp;
         let t = self.expr(e).ok().map(|o| o.ty);
         self.fx().tmp = saved_tmp;

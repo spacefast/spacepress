@@ -529,7 +529,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CTX_DB",
         feature: "ctx.db handle use",
-        v2: "db from \"spacepress\"",
+        v2: "db from \"spacepress/server\"",
         fix: "Call ctx.db.<table> methods directly in the handler.",
         test: |p, r| p.contains("/ctx/db") && r.starts_with("unsupported context service"),
         example: (
@@ -551,7 +551,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CTX_SERVICE",
         feature: "ctx.{service}",
-        v2: "the matching \"spacepress\" export (db, mail, env, fetch) or a WordPress API",
+        v2: "db or mail from \"spacepress/server\", env from \"spacepress\", the global fetch, or a WordPress API",
         fix: "Port the service call to its v2 export, or drop it if v2 does the work.",
         test: |p, r| {
             p.contains("/ctx/")
@@ -605,7 +605,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_DB_ESCAPE",
         feature: "database handle stored or returned",
-        v2: "db from \"spacepress\", called where it is used",
+        v2: "db from \"spacepress/server\", called where it is used",
         fix: "Call the table's methods where you use them instead of storing ctx.db.<table>.",
         test: |_, r| r.starts_with("database handles cannot escape"),
         example: ("/queries/q", "database handles cannot escape a handler"),

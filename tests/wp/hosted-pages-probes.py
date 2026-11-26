@@ -84,4 +84,4 @@ for path, body in probes.items():
     folder = os.path.join(project, "sp", "app", *path.split("/"))
     os.makedirs(folder, exist_ok=False)
     with open(os.path.join(folder, "route.ts"), "w") as f:
-        f.write('import { once, type HookCtx, type RouteRequest } from "spacepress";\n' + body)
+        f.write('import { once, type HookCtx, type RouteRequest } from "spacepress/server";\n' + body)

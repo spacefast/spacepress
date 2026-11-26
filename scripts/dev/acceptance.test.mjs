@@ -19,7 +19,8 @@ const exec = promisify(execFile);
 const first = resolve(process.env.SP_BIN ?? 'target/debug/spacepress');
 const command = async (args, env = process.env) => (await exec(first, args, { env, timeout: 600000, maxBuffer: 4 * 1024 * 1024 })).stdout.trim();
 const config = (version, extra = '', admin = true) => `
-import { defineConfig, table, collection, text, boolean, json, richText, job, db, mutation } from 'spacepress';
+import { defineConfig, table, collection, text, boolean, json, richText, job, mutation } from 'spacepress';
+import { db } from 'spacepress/server';
 export const items = table({ name: text(), processed: boolean().default(false), ${extra} })
   .on({ afterCreate: async (item) => { await stamp.enqueue({ itemId: item.id }); } });
 export const stories = collection({ title: text().max(160), body: richText().optional(), details: json().optional() }, { title: 'title', content: 'body', access: { read: 'anyone', create: 'editor', update: 'editor', delete: 'editor' } });

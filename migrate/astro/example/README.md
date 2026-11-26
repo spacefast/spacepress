@@ -19,7 +19,7 @@ This example uses an `image()` field in its original schema. The importer report
 | `src/pages/index.astro`, `src/pages/blog/index.astro` | `sp/app/page.tsx`, `sp/app/blog/page.tsx` | `getCollection("blog")` → `db.query.blog.findMany({ orderBy: { pubDate: "desc" } })` |
 | `src/pages/blog/[...slug].astro` | [`sp/app/blog/[...path]/page.tsx`](after/sp/app/blog/[...path]/page.tsx) | `getStaticPaths()` → the kind's `url: "/blog/:path"`; `render(post)` → `<Content value={item.body} />` |
 | `src/pages/about.md` | `sp/app/about/page.md` | `layout:` dropped: the app layout wraps it |
-| `src/components/Likes.tsx`, `client:load` | [`sp/components/Likes.tsx`](after/sp/components/Likes.tsx) | `"use client"`, `useState` from `"spacepress/client"`; no React on the page |
+| `src/components/Likes.tsx`, `client:load` | [`sp/components/Likes.tsx`](after/sp/components/Likes.tsx) | `"use client"`, `useState` from `"react"`; no React on the page |
 | the hero image next to the post | `public/images/first-light.svg` | `astro:assets` doesn't run in SpacePress |
 
 ## What it flagged for hand work

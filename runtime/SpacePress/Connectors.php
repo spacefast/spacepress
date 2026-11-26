@@ -7,7 +7,7 @@ namespace SpacePress;
 use SpacePress\Jobs\Jobs;
 
 /**
- * `connectors` from "spacepress" / "spacepress": host-managed connectors (such as a Spacefast
+ * `connectors` from "spacepress/server": host-managed connectors (such as a Spacefast
  * Connector), reached through the `sp_connectors_call` WordPress filter.
  *
  * - `connectors.call(role, tool, args?)` runs the connector now and returns its result.

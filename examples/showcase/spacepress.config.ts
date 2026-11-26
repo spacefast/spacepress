@@ -1,10 +1,5 @@
-import {
-  boolean,
-  defineConfig,
-  global,
-  table,
-  text, ref, query, HttpError,
-} from "spacepress";
+import { boolean, defineConfig, global, table, text, ref, query } from "spacepress";
+import { HttpError } from "spacepress/server";
 import {
   consume,
   items,

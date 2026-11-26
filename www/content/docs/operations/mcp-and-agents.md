@@ -49,7 +49,7 @@ npx spacepress init --check   # fails CI if AGENTS.md or skills are stale
 | `spacepress-fix-diagnostic` | Reading `spacepress check --json` diagnostics and fixing TS-to-PHP compiler errors or lint warnings                        |
 | `spacepress-woocommerce`    | Scaffolding and configuring `store()`, `product()`, shipping zones, orders, and optimistic cart hooks                      |
 | `spacepress-markdown-sync`  | Configuring `sync: "content/**/*.md"`, UIDs, `spacepress sync`, conflict resolution, and GitHub sync                       |
-| `spacepress-security-audit` | Auditing `.access()` rules, field-level leaks, `spacepress:db` vs `db`, route guards, and Abilities flags                  |
+| `spacepress-security-audit` | Auditing `.access()` rules, field-level leaks, `spacepress/server/db` vs `db`, route guards, and Abilities flags                  |
 | `spacepress-deploy`         | Safe preflight (`check`, `push --dry-run`), explicit production consent, WP Cloud static-asset notes, and `doctor --links` |
 | `spacepress-connect-mcp`    | Connecting an agent to a running site's authenticated WordPress MCP endpoint                                               |
 
@@ -84,7 +84,7 @@ To invoke abilities provided by WordPress core or installed plugins with full Ty
 npx spacepress abilities pull --site https://example.com
 ```
 
-Then call `abilities.call("ability/name", input)` from `"php/wordpress"` inside any action, hook, or route.
+Then call `abilities.call("ability/name", input)` from `"spacepress/server/wp"` inside any action, hook, or route.
 
 ## Guidance evals
 

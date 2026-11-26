@@ -1,8 +1,5 @@
-import {
-  collection, date, db, defineConfig, HttpError,
-  integer, job, json, media, table, text, timestamp,
-  type InferSelectModel, select, ref, query, mutation,
-} from "spacepress";
+import { collection, date, defineConfig, integer, job, json, media, table, text, timestamp, type InferSelectModel, select, ref, query, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 import { actorId, ownerId, personalAccess } from "./sp/lib/ownership";
 
 export const bins = collection({

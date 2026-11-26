@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
- * SpacePress\Wp\Guard on an in-process WordPress: what "php/wordpress" calls may not touch, whatever name
+ * SpacePress\Wp\Guard on an in-process WordPress: what "spacepress/server/wp" calls may not touch, whatever name
  * the app builds at runtime (the build refuses literal names with F4301), and which tables an
  * `existingTable` may bind.
  */

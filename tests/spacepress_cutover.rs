@@ -11,7 +11,8 @@ fn spacepress_config_and_connectors_compile_to_store() {
     std::fs::write(
         project.join("spacepress.config.ts"),
         r#"
-import { defineConfig, collection, text, mutation, connectors } from "spacepress";
+import { defineConfig, collection, text, mutation } from "spacepress";
+import { connectors } from "spacepress/server";
 
 export const posts = collection({
     title: text(),
@@ -87,7 +88,7 @@ export default defineConfig({ name: "notes-app" });
         project.join("sp/actions.ts"),
         r#"
 import { query } from "@spacefast/spacepress";
-import { notes } from "@spacefast/spacepress:db";
+import { notes } from "@spacefast/spacepress/server/db";
 
 export const countNotes = query(
     { access: "anyone" },
@@ -134,7 +135,8 @@ fn compile_config(config: &str) -> Result<String, String> {
 fn connectors_enqueue_compiles_to_the_queued_runtime_call() {
     let php = compile_config(
         r#"
-import { defineConfig, collection, text, mutation, connectors } from "spacepress";
+import { defineConfig, collection, text, mutation } from "spacepress";
+import { connectors } from "spacepress/server";
 
 export const orders = collection({ title: text() });
 
@@ -167,7 +169,8 @@ fn connectors_enqueue_refuses_what_it_cannot_queue() {
     let app = |handler: &str, kind: &str| {
         format!(
             r#"
-import {{ defineConfig, collection, text, mutation, query, connectors }} from "spacepress";
+import {{ defineConfig, collection, text, mutation, query }} from "spacepress";
+import {{ connectors }} from "spacepress/server";
 export const orders = collection({{ title: text() }});
 export const run = {kind}({{ access: "anyone" }}, async ({{ order }}: {{ order: string }}) => {{
     {handler}

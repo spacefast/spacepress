@@ -1,4 +1,4 @@
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 import { NoteCard } from "../../../components/NoteCard";
 
 // A literal folder beside notes/[slug]: it always wins, so no note is served at /notes/featured.

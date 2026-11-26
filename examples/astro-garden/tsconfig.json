@@ -1,5 +1,24 @@
 {
   "extends": "astro/tsconfigs/strict",
-  "include": [".astro/types.d.ts", "**/*"],
-  "exclude": ["dist"]
+  "include": [
+    ".astro/types.d.ts",
+    "**/*"
+  ],
+  "exclude": [
+    "dist"
+  ],
+  "compilerOptions": {
+    "rootDirs": [
+      ".",
+      "./sp/_generated/types"
+    ],
+    "paths": {
+      "spacepress/client": [
+        "../../packages/client/src/index.d.ts"
+      ],
+      "spacepress/react": [
+        "../../packages/client/src/react.d.ts"
+      ]
+    }
+  }
 }

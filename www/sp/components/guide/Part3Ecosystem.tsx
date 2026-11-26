@@ -61,7 +61,8 @@ export default function Invitation({ name, url }: InvitationProps) {
 }
 
 // sp/server.ts — transactional send queued in-transaction & retried after commit
-import { action, email, text, mail } from "spacepress";
+import { action, email, text } from "spacepress";
+import { mail } from "spacepress/server";
 import Invitation from "../emails/invitation";
 
 export const inviteMember = action({
@@ -81,9 +82,8 @@ export const inviteMember = action({
   },
 });`;
 
-const ADMIN_SCREEN_SANDBOX = `import {
-  table, text, integer, action, adminScreen, item, db, HttpError, defineConfig,
-} from "spacepress";
+const ADMIN_SCREEN_SANDBOX = `import { table, text, integer, action, adminScreen, item, defineConfig } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 export const tickets = table({
   subject: text().max(160),
@@ -150,7 +150,7 @@ Write documentation or blog posts in plain Markdown. Front matter keys are valid
 against your TypeScript schema at sync time — typos fail with the exact file and line.`;
 
 const ABILITIES_CODE = `import { action, text } from "spacepress";
-import { abilities } from "php/wordpress";
+import { abilities } from "spacepress/server/wp";
 
 // Call any registered WordPress Ability with compiled input/output types
 export const runSiteCheck = action({

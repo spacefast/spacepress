@@ -8,12 +8,10 @@
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "jsxImportSource": "spacepress",
+    "rootDirs": [".", "./sp/_generated/types"],
     "types": ["node"],
     "paths": {
-      "spacepress": ["./node_modules/spacepress/types/index.d.ts"],
-      "spacepress/*": ["./node_modules/spacepress/types/*.d.ts"],
-      "spacepress:db": ["./node_modules/spacepress/types/db.d.cts"],
-      "php/wordpress": ["./node_modules/spacepress/types/wordpress.d.ts"]
+      "react": ["./node_modules/spacepress/types/react-shim.d.ts"]
     }
   },
   "include": ["spacepress.config.ts", "*.client.ts", "sp"],

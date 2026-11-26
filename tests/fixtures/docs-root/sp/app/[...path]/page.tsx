@@ -1,4 +1,4 @@
-import { docs } from "spacepress:db";
+import { docs } from "spacepress/server/db";
 import { Content, Link, type PageProps } from "spacepress/app";
 import { nav, pager } from "spacepress/content";
 

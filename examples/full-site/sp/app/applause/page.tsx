@@ -1,5 +1,5 @@
 // /applause: every published note with a cheer button, a "use client" component.
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 import { CheerButton } from "../../components/CheerButton";
 
 export const metadata = { title: "Applause", description: "Cheer for the notes you liked." };

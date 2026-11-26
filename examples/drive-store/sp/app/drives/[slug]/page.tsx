@@ -1,13 +1,14 @@
-import { categories, tags } from "spacepress:db";
-import { Comments, Content, Link, Live, notFound, type PageProps } from "spacepress/app";
+import { categories, tags } from "spacepress/server/db";
+import type { PageProps } from "./$types";
+import { Comments, Content, Link, Live, notFound } from "spacepress/app";
 import { mediaName, money, size, stockLabel } from "../../_lib/format";
 
-export const metadata = ({ item }: PageProps<"drives/[slug]">) => ({
+export const metadata = ({ item }: PageProps) => ({
   title: item?.name ?? "Drive",
   description: item?.shortDescription ?? "Tested and graded drives",
 });
 
-export default async function Drive({ item }: PageProps<"drives/[slug]">) {
+export default async function Drive({ item }: PageProps) {
   if (!item) notFound();
   // Woo's own product categories and tags, read by the ids the product carries.
   const labels = [

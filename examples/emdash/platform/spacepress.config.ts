@@ -1,7 +1,5 @@
-import {
-  blocks, boolean, collection, db, defineConfig, env, group, integer, job, json, media, repeater, richText, slug,
-  table, text, ref, mutation, HttpError
-} from "spacepress";
+import { blocks, boolean, collection, defineConfig, env, group, integer, job, json, media, repeater, richText, slug, table, text, ref, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 const access = { read: "anyone", create: "editor", update: "editor", delete: "editor" };
 export const writers = collection({ name: text() }, { title: "name", uid: true, access });

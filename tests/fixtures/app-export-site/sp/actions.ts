@@ -1,5 +1,6 @@
-import { db, mutation } from "spacepress";
-import { cheers } from "spacepress:db";
+import { mutation } from "spacepress";
+import { db } from "spacepress/server";
+import { cheers } from "spacepress/server/db";
 
 export const cheer = mutation({ access: "anyone" }, async ({ noteId }: { noteId: number }) => {
   const row = await db.query.cheers.findFirst({ where: { noteId } });

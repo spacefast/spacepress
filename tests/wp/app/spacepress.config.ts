@@ -2,7 +2,8 @@
 // sp/blog/ with the WP suites' extra post hooks from tests/wp/blog-test-hooks.ts), the lane
 // modules in sp/lanes/, and what this file exports. Every kind, global, action and job registers
 // by its export name; a name taken twice fails the build.
-import { boolean, collection, date, defineConfig, db, email, integer, json, select, text, timestamp, table, number, ref, mutation } from "spacepress";
+import { boolean, collection, date, defineConfig, email, integer, json, select, text, timestamp, table, number, ref, mutation } from "spacepress";
+import { db } from "spacepress/server";
 import { posts } from "./sp/blog/spacepress.config.ts";
 // One module per phase-2 lane, so lanes add test kinds without editing this file.
 import * as fields from "./sp/lanes/fields.ts";

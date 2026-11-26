@@ -1,4 +1,4 @@
-import { signatures } from "spacepress:db";
+import { signatures } from "spacepress/server/db";
 import { Live } from "spacepress/app";
 import { Counter } from "../../components/Counter";
 

@@ -1,6 +1,6 @@
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 import { Link, type LayoutProps } from "spacepress/app";
-import { home_url, is_user_logged_in, wp_login_url } from "php/wordpress";
+import { home_url, is_user_logged_in, wp_login_url } from "spacepress/server/wp";
 import "./site.css";
 
 // Draws its own header and footer: the blank block template, so the theme's parts don't double them

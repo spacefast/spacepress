@@ -1,5 +1,5 @@
 // connectors.call and connectors.enqueue (www/content/docs/reference/host-contract.md, `sp_connectors_call`).
-import { connectors } from "spacepress";
+import { connectors } from "spacepress/server";
 
 export const now: Promise<unknown> = connectors.call("crm", "find", { q: "ada" });
 export const bare: Promise<unknown> = connectors.call("crm", "ping");

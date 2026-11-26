@@ -62,7 +62,7 @@ type Graph = {
   };
 };
 declare module "spacepress" { interface Register { relations: Relations<Entities, Graph>; globals: Globals } }
-declare module "php/wordpress" {
+declare module "spacepress/server/wp" {
   interface Abilities {
     "todo/add-checklist-item": { input: { id: number | string; label: string }; output: unknown };
     "todo/complete-and-stop-recurring": { input: { id: number | string }; output: unknown };

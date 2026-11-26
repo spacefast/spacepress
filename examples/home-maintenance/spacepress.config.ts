@@ -1,8 +1,5 @@
-import {
-  collection, date, db, defineConfig, file, files,
-  HttpError, integer, job, media, richText, text, timestamp,
-  type InferSelectModel, select, ref, query, mutation,
-} from "spacepress";
+import { collection, date, defineConfig, file, files, integer, job, media, richText, text, timestamp, type InferSelectModel, select, ref, query, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 import { addDays, overdueDelay, today } from "./sp/lib/dates";
 
 const owner = integer().access({ create: false, update: false }).ui({ label: "Owner", help: "Set automatically from your WordPress account." });

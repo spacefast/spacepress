@@ -10,14 +10,14 @@ cd "$(dirname "$0")"
 PHP="${PHP:-php}"
 status=0
 suites=("$@")
-[ ${#suites[@]} -eq 0 ] && suites=(js bigint env fetch crypto query deployments db destructive_migrations schema runtimeschema sql blog auth jobs mail abilities search searchable webhooks realtime live images files identity_callback connectors media locales sync sync_notrash vendor boundary markdown spam harness staged coediting core_shape guard taxonomy trash git_dispatch install_marker brand_upgrade brand_upgrade_identity storage_engine page_reads columns mcp_boot admin_boot theme_styles)
+[ ${#suites[@]} -eq 0 ] && suites=(js bigint env fetch crypto query deployments db destructive_migrations schema runtimeschema sql blog auth jobs mail abilities search searchable webhooks realtime live images files identity_callback connectors media locales sync sync_notrash vendor boundary markdown spam harness staged coediting core_shape guard taxonomy trash git_dispatch install_marker brand_upgrade brand_upgrade_identity brand_upgrade_cron storage_engine page_reads columns mcp_boot admin_boot theme_styles)
 for s in "${suites[@]}"; do
   case "$s" in
     js) "$PHP" -d zend.assertions=1 js_parity.php || status=1 ;;
     env) "$PHP" -d zend.assertions=1 bootstrap_test.php || status=1
          "$PHP" -d zend.assertions=1 env_test.php || status=1
          "$PHP" -d zend.assertions=1 host_test.php || status=1 ;;
-    fetch|crypto|query|schema|sql|images|boundary|bigint) "$PHP" -d zend.assertions=1 "${s}_test.php" || status=1 ;;
+    fetch|crypto|query|schema|sql|images|boundary|bigint|brand_upgrade_cron) "$PHP" -d zend.assertions=1 "${s}_test.php" || status=1 ;;
     runtimeschema) "$PHP" -d zend.assertions=1 runtimeschema_corpus.php || status=1
                    "$PHP" -d zend.assertions=1 -d memory_limit=512M runtimeschema_test.php || status=1 ;;
     realtime) "$PHP" -d zend.assertions=1 -d memory_limit=512M realtime_test.php || status=1

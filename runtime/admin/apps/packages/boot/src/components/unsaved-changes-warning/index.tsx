@@ -19,9 +19,19 @@ export default function UnsavedChangesWarning() {
 		return dirtyEntityRecords.length > 0;
 	}, []);
 
+	const isDirty = hasUnsavedChanges || documentDirty || !valid;
+
+	useEffect(() => {
+		window.dispatchEvent(
+			new CustomEvent('spacefast:embed:dirty', {
+				detail: { dirty: isDirty },
+			})
+		);
+	}, [isDirty]);
+
 	useEffect(() => {
 		// Performance optimization: only attach listener when there are unsaved changes
-		if (!hasUnsavedChanges && !documentDirty && valid) {
+		if (!isDirty) {
 			return;
 		}
 

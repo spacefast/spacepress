@@ -22,6 +22,29 @@
 	}
 }
 
+.spacepress-admin-layout.is-embedded {
+	background: transparent;
+
+	.spacepress-admin-layout__surface {
+		@include mixins.break-medium {
+			margin: 0;
+			border: 0;
+			border-radius: 0;
+			box-shadow: none;
+		}
+	}
+
+	.spacepress-admin-layout__canvas {
+		@include mixins.break-medium {
+			top: 0;
+			bottom: 0;
+			width: 100%;
+			border: 0;
+			border-radius: 0;
+		}
+	}
+}
+
 .spacepress-admin-layout__content {
 	height: 100%;
 	flex-grow: 1;

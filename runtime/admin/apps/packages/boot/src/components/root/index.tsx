@@ -140,7 +140,17 @@ function useDocumentTitleManager( currentRouteId: string ) {
 		if ( fullTitle ) {
 			document.title = fullTitle;
 		}
-	}, [ fullTitle ] );
+		if ( leafTitle || fullTitle ) {
+			window.dispatchEvent(
+				new CustomEvent( 'spacefast:embed:title', {
+					detail: {
+						title: leafTitle ?? fullTitle,
+						fullTitle: fullTitle ?? leafTitle,
+					},
+				} )
+			);
+		}
+	}, [ fullTitle, leafTitle ] );
 
 	useEffect( () => {
 		if ( ! hasNavigatedRef.current ) {
@@ -155,6 +165,15 @@ function useDocumentTitleManager( currentRouteId: string ) {
 
 function Root() {
 	const agentEnabled = useSelect(select => select(rootStore).getDashboardContext().ai_agent_enabled === true, []);
+	const contextEmbedded = useSelect(select => select(rootStore).getDashboardContext().embed === true, []);
+	const [ queryEmbedded ] = useState( () => {
+		if ( typeof window === 'undefined' ) {
+			return false;
+		}
+		const value = new URLSearchParams( window.location.search ).get( 'embed' );
+		return value === '1' || value === 'true';
+	} );
+	const isEmbedded = contextEmbedded || queryEmbedded;
 	const { themeColorSettings } = useColorPreference();
 	const isMobileViewport = useViewportMatch( 'medium', '<' );
 	const [ isMobileSidebarOpen, setIsMobileSidebarOpen ] = useState( false );
@@ -164,6 +183,18 @@ function Root() {
 	const currentRouteId = String( matches.at( -1 )?.routeId ?? '' );
 	useDocumentTitleManager( currentRouteId );
 	useCommands();
+
+	useEffect( () => {
+		if ( ! isEmbedded ) {
+			return;
+		}
+		const search = typeof location.searchStr === 'string' ? location.searchStr : '';
+		window.dispatchEvent(
+			new CustomEvent( 'spacefast:embed:route', {
+				detail: { route: `${ location.pathname }${ search }` },
+			} )
+		);
+	}, [ isEmbedded, location.pathname, location.searchStr ] );
 
 	// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 	const { createErrorNotice } = useDispatch( noticesStore );
@@ -225,7 +256,7 @@ function Root() {
 						// The inner ThemeProvider applies the chosen scheme to its children
 					 }
 					<ThemeProvider color={ themeColorSettings.sidebar }>
-						{ isMobileViewport && (
+						{ ! isEmbedded && isMobileViewport && (
 							<Page.SidebarToggleFill>
 								<IconButton
 									variant="minimal"
@@ -251,6 +282,7 @@ function Root() {
 								'spacepress-admin-layout',
 								navigateRegionsProps.className,
 								{
+									'is-embedded': isEmbedded,
 									'has-full-canvas':
 										canvas && ! canvas.isPreview,
 									'is-canvas-compact':
@@ -260,7 +292,8 @@ function Root() {
 						>
 							<div className="spacepress-admin-layout__content">
 								<AnimatePresence>
-									{ isMobileViewport &&
+									{ ! isEmbedded &&
+										isMobileViewport &&
 										isMobileSidebarOpen && (
 											<motion.div
 												initial={ { opacity: '0' } }
@@ -294,7 +327,8 @@ function Root() {
 										) }
 								</AnimatePresence>
 								<AnimatePresence>
-									{ isMobileViewport &&
+									{ ! isEmbedded &&
+										isMobileViewport &&
 										isMobileSidebarOpen && (
 											<motion.div
 												initial={ { x: '-100%' } }
@@ -313,7 +347,7 @@ function Root() {
 											</motion.div>
 										) }
 								</AnimatePresence>
-								{ ! isMobileViewport && (
+								{ ! isEmbedded && ! isMobileViewport && (
 									<NavigableRegion
 										ariaLabel={ __(
 											'Navigation',
@@ -343,7 +377,8 @@ function Root() {
 										color={ themeColorSettings.app }
 									>
 										<div className="spacepress-admin-layout__canvas-container">
-											{ canvas.isPreview &&
+											{ ! isEmbedded &&
+												canvas.isPreview &&
 												isMobileViewport && (
 													<div className="spacepress-admin-layout__mobile-sidebar-drawer">
 														<IconButton
@@ -370,6 +405,7 @@ function Root() {
 														'is-full-canvas':
 															! canvas.isPreview,
 														'has-mobile-drawer':
+															! isEmbedded &&
 															canvas.isPreview &&
 															isMobileViewport,
 													}

@@ -11,14 +11,14 @@ export function Later({ items }: { items: number[] }) {
   const [log, setLog] = useState("-");
   const doubled = n * 2;
   const box = useRef();
-  const bump = () => {
-    const next = n + 1;
+  const bump = (by = doubled - n) => {
+    const next = n + by;
     setN(next);
     return next;
   };
-  const load = async () => {
+  const load = async ([value = doubled]: number[] = []) => {
     await new Promise((resolve) => setTimeout(resolve, 5));
-    return doubled;
+    return value;
   };
   const run = async () => {
     const got = await load();
@@ -53,10 +53,9 @@ export function Later({ items }: { items: number[] }) {
     await new Promise<void>((resolve) => {
       setTimeout(() => {
         later = doubled;
-        document.body.addEventListener("later", () => { heard = bump(); }, { once: true });
+        document.body.addEventListener("later", async () => { heard = bump(await Promise.resolve(1)); resolve(); }, { once: true });
         document.body.dispatchEvent(new Event("later"));
         tag = box.current?.tagName ?? "none";
-        resolve();
       }, 0);
     });
     const odd = [1, 2, 3].filter(function keep(x) { return x % 2 === 1; }).length;

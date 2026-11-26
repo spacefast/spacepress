@@ -110,6 +110,31 @@ enum LoopStep {
     Leave(Flow),
 }
 
+/// The names a module exports itself: its exported declarations and `export { … }` lists,
+/// with or without `from`. `export *` never overrides these.
+fn own_exports(body: &[Stmt]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    for stmt in body {
+        match stmt {
+            Stmt::Exported(inner) => {
+                let mut names = Vec::new();
+                match inner.as_ref() {
+                    Stmt::Decl { pat, .. } => pat.bindings(&mut names),
+                    Stmt::Func(f) => names.extend(f.name.as_deref().map(|n| (n, f.span))),
+                    _ => {}
+                }
+                out.extend(names.into_iter().map(|(n, _)| n.to_string()));
+            }
+            Stmt::ExportNames { names, .. } => out.extend(names.iter().map(|(_, exported)| exported.clone())),
+            Stmt::ExportDefault(_) => {
+                out.insert("default".to_string());
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 fn loop_step(flow: Flow, labels: &[String]) -> LoopStep {
     match flow {
         Flow::Normal | Flow::Continue(None) => LoopStep::Next,
@@ -978,7 +1003,14 @@ impl<'p> Evaluator<'p> {
                         .filter(|(k, _)| *k != "default")
                         .map(|(k, v)| (k.clone(), v.clone()))
                         .collect();
-                    self.exports[id].extend(all);
+                    // A module's own exports win over `export *` wherever they sit, and the first
+                    // star that has a name keeps it, as `import_ann` reads them.
+                    let own = own_exports(&self.program.modules[id].body);
+                    for (k, v) in all {
+                        if !own.contains(&k) {
+                            self.exports[id].entry(k).or_insert(v);
+                        }
+                    }
                 }
                 Stmt::ExportDefault(e) => {
                     let v = self.eval(e, &scope)?;
@@ -1120,7 +1152,8 @@ impl<'p> Evaluator<'p> {
                             }
                         }
                     }
-                    Stmt::ExportAll { from: src, .. } if star.is_none() => {
+                    Stmt::ExportDefault(_) => exported_here |= name == "default",
+                    Stmt::ExportAll { from: src, .. } if star.is_none() && name != "default" => {
                         if let Some(&t) = self.program.resolved.get(&(target, src.clone()))
                             && self.exports[t].contains_key(&name)
                         {

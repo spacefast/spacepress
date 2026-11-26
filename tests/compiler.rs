@@ -6378,4 +6378,11 @@ fn imported_constants_keep_their_declared_types() {
     copy(&root().join("tests/fixtures/imported-annotations"), &project);
     let out = first().arg("build").arg(&project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    // Two `export *` of V: the first star's value is the one read, as its type is.
+    let php = std::fs::read_to_string(
+        project.join("sp/dist/wp-content/plugins/spacepress-app-annotations/sp/app/functions.php"),
+    )
+    .unwrap();
+    assert!(php.contains("$value->p['a'] = 'one';"), "{php}");
+    assert!(!php.contains("$value->p['a'] = 2;"), "{php}");
 }

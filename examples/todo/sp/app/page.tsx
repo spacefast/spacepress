@@ -160,7 +160,7 @@ export default async function TodoWorkspacePage({
   const rawTasks = await tasks.list({ orderBy: { updatedAt: "desc" }, limit: 250 });
   const allTasks: TodoTask[] = rawTasks.map((row) => ({
     id: row.id,
-    title: row.title,
+    title: decodeWpText(row.title),
     slug: row.slug ?? "",
     notes: row.notes ?? null,
     details: row.details ?? null,

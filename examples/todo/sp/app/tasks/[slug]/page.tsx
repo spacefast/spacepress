@@ -63,7 +63,7 @@ export default async function TaskDetailPage({ item }: PageProps<"tasks/[slug]">
               {item.completedAt !== null ? <span className="todo-check__mark">✓</span> : null}
             </span>
           )}
-          <h1 className="todo-header__title">{item.title}</h1>
+          <h1 className="todo-header__title">{decodeWpText(item.title)}</h1>
         </div>
 
         {item.notes && <p className="todo-header__subtitle">{item.notes}</p>}
@@ -104,7 +104,7 @@ export default async function TaskDetailPage({ item }: PageProps<"tasks/[slug]">
 
         {blocker && (
           <p className="form-banner form-banner--error">
-            Blocked by <Link href={`/tasks/${blocker.slug}`}>{blocker.title}</Link>
+            Blocked by <Link href={`/tasks/${blocker.slug}`}>{decodeWpText(blocker.title)}</Link>
           </p>
         )}
 
@@ -114,7 +114,7 @@ export default async function TaskDetailPage({ item }: PageProps<"tasks/[slug]">
             <ul>
               {blocking.map((dep) => (
                 <li key={dep.id}>
-                  <Link href={`/tasks/${dep.slug}`}>{dep.title}</Link>
+                  <Link href={`/tasks/${dep.slug}`}>{decodeWpText(dep.title)}</Link>
                 </li>
               ))}
             </ul>

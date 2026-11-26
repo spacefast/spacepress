@@ -1,4 +1,5 @@
-import { collection, db, defineConfig, integer, richText, table, taxonomy, terms, text } from "spacepress";
+import { collection, defineConfig, integer, richText, table, taxonomy, terms, text } from "spacepress";
+import { db } from "spacepress/server";
 
 export const hiddenTags = taxonomy({});
 export const articles = collection({ title: text(), labels: terms(hiddenTags) });

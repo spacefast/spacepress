@@ -1,7 +1,8 @@
 // The site's one public action: a published note gets one more cheer. The pages island and the
 // `CheerButton` client component both call it.
-import { db, HttpError, mutation } from "spacepress";
-import { cheers } from "spacepress:db";
+import { mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
+import { cheers } from "spacepress/server/db";
 
 export const cheer = mutation({ access: "anyone" }, async ({ noteId }: { noteId: number }) => {
   if (!Number.isInteger(noteId)) throw new HttpError(422, "invalid_input", "noteId must be an integer", "/noteId");

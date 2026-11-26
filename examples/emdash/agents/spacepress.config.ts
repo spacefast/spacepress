@@ -1,4 +1,5 @@
-import { boolean, collection, db, defineConfig, global, HttpError, job, richText, table, text, query, mutation } from "spacepress";
+import { boolean, collection, defineConfig, global, job, richText, table, text, query, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 export const articles = collection({
   title: text().min(1).max(120),

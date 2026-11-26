@@ -9,7 +9,57 @@
   "type": "module",
   "engines": { "node": ">=22" },
   "bin": { "spacepress": "bin/spacepress.mjs" },
-  "files": ["bin", "lib", "types", "LICENSE", "README.md"],
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts"
+    },
+    "./app": {
+      "types": "./types/app.d.ts",
+      "browser": "./types/stubs/app.mjs",
+      "default": "./types/stubs/app.mjs"
+    },
+    "./content": {
+      "types": "./types/content.d.ts",
+      "browser": "./types/stubs/content.mjs",
+      "default": "./types/stubs/content.mjs"
+    },
+    "./server": {
+      "types": "./types/server.d.ts",
+      "browser": "./types/stubs/server.mjs",
+      "default": "./types/stubs/server.mjs"
+    },
+    "./server/db": {
+      "types": "./types/server-db.d.cts",
+      "browser": "./types/stubs/server-db.mjs",
+      "default": "./types/stubs/server-db.mjs"
+    },
+    "./server/wp": {
+      "types": "./types/server-wp.d.ts",
+      "browser": "./types/stubs/server-wp.mjs",
+      "default": "./types/stubs/server-wp.mjs"
+    },
+    "./client": {
+      "types": "./client/index.d.ts",
+      "import": "./client/index.mjs",
+      "default": "./client/index.mjs"
+    },
+    "./react": {
+      "types": "./client/react.d.ts",
+      "import": "./client/react.mjs",
+      "default": "./client/react.mjs"
+    },
+    "./danger": {
+      "types": "./types/danger.d.ts"
+    },
+    "./jsx-runtime": {
+      "types": "./types/jsx-runtime.d.ts"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./types/jsx-dev-runtime.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["bin", "client", "lib", "types", "LICENSE", "README.md"],
   "scripts": {
     "prepack": "node scripts/prepare.mjs",
     "postinstall": "node bin/install.mjs",

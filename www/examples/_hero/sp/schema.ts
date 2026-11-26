@@ -1,5 +1,6 @@
 // The table and the two actions that write it. Change anything and it is compiled again, here in your browser.
-import { table, text, boolean, integer, db, HttpError, mutation } from "spacepress";
+import { table, text, boolean, integer, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 export const tasks = table({
   title: text().min(1).max(120),

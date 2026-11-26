@@ -1,5 +1,5 @@
 import { defineConfig, mutation } from "spacepress";
-import { abilities } from "php/wordpress";
+import { abilities } from "spacepress/server/wp";
 
 // A locked third-party ability and the app's own action, called with typed input and output.
 export const greet = mutation({ access: "anyone" }, (i: { who: string }) => "hi " + i.who);

@@ -1,4 +1,5 @@
-import { db, defineConfig, HttpError, number, query, mutation } from "spacepress";
+import { defineConfig, number, query, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 import { feedings, stock, shoppingList } from "./sp/lib/schema";
 import { DAY_MS, WINDOW_DAYS, ownerId, ownFood, ownPet, projection, queueStockCheck, usableStock } from "./sp/lib/pantry";
 

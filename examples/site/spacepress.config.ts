@@ -1,11 +1,8 @@
 // A small publication: authors write posts with rich fields, readers sign in
 // as members and leave comments that editors moderate through an action, and editors keep the site
 // settings. tests/system drives a whole user journey through this app on WordPress.
-import {
-  collection, global, text, integer, boolean, timestamp, richText, media, slug, select,
-  repeater, group, blocks, email, url, defineConfig, job, env, file, files, db, HttpError,
-  table, userProjection, ref, query, mutation,
-} from "spacepress";
+import { collection, global, text, integer, boolean, timestamp, richText, media, slug, select, repeater, group, blocks, email, url, defineConfig, job, env, file, files, table, userProjection, ref, query, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 // Who works on the site. Everyone else (anonymous readers, guests, signed-in members) is a reader.
 const STAFF = ["author", "editor", "admin"];

@@ -183,13 +183,27 @@ async function frameworkPlugins(root, frameworks) {
   return plugins;
 }
 
+async function resolveAppDir(root, dir) {
+  if (typeof dir === 'string' && dir.length > 0) return dir;
+  try {
+    const src = await readFile(path.join(root, 'spacepress.config.ts'), 'utf8');
+    const match = src.match(/\bdir\s*:\s*["']([^"']+)["']/);
+    if (match?.[1]) return match[1];
+  } catch {
+    // No config file; fall back to default "sp".
+  }
+  return 'sp';
+}
+
 export async function buildFrontend({
   root = process.cwd(),
+  dir,
   entries = { main: 'browser/index.ts' },
   frameworks = {},
   logLevel = 'info',
 } = {}) {
   root = await realpath(root);
+  const appDir = await resolveAppDir(root, dir);
   const requested = Object.entries(entries);
   if (!requested.length) throw new Error('Declare at least one frontend entry.');
   const inputs = await Promise.all(requested.map(async ([name, file]) => {
@@ -205,7 +219,7 @@ export async function buildFrontend({
     throw new Error('Each frontend entry must have a different input file.');
   }
 
-  return publishFrontend({ root, inputs, directory: assetDirectory, frameworks, logLevel, plugins: await frameworkPlugins(root, frameworks) });
+  return publishFrontend({ root, appDir, inputs, directory: assetDirectory, frameworks, logLevel, plugins: await frameworkPlugins(root, frameworks) });
 }
 
 /**
@@ -244,7 +258,8 @@ export async function rebuildFrontend({ root = process.cwd() } = {}) {
  * server also takes the process's SIGTERM and exits, which would skip `spacepress dev`'s cleanup and
  * leave WordPress running. `entries` maps an entry's name to its source file.
  */
-export async function serveFrontend({ root, host, port = 0, site, reach, entries, frameworks = {} }) {
+export async function serveFrontend({ root, dir, host, port = 0, site, reach, entries, frameworks = {} }) {
+  const appDir = await resolveAppDir(root, dir);
   const { default: react } = await import('@vitejs/plugin-react');
   const modules = new Map(Object.entries(entries).map(([name, entry]) => [`/@spacepress/${name}.js`, entry]));
   const token = randomUUID();
@@ -332,9 +347,9 @@ for (const link of document.querySelectorAll('link[rel="stylesheet"], link[rel="
         cors: { origin: new URL(site).origin },
         fs: {
           // Keep Vite's default denials and exclude Studio's local WordPress and compiled artifacts.
-          deny: ['.env', '.env.*', '*.{crt,pem,key,p12,pfx,cer,der}', '.npmrc', '.yarnrc.yml', '**/.git/**', '**/.sp/**', '**/sp/dist/**'],
+          deny: ['.env', '.env.*', '*.{crt,pem,key,p12,pfx,cer,der}', '.npmrc', '.yarnrc.yml', '**/.git/**', '**/.sp/**', `**/${appDir}/dist/**`],
         },
-        watch: { ignored: ['**/.sp/**', '**/sp/_generated/**', '**/sp/dist/**', '**/public/spacepress-{assets,styles}/**'] },
+        watch: { ignored: ['**/.sp/**', `**/${appDir}/_generated/**`, `**/${appDir}/dist/**`, '**/public/spacepress-{assets,styles}/**'] },
       },
     });
     return {
@@ -360,26 +375,29 @@ for (const link of document.querySelectorAll('link[rel="stylesheet"], link[rel="
 }
 
 /** @internal Called by the native compiler while it holds the project build lock. */
-export async function buildStyles({ root, styles }) {
+export async function buildStyles({ root, styles, dir }) {
+  const realRoot = await realpath(root);
+  const appDir = await resolveAppDir(realRoot, dir);
   return publishFrontend({
-    root: await realpath(root),
+    root: realRoot,
+    appDir,
     inputs: styles.map((file, index) => [`style-${index}`, file]),
     directory: styleDirectory,
   });
 }
 
-async function publishFrontend({ root, inputs, directory, frameworks, logLevel = 'warn', plugins = [] }) {
+async function publishFrontend({ root, appDir = 'sp', inputs, directory, frameworks, logLevel = 'warn', plugins = [] }) {
   const publicDir = path.join(root, 'public');
-  const spacepress = path.join(root, 'sp');
+  const spacepress = path.join(root, appDir);
   const generated = path.join(spacepress, '_generated');
-  await ensureDirectory(publicDir);
-  await ensureDirectory(spacepress);
+  await mkdir(publicDir, { recursive: true });
+  await mkdir(spacepress, { recursive: true });
   await ensureDirectory(generated);
 
   const held = path.join(generated, `.${directory}-lock`);
   await lock(held);
   try {
-    const output = await compileFrontend({ root, inputs, publicDir, generated, directory, plugins, logLevel });
+    const output = await compileFrontend({ root, appDir, inputs, publicDir, generated, directory, plugins, logLevel });
     if (frameworks) {
       // Each entry's source, with the launchers and links this build gave it: enough to build it
       // again (rebuildFrontend) and to put Vite in the launchers' place (spacepress dev).
@@ -402,7 +420,7 @@ async function publishFrontend({ root, inputs, directory, frameworks, logLevel =
   }
 }
 
-async function compileFrontend({ root, inputs, publicDir, generated, directory, plugins, logLevel }) {
+async function compileFrontend({ root, appDir = 'sp', inputs, publicDir, generated, directory, plugins, logLevel }) {
   const stylesOnly = directory === styleDirectory;
   const destination = path.join(publicDir, directory);
   const metadataName = stylesOnly ? 'frontend-styles.json' : 'frontend.ts';
@@ -417,7 +435,7 @@ async function compileFrontend({ root, inputs, publicDir, generated, directory, 
     const metadata = previousMetadata.isFile() ? await readFile(metadataFile, 'utf8') : '';
     const contents = stylesOnly ? metadata : metadata.replace(/^\uFEFF/, '').replace('\r\n', '\n');
     if (!contents.startsWith(header)) {
-      throw new Error(`sp/_generated/${metadataName} is reserved for generated metadata. Move the existing file first.`);
+      throw new Error(`${appDir}/_generated/${metadataName} is reserved for generated metadata. Move the existing file first.`);
     }
   }
 

@@ -1,6 +1,5 @@
-import {
-  table, text, integer, date, timestamp, defineConfig, job, once, db, HttpError, type InferSelectModel, select, ref, query, mutation,
-} from "spacepress";
+import { table, text, integer, date, timestamp, defineConfig, job, type InferSelectModel, select, ref, query, mutation } from "spacepress";
+import { once, db, HttpError } from "spacepress/server";
 import { advanceRenewal, monthlyAmount } from "./sp/lib/calendar";
 
 const ownership = {

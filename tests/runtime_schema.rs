@@ -314,7 +314,7 @@ fn a_site_changes_its_schema_the_project_pulls_it_and_the_next_build_contains_it
     std::fs::create_dir_all(project.join("sp/server")).unwrap();
     std::fs::write(
         project.join("sp/server/headlines.ts"),
-        "import { query } from \"spacepress\";\nimport { articles } from \"spacepress:db\";\n\n\
+        "import { query } from \"spacepress\";\nimport { articles } from \"spacepress/server/db\";\n\n\
          export const headlines = query({ access: \"anyone\" }, async () => {\n  \
          const rows = await articles.list({ limit: 5 });\n  return rows.map((row) => row.subtitle ?? row.title);\n});\n",
     )

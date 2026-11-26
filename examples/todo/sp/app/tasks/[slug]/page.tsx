@@ -1,16 +1,17 @@
-import { get_post, get_userdata, home_url, is_user_logged_in, wp_login_url } from "php/wordpress";
-import { buckets, tasks } from "spacepress:db";
-import { Comments, Content, Link, notFound, type PageProps } from "spacepress/app";
+import { get_post, get_userdata, home_url, is_user_logged_in, wp_login_url } from "spacepress/server/wp";
+import type { PageProps } from "./$types";
+import { buckets, tasks } from "spacepress/server/db";
+import { Comments, Content, Link, notFound } from "spacepress/app";
 import { ChecklistEditor } from "../../../components/ChecklistEditor";
 import { TaskCheckButton } from "../../../components/TaskCheckButton";
 import { checklistProgress, decodeWpText, userInitials } from "../../../lib/todo";
 import { completeAndStopRecurring, snoozeTask } from "../../../server";
 
-export const metadata = ({ item }: PageProps<"tasks/[slug]">) => ({
+export const metadata = ({ item }: PageProps) => ({
   title: item ? item.title : "Task",
 });
 
-export default async function TaskDetailPage({ item }: PageProps<"tasks/[slug]">) {
+export default async function TaskDetailPage({ item }: PageProps) {
   if (!item) notFound();
 
   const signedIn = is_user_logged_in();

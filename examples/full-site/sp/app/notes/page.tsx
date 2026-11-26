@@ -1,4 +1,4 @@
-import { db } from "spacepress";
+import { db } from "spacepress/server";
 import { NoteCard } from "../../components/NoteCard";
 
 export const metadata = { title: "Notes", description: "Every published note." };

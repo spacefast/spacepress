@@ -4,7 +4,8 @@
 // Localization (§7.3): `tours` is a post-backed localized collection (Polylang owns language +
 // group) that also syncs with Markdown files (lane C), `phrases` a `table()` one (SpacePress's own
 // translationGroup column).
-import { collection, db, integer, richText, select, slug, text, table, mutation, HttpError } from "spacepress";
+import { collection, integer, richText, select, slug, text, table, mutation } from "spacepress";
+import { db, HttpError } from "spacepress/server";
 
 export const tours = collection({
   title: text().localized(),

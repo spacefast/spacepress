@@ -667,7 +667,7 @@ Evidence: `tests/compiler_contracts.rs` (`undefined_bindings_are_located_refusal
 
 Status: **refused**. Diagnostic: `F4001`.
 
-abilities.call from "php/wordpress" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in sp/_generated/abilities.json by `spacepress abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
+abilities.call from "spacepress/server/wp" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in sp/_generated/abilities.json by `spacepress abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
 
 Evidence: `tests/fixtures/reject-ability-unknown`
 
@@ -739,7 +739,7 @@ Evidence: `tests/compiler_contracts.rs` (`wp_hooks_register_in_file_order_with_t
 
 Status: **refused**. Diagnostic: `F2001`.
 
-"php/wordpress" exports the catalog's WordPress functions only: each is admitted when its PHP signature maps soundly (no by-reference parameters, no echoing template tags, no reliance on request globals). Anything else is refused at the import with the list of admitted functions. Template tags such as the_title echo; use their get_ form (get_the_title, once admitted) or a wp-hooks/ filter.
+"spacepress/server/wp" exports the catalog's WordPress functions only: each is admitted when its PHP signature maps soundly (no by-reference parameters, no echoing template tags, no reliance on request globals). Anything else is refused at the import with the list of admitted functions. Template tags such as the_title echo; use their get_ form (get_the_title, once admitted) or a wp-hooks/ filter.
 
 Evidence: `tests/fixtures/reject-wp-function-unknown`
 
@@ -795,7 +795,7 @@ Evidence: `tests/fixtures/reject-plugin-isolation`
 
 Status: **refused**. Diagnostic: `F1201`.
 
-A plugin can't import "spacepress:db": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it.
+A plugin can't import "spacepress/server/db": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it.
 
 Evidence: `tests/fixtures/reject-plugin-db`
 
@@ -1243,7 +1243,7 @@ Evidence: `tests/app_router.rs` (`forms_work_without_javascript`)
 
 Status: **refused**. Diagnostic: `F1003`.
 
-Client components run in the browser without a bundler: import "spacepress/client" and relative modules only.
+Client components run in the browser without a bundler: import "react", "spacepress/react", "../_generated/api", and relative modules only.
 
 Evidence: `tests/fixtures/reject-client-npm`
 

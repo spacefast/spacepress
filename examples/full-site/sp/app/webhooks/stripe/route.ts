@@ -1,7 +1,8 @@
 // POST /webhooks/stripe: a signed webhook. The sender signs the raw body with HMAC-SHA256; the
 // handler runs as the system.
-import { db, env, type RouteRequest } from "spacepress";
-import { cheers } from "spacepress:db";
+import { env, type RouteRequest } from "spacepress";
+import { db } from "spacepress/server";
+import { cheers } from "spacepress/server/db";
 
 export const signature = { secret: env("FULLSITE_WEBHOOK_SECRET"), header: "x-fullsite-signature", scheme: "hmac-sha256" };
 

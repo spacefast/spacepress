@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "spacepress/client";
+import { useState } from "react";
 import { cheer } from "../actions";
 
 export function Cheer({ noteId }: { noteId: number }) {

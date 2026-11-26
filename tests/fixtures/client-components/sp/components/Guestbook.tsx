@@ -1,10 +1,11 @@
 "use client";
-import { useLive } from "spacepress/client";
+import { useLive } from "spacepress/react";
+import { api } from "../_generated/api";
 
 // A read the browser keeps current: the server answers it in the first render, and the page
 // subscribes to it through the app's typed client.
 export function Guestbook({ limit }: { limit: number }) {
-  const signed = useLive("guestbook", { orderBy: { id: "asc" }, limit });
+  const signed = useLive(api.guestbook.list({ orderBy: { id: "asc" }, limit }));
   return (
     <section className="guestbook" data-loading={signed.loading ? "yes" : "no"}>
       <ul>

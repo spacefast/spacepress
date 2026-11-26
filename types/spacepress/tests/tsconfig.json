@@ -13,17 +13,35 @@
       "spacepress": [
         "../index.d.ts"
       ],
-      "php/wordpress": [
-        "../wordpress.d.ts"
+      "spacepress/server": [
+        "../server.d.ts"
       ],
-      "spacepress/content": [
-        "../content.d.ts"
+      "spacepress/server/db": [
+        "../server-db.d.cts"
       ],
       "spacepress/app": [
         "../app.d.ts"
       ],
+      "spacepress/content": [
+        "../content.d.ts"
+      ],
+      "spacepress/server/wp": [
+        "../server-wp.d.ts"
+      ],
       "spacepress/danger": [
         "../danger.d.ts"
+      ],
+      "spacepress/jsx-runtime": [
+        "../jsx-runtime.d.ts"
+      ],
+      "spacepress/jsx-dev-runtime": [
+        "../jsx-dev-runtime.d.ts"
+      ],
+      "@spacepress/client": [
+        "../../../packages/client/src/index.d.ts"
+      ],
+      "@spacepress/client/react": [
+        "../../../packages/client/src/react.d.ts"
       ]
     }
   },

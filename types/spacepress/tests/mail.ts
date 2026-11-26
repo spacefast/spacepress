@@ -1,5 +1,6 @@
 // mail.send and mail.render (docs/config-api.md, "Email").
-import { mail, type MailMessage } from "spacepress";
+import { type MailMessage } from "spacepress";
+import { mail } from "spacepress/server";
 
 declare const replyTo: string | null;
 declare const name: string | undefined;

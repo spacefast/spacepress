@@ -1932,10 +1932,8 @@ export const createTask = mutation(
 export const filterActive = mutation(
   {},
   async ({ status }: { status: "draft" | "review" | "done" }) => {
-    if (status === "draft") return "skipped";
-    // After excluding "draft", status is "review" | "done".
     const accept = (s: "review" | "done") => s;
-    if (status !== "review" && status !== "done") return "unreachable";
+    if (status !== "review" && status !== "done") return "skipped";
     return accept(status);
   },
 );
@@ -1971,10 +1969,15 @@ const bc = (v: "b" | "c") => v;
 export const m = mutation({}, async ({ a, b }: { a: "x" | "y"; b: "b" | "c" }) => { if (a === "x" && b === "b") return "b"; return xy(a) + bc(b); });"#,
         // `x!` narrows the true branch.
         r#"export const m = mutation({}, async ({ x }: { x: string | null }) => { if (x! === "a") return x.length; if (typeof x! === "string") return x.length; return 0; });"#,
-        // `"k" in x!` throws on null, so its true branch holds no null.
+        // `"k" in x!` throws on null before entering either branch.
         r#"type A = { k: number }; type B = { j: number };
 const get = (n: number): A | B | null => (n > 0 ? { k: 1 } : n < 0 ? { j: 2 } : null);
-export const m = mutation({}, async ({ n }: { n: number }) => { const x = get(n); if ("k" in x!) return x.k; return 0; });"#,
+export const m = mutation({}, async ({ n }: { n: number }) => { const x = get(n); if ("k" in x!) return x.k; return x.j; });"#,
+        r#"const onlyA = (v: "a") => v;
+export const m = mutation({}, async ({ input }: { input: { role: string } | null }) => {
+  if (input && input?.role === "a") return onlyA(input.role);
+  return "other";
+});"#,
     ] {
         let out = check(source);
         assert!(
@@ -2021,6 +2024,39 @@ export const m = mutation({}, async ({ s }: { s: "a" | "b" | "c" | "d" }) => { i
 export const m = mutation({}, async ({ a, b }: { a: "x" | "y"; b: "b" | "c" }) => { if (a === "x" && b === "b") return "b"; return onlyB(b); });"#,
             "this argument is \"b\" | \"c\", but the function expects \"b\"",
         ),
+        (
+            r#"export const m = mutation({}, async ({ s }: { s: string }) => {
+  let x: string | number = s;
+  if (x === "a" && ((x = 42) === 42 && x !== "a")) {
+    const text: string = x;
+    return text;
+  }
+  return "other";
+});"#,
+            "string | number isn't assignable to string",
+        ),
+        (
+            r#"export const m = mutation({}, async ({ s, flag, n }: { s: string; flag: boolean; n: number }) => {
+  const x: string = s;
+  {
+    let x: string | number = n;
+    if (flag || x === "a") {
+      const text: string = x;
+      return text;
+    }
+  }
+  return x;
+});"#,
+            "string | number isn't assignable to string",
+        ),
+        (
+            r#"export const m = mutation({}, async ({ input }: { input: { role: string } | null }) => {
+  if (input && input?.role === "a") return "hit";
+  const role: string = input?.role;
+  return role;
+});"#,
+            "string | undefined isn't assignable to string",
+        ),
         // `x!` doesn't remove `null` from `x` on the false branch (tsc: TS18047).
         (
             r#"export const m = mutation({}, async ({ x }: { x: string | null }) => { if (x! === "a") return 1; return x.length; });"#,
@@ -2040,6 +2076,30 @@ export const m = mutation({}, async ({ a, b }: { a: "x" | "y"; b: "b" | "c" }) =
         assert_eq!(out.status.code(), Some(1), "{source}\n{stderr}");
         assert!(stderr.contains(message), "{source}\nexpected {message:?} in:\n{stderr}");
     }
+}
+
+#[test]
+fn string_literal_comparisons_keep_dynamic_dispatch_in_javascript() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(tmp.path().join("sp")).unwrap();
+    std::fs::write(
+        tmp.path().join("sp/cut.js"),
+        r#"export function cut(x, ...args) {
+  if (x === "abc") return x.slice(...args);
+  return "";
+}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("spacepress.config.ts"),
+        r#"import { defineConfig, mutation } from "spacepress";
+import { cut } from "./sp/cut.js";
+export const m = mutation({}, async ({ s }: { s: string }) => ({ value: cut(s, 1) }));
+export default defineConfig({ name: "n" });"#,
+    )
+    .unwrap();
+    let out = first().arg("check").arg(tmp.path()).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 }
 
 /// A fresh WordPress on SQLite with a built `wp-content` installed, served by `php -S`

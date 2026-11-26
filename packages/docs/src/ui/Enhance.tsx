@@ -76,8 +76,18 @@ export function DocsEnhancements({
         const anchor = document.createElement("a");
         anchor.className = "sd-anchor";
         anchor.href = `#${heading.id}`;
-        anchor.setAttribute("aria-label", "Link to this section");
+        anchor.setAttribute("aria-label", `Copy link to ${heading.textContent?.trim() ?? "this section"}`);
         anchor.textContent = "#";
+        anchor.addEventListener("click", async (event) => {
+          if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+          try {
+            await navigator.clipboard.writeText(anchor.href);
+            anchor.classList.add("is-copied");
+            setTimeout(() => anchor.classList.remove("is-copied"), 1400);
+          } catch {
+            // The link still navigates to the heading when clipboard access is blocked.
+          }
+        }, { signal });
         heading.append(anchor);
       }
       for (const group of Array.from(document.querySelectorAll<HTMLElement>("[data-sd-tabs]"))) {

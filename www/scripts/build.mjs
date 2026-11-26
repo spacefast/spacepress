@@ -9,7 +9,7 @@
 // All of it is git-ignored. Run `bun scripts/build.mjs` after changing browser/ or examples/;
 // `spacepress dev` rebuilds the pages itself. Build the compiler wasm and showcase zips first
 // with `npm run wasm && npm run showcase` in www/.
-import { readFileSync, writeFileSync, statSync, mkdirSync, copyFileSync, existsSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, statSync, mkdirSync, copyFileSync, existsSync, lstatSync, readdirSync, rmSync, renameSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateAiAssets } from "./generate-ai-assets.mjs";
@@ -26,6 +26,21 @@ mkdirSync(join(out, "playground-plugins"), { recursive: true });
 
 const sources = Bun.spawnSync(["node", join(here, "sources.mjs")]);
 if (sources.exitCode !== 0) throw new Error(`sources.mjs failed:\n${sources.stderr.toString()}`);
+
+// Bun 1.3 links the files of a local dependency back to its source tree. SpacePress
+// requires the package it compiles to be self-contained, so materialize those links.
+const docsPackage = join(site, "node_modules", "@spacepress", "docs");
+const docsSource = join(docsPackage, "src");
+const packageFiles = [join(docsPackage, "package.json")];
+for (const entry of readdirSync(docsSource, { recursive: true, withFileTypes: true })) {
+  if (entry.isSymbolicLink()) packageFiles.push(join(entry.parentPath, entry.name));
+}
+for (const file of packageFiles) {
+  if (!lstatSync(file).isSymbolicLink()) continue;
+  const temporary = `${file}.copy-${process.pid}`;
+  copyFileSync(file, temporary);
+  renameSync(temporary, file);
+}
 
 const aiStats = generateAiAssets();
 const runData = Bun.spawnSync(["node", join(here, "run-data.ts")], { cwd: site });

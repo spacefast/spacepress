@@ -1,6 +1,6 @@
 // The docs collection: one record per Markdown file under the sync folder. A file's name is its
 // slug, its folder its parent, and a folder's index.md the page the folder stands for.
-import { type AnyCollection, collection, richText, slug, text } from "spacepress";
+import { collection, richText, slug, text } from "spacepress";
 
 export interface DocsCollectionOptions {
   label?: string;
@@ -10,7 +10,7 @@ export interface DocsCollectionOptions {
   sync?: `${string}/**/*.md`;
 }
 
-export function createDocsCollection(options: DocsCollectionOptions = {}): AnyCollection {
+export function createDocsCollection(options: DocsCollectionOptions = {}) {
   return collection(
     {
       title: text(),

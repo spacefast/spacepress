@@ -233,7 +233,8 @@ summary.sd-nav-link::-webkit-details-marker { display: none; }
 .sd-prose h3 { margin: 1.8em 0 0.6em; font-size: 1.2rem; line-height: 1.4; font-weight: 600; }
 .sd-prose h4 { margin: 1.6em 0 0.5em; font-size: 1rem; font-weight: 600; }
 .sd-anchor { margin-left: 8px; color: var(--sd-ink-muted); text-decoration: none; opacity: 0; transition: opacity 0.12s; }
-.sd-prose h2:hover .sd-anchor, .sd-prose h3:hover .sd-anchor, .sd-anchor:focus { opacity: 1; }
+.sd-prose h2:hover .sd-anchor, .sd-prose h3:hover .sd-anchor, .sd-anchor:focus, .sd-anchor.is-copied { opacity: 1; }
+.sd-anchor.is-copied::after { content: " Copied"; font-size: 0.75rem; }
 .sd-prose a { color: var(--sd-accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--sd-accent) 35%, transparent); text-underline-offset: 3px; }
 .sd-prose a:hover { text-decoration-color: currentColor; }
 .sd-prose strong { color: var(--sd-ink); font-weight: 600; }

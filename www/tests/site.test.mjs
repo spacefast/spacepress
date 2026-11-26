@@ -53,7 +53,7 @@ test("home and synced reference fit a narrow viewport", async (t) => {
 });
 
 test("reference navigation opens synced Markdown and its code examples", async (t) => {
-  const page = await open(t, "/docs/");
+  const page = await open(t, "/docs/", { permissions: ["clipboard-read", "clipboard-write"] });
   await page.getByRole("link", { name: /Pages, Layouts & Interactive Islands/ }).click();
   await page.waitForURL("**/docs/core/pages-and-islands/");
   assert.equal(await page.locator("h1").textContent(), "Pages, Layouts & Interactive Islands");
@@ -79,6 +79,12 @@ test("reference navigation opens synced Markdown and its code examples", async (
   assert.equal(await markdown.getAttribute("href"), "/md/docs/core/pages-and-islands.md");
   const source = page.getByRole("link", { name: /Edit on GitHub/ });
   assert.match(await source.getAttribute("href"), /www\/content\/docs\/core\/pages-and-islands\.md$/);
+  await page.getByLabel("More page actions").click();
+  const anchor = page.getByRole("link", { name: /Copy link to/ }).first();
+  const anchorUrl = await anchor.evaluate((link) => link.href);
+  await anchor.focus();
+  await anchor.press("Enter");
+  await page.waitForFunction(async (value) => await navigator.clipboard.readText() === value, anchorUrl);
 });
 
 async function tasks(t) {

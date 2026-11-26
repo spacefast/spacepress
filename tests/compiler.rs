@@ -6517,3 +6517,24 @@ fn refused_helper_chain_stays_linear_on_speculative_retries() {
         );
     }
 }
+
+/// A constant's declared type crosses imports, aliased re-exports and `export *`: compiled code
+/// that indexes an imported `Record<string, string>` with a string reads it as that record, not as
+/// the object literal's fixed keys. A local export wins over `export *` (and so does its type), a
+/// destructured `var`'s annotation doesn't type each name, and an imported type compiled code
+/// can't resolve (`React.CSSProperties`) falls back to the value's type.
+#[test]
+fn imported_constants_keep_their_declared_types() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("annotations");
+    copy(&root().join("tests/fixtures/imported-annotations"), &project);
+    let out = first().arg("build").arg(&project).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    // Two `export *` of V: the first star's value is the one read, as its type is.
+    let php = std::fs::read_to_string(
+        project.join("sp/dist/wp-content/plugins/spacepress-app-annotations/sp/app/functions.php"),
+    )
+    .unwrap();
+    assert!(php.contains("$value->p['a'] = 'one';"), "{php}");
+    assert!(!php.contains("$value->p['a'] = 2;"), "{php}");
+}

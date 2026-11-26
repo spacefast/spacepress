@@ -5190,9 +5190,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     name
                 };
                 let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
-                let ty = match &b.ann {
-                    _ if javascript => Ty::Dynamic,
-                    Some((ann, module)) => self.resolve_runtime_ann(ann, *module)?,
+                let ty = match self.declared_type(b, javascript)? {
+                    Some(ty) => ty,
                     None => {
                         let keys = Ty::union(c.entries.iter().map(|(k, _)| widen_fresh_literals(&ty_of_data(k))));
                         let values = Ty::union(c.entries.iter().map(|(_, v)| widen_fresh_literals(&ty_of_data(v))));
@@ -5334,14 +5333,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 validate_captured_data(data, span, &mut HashSet::new())?;
                 let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
-                let ty = match &b.ann {
-                    _ if javascript => Ty::Dynamic,
-                    Some((ann, module)) => self.resolve_runtime_ann(ann, *module)?,
+                let ty = match self.declared_type(b, javascript)? {
+                    Some(ty) => ty,
                     None => inferred_binding_type(&ty_of_data(data), member),
                 };
                 let ty = self.effects.captured_data_type(data, &ty);
                 Ok(Out::atom(self.captured_data(data)?, ty))
             }
+        }
+    }
+
+    /// A captured binding's declared type. An import carries the type its module declared; when
+    /// that type is one compiled code can't resolve (`React.CSSProperties`, `any`), the value's
+    /// own type stands in, as it did before imports carried types. A local declaration's type is
+    /// always resolved, so a bad one is an error.
+    fn declared_type(&mut self, b: &Binding, javascript: bool) -> Result<Option<Ty>> {
+        if javascript {
+            return Ok(Some(Ty::Dynamic));
+        }
+        let Some((ann, module)) = &b.ann else { return Ok(None) };
+        match self.resolve_runtime_ann(ann, *module) {
+            Ok(ty) => Ok(Some(ty)),
+            Err(_) if *module != self.fx.as_ref().expect("fn").module => Ok(None),
+            Err(e) => Err(e),
         }
     }
 
